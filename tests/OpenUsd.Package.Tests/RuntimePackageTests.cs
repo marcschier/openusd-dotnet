@@ -45,7 +45,7 @@ public sealed class RuntimePackageTests
 
     private const int RequiredStormAbiVersion = 8;
     private const int RequiredSilkSessionAbiVersion = 5;
-    private const int RequiredSilkPageAbiVersion = 15;
+    private const int RequiredSilkPageAbiVersion = 23;
     private const int RequiredStormChildAbiVersion = 8;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -780,6 +780,85 @@ public sealed class RuntimePackageTests
                 "win-x64",
                 "openusd_cesium.dll");
             await AssertPackageDoesNotContainAsync(corePackage.Path, "openusd_cesium");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Requires the base Windows packages to exclude a built MDL adapter, and any MDL SDK runtime
+    /// beside it, that is sitting in the shim prefix they pack from.
+    /// </summary>
+    /// <remarks>
+    /// The adapter is a separate CMake target, but its <c>install(TARGETS)</c> rule writes
+    /// <c>openusd_mdl</c> into the same <c>bin/</c> directory the Windows shim prefix uses. A
+    /// developer or CI job that installs the <c>win-x64-mdl</c> preset therefore leaves the adapter
+    /// exactly where Core and Imaging pack from, and a packaging rule that globbed the prefix would
+    /// ship it. Asserting that a package lacks a file nobody produced proves nothing, so this stages
+    /// the adapter, its SDK-backed sibling, and an NVIDIA MDL SDK runtime with its plugins first:
+    /// the exclusion is then evidence rather than an accident of an empty directory.
+    ///
+    /// A real adapter left by a previous <c>eng/build-mdl-shim.ps1</c> run is used when one is
+    /// present and a synthetic stand-in otherwise, because the rule under test selects files by name
+    /// and never reads their bytes. The claim being proven is the packaging half of
+    /// <see cref="MdlAdapterIsolationTests"/>, which covers the build-option and provenance halves.
+    /// </remarks>
+    [Test]
+    public async Task WindowsBasePackagesExcludeABuiltMdlAdapter()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            string[] stagedMdlPayload = StageBuiltMdlAdapterPayload(repositoryRoot, shimRoot);
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+
+            PackedPackage corePackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Core.win-x64",
+                installRoot,
+                shimRoot,
+                vulkanRuntimeLibrary,
+                packageRoot);
+            PackedPackage imagingPackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging.win-x64",
+                installRoot,
+                shimRoot,
+                vulkanRuntimeLibrary,
+                packageRoot);
+
+            foreach (string staged in stagedMdlPayload)
+            {
+                await Assert.That(File.Exists(staged))
+                    .IsTrue()
+                    .Because(
+                        $"{Path.GetFileName(staged)} has to still be in the prefix that was " +
+                        "packed, or the exclusion below is asserted against a file that was " +
+                        "no longer there to exclude");
+            }
+
+            await AssertPackageCarriesNoMdlOrNvidiaPayloadAsync(corePackage.Path, stagedMdlPayload);
+            await AssertPackageCarriesNoMdlOrNvidiaPayloadAsync(
+                imagingPackage.Path,
+                stagedMdlPayload);
+
+            // An exclusion rule that dropped the shims these packages exist to carry would satisfy
+            // every assertion above, so the packages still have to be the packages they were.
+            await AssertSingleNativePackageEntryAsync(
+                corePackage.Path,
+                "win-x64",
+                "openusd_dotnet.dll");
+            await AssertSingleNativePackageEntryAsync(
+                imagingPackage.Path,
+                "win-x64",
+                "openusd_hdsilk.dll");
         }
         finally
         {
@@ -2512,7 +2591,7 @@ public sealed class RuntimePackageTests
                 packageRoot);
             PackedPackage liveAuthoringPackage = await PackProjectPackageAsync(
                 repositoryRoot,
-                Path.Combine("samples", "OpenUsd.LiveAuthoring", "OpenUsd.LiveAuthoring.csproj"),
+                Path.Combine("src", "OpenUsd.LiveAuthoring", "OpenUsd.LiveAuthoring.csproj"),
                 "OpenUsd.LiveAuthoring",
                 packageRoot);
             string consumerRoot = Path.Combine(workRoot, "opcua-pump-spike-consumer");
@@ -2649,25 +2728,28 @@ public sealed class RuntimePackageTests
                                 }
 
                                 _lastSourceSequence = sample.SourceSequence;
-                                updates.Add(new SetScalarUpdate(
+                                updates.Add(new SetAttributeUpdate(
                                     "/Plant/Pump1",
                                     "custom:sourceSequence",
-                                    LiveScalarValue.FromInt64(sample.SourceSequence),
+                                    LiveAttributeValue.FromInt64(sample.SourceSequence),
                                     TimeCode: sample.SourceSequence));
-                                updates.Add(new SetScalarUpdate(
+                                updates.Add(new SetAttributeUpdate(
                                     "/Plant/Pump1",
                                     "custom:pressure",
-                                    LiveScalarValue.FromDouble(sample.Pressure),
+                                    LiveAttributeValue.FromDouble(sample.Pressure),
                                     TimeCode: sample.SourceSequence));
-                                updates.Add(new SetScalarUpdate(
+                                updates.Add(new SetAttributeUpdate(
                                     "/Plant/Pump1",
                                     "custom:state",
-                                    LiveScalarValue.FromToken(sample.State),
+                                    LiveAttributeValue.FromToken(sample.State),
                                     TimeCode: sample.SourceSequence));
                             }
 
                             var usdBatch = new LiveAuthoringBatch(++_nextBatchSequence, updates);
-                            submitted = inner.ApplyAsync(usdBatch, cancellationToken).AsTask();
+                            LiveAuthoringAdmissionReceipt receipt = await inner
+                                .ApplyAsync(usdBatch, cancellationToken)
+                                .ConfigureAwait(false);
+                            submitted = receipt.Applied;
                         }
                         finally
                         {
@@ -2711,7 +2793,7 @@ public sealed class RuntimePackageTests
                         CancellationToken cancellationToken)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        foreach (SetScalarUpdate update in batch.Updates.OfType<SetScalarUpdate>())
+                        foreach (SetAttributeUpdate update in batch.Updates.OfType<SetAttributeUpdate>())
                         {
                             if (update.AttributeName != "custom:sourceSequence")
                             {
@@ -7846,6 +7928,124 @@ public sealed class RuntimePackageTests
     /// redistribute proprietary binaries this project has no licence for. Staging both here is what
     /// makes the layout assertions able to see either happen.
     /// </remarks>
+    /// <summary>
+    /// Reproduces the shim prefix as an MDL-enabled install actually leaves it, and returns the
+    /// absolute path of every file staged.
+    /// </summary>
+    /// <remarks>
+    /// <c>native/openusd_mdl/CMakeLists.txt</c> installs <c>openusd_mdl</c> to
+    /// <c>${CMAKE_INSTALL_BINDIR}</c>, which is the same <c>bin/</c> directory the Windows packaging
+    /// targets read the core and imaging shims from, so this is the layout a real MDL-enabled
+    /// install produces rather than an invented one. The SDK runtime and its plugins are staged
+    /// beside it because an operator who deploys the SDK-backed adapter puts them there, and those
+    /// are NVIDIA binaries this project has no agreement to redistribute.
+    /// </remarks>
+    private static string[] StageBuiltMdlAdapterPayload(string repositoryRoot, string shimRoot)
+    {
+        string binRoot = Path.Combine(shimRoot, "bin");
+        Directory.CreateDirectory(binRoot);
+        List<string> staged = [];
+
+        string adapter = Path.Combine(binRoot, "openusd_mdl.dll");
+        string? built = FindBuiltMdlAdapter(repositoryRoot);
+        if (built is null)
+        {
+            WriteTestFile(adapter, "synthetic built openusd_mdl adapter");
+        }
+        else
+        {
+            File.Copy(built, adapter, overwrite: true);
+        }
+
+        staged.Add(adapter);
+
+        foreach (string name in new[]
+        {
+            "openusd_mdl_sdk.dll",
+            "libmdl_sdk.dll",
+            "nv_freeimage.dll",
+            "nv_openimageio.dll",
+            "dds.dll",
+        })
+        {
+            string path = Path.Combine(binRoot, name);
+            WriteTestFile(path, $"synthetic {name} left beside an MDL-enabled install");
+            staged.Add(path);
+        }
+
+        return [.. staged];
+    }
+
+    /// <summary>
+    /// Finds an adapter left by a previous <c>eng/build-mdl-shim.ps1</c> run, or null when the
+    /// optional configuration was never built on this machine.
+    /// </summary>
+    private static string? FindBuiltMdlAdapter(string repositoryRoot)
+    {
+        string buildRoot = Path.Combine(
+            repositoryRoot,
+            "native",
+            "build",
+            "shim",
+            "win-x64-mdl",
+            "openusd_mdl");
+        foreach (string candidate in new[]
+        {
+            Path.Combine(buildRoot, "openusd_mdl.dll"),
+            Path.Combine(buildRoot, "Release", "openusd_mdl.dll"),
+        })
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Requires a package to carry no file that was staged into the shim prefix as MDL payload, and
+    /// no entry an MDL or NVIDIA name would give away.
+    /// </summary>
+    /// <remarks>
+    /// Both checks are needed. The name-based sweep alone would miss <c>dds.dll</c>, an SDK plugin
+    /// whose name says nothing; the staged-file check alone would miss a differently named MDL or
+    /// NVIDIA file some future rule swept up.
+    /// </remarks>
+    private static async Task AssertPackageCarriesNoMdlOrNvidiaPayloadAsync(
+        string packagePath,
+        IReadOnlyCollection<string> stagedPayload)
+    {
+        using ZipArchive package = ZipFile.OpenRead(packagePath);
+        string[] entries = package.Entries.Select(entry => entry.FullName).ToArray();
+        HashSet<string> stagedNames = stagedPayload
+            .Select(path => Path.GetFileName(path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        string[] stagedOffenders = entries
+            .Where(entry => stagedNames.Contains(Path.GetFileName(entry)))
+            .ToArray();
+        await Assert.That(stagedOffenders)
+            .IsEmpty()
+            .Because(
+                "the package was packed from a prefix holding the staged MDL payload and must " +
+                "carry none of it: " + string.Join(", ", stagedOffenders));
+
+        string[] namedOffenders = entries
+            .Where(entry => Regex.IsMatch(
+                entry,
+                "mdl|nvidia",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5)))
+            .ToArray();
+        await Assert.That(namedOffenders)
+            .IsEmpty()
+            .Because(
+                "no base package entry may carry an MDL or NVIDIA name: " +
+                string.Join(", ", namedOffenders));
+    }
+
     private static (string PhysicsShimRoot, string PhysXInstallRoot) CreateSyntheticPhysicsInstall(
         string workRoot,
         string rid)

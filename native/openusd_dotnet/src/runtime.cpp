@@ -132,6 +132,130 @@ openusd_status openusd_register_plugins(
     });
 }
 
+namespace
+{
+/// Whether one caller's image-info declaration names a version and size this
+/// seam answers, and whether it asked for the appended version-2 observations.
+///
+/// The pair is checked rather than the version alone because the size is what
+/// bounds the write: a caller that names version 2 with a version-1 allocation
+/// would otherwise have its own stack written past.
+bool IsAcceptedImageInfo(const openusd_image_info* info, bool* wantsObservations)
+{
+    *wantsObservations = false;
+    if (info == nullptr)
+    {
+        return false;
+    }
+    if (info->struct_size == sizeof(openusd_image_info) &&
+        info->version == OPENUSD_IMAGE_INFO_VERSION)
+    {
+        *wantsObservations = true;
+        return true;
+    }
+    return info->struct_size == OPENUSD_IMAGE_INFO_VERSION_1_SIZE &&
+        info->version == OPENUSD_IMAGE_INFO_VERSION_1;
+}
+
+/// Clears every image-info output field, so a caller that ignores the status
+/// never reads a stale observation.
+///
+/// A version-1 caller allocated only the shape, so nothing past it is touched.
+void ResetImageInfoOutputs(openusd_image_info* info, bool wantsObservations)
+{
+    info->width = 0;
+    info->height = 0;
+    if (!wantsObservations)
+    {
+        return;
+    }
+    info->channel_count = 0;
+    info->observed = 0;
+    info->color_space = OPENUSD_IMAGE_COLOR_SPACE_RAW;
+    info->address_u = OPENUSD_IMAGE_ADDRESS_CLAMP_TO_EDGE;
+    info->address_v = OPENUSD_IMAGE_ADDRESS_CLAMP_TO_EDGE;
+    info->reserved = 0;
+}
+
+uint32_t TranslateHioAddressMode(HioAddressMode mode)
+{
+    switch (mode)
+    {
+        case HioAddressModeMirrorClampToEdge:
+            return OPENUSD_IMAGE_ADDRESS_MIRROR_CLAMP_TO_EDGE;
+        case HioAddressModeRepeat:
+            return OPENUSD_IMAGE_ADDRESS_REPEAT;
+        case HioAddressModeMirrorRepeat:
+            return OPENUSD_IMAGE_ADDRESS_MIRROR_REPEAT;
+        case HioAddressModeClampToBorderColor:
+            return OPENUSD_IMAGE_ADDRESS_CLAMP_TO_BORDER;
+        case HioAddressModeClampToEdge:
+        default:
+            return OPENUSD_IMAGE_ADDRESS_CLAMP_TO_EDGE;
+    }
+}
+
+/// Records what the image library could observe about one file.
+///
+/// The channel count is always observable from the decoded format. The effective
+/// colour space is asked of a *second* handle opened with SourceColorSpace::Auto,
+/// because that is the only way to read the library's own auto resolution: a
+/// handle opened Raw always answers raw by construction, which would turn every
+/// `sourceColorSpace = auto` into a guess. The per-axis sampler metadata is
+/// optional in every image format, so each axis is reported only when the
+/// library answered for it.
+void ObserveImage(
+    const std::string& assetPath,
+    const HioImageSharedPtr& image,
+    int sourceComponents,
+    openusd_image_info* info,
+    bool wantsObservations)
+{
+    if (!wantsObservations)
+    {
+        return;
+    }
+    if (sourceComponents >= 1 && sourceComponents <= 4)
+    {
+        info->channel_count = static_cast<uint32_t>(sourceComponents);
+        info->observed |= OPENUSD_IMAGE_OBSERVED_CHANNELS;
+    }
+
+    TfErrorMark colorSpaceMark;
+    const HioImageSharedPtr autoImage = HioImage::OpenForReading(
+        assetPath,
+        0,
+        0,
+        HioImage::SourceColorSpace::Auto,
+        /* suppressErrors */ true);
+    colorSpaceMark.Clear();
+    if (autoImage)
+    {
+        info->color_space = autoImage->IsColorSpaceSRGB()
+            ? OPENUSD_IMAGE_COLOR_SPACE_SRGB
+            : OPENUSD_IMAGE_COLOR_SPACE_RAW;
+        info->observed |= OPENUSD_IMAGE_OBSERVED_COLOR_SPACE;
+    }
+
+    if (image)
+    {
+        HioAddressMode mode = HioAddressModeClampToEdge;
+        TfErrorMark samplerMark;
+        if (image->GetSamplerMetadata(HioAddressDimensionU, &mode))
+        {
+            info->address_u = TranslateHioAddressMode(mode);
+            info->observed |= OPENUSD_IMAGE_OBSERVED_ADDRESS_U;
+        }
+        if (image->GetSamplerMetadata(HioAddressDimensionV, &mode))
+        {
+            info->address_v = TranslateHioAddressMode(mode);
+            info->observed |= OPENUSD_IMAGE_OBSERVED_ADDRESS_V;
+        }
+        samplerMark.Clear();
+    }
+}
+}
+
 openusd_status openusd_decode_image_rgba8(
     const char* asset_path,
     uint32_t convert_srgb_to_linear,
@@ -143,9 +267,8 @@ openusd_status openusd_decode_image_rgba8(
     // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
-        if (asset_path == nullptr || info == nullptr ||
-            info->struct_size != sizeof(openusd_image_info) ||
-            info->version != OPENUSD_IMAGE_INFO_VERSION)
+        bool wantsObservations = false;
+        if (asset_path == nullptr || !IsAcceptedImageInfo(info, &wantsObservations))
         {
             WriteError(error, "A valid image asset path and image-info output are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
@@ -155,8 +278,7 @@ openusd_status openusd_decode_image_rgba8(
         // The caller supplies struct_size and version, but the decoded extent is
         // an output and must be defined on every failure path, not only on
         // success, so a caller that ignores the status never reads a stale size.
-        info->width = 0;
-        info->height = 0;
+        ResetImageInfoOutputs(info, wantsObservations);
 
         return Guard(error, [&]()
         {
@@ -198,6 +320,12 @@ openusd_status openusd_decode_image_rgba8(
             }
             const HioType source_type = HioGetHioType(source_format);
             const int source_components = HioGetComponentCount(source_format);
+            ObserveImage(
+                asset_path,
+                image,
+                source_components,
+                info,
+                wantsObservations);
             if ((source_type != HioTypeUnsignedByte &&
                  source_type != HioTypeUnsignedByteSRGB) ||
                 source_components < 1 ||
@@ -298,17 +426,15 @@ openusd_status openusd_decode_image_rgba32f(
     // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
-        if (asset_path == nullptr || info == nullptr ||
-            info->struct_size != sizeof(openusd_image_info) ||
-            info->version != OPENUSD_IMAGE_INFO_VERSION)
+        bool wantsObservations = false;
+        if (asset_path == nullptr || !IsAcceptedImageInfo(info, &wantsObservations))
         {
             WriteError(error, "A valid image asset path and image-info output are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
 
         // ABI_OUTPUT_INITIALIZATION
-        info->width = 0;
-        info->height = 0;
+        ResetImageInfoOutputs(info, wantsObservations);
 
         return Guard(error, [&]()
         {
@@ -354,6 +480,12 @@ openusd_status openusd_decode_image_rgba32f(
                 return OPENUSD_STATUS_NATIVE_ERROR;
             }
             const HioType source_type = HioGetHioType(source_format);
+            ObserveImage(
+                asset_path,
+                image,
+                HioGetComponentCount(source_format),
+                info,
+                wantsObservations);
             const int source_components = HioGetComponentCount(source_format);
             const size_t source_component_size = HioGetDataSizeOfType(source_type);
             const size_t source_pixel_size = HioGetDataSizeOfFormat(source_format);

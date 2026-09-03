@@ -10,7 +10,11 @@ namespace OpenUsd.Rendering.Tests;
 /// drifting from the parser's fixed header size.
 /// </summary>
 /// <remarks>
-/// The page ABI 5 to 6 bump grew the mesh command header from 216 to 224 bytes.
+/// The page ABI 5 to 6 bump grew the mesh command header from 216 to 224
+/// bytes, the ABI 19 to 20 bump grew it again from 224 to 236 for the
+/// deformation block descriptor, the ABI 21 to 22 bump grew it from 236 to
+/// 260 for the subprim-identity table descriptors, and the authoritative
+/// instancer path lifted it from 260 to 268.
 /// The encoder is hand-written in nine places, and three of them were missed:
 /// seven copies in the conformance project (caught locally), the NativeAOT RHI
 /// probe and the benchmark data builder. The latter two are only executed by the
@@ -121,7 +125,7 @@ public sealed class SilkMeshCommandEncoderContractTests
             .IsEmpty()
             .Because(
                 "These files encode a MESH_UPSERT command at an offset that " +
-                "moved when the header grew from 216 to 224 bytes: " +
+                "moved when the header grew to its current size: " +
                 string.Join(", ", staleOffsets));
     }
 
@@ -165,7 +169,19 @@ public sealed class SilkMeshCommandEncoderContractTests
     {
         await Assert.That(ContainsStaleHeaderLiteral("path.CopyTo(bytes, 216);"))
             .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("path.CopyTo(bytes, 224);"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("path.CopyTo(bytes, 236);"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("path.CopyTo(bytes, 260);"))
+            .IsTrue();
         await Assert.That(ContainsStaleHeaderLiteral("var bytes = new byte[216 + path.Length];"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("var bytes = new byte[224 + path.Length];"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("var bytes = new byte[236 + path.Length];"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("var bytes = new byte[260 + path.Length];"))
             .IsTrue();
         await Assert.That(ContainsStaleHeaderLiteral(
                 "BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(200), hash);"))
@@ -180,6 +196,9 @@ public sealed class SilkMeshCommandEncoderContractTests
             .IsFalse();
         await Assert.That(ContainsStaleHeaderLiteral(
                 "BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216), length);"))
+            .IsFalse();
+        await Assert.That(ContainsStaleHeaderLiteral(
+                "BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(232), deformationBytes);"))
             .IsFalse();
     }
 
@@ -255,24 +274,45 @@ public sealed class SilkMeshCommandEncoderContractTests
 
     private static bool ContainsStaleHeaderLiteral(string text)
     {
-        // The current 224-byte header ends with the material hash at 208, the
-        // material path length at 216 and the attribute count at 220, so 208 and
-        // 216 are LEGITIMATE offsets and must never be flagged. What moved when
-        // the header grew from 216 to 224 is the size base and the two offsets
-        // that sat where the material hash and attribute count now begin.
+        // The current 268-byte header ends with the material hash at 208, the
+        // material path length at 216, the attribute count at 220, the ABI
+        // v20 deformation flags, unsupported reasons and block byte count at
+        // 224, 228 and 232, and the ABI v22 subprim identity flags,
+        // unsupported reasons, four table counts and the instancer path length
+        // at 236 through 260, so every one of those is a LEGITIMATE offset and
+        // must never be flagged. What moved when the header grew is the size
+        // base and the offsets that sat where those fields now begin.
         //
-        // This list only recognises drift from one historical bump. It is a
-        // secondary net; the load-bearing check is that every encoder
-        // references the size parsed out of the parser.
+        // This list recognises drift from the four historical bumps: 216 to
+        // 224, 224 to 236, 236 to 260, and 260 to 268. It is a secondary net;
+        // the load-bearing check is that every encoder references the size
+        // parsed out of the parser.
         string[] stalePatterns =
         [
-            // The variable-length section used to start at 216.
+            // The variable-length section used to start at 216, then at 224,
+            // then at 236, then at 260.
             "CopyTo(bytes, 216)",
-            // The fixed header used to be 216 bytes, so a size base of 216 is stale.
+            "CopyTo(bytes, 224)",
+            "CopyTo(bytes, 236)",
+            "CopyTo(bytes, 260)",
+            // The fixed header used to be 216, 224, 236 and then 260 bytes, so
+            // any of those as a size base is stale.
             "new byte[216 +",
+            "new byte[224 +",
+            "new byte[236 +",
+            "new byte[260 +",
             "= 216 +",
+            "= 224 +",
+            "= 236 +",
+            "= 260 +",
             "216 +\n",
             "216 +\r",
+            "224 +\n",
+            "224 +\r",
+            "236 +\n",
+            "236 +\r",
+            "260 +\n",
+            "260 +\r",
             // The material hash used to sit at 200 and the attribute count at 212.
             "AsSpan(200)",
             "AsSpan(200,",

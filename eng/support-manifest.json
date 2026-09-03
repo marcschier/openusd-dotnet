@@ -50,6 +50,16 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "native-shader-node-definition-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY",
+          "description": "Bulk, read-only introspection of the process-global Sdr/Ndr shader node-definition registry -- identifiers, source types, implementation/resolved-definition URIs, and bounded input/output names and types -- covering UsdPreviewSurface/UsdUVTexture built-ins and MaterialX standard-library nodes when the usdMtlx discovery plugin is registered, plus a source-asset/sub-identifier lookup that reports not-found rather than erroring when no MDL SDK parser plugin is registered",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdShaderRegistryTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
           "id": "shared-stage-access",
           "nativeCapability": "OPENUSD_CAPABILITY_SHARED_STAGE_ACCESS",
           "description": "Shared render-source stage access token",
@@ -706,7 +716,7 @@
         },
         {
           "id": "materialx-projection",
-          "description": "hdSilk MaterialX projection: ND_standard_surface base colour, emission, metalness, roughness, normal; constant, direct image, arithmetic fold, one reconciled texture-coordinate stream per material covering both the folded place2d/UsdTransform2d transform and the UV primvar, constant affine arithmetic over exactly one image folded into that texture's scale and bias, one two-image multiply/add/subtract/mix composite per material evaluated per pixel in the shader, and MaterialX image sampling read from uaddressmode/vaddressmode and default rather than the UsdUVTexture names",
+          "description": "hdSilk MaterialX projection: ND_standard_surface (base colour scaled by base, emission colour scaled by emission, metalness, specular_roughness, specular_IOR, coat, coat_roughness, monochrome constant opacity, normal) and ND_open_pbr_surface (base_color scaled by base_weight, emission_color scaled by emission_luminance, base_metalness, specular_roughness, specular_ior, coat_weight, coat_roughness, geometry_opacity, geometry_normal) projected onto the same PreviewSurface-compatible material record; constant, direct image, arithmetic fold, one reconciled texture-coordinate stream per material covering both the folded place2d/UsdTransform2d transform and the UV primvar, constant affine arithmetic over exactly one image folded into that texture's scale and bias, one two-image multiply/add/subtract/mix composite per material evaluated per pixel in the shader, and MaterialX image sampling read from uaddressmode/vaddressmode and default rather than the UsdUVTexture names. Explicitly not supported: generated OpenPBR shader code, transmission, subsurface, sheen/fuzz, thin film, anisotropy, coat tint/coat IOR/coat normal, MaterialX specular_color as a specular workflow, per-channel or connected colour-typed standard_surface opacity, connected (per-pixel) nodedef weights, and more than one texture-coordinate set per material",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
@@ -725,6 +735,55 @@
             "native/hdSilk/tests/hdsilk_probe.cpp"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "mdl-only-material-reporting",
+          "description": "An MDL-only UsdShade material, which authors outputs:mdl:surface and no universal or MaterialX terminal, reaches the render delegate and is published with its own surface kind -- OPENUSD_SILK_SURFACE_MDL_DISTILLED or OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE -- and, when it cannot be shaded, reported against its own prim path with the distinct OPENUSD_SILK_MATERIAL_MDL_UNAVAILABLE diagnostic instead of being drawn as an undiagnosed default surface. An authored universal or MaterialX context still wins over the MDL one",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["native.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "native.yml": ["build"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Tests/MdlOnlyMaterialFixtureTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "mdl-accepted-subset-distillation",
+          "description": "The optional openusd_mdl adapter distils the accepted subset of authored MDL input values -- OmniPBR, OmniSurface and OmniGlass -- into UsdPreviewSurface-equivalent parameters without opening an MDL module, and stays out of every base package. The optional openusd_mdl_sdk sibling adds module evaluation on top of the same authored fast path; see mdl-sdk-module-evaluation. The loader resolves either adapter only as an absolute sibling of the hdSilk module or from an absolute OPENUSD_MDL_ADAPTER_PATH, never from a bare library name",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["native.yml"],
+          "evidenceWorkflowJobs": {
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Package.Tests/MdlAdapterIsolationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Only win-x64 is gated: native.yml builds the OPENUSD_WITH_MDL configuration and runs the hdSilk probe against it on Windows alone. The adapter is dependency-free C++ and the linux-x64-mdl and osx-arm64-mdl presets build the identical source, but no workflow builds them, so no accepted automated reference gate proves those RIDs and they are not claimed as evidence platforms."
+        },
+        {
+          "id": "mdl-sdk-module-evaluation",
+          "description": "MDL SDK-backed module evaluation in the optional openusd_mdl_sdk adapter: an MDL module is compiled from an explicitly configured absolute search path through a user-supplied MDL SDK runtime, the named material's unauthored parameter defaults are resolved, constant expression defaults are folded (elemental, conversion and copy constructors, and parameter aliases), and texture-valued defaults the SDK materialises are resolved to a path the renderer can open. Authored stage values always win over module defaults, and every distilled entry says which of the two it came from. Nothing else is evaluated: a default that is any other call, a layered BSDF, or a resource the SDK cannot resolve is reported by parameter name and never folded into a value. Proven on win-x64 against MDL SDK 2026.0.2 and repository-authored synthetic modules, end to end through UsdImaging and the hdSilk page wire format",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "native/openusd_mdl/tests/mdl_sdk_probe.cpp",
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Package.Tests/MdlAdapterIsolationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "No workflow builds this configuration. It needs the MDL SDK acquisition eng/fetch-mdl-sdk.ps1 performs -- a roughly 276 MiB download verified against the SHA-256 in eng/mdl.lock.json -- and a user-supplied MDL SDK runtime at OPENUSD_MDL_SDK_RUNTIME, neither of which any OpenUsd package contains or may contain. The checks are runnable on demand and were run on win-x64; linux-x64 and osx-arm64 build the identical source but are not proven, and are not claimed."
+        },
+        {
+          "id": "mdl-generated-shader-code",
+          "description": "MDL-generated GPU shader code, and evaluation of layered BSDFs, mixers and other distribution-function graphs, to shade a material the way an MDL renderer does",
+          "status": "not-supported",
+          "exclusionReason": "The MDL SDK backend reads a compiled material's parameter defaults; it does not run the SDK's target-code backends and does not evaluate distribution functions. A distilled MDL material is shaded by the same PreviewSurface-compatible GPU pipeline as every other material, so a layered or mixed BSDF is an approximation by construction, and a default whose expression this adapter does not fold is reported by parameter name rather than evaluated. Both remain unimplemented and are not claimed by mdl-sdk-module-evaluation."
         },
         {
           "id": "udim-textures",
@@ -817,6 +876,147 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "usdlux-light-linking",
+          "description": "UsdLux light linking applied per draw: hdSilk registers HdsiLightLinkingSceneIndex for its own renderer, so collection membership -- includes, excludes, includeRoot, expansion rules, nested collections and membership expressions -- is collapsed to category identities by UsdImaging before hdSilk sees it. Page ABI v21 carries sparse light, shadow-caster, and dome receiver masks on LIGHT_LINK entries. A prim every light reaches is omitted; path-wide entries apply to every instance and explicit instance entries override them. Prototype-specific category rows are intersected with the actual published point-instancer indices, including hidden and multi-prototype filtering. Managed Silk retains all three masks, includes them in draw batching and surface-buffer cache identity, and uses immutable per-batch instance tables when one prototype splits across masks. Tables over OPENUSD_SILK_MAX_LINK_ENTRIES are diagnosed and omitted prims remain linked to every light",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "ci.yml": ["build-test"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkLightLinkWireTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkLightLinkConformance.cs",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "nested-instance-light-linking",
+          "description": "Bounded light, shadow-caster, and dome receiver mask resolution onto the composed instance identities hdSilk publishes under nested instancing. A dedicated native mapping walks the instancer chain, folds path-wide categories from every level including the leaf PointInstancer, intersects each level with the prototype-specific visible instance indices, and composes the exact root-instancer per-instance categories onto every descendant identity using the same mixed-radix formula as geometry publication. Category rows are resolved to masks and sparsified before the 4096-entry ABI limit; admission is atomic per prim path so overflow fails open without leaving a restrictive prototype row and missing overrides. Hidden IDs, sparse protoIndices, multiple prototypes, unrepresentable indices, updates, and retirement are gated. WARP and SwiftShader pixels prove complementary direct, dome, and shadow-caster masks split one nested prototype into batches while preserving every composed transform",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "test-assets/hdsilk-nested-linking-probe.usda",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkNestedInstanceLinkConformance.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "HdsiLightLinkingSceneIndex documents deeper nested per-instance arrays as unresolved unions over ancestor instances. hdSilk diagnoses and drops those ambiguous arrays rather than assigning one ancestor's categories to the wrong composed identity. Path-wide categories at every level and exact root-instancer per-instance categories are supported."
+        },
+        {
+          "id": "shadow-map-depth-resource-path",
+          "description": "The resource and synchronisation path a shadow map needs, isolated from any shadow shading: a SilkTextureDescriptor.SampledDepthTarget D32Float image is rendered as a depth attachment, bound for sampling in a later submission while an unrelated depth target owns the attachment, and then rendered into again, with the depth readback required to be reproduced exactly -- the lifecycle a cached shadow map has across frames. The Vulkan sampling barrier names the bound image's own aspect rather than a hard-coded colour aspect, which is invalid usage for a depth image on a conformant driver and is what a shadow map would have hit first; SwiftShader accepts the wrong aspect and produces the right pixels, so that half is pinned as a source contract rather than left to an execution gate that cannot see it. This isolates the resource lifecycle from the shading that now consumes it; the shadow slice itself is gated separately by usdlux-shadow-linking",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/OffscreenRhiConformance.cs",
+            "tests/OpenUsd.Rendering.Tests/VulkanSampledDepthBarrierSourceContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "usdlux-shadow-linking",
+          "description": "Raster shadow maps for authored distant lights, and the caster restriction collection:shadowLink expresses. hdSilk derives one bounded light-space orthographic descriptor per shadow-enabled UsdLuxDistantLight from the world bounds of the published casters and carries it on the ABI v19 SHADOW command with its map index, square power-of-two resolution, depth bias, world-space normal bias and PCF radius; the table is compared and published whole, so an unchanged scene publishes no command and a consumer keeps every retained map. Managed Silk retains the table, allocates one bounded shadow atlas, renders supported casters from light space through a dedicated depth-only pipeline family that binds no colour attachment, and samples it with a nine-tap filter in every checked mesh fragment permutation. collection:shadowLink is resolved independently of collection:lightLink, as UsdLux defines them, so an unlit or off-screen blocker can still cast; a prim the shadow collection excludes is not drawn into that light's map, while receiving is not restricted by shadowLink. A caster whose material is opacity-masked -- an authored opacity texture, an opacityThreshold above zero, or a constant opacity below one -- is excluded from every shadow map and reported as OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED against its prim path, because the depth-only caster program binds no material and cannot discard; alpha-tested and translucent shadow casters are not supported, and such a prim is still lit and still receives. A retained map is reused byte for byte until the descriptor table, caster geometry, caster restriction, or device generation changes, and is released when the table retires. Bounded at four maps of at most 2048 texels; a light type with no exact light-space projection, a scene with no caster extent, a table over the map budget, and a device that cannot record a depth-only pass are each reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light rather than rendered as an undiagnosed unshadowed image. Metal is source-complete and unclaimed: it reports no raster-shadow capability, so it allocates no map and diagnoses every shadow-enabled light",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "ci.yml": ["build-test"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkShadowConformance.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkShadowWireTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkShadowDiagnosticTests.cs",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "dome-light-linking",
+          "description": "Per-prim collection:lightLink receiving semantics for textured, untextured, and mean-fallback UsdLuxDomeLight contributions. ABI v21 publishes a path-sorted table of up to eight dome contributions, assigns each environment record a dome index, and carries a dome mask on each sparse LIGHT_LINK entry. Directional diffuse and specular atlases retain independently selectable per-dome groups plus an unlinked composed group; untextured and fallback ambient summands are also selected per draw. The all-domes mask reproduces unlinked ambient and environment pixels byte for byte. Complementary WARP and SwiftShader gates prove diffuse and specular skies reach only their linked prims, untextured domes are maskable, split-mask instances keep every transform, retirement restores unlinked output, and failed submissions re-upload the environment. Whole-page ABI preflight validates a bijection between textured frame domes and final environment records before transactional scene mutation",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkDomeFrameWireTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDomeEnvironmentGroupTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkLightLinkWireTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkPagePreflightTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkDomeLinkConformance.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "More than eight domes disables the indexed dome table and is diagnosed all-or-nothing. At most four textured domes receive directional prefilter groups; further accepted domes retain named mean fallback. Ambiguous deeper nested per-instance category arrays are diagnosed as described by nested-instance-light-linking, and dome shadow linking remains unsupported. Metal has source/translation coverage but no executed evidence."
+        },
+        {
+          "id": "dome-shadow-linking",
+          "description": "collection:shadowLink caster restriction for UsdLuxDomeLight",
+          "status": "not-supported",
+          "exclusionReason": "hdSilk implements no dome shadow or environment-occlusion pass. An authored dome shadowLink collection is published as OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION and is never folded into the dome receiver mask."
+        },
+        {
+          "id": "light-linking-generated-materialx",
+          "description": "Per-draw light or shadow linking of runtime-generated lit MaterialX fragments",
+          "status": "not-supported",
+          "exclusionReason": "The current MaterialXGenerated surface is exactly ND_surface_unlit and ignores direct and environment lighting by authored intent, so linking has no visual operation to apply. Runtime-generated lit MaterialX terminals are not supported. Projected MaterialX, OpenPBR and distilled MDL materials draw through the checked PBR permutations and use all light-link masks normally."
+        },
+        {
+          "id": "dome-light-texture-mean-ambient",
+          "description": "Textured UsdLuxDomeLight solid-angle-weighted mean-radiance ambient fallback. Directional diffuse and specular IBL use the prefiltered environment path when a dome is accepted; a dome that cannot be prefiltered because its mapping, metadata, asset, controls, budget, or GPU resources are unsupported falls back independently to one mean colour without being counted twice. Image shape and decoded bytes are preflighted before allocation, automatic color space uses image-info observations, asset stamps invalidate in-place edits and repairs, and the stamped cache is bounded. A constant-1.0 environment reproduces the existing untextured-dome normalization. Every fallback is accompanied by the directional-loss or asset diagnostic naming the affected dome",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkDomeEnvironmentTests.cs",
+            "tests/OpenUsd.Rendering.Tests/OmniverseDomeFixtureTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "dome-light-directional-diffuse-ibl",
+          "description": "Directional diffuse IBL for accepted textured UsdLuxDomeLight records. Images are decoded with observed color-space metadata, solid-angle weighted and rotated through the authored light-to-world transform into a shared world-space USD-convention latlong field, then convolved into a cosine irradiance map where a uniform sky satisfies E = pi * L. Up to four domes compose additively with independent color, intensity, exposure, and diffuse controls. Checked shaders sample with a cofactor-transformed world-space shading frame and attenuate diffuse by the complementary split-sum Fresnel term. D3D12 WARP and Vulkan SwiftShader gates cover directional response, authored rotation, transformed and non-uniformly scaled prims, dome-only headlight suppression, multiple controls, fallback, retirement, cache and asset invalidation, malformed-dome isolation, and generated unlit materials",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkEnvironmentLightingTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkEnvironmentRetentionTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkEnvironmentLightingConformance.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "Automatic parameterization without an observable 2:1 latlong shape, mirrored-ball or cube mappings, unsupported color-temperature or pole-axis semantics, per-prim dome linking, and generated MaterialX lighting remain explicit fallbacks or exclusions. Metal has source/translation coverage but no executed evidence."
+        },
+        {
+          "id": "dome-light-specular-ibl",
+          "description": "Roughness-dependent specular IBL for accepted textured UsdLuxDomeLight records. A fixed 64x32 angular field is prefiltered into six GGX roughness slices without collapsing directional resolution, and a 32x32 RGBA16F split-sum BRDF table is numerically integrated from the same normalized, FP32-stable GGX and Smith equations used by checked direct-light shaders. The environment uses authored specular controls, material roughness, metallic or specular workflow F0, IOR, and clearcoat. WARP and SwiftShader gates cover exact-alignment peaks, bounded near-mirror behavior including clearcoat, diffuse-only versus specular-only response, roughness changes, rotation, and resource rebuild/retry; analytic tests cover energy, non-negativity, convergence, roughness-one behavior, and stable compiled shader dataflow",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkEnvironmentLightingTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkCheckedShaderPrecisionTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkEnvironmentLightingConformance.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "Reflection angular resolution is bounded at 64x32 with six roughness slices; no dome shadows or per-prim dome linking are provided. Generated MaterialX fragments do not consume the common environment resources, and Metal has no executed evidence."
+        },
+        {
           "id": "mesh-facing-cull-styles",
           "description": "hdSilk resolves all five Hydra cull styles onto rasterizer state and pins the winding it emits for each authored USD orientation. front and frontUnlessDoubleSided previously fell into a catch-all that culled back faces, so authoring front culled exactly the faces it asks to keep, and SilkCullMode had no Front member: the pipeline descriptor rejected anything but None and Back. The mapping is now total -- nothing culls nothing, back and front cull their named faces, the *UnlessDoubleSided variants cull nothing when doubleSided is authored, and an unknown wire value falls back to Hydra's default rather than a silently inverted one -- SilkCullMode.Front is translated by the D3D12, Vulkan, and Metal backends, and every batch resolves through the pipeline cache after an unreachable eager fast path that would have mapped Front to None was removed. Line and point batches resolve to no culling because a screen-space line or point has no facing. Winding needs no page-level correction: HdMeshUtil::ComputeTriangleIndices already reverses a leftHanded face's corners and every backend rasterizes counter-clockwise-front, so hdsilk_probe pins the emitted indices of a matched rightHanded/leftHanded quad pair against both a dropped and a duplicated correction, and cross-checks a leftHanded face-varying quad's expanded corner values against the points they were expanded from. The claim is bounded to the page: USD gprims author doubleSided rather than a Hydra cull style and the hosted session pins UsdImagingGLRenderParams.cullStyle to backUnlessDoubleSided, so the front styles are reachable through the wire rather than from a stage, there is no Storm parity scene for them or for orientation, and cullStyle=nothing remains ungated",
           "status": "workflow-gated",
@@ -854,21 +1054,73 @@
         },
         {
           "id": "gpu-ocio-presentation",
-          "description": "OCIO final display/view/look correction for live GPU presentation via HdxColorCorrectionTask",
-          "status": "not-supported",
-          "exclusionReason": "hdSilk does not run the Hdx task graph and has no render-settings ABI for OCIO config names, LUT resources, or generated colour-correction shader code. CPU capture/export OCIO is supported through SilkOpenColorIoProcessor."
+          "description": "Live OCIO display, view, and optional looks-override correction for hdSilk presentation and capture through renderer-neutral RenderSettings.DisplayTransform. The implementation is a bounded 3D-LUT module rather than arbitrary OCIO GPU shader generation: one bulk native processor call bakes an F32 logarithmic lattice, the scene renders into a linear RGBA16Float intermediate, and a checked fullscreen pass applies exposure followed by the lattice while preserving alpha. Explicit look overrides use OCIO LegacyViewingPipeline semantics and bypass view-authored looks. Positive and negative caches are bounded and keyed by an OCIO-derived, content-aware exhaustive identity; config and referenced ProcessList dependencies are revalidated, uncertain XML identities are refused rather than cached, and changed lattices are re-uploaded. D3D12 WARP and Vulkan SwiftShader pixel gates compare against the CPU processor, preserve vertical orientation, verify look overrides, config edits, device rebuilds, capture without double conversion, diagnostics instead of silent identity, and Vulkan object cleanup. Viewer Render > Colour Management persists only absolute config paths and names, validates asynchronously, correlates diagnostics by request key, defers during document transitions, and commits only backend-accepted state",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DisplayTransformTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanDisplayTransformTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDisplayTransformTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDisplayTransformNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerColorManagementTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerDisplayTransformWiringTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "This does not run HdxColorCorrectionTask and no Hydra render-settings prim selects it. OCIO GPU shader generation, config-authored shaper spaces, per-frame context switching, dynamic properties other than exposure, unclamped values outside the selected shaper interval, color-managed alpha, third-party renderers, and non-exhaustive dependency identities remain unsupported. The lattice is stored as 8-bit display values with a measured tolerance of two code values. Metal is source-complete but has no executed evidence and is not claimed."
         },
         {
           "id": "gpu-skinning",
-          "description": "GPU blend-shape deformation and GPU skinning",
-          "status": "not-supported",
-          "exclusionReason": "The mesh ABI and shader design required before this can become a backend gate are documented in docs/rendering.md. CPU blend-shape subset is implemented."
+          "description": "Bounded GPU deformation for the accepted UsdSkel subset on D3D12 and Vulkan: page ABI v20 carries one self-verified prototype rig in bulk, including bind points and normals, fixed-width linear joint influences, remapped joint matrices, geom bind transform, and resolved sparse blend-shape and in-between ranges with normal offsets. A checked compute kernel writes the retained interleaved vertex buffer before both shadow and colour rendering; WARP and SwiftShader gates require its buffers and rendered pixels at multiple poses to equal the authoritative CPU evaluator, and cover cache reuse, pose changes, shadow movement, recoverable setup or dispatch fallback, real device loss, and device-generation reset. Bounds are enforced before allocation, overlapping blend ranges are charged by gathered size, and malformed, non-finite, or stale-identity blocks are rejected before retention. Rigs without deformable bind normals, meshes requiring derived tangents or expanded or non-triangle topology, dual-quaternion rigs, subdivision-refined meshes, and over-budget payloads keep the CPU-resolved geometry with an explicit fallback reason rather than rendering the bind pose",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkDeformationComputeConformance.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkDeformationRenderConformance.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDeformationGpuUploadTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDeformationWireTests.cs",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "Metal carries the same checked MSL kernel and generalized binding source but has no executed GPU-deformation evidence, so it continues to use the authoritative CPU path and is not claimed. The listed ineligible rig and topology cases also remain CPU fallbacks."
+        },
+        {
+          "id": "usdpreview-displacement",
+          "description": "Pixel-observable UsdPreviewSurface displacement resolved from the independent Hydra displacement terminal, not inferred from a surface input. A finite constant or a directly connected UsdUVTexture height field moves each emitted object-space point along its resolved object-space shading normal in the retained interleaved vertex buffer shared by colour, raster-shadow, pick, and selection passes. Texture displacement supports its own UV primvar and affine, bilinear base-level sampling, signed and over-unit float heights, observed source color-space and per-axis wrap metadata, transparent-black borders with scale and bias applied after filtering, and authored fallback when the image cannot be resolved. Subdivision determines displacement density; the exact order is subdivide, deform, then displace. Material/UV/file/refusal identity, cache-before-work reuse, bounded image preflight and LRU retention, transactional failed-texture retry, per-instance diagnostics, and selection/shadow invalidation are gated. D3D12 WARP and Vulkan SwiftShader pixel tests cover constant and texture movement, shadows, unsupported flat fallback, cache reuse, deformed-rig CPU fallback ordering, and repaired height fields reaching selection and shadows",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkDisplacementTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkDisplacementRenderConformance.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "The raster-shadow light frustum is still fitted to undisplaced native caster bounds and reports OPENUSD_SILK_DISPLACEMENT_SHADOW_BOUNDS_UNVERIFIED. Displaced skinned rigs use authoritative CPU deformation rather than the ABI v20 GPU kernel. UDIM and two-image composite height fields, MaterialX displacement projection, adaptive or limit-surface tessellation, re-derived shading frames, and image metadata modes unavailable or unrepresentable through Hio are explicitly refused. Metal consumes the same prepared vertex-buffer shape but has no executed displacement evidence and is not claimed."
         },
         {
           "id": "catmull-clark-subdivision",
-          "description": "Full Catmull-Clark/Loop/bilinear subdivision, creases, and primvar refinement",
-          "status": "not-supported",
-          "exclusionReason": "Not part of the next-alpha parity claim. subdivision-catmull-clark is registered, measured (0.931015 adjusted IoU), and not gated because Storm is not a usable offscreen reference."
+          "description": "Uniform Catmull-Clark, Loop, and bilinear subdivision at refinement levels 0-3 selected by RenderComplexity, including creases, corners, holes, authored orientation, and vertex, varying, face-varying, and uniform primvar refinement through one bounded OpenSubdiv path. Invalid or over-budget refinement publishes the complete control cage with a diagnostic rather than a partial surface",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["native.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "native.yml": ["build"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_subdivision_probe.cpp",
+            "test-assets/hdsilk-subdivision-probe.usda"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"],
+          "exclusionReason": "The analytic native probe gates refinement directly. The Storm parity scene subdivision-catmull-clark remains measured rather than gated because that harness runs at Low complexity, where hdSilk intentionally publishes the control cage."
         },
         {
           "id": "vulkan-composition-hosted",
@@ -903,7 +1155,7 @@
       "entries": [
         {
           "id": "primitive-picking",
-          "description": "Primitive picking on Storm, D3D12, and Vulkan backends",
+          "description": "Renderer-neutral primitive picking on Storm, D3D12, and Vulkan. hdSilk assigns stable nonzero token ranges to rendered triangle, line, and point resources; line and point resources participate in the depth prepass for face and component picks without fabricating face identities. Results are bound to immutable state, scene, identity, and device revisions. Instance hits carry an ordered instancer context; Storm reports that identity but deliberately refuses instance-specific highlighting until its native selection ABI can consume the complete context",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
@@ -916,7 +1168,9 @@
           "evidenceTests": [
             "tests/OpenUsd.Rendering.Tests/PickingContractsTests.cs",
             "tests/OpenUsd.Rendering.Tests/StormPickingTests.cs",
-            "tests/OpenUsd.Rendering.Tests/SilkPickingTests.cs"
+            "tests/OpenUsd.Rendering.Tests/SilkPickingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12SubprimPickingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanSubprimPickingTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
@@ -933,7 +1187,7 @@
         },
         {
           "id": "face-identity",
-          "description": "Face identity picking on D3D12 and Vulkan backends",
+          "description": "Authored coarse-face identity picking on D3D12 and Vulkan. ABI v23 carries triangle-to-authored-face mapping beside bounded subprim tables and ordered instancer context. Triangle-list faces return authored indices; curves and points remain depth occluders for face requests but never fabricate face hits. Expanded face-varying topology, deformation, displacement, instances, and stale token invalidation preserve the authored identity",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
@@ -944,21 +1198,48 @@
             ]
           },
           "evidenceTests": [
-            "tests/OpenUsd.Rendering.Tests/SilkPickingTests.cs"
+            "tests/OpenUsd.Rendering.Tests/SilkPickingTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkSubprimIdentityTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12SubprimPickingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanSubprimPickingTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
         {
           "id": "edge-point-picking",
-          "description": "Edge and point picking",
-          "status": "not-supported",
-          "exclusionReason": "Not exposed through the current picking API on any backend."
+          "description": "Stable authored edge and point picking on D3D12 and Vulkan. Page ABI v23 publishes emitted-vertex to authored-point origins and emitted-corner to authored-edge identities in a bounded bulk table; triangulation diagonals use a sentinel and are never returned as authored edges. Every rendered duplicate of a face-varying or displaced edge or point uses the same authored token. Exact line-list edges and UsdGeomPoints are supported with unbiased whole-resource stages; triangle-derived overlays use a checked clip-space offset, and SPIR-V/Metal point stages emit an explicit one-pixel point size. Malformed, over-budget, refined-subdivision, and otherwise unrepresentable identity is diagnosed rather than replaced with generated indices",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkSubprimIdentityTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkSubprimPickShaderContractTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12SubprimPickingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanSubprimPickingTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "Storm does not expose authored edge or point identity through the current native pick result. Refined subdivision-generated vertices and edges are not presented as authored components. Metal has source and checked-shader coverage but no executed evidence."
         },
         {
           "id": "xray-selection",
-          "description": "X-ray (through-geometry) selection mode",
-          "status": "not-supported",
-          "exclusionReason": "Not exposed on any backend. Occlusion policy is visible-only for hdSilk backends; Storm uses its native highlight path."
+          "description": "X-ray selection outlines on D3D12 and Vulkan for whole prims, instances, authored faces, edges, and points. A depth-tested visible mask and an unoccluded silhouette mask are composited once, selecting the ordinary accessible visible color wherever the component is visible and the distinct occluded color only for hidden edges; visible pixels are byte-identical to visible-only mode. Masks use each mesh's actual vertex layout, preserve line and point point-size/depth rules, and scope draws to the selected instance and component. Resources are lazy, bounded, revision-bound, and rebuilt after device loss. Viewer Tools menu radio groups persist desired pick and outline modes independently of the current backend",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkSelectionOutlineTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12SubprimPickingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanSubprimPickingTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPickTargetPolicyTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"],
+          "exclusionReason": "Storm retains its native whole-prim highlight and exposes no x-ray component-outline path. Metal has source and checked-shader coverage but no executed evidence."
         }
       ]
     },
@@ -997,10 +1278,12 @@
         },
         {
           "id": "viewer-picking",
-          "description": "Picking and selection display in the Viewer",
+          "description": "Viewer picking and selection display with Tools-menu Prim, Face, Edge, and Point targets plus Visible-only and X-ray outline modes. Desired modes persist independently of backend capability and are restored after switching to D3D12 or Vulkan; Storm disables unsupported component/x-ray controls without overwriting the saved preference. Host callbacks may request a fixed target or explicitly follow the Viewer and receive the complete SelectionItem, requested target, element kind, and ordered instancer context",
           "status": "implemented",
           "evidenceTests": [
-            "tests/OpenUsd.Viewer.Tests/ViewerPickingTests.cs"
+            "tests/OpenUsd.Viewer.Tests/ViewerPickingTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPickTargetPolicyTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerMenuShellTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
@@ -1017,14 +1300,291 @@
         {
           "id": "composition-tab",
           "description": "Composition tab data (PcpPrimIndex) display in the Viewer UI",
-          "status": "not-supported",
-          "exclusionReason": "The PcpPrimIndex ABI and managed API are implemented, but the Viewer UI is pending."
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerDocumentModelTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
           "id": "viewer-dcc",
           "description": "Full DCC authoring toolset in the Viewer",
           "status": "not-supported",
           "exclusionReason": "The Viewer is an inspector and focused editor, not a usdview clone or full DCC. Full DCC authoring is not a goal."
+        }
+      ]
+    },
+    {
+      "id": "omniverse-interchange",
+      "title": "Omniverse interchange profile",
+      "description": "Locally provable data-interchange claims tracked by the version-pinned profile at eng/omniverse-profile.json. Kit/Nucleus execution evidence is tracked only in that profile and is never claimed here without an executed external job.",
+      "entries": [
+        {
+          "id": "unknown-metadata-roundtrip",
+          "description": "Vendor-neutral customData dictionary entries unknown to any schema survive open, export, and reopen",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/OmniverseInterchangeRoundTripTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "custom-property-roundtrip",
+          "description": "Custom non-schema attributes survive open, export, and reopen",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/OmniverseInterchangeRoundTripTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "applied-schema-token-roundtrip",
+          "description": "Authored applied API schema tokens, including multi-apply instance names and codeless or unregistered tokens, survive open, export, and reopen",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/OmniverseInterchangeRoundTripTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "dual-context-material-anchor",
+          "description": "A material anchor exposing both the universal UsdPreviewSurface surface output and a MaterialX render-context surface output resolves both terminals and survives open, export, and reopen",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/OmniverseInterchangeRoundTripTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "nested-vendor-metadata-roundtrip",
+          "description": "A vendor-namespace dictionary nested under either layer customLayerData or prim customData, addressed by its colon-separated key path, survives open, export, and reopen at both layer and prim scope. Loosely modeled on the publicly documented pattern of a vendor-namespace metadata dictionary; does not implement any real vendor schema or copy validator logic.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/OmniverseInterchangeRoundTripTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "shader-node-definition-query",
+          "description": "Bulk, read-only introspection of the process-global Sdr/Ndr shader node-definition registry -- identifiers, source types, implementation and resolved-definition URIs, and bounded input/output names and types -- covering UsdPreviewSurface and UsdUVTexture built-ins and MaterialX standard-library nodes when the usdMtlx discovery plugin is registered, plus a source-asset and sub-identifier lookup that reports not-found rather than erroring when no MDL SDK parser plugin is registered",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdShaderRegistryTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "external-schema-plugin-registration",
+          "description": "A codeless USD schema and plugin tree supplied from outside this repository's own schemas directory registers through PlugRegistry and resolves its real type name, properties, and applied-schema token without flattening, name collision, or package-path rewriting",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.NativeCoverage.Tests/ExternalSchemaFixtureProbeTests.cs",
+            "tests/OpenUsd.NativeCoverage.Tests/ExternalSchemaFixtureRegistrationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "mdl-authored-subset-interchange",
+          "description": "MDL-only UsdShade material interchange: a material whose sole surface terminal is authored in the mdl render context is read, reported by prim path, and, with the optional openusd_mdl adapter present, distilled from its authored USD input values onto the renderer-neutral PreviewSurface-compatible record. The authored MDL network is preserved on the stage and in the Hydra material network; distillation drives rendering only. The SDK-backed sibling adds module evaluation on top of this same fast path; see mdl-sdk-module-evaluation-interchange, rendering/mdl-only-material-reporting, and rendering/mdl-accepted-subset-distillation.",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["native.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "native.yml": ["build"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Tests/MdlOnlyMaterialFixtureTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "mdl-sdk-module-evaluation-interchange",
+          "description": "MDL SDK-backed material evaluation for Omniverse interchange: compiling a module the user supplies and resolving its parameter defaults and constant expression defaults, so a material that authors only some of its inputs still shades from what the module says about the rest. The rendering-side statement of the same capability is rendering/mdl-sdk-module-evaluation.",
+          "status": "implemented-not-gated",
+          "exclusionReason": "Real Omniverse modules such as OmniPBR.mdl are never vendored here, so this path reaches them only when the user supplies the modules on the configured search path; without them the module is reported as not found and the authored-value subset still distils. No workflow builds the SDK-backed configuration, and MDL-generated shader code and layered BSDF evaluation remain unimplemented; see rendering/mdl-generated-shader-code.",
+          "evidenceTests": [
+            "native/openusd_mdl/tests/mdl_sdk_probe.cpp",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "physx-schema-vendored-compatibility",
+          "description": "Vendored PhysxSchema codeless artifacts and compatibility mappings tested against them",
+          "status": "not-supported",
+          "exclusionReason": "PhysxSchema is not vendored. Opt-in integration tests against an externally supplied Kit or schema environment are pending; project-owned openUsdPhysics covers the agreed simulation domains instead."
+        }
+      ]
+    },
+    {
+      "id": "omniverse-bridge",
+      "title": "Omniverse bridge protocol and client",
+      "description": "The optional openusd.bridge.v1 wire contract and its gRPC client adapter. Every claim here is proven against the contract, an in-memory peer, and a Python protobuf/gRPC runtime. Execution against a real Omniverse Kit or Nucleus process is pending an authorized external job and is never claimed here; see eng/omniverse-profile.json.",
+      "entries": [
+        {
+          "id": "bridge-wire-contract",
+          "description": "Versioned openusd.bridge.v1 protobuf contract covering capability and version negotiation, connect and session-epoch lifecycle, bounded full snapshots, ordered deltas, acknowledgements, results, rejections, health, status, and bidirectional change streaming, with an explicit wire case for every LiveAuthoring update and value kind and no Any, JSON blob, reflection polymorphism, or native handle",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeWireRoundTripTests.cs",
+            "tests/OpenUsd.Bridge.Tests/BridgeDescriptorTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-bounds-and-malformed-input",
+          "description": "Untrusted frames are refused with bounded, specific errors: random bytes, truncation, unset oneofs, unspecified and unknown enum values, malformed matrices, oversized frames, oversized collections, and text past the LiveAuthoringValidation bounds, with redacted details that never quote payload bytes",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeWireBoundsTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-version-capability-negotiation",
+          "description": "Mandatory negotiation before any mutation: major-version compatibility, required-capability agreement, element-wise minimum limits clamped to the local bounds, bridge-root agreement, and epoch presence, with fatal and transient rejections separated",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeNegotiationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-grpc-client-adapter",
+          "description": "gRPC client adapter that maps wire messages onto LiveAuthoringSessionCoordinator and maps results, status, and events back, acknowledging every applied message while leaving duplicate, gap, conflict, epoch, and loop semantics with the coordinator",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientReconnectTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-reconnect-full-resync",
+          "description": "Connection state machine that reconnects with bounded exponential backoff and full jitter, requests and applies a bounded full snapshot after a connection, an epoch change, or a resync demand, and resumes ordered deltas without dropping the connection for a lost baseline",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientReconnectTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-client-security-defaults",
+          "description": "Loopback-only endpoints by default, mandatory TLS for a non-loopback endpoint, a required call-credential abstraction with ephemeral bearer tokens, controlled public failure diagnostics, credentials that are never logged or persisted, bounded deadlines and message sizes, keepalive, and a retry policy that never retries a mutating call blindly",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientSecurityTests.cs",
+            "tests/OpenUsd.Viewer.Tests/OmniverseViewerBridgeProviderTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-local-edit-export",
+          "description": "Bounded outbound channel through which a host publishes already-authoritative local batches with an idempotency key, refusing rather than growing when full and discarding batches that belong to a retired epoch. Every queued batch carries an eventual publication receipt, the peer's acknowledgement is decoded through the validated codec and must name the same sequence, correlation identifier, and an epoch-holding session state, a transport failure is retried with the same idempotency key across a bounded number of reconnects while a semantic refusal never is, a failed batch returns to the head of the retry list so an ordered local sequence is never inverted, one counter bounds the channel and retry list together, and any publication failure ends the connection",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientReconnectTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-session-policy-enforcement",
+          "description": "The capabilities and effective limits agreed during negotiation are stored for the session and enforced in both directions: a local batch is refused when the session did not agree local-edit export, needs an update capability the peers did not both advertise, or exceeds the negotiated update count or encoded byte size, re-checked immediately before it is sent so a batch retained across a reconnect is judged against the session that will carry it. An epoch, its capabilities, and its limits are agreed together by one handshake and enforced together; every inbound snapshot, delta, and resync demand must name exactly the negotiated epoch before it reaches the coordinator.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientSessionPolicyTests.cs",
+            "tests/OpenUsd.Bridge.Tests/BridgeClientEpochConsistencyTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-epoch-consistency",
+          "description": "One connection carries exactly one epoch: stream and unary snapshots, deltas, and resync demands are refused unless they name the negotiated origin, session, and epoch, a newer epoch forces a full renegotiation rather than an in-band resync, an older or foreign one is counted as a protocol rejection, queued local batches are retired when renegotiation lands on a new epoch, and a peer that offers an epoch older than the coordinator holds is refused under backoff instead of faulting the client",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientEpochConsistencyTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-client-lifetime",
+          "description": "One client owns one connection loop, a second concurrent run is refused, and disposal cancels the client's own lifetime token, awaits the loop, completes every queued publication, and is idempotent, so a disposed client never reconnects, applies another snapshot, or presents another credential",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeClientSessionPolicyTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-package-isolation",
+          "description": "Both bridge packages restore from a clean feed with no project reference, carry the protobuf contract, keep the gRPC dependency out of the wire-model package and out of OpenUsd.LiveAuthoring, and contain no NVIDIA component",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Package.Tests/BridgePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-nativeaot-consumer",
+          "description": "A package-only consumer publishes the bridge packages with PublishAot and executes the protocol, coordinator handoff, gap-driven resync, and client loopback and credential rules without a trim or AOT warning",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Package.Tests/BridgePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "bridge-python-descriptor",
+          "description": "The generated FileDescriptorSet for the wire file and service plus its import loads in a Python descriptor pool and round-trips a delta, and grpcio-tools generates a working LiveBridge stub from the same proto files. The check reports absent prerequisites instead of failing when the host has no Python protobuf runtime, so no accepted automated gate proves it yet",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeDescriptorTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-session-selection",
+          "description": "BridgeClientOptions.RequestedSessionId is optional, bounded, and validated like every other opaque identity, is carried on the unary Negotiate handshake and repeated on every reconnect, and is superseded on the StreamChanges handshake by whatever session the peer actually answered with; BridgeClientOptions.Clone produces an independent copy so an integration can compose an observer without mutating host-owned configuration",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Bridge.Tests/BridgeSessionSelectionTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-viewer-connection-seam",
+          "description": "The Viewer exposes one live bridge session only when an embedding host injects an IViewerBridgeConnectionProvider through ViewerHostOptions: the Tools Connections entry, its dialog, and the status indicator are absent with no provider, provider callbacks are marshalled off the UI thread as bounded detached snapshots with drop-oldest accounting, the subscription never throws back into a transport observer callback, commands are serialized and state-gated, provider failures and cancellation surface as controlled messages, disposal cancels and unsubscribes, and no endpoint or credential is ever displayed, typed, or persisted",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerBridgeConnectionTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-viewer-provider-lifetime",
+          "description": "The optional gRPC Viewer provider is transactional and isolated: a connect that fails to construct, faults, times out, or is cancelled detaches, cancels, and disposes the partial session before rethrowing, while the established session has a provider-owned lifetime independent of the completed connect call. The host BridgeClientOptions instance is cloned rather than mutated, provider state and readiness are settled before a host observer runs, and throwing host properties, observers, status subscribers, credential providers, and transport code become bounded type-only diagnostics rather than escaping or exposing caller-controlled exception text.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/OmniverseViewerBridgeProviderTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerBridgeConnectionTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-viewer-package-isolation",
+          "description": "OpenUsd.Viewer carries no gRPC, protobuf, or bridge project reference; OpenUsd.Viewer.Bridge.Grpc is the only assembly referencing both the Viewer and gRPC client, nothing references it back, it packs net8.0, net9.0, and net10.0 in Release with warnings as errors and the trim, NativeAOT, and single-file analyzers enabled, carries both expected dependencies and no NVIDIA component, and keeps the production-library public-interface gate. No NativeAOT consumer publish is claimed because the package references the Avalonia Viewer shell, which the product does not publish NativeAOT.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Package.Tests/ViewerBridgePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bridge-kit-session-execution",
+          "description": "Execution of the implemented client protocol against a real Omniverse Kit or Nucleus live session",
+          "status": "excluded",
+          "exclusionReason": "The client protocol is implemented and locally proven, but external Kit execution is pending: the Kit-side peer is a separately owned and separately distributed extension, and no authorized job in this repository runs a Kit or Nucleus process. Tracked by kitExecutionEvidence in eng/omniverse-profile.json."
         }
       ]
     },
@@ -1082,12 +1642,6 @@
           "exclusionReason": "No runtime packages exist for mobile or browser targets. Only win-x64, linux-x64, and osx-arm64 are currently defined."
         },
         {
-          "id": "light-linking",
-          "description": "Light linking and instanced-shadow parity",
-          "status": "not-supported",
-          "exclusionReason": "Not implemented. No linked-light filtering or instanced-shadow parity on any backend."
-        },
-        {
           "id": "path-tracing",
           "description": "Path tracing",
           "status": "excluded",
@@ -1098,6 +1652,24 @@
           "description": "Arbitrary third-party Hydra render delegates",
           "status": "excluded",
           "exclusionReason": "Outside the next-alpha support claim. The viewer activates Storm or hdSilk only."
+        },
+        {
+          "id": "nucleus-omni-client-runtime",
+          "description": "Nucleus authentication, the omni protocol, and omni.client hosting",
+          "status": "unreachable",
+          "exclusionReason": "Closed NVIDIA runtime pieces. All Nucleus and omni.client responsibility stays on a separately authorized Kit extension; this repository ships no Nucleus or omni.client code."
+        },
+        {
+          "id": "kit-extension-companion-repo",
+          "description": "Implementation of the Omniverse Kit and Nucleus bridge companion extension",
+          "status": "excluded",
+          "exclusionReason": "The companion is specification-only in this repository. Implementation requires a separately authorized repository using current Kit extension mechanisms, not this codebase."
+        },
+        {
+          "id": "physx-schema-vendoring",
+          "description": "PhysxSchema vendoring into shipped packages",
+          "status": "excluded",
+          "exclusionReason": "PhysxSchema is never vendored into shipped packages. Externally supplied physx opinions are read and preserved as optional input only; project-owned openUsdPhysics covers advanced simulation domains."
         }
       ]
     }

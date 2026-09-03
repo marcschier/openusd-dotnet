@@ -221,7 +221,7 @@ public sealed class SilkCommandParserTests
             2);
 
         byte[] invalidUtf8 = CreateMeshCommand();
-        invalidUtf8[224] = 0xFF;
+        invalidUtf8[268] = 0xFF;
 
         // Page ABI v3 makes instance identity meaningful, so a non-zero
         // instancer id is legitimate. A negative instance ordinal is not.
@@ -538,10 +538,10 @@ public sealed class SilkCommandParserTests
             case 7:
                 page = RemoveAt(
                     page,
-                    random.Next(meshOffset + 224, page.Length));
+                    random.Next(meshOffset + 268, page.Length));
                 break;
             case 8:
-                page[meshOffset + 224 + random.Next("/Cube".Length)] = 0xff;
+                page[meshOffset + 268 + random.Next("/Cube".Length)] = 0xff;
                 break;
             case 9:
                 uint[] commandCounts = [0, 1, 3, uint.MaxValue];
@@ -608,7 +608,7 @@ public sealed class SilkCommandParserTests
         int attributeBytes = authoredNormals is null
             ? 0
             : 20 + (normalElements * 3 * sizeof(float));
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (pointCount * 12) +
             (indexCount * 4) +
@@ -642,8 +642,8 @@ public sealed class SilkCommandParserTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 224);
-        int pointsOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointsOffset = 268 + path.Length;
         for (int i = 0; i < pointCount * 3; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pointsOffset + (i * 4), 4), i);

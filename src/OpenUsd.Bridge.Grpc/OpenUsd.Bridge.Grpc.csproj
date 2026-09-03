@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Bridge.Protocol\OpenUsd.Bridge.Protocol.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Bridge.Grpc</AssemblyName>
+    <RootNamespace>OpenUsd.Bridge.Grpc</RootNamespace>
+    <Description>Optional gRPC client adapter for the openusd.bridge.v1 contract: loopback-only by default, mandatory call credentials, bounded deadlines and message sizes, a reconnect and full-resync state machine over LiveAuthoringSessionCoordinator, and a bounded outbound channel for already-authoritative local batches. Carries no NVIDIA component; the Kit-side server is owned separately.</Description>
+    <PackageTags>openusd;usd;omniverse;bridge;grpc;live-authoring;nativeaot</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Core.Api" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Only the service stub is generated here. The message types live in OpenUsd.Bridge.Protocol and
+    are imported, not regenerated, so exactly one compiled copy of the contract exists. Generated
+    code is internal for the same reason as in the protocol package: the supported surface is the
+    hand-written client, not the transport stub.
+  -->
+  <ItemGroup>
+    <Protobuf Include="..\OpenUsd.Bridge.Protocol\protos\openusd\bridge\v1\service.proto"
+              ProtoRoot="..\OpenUsd.Bridge.Protocol\protos"
+              AdditionalImportDirs="..\OpenUsd.Bridge.Protocol\protos"
+              GrpcServices="Client"
+              Access="Internal"
+              Link="protos\openusd\bridge\v1\service.proto" />
+  </ItemGroup>
+
+</Project>

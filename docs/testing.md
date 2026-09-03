@@ -253,6 +253,23 @@ so a change to `native/hdSilk` can only be compile-checked. Two separate pieces
 of work were landed compile-only for exactly this reason before the cause was
 identified.
 
+`CMAKE_PREFIX_PATH` has to name the install prefix exactly, with no surrounding
+whitespace or quote pair. `native/tests/CMakeLists.txt` builds the probe's
+plugin directory and its library search path by concatenating onto it, so a
+prefix configured as `-DCMAKE_PREFIX_PATH='<path> '` produced `<path> /lib` and
+`<path> /lib/usd`: directories that do not exist. On Windows the resulting
+loader failure is a modal error box rather than a non-zero exit, so
+`openusd_native_probe` hung until the ctest timeout instead of failing, and the
+recorded cost data showed fifty runs at zero seconds.
+`cmake/OpenUsdNormalizePrefixPath.cmake` now strips surrounding whitespace and
+at most one matching leading/trailing quote pair -- the pair a shell would have
+consumed -- and the configure step then checks for `lib/usd`, so a mistyped
+prefix is a named configure error. Quote characters *inside* the path are part
+of the path and are preserved: a directory called `Ann's Files` is ordinary, and
+the first implementation, which deleted every quote in the string, turned it
+into a directory that does not exist and reproduced the same hang. That
+distinction is gated by the `openusd_prefix_path_contract` test.
+
 ## Native stage/layer fuzzing
 
 The project-owned stage/layer C ABI has an opt-in Linux Clang libFuzzer target.
@@ -347,7 +364,7 @@ scope and assert them after it.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 15 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 23 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
@@ -402,6 +419,98 @@ half is `ANonTriangleInstancedPrototypeElidesItsPayloadAfterTheLowestIndex`, whi
 reconstructed line-list and point-list references to match their payload record's points, indices,
 subprim count, and topology fingerprint exactly.
 
+`test-assets/hdsilk-nested-linking-probe.usda` is the end-to-end evidence that per-instance UsdLux
+linking reaches the composed identities of a nested instancer, and that a collection naming a point
+instancer reaches the prototypes it scatters. Two instanceable prims inside a prototype that two more
+instanceable prims reference make UsdImaging build an inner instancer whose parent is an outer one, so
+hdSilk publishes four identities: `outer * 2 + inner`. Two direct lights and two dome lights carry
+five collections that partition those identities several ways at once, so
+`VerifyNestedInstanceLinkingProbe` requires composed 0 and 1 to resolve to `light=1 shadow=0 dome=2`
+and composed 2 and 3 to `light=0 shadow=1 dome=1`, requires the prototype to publish exactly its path
+row plus one row per published identity -- so a resolution that emitted a row per (outer, inner) pair
+without intersecting against the indices each level draws is caught by the count alone -- and requires
+every identity to keep its own composed transform (`x = 0, 2, 100, 102`) while its masks are split.
+
+The same stage carries `/World/Scatter`, a `PointInstancer` with two prototypes that live *outside*
+its namespace, proto indices `[0, 1, 0, 1]` and instance 2 hidden through `invisibleIds`. Every
+collection that reaches those prototypes names `/World/Scatter` and excludes the prototype scope, so
+all three of their masks -- `light=2 shadow=2 dome=1` -- can only have arrived through the instancer
+prim's own path-wide categories, which is how `HdsiLightLinkingSceneIndex` reports a linked point
+instancer. That was measured rather than assumed: dropping the leaf level's contribution behind a
+temporary edit resolved all three masks to zero and failed with
+`scattered prototype instance -1 resolved to light=0 shadow=0 dome=0, expected light=2 shadow=2
+dome=1`. The case also requires the red prototype to publish only instance 0 and the blue one only 1
+and 3, and each of them exactly one link entry, so a hidden instance and the instances a prototype
+does not own consume no row.
+
+The analytic half runs without a stage. `VerifyNestedInstanceMembershipsResolveComposedIdentities`
+drives a three-instance outer level over a four-instance inner level with two prototypes and requires
+each prototype's rows to name exactly its own composed indices; the two prototypes share the index
+space and neither publishes a row the other owns.
+`VerifyNestedInstanceMembershipsSkipHiddenAndDeepIdentities` adds a hidden outer instance -- whose
+collection must reach nothing -- and a three-level chain whose composed index is
+`((outer * 3) + middle) * 2 + inner`. `VerifyNestedPrototypeWideMembershipsStaySparse` requires 4096
+identities that all resolve to the prototype's row, and an ancestor collection covering all of them, to
+publish no per-instance row at all -- the case a resolution that folded a path-wide set in per identity
+would turn into a full, useless table. `VerifyNestedInstanceMembershipsAreBoundedAndDiagnosed` covers
+the malformed and bounded cases: an index the level's own instance count cannot explain, a level that
+reports per-instance categories but not for an instance it publishes, a composed index past the wire's
+signed 32-bit instance index, and a chain that resolves more identities than
+`OPENUSD_SILK_MAX_LINK_ENTRIES` admits -- which must fill the table exactly, with the lowest composed
+identities, and say that it did. `VerifyNestedInstanceLinksReachTheWire` carries the same chain through
+`BuildPage`, requires one sparse ABI 21 entry per composed identity with its own light, shadow and dome
+masks, requires an unchanged chain to republish nothing, requires moving the ancestor collection to a
+different outer instance to move the dome bit to a different composed range, and requires retirement to
+publish the canonical empty table exactly once.
+
+`tests/OpenUsd.Rendering.ConformanceTests/SilkNestedInstanceLinkConformance.cs` is the cross-backend
+pixel half on D3D12 WARP and Vulkan SwiftShader: four composed instances of one prototype under
+complementary direct and dome collections, split into two instanced batches, each keeping its own
+column and its own channels. Changing only the caster restriction must reproduce the previous image
+byte for byte while the retained table reports the new casters, which is what separates "the three
+masks are independent" from "the shadow mask is ignored".
+
+Its coverage claim is anchored to the cleared background of the same frame rather than to an absolute
+channel: a texel counts as covered when it differs from the frame's own corner. Counting an alpha
+channel above a threshold instead measured the opaque `rgba(0,0,0,255)` clear and was true of every
+texel in the image, so the "nothing moved" assertion held whatever the renderer drew. The case now
+requires the sampled row to contain exactly four disjoint covered runs, requires the centre column of
+each composed instance to be covered and the columns between and outside them to stay cleared, and
+requires the covered set to be identical column for column before and after the masks split the
+batch. That was measured: reverting the per-batch instance-transform slots behind a temporary edit,
+so both batches share one mutable table, failed with
+`The composed 0 at (13,32) was rgba(0,0,0,255)` on both backends.
+
+`VerifyDefaultPrimsDoNotConsumeTheLinkBudget`,
+`VerifyCategoryDifferingInstancesResolvingToTheirPathCostNothing` and
+`VerifyOversizedPathOverridesFailOpenAsAWholeGroup` gate the budget rules through the collector's own
+entry point, `HdSilkAppendPathMemberships`, and the real page build. The first collects 4096 prims
+that link to every light plus one prim a collection excludes, and requires the published table to be
+exactly one entry with no truncation at all. The second collects 5000 instances of one prototype whose
+categories all differ from it but name no light the scene authors, plus one instance in the light's
+caster collection, and requires all 5001 rows to be collected and the published table to be exactly
+two entries -- the path row and that single override -- again with no truncation: a category set that
+differs is not yet a mask that differs, and charging unresolved rows against the ABI budget refused
+the whole prototype. That was measured: setting `HdSilkMaxCollectedInstanceRows` to
+`OPENUSD_SILK_MAX_LINK_ENTRIES` behind a temporary edit failed with
+`refused to collect 5000 category-differing instance rows`. The third keeps the genuine case failing
+open: 4128 instances that really do resolve to a different mask exceed the table, so the whole path --
+its path-wide row included, which a consumer would otherwise apply to the instances that were dropped
+-- is omitted and reported, and two paths of 3001 entries each publish the first whole and the second
+not at all. Letting the table fill partially instead was measured too: it published 4096 entries
+including a restrictive path row whose overrides had been cut, and failed with
+`atomic link group published 4096 entries, unsupported 1`.
+
+`openusd_prefix_path_contract` runs `native/tests/normalize-prefix-path-contract.cmake` through
+`cmake -P`, so it exercises the same `openusd_normalize_prefix_path` function the configure step runs.
+It pins that the normalization removes surrounding whitespace and at most **one** matching
+leading/trailing quote pair, and nothing else: a prefix such as `/home/ann/Ann's Files/usd` must
+survive unchanged, `'/home/ann/Ann's Files/usd'` must lose only the outer pair, and a mismatched or
+unterminated quote must be left alone because it is part of the path. The first implementation
+stripped every quote character in the string and passed the padded and quoted cases while silently
+corrupting exactly those paths; reinstating it behind a temporary edit fails four of the cases,
+including `embedded apostrophe` and `embedded double quote`.
+
 `VerifyMalformedRecordIsRejectedBeforeTransforms` covers the order of validation. `ApplyDrawMode`
 and `ApplyComplexity` both dereference `record.indices` into `record.points` and into vertex
 attribute data: wireframe draw mode carries the authored index values through into a line list
@@ -418,6 +527,22 @@ applied after the draw mode, so a triangle-list record becomes lines or points o
 wire, and a complexity change has to republish it. The case renders one triangle under each
 converting draw mode, requires the primitive count to double at medium complexity and to come back
 down at low, and fails when only the records already stored as lines or points are dirtied.
+
+`VerifyComplexityKeepsPointIdentity` pins what that duplication does to ABI v22 subprim identity. A
+point list is duplicated, not resubdivided: every copy of authored point `p` sits at authored point
+`p`'s position, so the emitted-vertex-to-authored-point mapping stays exact and the transform has to
+carry each source origin onto every copy. `ApplyComplexity` used to refuse *all* subprim identity
+whenever it re-emitted a record, which is correct for a resubdivided line and wrong here -- a point
+cloud viewed at anything above Low answered no point pick and published `authored_point_count` zero.
+The case runs Low, Medium, High and VeryHigh, requires the point-origin table to be exactly the
+authored table with each entry repeated once per copy, requires `authored_point_count` to survive
+unchanged and `Face`/`Edge` to stay refused with `TopologyMode`, and separately requires a
+resubdivided line to still refuse everything and an incomplete point-origin table -- one whose
+emitted entries no longer name the authored space the record declares -- to be refused with
+`Geometry` while the duplicated geometry is still published.
+`SilkSubprimIdentityTests.EveryComplexityCopyOfOnePointResolvesToItsAuthoredPoint` is the managed
+half: every duplicated copy owns its own pick token and every token resolves back to the one
+authored point.
 
 `VerifyCurveWidthResolution` covers the width resolver and
 the line builder directly, without a render index, because UsdImaging never authors
@@ -560,6 +685,134 @@ that collapses every texture coordinate onto one texel, which renders as a plaus
 obvious failure. The test derives the size from `SurfaceParameters` in `mesh.slang` and requires both hand-written
 copies to write that many floats, not merely to allocate that many bytes: the offscreen RHI conformance harness
 allocated the right size and filled two rows fewer.
+
+## Optional MDL adapter gates
+
+The MDL slice is proven in two configurations, because the two states it must handle are mutually
+exclusive within one build.
+
+The **default** native build compiles the hdSilk probe without `HDSILK_PROBE_MDL_ADAPTER`, so the
+only MDL cases it can assert are the ones every base package ships in.
+`VerifyMdlAdapterUnavailable` points the loader at a library that is not there and requires
+`HdSilkMaterial::Resolve` to publish `OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE` with empty scalar and
+texture tables. Publishing a *supported* record with nothing in it would be byte-indistinguishable
+from a material that authored nothing, which is exactly the silent default grey this slice removes.
+`VerifyMdlDoesNotDisplacePreviewSurface` requires an authored `UsdPreviewSurface` terminal to keep
+winning now that the delegate also asks for the `mdl` render context; adding a context must not
+change how a dual-context material resolves.
+`VerifyMdlOnlyStageProbe` drives `test-assets/omniverse/mdl-only-omnipbr.usda` through the whole
+product path -- UsdImaging, the scene index plugin that gives the MDL node an identifier, the
+delegate's material render contexts, and the page wire format -- and requires the material to be
+published by path with an MDL surface kind. Before this slice that material reached the delegate
+with no surface terminal at all and was published as plain `UNSUPPORTED`, which a consumer cannot
+tell from an unrecognised graph. That fixture is named directly in `native.yml`'s `push` and
+`pull_request` path filters, because editing it changes what the probe asserts and `native.yml` is
+the only workflow that also builds the adapter-present half against it.
+
+Both configurations select that one CTest **by name**, and CTest exits 0 when a `-R` expression
+selects nothing -- a renamed or unregistered probe would leave either gate green having executed no
+test at all. Every run therefore passes `--no-tests=error`. The adapter-present run is the filtered
+`ctest -C Release -R hdsilk_probe --no-tests=error` that `eng/build-mdl-shim.ps1 -RunProbe` issues
+against `native/build/shim/win-x64-mdl`; the adapter-absent runs are `ci.yml`'s
+`-R '^hdsilk_probe$' --no-tests=error` step over the Linux default build and `native.yml`'s
+unfiltered CTest steps over the per-RID default build trees.
+`WorkflowStructureContractTests.MdlNativeProbeRunsFailClosedInBothAdapterStates` reads all of that
+out of the checked-in files rather than restating it: `add_test(NAME hdsilk_probe ...)` must be
+registered in `native/hdSilk/tests/CMakeLists.txt` *outside* the `OPENUSD_WITH_MDL` guard, so the
+default build has it too; the filter literal in `eng/build-mdl-shim.ps1` must actually match that
+name, in both its default and its `-MdlSdkRoot` arm; and each run must carry the fail-closed flag.
+`eng/run-silk-probe.ps1` is **not** part of this evidence and is not claimed to be: it publishes
+and runs the managed `OpenUsd.SilkProbe` executable and invokes no CTest at all, so it never
+executes `hdsilk_probe`.
+
+The **`-DOPENUSD_WITH_MDL=ON`** build (`./eng/build-mdl-shim.ps1 -Rid win-x64 -RunProbe`, run by
+`native.yml` on Windows only) additionally compiles the distillation cases. `VerifyMdlDistillation`
+requires the accepted OmniPBR subset to land in the same scalar and texture tables a
+`UsdPreviewSurface` fills, with the normal map raw, three-channel, and reading the `st` primvar.
+`VerifyMdlUnsupportedModule` requires a module outside the accepted set to be refused by name rather
+than distilled through a different module's mapping. `VerifyMdlConnectedInputsRefused` covers the
+case that would otherwise render an authored value the graph replaced: Hydra leaves the replaced
+constant in `parameters` behind a connection, so a material whose every accepted input is connected
+must distil to nothing, and nothing must be a failure rather than an empty success.
+
+`tests/OpenUsd.Tests/MdlOnlyMaterialFixtureTests.cs` pins the fixture's authored shape, including
+that it authors no universal and no MaterialX terminal, and that `OmniPBR.mdl` does *not* resolve
+through the Sdr registry -- the honest answer that explains why the identifier has to be synthesized
+from the source asset at all.
+
+`tests/OpenUsd.Package.Tests/MdlAdapterIsolationTests.cs` and
+`RuntimePackageTests.WindowsBasePackagesExcludeABuiltMdlAdapter` cover the packaging half: the
+adapter option is off by default, the dependency-free adapter links nothing, neither adapter links
+an MDL SDK, the release SBOM carries no MDL or NVIDIA component, `eng/mdl.lock.json` pins a verified
+BSD-3-Clause baseline with a SHA-256 for every acquirable asset and records redistribution as not
+supported, and a base package packed from a shim prefix that *contains* a built adapter, its
+SDK-backed sibling, and an NVIDIA MDL SDK runtime still excludes every one of them. Asserting that a
+package lacks a file that was never produced would prove nothing;
+staging the adapter first is what makes the exclusion evidence.
+
+### MDL SDK-backed module evaluation
+
+`native/openusd_mdl/tests/mdl_sdk_probe.cpp` drives an adapter through its own C ABI, so one probe
+covers both adapters and proves the shipped boundary rather than internal C++ no consumer reaches.
+`mdl_adapter_probe` runs it against the dependency-free adapter and `mdl_sdk_adapter_probe` against
+the SDK-backed one; with no SDK runtime configured the second reports the unavailable state and
+still passes, because a check that fails when an optional dependency is absent is a check nobody can
+run.
+
+The bounded-configuration cases run in both: a relative module search path must be refused outright,
+and more search paths than the ABI declares must be refused rather than silently truncated. The
+authored fast path is asserted in both too -- the same authored OmniPBR input must distil
+identically whether or not an SDK is present, which is what an operator relies on when they deploy
+the SDK-backed adapter with no module at all.
+
+The module-evaluation cases run against `test-assets/mdl/openusd_probe.mdl`, which is written by
+this repository: no Omniverse module source is copied. `openusd_probe_defaults` authors nothing, so
+every published value must have come out of the compiled module and must say so.
+`openusd_probe_expressions` covers a broadcast colour constructor and a parameter alias that
+forwards another parameter's default. `openusd_probe_unsupported` covers the opposite: three
+defaults that are real computations over a layered BSDF, which must distil to *nothing* and be
+reported by parameter name. A missing module is required to report module-not-found, which is the
+one failure an operator can fix by supplying the module.
+
+`hdsilk_probe`'s `VerifyMdlModuleDefaultsStageProbe` is the end-to-end half.
+`test-assets/mdl/mdl-module-defaults.usda` authors exactly one input and leaves the rest of the
+accepted subset unauthored, so the published record can only be right if the authored value won for
+its input *and* the module defaults filled the others. Either alone would pass a weaker test and
+prove nothing about module evaluation.
+
+### Adapter loader resolution
+
+A shared library loaded by bare name is a shared library an attacker can substitute, so the loader's
+resolution rules are gated behaviourally in the probe rather than asserted in prose. All of these run
+in **both** native configurations except the sibling-load case, which needs an adapter to place.
+
+`VerifyMdlAdapterRejectsRelativePath` sets `OPENUSD_MDL_ADAPTER_PATH` to a bare library name and
+requires the `PathNotAbsolute` state and an `MDL_UNAVAILABLE` material. A relative path would be
+resolved against the process working directory, which is the search the loader exists to avoid.
+
+`VerifyMdlAdapterMissingExplicitPath` requires an absolute path naming a library that is not there to
+report `LoadFailed` rather than `NotInstalled`: the operator asked for a specific library and did not
+get it, and that is a different thing to report than a default install.
+
+`VerifyMdlAdapterIgnoresWorkingDirectory` plants a file named exactly like the adapter in the process
+working directory, with the default slot beside the loader's own module empty, and requires
+`NotInstalled` plus the module-sibling path -- that is, no load attempt at all. It changes the
+working directory for the duration, because CTest runs the probe from the same directory the probe's
+copy of the loader treats as the default location, and a decoy planted there would land in the
+default slot and prove nothing.
+
+`VerifyMdlAdapterAbiMismatchAndSiblingDependency` points the loader at `openusd_mdl_abi_stub`, a
+library that exports the whole project-owned C ABI but reports a version this build does not
+understand. Reaching the `AbiMismatch` verdict is itself the dependency evidence: the stub is staged
+in a private directory that is on no search path and links a support library staged beside it, so a
+loader that did not resolve the stub's dependency from the directory the stub was loaded from
+(`LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR` on Windows, `$ORIGIN`/`@loader_path` elsewhere) would fail to
+load the stub and the probe would observe `LoadFailed`.
+
+`VerifyMdlAdapterLoadsFromModuleSibling`, compiled only with `OPENUSD_WITH_MDL`, copies the built
+adapter into the loader's own default slot, clears the environment override, and requires the
+adapter to load from there and distil. It asks the loader for that path rather than deriving one, so
+the check tests the loader's resolution instead of the probe's path arithmetic.
 
 ## Physics package gates
 
@@ -896,6 +1149,26 @@ Real pixel shape, physical width, occlusion, resize, device-loss, and cleanup ar
 enforced by `D3D12SelectionOutlineTests` on WARP and `VulkanSelectionOutlineTests` on SwiftShader;
 Metal uses the equivalent hosted Xcode 16.4 conformance class.
 
+The colour-managed display transform is gated on real pixels rather than on its own diagnostics.
+`D3D12DisplayTransformTests` on WARP and `VulkanDisplayTransformTests` on SwiftShader render a
+scene through the fullscreen pass and compare every pixel against the CPU
+`SilkOpenColorIoProcessor`'s own output for the same linear input and exposure, requiring agreement
+within 2 8-bit code values, so a lattice, shaper, tile-interpolation, or binding regression in
+either backend fails immediately. The same classes prove that a transform-free frame is restored
+byte-for-byte, that the transformed frame differs from the untransformed one by far more than the
+tolerance, that a missing config and an absent view each report a bounded diagnostic and fall back
+to untransformed colour rather than a success-shaped identity, that the lattice, pipeline, binding,
+and intermediate are each built once across frames and exposure changes, that a device-generation
+invalidation rebuilds the pipeline and binding without leaking the previous ones or rebaking the
+lattice, that disposal releases every native resource, and that an ordinary
+`SilkFrameCapture.CaptureRetained` capture goes through the same transform while refusing to also
+run the CPU export processor over the same frame. `SilkDisplayTransformTests` covers the
+renderer-neutral descriptor's path, name, size, and shaper validation, the exact 32-byte constant
+buffer, the shaped lattice layout, and the bounded least-recently-used lattice cache without a GPU.
+`ViewerColorManagementTests` covers the Viewer's persisted choice, `OCIO` environment fallback, and
+the mutual exclusion between a display transform and the built-in output transform.
+Metal remains source-complete and compile-only, consistent with every other Metal capability here.
+
 Run only the bounded headed Windows authored-camera proof with:
 
 ```powershell
@@ -1027,12 +1300,12 @@ shutdown completion and fresh post-teardown renderer fault and resource diagnost
 
 ## OPC UA live-authoring final acceptance
 
-The external Pump is not part of this repository, and `OpenUsd.LiveAuthoring` is source-only sample code
-rather than one of the published NuGet packages. "Against release-candidate packages" therefore means:
-an isolated consumer resolves the shipped OpenUSD package set from a local RC feed, while the
-live-authoring boundary is vendored or project-referenced as source. A run that force-packs
-`OpenUsd.LiveAuthoring` is useful only as a spike/back-compatibility probe; it is not evidence that a
-stable `OpenUsd.LiveAuthoring` NuGet package exists.
+The external Pump is not part of this repository. `OpenUsd.LiveAuthoring` is a supported NuGet package
+published from `src/OpenUsd.LiveAuthoring`, so "against release-candidate packages" means: an isolated
+consumer resolves the shipped OpenUSD package set, including `OpenUsd.LiveAuthoring` itself, from a
+local RC feed. The `PackageOnlyPumpSpikeAppliesOrderedExternalBatches` package-consumer test packs and
+restores `OpenUsd.LiveAuthoring` from that feed exactly like `OpenUsd` and `OpenUsd.Interop`; it is not
+a spike/back-compatibility probe against vendored source.
 
 Use complementary checks for final acceptance:
 
@@ -1048,14 +1321,29 @@ pwsh eng\run-viewer.ps1 -Rid win-x64 -SharedStageSoak -SoakSeconds 90 -ReusePubl
 
 The live-authoring tests deliberately run red-path assertions as part of the green test process: gap,
 reorder, capacity-overflow, missing-coalescing, and missed-source-sequence checks must all throw before
-the test can pass. The Viewer switch soak proves visible native Storm plus managed hdSilk updates and
-state-preserving backend switches. The shared-stage soak is the bounded-memory evidence shape; its pass
-line must include advancing edit/read/frame/sync/resource counters and `resourcesReleased=True`.
+the test can pass. The queue test project additionally covers admission-versus-applied-result
+separation, opaque correlation/origin propagation, structured health snapshots/events, the bounded
+data model (arrays, matrices, metadata, the curated API-schema registry), and partial-failure
+retention when an unsupported update fails after earlier updates in the same batch already applied.
+`LiveAuthoringSessionCoordinatorTests` covers the recovery contracts on top of that unchanged queue:
+session states, epoch identity, identity validation ahead of loop suppression, fingerprint-backed
+duplicate/conflict/expired replay classification, replay-ledger bounds and reset, gap rules, bridge-scope
+rejection, overlay bounds, snapshot export/import round-trips, apply-failure resync, and deterministic
+disposal.
+`LiveAuthoringBridgeOverlayNativeCoverageTests` proves the same replacement against a real native
+stage — including that a user-edit layer, a `UsdSessionOverlay` physics overlay, and content outside the
+bridge root all survive a full overlay replacement, and that neither an identical replay nor a
+conflicting one authors the stage a second time — and the package-consumer test exercises the
+coordinator from a restored NuGet feed rather than from source. The
+Viewer switch soak proves visible native Storm plus managed hdSilk updates and state-preserving backend
+switches. The shared-stage soak is the bounded-memory evidence shape; its pass line must include
+advancing edit/read/frame/sync/resource counters and `resourcesReleased=True`.
 
 What this does not prove locally is a real OPC UA client's reconnect, resubscribe, namespace, and
-quality-code policy. Those remain Pump-owned behaviours outside this repository. It also does not prove
-Storm on machines without a real GL context; use the existing native child and platform smoke scripts for
-those hosts.
+quality-code policy, nor a network transport for the recovery contracts. Those remain Pump-owned
+behaviours outside this repository, or the later wire-contract phase for this package. It also does not
+prove Storm on machines without a real GL context; use the existing native child and platform smoke
+scripts for those hosts.
 
 ## Render gate capability limits
 
@@ -1660,7 +1948,7 @@ hdSilk supported Rprim list made the scene draw nothing: correct fell to
 0.000000, the weakest margin was 0.000000, and the gate failed before the change
 was reverted.
 
-### Subdivision: Storm's default complexity is measured before refinement
+### Subdivision: Low-complexity Storm parity and analytic refinement gates
 
 `parity-subdivision-catmull-clark.usda` exists because subdivision is the same
 kind of trap as curve widths: assuming what Storm "should" draw is not enough.
@@ -1671,9 +1959,9 @@ that makes vertical flips and camera shifts fail. Its diagnostic companion,
 `subdivisionScheme = "none"` so the subdivided stage can be compared against its
 control cage.
 
-Measurement came first. At the harness's default Storm complexity, Storm does
-not produce full Catmull-Clark refinement; its output is closest to hdSilk's
-coarse control-cage path. The Catmull-Clark scene covered **5192** pixels in
+At the harness's Low complexity, Storm does not produce full Catmull-Clark
+refinement; its output is closest to hdSilk's coarse control-cage path. The
+Catmull-Clark scene covered **5192** pixels in
 Storm and **5190** in hdSilk. Their adjusted IoU is **0.931015** against a
 **0.695708** worst perturbation, but this is an ungated known divergence rather
 than an agreement claim. A forced `0.99` diagnostic run dumped the captures and
@@ -1684,14 +1972,18 @@ cage is deliberately not gated; it measured only **0.910543** against hdSilk,
 while Storm covered **5824** pixels, proving the authored `catmullClark` scene is
 not an empty or invariant duplicate of its control.
 
-An OpenSubdiv uniform-refinement experiment was then used as the required
-"break it" proof. Enabling one Catmull-Clark refinement level in hdSilk reduced
-the same frustum candidate to **2273** pixels and the adjusted IoU to
-**0.533246**, so implementing eager subdivision at this complexity would have
-diverged from Storm rather than converged. The experiment was reverted, and the
-scene remains `GateEnabled: false`: hdSilk keeps subdivision schemes on the
-coarse path until the harness deliberately raises complexity/refine level or the
-remaining 0.931015-vs-1.000000 divergence is eliminated. The topology comparison
+An early eager-refinement experiment was used as the required "break it" proof.
+Enabling one Catmull-Clark refinement level at the Low-complexity parity point
+reduced the same frustum candidate to **2273** pixels and the adjusted IoU to
+**0.533246**, so unconditional refinement would have diverged from Storm. The
+production implementation instead maps Low/Medium/High/VeryHigh to refinement
+levels 0/1/2/3. The parity scene remains `GateEnabled: false`, while
+`native/hdSilk/tests/hdsilk_subdivision_probe.cpp` and
+`test-assets/hdsilk-subdivision-probe.usda` gate exact refined component counts,
+closed-form Catmull-Clark face/edge/vertex points, vertex and varying partition
+of unity, creases and corners, hole propagation, subset and uniform mapping,
+face-varying UV and normal refinement, bilinear and Loop schemes, animated-point
+cache reuse, and bounded complete-cage fallback. The topology comparison
 showed hdSilk draws the `HdMeshUtil` face-local 0-2 split for every quad. A
 diagnostic run forcing the opposite 1-3 split worsened the adjusted IoU to
 **0.872473** with 719 differing pixels, so the residual is not a simple global
@@ -1701,9 +1993,104 @@ or rasterizes this scene differently at the same harness settings and scored
 0.120809, so the scene joins the Windows Mesa exclusion list rather than
 weakening or falsely gating a backend-specific divergence.
 
-Excluded for this gate: general Catmull-Clark limit evaluation, Loop surfaces,
-bilinear refinement, creases/corners/holes beyond what the coarse mesh already
-expresses, and subdivision-aware interpolation of non-constant primvars.
+Excluded from the Storm parity gate, but covered by the analytic native gate:
+Catmull-Clark, Loop and bilinear refinement, creases, corners, holes, and
+subdivision-aware interpolation. Adaptive or limit-surface tessellation
+and GPU subdivision remain excluded.
+
+### UsdPreviewSurface displacement: geometry, gated analytically and by pixels
+
+`displacement` is not Storm-gated. Storm's offscreen harness renders no
+displacement reference at these settings, so a parity scene would compare hdSilk
+against a surface Storm left where it was authored and would score a difference
+that means nothing. It is gated instead at three stages.
+
+The **producer** is gated by `VerifyDisplacementTerminal` in
+`native/hdSilk/tests/hdsilk_probe.cpp`, run through CTest as `hdsilk_probe`. Its
+six cases vary exactly one thing against one surface shader whose
+`inputs:displacement` is authored non-zero throughout: no displacement terminal,
+a terminal with the constant, a terminal driven by a `UsdUVTexture`, one driven
+by a primvar reader, one with a dangling connection, and one whose terminal is
+not a `UsdPreviewSurface`. Re-adding `displacement` to the surface-input table --
+which is how it used to be resolved -- turns the first case red immediately.
+
+`VerifyDisplacementStageProbe` in the same probe adds the evidence a hand-built
+network map cannot produce: it opens
+`test-assets/displacement-terminal-stage.usda`, lets UsdImaging compose it, and
+reads the published page that `HdSilkMaterial::Sync` produced from
+`GetMaterialResource`. Five materials on that stage pin five claims -- a connected
+`outputs:displacement` publishes; an unconnected one publishes nothing even though
+the same shader authors the same non-zero input; an unshadeable surface does not
+suppress a valid displacement terminal; a `UsdUVTexture` with no authored file
+publishes the node's own `fallback` through its `scale` and `bias`; and a height
+field reading `st2` under a surface texture reading `st` publishes both primvars
+rather than reconciling one into the other. Removing the displacement resolution
+from the unshadeable-surface exit turns the third case red, and including
+displacement in the surface UV reconciliation turns the fifth red. The hand-built
+cases in `VerifyDisplacementTerminal` cover what a stage cannot reach cheaply: an
+empty-file texture folding to the authored fallback, a node reading `outputs:a`
+with no authored fallback taking the UsdUVTexture schema's alpha of one, and an
+unsupported connected chain refused rather than converted to a fallback.
+
+The **resolver** is gated by the analytic cases in
+`tests/OpenUsd.Rendering.Tests/SilkDisplacementTests.cs`: closed-form sampler,
+wrap addressing including the bilinear border contribution and the authored bias
+a border sample carries, affine folding, per-vertex resolution, signed and
+over-unit float heights against an oracle computed in the case, `auto` colour
+space resolved from the observed image colour space, `useMetadata` resolved from
+observed per-axis wrap metadata, both deferred inputs refused by name when the
+image library was not consulted, an observed mode the wire cannot carry refused by
+name, the authored-fallback substitution, repair-and-retry, a hostile image header
+refused before any decode, cache-hit counters across instances and republication,
+material rebinding, UV data edits, UV data edits under a surface material this
+renderer cannot shade at all, per-instance verdicts surviving a sibling's
+retirement, the parameterless retry keeping state it cannot rebuild, the
+scene-scoped retry advancing both the selection and shadow revisions before any
+disposal, the refusal reason reaching the deformation kernel's geometry key across
+the unauthored/UDIM/unreadable transitions, the retained vertex buffer's actual
+contents, both budgets, disposal, the shadow-bounds verdict following the shadow
+table, and every named refusal.
+
+The `openusd_image_info` seam's own layout is pinned separately by
+`NativeContractTests.ImageInfoLayoutMatchesTheVersionTwoCAbi` in
+`tests/OpenUsd.Interop.Tests`, which fixes the version-2 size, all ten field
+offsets and the 16-byte version-1 prefix boundary the native entry points still
+accept.
+
+The **pixels** are gated by seven cases per backend in
+`tests/OpenUsd.Rendering.ConformanceTests/SilkDisplacementRenderConformance.cs`,
+run on D3D12 WARP through `D3D12DeviceTests` and on Vulkan SwiftShader through
+`VulkanDeviceTests`.
+
+Each pixel gate renders three images: the displaced scene, a control scene whose
+points the case itself moved by the same amounts along the same normals with a
+material that displaces nothing, and the undisplaced scene. The first two must be
+byte-identical and the third must differ, so a renderer that ignored the input
+fails on the equality and a renderer that shifted a colour rather than a position
+fails on the silhouette. The texture case additionally rejects a field folded to a
+single constant, and the deformation case additionally rejects both the displaced
+bind pose and the undisplaced deformed surface, which are the two pictures a wrong
+ordering would draw.
+
+The normals in these scenes are deliberately tilted out of the view axis: under
+the harness's orthographic identity projection a camera-facing quad displaced
+along its own normal would move only in depth, and every comparison would be
+vacuous. Removing the displacement term from `SilkMeshGeometryBuilder.Build`
+turns all six pixel gates and six of the analytic cases red, which is the
+non-vacuity proof for the set.
+
+The seventh gate, `RepairingAHeightFieldReachesSelectionAndShadows`, is the one
+that renders rather than only counts. It repairs an unreadable height field while
+the displaced caster is both selected and shadowing, then renders again and
+requires the repaired frame to differ from the broken one and, with the selection
+cleared, to equal the same shadow scene authored already displaced. Removing the
+two revision advances from `RetryFailedTextures(SilkSceneState)` -- leaving the
+resolved selection and the retained shadow atlas keyed to resources the retry
+replaced -- turns it red on both backends.
+
+Metal is source-complete and compile-only for this feature by construction: the
+slice changes no shader and no backend code, so the Metal backend draws the same
+displaced vertex buffer without executed evidence on this host.
 
 ### UsdSkel: direct CPU deformation remains exact
 
@@ -1721,9 +2108,208 @@ horizontal mirror 0.000000, transpose 0.121114, shifted camera 0.077607, and the
 wrong-time probe 0.534601. The weakest required margin is therefore **0.274348**.
 Capturing the undeformed timeCode 1 pose was the deliberate red proof for this
 gate; it failed the 0.92 threshold before the registration stayed at timeCode 2.
-Direct evaluation intentionally skips blend-shape meshes for this slice and
-falls back to Hydra computed points there. GPU compute skinning remains a
-measured gap rather than a claimed feature.
+Direct evaluation now covers blend-shape meshes as well, including in-between
+shapes and blend-shape normal offsets; the Hydra computed-points fallback is
+reserved for procedural deformations UsdSkel does not describe. GPU compute
+skinning remains a measured gap rather than a claimed feature.
+
+### UsdSkel: analytic deformation probe
+
+`test-assets/hdsilk-deformation-probe.usda` is the negative control for the CPU
+deformation subset, and it is asserted analytically rather than by capture. Every
+expected value is computed from the authored stage:
+
+- `InbetweenTriangle` authors an in-between shape at weight 0.5 whose point
+  offset `(0.25, 0, 0)` is deliberately not the linear midpoint of the primary
+  offset `(2, 0, 0)`, so a renderer that ignored in-betweens would publish
+  `x = 1`. Its normal offsets are asserted the same way at both the in-between
+  and the primary weight.
+- `SkinnedNormalQuad` binds a joint that rotates 90 degrees about X at timeCode
+  3, so its authored `(0, 0, 1)` normals must arrive as `(0, -1, 0)`: bind-pose
+  normals and skinned normals differ by a full axis.
+- `FaceVaryingNormalTriangle` authors face-varying normals on a deformed mesh.
+  Blend-shape normal offsets and joint influences are both addressed by point
+  index, so those normals cannot be deformed and must be omitted rather than
+  published at the bind pose.
+
+`VerifyDeformationInvalidation` then scrubs one session across timeCodes 1, 3,
+and 1 again and requires the deformed point and the skinned normal to follow the
+evaluation time in both directions, so neither a cached bind pose nor a cached
+deformed pose can survive a scrub. This probe is also what caught the scope bug
+behind the subset: the evaluation stage and time were thread-local, so a stage
+with several skinned meshes resolved deformation only for whichever prims Hydra
+happened to sync on the thread that called `Render()`.
+
+### UsdSkel: the bounded deformation block agrees with the CPU deformation
+
+Page ABI v20 publishes the whole rig of a deformed prototype beside the
+CPU-resolved points -- bind pose, fixed-width influences, the remapped joint
+palette, the geom bind transform, and sparse blend ranges over sparse deltas.
+The D3D12 and Vulkan renderers consume it through the checked deformation
+kernel, while the CPU result remains the authoritative oracle and fallback.
+The block-to-CPU equivalence property is gated three times over before the GPU
+pixel gates run.
+
+- hdSilk gates itself. Before publishing, it evaluates the rig in single
+  precision in the order the ABI documents and compares it against the points
+  its own double-precision CPU deformation produced. A rig that disagrees is
+  dropped with `OPENUSD_SILK_DEFORMATION_UNSUPPORTED_UNVERIFIED` rather than
+  published as a second, disagreeing answer, so a wrong rig cannot reach a
+  consumer even in principle. Normals are compared as directions, and a
+  collapsed normal is ignorable only when both sides collapse it: an
+  implementation that skipped whenever *either* side was degenerate would accept
+  a rig that annihilated a direction the CPU deformation kept. That case cannot
+  be reached from a stage fixture, so `hdsilk_probe` constructs all four
+  combinations through `openusd_hdsilk_test_verify_degenerate_normal_rule` and
+  requires the two one-sided ones to be refused.
+- `hdsilk_probe` gates it from outside the producer. It decodes every published
+  block off the wire, recomputes the block's own identity hash from those bytes,
+  re-evaluates the rig from them, and requires the result to be the deformed
+  points the same record carries -- at timeCodes 1, 2 and 3 of
+  `hdsilk-deformation-probe.usda`, and for at least two published rigs, so a
+  page that stopped publishing them fails rather than passes.
+- `SilkDeformationEquivalenceConformance` gates the managed consumer. It syncs
+  the same stage through the real native delegate and requires
+  `SilkDeformationEvaluator` -- the renderer-neutral contract a backend kernel
+  must satisfy -- to reproduce the CPU-resolved points and the CPU-resolved
+  normals within the ABI's tolerance at each of those time codes, applying the
+  same both-degenerate rule the producer uses. It also
+  requires a published rig never to carry a whole-rig refusal reason, and
+  requires `FaceVaryingNormalTriangle` to publish a rig that names its omitted
+  normals, so the "diagnose rather than silently publish the bind pose" rule is
+  measured rather than asserted.
+
+`SilkDeformationWireTests` covers the wire contract itself: every stream at its
+own offset, the identity hash over the published bytes, and hand-computed
+answers for linear blending, for the geom bind transform ordering, for two
+weighted sparse ranges addressing one point, and for inverse-transpose
+renormalized normals under an anisotropic joint scale. Every bound the ABI
+declares is rejected at decode rather than at evaluation, because a consumer
+sizes GPU allocations from those counts before it evaluates anything. Two
+classes of malformed page are gated there specifically because nothing else
+sees them:
+
+- **Non-finite streams.** Every floating table -- geom bind transform, bind
+  points, bind normals, joint weights, joint matrices, blend range weights and
+  both delta channels -- is rejected at decode when it carries a NaN or an
+  infinity. A non-finite element does not fail loudly; it propagates through the
+  whole evaluation and arrives as a NaN vertex, which every rasterizer silently
+  discards, so the only symptom would be a surface that quietly loses triangles.
+  Each table is a separate parameterized case, so a regression names which one
+  stopped being checked, and `TheSameRigWithoutPoisonIsAccepted` keeps the
+  fixture honest by proving the rejections come from the poisoned element rather
+  than the fixture's shape.
+- **A stale identity.** The production parser recomputes the FNV-1a over the
+  block's own bytes and refuses a mismatch before anything is retained.
+  `AlteredRigContentUnderAStaleIdentityIsRejected` alters a joint matrix
+  translation and deliberately leaves the declared identity untouched: the block
+  still decodes, every bound still holds, every stream is still finite, and only
+  the recomputation can catch it.
+  `ARigThatFailsTheIdentityCheckNeverReachesTheRetainedScene` then proves the
+  refusal happens early enough that no mesh is retained and the deformation
+  revision never moves, so no cache key is ever built from a rig the parser
+  could not vouch for.
+
+Three red proofs were run rather than assumed, each landing on exactly its own
+cases and nothing else:
+
+- Restoring the two-sided degenerate-normal skip in the producer made
+  `hdsilk_probe` fail with "a degenerate CPU normal against a resolved rig
+  normal must be refused".
+- Disabling the identity recomputation in the parser failed exactly the three
+  identity tests and nothing else.
+- Removing the joint-weight finiteness check failed exactly the two
+  `JointWeights` cases and nothing else.
+
+The conformance normal comparison normalizes both sides before comparing them.
+The evaluated side is unit length by contract, but the published side is
+whatever `ComputeSkinnedNormals` produced, and any joint whose upper
+three-by-three is not orthogonal leaves it scaled; comparing a unit vector
+against a scaled one would fail a rig that agrees perfectly about direction.
+That is measured, not assumed: with the normalization removed,
+`TheNormalComparisonRejectsAOneSidedDegeneracy` reports 0.5 against a tolerance
+of 0.0001 for a doubled published normal. The fixture stage authors only
+rotations, so the passing measurement would otherwise have been green for the
+wrong reason.
+
+A red proof for the equivalence gate was also run: injecting a
+one-unit perturbation into the evaluated points made all three time codes fail
+with a worst relative error of 1 against a tolerance of 0.0001, and removing it
+made them pass again. `TheEquivalenceComparisonRejectsAPerturbedEvaluation` and
+`TheNormalComparisonRejectsAOneSidedDegeneracy` keep that non-vacuity permanent,
+so neither comparator can silently degrade into one that reports no error.
+
+### The GPU deformation kernel is held to the same oracle
+
+`SilkDeformationComputeConformance` executes the checked `deform.compute` kernel
+on the device under test and requires it to reproduce
+`SilkDeformationEvaluator` -- the same oracle hdSilk's producer verifies its
+published rigs against. It passes on **D3D12 WARP and Vulkan SwiftShader**. The
+rigs are chosen so a convention error cannot hide: the matrices carry
+translation *and* non-uniform scale so a transpose changes the answer, the two
+joints are asymmetric so a swapped palette index changes it, two blend ranges
+overlap on one point so a regrouping that reordered the accumulation changes it,
+and one joint scales anisotropically so a normal transformed by the matrix
+rather than by its inverse transpose changes it.
+
+Two further properties are gated because the renderer depends on them.
+`DeformationKernelWritesOnlyPositionsAndNormals` seeds the destination with the
+checked `compute.fill` kernel and requires every float past the texture
+coordinates of a twelve-float vertex to survive untouched, and the uploaded
+coordinates to be passed through in order, with a non-vacuity check that the
+deformed range really was rewritten -- a stride error would otherwise overwrite
+the coordinates a material samples through. Seeding through the other checked
+kernel is deliberate: it makes the seed reproducible arithmetic rather than an
+assumption about uninitialized device memory, and it proves two kernels with
+different generalized binding layouts share one command list and one destination
+buffer. `DeformationKernelIsIdempotentForOneIdentity` dispatches the same
+payload twice and requires identical bytes, which is what makes skipping a
+dispatch for an unchanged rig identity sound.
+
+The matrix convention was red-proofed rather than assumed: replacing the
+row-vector transform with its transpose made both
+`WarpDeformationKernelMatchesTheCpuEvaluator` and
+`SwiftShaderDeformationKernelMatchesTheCpuEvaluator` fail, each naming the
+offending rig, point and component, and restoring it made them pass.
+
+### The rendered image is gated against the CPU-resolved one
+
+`SilkDeformationRenderConformance` renders a deformed prim through the retained
+renderer on **D3D12 WARP and Vulkan SwiftShader** and requires the pixels the GPU
+deformation pass produces to equal the pixels the authoritative CPU geometry
+produces. It is instrumented so it can only pass if the kernel ran: the GPU
+record publishes its *bind-pose* points while carrying the rig that moves them,
+the CPU reference record publishes the resolved points and no rig, and a
+GPU-deformed geometry never uploads a record's points -- its vertex buffer lives
+on the device heap and is written only by the kernel. A third image proves the
+bind pose is a different picture, so the agreement is not vacuous.
+
+Five scenarios run per backend: the image match at three poses; a repeated frame
+and a republished identical rig dispatching nothing while a scrubbed pose
+dispatches exactly once, changes the picture and rebuilds no geometry; a device
+generation reset re-dispatching exactly once, reproducing the same pixels and
+then settling; an ineligible rig -- one with no authored bind normals -- drawing
+the CPU-resolved geometry rather than the bind pose and dispatching nothing; and
+a shadowed scene whose caster is deformed matching the CPU-resolved one while
+moving the caster moves what the shadow pass rendered.
+
+Two red-proofs make those decisive. Moving the dispatch after
+`_shadowMaps.Prepare` fails only the shadow gate, on both backends, which is what
+pins the ordering: the shadow cache submits its own command list the renderer
+does not compose, so the deformation pass runs on its own submitted and waited
+list before it. Making the dispatch recording a no-op fails the image and shadow
+gates on both backends. The pose-identity comparison in
+`SilkMeshGpuResource.HasSameGeometry` was found by the second scenario, which
+failed before it existed because a record whose points were unchanged never
+routed back through the geometry cache and drew the previous palette.
+
+`SilkDeformationGpuPolicyTests` gates the eligibility policy separately, because
+a wrong refusal is invisible -- the image is still correct, so nothing else
+would notice a rig that quietly stopped being eligible. Every refusal reason has
+its own case, the byte budget is shown to refuse from the counts rather than
+after allocating, and the blend regrouping is shown to preserve (range, delta)
+order on a deliberately interleaved layout that a sort by delta index alone
+would reverse.
 
 ### UsdLux lighting scenes
 
@@ -1781,9 +2367,99 @@ hdSilk's scene-light exposure during capture: the distant gate failed at
 transport was restored.
 
 The implementation introduced direct DistantLight/SphereLight data and untextured
-DomeLight ambient in page ABI 9, but shadows, PCF, light linking, dome
-textures/image lighting, and instanced-shadow parity remain scoped out until the
-Storm measurements can support real gates.
+DomeLight ambient in page ABI 9. PCF and instanced-shadow parity remain scoped
+out until the Storm measurements can support real gates. Shadows and light
+linking are now implemented and gated analytically on WARP and SwiftShader
+instead of against Storm, and textured-dome image-based lighting is gated the
+same way -- Storm's offscreen harness renders no dome texture, so it cannot be
+the reference. See "hdSilk textured-dome image-based lighting" in
+`docs/rendering.md`.
+
+Dome linking is gated the same way and on the same two devices.
+`SilkDomeLinkConformance` puts two identical quads under a red dome and a blue
+dome, requires each to keep exactly the sky its `collection:lightLink` admits --
+once through the diffuse irradiance atlas and once, on a metal, through the
+prefiltered specular one -- and requires the unlinked image back **byte for
+byte** when the collection is retired. A third case masks an untextured dome,
+whose whole contribution is one summand of the frame ambient term and which
+therefore travels a different path from a prefiltered dome. The byte-identity
+claim is why an unlinked scene keeps the single-group environment bake at all:
+the grouped atlas is addressed through different texture coordinates, so a scene
+that links no dome has to stay on the layout whose pixels it already produced.
+
+The analytic halves are `SilkDomeEnvironmentGroupTests` for the grouped bake --
+per-group isolation, the composed group as the exact sum, the byte budget and the
+cache identity -- and `SilkDomeFrameWireTests` for the ABI v21 frame dome table,
+including that summing every published dome reproduces the scene-wide ambient
+term exactly. The producer half is `hdsilk_probe`, which authors a real
+`collection:lightLink:excludes` on a `DomeLight` and requires the excluded prim to
+lose its dome bit after UsdImaging and Hydra have resolved it. Metal has
+**translation coverage only**: `MetalEnvironmentSourceContractTests` proves the
+dome block reached the checked MSL, and nothing here executes Metal.
+
+Four gates exist because the first implementation passed the ones above while
+still being wrong. `WarpKeepsEveryInstanceTransformAcrossSplitDomeMasks` scatters
+four instances of one prototype under complementary dome collections: with a
+single shared instance-transform table the second batch overwrites the first
+before either is submitted, and the first batch's instances disappear rather than
+render with the wrong sky, so only a pixel gate that counts columns catches it.
+`VerifyInstanceMembershipsFollowPublishedPrototypeIndices` scatters two
+prototypes across more instances than the membership table can hold and requires
+the rows to name only identities that were actually published --
+`GetInstanceCategories` describes every instance of the *instancer*, so without
+intersecting `GetInstanceIndices` a two-prototype instancer spends its whole
+budget on rows no record can ever match. `SilkPagePreflightTests` requires a page
+whose `ENVIRONMENT` or `LIGHT_LINK` disagrees with the frame's dome table to
+mutate **nothing**, not to retain its valid prefix. And `SilkDomeFrameWireTests`
+runs an adversarial untextured/textured/untextured ordering, because an aggregate
+ambient term summed in a different order from the per-dome table is off by
+rounding and the all-domes mask stops being bit-identical.
+
+Four more exist because rejecting a page is only useful if it costs nothing.
+`SilkTransactionalApplyTests` puts a valid mesh, material or environment first
+and an offending command after it, and compares the retained records, the pick
+ranges and all five revisions as one value before and after: a page either
+applies completely or leaves a consumer with nothing to rebuild.
+`SilkInstanceSlotTests` refuses the instance buffer allocation and then fails one
+of its writes, and requires the slot to be exactly what it was and the retry to
+upload what the device does not hold -- a retained image advanced past a failed
+write would compare equal forever and the instance would keep its old transform.
+`SilkPagePreflightTests` adds the cross-command rules a single command cannot
+see: a non-canonical link table must index the frame's own light and dome counts,
+and the surviving environment records must map one-to-one onto the frame's
+textured dome entries -- a textured entry with no record, a removal that strands
+one, and two records claiming one entry are each refused, while a record a later
+command on the same path supersedes is not validated at all. It also drives those
+from the *retained* side -- a page carrying nothing but a frame, growing and
+shrinking the light count, growing and shrinking the dome table, and moving a
+retained record from indexed to unindexed and back -- because a page that carries
+no link table and no environment record still changes what the retained ones mean.
+A twelve-command page over one dome pins that the bound is the number of distinct
+paths rather than the number of commands: a fixed span indexed once per command
+overran on the ninth. And
+`Warp/SwiftShaderUploadsTheEnvironmentAgainAfterAFailedSubmission` wraps the real
+device so that one submission, and then one wait, fails on the frame that carries
+an environment *rebuild*: the device still holds the previous bake, so an upload
+wrongly counted as done shows up as the old sky rather than as an empty one.
+
+Four of these gates inject a failure that has no natural trigger.
+`AFailedJournalRecordLeavesTheRetainedIdentityUntouched` fails each journal record
+of a two-mesh page in turn and requires the retained pick range to still resolve
+afterwards, because a table that published a token range and then failed to record
+its undo looks exactly like one that never allocated.
+`AFailedSlotPublicationDisposesTheBufferItHadAlreadyCreated` fails in the window
+between the instance buffer existing and anything referencing it, and counts the
+device's live allocations.
+`ARejectedShadowTableKeepsTheDescriptorListAConsumerAlreadyHolds` captures the
+descriptor list before a rejected replacement and requires the same reference,
+showing the restored values, to keep tracking later accepted updates -- the defect
+a container swap produces is invisible through the table itself and only visible
+through the reference a consumer already holds. And
+`WarpReleasesEverySubmissionResourceWhenTheWaitFails` makes every fence wait on a
+real WARP device fail -- persistently, the way a removed device does, so that the
+wait disposal makes fails too -- and then requires the original exception back and
+the device to tear down, which it refuses to do while any submission is still
+registered against it.
 
 
 ### Draw modes: cards, bounds, and origin are gated
@@ -1915,7 +2591,31 @@ hand-authored `UsdPreviewSurface` using the same projected constant values; it
 gates at adjusted IoU **1.000000**, weakest perturbation **0.310060**, margin
 **0.442112**, and colour deltas **10 / 4.424**. A deliberate centred-square red
 proof failed with weakest margin **0.000000** before the asymmetric asset was
-restored. `point-instancer-cluster` proves
+restored.
+
+The MaterialX surface-model fixtures live outside the parity set, under
+`test-assets/materialx/`, because they are ingestion evidence rather than
+Storm-comparison scenes. `materialx-openpbr-constant.usda` authors an
+`ND_open_pbr_surface_surfaceshader` and `materialx-standard-surface-extended.usda`
+an `ND_standard_surface_surfaceshader`; both are fully synthetic and reference no
+external asset, so they are redistributable on their own. Each authors two kinds
+of input on purpose: the ones the hdSilk projection carries, and lobes such as
+`transmission_weight`, `subsurface_weight`, `sheen` and `specular_color` that it
+does not, moved off their nodedef defaults so the ingestion path must report each
+by name. `MaterialXSurfaceModelFixtureTests` holds the fixtures to those two
+tables, asserts the exact nodedef identifiers, and asserts each mesh carries
+exactly one `texCoord2f` primvar, because hdSilk binds one texture-coordinate
+stream per material and a second UV set in a fixture would read as a support
+claim the wire does not make. The projection itself is proved natively by
+`VerifySurfaceModelProjection` in `native/hdSilk/tests/hdsilk_probe.cpp`, and the
+resulting page is proved against the managed renderer by
+`ProjectedOpenPbrScalarsReachEverySurfaceUniform`,
+`ProjectedMaterialWithNoCarriedLobesKeepsRendererDefaults` and
+`ProjectedMaterialTexturesSelectCheckedBackendPermutations` in
+`SilkMaterialCommandTests`; the last of those asserts the expanded projection can
+only select shader permutations already compiled for both the D3D12 (DXIL) and
+Vulkan (SPIR-V) paths, so the expansion needs no new checked shader artifact.
+`point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2
 Storm reference with a time 1 hdSilk capture and scores 0.045334 adjusted IoU,

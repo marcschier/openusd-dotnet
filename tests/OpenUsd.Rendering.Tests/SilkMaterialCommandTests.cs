@@ -157,6 +157,78 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task DistilledMdlMaterialIsShadeableAndKeepsItsProvenance()
+    {
+        byte[] command = CreateMaterialUpsert(
+            "/World/Looks/OmniPbrMat",
+            SilkSurfaceKind.MdlDistilled,
+            scalars:
+            [
+                (SilkMaterialParameter.DiffuseColor, [0.72f, 0.28f, 0.12f]),
+                (SilkMaterialParameter.Roughness, [0.35f]),
+            ],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.Normal,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 1f, 1f],
+                    Asset: "textures/mdl-normal.png",
+                    UvPrimvar: "st"),
+            ]);
+
+        SilkMaterialData material;
+        {
+            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+                command, 1, SilkCommandParser.PageAbiVersion);
+            _ = commands.MoveNext();
+            material = SilkMaterialData.CopyFrom(commands.Current.AsMaterialUpsert());
+        }
+
+        // A distilled MDL material is shaded by the same PBR path a
+        // UsdPreviewSurface takes; the kind is provenance and cache identity,
+        // not a request for a second shading model or a runtime shader.
+        await Assert.That(material.SurfaceKind).IsEqualTo(SilkSurfaceKind.MdlDistilled);
+        await Assert.That(material.IsSupported).IsTrue();
+        await Assert.That(material.IsMdlUnavailable).IsFalse();
+        await Assert.That(material.Scalars.Count).IsEqualTo(2);
+        await Assert.That(material.Textures[0].UvPrimvar).IsEqualTo("st");
+    }
+
+    [Test]
+    public async Task UndistilledMdlMaterialIsReportedByNameRatherThanShaded()
+    {
+        byte[] command = CreateMaterialUpsert(
+            "/World/Looks/OmniPbrMat",
+            SilkSurfaceKind.MdlUnavailable,
+            scalars: [],
+            textures: []);
+
+        SilkMaterialData material;
+        {
+            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+                command, 1, SilkCommandParser.PageAbiVersion);
+            _ = commands.MoveNext();
+            material = SilkMaterialData.CopyFrom(commands.Current.AsMaterialUpsert());
+        }
+
+        // The record must arrive with empty tables and must not be shadeable.
+        // A shadeable record with nothing in it is exactly the silent default
+        // grey the MDL surface kinds exist to remove.
+        await Assert.That(material.SurfaceKind).IsEqualTo(SilkSurfaceKind.MdlUnavailable);
+        await Assert.That(material.IsSupported).IsFalse();
+        await Assert.That(material.IsMdlUnavailable).IsTrue();
+        await Assert.That(material.Scalars.Count).IsEqualTo(0);
+        await Assert.That(material.Textures.Count).IsEqualTo(0);
+        await Assert.That(material.Path).IsEqualTo("/World/Looks/OmniPbrMat");
+    }
+
+    [Test]
     public async Task ParsesMaterialRemoval()
     {
         byte[] command = CreateMaterialRemove("/World/Materials/Brick");
@@ -1714,6 +1786,205 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(ReadSingle(constants, 132)).IsEqualTo(2048f);
     }
 
+    /// <summary>
+    /// Proves that the page a MaterialX OpenPBR projection publishes reaches every
+    /// surface uniform the renderer binds.
+    /// </summary>
+    /// <remarks>
+    /// hdSilk projects <c>ND_open_pbr_surface_surfaceshader</c> onto the same
+    /// renderer-neutral parameters UsdPreviewSurface uses, so the only thing that
+    /// can silently go missing is a parameter the native side publishes and the
+    /// managed writer never reads. The scalars below are exactly the ones the
+    /// native projection emits for a constant OpenPBR material -- base_color,
+    /// base_metalness, specular_roughness, specular_ior, coat_weight,
+    /// coat_roughness, geometry_opacity, and emission_color scaled by
+    /// emission_luminance -- and each is asserted at its documented offset.
+    /// </remarks>
+    [Test]
+    public async Task ProjectedOpenPbrScalarsReachEverySurfaceUniform()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/OpenPbr",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars:
+            [
+                (SilkMaterialParameter.DiffuseColor, [0.2f, 0.4f, 0.6f]),
+                (SilkMaterialParameter.EmissiveColor, [1f, 0.5f, 0.25f]),
+                (SilkMaterialParameter.Metallic, [0.75f]),
+                (SilkMaterialParameter.Roughness, [0.25f]),
+                (SilkMaterialParameter.Ior, [1.45f]),
+                (SilkMaterialParameter.Clearcoat, [0.5f]),
+                (SilkMaterialParameter.ClearcoatRoughness, [0.125f]),
+                (SilkMaterialParameter.Opacity, [0.375f]),
+            ],
+            textures: []));
+
+        await Assert.That(material.IsSupported).IsTrue();
+        await Assert.That(material.SurfaceKind)
+            .IsEqualTo(SilkSurfaceKind.MaterialXProjected);
+        // No image is bound, so the projection must not select a texture
+        // permutation: a constant OpenPBR material shades from uniforms alone.
+        await Assert.That(material.GetTextureFeatures())
+            .IsEqualTo(SilkShaderFeatures.None);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        await Assert.That(ReadSingle(constants, 0)).IsEqualTo(0.2f);
+        await Assert.That(ReadSingle(constants, 4)).IsEqualTo(0.4f);
+        await Assert.That(ReadSingle(constants, 8)).IsEqualTo(0.6f);
+        await Assert.That(ReadSingle(constants, 12)).IsEqualTo(0.375f);
+        await Assert.That(ReadSingle(constants, 16)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(constants, 20)).IsEqualTo(0.5f);
+        await Assert.That(ReadSingle(constants, 24)).IsEqualTo(0.25f);
+        await Assert.That(ReadSingle(constants, 44)).IsEqualTo(1.45f);
+        await Assert.That(ReadSingle(constants, 48)).IsEqualTo(0.75f);
+        await Assert.That(ReadSingle(constants, 52)).IsEqualTo(0.25f);
+        await Assert.That(ReadSingle(constants, 64)).IsEqualTo(0.5f);
+        await Assert.That(ReadSingle(constants, 68)).IsEqualTo(0.125f);
+        // The shaded flag: a projected MaterialX surface shades from the material
+        // rather than falling back to the scene display colour.
+        await Assert.That(ReadSingle(constants, 72)).IsEqualTo(1f);
+    }
+
+    /// <summary>
+    /// Proves that a MaterialX surface whose lobes this projection cannot carry
+    /// still leaves the renderer at its own documented defaults rather than at a
+    /// value borrowed from an unrelated input.
+    /// </summary>
+    [Test]
+    public async Task ProjectedMaterialWithNoCarriedLobesKeepsRendererDefaults()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Transmissive",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures: []));
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        // Opacity stays fully opaque: a transmission weight the projection drops
+        // must not arrive as transparency, which would be a different picture.
+        await Assert.That(ReadSingle(constants, 12)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(constants, 44)).IsEqualTo(1.5f);
+        await Assert.That(ReadSingle(constants, 64)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 16)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 20)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 24)).IsEqualTo(0f);
+    }
+
+    /// <summary>
+    /// Proves the expanded MaterialX projection selects only shader permutations
+    /// the repository already ships compiled for both D3D12 and Vulkan.
+    /// </summary>
+    /// <remarks>
+    /// The broader OpenPBR and standard_surface tables add no new texture slots:
+    /// every image they can bind is one UsdPreviewSurface already had. That claim
+    /// is only worth making if it is checked, because a projection that selected an
+    /// uncompiled permutation would fail at pipeline creation on a user's machine
+    /// rather than here. Both backend artifacts are asserted, so the claim covers
+    /// the D3D12 (DXIL) and Vulkan (SPIR-V) paths and not just one of them.
+    /// </remarks>
+    [Test]
+    public async Task ProjectedMaterialTexturesSelectCheckedBackendPermutations()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/OpenPbrTextured",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                // The scale a constant base_weight folds into the image, which is
+                // the one thing the weight projection changes about the entry.
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [0.5f, 0.5f, 0.5f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/openpbr-basecolor.png",
+                    UvPrimvar: "uvSet0"),
+                new TextureSpec(
+                    SilkMaterialParameter.Normal,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 1f, 1f],
+                    Asset: "textures/openpbr-normal.png",
+                    UvPrimvar: "uvSet0"),
+                ScalarTexture(
+                    SilkMaterialParameter.Opacity,
+                    "textures/openpbr-opacity.png",
+                    SilkTextureChannel.R),
+                ScalarTexture(
+                    SilkMaterialParameter.Clearcoat,
+                    "textures/openpbr-coat.png",
+                    SilkTextureChannel.R),
+                ScalarTexture(
+                    SilkMaterialParameter.Ior,
+                    "textures/openpbr-ior.png",
+                    SilkTextureChannel.R),
+            ]));
+
+        SilkShaderFeatures features = material.GetTextureFeatures();
+        await Assert.That(features).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.BaseColorMap |
+            SilkShaderFeatures.NormalMap |
+            SilkShaderFeatures.OpacityMap |
+            SilkShaderFeatures.ClearcoatMap |
+            SilkShaderFeatures.IorMap);
+
+        var permutation = new SilkShaderPermutationId(features);
+        await Assert.That(permutation.MeshFragmentArtifactName)
+            .IsEqualTo("mesh.fragment.uv+material+normal");
+
+        string root = FindRepositoryRoot();
+        foreach (string extension in new[] { "dxil", "spv" })
+        {
+            string artifact = Path.Combine(
+                root,
+                "eng",
+                "shaders",
+                "checked",
+                $"{permutation.MeshFragmentArtifactName}.{extension}");
+            await Assert.That(File.Exists(artifact))
+                .IsTrue()
+                .Because(
+                    "The expanded MaterialX projection must only select shader " +
+                    "permutations that are already compiled for every backend; " +
+                    artifact + " is missing.");
+        }
+
+        // The folded weight travels on the entry the renderer uploads, so the
+        // native scale is what the managed side must still see.
+        SilkMaterialTexture? baseColor =
+            material.GetTexture(SilkMaterialParameter.DiffuseColor);
+        await Assert.That(baseColor).IsNotNull();
+        await Assert.That(baseColor!.Scale[0]).IsEqualTo(0.5f);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "OpenUsd.slnx")))
+            {
+                return directory.FullName;
+            }
+            directory = directory.Parent;
+        }
+        throw new InvalidOperationException("The repository root was not found.");
+    }
+
     [Test]
     public async Task SampledVolumeDepthIsWrittenAndTheExactIntegrationLimitIsEnforced()
     {
@@ -2178,7 +2449,7 @@ public sealed class SilkMaterialCommandTests
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -2221,8 +2492,8 @@ public sealed class SilkMaterialCommandTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(216),
             (uint)material.Length);
-        path.CopyTo(bytes, 224);
-        int pointsOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointsOffset = 268 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

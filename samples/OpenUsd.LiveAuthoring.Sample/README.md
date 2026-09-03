@@ -3,10 +3,12 @@
 ## Purpose and non-goals
 
 This executable demonstrates the separate
-[OpenUsd.LiveAuthoring adapter library](../OpenUsd.LiveAuthoring/README.md). It creates a scheduler-owned
-stage, attaches a fake render consumer to the exact retained render source, submits three ordered
-batches, verifies authored values and composition, rejects a stage-bound callback result, and checks
-disposal order.
+[OpenUsd.LiveAuthoring adapter package](../../src/OpenUsd.LiveAuthoring/README.md). It creates a
+scheduler-owned stage, attaches a fake render consumer to the exact retained render source, submits
+four ordered batches (properties, composition, a coalesced variant change, and a data-model batch
+exercising arrays, matrices, metadata, API-schema application, and an explicit attribute clear),
+verifies authored values and composition, rejects a stage-bound callback result, and checks disposal
+order.
 
 The fake consumer intentionally avoids duplicating Viewer or renderer-host logic. This sample is not a
 production renderer, persistent authoring tool, OPC UA client, or Pump implementation.
@@ -55,10 +57,11 @@ For Linux or macOS, use the matching native install and set `LD_LIBRARY_PATH` or
 
 ## Source versus package consumption
 
-The executable currently uses `ProjectReference` for both the adapter and `src/OpenUsd`. The adapter is
-sample source, not a published package. An external package-based host should:
+The executable currently uses `ProjectReference` for both `OpenUsd.LiveAuthoring` and `src/OpenUsd`.
+`OpenUsd.LiveAuthoring` is a supported package built from `src/OpenUsd.LiveAuthoring`; an external
+package-based host should:
 
-1. reference or copy the `OpenUsd.LiveAuthoring` adapter source,
+1. reference `OpenUsd.LiveAuthoring` as an ordinary `PackageReference`,
 2. replace repository `OpenUsd` project references with `PackageReference Include="OpenUsd"`, and
 3. add `OpenUsd.Runtime.Core` at the same package version to the executable.
 
@@ -80,8 +83,10 @@ stage-bound result rejected: True
 property batch serials: <before>..<after>
 composition invalidation: Composition
 variant change sequence: 3
+data-model correlation: admitted=batch-data-model applied=batch-data-model
+health: pending=0 peak=<n> coalesced=<n> lastApplied=4
 session=True, scalar=True, relationship=True, reference=True, payload=True, active=True,
-instanceable=True, variants=True
+instanceable=True, variants=True, appliedSchema=True
 clean disposal: True
 ```
 
@@ -95,8 +100,11 @@ and are not modified.
 ## Important code
 
 - `UsdLiveAuthoringHost.CreateAsync` creates one scheduler, retained render source, and bounded sink.
-- The three `LiveAuthoringBatch` values demonstrate scalar defaults and samples, relationships,
-  references, payloads, active state, instanceability, variants, and composition invalidation.
+- The four `LiveAuthoringBatch` values demonstrate scalar defaults and samples, relationships,
+  references, payloads, active state, instanceability, variants, composition invalidation, array and
+  matrix attributes, prim metadata, API-schema application, and an explicit attribute clear.
+- `LiveAuthoringAdmissionReceipt.WaitForResultAsync` separates admission acknowledgement from the
+  eventual applied result, and its `CorrelationId` demonstrates opaque batch correlation.
 - `FakeRenderSourceConsumer` retains a lease from the exact source supplied by the host.
 - The scheduler callback returns a string of detached verification data.
 - Returning `UsdPrim` from a scheduler callback is intentionally rejected as stage-bound state.
@@ -131,7 +139,8 @@ toolchain.
 
 ## Next documentation
 
-- [Adapter library](../OpenUsd.LiveAuthoring/README.md)
+- [Adapter package](../../src/OpenUsd.LiveAuthoring/README.md)
+- [Live authoring](../../docs/live-authoring.md)
 - [Samples overview](../README.md)
 - [Data API](../../docs/data-api.md)
 - [Rendering](../../docs/rendering.md)

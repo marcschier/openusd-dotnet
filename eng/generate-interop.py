@@ -47,7 +47,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     managed_name = camel_case(native_name)
 
     nullable_names = {"type_name", "target_prim_path", "variant_selection", "string_value",
-                      "display", "view", "looks", "anchor_asset_path"}
+                      "display", "view", "looks", "anchor_asset_path",
+                      "sub_identifier", "shading_system"}
     if native_type == "const char*":
         nullable = "?" if native_name in nullable_names else ""
         return f"string{nullable}", managed_name
@@ -63,6 +64,7 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_validation_metadata_list*",
                        "openusd_validation_error_list*",
                        "openusd_resolved_asset_list*",
+                       "openusd_sdr_node_definition_list*",
                        "openusd_resolver_context*", "const openusd_resolver_context*",
                        "openusd_resolver_context* const",
                        "openusd_resolver_binding*", "openusd_resolver_binding* const",
@@ -76,6 +78,7 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_validation_metadata_list**",
                        "openusd_validation_error_list**",
                        "openusd_resolved_asset_list**",
+                       "openusd_sdr_node_definition_list**",
                        "openusd_resolver_context**",
                        "openusd_resolver_binding**",
                        "openusd_ocio_processor**"}:
@@ -100,6 +103,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref NativeValidationErrorView", managed_name
     if native_type == "openusd_resolved_asset_view*":
         return "ref NativeResolvedAssetView", managed_name
+    if native_type == "openusd_sdr_node_definition_view*":
+        return "ref NativeSdrNodeDefinitionView", managed_name
     if native_type == "const openusd_vec2f*":
         return ("OpenUsdNativeVec2f*" if native_name == "values"
                 else "ref OpenUsdNativeVec2f"), managed_name
@@ -232,6 +237,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     if native_type in enum_types:
         return "int", managed_name
     if native_type.removesuffix("*") in enum_types and native_type.endswith("*"):
+        return "out int", managed_name
+    # A plain "int*" is only ever an output flag in this ABI; the array-shaped int
+    # parameters are declared as int32_t* and are handled above by name.
+    if native_type == "int*":
         return "out int", managed_name
 
     raise ValueError(f"Unsupported parameter type: {native_type}")
@@ -388,6 +397,28 @@ public static unsafe partial class OpenUsdNativeRuntime
         internal OpenUsdNativeResolvedAssetRecord* Records;
         internal nuint RecordsSize;
         internal nuint RecordCount;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+    }}
+
+    // Internal rather than private (unlike its sibling native views) so
+    // OpenUsd.Interop.Tests can construct malformed instances directly at the decoder seam.
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeSdrNodeDefinitionView
+    {{
+        internal uint StructSize;
+        internal uint Version;
+        internal uint Flags;
+        internal uint Reserved;
+        internal OpenUsdNativeSdrNodeDefinitionRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint RecordCount;
+        internal OpenUsdNativeSdrPropertyRecord* Properties;
+        internal nuint PropertiesSize;
+        internal nuint PropertyCount;
         internal byte* Data;
         internal nuint DataSize;
         internal nuint* Offsets;

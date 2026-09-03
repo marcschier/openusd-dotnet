@@ -354,6 +354,13 @@ public readonly record struct RenderPickResult
     /// <summary>
     /// Creates a bound hit result with required selection identity and independently optional geometry.
     /// </summary>
+    /// <remarks>
+    /// An item whose element kind is
+    /// <see cref="SelectionElementKind.Unspecified"/> is normalized against the
+    /// request's target, so <see cref="Item"/> always names a concrete
+    /// component kind for a subprim hit. An item that states a kind which
+    /// disagrees with the target is refused.
+    /// </remarks>
     public static RenderPickResult Hit(
         in RenderPickRequest request,
         ulong stateRevision,
@@ -371,6 +378,32 @@ public readonly record struct RenderPickResult
         if (request.Target != RenderPickTarget.Primitive && item.ElementIndex is null)
         {
             throw new ArgumentException("Subprim pick targets require an element index.", nameof(item));
+        }
+
+        SelectionElementKind expectedKind = ExpectedElementKind(request.Target);
+
+        // A legacy producer builds identity through the four-parameter shape,
+        // which predates the kind and therefore states none. The request is the
+        // one place the answer is known -- an edge request can only have been
+        // answered with an edge -- so the unstated kind is resolved here and the
+        // normalized item is what the result publishes. Nothing downstream ever
+        // sees a bare index whose meaning it has to guess.
+        //
+        // A face request that answers with an edge index, or an edge request
+        // that answers with a point index, is a different thing entirely: the
+        // producer stated a kind and stated the wrong one. That is a silent
+        // identity corruption and still fails.
+        SelectionItem normalized = item;
+        if (item.ElementKind == SelectionElementKind.Unspecified &&
+            expectedKind != SelectionElementKind.None)
+        {
+            normalized = item.WithElementKind(expectedKind);
+        }
+        if (normalized.ElementKind != expectedKind)
+        {
+            throw new ArgumentException(
+                "The selection element kind must match the requested pick target.",
+                nameof(item));
         }
         if (worldPosition is { } position && !IsFinite(position))
         {
@@ -404,7 +437,7 @@ public readonly record struct RenderPickResult
             stateRevision,
             sceneRevision,
             RenderPickStaleReason.None,
-            item,
+            normalized,
             worldPosition,
             worldNormal,
             normalizedDepth,
@@ -523,6 +556,18 @@ public readonly record struct RenderPickResult
         float.IsFinite(value.X) &&
         float.IsFinite(value.Y) &&
         float.IsFinite(value.Z);
+
+    /// <summary>
+    /// Maps one pick target to the element kind a hit for it must carry.
+    /// </summary>
+    public static SelectionElementKind ExpectedElementKind(RenderPickTarget target) =>
+        target switch
+        {
+            RenderPickTarget.Face => SelectionElementKind.Face,
+            RenderPickTarget.Edge => SelectionElementKind.Edge,
+            RenderPickTarget.Point => SelectionElementKind.Point,
+            _ => SelectionElementKind.None
+        };
 
     private static bool IsKnownBackend(RenderBackendKind kind) =>
         kind is

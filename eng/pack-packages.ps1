@@ -63,6 +63,12 @@ $ErrorActionPreference = 'Stop'
 $published = @(
     'OpenUsd'
     'OpenUsd.Interop'
+    'OpenUsd.LiveAuthoring'
+    # The Omniverse bridge packages are optional and additive. They are published beside the
+    # authoring package rather than merged into it so a consumer that wants ordered stage
+    # authoring never acquires a protobuf or gRPC dependency it did not ask for.
+    'OpenUsd.Bridge.Protocol'
+    'OpenUsd.Bridge.Grpc'
     'OpenUsd.Rendering'
     'OpenUsd.Rendering.Silk'
     'OpenUsd.Rendering.Silk.D3D12'
@@ -72,6 +78,10 @@ $published = @(
     'OpenUsd.Cesium'
     'OpenUsd.Physics'
     'OpenUsd.Viewer'
+    # The Viewer bridge integration is optional in the same way: it is the only assembly that
+    # references both the Viewer and the gRPC client, so installing the Viewer alone never
+    # pulls a transport, and installing this one is an explicit decision.
+    'OpenUsd.Viewer.Bridge.Grpc'
     'OpenUsd.Mcp.Tool'
     'OpenUsd.Runtime.Core'
     'OpenUsd.Runtime.Core.win-x64'

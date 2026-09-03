@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.LiveAuthoring</AssemblyName>
+    <RootNamespace>OpenUsd.LiveAuthoring</RootNamespace>
+    <Description>Package-consumer live-authoring adapter for scheduler-owned OpenUSD stages: bounded admission, correlation-tracked batches, and structured health observability.</Description>
+    <PackageTags>openusd;usd;pixar;live-authoring;streaming;nativeaot</PackageTags>
+  </PropertyGroup>
+
+</Project>

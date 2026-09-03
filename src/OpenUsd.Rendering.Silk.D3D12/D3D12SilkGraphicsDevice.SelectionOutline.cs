@@ -23,7 +23,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 
     /// <inheritdoc/>
     public SilkSelectionOutlineCapabilities SelectionOutlineCapabilities =>
-        SilkSelectionOutlineCapabilities.VisibleOnly;
+        SilkSelectionOutlineCapabilities.Full;
 
     /// <inheritdoc/>
     public ISilkSelectionMaskGraphicsPipeline CreateSelectionMaskGraphicsPipeline(
@@ -395,13 +395,26 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 },
                 DepthStencilState = new DepthStencilDesc
                 {
-                    DepthEnable = true,
+                    // The x-ray mask rasterizes the whole selected silhouette,
+                    // including the part behind an occluder, so its pipeline
+                    // disables the depth test; the composite's own depth
+                    // comparison separates visible from occluded.
+                    DepthEnable = descriptor.DepthTestEnabled,
                     DepthWriteMask = DepthWriteMask.Zero,
-                    DepthFunc = ComparisonFunc.LessEqual,
+                    DepthFunc = descriptor.DepthTestEnabled
+                        ? ComparisonFunc.LessEqual
+                        : ComparisonFunc.Always,
                     StencilEnable = false
                 },
                 InputLayout = new InputLayoutDesc(elements, 2),
-                PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
+                PrimitiveTopologyType = descriptor.PrimitiveTopology switch
+                {
+                    SilkSelectionMaskPrimitiveTopology.LineList =>
+                        PrimitiveTopologyType.Line,
+                    SilkSelectionMaskPrimitiveTopology.PointList =>
+                        PrimitiveTopologyType.Point,
+                    _ => PrimitiveTopologyType.Triangle
+                },
                 NumRenderTargets = 1,
                 DSVFormat = Format.FormatD32Float,
                 SampleDesc = new SampleDesc(1, 0)

@@ -792,7 +792,13 @@ public sealed class SilkMaterialShaderCompilerService : ISilkMaterialShaderCompi
         string shard = key.CacheHash[..2];
         return Path.Combine(
             _options.CacheDirectory,
-            "v1",
+            // Bumped from v1 by the raster shadow slice, which added the shadow
+            // atlas and its sampler to every mesh binding layout. The cache key is
+            // the shader hash, so a layout change alone cannot invalidate an entry;
+            // a v1 entry deserialized into a v2 build would rebuild a pipeline whose
+            // layout is missing the slot every draw now binds, and the bind would
+            // fail at the first material draw. Any layout change bumps this.
+            "v2",
             key.Format.ToString(),
             shard,
             key.CacheHash + CacheExtension);

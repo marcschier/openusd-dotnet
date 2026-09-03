@@ -92,6 +92,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private ViewerDiagnosticsSnapshot _latestDiagnostics = ViewerDiagnosticsSnapshot.Empty;
     private ViewerSettings _settings = ViewerSettings.Default;
     private readonly ViewerSelectionState _selectionState = new();
+    private readonly Dictionary<string, TabItem> _inspectorTabsById;
+    private readonly Dictionary<TabItem, string> _inspectorTabIdsByTab;
+    private bool _cameraOrbitAvailable;
     private readonly object _timelineGate = new();
     private string? _stagePath;
     private double _currentTimeCode;
@@ -169,6 +172,11 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         _stormNavigationTimer.Tick += OnStormNavigationTick;
         InitializeComponent();
+        _inspectorTabsById = BuildInspectorTabsById();
+        _inspectorTabIdsByTab = _inspectorTabsById.ToDictionary(
+            static pair => pair.Value,
+            static pair => pair.Key);
+        ApplyCommandAccessibleNames();
         if (ViewerStartupOptions.HostTitle is { Length: > 0 } hostTitle)
         {
             Title = hostTitle;
@@ -206,7 +214,6 @@ public sealed partial class MainWindow : Window, IDisposable
             OpenStageMenuItem.Click += OnOpenStageClick;
             ReloadStageButton.Click += OnReloadStageClick;
             ReloadStageMenuItem.Click += OnReloadStageClick;
-            CaptureFrameButton.Click += OnCaptureFrameClick;
             CaptureFrameMenuItem.Click += OnCaptureFrameClick;
             HierarchyFilter.TextChanged += OnHierarchyFilterChanged;
             HierarchyTypeFilter.TextChanged += OnHierarchyFilterChanged;
@@ -226,13 +233,10 @@ public sealed partial class MainWindow : Window, IDisposable
             InspectorPanelMenuItem.Click += OnPanelVisibilityChanged;
             TimelineMenuItem.Click += OnPanelVisibilityChanged;
             DiagnosticsMenuItem.Click += OnPanelVisibilityChanged;
-            StagePanelCheckBox.Click += OnPanelVisibilityChanged;
-            InspectorPanelCheckBox.Click += OnPanelVisibilityChanged;
-            TimelineCheckBox.Click += OnPanelVisibilityChanged;
-            DiagnosticsCheckBox.Click += OnPanelVisibilityChanged;
+            HydraTabVisibleMenuItem.Click += OnPanelVisibilityChanged;
+            TfDebugTabVisibleMenuItem.Click += OnPanelVisibilityChanged;
             CopyDiagnosticsButton.Click += OnCopyDiagnosticsClick;
             ExportDiagnosticsButton.Click += OnExportDiagnosticsClick;
-            IncludeDiagnosticPathsCheckBox.Click += OnDiagnosticPathSettingChanged;
             RefreshValidationButton.Click += OnRefreshValidationClick;
             ValidationScopeSelector.SelectionChanged += OnValidationScopeChanged;
             RefreshHydraSceneButton.Click += OnRefreshHydraSceneClick;
@@ -248,20 +252,16 @@ public sealed partial class MainWindow : Window, IDisposable
             BackfaceCullingCheckBox.Click += OnViewportBackfaceCullingChanged;
             SceneMaterialsCheckBox.Click += OnViewportSceneMaterialsChanged;
             BackgroundColorSelector.SelectionChanged += OnViewportBackgroundChanged;
-            ResetCameraAutomaticButton.Click += OnResetCameraAutomaticClick;
             ResetCameraAutomaticMenuItem.Click += OnResetCameraAutomaticClick;
-            ResetCameraLegacyButton.Click += OnResetCameraLegacyClick;
             ResetCameraLegacyMenuItem.Click += OnResetCameraLegacyClick;
-            ToggleCameraProjectionButton.Click += OnToggleCameraProjectionClick;
             ToggleCameraProjectionMenuItem.Click += OnToggleCameraProjectionClick;
-            UseSelectedCameraButton.Click += OnUseSelectedCameraClick;
             UseSelectedCameraMenuItem.Click += OnUseSelectedCameraClick;
             FrameSelectedButton.Click += OnFrameSelectedClick;
             FrameSelectedMenuItem.Click += OnFrameSelectedClick;
-            CameraOrbitLeftButton.Click += OnCameraOrbitClick;
-            CameraOrbitRightButton.Click += OnCameraOrbitClick;
-            CameraOrbitUpButton.Click += OnCameraOrbitClick;
-            CameraOrbitDownButton.Click += OnCameraOrbitClick;
+            CameraOrbitLeftMenuItem.Click += OnCameraOrbitClick;
+            CameraOrbitRightMenuItem.Click += OnCameraOrbitClick;
+            CameraOrbitUpMenuItem.Click += OnCameraOrbitClick;
+            CameraOrbitDownMenuItem.Click += OnCameraOrbitClick;
             ShortcutsMenuItem.Click += OnShortcutsClick;
             KeyDown += OnWindowKeyDown;
 
@@ -284,6 +284,7 @@ public sealed partial class MainWindow : Window, IDisposable
             DragDrop.AddDragOverHandler(this, OnDragOver);
             DragDrop.AddDropHandler(this, OnDrop);
             InitializePhysicsUi();
+            WireMenuCommands();
             Opened += OnViewerOpened;
         }
         Closing += OnClosing;
@@ -345,7 +346,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ViewerSettingsLoadResult result =
                 await _settingsStore.LoadAsync(cancellationToken);
             ApplySettings(result.Settings);
-            SettingsState.Text = result.Status switch
+            string status = result.Status switch
             {
                 ViewerSettingsLoadStatus.Missing =>
                     "Using default settings. Settings are saved atomically when the Viewer closes.",
@@ -357,16 +358,15 @@ public sealed partial class MainWindow : Window, IDisposable
                     $"Malformed settings were ignored: {result.Diagnostic}",
                 _ => throw new InvalidOperationException("Unknown settings load status.")
             };
+            ViewerStartupOptions.WriteStatus(status);
         }
         catch (IOException exception)
         {
-            SettingsState.Text = $"Settings could not be read: {exception.Message}";
-            ShowError(SettingsState.Text);
+            ShowError($"Settings could not be read: {exception.Message}");
         }
         catch (UnauthorizedAccessException exception)
         {
-            SettingsState.Text = $"Settings could not be read: {exception.Message}";
-            ShowError(SettingsState.Text);
+            ShowError($"Settings could not be read: {exception.Message}");
         }
     }
 
@@ -376,19 +376,17 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             _settings = CaptureSettings();
             await _settingsStore.SaveAsync(_settings, CancellationToken.None);
-            SettingsState.Text = "Settings saved.";
+            ViewerStartupOptions.WriteStatus("Settings saved.");
         }
         catch (IOException exception)
         {
             string status = $"Settings could not be saved: {exception.Message}";
-            SettingsState.Text = status;
             ViewerStatus.Text = status;
             ViewerStartupOptions.WriteStatus(status);
         }
         catch (UnauthorizedAccessException exception)
         {
             string status = $"Settings could not be saved: {exception.Message}";
-            SettingsState.Text = status;
             ViewerStatus.Text = status;
             ViewerStartupOptions.WriteStatus(status);
         }
@@ -412,23 +410,36 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             StagePanelMenuItem.IsChecked = settings.StagePanelVisible;
-            StagePanelCheckBox.IsChecked = settings.StagePanelVisible;
             InspectorPanelMenuItem.IsChecked = settings.InspectorPanelVisible;
-            InspectorPanelCheckBox.IsChecked = settings.InspectorPanelVisible;
             TimelineMenuItem.IsChecked = settings.TimelineVisible;
-            TimelineCheckBox.IsChecked = settings.TimelineVisible;
             DiagnosticsMenuItem.IsChecked = settings.DiagnosticsVisible;
-            DiagnosticsCheckBox.IsChecked = settings.DiagnosticsVisible;
+            ToolsDiagnosticsTabVisibleMenuItem.IsChecked = settings.DiagnosticsVisible;
+            HydraTabVisibleMenuItem.IsChecked = settings.HydraVisible;
+            ToolsHydraTabVisibleMenuItem.IsChecked = settings.HydraVisible;
+            TfDebugTabVisibleMenuItem.IsChecked = settings.TfDebugVisible;
+            ToolsTfDebugTabVisibleMenuItem.IsChecked = settings.TfDebugVisible;
             SnapTimelineCheckBox.IsChecked = settings.SnapTimelineToFrames;
+            // The persisted pick target and selection mode are the user's
+            // request, not the current backend's capability. They are applied
+            // through the same setters the menu uses, so a profile that names a
+            // target the attached backend cannot answer is reported exactly as a
+            // click on that entry would be -- and is still remembered, so
+            // attaching a capable backend restores it instead of silently
+            // downgrading the profile.
+            PickTarget = ViewerPickTargetPolicy.DefaultTarget;
+            SelectionMode = ViewerPickTargetPolicy.DefaultSelectionMode;
+            SetPickTarget(ViewerPickTargetPolicy.FromToken(settings.PickTarget));
+            SetSelectionMode(
+                ViewerPickTargetPolicy.SelectionModeFromToken(settings.SelectionMode));
+            ApplyColorManagementSettings(settings.ColorManagement);
             ApplyPanelVisibility(
                 settings.StagePanelVisible,
                 settings.InspectorPanelVisible,
                 settings.TimelineVisible,
-                settings.DiagnosticsVisible);
-            InspectorTabs.SelectedIndex =
-                !settings.DiagnosticsVisible && settings.SelectedInspectorTab == 2
-                    ? 3
-                    : settings.SelectedInspectorTab;
+                settings.DiagnosticsVisible,
+                settings.HydraVisible,
+                settings.TfDebugVisible,
+                settings.SelectedTabId);
         }
         finally
         {
@@ -469,14 +480,30 @@ public sealed partial class MainWindow : Window, IDisposable
                 ViewerSettings.MaximumPanelWidth,
                 ViewerSettings.Default.InspectorPanelWidth),
             RendererPreference = GetSelectedRendererPreference(),
-            SelectedInspectorTab = Math.Clamp(InspectorTabs.SelectedIndex, 0, 9),
+            SelectedTabId = CurrentSelectedTabId(),
             StagePanelVisible = StagePanel.IsVisible,
             InspectorPanelVisible = InspectorPanel.IsVisible,
             TimelineVisible = TimelinePanel.IsVisible,
             DiagnosticsVisible = DiagnosticsTab.IsVisible,
-            SnapTimelineToFrames = SnapTimelineCheckBox.IsChecked == true
+            HydraVisible = HydraSceneTab.IsVisible,
+            TfDebugVisible = TfDebugTab.IsVisible,
+            SnapTimelineToFrames = SnapTimelineCheckBox.IsChecked == true,
+            PickTarget = ViewerPickTargetPolicy.ToToken(DesiredPickTarget),
+            SelectionMode = ViewerPickTargetPolicy.ToToken(DesiredSelectionMode),
+            ColorManagement = _colorManagement
         };
     }
+
+    /// <summary>
+    /// Returns the stable identity of the currently selected inspector tab, or the clean
+    /// default fallback if the current selection is somehow not one of the known tabs (for
+    /// example before the tab control has ever been assigned a selection).
+    /// </summary>
+    private string CurrentSelectedTabId() =>
+        InspectorTabs.SelectedItem is TabItem selectedTab &&
+        _inspectorTabIdsByTab.TryGetValue(selectedTab, out string? tabId)
+            ? tabId
+            : ViewerInspectorLayoutPolicy.CleanDefaultFallbackTabId;
 
     private static double ClampDimension(
         double value,
@@ -496,51 +523,65 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             MenuItem when ReferenceEquals(sender, StagePanelMenuItem) =>
                 StagePanelMenuItem.IsChecked,
-            CheckBox when ReferenceEquals(sender, StagePanelCheckBox) =>
-                StagePanelCheckBox.IsChecked == true,
             _ => StagePanel.IsVisible
         };
         bool inspectorVisible = sender switch
         {
             MenuItem when ReferenceEquals(sender, InspectorPanelMenuItem) =>
                 InspectorPanelMenuItem.IsChecked,
-            CheckBox when ReferenceEquals(sender, InspectorPanelCheckBox) =>
-                InspectorPanelCheckBox.IsChecked == true,
             _ => InspectorPanel.IsVisible
         };
         bool timelineVisible = sender switch
         {
             MenuItem when ReferenceEquals(sender, TimelineMenuItem) =>
                 TimelineMenuItem.IsChecked,
-            CheckBox when ReferenceEquals(sender, TimelineCheckBox) =>
-                TimelineCheckBox.IsChecked == true,
             _ => TimelinePanel.IsVisible
         };
         bool diagnosticsVisible = sender switch
         {
             MenuItem when ReferenceEquals(sender, DiagnosticsMenuItem) =>
                 DiagnosticsMenuItem.IsChecked,
-            CheckBox when ReferenceEquals(sender, DiagnosticsCheckBox) =>
-                DiagnosticsCheckBox.IsChecked == true,
+            MenuItem when ReferenceEquals(sender, ToolsDiagnosticsTabVisibleMenuItem) =>
+                ToolsDiagnosticsTabVisibleMenuItem.IsChecked,
             _ => DiagnosticsTab.IsVisible
+        };
+        bool hydraVisible = sender switch
+        {
+            MenuItem when ReferenceEquals(sender, HydraTabVisibleMenuItem) =>
+                HydraTabVisibleMenuItem.IsChecked,
+            MenuItem when ReferenceEquals(sender, ToolsHydraTabVisibleMenuItem) =>
+                ToolsHydraTabVisibleMenuItem.IsChecked,
+            _ => HydraSceneTab.IsVisible
+        };
+        bool tfDebugVisible = sender switch
+        {
+            MenuItem when ReferenceEquals(sender, TfDebugTabVisibleMenuItem) =>
+                TfDebugTabVisibleMenuItem.IsChecked,
+            MenuItem when ReferenceEquals(sender, ToolsTfDebugTabVisibleMenuItem) =>
+                ToolsTfDebugTabVisibleMenuItem.IsChecked,
+            _ => TfDebugTab.IsVisible
         };
 
         _applyingLayout = true;
         try
         {
             StagePanelMenuItem.IsChecked = stageVisible;
-            StagePanelCheckBox.IsChecked = stageVisible;
             InspectorPanelMenuItem.IsChecked = inspectorVisible;
-            InspectorPanelCheckBox.IsChecked = inspectorVisible;
             TimelineMenuItem.IsChecked = timelineVisible;
-            TimelineCheckBox.IsChecked = timelineVisible;
             DiagnosticsMenuItem.IsChecked = diagnosticsVisible;
-            DiagnosticsCheckBox.IsChecked = diagnosticsVisible;
+            ToolsDiagnosticsTabVisibleMenuItem.IsChecked = diagnosticsVisible;
+            HydraTabVisibleMenuItem.IsChecked = hydraVisible;
+            ToolsHydraTabVisibleMenuItem.IsChecked = hydraVisible;
+            TfDebugTabVisibleMenuItem.IsChecked = tfDebugVisible;
+            ToolsTfDebugTabVisibleMenuItem.IsChecked = tfDebugVisible;
             ApplyPanelVisibility(
                 stageVisible,
                 inspectorVisible,
                 timelineVisible,
-                diagnosticsVisible);
+                diagnosticsVisible,
+                hydraVisible,
+                tfDebugVisible,
+                selectedTabId: CurrentSelectedTabId());
         }
         finally
         {
@@ -556,7 +597,10 @@ public sealed partial class MainWindow : Window, IDisposable
         bool stageVisible,
         bool inspectorVisible,
         bool timelineVisible,
-        bool diagnosticsVisible)
+        bool diagnosticsVisible,
+        bool hydraVisible,
+        bool tfDebugVisible,
+        string? selectedTabId)
     {
         if (StagePanel.IsVisible && StagePanelGridColumn.Width.Value > 0)
         {
@@ -578,10 +622,41 @@ public sealed partial class MainWindow : Window, IDisposable
         InspectorSplitterGridColumn.Width = new GridLength(inspectorVisible ? 5 : 0);
         TimelinePanel.IsVisible = timelineVisible;
         DiagnosticsTab.IsVisible = diagnosticsVisible;
-        if (!diagnosticsVisible && ReferenceEquals(InspectorTabs.SelectedItem, DiagnosticsTab))
+        HydraSceneTab.IsVisible = hydraVisible;
+        TfDebugTab.IsVisible = tfDebugVisible;
+
+        // Developer-tab refresh commands must not be reachable while their tab is hidden: a
+        // reachable-but-invisible command would still let the operator trigger Hydra/TfDebug
+        // work with nothing on screen to show for it.
+        bool hydraRefreshEnabled = ViewerDeveloperTabGate.IsReachable(
+            hydraVisible, _coordinator is not null && !_documentBusy);
+        RefreshHydraSceneButton.IsEnabled = hydraRefreshEnabled;
+        ToolsRefreshHydraSceneMenuItem.IsEnabled = hydraRefreshEnabled;
+        bool tfDebugRefreshEnabled = ViewerDeveloperTabGate.IsReachable(
+            tfDebugVisible, otherwiseAvailable: true);
+        RefreshTfDebugButton.IsEnabled = tfDebugRefreshEnabled;
+        ToolsRefreshTfDebugMenuItem.IsEnabled = tfDebugRefreshEnabled;
+
+        var hiddenTabIds = new HashSet<string>(StringComparer.Ordinal);
+        if (!diagnosticsVisible)
         {
-            InspectorTabs.SelectedItem = SettingsTab;
+            hiddenTabIds.Add(ViewerInspectorLayoutPolicy.DiagnosticsTabId);
         }
+        if (!hydraVisible)
+        {
+            hiddenTabIds.Add(ViewerInspectorLayoutPolicy.HydraTabId);
+        }
+        if (!tfDebugVisible)
+        {
+            hiddenTabIds.Add(ViewerInspectorLayoutPolicy.TfDebugTabId);
+        }
+        IReadOnlyList<string> visibleTabIds =
+            ViewerInspectorLayoutPolicy.ComputeVisibleTabIds(hiddenTabIds);
+        string resolvedTabId = ViewerInspectorLayoutPolicy.ResolveSelectedTabId(
+            selectedTabId,
+            visibleTabIds,
+            ViewerInspectorLayoutPolicy.CleanDefaultFallbackTabId);
+        InspectorTabs.SelectedItem = _inspectorTabsById[resolvedTabId];
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
@@ -600,37 +675,6 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             e.Handled = true;
             OnReloadStageClick(ReloadStageButton, new RoutedEventArgs());
-            return;
-        }
-        if (control && e.Key is Key.D1 or Key.D2 or Key.D3 or Key.D4)
-        {
-            int index = e.Key switch
-            {
-                Key.D1 => 0,
-                Key.D2 => 1,
-                Key.D3 => 2,
-                Key.D4 => 3,
-                _ => 0
-            };
-            bool diagnosticsVisible = index == 2 || DiagnosticsTab.IsVisible;
-            ApplyPanelVisibility(
-                stageVisible: StagePanel.IsVisible,
-                inspectorVisible: true,
-                timelineVisible: TimelinePanel.IsVisible,
-                diagnosticsVisible: diagnosticsVisible);
-            InspectorPanelMenuItem.IsChecked = true;
-            InspectorPanelCheckBox.IsChecked = true;
-            if (index == 2)
-            {
-                DiagnosticsMenuItem.IsChecked = true;
-                DiagnosticsCheckBox.IsChecked = true;
-                if (_coordinator is { } coordinator)
-                {
-                    CaptureDiagnostics(coordinator, frameResult: null, force: true);
-                }
-            }
-            InspectorTabs.SelectedIndex = index;
-            e.Handled = true;
             return;
         }
         ViewerCameraShortcut cameraShortcut = ViewerCameraShortcutPolicy.Classify(
@@ -669,7 +713,7 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
         if (cameraShortcut == ViewerCameraShortcut.ResetAutomatic &&
-            ResetCameraAutomaticButton.IsEnabled)
+            ResetCameraAutomaticMenuItem.IsEnabled)
         {
             MarkAvaloniaCameraInput();
             ResetCameraToAutomatic();
@@ -677,7 +721,7 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
         if (cameraShortcut == ViewerCameraShortcut.ToggleProjection &&
-            ToggleCameraProjectionButton.IsEnabled)
+            ToggleCameraProjectionMenuItem.IsEnabled)
         {
             MarkAvaloniaCameraInput();
             ToggleCameraProjection();
@@ -700,7 +744,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ViewerCameraShortcut.OrbitDown => ViewerCameraOrbitCommand.Down,
             _ => null,
         };
-        if (orbitCommand is { } command && CameraOrbitLeftButton.IsEnabled)
+        if (orbitCommand is { } command && _cameraOrbitAvailable)
         {
             MarkAvaloniaCameraInput();
             OrbitCamera(command);
@@ -804,14 +848,10 @@ public sealed partial class MainWindow : Window, IDisposable
         _ = e;
         ViewerCameraOrbitCommand command = sender switch
         {
-            Button button when ReferenceEquals(button, CameraOrbitLeftButton) =>
-                ViewerCameraOrbitCommand.Left,
-            Button button when ReferenceEquals(button, CameraOrbitRightButton) =>
-                ViewerCameraOrbitCommand.Right,
-            Button button when ReferenceEquals(button, CameraOrbitUpButton) =>
-                ViewerCameraOrbitCommand.Up,
-            Button button when ReferenceEquals(button, CameraOrbitDownButton) =>
-                ViewerCameraOrbitCommand.Down,
+            MenuItem { Tag: "Left" } => ViewerCameraOrbitCommand.Left,
+            MenuItem { Tag: "Right" } => ViewerCameraOrbitCommand.Right,
+            MenuItem { Tag: "Up" } => ViewerCameraOrbitCommand.Up,
+            MenuItem { Tag: "Down" } => ViewerCameraOrbitCommand.Down,
             _ => throw new ArgumentOutOfRangeException(nameof(sender)),
         };
         OrbitCamera(command);
@@ -1265,7 +1305,11 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             RenderPickResult result = await ViewerHostInteraction.PickAndDispatchAsync(
                 pixel,
-                ViewerStartupOptions.HostPickTarget,
+                // A host that named a target at startup keeps it, whatever the
+                // Tools menu says; a host that opted into the follow-viewer mode,
+                // and a standalone Viewer with no embedding host at all, follow
+                // the operator's Tools > Pick Target choice.
+                ViewerStartupOptions.ResolveRequestedPickTarget(PickTarget),
                 coordinator.PickAsync,
                 ViewerStartupOptions.PrimPickedAsync,
                 cancellationToken);
@@ -1515,7 +1559,8 @@ public sealed partial class MainWindow : Window, IDisposable
             ? $"; instance={instanceIndex}; instancer={item.InstancerPath}"
             : string.Empty;
         string element = item.ElementIndex is { } elementIndex
-            ? $"; subprim={elementIndex}"
+            ? FormattableString.Invariant(
+                $"; {ViewerPickTargetPolicy.DescribeElementKind(item.ElementKind)}={elementIndex}")
             : string.Empty;
         return $"{item.PrimPath}{instance}{element}";
     }
@@ -1923,11 +1968,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private void UpdateCameraAvailability()
     {
         bool enabled = CanNavigateCamera();
-        ResetCameraAutomaticButton.IsEnabled = enabled;
         ResetCameraAutomaticMenuItem.IsEnabled = enabled;
-        ResetCameraLegacyButton.IsEnabled = enabled;
         ResetCameraLegacyMenuItem.IsEnabled = enabled;
-        ToggleCameraProjectionButton.IsEnabled = enabled;
         ToggleCameraProjectionMenuItem.IsEnabled = enabled;
         bool selectedCamera = enabled &&
             _stageCameraRefreshes is { IsAccepting: true } &&
@@ -1937,29 +1979,25 @@ public sealed partial class MainWindow : Window, IDisposable
                 inspector.Path,
                 _selectionState.PrimPath,
                 StringComparison.Ordinal);
-        UseSelectedCameraButton.IsEnabled = selectedCamera;
         UseSelectedCameraMenuItem.IsEnabled = selectedCamera;
         StageCamerasMenu.IsEnabled = enabled && _stageCameras.Length != 0;
         string selectedCameraTip = selectedCamera
             ? $"Use authored camera '{_selectionState.PrimPath}'."
             : GetUseSelectedCameraUnavailableMessage();
-        ToolTip.SetTip(UseSelectedCameraButton, selectedCameraTip);
         ToolTip.SetTip(UseSelectedCameraMenuItem, selectedCameraTip);
         string selectedCameraAutomationName = selectedCamera
             ? "Use selected UsdGeomCamera"
             : $"Use selected UsdGeomCamera unavailable: {selectedCameraTip}";
         AutomationProperties.SetName(
-            UseSelectedCameraButton,
-            selectedCameraAutomationName);
-        AutomationProperties.SetName(
             UseSelectedCameraMenuItem,
             selectedCameraAutomationName);
         FrameSelectedButton.IsEnabled = enabled;
         FrameSelectedMenuItem.IsEnabled = enabled;
-        CameraOrbitLeftButton.IsEnabled = enabled;
-        CameraOrbitRightButton.IsEnabled = enabled;
-        CameraOrbitUpButton.IsEnabled = enabled;
-        CameraOrbitDownButton.IsEnabled = enabled;
+        CameraOrbitLeftMenuItem.IsEnabled = enabled;
+        CameraOrbitRightMenuItem.IsEnabled = enabled;
+        CameraOrbitUpMenuItem.IsEnabled = enabled;
+        CameraOrbitDownMenuItem.IsEnabled = enabled;
+        _cameraOrbitAvailable = enabled;
     }
 
     private void UpdateCameraStatus()
@@ -2188,6 +2226,10 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
+        // Reflected immediately regardless of whether the async switch below succeeds: the
+        // radio state mirrors the selected preference, not the outcome of applying it.
+        SyncRenderMenuFromState();
+
         try
         {
             await _documentGate.WaitAsync(_viewerLifetime.Token);
@@ -2343,6 +2385,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     result,
                     force: result.DidFailOver || !result.IsSuccess);
                 if (result.Frame is { Status: RenderFrameStatus.Rendered } &&
+                    HydraSceneTab.IsVisible &&
                     coordinator.HydraSceneSnapshot is { } hydraScene)
                 {
                     _hydraScene = hydraScene;
@@ -2454,9 +2497,6 @@ public sealed partial class MainWindow : Window, IDisposable
         ExportDiagnosticsButton.IsEnabled = hasSample;
         ShowStageSummary();
     }
-
-    private void OnDiagnosticPathSettingChanged(object? sender, RoutedEventArgs e) =>
-        RenderDiagnostics();
 
     private async void OnRefreshValidationClick(object? sender, RoutedEventArgs e)
     {
@@ -2711,6 +2751,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RenderHydraScene(bool force = false)
     {
+        if (!ViewerDeveloperTabGate.IsReachable(HydraSceneTab.IsVisible, otherwiseAvailable: true))
+        {
+            // A hidden developer tab does no background work: nothing here would be visible,
+            // and a forced refresh must not surface an error dialog for a tab the operator
+            // cannot currently see.
+            return;
+        }
         if (_coordinator?.HydraSceneSnapshot is { } snapshot)
         {
             _hydraScene = snapshot;
@@ -2719,7 +2766,10 @@ public sealed partial class MainWindow : Window, IDisposable
         HydraSceneState.Text = _hydraScene.Timestamp == DateTimeOffset.MinValue
             ? "No hdSilk Hydra command snapshot has been captured yet."
             : $"Hydra scene captured at {_hydraScene.Timestamp:O}.";
-        RefreshHydraSceneButton.IsEnabled = _coordinator is not null && !_documentBusy;
+        bool refreshEnabled = ViewerDeveloperTabGate.IsReachable(
+            HydraSceneTab.IsVisible, _coordinator is not null && !_documentBusy);
+        RefreshHydraSceneButton.IsEnabled = refreshEnabled;
+        ToolsRefreshHydraSceneMenuItem.IsEnabled = refreshEnabled;
         if (force && _hydraScene.Timestamp == DateTimeOffset.MinValue)
         {
             ShowError("Hydra scene browser is waiting for an hdSilk frame.");
@@ -2730,6 +2780,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void LoadTfDebugFlags()
     {
+        if (!ViewerDeveloperTabGate.IsReachable(TfDebugTab.IsVisible, otherwiseAvailable: true))
+        {
+            // A hidden developer tab does no background work: enumerating and formatting every
+            // TfDebug symbol has nothing to be shown for while nobody can see the tab.
+            return;
+        }
         TfDebugRows.Children.Clear();
         try
         {
@@ -2894,35 +2950,57 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async Task ApplyViewportStateAsync(
         Func<StageRenderState, StageRenderState> mutate,
+        string status) =>
+        _ = await TryApplyViewportStateAsync(mutate, status);
+
+    /// <summary>
+    /// Applies a viewport mutation, reporting whether the coordinator actually accepted
+    /// it and what it published.
+    /// </summary>
+    /// <remarks>
+    /// A caller that commits its own view of the world -- a menu item, a persisted
+    /// setting, a cached key -- has to know the difference between "the state now says
+    /// this" and "there was nothing to say it to", and it has to commit what the
+    /// coordinator published rather than what was requested. Returning
+    /// <see langword="false"/> for a missing coordinator, a document change in flight, a
+    /// cancelled lifetime, or a backend that threw is what lets such a caller defer
+    /// instead of committing a change that never happened.
+    /// </remarks>
+    private async Task<ViewerStateMutationResult> TryApplyViewportStateAsync(
+        Func<StageRenderState, StageRenderState> mutate,
         string status)
     {
         ArgumentNullException.ThrowIfNull(mutate);
         ViewerRenderCoordinator? coordinator = _coordinator;
         if (coordinator is null || _documentBusy)
         {
-            ApplyViewportDisplayState(coordinator?.CurrentState ?? StageRenderState.Default);
-            return;
+            StageRenderState current = coordinator?.CurrentState ?? StageRenderState.Default;
+            ApplyViewportDisplayState(current);
+            return new ViewerStateMutationResult(false, false, current);
         }
 
         CancellationToken cancellationToken = _documentLifetime?.Token ?? _viewerLifetime.Token;
         try
         {
-            bool changed = await coordinator.MutateStateAsync(
+            ViewerStateMutationResult result = await coordinator.TryMutateStateAsync(
                 state => mutate(state),
                 cancellationToken);
             ApplyViewportDisplayState(coordinator.CurrentState);
-            if (changed)
+            if (result.Changed)
             {
                 ViewerStatus.Text = status;
             }
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            return new ViewerStateMutationResult(false, false, coordinator.CurrentState);
         }
         catch (Exception exception)
         {
             ShowError($"Could not update viewport display: {exception.Message}");
             ApplyViewportDisplayState(coordinator.CurrentState);
+            return new ViewerStateMutationResult(false, false, coordinator.CurrentState);
         }
     }
 
@@ -2963,9 +3041,12 @@ public sealed partial class MainWindow : Window, IDisposable
         BackfaceCullingCheckBox.IsEnabled = enabled;
         SceneMaterialsCheckBox.IsEnabled = enabled;
         BackgroundColorSelector.IsEnabled = enabled;
-        CaptureFrameButton.IsEnabled = enabled;
         CaptureFrameMenuItem.IsEnabled = enabled;
-        RefreshHydraSceneButton.IsEnabled = _coordinator is not null && !_documentBusy;
+        bool hydraRefreshEnabled = ViewerDeveloperTabGate.IsReachable(
+            HydraSceneTab.IsVisible, _coordinator is not null && !_documentBusy);
+        RefreshHydraSceneButton.IsEnabled = hydraRefreshEnabled;
+        ToolsRefreshHydraSceneMenuItem.IsEnabled = hydraRefreshEnabled;
+        SyncRenderMenuFromState();
     }
 
     private static RenderPurpose? GetPurposeForCheckBox(CheckBox checkBox) =>
@@ -3567,6 +3648,11 @@ public sealed partial class MainWindow : Window, IDisposable
                 dispatcherProbe = StartStageOpenDispatcherProbe();
                 ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator starting");
                 PostStageOpenDispatcherProbe("before render coordinator await");
+
+                // Awaited before the coordinator exists, so a restored colour-managed
+                // transform is validated -- not merely resolved -- before it can enter
+                // the first state a backend is initialized with.
+                RenderSettings openingSettings = await BuildInitialRenderSettingsAsync();
                 Task<ViewerRenderCoordinator> coordinatorTask =
                     ViewerRenderCoordinator.OpenAsync(
                     normalizedPath,
@@ -3581,6 +3667,7 @@ public sealed partial class MainWindow : Window, IDisposable
                         return backendHost;
                     },
                     GetSelectedBackend(),
+                    openingSettings,
                     documentLifetime.Token).AsTask();
                 ViewerStartupOptions.WriteStatus(
                     "Viewer stage open: render coordinator task created " +
@@ -3638,6 +3725,13 @@ public sealed partial class MainWindow : Window, IDisposable
                 RenderLayers();
                 RenderValidation();
                 SetActiveBackendStatus();
+                // Only now, with a coordinator that really opened, does the opening
+                // colour-management choice become the committed one -- and only if no
+                // newer request, a Reset Layout clear above all, took a generation while
+                // the coordinator was being created.
+                await ConfirmColorManagementOpenAsync(
+                    _coordinator,
+                    _documentLifetime.Token);
                 AttachPhysics(_coordinator);
                 CaptureDiagnostics(
                     _coordinator,
@@ -3673,6 +3767,9 @@ public sealed partial class MainWindow : Window, IDisposable
                         _documentLifetime.Token);
                 }
                 SetReady($"Opened {normalizedPath}");
+                // The window is no longer busy, so a colour-management request that
+                // outlived the open can finally reach the coordinator.
+                await DrainColorManagementRequestsAsync();
                 await ApplyStartupCameraAndNotifyStageReadyAsync(
                     _coordinator,
                     normalizedPath,
@@ -6125,7 +6222,6 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = !_documentBusy;
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
-        CaptureFrameButton.IsEnabled = false;
         CaptureFrameMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         RenderStageCameraMenu();
@@ -8169,6 +8265,10 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         _shutdownStarted = true;
         e.Cancel = true;
+        // First, before any awaited shutdown step: the colour-management poll loop is
+        // cancelled and drained, so no tick can run against the coordinator, settings
+        // store, or lifetime token that the rest of this method disposes.
+        await StopColorManagementPollingAsync();
         try
         {
             if (!IsAutomatedViewerRun())
@@ -8258,6 +8358,12 @@ public sealed partial class MainWindow : Window, IDisposable
         RendererStatus.Text = $"Renderer: {backend}";
         UpdateCameraStatus();
         RefreshStormNavigationPolling();
+
+        // Backend activation is the only moment at which a previously refused
+        // pick target or x-ray mode can become answerable, so the desired
+        // policy is re-applied here rather than being lost to whichever backend
+        // happened to be attached when the profile loaded.
+        ReconcilePickPolicyWithBackend();
         ViewerStartupOptions.WriteStatus($"Active renderer: {backend}");
     }
 
@@ -8265,6 +8371,11 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
+            // First, before anything else can be torn down: a dispatcher timer that is
+            // still armed keeps this window reachable from the dispatcher and can fire a
+            // tick against half-disposed state. Stopping, unsubscribing, and dropping it
+            // is what makes disposal actually release the window.
+            StopColorManagementPolling();
             StopStormNavigationPolling();
             _stormNavigationTimer.Tick -= OnStormNavigationTick;
             _hostShutdown.Dispose();
@@ -8274,6 +8385,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _documentGate.Dispose();
             _settingsStore.Dispose();
             _physicsBakeLifetime.Dispose();
+            DisposeBridgeConnection();
         }
     }
 

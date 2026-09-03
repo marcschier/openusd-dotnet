@@ -39,6 +39,7 @@ BASE_METAL_LIBRARY_ENTRIES = (
     ),
     ("compute.fill", "fillMain", "compute"),
     ("compute.scale", "scaleMain", "compute"),
+    ("deform.compute", "deformMain", "compute"),
 )
 METAL_LIBRARY_ENTRIES = BASE_METAL_LIBRARY_ENTRIES
 ARTIFACT_SCOPES = ("full", "spirv", "metal")
@@ -636,6 +637,26 @@ def generate_plan(
             if artifact_scope == "spirv"
             else ["-reflection-json", raw_spirv]
         )
+        # Slang defines no reliable per-target macro, so the target a program is
+        # being compiled for is stated explicitly. A stage that must differ per
+        # target -- the subprim pick vertex writes a point size that Vulkan and
+        # Metal require and DXIL rejects -- branches on exactly one of these
+        # rather than on an undocumented compiler internal.
+        dxil_target_defines = [
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+        ]
+        spirv_target_defines = [
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+        ]
+        metal_target_defines = [
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+        ]
         programs.append(
             {
                 "name": program["name"],
@@ -648,6 +669,7 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
+                            *dxil_target_defines,
                             "-target",
                             "dxil",
                             "-profile",
@@ -662,6 +684,7 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
+                            *spirv_target_defines,
                             "-target",
                             "spirv",
                             "-profile",
@@ -678,6 +701,7 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
+                            *metal_target_defines,
                             "-target",
                             "metal",
                             "-profile",

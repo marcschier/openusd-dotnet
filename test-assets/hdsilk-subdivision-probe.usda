@@ -1,0 +1,317 @@
+#usda 1.0
+(
+    doc = """Analytic control cages for the hdSilk subdivision probe.
+
+    Every prim here exists to make one refinement claim checkable by exact
+    arithmetic rather than by eyeball: the cube's Catmull-Clark limit points are
+    closed-form, the creased and cornered cubes must reproduce control points
+    exactly, the flat quad refines to an exact 3x3 grid so its UVs and vertex
+    primvars must equal the identity map of its own refined positions, and the
+    hole, uniform, bilinear, loop and unrefinable prims each isolate one rule.
+    """
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 2
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    # The reference cage: 8 control points, 6 quads, no tags. Level 1 must
+    # produce 26 vertices and 24 quads, with face points at the face centroids,
+    # edge points at (0, 0.75, 0.75) and friends, and vertex points at
+    # (+-5/9, +-5/9, +-5/9). The two constant-valued primvars ride along because
+    # subdivision weights form a partition of unity: refining a constant must
+    # return the same constant at every refined vertex, which catches an
+    # unnormalized weight that a shape comparison would not.
+    def Mesh "SubdivCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [
+            (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+            (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+        ]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        color3f[] primvars:displayColor = [(0.6, 0.6, 0.7)] (
+            interpolation = "constant"
+        )
+        float[] primvars:probeUnit = [1, 1, 1, 1, 1, 1, 1, 1] (
+            interpolation = "vertex"
+        )
+        float[] primvars:probeVarying = [2, 2, 2, 2, 2, 2, 2, 2] (
+            interpolation = "varying"
+        )
+    }
+
+    # Every edge creased past the refinement level, so Catmull-Clark degenerates
+    # to the control cage: refined vertices must land exactly on the authored
+    # corners and edge midpoints.
+    def Mesh "SubdivCreasedCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [
+            (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+            (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+        ]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        int[] creaseIndices = [
+            0, 1, 1, 2, 2, 3, 3, 0,
+            4, 5, 5, 6, 6, 7, 7, 4,
+            0, 4, 1, 5, 2, 6, 3, 7
+        ]
+        int[] creaseLengths = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+        float[] creaseSharpnesses = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+        color3f[] primvars:displayColor = [(0.8, 0.4, 0.2)] (
+            interpolation = "constant"
+        )
+    }
+
+    # One sharp corner. Vertex 6 must survive refinement at its authored
+    # position while vertex 0, which carries no tag, must move to the smooth
+    # Catmull-Clark limit point.
+    def Mesh "SubdivCorneredCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [
+            (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+            (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+        ]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        int[] cornerIndices = [6]
+        float[] cornerSharpnesses = [10]
+        color3f[] primvars:displayColor = [(0.2, 0.7, 0.4)] (
+            interpolation = "constant"
+        )
+    }
+
+    # A hole tag must propagate to every child face, so the front quad
+    # contributes no refined triangles and never appears as a subprim index.
+    def Mesh "SubdivHoleCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [
+            (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+            (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+        ]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        int[] holeIndices = [0]
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.9)] (
+            interpolation = "constant"
+        )
+    }
+
+    # A uniform primvar is keyed by authored face, so every emitted triangle
+    # must carry the value of the coarse face its subprim index names.
+    def Mesh "SubdivUniformCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [
+            (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+            (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+        ]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        float[] primvars:probeFace = [0, 1, 2, 3, 4, 5] (
+            interpolation = "uniform"
+        )
+        color3f[] primvars:displayColor = [(0.9, 0.8, 0.3)] (
+            interpolation = "constant"
+        )
+    }
+
+    # A single flat quad with sharp boundaries refines to an exact 3x3 grid, so
+    # its face-varying UVs and its vertex primvar are both the identity map of
+    # the refined positions: uv == (x + 1) / 2, (y + 1) / 2 and probeX == x.
+    # A face-varying primvar that was triangulated from the control cage instead
+    # of refined through its own OpenSubdiv channel fails this exactly.
+    def Mesh "SubdivUvQuad"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        float[] primvars:probeX = [-1, 1, 1, -1] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.3, 0.3, 0.3)] (
+            interpolation = "constant"
+        )
+    }
+
+    # The same flat quad carrying authored face-varying normals whose corners
+    # disagree. Refinement averages them, so the refined values are strictly
+    # shorter than unit -- (0, 0, 0.5) at the face point and (+-0.5, 0, 0.5) at
+    # the edge points -- and only renormalizing brings them back. The refined
+    # positions are the exact 3x3 grid, so each refined normal can be checked
+    # against the position that carries it.
+    def Mesh "SubdivFaceVaryingNormalQuad"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (1, 0, 0), (0, 0, 1), (-1, 0, 0)] (
+            interpolation = "faceVarying"
+        )
+        color3f[] primvars:displayColor = [(0.45, 0.35, 0.15)] (
+            interpolation = "constant"
+        )
+    }
+
+    # A face-varying primvar whose index array does not address every corner has
+    # no OpenSubdiv channel, so refining would publish a surface that silently
+    # lost its authored UVs. hdSilk must refuse the whole mesh and publish the
+    # control cage instead, with a diagnostic. A second malformed primvar rides
+    # along so the refusal is provably one per mesh rather than one per channel.
+    def Mesh "SubdivUnsupportedFaceVaryingQuad"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points = [(-4, -1, 0), (-2, -1, 0), (-2, 1, 0), (-4, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:st:indices = [0, 1, 2]
+        float[] primvars:probeCorner = [0, 1, 2, 3, 4] (
+            interpolation = "faceVarying"
+        )
+        color3f[] primvars:displayColor = [(0.15, 0.45, 0.35)] (
+            interpolation = "constant"
+        )
+    }
+
+    # Bilinear subdivision splits without smoothing, so every authored control
+    # point must survive refinement while the counts match Catmull-Clark.
+    def Mesh "SubdivBilinearCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "bilinear"
+        point3f[] points = [
+            (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+            (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+        ]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        color3f[] primvars:displayColor = [(0.4, 0.6, 0.6)] (
+            interpolation = "constant"
+        )
+    }
+
+    # Loop refines an all-triangle cage: 4 faces and 6 edges become 16 faces and
+    # 10 vertices, which is a different recurrence from the quad schemes.
+    def Mesh "SubdivLoopTetrahedron"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "loop"
+        point3f[] points = [(1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1)]
+        int[] faceVertexCounts = [3, 3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2]
+        color3f[] primvars:displayColor = [(0.7, 0.2, 0.6)] (
+            interpolation = "constant"
+        )
+    }
+
+    # subdivisionScheme "none" is a polygon mesh by definition, so no complexity
+    # may refine it.
+    def Mesh "SubdivNoneQuad"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(2, -1, 0), (4, -1, 0), (4, 1, 0), (2, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        color3f[] primvars:displayColor = [(0.1, 0.1, 0.1)] (
+            interpolation = "constant"
+        )
+    }
+
+    # Animated control points over static topology. Scrubbing must move the
+    # refined positions without rebuilding the refiner.
+    def Mesh "SubdivAnimatedCube"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "catmullClark"
+        point3f[] points.timeSamples = {
+            1: [
+                (-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1),
+                (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)
+            ],
+            2: [
+                (-2, -1, -1), (2, -1, -1), (2, -1, 1), (-2, -1, 1),
+                (-2, 1, -1), (2, 1, -1), (2, 1, 1), (-2, 1, 1)
+            ],
+        }
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [
+            3, 2, 6, 7,
+            1, 0, 4, 5,
+            0, 3, 7, 4,
+            2, 1, 5, 6,
+            7, 6, 5, 4,
+            0, 1, 2, 3
+        ]
+        color3f[] primvars:displayColor = [(0.25, 0.55, 0.85)] (
+            interpolation = "constant"
+        )
+    }
+}

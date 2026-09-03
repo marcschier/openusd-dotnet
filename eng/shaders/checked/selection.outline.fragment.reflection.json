@@ -198,11 +198,28 @@
                 "elementStride": 0,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "occludedOutlineColor",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 32,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
         "elementStride": 0,
-        "size": 32
+        "size": 48
       },
       "vulkanLayout": {
         "kind": "constantBuffer",
@@ -271,11 +288,28 @@
                 "elementStride": 0,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "occludedOutlineColor",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 32,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
         "elementStride": 0,
-        "size": 32
+        "size": 48
       }
     }
   ],

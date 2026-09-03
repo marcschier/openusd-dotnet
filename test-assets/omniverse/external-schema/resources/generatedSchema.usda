@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    "WARNING: This is a synthetic, repository-authored, MIT-licensed external codeless schema fixture used only by omniverse-interchange plugin-registration tests. It does not model NVIDIA SimReady, PhysxSchema, or any other real vendor schema, and is never vendored into a shipped package."
+)
+
+class OmniverseExternalFixtureWidget "OmniverseExternalFixtureWidget"
+{
+    uniform token omniverseExternalFixture:widget:label = "" (
+        displayName = "Label"
+    )
+    double omniverseExternalFixture:widget:weight = 0 (
+        displayName = "Weight"
+    )
+}
+
+class "OmniverseExternalFixtureTagAPI"
+{
+    uniform token omniverseExternalFixture:tag:category = "" (
+        displayName = "Category"
+    )
+}

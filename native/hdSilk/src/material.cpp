@@ -3,6 +3,7 @@
 #include "material.h"
 
 #include "materialXBridge.h"
+#include "mdlAdapter.h"
 #include "openusd_hdsilk.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
@@ -17,14 +18,32 @@
 #include "pxr/usd/sdf/assetPath.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+namespace {
+
+// Counts ND_surface_unlit generation failures. The surface kind no longer
+// records one -- a failure keeps OPENUSD_SILK_SURFACE_MATERIALX_GENERATED with an
+// empty payload, because the material is unlit whether or not a fragment was
+// produced -- so the failure needs somewhere of its own to be observed from. It
+// is read by the native probe, which is the only place that can drive a real
+// generation failure through the real code path.
+std::atomic<uint64_t> _generatedSurfaceFailureCount{0};
+
+// Forces the next generation to fail, so a probe can drive the real failure path
+// in a build whose MaterialX generation works.
+std::atomic<bool> _forceGeneratedSurfaceFailure{false};
+
+}  // namespace
 
 // clang-format off
 // The double-parenthesis tuple form is required: with a bare (name) element the
@@ -35,6 +54,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((UsdPreviewSurface, "UsdPreviewSurface"))
     ((UsdUVTexture, "UsdUVTexture"))
     ((MtlxStandardSurface, "ND_standard_surface_surfaceshader"))
+    ((MtlxOpenPbrSurface, "ND_open_pbr_surface_surfaceshader"))
     ((MtlxSurfaceUnlit, "ND_surface_unlit"))
     ((MtlxNormalMap, "ND_normalmap"))
     ((MtlxPlace2d, "ND_place2d_vector2"))
@@ -44,15 +64,57 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((UsdPrimvarReaderFloat2, "UsdPrimvarReader_float2"))
     ((diffuseColor, "diffuseColor"))
     ((base_color, "base_color"))
+    ((base, "base"))
+    ((base_weight, "base_weight"))
+    ((base_metalness, "base_metalness"))
+    ((base_diffuse_roughness, "base_diffuse_roughness"))
+    ((diffuse_roughness, "diffuse_roughness"))
     ((emissiveColor, "emissiveColor"))
     ((emission_color, "emission_color"))
+    ((emission, "emission"))
+    ((emission_luminance, "emission_luminance"))
     ((specularColor, "specularColor"))
+    ((specular, "specular"))
+    ((specular_weight, "specular_weight"))
+    ((specular_color, "specular_color"))
+    ((specular_IOR, "specular_IOR"))
+    ((specular_ior, "specular_ior"))
+    ((specular_anisotropy, "specular_anisotropy"))
+    ((specular_rotation, "specular_rotation"))
+    ((specular_roughness_anisotropy, "specular_roughness_anisotropy"))
+    ((transmission, "transmission"))
+    ((transmission_weight, "transmission_weight"))
+    ((subsurface, "subsurface"))
+    ((subsurface_weight, "subsurface_weight"))
+    ((sheen, "sheen"))
+    ((fuzz_weight, "fuzz_weight"))
     ((metallic, "metallic"))
     ((metalness, "metalness"))
     ((roughness, "roughness"))
     ((specular_roughness, "specular_roughness"))
     ((clearcoat, "clearcoat"))
     ((clearcoatRoughness, "clearcoatRoughness"))
+    ((coat, "coat"))
+    ((coat_weight, "coat_weight"))
+    ((coat_roughness, "coat_roughness"))
+    ((coat_color, "coat_color"))
+    ((coat_IOR, "coat_IOR"))
+    ((coat_ior, "coat_ior"))
+    ((coat_normal, "coat_normal"))
+    ((coat_anisotropy, "coat_anisotropy"))
+    ((coat_roughness_anisotropy, "coat_roughness_anisotropy"))
+    ((coat_darkening, "coat_darkening"))
+    ((coat_affect_color, "coat_affect_color"))
+    ((coat_affect_roughness, "coat_affect_roughness"))
+    ((thin_film_thickness, "thin_film_thickness"))
+    ((thin_film_weight, "thin_film_weight"))
+    ((thin_walled, "thin_walled"))
+    ((tangent, "tangent"))
+    ((geometry_opacity, "geometry_opacity"))
+    ((geometry_normal, "geometry_normal"))
+    ((geometry_thin_walled, "geometry_thin_walled"))
+    ((geometry_coat_normal, "geometry_coat_normal"))
+    ((geometry_tangent, "geometry_tangent"))
     ((opacity, "opacity"))
     ((opacityThreshold, "opacityThreshold"))
     ((ior, "ior"))
@@ -93,6 +155,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((clamp, "clamp"))
     ((repeat, "repeat"))
     ((mirror, "mirror"))
+    ((useMetadata, "useMetadata"))
     ((constant, "constant"))
     ((periodic, "periodic"))
     ((raw, "raw"))
@@ -134,24 +197,237 @@ _PreviewSurfaceInputs()
         {_tokens->opacityThreshold, OPENUSD_SILK_MATERIAL_OPACITY_THRESHOLD, 1},
         {_tokens->ior, OPENUSD_SILK_MATERIAL_IOR, 1},
         {_tokens->normal, OPENUSD_SILK_MATERIAL_NORMAL, 3},
-        {_tokens->displacement, OPENUSD_SILK_MATERIAL_DISPLACEMENT, 1},
         {_tokens->occlusion, OPENUSD_SILK_MATERIAL_OCCLUSION, 1},
         {_tokens->useSpecularWorkflow,
             OPENUSD_SILK_MATERIAL_USE_SPECULAR_WORKFLOW, 1}};
     return inputs;
 }
 
-const std::vector<_InputBinding>&
+/// The binding of the displacement input.
+///
+/// Deliberately *not* a member of `_PreviewSurfaceInputs()`. Displacement is a
+/// separate material terminal in USD: the material's `outputs:displacement` is
+/// connected to a shader's `outputs:displacement`, and Hydra publishes that as
+/// its own entry in the network map. Reading `inputs:displacement` off whatever
+/// node happens to terminate the *surface* network would displace a material
+/// whose author never connected a displacement output at all, and would read a
+/// stale authored value Hydra leaves behind a connection. See
+/// `_ResolveDisplacementTerminal`.
+const _InputBinding&
+_DisplacementInput()
+{
+    static const _InputBinding binding{
+        _tokens->displacement, OPENUSD_SILK_MATERIAL_DISPLACEMENT, 1};
+    return binding;
+}
+
+/// One MaterialX surface-shader input projected onto a wire parameter.
+///
+/// `weight` names the nodedef input that scales this one -- MaterialX states
+/// the scaling as a multiply inside the shader's own implementation graph, so
+/// applying it here is a transport of the nodedef, not an interpretation. Both
+/// `standard_surface` and `open_pbr_surface` default their emission weight to
+/// zero, which is why an emission colour cannot be projected on its own: the
+/// authored colour of a material that emits nothing would otherwise light up.
+///
+/// `monochromeColor` marks an input the nodedef types as `color3` while the
+/// wire carries a single float. The projection accepts it only from a constant
+/// whose three channels agree, because no per-texel scale can turn a
+/// three-channel image into the one channel the renderer binds.
+struct _ProjectedInput
+{
+    _InputBinding binding;
+    const TfToken* weight;
+    float weightDefault;
+    bool monochromeColor;
+};
+
+/// One MaterialX input this projection deliberately does not carry, with the
+/// nodedef default that says whether the author asked for it. Reporting is
+/// limited to inputs the author moved off that default, or connected, so a
+/// material that leaves a lobe alone stays silent.
+///
+/// `componentCount` of zero marks an input whose nodedef default is a geometric
+/// stream rather than a value, so only a connection is reportable.
+struct _UnsupportedInput
+{
+    const TfToken& name;
+    uint32_t componentCount;
+    float defaultValue[4];
+    const char* reason;
+};
+
+/// The complete projection of one MaterialX surface shader.
+struct _SurfaceProjection
+{
+    const TfToken& identifier;
+    const std::vector<_ProjectedInput>& inputs;
+    const std::vector<_UnsupportedInput>& unsupported;
+};
+
+const std::vector<_ProjectedInput>&
 _MaterialXStandardSurfaceInputs()
 {
-    static const std::vector<_InputBinding> inputs = {
-        {_tokens->base_color, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, 3},
-        {_tokens->emission_color, OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR, 3},
-        {_tokens->metalness, OPENUSD_SILK_MATERIAL_METALLIC, 1},
-        {_tokens->specular_roughness, OPENUSD_SILK_MATERIAL_ROUGHNESS, 1},
-        {_tokens->roughness, OPENUSD_SILK_MATERIAL_ROUGHNESS, 1},
-        {_tokens->normal, OPENUSD_SILK_MATERIAL_NORMAL, 3}};
+    static const std::vector<_ProjectedInput> inputs = {
+        {{_tokens->base_color, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, 3},
+            &_tokens->base, 1.0f, false},
+        {{_tokens->emission_color, OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR, 3},
+            &_tokens->emission, 0.0f, false},
+        {{_tokens->metalness, OPENUSD_SILK_MATERIAL_METALLIC, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->specular_roughness, OPENUSD_SILK_MATERIAL_ROUGHNESS, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->roughness, OPENUSD_SILK_MATERIAL_ROUGHNESS, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->specular_IOR, OPENUSD_SILK_MATERIAL_IOR, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->coat, OPENUSD_SILK_MATERIAL_CLEARCOAT, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->coat_roughness,
+             OPENUSD_SILK_MATERIAL_CLEARCOAT_ROUGHNESS, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->opacity, OPENUSD_SILK_MATERIAL_OPACITY, 1},
+            nullptr, 1.0f, true},
+        {{_tokens->normal, OPENUSD_SILK_MATERIAL_NORMAL, 3},
+            nullptr, 1.0f, false}};
     return inputs;
+}
+
+const std::vector<_UnsupportedInput>&
+_MaterialXStandardSurfaceExclusions()
+{
+    static const std::vector<_UnsupportedInput> exclusions = {
+        {_tokens->specular, 1, {1.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no specular weight; the renderer derives its dielectric "
+            "reflectance from the index of refraction alone"},
+        {_tokens->specular_color, 3, {1.0f, 1.0f, 1.0f, 0.0f},
+            "MaterialX specular_color is an edge tint layered over the base, not "
+            "the normal-incidence reflectance UsdPreviewSurface's specularColor "
+            "carries, so the two are not the same quantity"},
+        {_tokens->specular_anisotropy, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic specular lobe"},
+        {_tokens->specular_rotation, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic specular lobe"},
+        {_tokens->diffuse_roughness, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates a Lambertian diffuse lobe"},
+        {_tokens->transmission, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no transmission lobe, and opacity is a different "
+            "quantity that would render a different picture"},
+        {_tokens->subsurface, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no subsurface lobe"},
+        {_tokens->sheen, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no sheen lobe"},
+        {_tokens->coat_color, 3, {1.0f, 1.0f, 1.0f, 0.0f},
+            "hdSilk's clearcoat is an untinted layer"},
+        {_tokens->coat_IOR, 1, {1.5f, 0.0f, 0.0f, 0.0f},
+            "hdSilk's clearcoat has a fixed index of refraction, and the wire's "
+            "single ior parameter already carries the base dielectric"},
+        {_tokens->coat_normal, 0, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk shades the clearcoat with the surface normal"},
+        {_tokens->coat_anisotropy, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic clearcoat lobe"},
+        {_tokens->coat_affect_color, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk's clearcoat does not modulate the base"},
+        {_tokens->coat_affect_roughness, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk's clearcoat does not modulate the base"},
+        {_tokens->thin_film_thickness, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no thin-film interference term"},
+        {_tokens->thin_walled, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no thin-walled shading mode"},
+        {_tokens->tangent, 0, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic specular lobe, so no tangent frame "
+            "reaches the shader"}};
+    return exclusions;
+}
+
+const std::vector<_ProjectedInput>&
+_MaterialXOpenPbrSurfaceInputs()
+{
+    static const std::vector<_ProjectedInput> inputs = {
+        {{_tokens->base_color, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, 3},
+            &_tokens->base_weight, 1.0f, false},
+        {{_tokens->emission_color, OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR, 3},
+            &_tokens->emission_luminance, 0.0f, false},
+        {{_tokens->base_metalness, OPENUSD_SILK_MATERIAL_METALLIC, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->specular_roughness, OPENUSD_SILK_MATERIAL_ROUGHNESS, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->specular_ior, OPENUSD_SILK_MATERIAL_IOR, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->coat_weight, OPENUSD_SILK_MATERIAL_CLEARCOAT, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->coat_roughness,
+             OPENUSD_SILK_MATERIAL_CLEARCOAT_ROUGHNESS, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->geometry_opacity, OPENUSD_SILK_MATERIAL_OPACITY, 1},
+            nullptr, 1.0f, false},
+        {{_tokens->geometry_normal, OPENUSD_SILK_MATERIAL_NORMAL, 3},
+            nullptr, 1.0f, false}};
+    return inputs;
+}
+
+const std::vector<_UnsupportedInput>&
+_MaterialXOpenPbrSurfaceExclusions()
+{
+    static const std::vector<_UnsupportedInput> exclusions = {
+        {_tokens->specular_weight, 1, {1.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no specular weight; the renderer derives its dielectric "
+            "reflectance from the index of refraction alone"},
+        {_tokens->specular_color, 3, {1.0f, 1.0f, 1.0f, 0.0f},
+            "OpenPBR specular_color is the physical edge tint of the base, not "
+            "the normal-incidence reflectance UsdPreviewSurface's specularColor "
+            "carries, so the two are not the same quantity"},
+        {_tokens->specular_roughness_anisotropy, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic specular lobe"},
+        {_tokens->base_diffuse_roughness, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates a Lambertian diffuse lobe"},
+        {_tokens->transmission_weight, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no transmission lobe, and opacity is a different "
+            "quantity that would render a different picture"},
+        {_tokens->subsurface_weight, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no subsurface lobe"},
+        {_tokens->fuzz_weight, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no fuzz lobe"},
+        {_tokens->coat_color, 3, {1.0f, 1.0f, 1.0f, 0.0f},
+            "hdSilk's clearcoat is an untinted layer"},
+        {_tokens->coat_ior, 1, {1.6f, 0.0f, 0.0f, 0.0f},
+            "hdSilk's clearcoat has a fixed index of refraction, and the wire's "
+            "single ior parameter already carries the base dielectric"},
+        {_tokens->coat_roughness_anisotropy, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic clearcoat lobe"},
+        {_tokens->coat_darkening, 1, {1.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk's clearcoat does not darken the base"},
+        {_tokens->thin_film_weight, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no thin-film interference term"},
+        {_tokens->geometry_thin_walled, 1, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk has no thin-walled shading mode"},
+        {_tokens->geometry_coat_normal, 0, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk shades the clearcoat with the surface normal"},
+        {_tokens->geometry_tangent, 0, {0.0f, 0.0f, 0.0f, 0.0f},
+            "hdSilk evaluates an isotropic specular lobe, so no tangent frame "
+            "reaches the shader"}};
+    return exclusions;
+}
+
+/// The projection for one surface identifier, or nullptr when the identifier is
+/// not a MaterialX surface shader this delegate projects.
+const _SurfaceProjection* _FindSurfaceProjection(const TfToken& identifier)
+{
+    static const std::vector<_SurfaceProjection> projections = {
+        {_tokens->MtlxStandardSurface,
+            _MaterialXStandardSurfaceInputs(),
+            _MaterialXStandardSurfaceExclusions()},
+        {_tokens->MtlxOpenPbrSurface,
+            _MaterialXOpenPbrSurfaceInputs(),
+            _MaterialXOpenPbrSurfaceExclusions()}};
+    for (const _SurfaceProjection& projection : projections)
+    {
+        if (projection.identifier == identifier)
+        {
+            return &projection;
+        }
+    }
+    return nullptr;
 }
 
 /// Reads a VtValue into up to four floats, returning how many it filled.
@@ -209,18 +485,23 @@ uint32_t _ReadFloats(const VtValue& value, float (&out)[4])
 
 /// Reads one UsdUVTexture wrap token onto the wire enum.
 ///
-/// OPENUSD_SILK_WRAP_BLACK is the value for `black` and for the unauthored
-/// `useMetadata`. It records the authored intent; the current renderer resolves
-/// it to clamp-to-edge, because the wire carries no border colour to hand a
-/// backend. See OPENUSD_SILK_WRAP_BLACK in openusd_hdsilk.h.
+/// OPENUSD_SILK_WRAP_BLACK is the value for an authored `black` and for any
+/// token this delegate does not recognise, which is USD's documented fallback.
+/// OPENUSD_SILK_WRAP_USE_METADATA is the value for an authored `useMetadata` and
+/// for an unauthored `wrap`, which is the same thing: `useMetadata` is the
+/// schema default. The two stay distinct because they record different authored
+/// intent. See OPENUSD_SILK_WRAP_BLACK in openusd_hdsilk.h.
 uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& name)
 {
     const auto entry = parameters.find(name);
     if (entry == parameters.end() || !entry->second.IsHolding<TfToken>())
     {
-        // UsdUVTexture leaves wrap at useMetadata, and this delegate reads no
-        // texture metadata, so the documented fallback is the black mode.
-        return OPENUSD_SILK_WRAP_BLACK;
+        // UsdUVTexture's schema default for `wrap` is `useMetadata`, so an
+        // unauthored wrap is that value rather than an authored `black`. It is
+        // published as such: this delegate reads no image metadata, so a
+        // consumer resolves it to black addressing, but it must be able to say
+        // that it did so because no metadata was read.
+        return OPENUSD_SILK_WRAP_USE_METADATA;
     }
     const TfToken wrap = entry->second.UncheckedGet<TfToken>();
     if (wrap == _tokens->clamp)
@@ -234,6 +515,10 @@ uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& 
     if (wrap == _tokens->mirror)
     {
         return OPENUSD_SILK_WRAP_MIRROR;
+    }
+    if (wrap == _tokens->useMetadata)
+    {
+        return OPENUSD_SILK_WRAP_USE_METADATA;
     }
     return OPENUSD_SILK_WRAP_BLACK;
 }
@@ -483,13 +768,287 @@ const HdMaterialNode* _FindSurface(const HdMaterialNetwork& network)
     for (auto node = network.nodes.rbegin(); node != network.nodes.rend(); ++node)
     {
         if (node->identifier == _tokens->UsdPreviewSurface ||
-            node->identifier == _tokens->MtlxStandardSurface ||
-            node->identifier == _tokens->MtlxSurfaceUnlit)
+            node->identifier == _tokens->MtlxSurfaceUnlit ||
+            _FindSurfaceProjection(node->identifier) != nullptr)
         {
             return &(*node);
         }
     }
     return nullptr;
+}
+
+/// The identifier prefix HdSilk_MdlMaterialSceneIndexPlugin stamps on a shader
+/// node whose implementation is an MDL source asset. It is not an Sdr
+/// identifier; see mdlMaterialSceneIndexPlugin.h for why one is synthesized.
+const char* const _mdlIdentifierPrefix = "mdl:";
+
+/// The sibling parameter names Hydra's scene-index adapter synthesizes to carry
+/// a material node parameter's metadata. `colorSpace:<input>` is forwarded to
+/// the adapter, which is the only place that knows which inputs name textures;
+/// `typeName:<input>` states a type the VtValue already carries.
+const char* const _mdlTypeNamePrefix = "typeName:";
+
+/// Finds an MDL surface terminal. Only reached when no UsdPreviewSurface or
+/// projected MaterialX terminal was found, so an authored universal or
+/// MaterialX context always wins over the MDL one.
+const HdMaterialNode* _FindMdlSurface(const HdMaterialNetwork& network)
+{
+    for (auto node = network.nodes.rbegin(); node != network.nodes.rend(); ++node)
+    {
+        if (_IdentifierHasPrefix(*node, _mdlIdentifierPrefix))
+        {
+            return &(*node);
+        }
+    }
+    return nullptr;
+}
+
+/// Splits "mdl:<module>:<material>" back into its two halves. The module may
+/// itself contain colons, as an omniverse:// URI does, so the split is on the
+/// last separator rather than the first.
+void _ParseMdlIdentifier(
+    const TfToken& identifier,
+    std::string* module,
+    std::string* material)
+{
+    const std::string text = identifier.GetString();
+    const size_t start = std::strlen(_mdlIdentifierPrefix);
+    if (text.size() <= start)
+    {
+        return;
+    }
+    const std::string body = text.substr(start);
+    const size_t separator = body.rfind(':');
+    if (separator == std::string::npos)
+    {
+        *module = body;
+        return;
+    }
+    *module = body.substr(0, separator);
+    *material = body.substr(separator + 1);
+}
+
+/// Converts one authored MDL input into the value kinds the openusd_mdl C ABI
+/// carries. Returns false for anything else, so an input this bridge cannot
+/// express is reported by name instead of being narrowed into a different type.
+bool _TryConvertMdlParameter(
+    const TfToken& name,
+    const VtValue& value,
+    HdSilkMdlParameter* parameter)
+{
+    parameter->name = name.GetString();
+    if (value.IsHolding<bool>())
+    {
+        parameter->kind = OPENUSD_MDL_VALUE_BOOL;
+        parameter->componentCount = 1;
+        parameter->integerValue = value.UncheckedGet<bool>() ? 1 : 0;
+        return true;
+    }
+    if (value.IsHolding<int>())
+    {
+        parameter->kind = OPENUSD_MDL_VALUE_INT;
+        parameter->componentCount = 1;
+        parameter->integerValue = value.UncheckedGet<int>();
+        return true;
+    }
+    if (value.IsHolding<SdfAssetPath>())
+    {
+        const SdfAssetPath asset = value.UncheckedGet<SdfAssetPath>();
+        parameter->kind = OPENUSD_MDL_VALUE_ASSET;
+        // The resolved path is what the consumer can open; the authored path is
+        // relative to a layer it never sees. This mirrors the UsdUVTexture
+        // resolution rule already used for the preview-surface path.
+        parameter->text = asset.GetResolvedPath().empty()
+            ? asset.GetAssetPath()
+            : asset.GetResolvedPath();
+        return !parameter->text.empty();
+    }
+    if (value.IsHolding<std::string>())
+    {
+        parameter->kind = OPENUSD_MDL_VALUE_STRING;
+        parameter->text = value.UncheckedGet<std::string>();
+        return true;
+    }
+    if (value.IsHolding<TfToken>())
+    {
+        parameter->kind = OPENUSD_MDL_VALUE_STRING;
+        parameter->text = value.UncheckedGet<TfToken>().GetString();
+        return true;
+    }
+    float floats[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const uint32_t count = _ReadFloats(value, floats);
+    if (count == 0)
+    {
+        return false;
+    }
+    switch (count)
+    {
+        case 1:
+            parameter->kind = OPENUSD_MDL_VALUE_FLOAT;
+            break;
+        case 2:
+            parameter->kind = OPENUSD_MDL_VALUE_FLOAT2;
+            break;
+        case 3:
+            parameter->kind = OPENUSD_MDL_VALUE_FLOAT3;
+            break;
+        default:
+            parameter->kind = OPENUSD_MDL_VALUE_FLOAT4;
+            break;
+    }
+    parameter->componentCount = count;
+    for (uint32_t index = 0; index < count; ++index)
+    {
+        parameter->value[index] = floats[index];
+    }
+    return true;
+}
+
+/// Reports the inputs an MDL material states that this runtime did not put on
+/// the wire, naming each one. Bounded so a pathological material cannot flood
+/// the diagnostic stream.
+void _WarnUnsupportedMdlInputs(
+    const std::string& materialPath,
+    const std::vector<std::string>& names)
+{
+    constexpr size_t kMaxReported = 8;
+    if (names.empty())
+    {
+        return;
+    }
+    std::string joined;
+    for (size_t index = 0; index < names.size() && index < kMaxReported; ++index)
+    {
+        if (!joined.empty())
+        {
+            joined += ", ";
+        }
+        joined += names[index];
+    }
+    if (names.size() > kMaxReported)
+    {
+        joined += ", ... (" + std::to_string(names.size() - kMaxReported) +
+            " more)";
+    }
+    TF_WARN(
+        "hdSilk material '%s' authors MDL inputs this runtime does not carry: "
+        "%s. Each is left at its UsdPreviewSurface-equivalent default rather "
+        "than folded into another parameter.",
+        materialPath.c_str(),
+        joined.c_str());
+}
+
+/// Distils an MDL-only surface terminal through the optional openusd_mdl
+/// adapter. Every failure path leaves the record at
+/// OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE with empty tables and warns against the
+/// material by name, because the alternative -- publishing a supported record
+/// with nothing in it -- is exactly the silent default grey this branch exists
+/// to remove.
+void _ResolveMdlSurface(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& surface,
+    HdSilkMaterialRecord& record)
+{
+    record.surfaceKind = OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE;
+
+    std::string module;
+    std::string material;
+    _ParseMdlIdentifier(surface.identifier, &module, &material);
+    if (module.empty())
+    {
+        TF_WARN(
+            "hdSilk material '%s' has an MDL surface terminal that names no "
+            "module; it cannot be distilled and is not shaded.",
+            record.path.c_str());
+        return;
+    }
+
+    std::vector<std::string> unsupported;
+    std::vector<HdSilkMdlParameter> parameters;
+    parameters.reserve(surface.parameters.size());
+    for (const auto& entry : surface.parameters)
+    {
+        // Hydra's scene-index adapter flattens a material node parameter's
+        // metadata into sibling entries named "typeName:<input>" and
+        // "colorSpace:<input>". The type name states nothing this bridge needs
+        // -- the VtValue already carries the type -- so it is dropped rather
+        // than reported as an authored MDL input the runtime ignored.
+        const std::string name = entry.first.GetString();
+        if (name.rfind(_mdlTypeNamePrefix, 0) == 0)
+        {
+            continue;
+        }
+        // An input a node drives is not the value Hydra leaves behind it in
+        // `parameters`; that leftover is the value the author replaced. The
+        // adapter distils constants only, so a connected input is reported
+        // rather than read.
+        if (_FindInputConnection(network, surface.path, entry.first) != nullptr)
+        {
+            unsupported.push_back(name);
+            continue;
+        }
+        HdSilkMdlParameter parameter;
+        if (!_TryConvertMdlParameter(entry.first, entry.second, &parameter))
+        {
+            unsupported.push_back(name);
+            continue;
+        }
+        parameters.push_back(std::move(parameter));
+    }
+
+    const HdSilkMdlDistillation distillation =
+        HdSilkMdlAdapter::Distill(record.path, module, material, parameters);
+    unsupported.insert(
+        unsupported.end(),
+        distillation.unsupportedParameters.begin(),
+        distillation.unsupportedParameters.end());
+
+    if (!distillation.succeeded)
+    {
+        TF_WARN(
+            "hdSilk material '%s' binds MDL module '%s' material '%s', which "
+            "this runtime did not distil: %s. The material is published as "
+            "MDL-unavailable and is not shaded.",
+            record.path.c_str(),
+            module.c_str(),
+            material.c_str(),
+            distillation.diagnostic.empty() ? "no reason reported"
+                                            : distillation.diagnostic.c_str());
+        _WarnUnsupportedMdlInputs(record.path, unsupported);
+        return;
+    }
+
+    for (const HdSilkMdlDistilledScalar& source : distillation.scalars)
+    {
+        HdSilkMaterialScalar scalar;
+        scalar.parameter = source.parameter;
+        scalar.componentCount = source.componentCount;
+        for (uint32_t index = 0; index < scalar.componentCount; ++index)
+        {
+            scalar.value[index] = source.value[index];
+        }
+        record.scalars.push_back(scalar);
+    }
+    for (const HdSilkMdlDistilledTexture& source : distillation.textures)
+    {
+        HdSilkMaterialTexture texture;
+        texture.parameter = source.parameter;
+        texture.componentCount = source.componentCount;
+        texture.outputChannel = source.outputChannel;
+        texture.wrapS = source.wrapS;
+        texture.wrapT = source.wrapT;
+        texture.sourceColorSpace = source.colorSpace;
+        for (size_t index = 0; index < 4; ++index)
+        {
+            texture.scale[index] = source.scale[index];
+            texture.bias[index] = source.bias[index];
+        }
+        texture.asset = source.asset;
+        texture.uvPrimvar = _tokens->st.GetString();
+        record.textures.push_back(std::move(texture));
+    }
+    record.surfaceKind = OPENUSD_SILK_SURFACE_MDL_DISTILLED;
+    _WarnUnsupportedMdlInputs(record.path, unsupported);
 }
 
 /// Reads the UV primvar a coordinate node names. UsdPrimvarReader_float2 authors
@@ -1377,6 +1936,217 @@ bool _AffineKeepsUnitRange(
     return true;
 }
 
+/// How the nodedef's own weight input scales a projected input.
+enum class _WeightState
+{
+    /// The weight is one, so the input projects unchanged.
+    Unit,
+    /// The weight is zero, so the lobe is off whatever the input carries.
+    Zero,
+    /// The weight is a constant other than zero or one.
+    Scaled,
+    /// The weight is outside this projection; the refusal is already reported.
+    Unsupported
+};
+
+/// Resolves the constant the nodedef's weight input holds for this material.
+///
+/// The weight is read from the surface node rather than assumed, and its
+/// nodedef default is used when the author left it alone. A *connected* weight
+/// is refused rather than approximated: the multiply MaterialX states is
+/// per-pixel, and this projection carries no per-pixel weight.
+_WeightState _ResolveProjectedWeight(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& surface,
+    const std::string& materialPath,
+    const _ProjectedInput& input,
+    float* weight)
+{
+    *weight = 1.0f;
+    if (input.weight == nullptr)
+    {
+        return _WeightState::Unit;
+    }
+    if (_FindInputConnection(network, surface.path, *input.weight) != nullptr)
+    {
+        TF_WARN(
+            "hdSilk material '%s' MaterialX input '%s' is scaled by '%s', which "
+            "the graph connects; hdSilk projects only a constant weight, so the "
+            "input is left at its default.",
+            materialPath.c_str(),
+            input.binding.name.GetText(),
+            input.weight->GetText());
+        return _WeightState::Unsupported;
+    }
+    const auto authored = surface.parameters.find(*input.weight);
+    if (authored == surface.parameters.end())
+    {
+        *weight = input.weightDefault;
+    }
+    else
+    {
+        float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        if (_ReadFloats(authored->second, values) == 0)
+        {
+            TF_WARN(
+                "hdSilk material '%s' MaterialX weight '%s' holds an unsupported "
+                "value type; leaving input '%s' at its default.",
+                materialPath.c_str(),
+                input.weight->GetText(),
+                input.binding.name.GetText());
+            return _WeightState::Unsupported;
+        }
+        *weight = values[0];
+    }
+    if (!std::isfinite(*weight))
+    {
+        TF_WARN(
+            "hdSilk material '%s' MaterialX weight '%s' is not finite; leaving "
+            "input '%s' at its default.",
+            materialPath.c_str(),
+            input.weight->GetText(),
+            input.binding.name.GetText());
+        return _WeightState::Unsupported;
+    }
+    if (*weight == 0.0f)
+    {
+        return _WeightState::Zero;
+    }
+    if (std::fabs(*weight - 1.0f) <= 1e-6f)
+    {
+        *weight = 1.0f;
+        return _WeightState::Unit;
+    }
+    return _WeightState::Scaled;
+}
+
+/// Folds a constant nodedef weight into a texture entry's own scale and bias.
+///
+/// The weight multiplies the sampled value, which is affine in the texel, so it
+/// composes with the entry's existing transport exactly. The unit-range guard is
+/// the same one the arithmetic fold uses, because the reason is the same: the
+/// eight-bit upload path clamps anything the affine pushes out of range.
+bool _ScaleTextureEntryByWeight(
+    HdSilkMaterialTexture& entry,
+    float weight,
+    const std::string& materialPath,
+    const _ProjectedInput& input)
+{
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        entry.scale[index] = entry.scale[index] * weight;
+        entry.bias[index] = entry.bias[index] * weight;
+    }
+    if (_AffineKeepsUnitRange(entry, input.binding.componentCount))
+    {
+        return true;
+    }
+    TF_WARN(
+        "hdSilk material '%s' MaterialX input '%s' scaled by '%s' leaves a "
+        "texture scale/bias outside the unit range, which the eight-bit upload "
+        "path would clamp; leaving the input at its default.",
+        materialPath.c_str(),
+        input.binding.name.GetText(),
+        input.weight == nullptr ? "" : input.weight->GetText());
+    return false;
+}
+
+/// Collapses a colour-typed constant onto the single float the wire carries.
+///
+/// Only a constant whose three channels agree has one value; a per-channel
+/// colour does not, and picking one channel would render a picture the author
+/// did not author. Returns false after reporting when the channels disagree.
+bool _CollapseMonochromeConstant(
+    float (&values)[4],
+    uint32_t count,
+    const std::string& materialPath,
+    const TfToken& name)
+{
+    if (count < 2)
+    {
+        return true;
+    }
+    constexpr float tolerance = 1e-6f;
+    for (uint32_t index = 1; index < count && index < 3; ++index)
+    {
+        if (std::fabs(values[index] - values[0]) > tolerance)
+        {
+            TF_WARN(
+                "hdSilk material '%s' MaterialX input '%s' holds a per-channel "
+                "colour, and hdSilk binds one opacity channel; leaving the input "
+                "at its default.",
+                materialPath.c_str(),
+                name.GetText());
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Reports the MaterialX inputs this projection deliberately does not carry.
+///
+/// A material that leaves a lobe at its nodedef default asked for nothing and is
+/// not reported. An authored value or a connection is a statement the renderer
+/// cannot honour, so it is named individually together with the reason, rather
+/// than folded into one "unsupported material" line that says nothing about
+/// which part of the look is missing.
+void _DiagnoseUnsupportedInputs(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& surface,
+    const std::string& materialPath,
+    const _SurfaceProjection& projection)
+{
+    for (const _UnsupportedInput& excluded : projection.unsupported)
+    {
+        if (_FindInputConnection(network, surface.path, excluded.name) != nullptr)
+        {
+            TF_WARN(
+                "hdSilk material '%s' connects MaterialX input '%s', which this "
+                "projection does not carry because %s; the input is ignored.",
+                materialPath.c_str(),
+                excluded.name.GetText(),
+                excluded.reason);
+            continue;
+        }
+        if (excluded.componentCount == 0)
+        {
+            continue;
+        }
+        const auto authored = surface.parameters.find(excluded.name);
+        if (authored == surface.parameters.end())
+        {
+            continue;
+        }
+        float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        const uint32_t count = _ReadFloats(authored->second, values);
+        if (count == 0)
+        {
+            continue;
+        }
+        _BroadcastFloats(values, count, excluded.componentCount);
+        bool authoredAway = false;
+        for (uint32_t index = 0; index < excluded.componentCount && index < 4;
+             ++index)
+        {
+            if (std::fabs(values[index] - excluded.defaultValue[index]) > 1e-6f)
+            {
+                authoredAway = true;
+                break;
+            }
+        }
+        if (!authoredAway)
+        {
+            continue;
+        }
+        TF_WARN(
+            "hdSilk material '%s' authors MaterialX input '%s', which this "
+            "projection does not carry because %s; the input is ignored.",
+            materialPath.c_str(),
+            excluded.name.GetText(),
+            excluded.reason);
+    }
+}
+
 /// Two images combined per pixel by one constant operator, each reached through
 /// its own chain of constant arithmetic.
 ///
@@ -1523,6 +2293,22 @@ bool _TryFoldTwoImageComposite(
 /// entry. The caller must then stop rather than fall through to its generic
 /// "connected to unsupported node" warning, which would name the image node
 /// even when the image is fine and its coordinate chain is what failed.
+/// Why one image could not be published as a texture entry.
+///
+/// The reason is structured rather than a bare false because the callers do not
+/// all want the same thing from a failure. Displacement, in particular, converts
+/// an image that resolves *no file* into the node's authored fallback, which is
+/// what UsdUVTexture says the reader produces then -- and must not do that for a
+/// graph it simply cannot evaluate, because publishing a fallback there would
+/// displace a surface by a value nobody asked for.
+enum class _TextureEntryFailure
+{
+    None,
+    NotAnImage,
+    NoResolvableFile,
+    UnsupportedGraph
+};
+
 bool _TryCreateTextureEntry(
     const HdMaterialNetwork& network,
     const std::string& materialPath,
@@ -1530,12 +2316,25 @@ bool _TryCreateTextureEntry(
     const TfToken& outputName,
     const _InputBinding& input,
     HdSilkMaterialTexture& entry,
-    bool* diagnosed)
+    bool* diagnosed,
+    _TextureEntryFailure* failure = nullptr)
 {
     *diagnosed = false;
+    if (failure != nullptr)
+    {
+        *failure = _TextureEntryFailure::None;
+    }
+    auto fail = [&](_TextureEntryFailure reason)
+    {
+        if (failure != nullptr)
+        {
+            *failure = reason;
+        }
+        return false;
+    };
     if (!_IsMaterialXImage(texture) && texture.identifier != _tokens->UsdUVTexture)
     {
-        return false;
+        return fail(_TextureEntryFailure::NotAnImage);
     }
     const std::string asset = _ResolveAssetPath(texture.parameters);
     if (asset.empty())
@@ -1547,7 +2346,7 @@ bool _TryCreateTextureEntry(
             input.name.GetText(),
             texture.path.GetText());
         *diagnosed = true;
-        return false;
+        return fail(_TextureEntryFailure::NoResolvableFile);
     }
     uint32_t channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
     if (!_TryResolveOutputChannel(texture, outputName, input.componentCount, &channel))
@@ -1561,7 +2360,7 @@ bool _TryCreateTextureEntry(
             outputName.GetText(),
             input.componentCount);
         *diagnosed = true;
-        return false;
+        return fail(_TextureEntryFailure::UnsupportedGraph);
     }
     entry.parameter = input.parameter;
     entry.componentCount = input.componentCount;
@@ -1618,15 +2417,21 @@ bool _TryCreateTextureEntry(
                 input.name.GetText(),
                 constantInput.GetText());
             *diagnosed = true;
-            return false;
+            return fail(_TextureEntryFailure::UnsupportedGraph);
         }
     }
     entry.scale[0] = entry.scale[1] = entry.scale[2] = entry.scale[3] = 1.0f;
     _ReadVector4(texture.parameters, _tokens->scale, entry.scale);
     _ReadVector4(texture.parameters, _tokens->bias, entry.bias);
     // The value the node produces when the file cannot be read: UsdUVTexture
-    // calls it `fallback`, MaterialX calls it `default`. Only the components the
-    // node authors are overwritten, so a color3 default keeps the opaque alpha.
+    // calls it `fallback`, MaterialX calls it `default`. The schema default is
+    // (0, 0, 0, 1), not four zeroes, so the alpha is seeded opaque before the
+    // authored components overwrite it -- otherwise an `outputs:a` reading an
+    // unauthored fallback would produce a transparent zero where the schema says
+    // one. Only the components the node authors are overwritten, so a color3
+    // default keeps that opaque alpha.
+    entry.fallback[0] = entry.fallback[1] = entry.fallback[2] = 0.0f;
+    entry.fallback[3] = 1.0f;
     _ReadVector4(texture.parameters, fallbackName, entry.fallback);
     entry.asset = asset;
     const _UvBinding uv = _ResolveUvBinding(network, texture.path);
@@ -1640,7 +2445,7 @@ bool _TryCreateTextureEntry(
             input.name.GetText(),
             uv.unsupportedReason.c_str());
         *diagnosed = true;
-        return false;
+        return fail(_TextureEntryFailure::UnsupportedGraph);
     }
     entry.uvPrimvar = uv.primvar;
     for (size_t index = 0; index < 6; ++index)
@@ -1743,15 +2548,37 @@ bool _TryPublishCompositeEntries(
 ///
 /// Returns whether anything was dropped, so the caller can re-settle the stream
 /// against the survivors.
+/// Whether one texture entry belongs to the material's single surface
+/// texture-coordinate stream.
+///
+/// Displacement does not. It is sampled per vertex, from its own authored
+/// coordinate set and through its own folded affine, so it neither constrains
+/// the surface stream nor is constrained by it -- a material whose surface
+/// samples `st` and whose height field samples `st2` is exactly representable,
+/// and reconciling the two would drop one of them for no reason.
+bool _BelongsToSurfaceUvStream(const HdSilkMaterialTexture& texture)
+{
+    return texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT;
+}
+
 bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
 {
-    if (record.textures.empty())
+    const HdSilkMaterialTexture* first = nullptr;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_BelongsToSurfaceUvStream(texture))
+        {
+            first = &texture;
+            break;
+        }
+    }
+    if (first == nullptr)
     {
         return false;
     }
     for (size_t index = 0; index < 6; ++index)
     {
-        record.uvTransform[index] = record.textures.front().uvTransform[index];
+        record.uvTransform[index] = first->uvTransform[index];
     }
 
     // The material primvar is the first non-empty one, which is exactly how the
@@ -1760,7 +2587,7 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
     std::string primvar;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (!texture.uvPrimvar.empty())
+        if (_BelongsToSurfaceUvStream(texture) && !texture.uvPrimvar.empty())
         {
             primvar = texture.uvPrimvar;
             break;
@@ -1770,6 +2597,10 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
     std::vector<uint32_t> divergent;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
+        if (!_BelongsToSurfaceUvStream(texture))
+        {
+            continue;
+        }
         const bool transformAgrees =
             _UvTransformsEqual(texture.uvTransform, record.uvTransform);
         const bool primvarAgrees =
@@ -1895,6 +2726,305 @@ void _ReconcileComposites(HdSilkMaterialRecord& record)
     }
     record.textures = std::move(kept);
 }
+
+/// Resolves the constant a displacement falls back to when its connected image
+/// cannot be published as a texture entry.
+///
+/// UsdUVTexture defines `fallback` as the value the reader produces when the file
+/// cannot be read, so an image with no resolvable file is not the same thing as
+/// an unauthored displacement: the graph still states a height, and it is the
+/// authored fallback read through the connected output channel and the node's own
+/// `scale` and `bias`. Returns false only when the node authors none of that in a
+/// form this delegate can read.
+bool
+_TryResolveDisplacementFallbackConstant(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& texture,
+    const TfToken& outputName,
+    const _InputBinding& input,
+    float* value)
+{
+    uint32_t channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+    if (!_TryResolveOutputChannel(texture, outputName, input.componentCount, &channel))
+    {
+        return false;
+    }
+    const TfToken& fallbackName = _IsMaterialXImage(texture)
+        ? _tokens->defaultValue
+        : _tokens->fallback;
+    for (const TfToken& constantInput :
+         {_tokens->scale, _tokens->bias, fallbackName})
+    {
+        if (_FindInputConnection(network, texture.path, constantInput) != nullptr)
+        {
+            return false;
+        }
+    }
+    float scale[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+    float bias[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    // UsdUVTexture's schema default for `fallback` is (0, 0, 0, 1). Seeding four
+    // zeroes would make an `outputs:a` connection read a transparent zero where
+    // the schema says one.
+    float fallback[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+    _ReadVector4(texture.parameters, _tokens->scale, scale);
+    _ReadVector4(texture.parameters, _tokens->bias, bias);
+    _ReadVector4(texture.parameters, fallbackName, fallback);
+    const size_t component =
+        channel >= OPENUSD_SILK_TEXTURE_CHANNEL_RGB ? 0u : static_cast<size_t>(channel);
+    const float resolved = (fallback[component] * scale[component]) + bias[component];
+    if (!std::isfinite(resolved))
+    {
+        return false;
+    }
+    *value = resolved;
+    return true;
+}
+
+/// Finds the terminal node of a displacement network: the node no other node of
+/// that network consumes.
+///
+/// Unlike `_FindSurface` this does not look for a known identifier, because the
+/// point of the check is to *report* a terminal this renderer cannot evaluate
+/// rather than to skip past it and resolve some other node.
+const HdMaterialNode*
+_FindDisplacementTerminal(const HdMaterialNetwork& network)
+{
+    for (auto node = network.nodes.rbegin(); node != network.nodes.rend(); ++node)
+    {
+        bool consumed = false;
+        for (const HdMaterialRelationship& relationship : network.relationships)
+        {
+            if (relationship.inputId == node->path)
+            {
+                consumed = true;
+                break;
+            }
+        }
+        if (!consumed)
+        {
+            return &(*node);
+        }
+    }
+    return nullptr;
+}
+
+/// Resolves the authored `displacement` material terminal.
+///
+/// The terminal is required: a material that connects no `outputs:displacement`
+/// publishes no displacement, whatever `inputs:displacement` its surface shader
+/// happens to carry. The terminal node must be a `UsdPreviewSurface`, because
+/// that is the only shader whose displacement output this renderer evaluates,
+/// and its `inputs:displacement` must be either unconnected -- in which case the
+/// authored constant is published -- or driven by a `UsdUVTexture`. Anything
+/// else is a graph hdSilk cannot evaluate per vertex and is reported by name
+/// instead of being collapsed to whichever constant Hydra left behind the
+/// connection.
+void
+_ResolveDisplacementTerminal(
+    const HdMaterialNetworkMap& networkMap,
+    HdSilkMaterialRecord& record)
+{
+    const auto entry = networkMap.map.find(HdMaterialTerminalTokens->displacement);
+    if (entry == networkMap.map.end() || entry->second.nodes.empty())
+    {
+        return;
+    }
+    const HdMaterialNetwork& network = entry->second;
+    const HdMaterialNode* terminal = _FindDisplacementTerminal(network);
+    if (terminal == nullptr)
+    {
+        TF_WARN(
+            "hdSilk material '%s' has a displacement terminal network with no "
+            "unconsumed node; leaving the material undisplaced.",
+            record.path.c_str());
+        return;
+    }
+    if (terminal->identifier != _tokens->UsdPreviewSurface)
+    {
+        TF_WARN(
+            "hdSilk material '%s' connects outputs:displacement to node '%s' of "
+            "type '%s'; hdSilk evaluates only UsdPreviewSurface displacement, so "
+            "the material is left undisplaced.",
+            record.path.c_str(),
+            terminal->path.GetText(),
+            terminal->identifier.GetText());
+        return;
+    }
+
+    const _InputBinding& input = _DisplacementInput();
+    const HdMaterialRelationship* connection =
+        _FindInputConnection(network, terminal->path, input.name);
+    if (connection != nullptr)
+    {
+        const HdMaterialNode* upstream = _FindNode(network, connection->inputId);
+        if (upstream == nullptr)
+        {
+            TF_WARN(
+                "hdSilk material '%s' displacement is connected to a node the "
+                "displacement network does not contain; leaving the material "
+                "undisplaced rather than reading the value the author replaced.",
+                record.path.c_str());
+            return;
+        }
+        HdSilkMaterialTexture texture;
+        bool diagnosed = false;
+        _TextureEntryFailure failure = _TextureEntryFailure::None;
+        if (_TryCreateTextureEntry(
+                network,
+                record.path,
+                *upstream,
+                connection->inputName,
+                input,
+                texture,
+                &diagnosed,
+                &failure))
+        {
+            record.textures.push_back(std::move(texture));
+            return;
+        }
+        // Only a genuinely absent or unresolvable file becomes the authored
+        // fallback: UsdUVTexture defines `fallback` as what the reader produces
+        // when it cannot read the file, and says nothing about a graph this
+        // renderer cannot evaluate. Publishing a fallback for an unsupported
+        // coordinate chain, a connected scale, or an output port that cannot
+        // drive the input would displace the surface by a value nobody authored
+        // for that condition, which is the plausible-but-wrong result the whole
+        // refusal vocabulary exists to prevent.
+        float fallbackAmount = 0.0F;
+        if (failure == _TextureEntryFailure::NoResolvableFile &&
+            _TryResolveDisplacementFallbackConstant(
+                network,
+                *upstream,
+                connection->inputName,
+                input,
+                &fallbackAmount))
+        {
+            TF_WARN(
+                "hdSilk material '%s' displacement image '%s' could not be "
+                "published; the authored fallback %f is published as a constant "
+                "displacement instead.",
+                record.path.c_str(),
+                upstream->path.GetText(),
+                static_cast<double>(fallbackAmount));
+            HdSilkMaterialScalar fallbackScalar;
+            fallbackScalar.parameter = input.parameter;
+            fallbackScalar.componentCount = 1;
+            fallbackScalar.value[0] = fallbackAmount;
+            record.scalars.push_back(fallbackScalar);
+            return;
+        }
+        if (!diagnosed)
+        {
+            TF_WARN(
+                "hdSilk material '%s' drives displacement from node '%s' of type "
+                "'%s', which hdSilk cannot evaluate per vertex; the material is "
+                "left undisplaced rather than displaced by the value the author "
+                "replaced.",
+                record.path.c_str(),
+                upstream->path.GetText(),
+                upstream->identifier.GetText());
+        }
+        return;
+    }
+
+    const auto authored = terminal->parameters.find(input.name);
+    if (authored == terminal->parameters.end())
+    {
+        return;
+    }
+    float values[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    const uint32_t count = _ReadFloats(authored->second, values);
+    if (count == 0)
+    {
+        TF_WARN(
+            "hdSilk material '%s' displacement holds an unsupported value type; "
+            "leaving the material undisplaced.",
+            record.path.c_str());
+        return;
+    }
+    HdSilkMaterialScalar scalar;
+    scalar.parameter = input.parameter;
+    scalar.componentCount = 1;
+    scalar.value[0] = values[0];
+    record.scalars.push_back(scalar);
+}
+
+/// Settles the one texture-coordinate affine a displacement may sample through.
+///
+/// The wire carries one folded affine per material, because the renderer builds
+/// one surface coordinate stream. A displacement samples its own primvar, which
+/// the wire does carry per texture, but it cannot carry a second affine. When the
+/// material publishes no surface texture the displacement's own affine becomes
+/// the material's -- nothing else reads it -- and when it publishes one, a
+/// displacement asking for a *different* affine is genuinely unrepresentable and
+/// is reported rather than sampled through coordinates it did not author.
+void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
+{
+    HdSilkMaterialTexture* displacement = nullptr;
+    bool haveSurfaceTexture = false;
+    for (HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_BelongsToSurfaceUvStream(texture))
+        {
+            haveSurfaceTexture = true;
+        }
+        else if (texture.compositeOp == OPENUSD_SILK_COMPOSITE_NONE)
+        {
+            displacement = &texture;
+        }
+    }
+    if (displacement == nullptr)
+    {
+        return;
+    }
+    if (!haveSurfaceTexture)
+    {
+        for (size_t index = 0; index < 6; ++index)
+        {
+            record.uvTransform[index] = displacement->uvTransform[index];
+        }
+        return;
+    }
+    if (_UvTransformsEqual(displacement->uvTransform, record.uvTransform))
+    {
+        return;
+    }
+    TF_WARN(
+        "hdSilk material '%s' displacement asks for a different folded texture "
+        "coordinate transform than the material's surface textures; hdSilk "
+        "carries one transform per material, so the displacement is left "
+        "unpublished rather than sampled through coordinates it did not author.",
+        record.path.c_str());
+    std::vector<HdSilkMaterialTexture> kept;
+    kept.reserve(record.textures.size());
+    for (HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_BelongsToSurfaceUvStream(texture))
+        {
+            kept.push_back(std::move(texture));
+        }
+    }
+    record.textures = std::move(kept);
+}
+
+/// Finishes any resolved record: resolves the displacement terminal, then
+/// reconciles the single texture-coordinate stream and the single composite the
+/// wire carries.
+///
+/// Called on every exit of `Resolve`, including the ones that could not classify
+/// a surface at all. Displacement is a separate material terminal in USD, so a
+/// material whose surface is unsupported, MDL-only, or a generated MaterialX
+/// fragment can still author a displacement this renderer evaluates exactly, and
+/// dropping it because the *surface* was unshaded would silently flatten geometry
+/// the author asked to move.
+void
+_FinishRecord(const HdMaterialNetworkMap& networkMap, HdSilkMaterialRecord& record)
+{
+    _ResolveDisplacementTerminal(networkMap, record);
+    _ReconcileUvBindings(record);
+    _ReconcileDisplacementTransform(record);
+    _ReconcileComposites(record);
+}
 }
 
 HdSilkMaterial::HdSilkMaterial(SdfPath const& id)
@@ -1920,27 +3050,42 @@ HdSilkMaterial::Resolve(
     const auto surfaceNetwork = networkMap.map.find(HdMaterialTerminalTokens->surface);
     if (surfaceNetwork == networkMap.map.end())
     {
+        _FinishRecord(networkMap, record);
         return record;
     }
     const HdMaterialNetwork& network = surfaceNetwork->second;
     const HdMaterialNode* surface = _FindSurface(network);
     if (surface == nullptr)
     {
+        // An MDL-only material reaches this delegate because the render
+        // delegate asks for the `mdl` render context after the universal one.
+        // It has no UsdPreviewSurface and no projected MaterialX terminal, so
+        // it lands here rather than in the branch above.
+        if (const HdMaterialNode* mdlSurface = _FindMdlSurface(network))
+        {
+            _ResolveMdlSurface(network, *mdlSurface, record);
+            _FinishRecord(networkMap, record);
+            return record;
+        }
         // Publishing the unsupported record rather than nothing is deliberate:
         // the consumer can then say which material it could not shade.
         TF_WARN(
             "hdSilk material '%s' has no supported surface terminal; expected "
             "UsdPreviewSurface or a supported MaterialX surface shader.",
             record.path.c_str());
+        _FinishRecord(networkMap, record);
         return record;
     }
     record.surfaceKind = OPENUSD_SILK_SURFACE_PREVIEW_SURFACE;
 
-    if (surface->identifier == _tokens->MtlxStandardSurface)
+    if (const _SurfaceProjection* projection =
+            _FindSurfaceProjection(surface->identifier))
     {
         record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED;
-        for (const _InputBinding& input : _MaterialXStandardSurfaceInputs())
+        _DiagnoseUnsupportedInputs(network, *surface, record.path, *projection);
+        for (const _ProjectedInput& projected : projection->inputs)
         {
+            const _InputBinding& input = projected.binding;
             const HdMaterialRelationship* connection =
                 _FindInputConnection(network, surface->path, input.name);
             const HdMaterialNode* upstream = connection == nullptr
@@ -1956,6 +3101,54 @@ HdSilkMaterial::Resolve(
                     "hdSilk material '%s' MaterialX input '%s' is connected to a "
                     "node the network does not contain; leaving the input at its "
                     "default.",
+                    record.path.c_str(),
+                    input.name.GetText());
+                continue;
+            }
+            const auto authored = surface->parameters.find(input.name);
+            if (upstream == nullptr && authored == surface->parameters.end())
+            {
+                // Neither authored nor connected: the material states nothing
+                // about this input, so the renderer's own default stands and no
+                // weight can turn that silence into a published value.
+                continue;
+            }
+
+            float weight = 1.0f;
+            const _WeightState weightState = _ResolveProjectedWeight(
+                network, *surface, record.path, projected, &weight);
+            if (weightState == _WeightState::Unsupported)
+            {
+                continue;
+            }
+            if (weightState == _WeightState::Zero)
+            {
+                // The nodedef multiplies this input by zero, so the lobe is off
+                // whatever the input carries. Publishing the zero is exact and
+                // is what keeps an authored emission colour from lighting up a
+                // material whose nodedef default emits nothing.
+                HdSilkMaterialScalar scalar;
+                scalar.parameter = input.parameter;
+                scalar.componentCount = input.componentCount;
+                for (uint32_t index = 0; index < scalar.componentCount; ++index)
+                {
+                    scalar.value[index] = 0.0f;
+                }
+                record.scalars.push_back(scalar);
+                continue;
+            }
+
+            if (projected.monochromeColor && upstream != nullptr)
+            {
+                // The nodedef types this input as a colour while the wire binds
+                // one channel. A constant can be checked for agreement; an image
+                // or a graph cannot, and reading one of its channels would render
+                // a picture the author never authored.
+                TF_WARN(
+                    "hdSilk material '%s' MaterialX input '%s' is a colour the "
+                    "graph connects, and hdSilk binds one opacity channel; only a "
+                    "constant whose channels agree projects, so the input is left "
+                    "at its default.",
                     record.path.c_str(),
                     input.name.GetText());
                 continue;
@@ -1988,6 +3181,12 @@ HdSilkMaterial::Resolve(
                         textureEntry,
                         &diagnosed))
                 {
+                    if (weightState == _WeightState::Scaled &&
+                        !_ScaleTextureEntryByWeight(
+                            textureEntry, weight, record.path, projected))
+                    {
+                        continue;
+                    }
                     record.textures.push_back(std::move(textureEntry));
                     continue;
                 }
@@ -2008,7 +3207,7 @@ HdSilkMaterial::Resolve(
                     scalar.componentCount = input.componentCount;
                     for (uint32_t index = 0; index < scalar.componentCount; ++index)
                     {
-                        scalar.value[index] = values[index];
+                        scalar.value[index] = values[index] * weight;
                     }
                     record.scalars.push_back(scalar);
                     continue;
@@ -2054,6 +3253,12 @@ HdSilkMaterial::Resolve(
                                     input.name.GetText());
                                 continue;
                             }
+                            if (weightState == _WeightState::Scaled &&
+                                !_ScaleTextureEntryByWeight(
+                                    folded, weight, record.path, projected))
+                            {
+                                continue;
+                            }
                             record.textures.push_back(std::move(folded));
                             continue;
                         }
@@ -2072,6 +3277,20 @@ HdSilkMaterial::Resolve(
                         if (_TryFoldTwoImageComposite(
                                 network, *upstream, input.componentCount, &composite))
                         {
+                            if (weightState == _WeightState::Scaled)
+                            {
+                                // Scaling both branches would square a multiply
+                                // and scaling one would change an add, so there
+                                // is no single branch this weight belongs to.
+                                TF_WARN(
+                                    "hdSilk material '%s' MaterialX input '%s' combines "
+                                    "two images and is scaled by a non-unit weight, which "
+                                    "no per-texel scale of one branch carries; leaving the "
+                                    "input at its default.",
+                                    record.path.c_str(),
+                                    input.name.GetText());
+                                continue;
+                            }
                             _TryPublishCompositeEntries(
                                 network, input, composite, record);
                             continue;
@@ -2110,11 +3329,8 @@ HdSilkMaterial::Resolve(
                 continue;
             }
 
-            const auto authored = surface->parameters.find(input.name);
-            if (authored == surface->parameters.end())
-            {
-                continue;
-            }
+            // The input is stated as a constant: the connection cases above have
+            // all returned, so the authored value is the one the graph asks for.
             float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
             const uint32_t count = _ReadFloats(authored->second, values);
             if (count == 0)
@@ -2126,37 +3342,66 @@ HdSilkMaterial::Resolve(
                     input.name.GetText());
                 continue;
             }
+            if (projected.monochromeColor &&
+                !_CollapseMonochromeConstant(
+                    values, count, record.path, input.name))
+            {
+                continue;
+            }
             _BroadcastFloats(values, count, input.componentCount);
             HdSilkMaterialScalar scalar;
             scalar.parameter = input.parameter;
             scalar.componentCount = input.componentCount;
             for (uint32_t index = 0; index < scalar.componentCount; ++index)
             {
-                scalar.value[index] = values[index];
+                scalar.value[index] = values[index] * weight;
             }
             record.scalars.push_back(scalar);
         }
-        _ReconcileUvBindings(record);
-        _ReconcileComposites(record);
+        _FinishRecord(networkMap, record);
         return record;
     }
 
     if (surface->identifier == _tokens->MtlxSurfaceUnlit)
     {
-        const HdSilkMaterialXVulkanShader shader =
+        // ND_surface_unlit is unlit by authored intent, and that is a property of
+        // the *material*, not of whether this build could generate a fragment for
+        // it. Downgrading a generation failure to OPENUSD_SILK_SURFACE_UNSUPPORTED
+        // used to hand the prim to the shaded fallback, which lit an unlit surface
+        // -- with direct lights, and with the prefiltered environment -- and so
+        // turned a missing shader into a wrong image rather than a missing one.
+        //
+        // The kind is therefore preserved and the payload is left empty. The
+        // consumer draws the unlit placeholder it already draws while generation
+        // is pending, which is the authored appearance minus the generated
+        // fragment's own colour, and the failure is reported on its own rather
+        // than by mutating the surface kind.
+        record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_GENERATED;
+        HdSilkMaterialXVulkanShader shader =
             HdSilkGenerateMaterialXVulkanFragment(id, networkMap);
+        if (_forceGeneratedSurfaceFailure.load())
+        {
+            shader.success = false;
+            shader.fragmentSpirv.clear();
+            shader.fragmentMslSource.clear();
+            shader.error = "forced by a test hook";
+        }
         if (!shader.success)
         {
             TF_WARN(
-                "hdSilk material '%s' MaterialX Vulkan generation failed: %s",
+                "hdSilk material '%s' MaterialX Vulkan generation failed: %s "
+                "The surface stays unlit, which is what ND_surface_unlit "
+                "authors; it is drawn through the unlit placeholder without a "
+                "generated fragment.",
                 record.path.c_str(),
                 shader.error.c_str());
-            record.surfaceKind = OPENUSD_SILK_SURFACE_UNSUPPORTED;
+            ++_generatedSurfaceFailureCount;
+            _FinishRecord(networkMap, record);
             return record;
         }
-        record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_GENERATED;
         record.generatedFragmentSpirv = shader.fragmentSpirv;
         record.generatedFragmentMslSource = shader.fragmentMslSource;
+        _FinishRecord(networkMap, record);
         return record;
     }
 
@@ -2244,8 +3489,7 @@ HdSilkMaterial::Resolve(
         record.scalars.push_back(scalar);
     }
 
-    _ReconcileUvBindings(record);
-    _ReconcileComposites(record);
+    _FinishRecord(networkMap, record);
     return record;
 }
 
@@ -2294,4 +3538,30 @@ HdSilkMaterial::Sync(
     *dirtyBits = HdMaterial::Clean;
 }
 
+uint64_t
+HdSilkMaterial::GetGeneratedSurfaceFailureCountForTesting()
+{
+    return _generatedSurfaceFailureCount.load();
+}
+
+void
+HdSilkMaterial::SetGeneratedSurfaceFailureForTesting(bool fail)
+{
+    _forceGeneratedSurfaceFailure.store(fail);
+}
+
 PXR_NAMESPACE_CLOSE_SCOPE
+
+#if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+extern "C" OPENUSD_HDSILK_API uint64_t
+openusd_hdsilk_test_get_generated_surface_failure_count(void)
+{
+    return PXR_NS::HdSilkMaterial::GetGeneratedSurfaceFailureCountForTesting();
+}
+
+extern "C" OPENUSD_HDSILK_API void
+openusd_hdsilk_test_set_generated_surface_failure(int32_t fail)
+{
+    PXR_NS::HdSilkMaterial::SetGeneratedSurfaceFailureForTesting(fail != 0);
+}
+#endif

@@ -252,6 +252,14 @@ public sealed class RenderBackendManager : IAsyncDisposable
     }
 
     /// <summary>Stores and forwards the exact immutable state reference.</summary>
+    /// <remarks>
+    /// Transactional: the retained state advances only after the active backend has
+    /// accepted it. Retaining a state the backend threw on or cancelled meant the
+    /// rejected state became the one a later failover replayed onto the replacement
+    /// backend, so a device that refused a state got it again from its successor, and
+    /// every consumer mirroring the retained state described an image no backend had
+    /// ever been given.
+    /// </remarks>
     public async ValueTask<RenderBackendManagerResult> UpdateStateAsync(
         StageRenderState state,
         CancellationToken cancellationToken = default)
@@ -270,8 +278,31 @@ public sealed class RenderBackendManager : IAsyncDisposable
                     diagnostics);
             }
 
+            IRenderBackend active = _active;
+            RenderBackendKind? activeKind = _activeIdentity?.Kind;
+            try
+            {
+                await active.UpdateStateAsync(state, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                // A backend that threw or was cancelled part-way through applying a state
+                // is in an unknown condition: it may have mutated some of it and not the
+                // rest. Leaving it active meant the manager's retained state and the
+                // backend's real state disagreed with nothing to reconcile them, so the
+                // very next frame rendered a half-applied image and a later failover
+                // replayed a state that had never been accepted. The backend is therefore
+                // discarded and rebuilt from the last accepted state before the failure is
+                // reported.
+                await RecoverFromRejectedStateAsync(
+                    active,
+                    activeKind,
+                    diagnostics,
+                    exception).ConfigureAwait(false);
+                throw;
+            }
+
             _currentState = state;
-            await _active.UpdateStateAsync(state, cancellationToken).ConfigureAwait(false);
             return CreateResult(RenderBackendManagerFailureKind.None, diagnostics);
         }
         finally
@@ -1043,6 +1074,109 @@ public sealed class RenderBackendManager : IAsyncDisposable
     {
         _active = null;
         _activeIdentity = null;
+    }
+
+    /// <summary>
+    /// Discards a backend that refused a state and rebuilds one from the last accepted
+    /// state.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deactivation comes first, and a replacement is activated only once the old backend
+    /// is provably no longer presenting -- either because deactivation succeeded or
+    /// because disposal succeeded, which tears the presenter down with it. If neither
+    /// holds, the backend is retired and the manager is left with none rather than
+    /// activating a second presenter alongside a live one: two presenters on the same
+    /// surface is a worse outcome than a reported recovery failure, and retired cleanup
+    /// runs later and may never run at all, so it cannot be the thing that deactivates.
+    /// </para>
+    /// <para>
+    /// Recovery deliberately does not honour the caller's cancellation token: the caller
+    /// may have been cancelled, and abandoning the rebuild half-way would leave the
+    /// manager with no backend at all rather than one holding a known state.
+    /// </para>
+    /// </remarks>
+    private async ValueTask RecoverFromRejectedStateAsync(
+        IRenderBackend backend,
+        RenderBackendKind? kind,
+        List<RenderBackendDiagnostic> diagnostics,
+        Exception exception)
+    {
+        AddExceptionDiagnostic(
+            diagnostics,
+            kind,
+            RenderBackendDiagnosticCategory.General,
+            "manager.state_update_rejected",
+            "The backend refused a stage state and was rebuilt from the last accepted " +
+            "state, because a partially applied state cannot be trusted.",
+            exception);
+
+        _active = null;
+        _activeIdentity = null;
+        _lastActivationFailure = RenderBackendManagerFailureKind.NotInitialized;
+
+        bool deactivated = false;
+        try
+        {
+            await DeactivateAsync(backend, CancellationToken.None).ConfigureAwait(false);
+            deactivated = true;
+        }
+        catch (Exception deactivationFailure)
+        {
+            AddExceptionDiagnostic(
+                diagnostics,
+                kind,
+                RenderBackendDiagnosticCategory.General,
+                "manager.state_update_rejected_deactivation_failed",
+                "Deactivating the backend that refused a stage state failed.",
+                deactivationFailure);
+        }
+
+        bool disposed = await DisposeWithDiagnosticAsync(
+            backend,
+            kind,
+            diagnostics,
+            RenderBackendDiagnosticCategory.General,
+            "manager.state_update_rejected_cleanup_failed",
+            "Cleanup of the backend that refused a stage state failed.")
+            .ConfigureAwait(false);
+        if (!disposed)
+        {
+            RetireBackend(backend, kind);
+        }
+
+        if (!deactivated && !disposed)
+        {
+            // Nothing proved the old presenter stopped. Activating now would put a second
+            // one on the surface.
+            AddDiagnostic(
+                diagnostics,
+                kind,
+                RenderDiagnosticSeverity.Error,
+                RenderBackendDiagnosticCategory.General,
+                "manager.state_update_rejected_recovery_aborted",
+                "The backend that refused a stage state could be neither deactivated nor " +
+                "disposed, so no replacement was activated; a second presenter would " +
+                "otherwise have been placed on the same surface.");
+            _lastActivationFailure = RenderBackendManagerFailureKind.BackendOperationFailed;
+            return;
+        }
+
+        RenderBackendManagerFailureKind failure = await ActivateCoreAsync(
+            kind,
+            diagnostics,
+            [],
+            CancellationToken.None).ConfigureAwait(false);
+        if (failure != RenderBackendManagerFailureKind.None)
+        {
+            // Falling back to any usable backend is better than none: the retained state
+            // is still the last accepted one, so whatever activates receives it.
+            _lastActivationFailure = await ActivateCoreAsync(
+                requestedBackend: null,
+                diagnostics,
+                [],
+                CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     private void RetireBackend(IRenderBackend backend, RenderBackendKind? kind)

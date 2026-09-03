@@ -344,10 +344,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "domeLinkControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 192,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 192,
+        "elementStride": 208,
         "size": null
       },
       "vulkanLayout": {
@@ -561,10 +578,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "domeLinkControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 192,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 192,
+        "elementStride": 208,
         "size": null
       }
     },
@@ -807,10 +841,171 @@
                 "matrixStride": 16,
                 "matrixLayout": "row-major"
               }
+            },
+            {
+              "name": "shadowWorldToLightClip",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "matrix",
+                  "rowCount": 4,
+                  "columnCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1056,
+                "size": 256,
+                "elementStride": 64,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "shadowTile",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1312,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "shadowControls",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1376,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "shadowSlots",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1440,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "environmentControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 1568,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "domeControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 1584,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "domeAmbient",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1600,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "domeEnvironment",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1728,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 1056,
+        "elementStride": 1856,
         "size": null
       },
       "vulkanLayout": {
@@ -1039,10 +1234,429 @@
                 "matrixStride": 16,
                 "matrixLayout": "row-major"
               }
+            },
+            {
+              "name": "shadowWorldToLightClip",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "matrix",
+                  "rowCount": 4,
+                  "columnCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1056,
+                "size": 256,
+                "elementStride": 64,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "shadowTile",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1312,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "shadowControls",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1376,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "shadowSlots",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1440,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "environmentControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 1568,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "domeControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 1584,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "domeAmbient",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1600,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "domeEnvironment",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 1728,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 1056,
+        "elementStride": 1856,
+        "size": null
+      }
+    },
+    {
+      "name": "shadowSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 13,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 30,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "shadowAtlas",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 16,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 31,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "environmentSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 14,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 32,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "environmentIrradiance",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 17,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 33,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "environmentSpecular",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 18,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 34,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "environmentBrdfSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 15,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 35,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "environmentBrdf",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 19,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 36,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
         "size": null
       }
     },
@@ -1948,13 +2562,30 @@
       }
     },
     {
+      "name": "worldNormal",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 3,
+        "systemValue": false
+      },
+      "location": 4,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
       "name": "texCoord",
       "semantic": {
         "name": "TEXCOORD",
         "index": 0,
         "systemValue": false
       },
-      "location": 4,
+      "location": 5,
       "type": {
         "kind": "vector",
         "elementCount": 2,

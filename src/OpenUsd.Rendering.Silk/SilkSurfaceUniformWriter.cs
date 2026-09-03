@@ -22,14 +22,17 @@ internal static class SilkSurfaceUniformWriter
     /// <remarks>
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
-    /// (clearcoat, clearcoatRoughness, shaded, 0), lightDirection+intensity,
-    /// lightColor+ambient, volume values, (textureMask, udimMask, volumeVoxelDepth, 0),
+    /// (clearcoat, clearcoatRoughness, shaded, lightLinkMask),
+    /// lightDirection+intensity,
+    /// lightColor+ambient, volume values,
+    /// (textureMask, udimMask, volumeVoxelDepth, shadowLinkMask),
     /// the
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
-    /// (m10, m11, ty, 0), and the two-image composite controls
-    /// (targetTextureMaskBit, operator, factor, 0).
+    /// (m10, m11, ty, 0), the two-image composite controls
+    /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
+    /// (domeLinkMask, 0, 0, 0).
     /// </remarks>
-    internal const int ByteSize = 192;
+    internal const int ByteSize = 208;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -49,7 +52,8 @@ internal static class SilkSurfaceUniformWriter
         SilkMaterialData? material,
         RenderHeadlight light,
         Span<byte> destination,
-        bool supportsVolumeTextures = false)
+        bool supportsVolumeTextures = false,
+        SilkLightLinkMasks? linkMasks = null)
     {
         if (destination.Length != ByteSize)
         {
@@ -58,7 +62,27 @@ internal static class SilkSurfaceUniformWriter
                 nameof(destination));
         }
 
+        // Absent means "no linking was resolved", which is not the same as
+        // "linked to nothing": every caller that has no link table must still
+        // light the surface with every light. It is an explicit absence rather
+        // than a default-valued struct because an all-zero mask set is a
+        // perfectly ordinary resolution -- a prim excluded from every collection
+        // -- and treating it as "unresolved" lit exactly the prims the author
+        // excluded.
+        SilkLightLinkMasks masks = linkMasks ?? SilkLightLinkMasks.All;
+
         SilkMaterialData? shaded = material is { IsSupported: true } ? material : null;
+
+        // MaterialXGenerated is exactly, and only, the ND_surface_unlit terminal:
+        // hdSilk routes standard-surface and OpenPBR graphs through the projected
+        // path instead, so a generated material is an unlit surface by
+        // construction. That matters here because this permutation stands in for
+        // the generated fragment while it compiles and if it fails, and standing
+        // in with a lit shading model would light a surface the author explicitly
+        // declared unlit -- including with the prefiltered environment, which an
+        // unlit surface must never receive. Mode 2 makes the checked fragment
+        // return the surface colour with no lighting at all.
+        bool unlit = shaded?.SurfaceKind == SilkSurfaceKind.MaterialXGenerated;
         Vector3 diffuse = Vector(
             shaded,
             SilkMaterialParameter.DiffuseColor,
@@ -90,8 +114,13 @@ internal static class SilkSurfaceUniformWriter
             64,
             clearcoat,
             clearcoatRoughness,
-            shaded is null ? 0 : 1,
-            0);
+            unlit ? 2 : shaded is null ? 0 : 1,
+            // The UsdLux light-link mask for the prim this block is drawn for.
+            // It rides in the surface block rather than in a binding of its own
+            // because the block is already bound per draw and has an unused
+            // component here; a mask of eight bits is exactly representable as a
+            // float, so the shader reads it back without rounding.
+            masks.LightMask & SilkLightLinkMasks.AllBits);
 
         Vector3 direction = Normalize(light.Direction);
         WriteVector4(
@@ -130,7 +159,12 @@ internal static class SilkSurfaceUniformWriter
             volumeDensity ? 0 : (float)(uint)(shaded?.GetTextureFeatures() ?? SilkShaderFeatures.None),
             udimMask,
             volumeDepth,
-            0);
+            // The UsdLux shadow-link mask for the prim. It is resolved and packed
+            // even though no raster shadow pass consumes it yet, so the value a
+            // shadow pass will read is produced and regression-gated by exactly
+            // the path that produces the light mask, rather than being invented
+            // when that pass lands.
+            masks.ShadowMask & SilkLightLinkMasks.AllBits);
 
         // hdSilk publishes one folded MaterialX place2d affine per material, so the
         // shader applies it once to the interpolated coordinate rather than
@@ -168,6 +202,21 @@ internal static class SilkSurfaceUniformWriter
             // atlas path, which reads its first texel as tile metadata and returns
             // one flat colour for the whole surface.
             composite is not null && IsUdim(composite) ? 1 : 0);
+
+        // The UsdLux dome link mask for the prim this block is drawn for. It is a
+        // slot of its own rather than more bits of the light mask because the
+        // frame's dome table and its direct-light table are two orderings: dome 0
+        // and direct light 0 are different lights, and folding them together would
+        // have made every existing mask depend on how many domes a scene authors.
+        // Eight bits are exactly representable as a float, so the shader reads it
+        // back without rounding.
+        WriteVector4(
+            destination,
+            192,
+            masks.DomeMask & SilkLightLinkMasks.AllDomeBits,
+            0,
+            0,
+            0);
     }
 
     private static bool IsUdim(SilkMaterialTexture texture) =>

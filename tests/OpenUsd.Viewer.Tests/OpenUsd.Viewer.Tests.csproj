@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenUsd.Viewer\OpenUsd.Viewer.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Viewer.Bridge.Grpc\OpenUsd.Viewer.Bridge.Grpc.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk.Metal\OpenUsd.Rendering.Silk.Metal.csproj" />
   </ItemGroup>
 

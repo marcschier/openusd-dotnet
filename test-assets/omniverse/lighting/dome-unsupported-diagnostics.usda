@@ -1,0 +1,78 @@
+#usda 1.0
+(
+    doc = """Dome-light fixtures for the diagnostics this renderer must emit.
+
+    Synthetic, repository-authored, MIT-licensed.
+
+    Each dome below authors exactly one condition the textured dome-light path
+    does not resolve. None of them is an error in the asset: they are all valid
+    UsdLux, and the point of the fixture is that the renderer names the affected
+    prim and falls back to that dome's untextured emission rather than rendering
+    a plausible but wrong result.
+
+    - </World/Lights/AngularDome> declares texture:format "angular". Sampling an
+      angular image as if it were equirectangular lights the scene from
+      directions nobody authored, so it reports
+      OPENUSD_SILK_ENVIRONMENT_MAPPING_UNSUPPORTED.
+    - </World/Lights/MissingTextureDome> references an asset that does not
+      exist, and reports OPENUSD_SILK_ENVIRONMENT_ASSET_NOT_FOUND.
+    - </World/Lights/ColorTemperatureDome> enables colour temperature, which
+      hdSilk does not put on the environment wire, and reports
+      OPENUSD_SILK_ENVIRONMENT_FEATURE_UNSUPPORTED."""
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Scope "Lights"
+    {
+        def DomeLight "AngularDome"
+        {
+            asset inputs:texture:file = @dome-white-latlong.hdr@
+            token inputs:texture:format = "angular"
+            color3f inputs:color = (1, 1, 1)
+            float inputs:intensity = 1
+            float inputs:specular = 0
+        }
+
+        def DomeLight "MissingTextureDome" (
+            active = false
+        )
+        {
+            asset inputs:texture:file = @dome-absent-latlong.hdr@
+            token inputs:texture:format = "latlong"
+            color3f inputs:color = (1, 1, 1)
+            float inputs:intensity = 1
+            float inputs:specular = 0
+        }
+
+        def DomeLight "ColorTemperatureDome" (
+            active = false
+        )
+        {
+            asset inputs:texture:file = @dome-white-latlong.hdr@
+            token inputs:texture:format = "latlong"
+            bool inputs:enableColorTemperature = true
+            float inputs:colorTemperature = 4500
+            color3f inputs:color = (1, 1, 1)
+            float inputs:intensity = 1
+            float inputs:specular = 0
+        }
+    }
+
+    def Mesh "Ground"
+    {
+        float3[] extent = [(-50, 0, -50), (50, 0, 50)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-50, 0, -50), (50, 0, -50), (50, 0, 50), (-50, 0, 50)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(1, 1, 1)] (
+            interpolation = "constant"
+        )
+    }
+}

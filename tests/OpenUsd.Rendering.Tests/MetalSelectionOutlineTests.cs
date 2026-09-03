@@ -49,11 +49,13 @@ public sealed class MetalSelectionOutlineTests
             "MetalSilkGraphicsDevice.Offscreen.cs"));
 
         await Assert.That(selection).Contains(
-            "SilkSelectionOutlineCapabilities.VisibleOnly");
+            "SilkSelectionOutlineCapabilities.Full");
         await Assert.That(selection).Contains(
             "depthDescriptor.IsDepthWriteEnabled = false");
         await Assert.That(selection).Contains(
-            "depthDescriptor.DepthCompareFunction = MTLCompareFunction.LessEqual");
+            "depthDescriptor.DepthCompareFunction = descriptor.DepthTestEnabled");
+        await Assert.That(selection).Contains("? MTLCompareFunction.LessEqual");
+        await Assert.That(selection).Contains(": MTLCompareFunction.Always");
         await Assert.That(selection).Contains(
             "color.SourceRGBBlendFactor = MTLBlendFactor.SourceAlpha");
         await Assert.That(selection).Contains(
@@ -133,14 +135,16 @@ public sealed class MetalSelectionOutlineTests
                 "SelectionOutlineParameters");
         await Assert.That(
             parameters.GetProperty("shape").GetProperty("size").GetInt32())
-            .IsEqualTo(32);
-        // Eleven declared programs: the ten historical ones plus
-        // mesh.volume.fragment, the single-permutation family that carries the
-        // sampled density volume's 3D texture and sampler. Expansion multiplies
-        // this into the seventeen entries the combined library actually links.
+            .IsEqualTo(48);
+        // Twenty-one declared program families, which expansion multiplies into
+        // the entries the combined library actually links. The extra family over
+        // the original twenty is the occluded selection-mask fragment stage the
+        // one-pass x-ray composite reads its second silhouette channel from.
         await Assert.That(
             manifest.RootElement.GetProperty("programs").GetArrayLength())
-            .IsEqualTo(11);
+            .IsEqualTo(21);
+        await Assert.That(project).Contains(
+            "checked\\selection.mask.occluded.fragment.metal");
         await Assert.That(project).Contains(
             "checked\\selection.mask.vertex.metal");
         await Assert.That(project).Contains(

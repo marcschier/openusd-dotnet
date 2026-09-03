@@ -12,20 +12,99 @@ internal sealed record SilkDecodedImage(
     byte[] Pixels,
     SilkTextureFormat Format = SilkTextureFormat.Rgba8Unorm);
 
+/// <summary>
+/// What an image library could observe about one image, beyond its shape.
+/// </summary>
+/// <remarks>
+/// Each bit says that the library *answered* for that field. A describer that
+/// never consults the library reports none of them, which is what lets a consumer
+/// refuse exactly the case it could not observe instead of substituting a default
+/// and calling it resolved.
+/// </remarks>
+[Flags]
+internal enum SilkImageObservation
+{
+    /// <summary>Nothing beyond the shape was observed.</summary>
+    None = 0,
+
+    /// <summary>The source channel count was observed.</summary>
+    ChannelCount = 1,
+
+    /// <summary>The image library's own effective colour space was observed.</summary>
+    ColorSpace = 2,
+
+    /// <summary>The image carries horizontal sampler wrap metadata.</summary>
+    AddressU = 4,
+
+    /// <summary>The image carries vertical sampler wrap metadata.</summary>
+    AddressV = 8,
+
+    /// <summary>
+    /// The image library was consulted at all. An axis that is queried but
+    /// carries no metadata is USD's documented "no metadata" case; an axis that
+    /// was never queried is a case no consumer may resolve.
+    /// </summary>
+    Queried = 16
+}
+
+/// <summary>The effective colour space an image library resolved for a file.</summary>
+internal enum SilkImageColorSpaceObservation
+{
+    /// <summary>Linear, and never sRGB-decoded.</summary>
+    Raw = 0,
+
+    /// <summary>sRGB-encoded, and linearized on decode.</summary>
+    Srgb = 1
+}
+
+/// <summary>One axis of sampler wrap metadata carried by an image file.</summary>
+internal enum SilkImageAddressObservation
+{
+    /// <summary>Clamp to the edge texel.</summary>
+    ClampToEdge = 0,
+
+    /// <summary>Mirror once and then clamp; not representable on the wire.</summary>
+    MirrorClampToEdge = 1,
+
+    /// <summary>Repeat.</summary>
+    Repeat = 2,
+
+    /// <summary>Mirror and repeat.</summary>
+    MirrorRepeat = 3,
+
+    /// <summary>Clamp to a border colour.</summary>
+    ClampToBorder = 4
+}
+
+/// <summary>
+/// One image's declared shape and whatever the image library could observe about
+/// how it should be read.
+/// </summary>
+/// <remarks>
+/// This is what lets a budget be enforced before an allocation rather than after
+/// one: an image whose header alone claims more texels than a consumer will
+/// retain is refused without the decoder ever materializing it. It is also what
+/// lets `sourceColorSpace = auto` and `wrap = useMetadata` be resolved from the
+/// file rather than guessed from the decoded format.
+/// </remarks>
+internal readonly record struct SilkImageDescription(
+    uint Width,
+    uint Height,
+    SilkTextureFormat Format,
+    uint ChannelCount = 0,
+    SilkImageObservation Observed = SilkImageObservation.None,
+    SilkImageColorSpaceObservation ColorSpace = SilkImageColorSpaceObservation.Raw,
+    SilkImageAddressObservation AddressU = SilkImageAddressObservation.ClampToEdge,
+    SilkImageAddressObservation AddressV = SilkImageAddressObservation.ClampToEdge);
+
 internal sealed record SilkUdimTile(uint Number, string Asset);
 
 internal static unsafe partial class SilkNativeImageDecoder
 {
-    private const uint ImageInfoVersion = 1;
-
     internal static SilkDecodedImage Decode(string asset, bool convertSrgbToLinear)
     {
         ArgumentException.ThrowIfNullOrEmpty(asset);
-        NativeImageInfo info = new()
-        {
-            StructSize = (uint)sizeof(NativeImageInfo),
-            Version = ImageInfoVersion
-        };
+        OpenUsdNativeImageInfo info = OpenUsdNativeImageInfo.Create();
         Span<byte> errorBytes = stackalloc byte[1024];
         fixed (byte* error = errorBytes)
         {
@@ -57,6 +136,57 @@ internal static unsafe partial class SilkNativeImageDecoder
                 ref info,
                 errorBytes,
                 error);
+        }
+    }
+
+    /// <summary>
+    /// Reads one image's declared width, height and decoded format from its
+    /// header, without decoding it.
+    /// </summary>
+    /// <remarks>
+    /// The native decoder's own two-phase contract is what makes this exact: a
+    /// call with no destination buffer reports the shape and answers
+    /// <c>BufferTooSmall</c>. The eight-bit entry point is probed first for the
+    /// same reason <see cref="Decode"/> probes it first -- an image it can
+    /// represent is decoded as eight-bit -- so the format reported here is the
+    /// format a later decode produces.
+    /// </remarks>
+    internal static SilkImageDescription Describe(string asset)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(asset);
+        OpenUsdNativeImageInfo info = OpenUsdNativeImageInfo.Create();
+        Span<byte> errorBytes = stackalloc byte[1024];
+        fixed (byte* error = errorBytes)
+        {
+            NativeErrorBuffer errorBuffer = new(error, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = DecodeImageRgba8(
+                asset,
+                0,
+                ref info,
+                null,
+                0,
+                ref errorBuffer);
+            if (status == OpenUsdNativeStatus.BufferTooSmall)
+            {
+                return Describe(info, SilkTextureFormat.Rgba8Unorm);
+            }
+            if (status is OpenUsdNativeStatus.NotFound or OpenUsdNativeStatus.InvalidArgument)
+            {
+                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+            }
+            errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
+            status = DecodeImageRgba32Float(
+                asset,
+                0,
+                ref info,
+                null,
+                0,
+                ref errorBuffer);
+            if (status != OpenUsdNativeStatus.BufferTooSmall)
+            {
+                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+            }
+            return Describe(info, SilkTextureFormat.Rgba32Float);
         }
     }
 
@@ -102,7 +232,7 @@ internal static unsafe partial class SilkNativeImageDecoder
     private static SilkDecodedImage DecodeRgba8(
         string asset,
         bool convertSrgbToLinear,
-        NativeImageInfo info,
+        OpenUsdNativeImageInfo info,
         Span<byte> errorBytes,
         byte* error,
         NativeErrorBuffer errorBuffer)
@@ -126,7 +256,7 @@ internal static unsafe partial class SilkNativeImageDecoder
     private static SilkDecodedImage DecodeRgba32Float(
         string asset,
         bool convertSrgbToLinear,
-        ref NativeImageInfo info,
+        ref OpenUsdNativeImageInfo info,
         Span<byte> errorBytes,
         byte* error)
     {
@@ -184,13 +314,47 @@ internal static unsafe partial class SilkNativeImageDecoder
         throw new InvalidDataException(message);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeImageInfo
+    /// <summary>
+    /// Projects one native image-info answer onto the renderer's own description.
+    /// </summary>
+    /// <remarks>
+    /// The layout itself lives in <see cref="OpenUsdNativeImageInfo"/>, which is
+    /// the single managed statement of this seam. This decoder used to carry a
+    /// private copy, and a private copy is exactly how one path reaches version
+    /// two while another keeps writing version one.
+    /// </remarks>
+    private static SilkImageDescription Describe(
+        OpenUsdNativeImageInfo info,
+        SilkTextureFormat format)
     {
-        internal uint StructSize;
-        internal uint Version;
-        internal uint Width;
-        internal uint Height;
+        SilkImageObservation observed = SilkImageObservation.Queried;
+        if (info.Observed.HasFlag(OpenUsdNativeImageObservation.ChannelCount))
+        {
+            observed |= SilkImageObservation.ChannelCount;
+        }
+        if (info.Observed.HasFlag(OpenUsdNativeImageObservation.ColorSpace))
+        {
+            observed |= SilkImageObservation.ColorSpace;
+        }
+        if (info.Observed.HasFlag(OpenUsdNativeImageObservation.AddressU))
+        {
+            observed |= SilkImageObservation.AddressU;
+        }
+        if (info.Observed.HasFlag(OpenUsdNativeImageObservation.AddressV))
+        {
+            observed |= SilkImageObservation.AddressV;
+        }
+        return new SilkImageDescription(
+            info.Width,
+            info.Height,
+            format,
+            info.ChannelCount,
+            observed,
+            info.ColorSpace == OpenUsdNativeImageColorSpace.Srgb
+                ? SilkImageColorSpaceObservation.Srgb
+                : SilkImageColorSpaceObservation.Raw,
+            (SilkImageAddressObservation)Math.Min((uint)info.AddressU, 4u),
+            (SilkImageAddressObservation)Math.Min((uint)info.AddressV, 4u));
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -216,7 +380,7 @@ internal static unsafe partial class SilkNativeImageDecoder
     private static partial OpenUsdNativeStatus DecodeImageRgba8(
         string assetPath,
         uint convertSrgbToLinear,
-        ref NativeImageInfo info,
+        ref OpenUsdNativeImageInfo info,
         byte* rgba,
         nuint rgbaSize,
         ref NativeErrorBuffer error);
@@ -229,7 +393,7 @@ internal static unsafe partial class SilkNativeImageDecoder
     private static partial OpenUsdNativeStatus DecodeImageRgba32Float(
         string assetPath,
         uint convertSrgbToLinear,
-        ref NativeImageInfo info,
+        ref OpenUsdNativeImageInfo info,
         float* rgba,
         nuint rgbaSize,
         ref NativeErrorBuffer error);

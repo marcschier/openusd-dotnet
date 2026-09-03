@@ -17,8 +17,11 @@
 #include "pxr/base/vt/value.h"
 #include "pxr/imaging/hd/instancer.h"
 
+#include "sceneState.h"
+
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -49,8 +52,19 @@ struct HdSilkInstanceSample
     /// authoritative count cannot explain is dropped with a diagnostic rather
     /// than composed. The result keeps nested indices unique and equally
     /// stable, but it is an hdSilk encoding rather than an index USD can decode
-    /// on its own.
+    /// on its own -- which is exactly why `context` exists beside it.
     int64_t index = 0;
+
+    /// The complete ordered instancing chain this sample belongs to, outermost
+    /// level first and innermost last.
+    ///
+    /// Each entry names the instancer at that level and the instance's own
+    /// index inside it, so a consumer can decode the chain back to a scene
+    /// instance. `index` above cannot be decoded that way once more than one
+    /// level is involved, because it is a composition rather than any single
+    /// level's index; the chain is the authoritative description and the
+    /// composite remains the stable key the retained tables are built on.
+    std::vector<HdSilkInstancerContextEntry> context;
 };
 
 /// Accumulates the instance primvars Hydra publishes for a point instancer
@@ -72,6 +86,18 @@ public:
     /// invisible.
     std::vector<HdSilkInstanceSample> ComputeInstanceSamples(
         SdfPath const& prototypeId);
+
+    /// Returns this instancer's authoritative instance count: the length of its
+    /// own instance primvars, which is the radix every nested index of it is
+    /// composed against. It is the same value ComputeInstanceSamples uses, so a
+    /// caller that has to reproduce a composed identity -- the link resolution
+    /// does -- reads the radix from here rather than deriving one of its own
+    /// from a per-prototype sample count.
+    int64_t GetInstanceCount() const;
+
+    /// Returns false when the instancer is invisible, in which case it publishes
+    /// no instance of any prototype and every identity beneath it is absent.
+    bool IsVisible() const;
 
 private:
     void _SyncPrimvars(HdSceneDelegate* delegate, HdDirtyBits dirtyBits);

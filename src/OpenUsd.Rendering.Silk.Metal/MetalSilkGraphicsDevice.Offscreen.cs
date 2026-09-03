@@ -249,6 +249,11 @@ public sealed partial class MetalSilkGraphicsDevice
                 commands.ContainsSelectionOutlineCommands ? [] : null;
         HashSet<MetalSilkSelectionOutlineBinding>? leasedSelectionOutlineBindings =
             commands.ContainsSelectionOutlineCommands ? [] : null;
+        HashSet<MetalSilkDisplayTransformGraphicsPipeline>?
+            leasedDisplayTransformPipelines =
+                commands.ContainsDisplayTransformCommands ? [] : null;
+        HashSet<MetalSilkDisplayTransformBinding>? leasedDisplayTransformBindings =
+            commands.ContainsDisplayTransformCommands ? [] : null;
         var leasedComputePipelines = new HashSet<MetalSilkComputePipeline>();
         var leasedBuffers = new HashSet<MetalSilkGraphicsBuffer>();
         var leasedSamplers = new HashSet<MetalSilkGraphicsSampler>();
@@ -298,6 +303,16 @@ public sealed partial class MetalSilkGraphicsDevice
                 {
                     leases.Add(selectionOutlineBinding.AcquireLease());
                 }
+                if (command.DisplayTransformPipeline is { } dtPipeline &&
+                    leasedDisplayTransformPipelines!.Add(dtPipeline))
+                {
+                    leases.Add(dtPipeline.AcquireLease());
+                }
+                if (command.DisplayTransformBinding is { } dtBinding &&
+                    leasedDisplayTransformBindings!.Add(dtBinding))
+                {
+                    leases.Add(dtBinding.AcquireLease());
+                }
                 if (command.ComputePipeline is { } leasedComputePipeline &&
                     leasedComputePipelines.Add(leasedComputePipeline))
                 {
@@ -335,11 +350,19 @@ public sealed partial class MetalSilkGraphicsDevice
             MetalSilkSelectionOutlineGraphicsPipeline?
                 currentSelectionOutlinePipeline = null;
             MetalSilkSelectionOutlineBinding? currentSelectionOutlineBinding = null;
+            MetalSilkDisplayTransformGraphicsPipeline?
+                currentDisplayTransformPipeline = null;
+            MetalSilkDisplayTransformBinding? currentDisplayTransformBinding = null;
             MetalSilkGraphicsBuffer? vertexBuffer = null;
             MetalSilkGraphicsBuffer? indexBuffer = null;
             MetalSilkGraphicsBuffer? uniformBuffer = null;
             uint? pickBaseToken = null;
             MetalSilkComputePipeline? computePipeline = null;
+            // Compute bindings are keyed by their declared coordinate rather
+            // than held in one field, because a generalized layout binds
+            // several buffers and a dispatch resolves each by the slot its own
+            // layout declares.
+            Dictionary<(uint Set, uint Binding), MetalSilkGraphicsBuffer> computeBuffers = [];
             MetalSilkGraphicsBuffer? storageBuffer = null;
             MetalSilkGraphicsBuffer? computeUniformBuffer = null;
             List<MetalMaterialBinding> materialBindings = [];
@@ -504,12 +527,81 @@ public sealed partial class MetalSilkGraphicsDevice
                     }
                     continue;
                 }
+                if (command.DisplayTransformKind != MetalDisplayTransformCommandKind.None)
+                {
+                    switch (command.DisplayTransformKind)
+                    {
+                        case MetalDisplayTransformCommandKind.BeginRendering:
+                            colorAttachment = command.Texture!;
+                            colorAttachment.ThrowIfDisposed();
+                            currentDisplayTransformPipeline = null;
+                            currentDisplayTransformBinding = null;
+                            rendering = true;
+                            break;
+                        case MetalDisplayTransformCommandKind.SetPipeline:
+                            currentDisplayTransformPipeline =
+                                command.DisplayTransformPipeline!;
+                            currentDisplayTransformPipeline.ThrowIfUnavailable();
+                            currentPipeline = null;
+                            currentPickPipeline = null;
+                            currentSelectionMaskPipeline = null;
+                            currentSelectionOutlinePipeline = null;
+                            currentSelectionOutlineBinding = null;
+                            break;
+                        case MetalDisplayTransformCommandKind.SetBinding:
+                            currentDisplayTransformBinding =
+                                command.DisplayTransformBinding!;
+                            currentDisplayTransformBinding.ThrowIfUnavailable();
+                            break;
+                        case MetalDisplayTransformCommandKind.DrawFullscreenTriangle:
+                            if (!rendering || colorAttachment is null ||
+                                currentDisplayTransformPipeline is null ||
+                                currentDisplayTransformBinding is null ||
+                                currentViewport is null ||
+                                currentScissor is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered Metal display-transform stream has " +
+                                    "incomplete fullscreen state.");
+                            }
+                            EncodeDisplayTransformDraw(
+                                commandBuffer,
+                                colorAttachment,
+                                currentDisplayTransformPipeline,
+                                currentDisplayTransformBinding,
+                                currentViewport.Value,
+                                currentScissor.Value);
+                            break;
+                        default:
+                            throw new InvalidOperationException(
+                                "Unknown Metal display-transform command.");
+                    }
+                    continue;
+                }
                 switch (command.Kind)
                 {
                     case SilkGraphicsCommandKind.UploadTexture:
                         MetalSilkGraphicsTexture uploadTexture = command.Texture!;
                         uploadTexture.ThrowIfDisposed();
-                        MTLBuffer upload = CreateTextureUpload(command.Data!);
+                        MetalMipCopyPlan[] uploadPlans = MetalMipCopyPlan.Create(
+                            uploadTexture.Width,
+                            uploadTexture.Height,
+                            uploadTexture.Format,
+                            uploadTexture.MipLevelCount);
+                        // Staged rather than uploaded directly: Metal requires the
+                        // source offset and row pitch of a buffer-to-texture blit
+                        // to be 256-byte aligned, and a tightly packed chain
+                        // satisfies neither past the base level.
+                        byte[] staged = new byte[
+                            checked((int)MetalMipCopyPlan.GetStagingByteSize(uploadPlans))];
+                        MetalMipCopyPlan.Stage(
+                            uploadPlans,
+                            uploadTexture.Width,
+                            uploadTexture.Height,
+                            uploadTexture.Format,
+                            command.Data!,
+                            staged);
+                        MTLBuffer upload = CreateTextureUpload(staged);
                         uploadBuffers.Add(upload);
                         MTLBlitCommandEncoder blitEncoder =
                             commandBuffer.BlitCommandEncoder();
@@ -518,11 +610,6 @@ public sealed partial class MetalSilkGraphicsDevice
                             throw new InvalidOperationException(
                                 "Could not create a Metal blit command encoder.");
                         }
-                        MetalMipCopyPlan[] uploadPlans = MetalMipCopyPlan.Create(
-                            uploadTexture.Width,
-                            uploadTexture.Height,
-                            uploadTexture.Format,
-                            uploadTexture.MipLevelCount);
                         foreach (MetalMipCopyPlan uploadPlan in uploadPlans)
                         {
                             blitEncoder.CopyFromBuffer(
@@ -812,13 +899,40 @@ public sealed partial class MetalSilkGraphicsDevice
                                         currentPipeline.BindingLayout,
                                         materialBindings);
                                 }
+
+                                // No rasterizer depth bias is set for any pick
+                                // pass. Metal's depth bias, like Direct3D's and
+                                // Vulkan's, is defined for triangle primitives,
+                                // so the edge and point separation comes from
+                                // the checked subprim vertex stage's clip-space
+                                // offset instead -- the one place every backend
+                                // applies it identically.
                                 encoder.DrawIndexedPrimitives(
-                                    currentPipeline?.Descriptor.TopologyKind switch
-                                    {
-                                        SilkTopologyKind.LineList => MTLPrimitiveType.Line,
-                                        SilkTopologyKind.PointList => MTLPrimitiveType.Point,
-                                        _ => MTLPrimitiveType.Triangle
-                                    },
+                                    currentPickPipeline is not null
+                                        ? currentPickPipeline.Descriptor.PrimitiveTopology switch
+                                        {
+                                            SilkPickPrimitiveTopology.LineList =>
+                                                MTLPrimitiveType.Line,
+                                            SilkPickPrimitiveTopology.PointList =>
+                                                MTLPrimitiveType.Point,
+                                            _ => MTLPrimitiveType.Triangle
+                                        }
+                                        : currentSelectionMaskPipeline is not null
+                                            ? currentSelectionMaskPipeline
+                                                .Descriptor.PrimitiveTopology switch
+                                            {
+                                                SilkSelectionMaskPrimitiveTopology.LineList =>
+                                                    MTLPrimitiveType.Line,
+                                                SilkSelectionMaskPrimitiveTopology.PointList =>
+                                                    MTLPrimitiveType.Point,
+                                                _ => MTLPrimitiveType.Triangle
+                                            }
+                                            : currentPipeline?.Descriptor.TopologyKind switch
+                                            {
+                                                SilkTopologyKind.LineList => MTLPrimitiveType.Line,
+                                                SilkTopologyKind.PointList => MTLPrimitiveType.Point,
+                                                _ => MTLPrimitiveType.Triangle
+                                            },
                                     command.IndexCount,
                                     MTLIndexType.UInt32,
                                     indexBuffer.Buffer,
@@ -846,6 +960,8 @@ public sealed partial class MetalSilkGraphicsDevice
                         }
                         colorAttachment = null;
                         depthAttachment = null;
+                        currentDisplayTransformPipeline = null;
+                        currentDisplayTransformBinding = null;
                         rendering = false;
                         break;
                     case SilkGraphicsCommandKind.SetComputePipeline:
@@ -866,15 +982,20 @@ public sealed partial class MetalSilkGraphicsDevice
                                     null,
                                     storageBuffer));
                         }
+                        else
+                        {
+                            computeBuffers[(command.SetIndex, command.Binding)] =
+                                storageBuffer;
+                        }
                         break;
                     case SilkGraphicsCommandKind.SetComputeUniformBuffer:
                         computeUniformBuffer = command.Buffer!;
                         computeUniformBuffer.ThrowIfDisposed();
+                        computeBuffers[(command.SetIndex, command.Binding)] =
+                            computeUniformBuffer;
                         break;
                     case SilkGraphicsCommandKind.Dispatch:
-                        if (computePipeline is null ||
-                            storageBuffer is null ||
-                            computeUniformBuffer is null)
+                        if (computePipeline is null)
                         {
                             throw new InvalidOperationException(
                                 "The ordered Metal command stream has incomplete compute state.");
@@ -890,20 +1011,43 @@ public sealed partial class MetalSilkGraphicsDevice
                         }
                         computeEncoder.SetComputePipelineState(
                             computePipeline.Pipeline);
-                        computeEncoder.SetBuffer(storageBuffer.Buffer, 0, 0);
-                        computeEncoder.SetBuffer(computeUniformBuffer.Buffer, 0, 1);
+                        SilkComputeBindingLayoutDescriptor metalLayout =
+                            computePipeline.Descriptor.Program.BindingLayout.Descriptor;
+                        // Metal has no register classes, so a slot's ordinal is
+                        // its MSL buffer index. Slang assigns those indices in
+                        // declaration order for a kernel whose Direct3D
+                        // registers are declared in the same order, which is
+                        // what the checked reflection contract requires of every
+                        // compute source in this repository.
+                        for (int slot = 0; slot < metalLayout.Slots.Count; slot++)
+                        {
+                            SilkComputeSlot metalSlot = metalLayout.Slots[slot];
+                            if (!computeBuffers.TryGetValue(
+                                    (metalSlot.Set, metalSlot.Binding),
+                                    out MetalSilkGraphicsBuffer? slotBuffer))
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered Metal command stream has incomplete " +
+                                    "compute state.");
+                            }
+                            slotBuffer.ThrowIfDisposed();
+                            computeEncoder.SetBuffer(
+                                slotBuffer.Buffer,
+                                0,
+                                checked((nuint)slot));
+                        }
                         computeEncoder.DispatchThreadgroups(
                             new MTLSize
                             {
-                                width = checked((command.ElementCount + 63) / 64),
+                                width = command.GroupCount,
                                 height = 1,
                                 depth = 1
                             },
                             new MTLSize
                             {
-                                width = 64,
-                                height = 1,
-                                depth = 1
+                                width = computePipeline.Descriptor.ThreadGroupSizeX,
+                                height = computePipeline.Descriptor.ThreadGroupSizeY,
+                                depth = computePipeline.Descriptor.ThreadGroupSizeZ
                             });
                         break;
                     case SilkGraphicsCommandKind.BufferBarrier:
@@ -950,7 +1094,8 @@ public sealed partial class MetalSilkGraphicsDevice
                 this,
                 commandBuffer,
                 commands.ContainsPickCommands,
-                commands.ContainsSelectionOutlineCommands);
+                commands.ContainsSelectionOutlineCommands ||
+                commands.ContainsDisplayTransformCommands);
             foreach (MetalSilkGraphicsTexture texture in leasedTextures)
             {
                 texture.SetPendingSubmission(completion);
@@ -999,7 +1144,8 @@ public sealed partial class MetalSilkGraphicsDevice
                     NotifyCommandBufferFailure();
                 }
                 if (nativeSubmissionAttempted &&
-                    commands.ContainsSelectionOutlineCommands)
+                    (commands.ContainsSelectionOutlineCommands ||
+                     commands.ContainsDisplayTransformCommands))
                 {
                     NotifySelectionOutlineCommandBufferFailure();
                 }
@@ -1166,6 +1312,73 @@ public sealed partial class MetalSilkGraphicsDevice
                 });
                 encoder.SetFragmentTexture(binding.Mask.Texture, 0);
                 encoder.SetFragmentTexture(binding.Depth.Texture, 1);
+                encoder.SetFragmentSamplerState(binding.Sampler.Sampler, 0);
+                encoder.SetFragmentBuffer(binding.Parameters.Buffer, 0, 0);
+                encoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 3);
+                encoder.EndEncoding();
+            }
+            finally
+            {
+                encoder.Dispose();
+            }
+        }
+        finally
+        {
+            renderDescriptor.Dispose();
+        }
+    }
+
+    private static void EncodeDisplayTransformDraw(
+        MTLCommandBuffer commandBuffer,
+        MetalSilkGraphicsTexture colorAttachment,
+        MetalSilkDisplayTransformGraphicsPipeline pipeline,
+        MetalSilkDisplayTransformBinding binding,
+        SilkViewport viewport,
+        SilkScissor scissor)
+    {
+        var renderDescriptor = new MTLRenderPassDescriptor();
+        try
+        {
+            MTLRenderPassColorAttachmentDescriptor color =
+                renderDescriptor.ColorAttachments.Object(0);
+            color.Texture = colorAttachment.Texture;
+            color.LoadAction = MTLLoadAction.DontCare;
+            color.StoreAction = MTLStoreAction.Store;
+
+            MTLRenderCommandEncoder encoder =
+                commandBuffer.RenderCommandEncoder(renderDescriptor);
+            if (encoder.NativePtr == 0)
+            {
+                throw new InvalidOperationException(
+                    "Could not create a Metal display-transform encoder.");
+            }
+            try
+            {
+                pipeline.ThrowIfUnavailable();
+                binding.ThrowIfUnavailable();
+                encoder.SetRenderPipelineState(pipeline.Pipeline);
+                encoder.SetCullMode(MTLCullMode.None);
+                encoder.SetViewport(new MTLViewport
+                {
+                    originX = viewport.X,
+                    originY = viewport.Y,
+                    width = viewport.Width,
+                    height = viewport.Height,
+                    znear = viewport.MinDepth,
+                    zfar = viewport.MaxDepth
+                });
+                encoder.SetScissorRect(new MTLScissorRect
+                {
+                    x = checked((ulong)scissor.X),
+                    y = checked((ulong)scissor.Y),
+                    width = scissor.Width,
+                    height = scissor.Height
+                });
+                // Display transform fragment shader ABI (display.transform.fragment.metal):
+                // sceneColor [[texture(0)]], displayLut [[texture(1)]],
+                // displaySampler [[sampler(0)]], DisplayTransformParameters [[buffer(0)]]
+                encoder.SetFragmentTexture(binding.SceneColor.Texture, 0);
+                encoder.SetFragmentTexture(binding.Lattice.Texture, 1);
                 encoder.SetFragmentSamplerState(binding.Sampler.Sampler, 0);
                 encoder.SetFragmentBuffer(binding.Parameters.Buffer, 0, 0);
                 encoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 3);
@@ -1383,6 +1596,7 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     : ISilkGraphicsCommandList,
       ISilkPickGraphicsCommandList,
       ISilkSelectionOutlineGraphicsCommandList,
+      ISilkDisplayTransformGraphicsCommandList,
       ISilkVolumeTextureCommandList
 {
     private readonly List<MetalGraphicsCommand> _commands = [];
@@ -1393,17 +1607,25 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     private MetalSilkSelectionMaskGraphicsPipeline? _selectionMaskPipeline;
     private MetalSilkSelectionOutlineGraphicsPipeline? _selectionOutlinePipeline;
     private MetalSilkSelectionOutlineBinding? _selectionOutlineBinding;
+    private MetalSilkDisplayTransformGraphicsPipeline? _displayTransformPipeline;
+    private MetalSilkDisplayTransformBinding? _displayTransformBinding;
     private MetalSilkGraphicsBuffer? _vertexBuffer;
     private MetalSilkGraphicsBuffer? _indexBuffer;
     private MetalSilkGraphicsBuffer? _uniformBuffer;
     private MetalSilkComputePipeline? _computePipeline;
     private MetalSilkGraphicsBuffer? _storageBuffer;
     private MetalSilkGraphicsBuffer? _computeUniformBuffer;
+    // One entry per declared compute slot ordinal, so a dispatch can require
+    // every slot its layout declares to have been bound.
+    private readonly MetalSilkGraphicsBuffer?[] _computeBuffers =
+        new MetalSilkGraphicsBuffer?[SilkComputeBindingLayoutDescriptor.MaximumSlots];
     private SilkViewport? _viewport;
     private SilkScissor? _scissor;
     private uint? _pickBaseToken;
     private bool _containsPickCommands;
     private bool _containsSelectionOutlineCommands;
+    private bool _containsDisplayTransformCommands;
+    private bool _displayTransformRendering;
     private bool _rendering;
     private bool _submitted;
     private bool _disposed;
@@ -1416,6 +1638,9 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
 
     internal bool ContainsSelectionOutlineCommands =>
         _containsSelectionOutlineCommands;
+
+    internal bool ContainsDisplayTransformCommands =>
+        _containsDisplayTransformCommands;
 
     public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
     {
@@ -1746,6 +1971,9 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
         _selectionMaskPipeline = null;
         _selectionOutlinePipeline = null;
         _selectionOutlineBinding = null;
+        _displayTransformPipeline = null;
+        _displayTransformBinding = null;
+        _displayTransformRendering = false;
     }
 
     public void BeginSelectionMaskRendering(
@@ -1882,6 +2110,91 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
         _commands.Add(MetalGraphicsCommand.DrawSelectionOutlineFullscreenTriangle());
     }
 
+    public void BeginDisplayTransformRendering(
+        SilkDisplayTransformRenderingDescriptor descriptor)
+    {
+        ThrowIfUnavailable();
+        if (_rendering)
+        {
+            throw new InvalidOperationException("A rendering scope is already active.");
+        }
+        descriptor.Validate();
+        MetalSilkGraphicsTexture color = ValidateTexture(descriptor.ColorAttachment);
+        _colorAttachment = color;
+        _depthAttachment = null;
+        _selectionMaskPipeline = null;
+        _displayTransformRendering = true;
+        _rendering = true;
+        _containsDisplayTransformCommands = true;
+        _commands.Add(MetalGraphicsCommand.BeginDisplayTransformRendering(color));
+    }
+
+    public void SetDisplayTransformGraphicsPipeline(
+        ISilkDisplayTransformGraphicsPipeline pipeline)
+    {
+        ThrowIfRendering();
+        ArgumentNullException.ThrowIfNull(pipeline);
+        if (!_displayTransformRendering ||
+            pipeline is not MetalSilkDisplayTransformGraphicsPipeline metalPipeline ||
+            !ReferenceEquals(metalPipeline.Device, Device))
+        {
+            throw new ArgumentException(
+                "The display-transform pipeline is not valid for this Metal pass.",
+                nameof(pipeline));
+        }
+        metalPipeline.ThrowIfUnavailable();
+        if (_colorAttachment?.Format != metalPipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The display-transform pipeline format does not match the color target.",
+                nameof(pipeline));
+        }
+        _pipeline = null;
+        _pickPipeline = null;
+        _selectionMaskPipeline = null;
+        _selectionOutlinePipeline = null;
+        _selectionOutlineBinding = null;
+        _displayTransformPipeline = metalPipeline;
+        _containsDisplayTransformCommands = true;
+        _commands.Add(MetalGraphicsCommand.SetDisplayTransformPipeline(metalPipeline));
+    }
+
+    public void SetDisplayTransformBinding(ISilkDisplayTransformBinding binding)
+    {
+        ThrowIfRendering();
+        ArgumentNullException.ThrowIfNull(binding);
+        if (!_displayTransformRendering ||
+            binding is not MetalSilkDisplayTransformBinding metalBinding ||
+            !ReferenceEquals(metalBinding.Device, Device))
+        {
+            throw new ArgumentException(
+                "The display-transform binding is not valid for this Metal pass.",
+                nameof(binding));
+        }
+        metalBinding.ThrowIfUnavailable();
+        _displayTransformBinding = metalBinding;
+        _containsDisplayTransformCommands = true;
+        _commands.Add(MetalGraphicsCommand.SetDisplayTransformBinding(metalBinding));
+    }
+
+    public void DrawDisplayTransformFullscreenTriangle()
+    {
+        ThrowIfRendering();
+        if (!_displayTransformRendering ||
+            _colorAttachment is null ||
+            _displayTransformPipeline is null ||
+            _displayTransformBinding is null ||
+            _viewport is null ||
+            _scissor is null)
+        {
+            throw new InvalidOperationException(
+                "Fullscreen display transform requires color, pipeline, binding, " +
+                "viewport, and scissor.");
+        }
+        _containsDisplayTransformCommands = true;
+        _commands.Add(MetalGraphicsCommand.DrawDisplayTransformFullscreenTriangle());
+    }
+
     public void CopyRgba8Pixel(
         ISilkGraphicsTexture source,
         SilkTexturePixelCoordinate coordinate,
@@ -1919,8 +2232,20 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
         }
         metalPipeline.ThrowIfDisposed();
         _computePipeline = metalPipeline;
+        // A new pipeline may declare a different layout, so bindings made for
+        // the previous one are dropped rather than reinterpreted against slot
+        // ordinals that no longer mean the same thing.
+        Array.Clear(_computeBuffers);
         _commands.Add(MetalGraphicsCommand.SetComputePipeline(metalPipeline));
     }
+
+    /// <summary>
+    /// The layout a compute binding is validated against: the bound pipeline's
+    /// own layout, or the checked two-slot layout when none is bound yet.
+    /// </summary>
+    private SilkComputeBindingLayoutDescriptor ActiveComputeLayout =>
+        _computePipeline?.Descriptor.Program.BindingLayout.Descriptor ??
+        SilkComputeBindingLayoutDescriptor.Checked;
 
     public void SetStorageBuffer(
         uint setIndex,
@@ -1929,14 +2254,14 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     {
         ThrowIfUnavailable();
         MetalSilkGraphicsBuffer metalBuffer = ValidateBuffer(buffer);
-        if (!metalBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
-        {
-            throw new ArgumentException(
-                "A storage binding requires a storage buffer.",
-                nameof(buffer));
-        }
         if (_rendering)
         {
+            if (!metalBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
+            {
+                throw new ArgumentException(
+                    "A storage binding requires a storage buffer.",
+                    nameof(buffer));
+            }
             RequireMaterialSlot(setIndex, binding, SilkBindingKind.StorageBuffer);
             _commands.Add(MetalGraphicsCommand.SetStorageBuffer(
                 setIndex,
@@ -1944,13 +2269,18 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
                 metalBuffer));
             return;
         }
-        if (setIndex != 0 || binding != 0)
+        SilkComputeBindingLayoutDescriptor layout = ActiveComputeLayout;
+        int ordinal = SilkComputeRecording.ResolveStructuredSlot(
+            layout,
+            setIndex,
+            binding,
+            metalBuffer.Usage,
+            nameof(buffer));
+        _computeBuffers[ordinal] = metalBuffer;
+        if (layout.Slots[ordinal].Kind == SilkComputeSlotKind.ReadWriteStructured)
         {
-            throw new ArgumentException(
-                "outputValues requires a storage buffer at set 0, binding 0.",
-                nameof(buffer));
+            _storageBuffer = metalBuffer;
         }
-        _storageBuffer = metalBuffer;
         _commands.Add(MetalGraphicsCommand.SetStorageBuffer(
             setIndex,
             binding,
@@ -1964,14 +2294,15 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     {
         ThrowIfOutsideRendering();
         MetalSilkGraphicsBuffer metalBuffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 1 ||
-            !metalBuffer.Usage.HasFlag(SilkBufferUsage.Uniform) ||
-            metalBuffer.Size < SilkCheckedShaderAssets.Compute.D3DUniformByteSize)
-        {
-            throw new ArgumentException(
-                "ComputeParameters requires an 8-byte uniform buffer at set 0, binding 1.",
-                nameof(buffer));
-        }
+        int ordinal = SilkComputeRecording.ResolveUniformSlot(
+            ActiveComputeLayout,
+            setIndex,
+            binding,
+            metalBuffer.Usage,
+            metalBuffer.Size,
+            SilkCheckedShaderAssets.Compute.D3DUniformByteSize,
+            nameof(buffer));
+        _computeBuffers[ordinal] = metalBuffer;
         _computeUniformBuffer = metalBuffer;
         _commands.Add(MetalGraphicsCommand.SetComputeUniformBuffer(
             setIndex,
@@ -1990,13 +2321,13 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
             throw new InvalidOperationException(
                 "Dispatch requires a compute pipeline, storage buffer, and uniform buffer.");
         }
-        if (checked((nuint)elementCount * 16) > _storageBuffer.Size)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(elementCount),
-                "The storage buffer is too small for the dispatch.");
-        }
-        _commands.Add(MetalGraphicsCommand.Dispatch(elementCount));
+        uint groupCount = SilkComputeRecording.ValidateDispatch(
+            ActiveComputeLayout,
+            elementCount,
+            _computePipeline.Descriptor.ThreadGroupSizeX,
+            ordinal => _computeBuffers[ordinal] is not null,
+            _storageBuffer.Size);
+        _commands.Add(MetalGraphicsCommand.Dispatch(elementCount, groupCount));
     }
 
     public void BufferBarrier(ISilkGraphicsBuffer buffer)
@@ -2129,7 +2460,11 @@ internal readonly record struct MetalGraphicsCommand(
     uint Binding,
     uint PickBaseToken,
     uint IndexCount,
-    uint ElementCount)
+    uint ElementCount,
+    uint GroupCount,
+    MetalDisplayTransformCommandKind DisplayTransformKind,
+    MetalSilkDisplayTransformGraphicsPipeline? DisplayTransformPipeline,
+    MetalSilkDisplayTransformBinding? DisplayTransformBinding)
 {
     internal static MetalGraphicsCommand Upload(
         MetalSilkGraphicsTexture texture,
@@ -2288,6 +2623,32 @@ internal readonly record struct MetalGraphicsCommand(
             SilkGraphicsCommandKind.DrawSelectionOutlineFullscreenTriangle,
             selectionKind: MetalSelectionCommandKind.DrawFullscreenTriangle);
 
+    internal static MetalGraphicsCommand BeginDisplayTransformRendering(
+        MetalSilkGraphicsTexture color) =>
+        Create(
+            SilkGraphicsCommandKind.BeginRendering,
+            displayTransformKind: MetalDisplayTransformCommandKind.BeginRendering,
+            texture: color);
+
+    internal static MetalGraphicsCommand SetDisplayTransformPipeline(
+        MetalSilkDisplayTransformGraphicsPipeline pipeline) =>
+        Create(
+            SilkGraphicsCommandKind.SetGraphicsPipeline,
+            displayTransformKind: MetalDisplayTransformCommandKind.SetPipeline,
+            displayTransformPipeline: pipeline);
+
+    internal static MetalGraphicsCommand SetDisplayTransformBinding(
+        MetalSilkDisplayTransformBinding binding) =>
+        Create(
+            SilkGraphicsCommandKind.SetSelectionOutlineBinding,
+            displayTransformKind: MetalDisplayTransformCommandKind.SetBinding,
+            displayTransformBinding: binding);
+
+    internal static MetalGraphicsCommand DrawDisplayTransformFullscreenTriangle() =>
+        Create(
+            SilkGraphicsCommandKind.DrawSelectionOutlineFullscreenTriangle,
+            displayTransformKind: MetalDisplayTransformCommandKind.DrawFullscreenTriangle);
+
     internal static MetalGraphicsCommand CopyRgba8Pixel(
         MetalSilkGraphicsTexture source,
         SilkTexturePixelCoordinate coordinate,
@@ -2325,8 +2686,11 @@ internal readonly record struct MetalGraphicsCommand(
             setIndex: setIndex,
             binding: binding);
 
-    internal static MetalGraphicsCommand Dispatch(uint elementCount) =>
-        Create(SilkGraphicsCommandKind.Dispatch, elementCount: elementCount);
+    internal static MetalGraphicsCommand Dispatch(uint elementCount, uint groupCount) =>
+        Create(
+            SilkGraphicsCommandKind.Dispatch,
+            elementCount: elementCount,
+            groupCount: groupCount);
 
     internal static MetalGraphicsCommand BufferBarrier(
         MetalSilkGraphicsBuffer buffer) =>
@@ -2357,7 +2721,12 @@ internal readonly record struct MetalGraphicsCommand(
         uint binding = 0,
         uint pickBaseToken = 0,
         uint indexCount = 0,
-        uint elementCount = 0) =>
+        uint elementCount = 0,
+        uint groupCount = 0,
+        MetalDisplayTransformCommandKind displayTransformKind =
+            MetalDisplayTransformCommandKind.None,
+        MetalSilkDisplayTransformGraphicsPipeline? displayTransformPipeline = null,
+        MetalSilkDisplayTransformBinding? displayTransformBinding = null) =>
         new(
             kind,
             pickKind,
@@ -2383,7 +2752,11 @@ internal readonly record struct MetalGraphicsCommand(
             binding,
             pickBaseToken,
             indexCount,
-            elementCount);
+            elementCount,
+            groupCount,
+            displayTransformKind,
+            displayTransformPipeline,
+            displayTransformBinding);
 }
 
 internal enum MetalPickCommandKind
@@ -2402,6 +2775,15 @@ internal enum MetalSelectionCommandKind
     BeginOutlineRendering,
     SetOutlinePipeline,
     SetOutlineBinding,
+    DrawFullscreenTriangle
+}
+
+internal enum MetalDisplayTransformCommandKind
+{
+    None,
+    BeginRendering,
+    SetPipeline,
+    SetBinding,
     DrawFullscreenTriangle
 }
 
@@ -2566,6 +2948,24 @@ internal sealed class MetalSubmissionCompletion(
 /// fully testable without macOS or a Metal device, mirroring the existing
 /// <see cref="MetalPickCopyPlan"/> portable-contract pattern for pick copies.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The plan describes a *staged* footprint, not the packed source directly. Metal
+/// requires the source offset and the source bytes-per-row of a buffer-to-texture
+/// blit to be aligned -- 256 bytes on macOS -- and a tightly packed chain
+/// satisfies neither past the base level: a 2x2 RGBA8 mip has an eight-byte row
+/// pitch and starts at whatever offset the previous level ended at. Encoding the
+/// packed layout directly is rejected outright by a validating Metal runtime and
+/// is undefined on one that is not validating, which is a class of failure no
+/// Windows or Linux test can see.
+/// </para>
+/// <para>
+/// So each level is given a row pitch rounded up to the alignment and an offset
+/// that is a multiple of it, and <see cref="Stage"/> re-packs the tightly packed
+/// source into that footprint. The staging buffer is larger than the source --
+/// for a small mip, much larger -- which is the cost of a correct copy.
+/// </para>
+/// </remarks>
 internal readonly record struct MetalMipCopyPlan(
     ulong SourceOffset,
     ulong SourceBytesPerRow,
@@ -2575,9 +2975,14 @@ internal readonly record struct MetalMipCopyPlan(
     ulong DestinationLevel)
 {
     /// <summary>
+    /// The alignment Metal requires of a buffer-to-texture blit's source offset
+    /// and row pitch on macOS.
+    /// </summary>
+    internal const ulong Alignment = 256;
+
+    /// <summary>
     /// Builds one plan per mip level of <paramref name="mipLevelCount"/>, in ascending level
-    /// order, from the same packed layout that <see cref="SilkMipChainLayout.Create"/> defines
-    /// for the upload source buffer.
+    /// order, describing the aligned staging footprint the packed source is copied into.
     /// </summary>
     internal static MetalMipCopyPlan[] Create(
         uint baseWidth,
@@ -2591,17 +2996,75 @@ internal readonly record struct MetalMipCopyPlan(
             format,
             mipLevelCount);
         var plans = new MetalMipCopyPlan[levels.Length];
+        ulong offset = 0;
         for (int index = 0; index < levels.Length; index++)
         {
             SilkMipLevelLayout level = levels[index];
+            ulong rowPitch = AlignUp(checked((ulong)level.RowPitch));
+            ulong imageSize = checked(rowPitch * level.Height);
             plans[index] = new MetalMipCopyPlan(
-                checked((ulong)level.Offset),
-                checked((ulong)level.RowPitch),
-                checked((ulong)level.Size),
+                offset,
+                rowPitch,
+                imageSize,
                 level.Width,
                 level.Height,
                 level.Level);
+            offset = checked(AlignUp(offset + imageSize));
         }
         return plans;
     }
+
+    /// <summary>Gets the total staging buffer size one plan set requires.</summary>
+    internal static ulong GetStagingByteSize(IReadOnlyList<MetalMipCopyPlan> plans)
+    {
+        ArgumentNullException.ThrowIfNull(plans);
+        if (plans.Count == 0)
+        {
+            return 0;
+        }
+        MetalMipCopyPlan last = plans[^1];
+        return checked(last.SourceOffset + last.SourceBytesPerImage);
+    }
+
+    /// <summary>
+    /// Copies a tightly packed mip chain into the aligned staging layout the plans
+    /// describe, row by row.
+    /// </summary>
+    /// <param name="plans">The plans, in ascending level order.</param>
+    /// <param name="baseWidth">The base level width in texels.</param>
+    /// <param name="baseHeight">The base level height in texels.</param>
+    /// <param name="format">The texture format.</param>
+    /// <param name="source">The tightly packed chain.</param>
+    /// <param name="destination">The staging buffer, at least the size the plans need.</param>
+    internal static void Stage(
+        IReadOnlyList<MetalMipCopyPlan> plans,
+        uint baseWidth,
+        uint baseHeight,
+        SilkTextureFormat format,
+        ReadOnlySpan<byte> source,
+        Span<byte> destination)
+    {
+        ArgumentNullException.ThrowIfNull(plans);
+        SilkMipLevelLayout[] levels = SilkMipChainLayout.Create(
+            baseWidth,
+            baseHeight,
+            format,
+            checked((uint)plans.Count));
+        for (int index = 0; index < levels.Length; index++)
+        {
+            SilkMipLevelLayout level = levels[index];
+            MetalMipCopyPlan plan = plans[index];
+            for (uint row = 0; row < level.Height; row++)
+            {
+                source
+                    .Slice(level.Offset + checked((int)(row * (uint)level.RowPitch)), level.RowPitch)
+                    .CopyTo(destination.Slice(
+                        checked((int)(plan.SourceOffset + (row * plan.SourceBytesPerRow))),
+                        level.RowPitch));
+            }
+        }
+    }
+
+    private static ulong AlignUp(ulong value) =>
+        checked((value + Alignment - 1) / Alignment * Alignment);
 }

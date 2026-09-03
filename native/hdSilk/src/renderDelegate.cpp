@@ -7,6 +7,7 @@
 #include "instancer.h"
 #include "light.h"
 #include "material.h"
+#include "mdlAdapter.h"
 #include "mesh.h"
 #include "points.h"
 #include "renderPass.h"
@@ -304,6 +305,16 @@ HdSilkRenderDelegate::CommitResources(HdChangeTracker* /*tracker*/)
 {
 }
 
+TfTokenVector
+HdSilkRenderDelegate::GetMaterialRenderContexts() const
+{
+    // Order is preference order. The empty token is the universal context, and
+    // it is first so a dual-context material -- the shape Omniverse's own asset
+    // guidance asks for -- keeps resolving through its authored preview or
+    // MaterialX network exactly as it did before MDL was understood at all.
+    return {TfToken(), TfToken("mdl")};
+}
+
 HdRenderParam*
 HdSilkRenderDelegate::GetRenderParam() const
 {
@@ -313,6 +324,12 @@ HdSilkRenderDelegate::GetRenderParam() const
 PXR_NAMESPACE_CLOSE_SCOPE
 
 #if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+extern "C" OPENUSD_HDSILK_API void
+openusd_hdsilk_test_reset_mdl_adapter(void)
+{
+    pxr::HdSilkMdlAdapter::ResetForTesting();
+}
+
 extern "C" OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_external_delegate_does_not_publish(void)
 {

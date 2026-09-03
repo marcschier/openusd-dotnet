@@ -197,8 +197,7 @@ HdSilkInstancer::ComputeInstanceSamples(SdfPath const& prototypeId)
         HdSilkInstanceSample sample;
         sample.transform = instancerTransform;
         sample.index = static_cast<int64_t>(instanceIndices[i]);
-        samples.push_back(sample);
-    }
+        samples.push_back(sample);    }
 
     if (const VtValue* translations = FindPrimvar(
             primvars,
@@ -289,6 +288,18 @@ HdSilkInstancer::ComputeInstanceSamples(SdfPath const& prototypeId)
             return left.index < right.index;
         });
 
+    // This level's own chain entry. It is appended after sorting because the
+    // entry names the instance's own index inside this instancer, which is
+    // exactly what `index` holds before any nested composition happens.
+    const std::string selfPath = GetId().GetString();
+    for (HdSilkInstanceSample& sample : samples)
+    {
+        HdSilkInstancerContextEntry entry;
+        entry.path = selfPath;
+        entry.index = static_cast<int32_t>(sample.index);
+        sample.context.assign(1, entry);
+    }
+
     if (GetParentId().IsEmpty())
     {
         return samples;
@@ -350,16 +361,51 @@ HdSilkInstancer::ComputeInstanceSamples(SdfPath const& prototypeId)
             HdSilkInstanceSample composed;
             composed.transform = sample.transform * parentSample.transform;
             composed.index = (parentSample.index * stride) + sample.index;
-            nested.push_back(composed);
+
+            // The chain composes by concatenation, outermost first: the parent
+            // levels exactly as the parent resolved them, then this level's own
+            // entry. That is the one description a consumer can decode back to a
+            // scene instance, which the composed ordinal above cannot be.
+            if (parentSample.context.size() + sample.context.size() >
+                OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES)
+            {
+                throw std::length_error(
+                    "The hdSilk nested instancer context exceeds the ABI level "
+                    "budget.");
+            }
+            composed.context.reserve(
+                parentSample.context.size() + sample.context.size());
+            composed.context.insert(
+                composed.context.end(),
+                parentSample.context.begin(),
+                parentSample.context.end());
+            composed.context.insert(
+                composed.context.end(),
+                sample.context.begin(),
+                sample.context.end());
+            nested.push_back(std::move(composed));
         }
     }
     return nested;
 }
 
 int64_t
-HdSilkInstancer::_InstanceCount(
-    const std::unordered_map<TfToken, VtValue, TfToken::HashFunctor>& primvars)
+HdSilkInstancer::GetInstanceCount() const
 {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _InstanceCount(_primvarMap);
+}
+
+bool
+HdSilkInstancer::IsVisible() const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _visible;
+}
+
+int64_t
+HdSilkInstancer::_InstanceCount(
+    const std::unordered_map<TfToken, VtValue, TfToken::HashFunctor>& primvars){
     // Hydra publishes one element per instance in every instance primvar, so
     // the longest array is this instancer's instance count.
     int64_t count = 0;

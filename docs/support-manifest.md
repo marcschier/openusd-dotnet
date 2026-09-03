@@ -29,6 +29,7 @@ Each entry maps a C macro from native/openusd_dotnet/include/openusd_dotnet.h to
 | `string-list-v2` | Implemented |
 | `guarded-status-exports` | Implemented |
 | `shade-connected-sources` | Implemented |
+| `native-shader-node-definition-query` | Implemented |
 | `shared-stage-access` | Implemented |
 | `world-bounds-query` | Implemented |
 | `variant-set-names` | Implemented |
@@ -121,17 +122,32 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `anisotropic-sampling` | Workflow-gated |
 | `preview-surface-transparency` | Workflow-gated |
 | `materialx-projection` | Workflow-gated |
+| `mdl-only-material-reporting` | Workflow-gated |
+| `mdl-accepted-subset-distillation` | Workflow-gated |
+| `mdl-sdk-module-evaluation` | Implemented, not gated |
+| `mdl-generated-shader-code` | Not supported |
 | `udim-textures` | Workflow-gated |
 | `usdvol-density` | Workflow-gated |
 | `cpu-skinning` | Workflow-gated |
 | `basis-curve-width-interpolation` | Workflow-gated |
 | `point-instancer-instance-identity` | Workflow-gated |
+| `usdlux-light-linking` | Workflow-gated |
+| `nested-instance-light-linking` | Workflow-gated |
+| `shadow-map-depth-resource-path` | Workflow-gated |
+| `usdlux-shadow-linking` | Workflow-gated |
+| `dome-light-linking` | Workflow-gated |
+| `dome-shadow-linking` | Not supported |
+| `light-linking-generated-materialx` | Not supported |
+| `dome-light-texture-mean-ambient` | Implemented |
+| `dome-light-directional-diffuse-ibl` | Workflow-gated |
+| `dome-light-specular-ibl` | Workflow-gated |
 | `mesh-facing-cull-styles` | Workflow-gated |
 | `cpu-ocio-export` | Implemented |
 | `texture-residency-budgets` | Implemented |
-| `gpu-ocio-presentation` | Not supported |
-| `gpu-skinning` | Not supported |
-| `catmull-clark-subdivision` | Not supported |
+| `gpu-ocio-presentation` | Workflow-gated |
+| `gpu-skinning` | Workflow-gated |
+| `usdpreview-displacement` | Workflow-gated |
+| `catmull-clark-subdivision` | Workflow-gated |
 | `vulkan-composition-hosted` | Compile-only |
 | `vulkan-x11-wayland-import` | Compile-only |
 
@@ -144,8 +160,8 @@ Backend picking identities, selection behavior, and known unsupported modes.
 | `primitive-picking` | Workflow-gated |
 | `primitive-picking-metal` | Pending hosted proof |
 | `face-identity` | Workflow-gated |
-| `edge-point-picking` | Not supported |
-| `xray-selection` | Not supported |
+| `edge-point-picking` | Workflow-gated |
+| `xray-selection` | Workflow-gated |
 
 ## Viewer features
 
@@ -158,8 +174,54 @@ Interactive desktop inspection, playback, selection, and focused editing capabil
 | `timeline-playback` | Implemented |
 | `viewer-picking` | Implemented |
 | `viewer-physics` | Implemented |
-| `composition-tab` | Not supported |
+| `composition-tab` | Implemented |
 | `viewer-dcc` | Not supported |
+
+## Omniverse interchange profile
+
+Locally provable data-interchange claims tracked by the version-pinned profile at eng/omniverse-profile.json.
+Kit/Nucleus execution evidence is tracked only in that profile and is never claimed here without an executed external
+job.
+
+| Feature | Status |
+| --- | --- |
+| `unknown-metadata-roundtrip` | Implemented |
+| `custom-property-roundtrip` | Implemented |
+| `applied-schema-token-roundtrip` | Implemented |
+| `dual-context-material-anchor` | Implemented |
+| `nested-vendor-metadata-roundtrip` | Implemented |
+| `shader-node-definition-query` | Implemented |
+| `external-schema-plugin-registration` | Implemented |
+| `mdl-authored-subset-interchange` | Workflow-gated |
+| `mdl-sdk-module-evaluation-interchange` | Implemented, not gated |
+| `physx-schema-vendored-compatibility` | Not supported |
+
+## Omniverse bridge protocol and client
+
+The optional openusd.bridge.v1 wire contract and its gRPC client adapter. Every claim here is proven against the
+contract, an in-memory peer, and a Python protobuf/gRPC runtime. Execution against a real Omniverse Kit or Nucleus
+process is pending an authorized external job and is never claimed here; see eng/omniverse-profile.json.
+
+| Feature | Status |
+| --- | --- |
+| `bridge-wire-contract` | Implemented |
+| `bridge-bounds-and-malformed-input` | Implemented |
+| `bridge-version-capability-negotiation` | Implemented |
+| `bridge-grpc-client-adapter` | Implemented |
+| `bridge-reconnect-full-resync` | Implemented |
+| `bridge-client-security-defaults` | Implemented |
+| `bridge-local-edit-export` | Implemented |
+| `bridge-session-policy-enforcement` | Implemented |
+| `bridge-epoch-consistency` | Implemented |
+| `bridge-client-lifetime` | Implemented |
+| `bridge-package-isolation` | Implemented |
+| `bridge-nativeaot-consumer` | Implemented |
+| `bridge-python-descriptor` | Implemented, not gated |
+| `bridge-session-selection` | Implemented |
+| `bridge-viewer-connection-seam` | Implemented |
+| `bridge-viewer-provider-lifetime` | Implemented |
+| `bridge-viewer-package-isolation` | Implemented |
+| `bridge-kit-session-execution` | Excluded |
 
 ## Excluded and unreachable
 
@@ -175,9 +237,11 @@ Deliberate product boundaries, unavailable proprietary systems, and unsupported 
 | `embree-cpu-ray-tracing` | Excluded |
 | `prman` | Excluded |
 | `mobile-browser-rids` | Excluded |
-| `light-linking` | Not supported |
 | `path-tracing` | Excluded |
 | `third-party-hydra-delegates` | Excluded |
+| `nucleus-omni-client-runtime` | Unreachable |
+| `kit-extension-companion-repo` | Excluded |
+| `physx-schema-vendoring` | Excluded |
 
 ---
 

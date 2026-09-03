@@ -1,0 +1,42 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+//
+// The optional gRPC surface for the Omniverse bridge wire model.
+//
+// This file contains only the service definition. It is compiled separately from
+// wire.proto so the transport-neutral wire model can ship in a package that has no gRPC
+// dependency, and so a non-gRPC transport can carry the same messages unchanged.
+//
+// The Kit-side server is owned and distributed separately from this repository. Nothing
+// here depends on, links to, or redistributes any NVIDIA component.
+
+syntax = "proto3";
+
+package openusd.bridge.v1;
+
+import "openusd/bridge/v1/wire.proto";
+
+option csharp_namespace = "OpenUsd.Bridge.Protocol.Wire";
+
+service LiveBridge {
+  // Negotiates protocol version, capabilities, and effective limits. A client must
+  // complete this call successfully before it issues any other call: every mutating path
+  // is refused until negotiation has succeeded.
+  rpc Negotiate(HandshakeRequest) returns (HandshakeResponse);
+
+  // Requests a bounded full snapshot of the bridge-owned overlay. This is a read-only
+  // call, so it is safe for the client to retry it under its bounded retry policy.
+  rpc GetSnapshot(SnapshotRequest) returns (StageSnapshot);
+
+  // Reads bounded session status. Read-only and safe to retry.
+  rpc GetStatus(StatusRequest) returns (SessionStatus);
+
+  // Publishes one already-authoritative local batch. This call mutates remote state, so
+  // the client never retries it blindly: a retry only happens when the server has not
+  // observed the request at all, and always carries the same idempotency key.
+  rpc PublishLocalBatch(PublishLocalBatchRequest) returns (Acknowledgement);
+
+  // The bidirectional change stream. The client opens it with a handshake frame, then
+  // receives snapshots, deltas, events, status, and resync requests while sending
+  // acknowledgements, snapshot requests, local batches, and keepalives.
+  rpc StreamChanges(stream ChangeStreamRequest) returns (stream ChangeStreamMessage);
+}

@@ -2,8 +2,10 @@ add_executable(
     hdsilk_probe
     hdsilk_probe.cpp
     ../src/curveWidths.cpp
+    ../src/instanceLinking.cpp
     ../src/material.cpp
     ../src/materialXBridge.cpp
+    ../src/mdlAdapter.cpp
     ../src/sceneState.cpp)
 target_compile_features(hdsilk_probe PRIVATE cxx_std_17)
 target_link_libraries(
@@ -18,6 +20,95 @@ if(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
     target_compile_definitions(
         hdsilk_probe
         PRIVATE OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+endif()
+
+# Two stub libraries that exist only to exercise the MDL adapter loader.
+#
+# They are staged into a private directory that is on no search path: not the
+# probe's own directory, not the runtime plugin directory, and not the working
+# directory. Loading the ABI stub from there therefore proves that an absolute
+# path is honoured *and* that the stub's own dependency resolves from the
+# directory the stub was loaded from rather than from a process-wide search.
+add_library(openusd_mdl_stub_support SHARED mdl_stub_support.cpp mdl_stub_support.h)
+target_compile_features(openusd_mdl_stub_support PRIVATE cxx_std_17)
+target_compile_definitions(
+    openusd_mdl_stub_support PRIVATE HDSILK_MDL_STUB_SUPPORT_BUILD)
+target_include_directories(
+    openusd_mdl_stub_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(openusd_mdl_abi_stub SHARED mdl_abi_stub.cpp)
+target_compile_features(openusd_mdl_abi_stub PRIVATE cxx_std_17)
+target_compile_definitions(openusd_mdl_abi_stub PRIVATE OPENUSD_MDL_BUILD)
+target_include_directories(
+    openusd_mdl_abi_stub PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+target_link_libraries(openusd_mdl_abi_stub PRIVATE openusd_mdl_stub_support)
+if(NOT WIN32)
+    # The Unix half of the same claim: the stub finds its dependency through its
+    # own run path rather than through a process-wide search.
+    if(APPLE)
+        set_target_properties(
+            openusd_mdl_abi_stub PROPERTIES BUILD_RPATH "@loader_path")
+    else()
+        set_target_properties(
+            openusd_mdl_abi_stub PROPERTIES BUILD_RPATH "$ORIGIN")
+    endif()
+endif()
+
+set(HDSILK_MDL_PRIVATE_DIR ${CMAKE_CURRENT_BINARY_DIR}/mdl-private)
+set(HDSILK_MDL_PRIVATE_STAMP ${HDSILK_MDL_PRIVATE_DIR}/stubs.stamp)
+add_custom_command(
+    OUTPUT ${HDSILK_MDL_PRIVATE_STAMP}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${HDSILK_MDL_PRIVATE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:openusd_mdl_abi_stub>
+        ${HDSILK_MDL_PRIVATE_DIR}/$<TARGET_FILE_NAME:openusd_mdl_abi_stub>
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:openusd_mdl_stub_support>
+        ${HDSILK_MDL_PRIVATE_DIR}/$<TARGET_FILE_NAME:openusd_mdl_stub_support>
+    COMMAND ${CMAKE_COMMAND} -E touch ${HDSILK_MDL_PRIVATE_STAMP}
+    DEPENDS openusd_mdl_abi_stub openusd_mdl_stub_support
+    COMMENT "Staging MDL loader stub libraries in a private directory")
+add_custom_target(hdsilk_mdl_private_stubs DEPENDS ${HDSILK_MDL_PRIVATE_STAMP})
+add_dependencies(hdsilk_probe hdsilk_mdl_private_stubs)
+target_compile_definitions(
+    hdsilk_probe
+    PRIVATE
+        "HDSILK_PROBE_MDL_ABI_STUB=\"${HDSILK_MDL_PRIVATE_DIR}/$<TARGET_FILE_NAME:openusd_mdl_abi_stub>\""
+        "HDSILK_PROBE_MDL_DECOY_DIR=\"${HDSILK_MDL_PRIVATE_DIR}\""
+        "HDSILK_PROBE_MDL_LIBRARY_NAME=\"$<TARGET_FILE_PREFIX:openusd_mdl_abi_stub>openusd_mdl$<TARGET_FILE_SUFFIX:openusd_mdl_abi_stub>\"")
+
+# The probe proves both adapter states. Without OPENUSD_WITH_MDL it proves only
+# the state every base package ships in -- no adapter, MDL-only materials
+# reported rather than shaded -- and the distillation checks are not compiled,
+# because asserting them without an adapter would assert nothing.
+if(OPENUSD_WITH_MDL)
+    add_dependencies(hdsilk_probe openusd_mdl)
+    target_compile_definitions(
+        hdsilk_probe
+        PRIVATE "HDSILK_PROBE_MDL_ADAPTER=\"$<TARGET_FILE:openusd_mdl>\"")
+endif()
+
+# The SDK-backed end-to-end check compiles only when an SDK-backed adapter
+# exists. It needs a module directory as well: the whole claim is that a value
+# the stage did not author came out of a compiled module, and without a module
+# there is nothing to compile.
+if(TARGET openusd_mdl_sdk)
+    get_filename_component(
+        HDSILK_PROBE_MDL_MODULE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/mdl"
+        ABSOLUTE)
+    add_dependencies(hdsilk_probe openusd_mdl_sdk)
+    target_compile_definitions(
+        hdsilk_probe
+        PRIVATE
+            "HDSILK_PROBE_MDL_SDK_ADAPTER=\"$<TARGET_FILE:openusd_mdl_sdk>\""
+            "HDSILK_PROBE_MDL_MODULE_DIR=\"${HDSILK_PROBE_MDL_MODULE_DIR}\"")
+    if(OPENUSD_MDL_SDK_RUNTIME_DIR)
+        target_compile_definitions(
+            hdsilk_probe
+            PRIVATE
+                "HDSILK_PROBE_MDL_SDK_RUNTIME_DIR=\"${OPENUSD_MDL_SDK_RUNTIME_DIR}\"")
+    endif()
 endif()
 target_include_directories(
     hdsilk_probe
@@ -118,3 +209,35 @@ endif()
 add_test(NAME hdsilk_probe
     COMMAND hdsilk_probe ${HDSILK_PROBE_PLUGIN_DIR} ${HDSILK_PROBE_STAGE})
 set_tests_properties(hdsilk_probe PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
+
+# The subdivision probe is a separate executable rather than another case inside
+# hdsilk_probe: every claim it makes is closed-form arithmetic about a control
+# cage, so it needs neither the shared probe's material fixtures nor its MDL
+# stubs, and keeping it separate means a subdivision regression names itself.
+add_executable(hdsilk_subdivision_probe hdsilk_subdivision_probe.cpp)
+target_compile_features(hdsilk_subdivision_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_subdivision_probe PRIVATE openusd_hdsilk_test)
+target_include_directories(
+    hdsilk_subdivision_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+if(MSVC)
+    target_compile_options(hdsilk_subdivision_probe PRIVATE /W4 /WX /permissive-)
+else()
+    target_compile_options(
+        hdsilk_subdivision_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_subdivision_probe hdsilk_probe_runtime)
+
+get_filename_component(
+    HDSILK_SUBDIVISION_PROBE_STAGE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-subdivision-probe.usda"
+    ABSOLUTE)
+add_test(NAME hdsilk_subdivision_probe
+    COMMAND
+        hdsilk_subdivision_probe
+        ${HDSILK_PROBE_PLUGIN_DIR}
+        ${HDSILK_SUBDIVISION_PROBE_STAGE})
+set_tests_properties(hdsilk_subdivision_probe
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")

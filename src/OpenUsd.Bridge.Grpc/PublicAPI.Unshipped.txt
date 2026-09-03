@@ -1,0 +1,227 @@
+#nullable enable
+OpenUsd.Bridge.Grpc.BridgeCallCredential
+OpenUsd.Bridge.Grpc.BridgeCallCredential.BridgeCallCredential() -> void
+OpenUsd.Bridge.Grpc.BridgeCallCredential.BridgeCallCredential(string! token, System.DateTimeOffset expiresAtUtc, string! scheme = "Bearer") -> void
+OpenUsd.Bridge.Grpc.BridgeCallCredential.Equals(OpenUsd.Bridge.Grpc.BridgeCallCredential other) -> bool
+OpenUsd.Bridge.Grpc.BridgeCallCredential.ExpiresAtUtc.get -> System.DateTimeOffset
+OpenUsd.Bridge.Grpc.BridgeCallCredential.HasToken.get -> bool
+OpenUsd.Bridge.Grpc.BridgeCallCredential.IsValidAt(System.DateTimeOffset nowUtc) -> bool
+OpenUsd.Bridge.Grpc.BridgeCallCredential.Scheme.get -> string!
+OpenUsd.Bridge.Grpc.BridgeCallCredential.ToHeaderValue() -> string!
+OpenUsd.Bridge.Grpc.BridgeClientEvent
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Attempt.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Attempt.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.BridgeClientEvent() -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.BridgeClientEvent(OpenUsd.Bridge.Grpc.BridgeClientEventKind Kind, OpenUsd.Bridge.Grpc.BridgeConnectionState PreviousState, OpenUsd.Bridge.Grpc.BridgeConnectionState State, long Attempt, long Sequence, string? CorrelationId, System.DateTimeOffset TimestampUtc, string? Detail) -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.CorrelationId.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientEvent.CorrelationId.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Deconstruct(out OpenUsd.Bridge.Grpc.BridgeClientEventKind Kind, out OpenUsd.Bridge.Grpc.BridgeConnectionState PreviousState, out OpenUsd.Bridge.Grpc.BridgeConnectionState State, out long Attempt, out long Sequence, out string? CorrelationId, out System.DateTimeOffset TimestampUtc, out string? Detail) -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Detail.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Detail.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Equals(OpenUsd.Bridge.Grpc.BridgeClientEvent other) -> bool
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Kind.get -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Kind.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.PreviousState.get -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeClientEvent.PreviousState.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Sequence.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientEvent.Sequence.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.State.get -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeClientEvent.State.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEvent.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.Bridge.Grpc.BridgeClientEvent.TimestampUtc.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.Backoff = 10 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.Connecting = 0 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.ConnectionRestartRequested = 11 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.DeltaApplied = 5 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.Faulted = 12 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.LocalBatchPublished = 8 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.LocalBatchRefused = 9 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.Negotiated = 1 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.NegotiationRejected = 2 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.ProtocolRejected = 6 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.ResyncScheduled = 7 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.SnapshotApplied = 4 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.SnapshotRequested = 3 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientEventKind.Stopped = 13 -> OpenUsd.Bridge.Grpc.BridgeClientEventKind
+OpenUsd.Bridge.Grpc.BridgeClientOptions
+OpenUsd.Bridge.Grpc.BridgeClientOptions.AllowNonLoopback.get -> bool
+OpenUsd.Bridge.Grpc.BridgeClientOptions.AllowNonLoopback.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.BridgeClientOptions() -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.BridgeRootPath.get -> string!
+OpenUsd.Bridge.Grpc.BridgeClientOptions.BridgeRootPath.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.CallDeadline.get -> System.TimeSpan
+OpenUsd.Bridge.Grpc.BridgeClientOptions.CallDeadline.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Clone() -> OpenUsd.Bridge.Grpc.BridgeClientOptions!
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Credentials.get -> OpenUsd.Bridge.Grpc.IBridgeCallCredentialProvider?
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Credentials.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Endpoint.get -> System.Uri!
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Endpoint.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.InitialBackoff.get -> System.TimeSpan
+OpenUsd.Bridge.Grpc.BridgeClientOptions.InitialBackoff.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.KeepAliveInterval.get -> System.TimeSpan
+OpenUsd.Bridge.Grpc.BridgeClientOptions.KeepAliveInterval.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.KeepAliveTimeout.get -> System.TimeSpan
+OpenUsd.Bridge.Grpc.BridgeClientOptions.KeepAliveTimeout.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.LocalOriginId.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientOptions.LocalOriginId.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxBackoff.get -> System.TimeSpan
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxBackoff.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxPublishAttempts.get -> int
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxPublishAttempts.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxReadOnlyCallAttempts.get -> int
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxReadOnlyCallAttempts.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxReceiveMessageBytes.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxReceiveMessageBytes.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxSendMessageBytes.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientOptions.MaxSendMessageBytes.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Observer.get -> System.IProgress<OpenUsd.Bridge.Grpc.BridgeClientEvent>?
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Observer.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.OutboundQueueCapacity.get -> int
+OpenUsd.Bridge.Grpc.BridgeClientOptions.OutboundQueueCapacity.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.RequestedSessionId.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientOptions.RequestedSessionId.set -> void
+OpenUsd.Bridge.Grpc.BridgeClientOptions.Validate() -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus
+OpenUsd.Bridge.Grpc.BridgeClientStatus.BridgeClientStatus() -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.BridgeClientStatus(OpenUsd.Bridge.Grpc.BridgeConnectionState State, bool Negotiated, OpenUsd.Bridge.Protocol.BridgeProtocolVersion PeerVersion, long ConnectAttemptCount, long ReconnectCount, long SnapshotAppliedCount, long DeltaAppliedCount, long ProtocolRejectionCount, long ResyncCount, long PublishedBatchCount, long DuplicateBatchCount, long RefusedBatchCount, int PendingOutboundBatchCount, string? SessionId, long Epoch, OpenUsd.Bridge.Protocol.BridgeLimits EffectiveLimits, System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>! NegotiatedCapabilities, System.DateTimeOffset TimestampUtc, string? LastFailureDetail, long ObserverFailureCount, string? LastObserverFailureDetail) -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ConnectAttemptCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ConnectAttemptCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Deconstruct(out OpenUsd.Bridge.Grpc.BridgeConnectionState State, out bool Negotiated, out OpenUsd.Bridge.Protocol.BridgeProtocolVersion PeerVersion, out long ConnectAttemptCount, out long ReconnectCount, out long SnapshotAppliedCount, out long DeltaAppliedCount, out long ProtocolRejectionCount, out long ResyncCount, out long PublishedBatchCount, out long DuplicateBatchCount, out long RefusedBatchCount, out int PendingOutboundBatchCount, out string? SessionId, out long Epoch, out OpenUsd.Bridge.Protocol.BridgeLimits EffectiveLimits, out System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>! NegotiatedCapabilities, out System.DateTimeOffset TimestampUtc, out string? LastFailureDetail, out long ObserverFailureCount, out string? LastObserverFailureDetail) -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.DeltaAppliedCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.DeltaAppliedCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.DuplicateBatchCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.DuplicateBatchCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.EffectiveLimits.get -> OpenUsd.Bridge.Protocol.BridgeLimits
+OpenUsd.Bridge.Grpc.BridgeClientStatus.EffectiveLimits.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Epoch.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Epoch.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Equals(OpenUsd.Bridge.Grpc.BridgeClientStatus other) -> bool
+OpenUsd.Bridge.Grpc.BridgeClientStatus.LastFailureDetail.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientStatus.LastFailureDetail.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.LastObserverFailureDetail.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientStatus.LastObserverFailureDetail.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Negotiated.get -> bool
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Negotiated.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.NegotiatedCapabilities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>!
+OpenUsd.Bridge.Grpc.BridgeClientStatus.NegotiatedCapabilities.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ObserverFailureCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ObserverFailureCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.PeerVersion.get -> OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+OpenUsd.Bridge.Grpc.BridgeClientStatus.PeerVersion.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.PendingOutboundBatchCount.get -> int
+OpenUsd.Bridge.Grpc.BridgeClientStatus.PendingOutboundBatchCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ProtocolRejectionCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ProtocolRejectionCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.PublishedBatchCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.PublishedBatchCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ReconnectCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ReconnectCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.RefusedBatchCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.RefusedBatchCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ResyncCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.ResyncCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.SessionId.get -> string?
+OpenUsd.Bridge.Grpc.BridgeClientStatus.SessionId.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.SnapshotAppliedCount.get -> long
+OpenUsd.Bridge.Grpc.BridgeClientStatus.SnapshotAppliedCount.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.State.get -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeClientStatus.State.init -> void
+OpenUsd.Bridge.Grpc.BridgeClientStatus.Supports(OpenUsd.Bridge.Protocol.BridgeCapability capability) -> bool
+OpenUsd.Bridge.Grpc.BridgeClientStatus.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.Bridge.Grpc.BridgeClientStatus.TimestampUtc.init -> void
+OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Backoff = 5 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Connecting = 1 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.ConnectionRestartRequested = 6 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Disconnected = 0 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Faulted = 7 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Negotiating = 2 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Resynchronizing = 3 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeConnectionState.Streaming = 4 -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+OpenUsd.Bridge.Grpc.BridgeGrpcProtocol
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.Cancelled = 9 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.Duplicate = 2 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.EpochRetired = 6 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.Indeterminate = 10 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.NotPermitted = 8 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.Pending = 0 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.ProtocolRejected = 4 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.Published = 1 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.Refused = 7 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.RemoteRejected = 3 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome.TransportFailed = 5 -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt.Accepted.get -> bool
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt.CorrelationId.get -> string?
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt.IdempotencyKey.get -> string!
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt.Published.get -> System.Threading.Tasks.Task<OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult>!
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt.Sequence.get -> long
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt.WaitForResultAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult>
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Attempts.get -> int
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Attempts.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.BridgeLocalPublicationResult() -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.BridgeLocalPublicationResult(OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome Outcome, long Sequence, string? CorrelationId, string! IdempotencyKey, int Attempts, OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome RemoteOutcome, OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection RemoteRejection, string? Detail) -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.CorrelationId.get -> string?
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.CorrelationId.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Deconstruct(out OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome Outcome, out long Sequence, out string? CorrelationId, out string! IdempotencyKey, out int Attempts, out OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome RemoteOutcome, out OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection RemoteRejection, out string? Detail) -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Detail.get -> string?
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Detail.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Equals(OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult other) -> bool
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.IdempotencyKey.get -> string!
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.IdempotencyKey.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.IsDelivered.get -> bool
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.IsIndeterminate.get -> bool
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Outcome.get -> OpenUsd.Bridge.Grpc.BridgeLocalPublicationOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Outcome.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.RemoteOutcome.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.RemoteOutcome.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.RemoteRejection.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.RemoteRejection.init -> void
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Sequence.get -> long
+OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Sequence.init -> void
+OpenUsd.Bridge.Grpc.EphemeralBearerTokenProvider
+OpenUsd.Bridge.Grpc.EphemeralBearerTokenProvider.EphemeralBearerTokenProvider(string! token, System.DateTimeOffset expiresAtUtc) -> void
+OpenUsd.Bridge.Grpc.EphemeralBearerTokenProvider.GetCredentialAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Bridge.Grpc.BridgeCallCredential>
+OpenUsd.Bridge.Grpc.IBridgeCallCredentialProvider
+OpenUsd.Bridge.Grpc.IBridgeCallCredentialProvider.GetCredentialAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Bridge.Grpc.BridgeCallCredential>
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.GetStatus() -> OpenUsd.Bridge.Grpc.BridgeClientStatus
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.LocalOriginId.get -> string!
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.OmniverseBridgeClient(OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator! coordinator, OpenUsd.Bridge.Grpc.BridgeClientOptions! options) -> void
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.PublishLocalBatchAsync(OpenUsd.Bridge.Protocol.BridgeLocalBatch! batch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Bridge.Grpc.BridgeLocalPublicationReceipt!>
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.RunAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+OpenUsd.Bridge.Grpc.OmniverseBridgeClient.State.get -> OpenUsd.Bridge.Grpc.BridgeConnectionState
+const OpenUsd.Bridge.Grpc.BridgeCallCredential.MaxSchemeLength = 32 -> int
+const OpenUsd.Bridge.Grpc.BridgeCallCredential.MaxTokenLength = 4096 -> int
+override OpenUsd.Bridge.Grpc.BridgeCallCredential.Equals(object? obj) -> bool
+override OpenUsd.Bridge.Grpc.BridgeCallCredential.GetHashCode() -> int
+override OpenUsd.Bridge.Grpc.BridgeCallCredential.ToString() -> string!
+override OpenUsd.Bridge.Grpc.BridgeClientEvent.GetHashCode() -> int
+override OpenUsd.Bridge.Grpc.BridgeClientStatus.GetHashCode() -> int
+override OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.GetHashCode() -> int
+static OpenUsd.Bridge.Grpc.BridgeCallCredential.operator !=(OpenUsd.Bridge.Grpc.BridgeCallCredential left, OpenUsd.Bridge.Grpc.BridgeCallCredential right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeCallCredential.operator ==(OpenUsd.Bridge.Grpc.BridgeCallCredential left, OpenUsd.Bridge.Grpc.BridgeCallCredential right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeClientEvent.operator !=(OpenUsd.Bridge.Grpc.BridgeClientEvent left, OpenUsd.Bridge.Grpc.BridgeClientEvent right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeClientEvent.operator ==(OpenUsd.Bridge.Grpc.BridgeClientEvent left, OpenUsd.Bridge.Grpc.BridgeClientEvent right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeClientStatus.operator !=(OpenUsd.Bridge.Grpc.BridgeClientStatus left, OpenUsd.Bridge.Grpc.BridgeClientStatus right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeClientStatus.operator ==(OpenUsd.Bridge.Grpc.BridgeClientStatus left, OpenUsd.Bridge.Grpc.BridgeClientStatus right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeGrpcProtocol.CreateDescriptorSet() -> byte[]!
+static OpenUsd.Bridge.Grpc.BridgeGrpcProtocol.ServiceName.get -> string!
+static OpenUsd.Bridge.Grpc.BridgeGrpcProtocol.Version.get -> OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+static OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.operator !=(OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult left, OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult right) -> bool
+static OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.operator ==(OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult left, OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult right) -> bool
+static readonly OpenUsd.Bridge.Grpc.BridgeClientOptions.DefaultCallDeadline -> System.TimeSpan
+static readonly OpenUsd.Bridge.Grpc.BridgeClientOptions.DefaultInitialBackoff -> System.TimeSpan
+static readonly OpenUsd.Bridge.Grpc.BridgeClientOptions.DefaultKeepAliveInterval -> System.TimeSpan
+static readonly OpenUsd.Bridge.Grpc.BridgeClientOptions.DefaultKeepAliveTimeout -> System.TimeSpan
+static readonly OpenUsd.Bridge.Grpc.BridgeClientOptions.DefaultMaxBackoff -> System.TimeSpan
+~override OpenUsd.Bridge.Grpc.BridgeClientEvent.Equals(object obj) -> bool
+~override OpenUsd.Bridge.Grpc.BridgeClientEvent.ToString() -> string
+~override OpenUsd.Bridge.Grpc.BridgeClientStatus.Equals(object obj) -> bool
+~override OpenUsd.Bridge.Grpc.BridgeClientStatus.ToString() -> string
+~override OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.Equals(object obj) -> bool
+~override OpenUsd.Bridge.Grpc.BridgeLocalPublicationResult.ToString() -> string

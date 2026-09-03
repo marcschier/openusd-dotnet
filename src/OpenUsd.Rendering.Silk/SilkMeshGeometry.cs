@@ -9,7 +9,9 @@ internal sealed record SilkMeshGeometry(
     uint[] Indices,
     SilkVertexLayoutDescriptor VertexLayout,
     string UvPrimvar,
-    bool HasTangents)
+    bool HasTangents,
+    bool Displaced = false,
+    float MaximumDisplacement = 0)
 {
     internal uint IndexCount => checked((uint)Indices.Length);
 }
@@ -21,7 +23,8 @@ internal static class SilkMeshGeometryBuilder
     internal static SilkMeshGeometry Build(
         SilkMeshData mesh,
         string uvPrimvar = "",
-        bool requireTangents = false)
+        bool requireTangents = false,
+        ReadOnlySpan<float> displacementAmounts = default)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<float> points = mesh.Points.Span;
@@ -43,6 +46,12 @@ internal static class SilkMeshGeometryBuilder
         }
 
         int pointCount = points.Length / 3;
+        if (!displacementAmounts.IsEmpty && displacementAmounts.Length != pointCount)
+        {
+            throw InvalidMesh(
+                mesh,
+                "displacement amounts must carry exactly one value per point");
+        }
 
         for (int i = 0; i < points.Length; i++)
         {
@@ -122,13 +131,11 @@ internal static class SilkMeshGeometryBuilder
 
         int strideFloats = hasTangents ? 12 : hasUv ? 8 : 6;
         float[] vertices = new float[checked(pointCount * strideFloats)];
+        float maximumDisplacement = 0;
         for (int point = 0; point < pointCount; point++)
         {
             int source = point * 3;
             int destination = point * strideFloats;
-            vertices[destination] = points[source];
-            vertices[destination + 1] = points[source + 1];
-            vertices[destination + 2] = points[source + 2];
 
             double nx = useAuthored ? authored[source] : normals[source];
             double ny = useAuthored ? authored[source + 1] : normals[source + 1];
@@ -146,6 +153,31 @@ internal static class SilkMeshGeometryBuilder
             float normalX = checked((float)(nx * inverseLength));
             float normalY = checked((float)(ny * inverseLength));
             float normalZ = checked((float)(nz * inverseLength));
+
+            // UsdPreviewSurface displaces along the surface normal, so the amount
+            // is applied to the position and the shading frame is left exactly as
+            // the deformation or the topology produced it. Nothing here re-derives
+            // a normal or a tangent from the moved surface: the ordering this
+            // renderer claims is deform, then displace, and a re-derived frame
+            // would make the claim untestable against the CPU deformation oracle.
+            float amount = displacementAmounts.IsEmpty ? 0 : displacementAmounts[point];
+            if (!float.IsFinite(amount))
+            {
+                throw InvalidMesh(mesh, $"displacement amount {point} is not finite");
+            }
+            float positionX = points[source] + (amount * normalX);
+            float positionY = points[source + 1] + (amount * normalY);
+            float positionZ = points[source + 2] + (amount * normalZ);
+            if (!float.IsFinite(positionX) ||
+                !float.IsFinite(positionY) ||
+                !float.IsFinite(positionZ))
+            {
+                throw InvalidMesh(mesh, $"displaced point {point} is not finite");
+            }
+            maximumDisplacement = Math.Max(maximumDisplacement, Math.Abs(amount));
+            vertices[destination] = positionX;
+            vertices[destination + 1] = positionY;
+            vertices[destination + 2] = positionZ;
             vertices[destination + 3] = normalX;
             vertices[destination + 4] = normalY;
             vertices[destination + 5] = normalZ;
@@ -184,7 +216,14 @@ internal static class SilkMeshGeometryBuilder
             : hasUv
                 ? SilkVertexLayoutDescriptor.PositionNormalTexCoord
                 : SilkVertexLayoutDescriptor.PositionNormal;
-        return new SilkMeshGeometry(vertices, indices, layout, hasUv ? uvPrimvar : "", hasTangents);
+        return new SilkMeshGeometry(
+            vertices,
+            indices,
+            layout,
+            hasUv ? uvPrimvar : "",
+            hasTangents,
+            !displacementAmounts.IsEmpty,
+            maximumDisplacement);
     }
 
     private static void AccumulateTangent(

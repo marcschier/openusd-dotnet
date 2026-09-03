@@ -8,7 +8,7 @@ namespace OpenUsd.Rendering.Silk;
 public static class SilkCommandParser
 {
     /// <summary>Gets the only command-page ABI understood by this parser.</summary>
-    public const uint PageAbiVersion = 15;
+    public const uint PageAbiVersion = 23;
 
     /// <summary>Creates an enumerator for a validated native page or test buffer.</summary>
     public static SilkCommandEnumerator Enumerate(ReadOnlySpan<byte> data, uint commandCount) =>

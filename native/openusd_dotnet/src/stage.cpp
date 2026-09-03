@@ -2,6 +2,9 @@
 
 #include "internal/common.h"
 
+#include "pxr/usd/sdf/listOp.h"
+#include "pxr/usd/usd/tokens.h"
+
 openusd_status openusd_stage_open(
     const char* path,
     openusd_stage** stage,
@@ -1565,11 +1568,35 @@ openusd_status openusd_stage_get_prim_applied_schemas(
             }
 
             std::vector<std::string> values;
+            std::unordered_set<std::string> seen;
             const TfTokenVector& schemas = prim.GetAppliedSchemas();
             values.reserve(schemas.size());
             for (const TfToken& schema : schemas)
             {
-                values.push_back(schema.GetString());
+                const std::string name = schema.GetString();
+                if (seen.insert(name).second)
+                {
+                    values.push_back(name);
+                }
+            }
+
+            // UsdPrim::GetAppliedSchemas() can silently omit a codeless or otherwise
+            // unregistered API schema, since it is not always known to the schema registry.
+            // The composed apiSchemas list-op is read directly as well so an authored token
+            // is never dropped merely because no plugin registered it.
+            SdfTokenListOp appliedListOp;
+            if (prim.GetMetadata(UsdTokens->apiSchemas, &appliedListOp))
+            {
+                TfTokenVector applied;
+                appliedListOp.ApplyOperations(&applied);
+                for (const TfToken& schema : applied)
+                {
+                    const std::string name = schema.GetString();
+                    if (seen.insert(name).second)
+                    {
+                        values.push_back(name);
+                    }
+                }
             }
 
             result = std::make_unique<openusd_string_list>();

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\OpenUsd.LiveAuthoring\OpenUsd.LiveAuthoring.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.LiveAuthoring\OpenUsd.LiveAuthoring.csproj" />
   </ItemGroup>
 
   <ItemGroup>

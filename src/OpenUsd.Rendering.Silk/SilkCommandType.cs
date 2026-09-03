@@ -20,5 +20,17 @@ public enum SilkCommandType : uint
     MaterialUpsert = 4,
 
     /// <summary>Remove a material resource.</summary>
-    MaterialRemove = 5
+    MaterialRemove = 5,
+
+    /// <summary>Create or update a textured dome-light environment resource.</summary>
+    EnvironmentUpsert = 6,
+
+    /// <summary>Remove a textured dome-light environment resource.</summary>
+    EnvironmentRemove = 7,
+
+    /// <summary>Replace the sparse UsdLux light and shadow link table.</summary>
+    LightLink = 8,
+
+    /// <summary>Replace the bounded raster shadow-map descriptor table.</summary>
+    Shadow = 9
 }

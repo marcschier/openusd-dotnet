@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.LiveAuthoring\OpenUsd.LiveAuthoring.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Bridge.Protocol</AssemblyName>
+    <RootNamespace>OpenUsd.Bridge.Protocol</RootNamespace>
+    <Description>Transport-neutral openusd.bridge.v1 wire model for the optional Omniverse bridge: a versioned protobuf contract, bounded encoders and decoders for OpenUsd.LiveAuthoring snapshots, deltas, acknowledgements, and health, plus version and capability negotiation. Carries no networking dependency and no NVIDIA component.</Description>
+    <PackageTags>openusd;usd;omniverse;bridge;protocol;protobuf;live-authoring;nativeaot</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Generated message code is internal. The public surface of this package is the
+    hand-written, documented codec and negotiation API, so the protobuf implementation
+    detail never leaks into a PublicAPI baseline or a package-validation contract. The
+    .proto files themselves are the portable contract and ship inside the package for a
+    peer that generates its own bindings.
+  -->
+  <ItemGroup>
+    <Protobuf Include="protos\openusd\bridge\v1\wire.proto"
+              ProtoRoot="protos"
+              GrpcServices="None"
+              Access="Internal" />
+    <None Include="protos\**\*.proto" Pack="true" PackagePath="contentFiles\any\any\protos\" />
+  </ItemGroup>
+
+</Project>

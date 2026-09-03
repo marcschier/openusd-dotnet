@@ -15,6 +15,9 @@ on:
       - 'eng/fetch-physx-native.ps1'
       - 'eng/build-physx-native.ps1'
       - 'eng/build-physx-shim.ps1'
+      - 'eng/mdl.lock.json'
+      - 'eng/fetch-mdl-sdk.ps1'
+      - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
@@ -24,6 +27,7 @@ on:
       - 'eng/native-fuzz-lsan.supp'
       - 'native/**'
       - 'test-assets/fuzz-seeds/**'
+      - 'test-assets/omniverse/mdl-only-omnipbr.usda'
   pull_request:
     branches: [ master, main ]
     paths:
@@ -36,6 +40,9 @@ on:
       - 'eng/fetch-physx-native.ps1'
       - 'eng/build-physx-native.ps1'
       - 'eng/build-physx-shim.ps1'
+      - 'eng/mdl.lock.json'
+      - 'eng/fetch-mdl-sdk.ps1'
+      - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
@@ -45,6 +52,7 @@ on:
       - 'eng/native-fuzz-lsan.supp'
       - 'native/**'
       - 'test-assets/fuzz-seeds/**'
+      - 'test-assets/omniverse/mdl-only-omnipbr.usda'
 
 permissions:
   contents: read
@@ -238,11 +246,32 @@ jobs:
             -OutputRoot eng/shaders/out/checked-payload/osx-arm64
       - name: Run Windows native CTest
         if: runner.os == 'Windows'
+        # This unfiltered run is the adapter-absent half of the MDL evidence:
+        # the default configuration registers hdsilk_probe without
+        # HDSILK_PROBE_MDL_ADAPTER, so it asserts the state every base package
+        # ships in. --no-tests=error keeps it fail-closed -- a build tree that
+        # configured no tests at all would otherwise report success.
         run: >
           ctest
           --test-dir native/build/shim/win-x64
           -C Release
+          --no-tests=error
           --output-on-failure
+      - name: Build and test optional MDL adapter
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # The adapter is never installed and never packaged, so this step builds
+        # in place and runs the hdSilk probe from the MDL build tree. That probe
+        # is the only place the distillation half of the MDL slice is proven:
+        # the default configuration's probe compiles the adapter-absent checks
+        # alone, because asserting distillation with no adapter asserts nothing.
+        #
+        # The SDK-backed sibling is deliberately not built here. It needs the
+        # ~276 MiB acquisition eng/fetch-mdl-sdk.ps1 performs and a user-supplied
+        # MDL SDK runtime, neither of which any package contains or may contain,
+        # so eng/mdl.lock.json and the support manifest record that slice as
+        # implemented-not-gated rather than claiming a workflow proves it.
+        run: ./eng/build-mdl-shim.ps1 -Rid win-x64 -RunProbe
       - name: Build and test optional PhysX shim
         if: runner.os == 'Windows'
         shell: pwsh
@@ -289,10 +318,14 @@ jobs:
             xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break
             sleep 0.05
           done
-          ctest --test-dir native/build/shim/linux-x64 --output-on-failure
+          ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
       - name: Run macOS native CTest
         if: runner.os == 'macOS'
-        run: ctest --test-dir native/build/shim/osx-arm64 --output-on-failure
+        run: >
+          ctest
+          --test-dir native/build/shim/osx-arm64
+          --no-tests=error
+          --output-on-failure
       - name: Execute staged NativeAOT probes
         shell: pwsh
         run: |

@@ -416,7 +416,6 @@ public sealed class ViewerSourceContractTests
             "ViewerDocumentModels.cs"));
 
         await Assert.That(markup).Contains("x:Name=\"DiagnosticsTab\"");
-        await Assert.That(markup).Contains("x:Name=\"SettingsTab\"");
         await Assert.That(markup).Contains("x:Name=\"CopyDiagnosticsButton\"");
         await Assert.That(markup).Contains("x:Name=\"ExportDiagnosticsButton\"");
         await Assert.That(markup).Contains("x:Name=\"SnapTimelineCheckBox\"");
@@ -789,11 +788,15 @@ public sealed class ViewerSourceContractTests
         await Assert.That(host).Contains(
             "context.Renderer.UpdateSelection(");
         await Assert.That(host).Contains(
-            "SilkSelectionOutlineSettings.Default");
+            "ViewerSelectionOutlinePolicy.Current");
         await Assert.That(storm).Contains("renderer.Pick(pending.Request)");
         await Assert.That(storm).Contains("ViewerPickingPolicy.StormSelectionColor");
+        await Assert.That(storm).Contains(
+            "ViewerPickingPolicy.ProjectForStorm(state.Selection)");
         await Assert.That(nativeStorm).Contains(
-            "GetSession().SetSelection(selection, ViewerPickingPolicy.StormSelectionColor)");
+            "ViewerPickingPolicy.ProjectForStorm(selection),");
+        await Assert.That(nativeStorm).Contains(
+            "ViewerPickingPolicy.StormSelectionColor);");
         await Assert.That(picking).Contains("Superseding a request cancels its token");
         await Assert.That(picking).Contains("for (int attempt = 0; attempt < 2; attempt++)");
         await Assert.That(window).Contains("OnPickPointerPressed");

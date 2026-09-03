@@ -9,6 +9,53 @@ namespace OpenUsd.Viewer.Tests;
 
 public sealed class ViewerPickingTests
 {
+    /// <summary>
+    /// A selection carrying instance or component identity is narrowed to whole
+    /// prim paths before it reaches Storm, and an already-narrow selection is
+    /// passed through unchanged.
+    /// </summary>
+    /// <remarks>
+    /// Storm refuses an instance-specific selection outright, because its packed
+    /// ABI cannot authoritatively address one. The shell must still show the
+    /// user something for the pick it just answered, so what travels to Storm is
+    /// narrowed while the Viewer's own selection keeps the full identity.
+    /// Two instances of one prototype collapse to one item, because
+    /// <see cref="SelectionState"/> rejects an exact duplicate.
+    /// </remarks>
+    [Test]
+    public async Task StormSelectionIsNarrowedToWholePrimIdentity()
+    {
+        var instanced = new SelectionState(
+        [
+            new SelectionItem("/World/Proto", "/World/Instancer", 3),
+            new SelectionItem("/World/Proto", "/World/Instancer", 4),
+            SelectionItem.FromInstancerContext(
+                "/World/Leaf",
+                [
+                    new SelectionInstancerEntry("/World/Outer", 1),
+                    new SelectionInstancerEntry("/World/Outer/Inner", 2)
+                ]),
+            new SelectionItem("/World/Cube", null, null, elementIndex: 7),
+        ]);
+
+        SelectionState projected = ViewerPickingPolicy.ProjectForStorm(instanced);
+
+        await Assert.That(projected.Items.Count).IsEqualTo(3);
+        await Assert.That(projected.PrimPaths.SequenceEqual(
+            ["/World/Proto", "/World/Leaf", "/World/Cube"])).IsTrue();
+        foreach (SelectionItem item in projected.Items)
+        {
+            await Assert.That(item.InstancerContext.Count).IsEqualTo(0);
+            await Assert.That(item.ElementIndex).IsNull();
+        }
+
+        var whole = new SelectionState(["/World/A", "/World/B"]);
+        await Assert.That(ViewerPickingPolicy.ProjectForStorm(whole))
+            .IsSameReferenceAs(whole);
+        await Assert.That(ViewerPickingPolicy.ProjectForStorm(SelectionState.Empty))
+            .IsSameReferenceAs(SelectionState.Empty);
+    }
+
     [Test]
     public async Task PickingSmokeUsesBoundedCenterAnchoredSampleGrid()
     {
@@ -209,7 +256,8 @@ public sealed class ViewerPickingTests
             "/World/Prototype",
             "/World/Instances",
             instanceIndex: 3,
-            elementIndex: 7);
+            elementIndex: 7,
+            elementKind: SelectionElementKind.Face);
         var backend = new DelegatePickingBackend(
             (request, _) => ValueTask.FromResult(RenderPickResult.Hit(
                 request,
@@ -226,21 +274,31 @@ public sealed class ViewerPickingTests
             () => state,
             CancellationToken.None);
 
-        RenderPickResult hit = await queue.PickAsync(new ViewerPhysicalPixel(4, 5));
+        RenderPickResult hit = await queue.PickAsync(
+            new ViewerPhysicalPixel(4, 5),
+            RenderPickTarget.Face);
         backend.Handler = (request, _) => ValueTask.FromResult(RenderPickResult.Miss(
             request,
             state.Revision,
             sceneRevision: 9));
-        RenderPickResult miss = await queue.PickAsync(new ViewerPhysicalPixel(4, 5));
+        RenderPickResult miss = await queue.PickAsync(
+            new ViewerPhysicalPixel(4, 5),
+            RenderPickTarget.Face);
         snapshot = null;
-        RenderPickResult unsupported =
-            await queue.PickAsync(new ViewerPhysicalPixel(4, 5));
+        RenderPickResult unsupported = await queue.PickAsync(
+            new ViewerPhysicalPixel(4, 5),
+            RenderPickTarget.Face);
 
         await Assert.That(hit.Status).IsEqualTo(RenderPickStatus.Hit);
         await Assert.That(hit.Item).IsEqualTo(fullItem);
         await Assert.That(hit.InstancerPath).IsEqualTo("/World/Instances");
         await Assert.That(hit.InstanceIndex).IsEqualTo(3);
         await Assert.That(hit.ElementIndex).IsEqualTo(7);
+
+        // The element kind travels with the index all the way to the Viewer, so
+        // a face selection can never be mistaken for an edge or point one.
+        await Assert.That(hit.Item!.Value.ElementKind)
+            .IsEqualTo(SelectionElementKind.Face);
         await Assert.That(miss.Status).IsEqualTo(RenderPickStatus.Miss);
         await Assert.That(miss.Item).IsNull();
         await Assert.That(unsupported.Status).IsEqualTo(RenderPickStatus.Unsupported);
@@ -400,7 +458,8 @@ public sealed class ViewerPickingTests
             "/World/Prototype",
             "/World/Instances",
             instanceIndex: 5,
-            elementIndex: 9);
+            elementIndex: 9,
+            elementKind: SelectionElementKind.Face);
 
         bool changed = selection.TrySetItem(item, out SelectionState rendered);
         selection.Synchronize(rendered);

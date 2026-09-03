@@ -1,0 +1,30 @@
+#nullable enable
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.DisplayName.get -> string!
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.DisplayName.set -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.OmniverseViewerBridgeOptions() -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.ReadyTimeout.get -> System.TimeSpan
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.ReadyTimeout.set -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.SessionFactory.get -> System.Func<string?, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeSessionConfiguration!>>?
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.SessionFactory.set -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.Sessions.get -> System.Collections.Generic.IList<OpenUsd.Viewer.ViewerBridgeSession!>!
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.Validate() -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.ConnectAsync(OpenUsd.Viewer.ViewerBridgeConnectRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.DisconnectAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.DisplayName.get -> string!
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.GetSessionsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<OpenUsd.Viewer.ViewerBridgeSession!>!>
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.GetStatus() -> OpenUsd.Viewer.ViewerBridgeStatus
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.HostObserverFailureCount.get -> long
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.IsAvailable.get -> bool
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.LastDiagnostic.get -> string?
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.OmniverseViewerBridgeProvider(OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions! options) -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.ResyncAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.StatusChanged -> System.EventHandler<OpenUsd.Viewer.ViewerBridgeStatusChangedEventArgs!>?
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeProvider.SubscriberFailureCount.get -> long
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeSessionConfiguration
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeSessionConfiguration.Coordinator.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator!
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeSessionConfiguration.OmniverseViewerBridgeSessionConfiguration(OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator! coordinator, OpenUsd.Bridge.Grpc.BridgeClientOptions! options) -> void
+OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeSessionConfiguration.Options.get -> OpenUsd.Bridge.Grpc.BridgeClientOptions!
+static readonly OpenUsd.Viewer.Bridge.Grpc.OmniverseViewerBridgeOptions.DefaultReadyTimeout -> System.TimeSpan

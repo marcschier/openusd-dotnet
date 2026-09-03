@@ -630,6 +630,26 @@ public sealed class VulkanPickingTests
         await Assert.That(steady.Submissions).IsEqualTo(15L);
     }
 
+    /// <summary>
+    /// An edge or point scope that rasterizes nothing still clears the pick
+    /// colour, so the surface pre-pass's token cannot survive into the answer.
+    /// </summary>
+    [Test]
+    public async Task SwiftShaderEmptySubprimPassAnswersTokenZero()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkPickCommandListConformance
+            .EmptySubprimPassAfterSurfacePrepassAnswersTokenZero(
+                device,
+                SilkShaderBinaryFormat.SpirV);
+    }
+
     private static bool IsSupportedPlatform() =>
         OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
 

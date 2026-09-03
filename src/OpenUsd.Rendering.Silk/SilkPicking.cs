@@ -91,8 +91,22 @@ public readonly record struct SilkPickBindingLayoutDescriptor(
 /// <summary>Primitive topology supported by the checked pick pipeline.</summary>
 public enum SilkPickPrimitiveTopology
 {
-    /// <summary>Independent indexed triangles.</summary>
-    TriangleList
+    /// <summary>Independent indexed triangles, used by prim and face picking.</summary>
+    TriangleList,
+
+    /// <summary>
+    /// Independent indexed lines, used by edge picking. One line is drawn per
+    /// authored mesh edge, so the rasterized primitive index is the authored
+    /// edge index and a triangulation diagonal is never drawn at all.
+    /// </summary>
+    LineList,
+
+    /// <summary>
+    /// Independent indexed points, used by point picking. One point is drawn per
+    /// authored point, so the rasterized primitive index is the authored point
+    /// index even when the emitted vertices duplicate that point per corner.
+    /// </summary>
+    PointList
 }
 
 /// <summary>Face-culling mode supported by a Silk pick pipeline.</summary>
@@ -109,6 +123,46 @@ public enum SilkPickDepthCompare
     LessEqual
 }
 
+/// <summary>
+/// How one checked pick pipeline separates a coincident edge or point from the
+/// surface it lies on.
+/// </summary>
+/// <remarks>
+/// <para>
+/// An edge or point pass draws primitives that lie exactly on the surface a
+/// preceding depth pass already wrote, so the two depths agree mathematically
+/// and disagree by rounding: a triangle interpolates depth from a plane
+/// equation and a line interpolates it along a segment, and the two can differ
+/// by an ulp at the same pixel centre. Without a correction a visible edge
+/// would fail its own less-equal test at an arbitrary subset of its pixels,
+/// which is exactly the coverage a one-pixel pick reads.
+/// </para>
+/// <para>
+/// The correction is applied in the checked subprim vertex stage as a fixed
+/// clip-space offset, not as rasterizer state. Direct3D and Vulkan apply
+/// polygon offset to filled primitives only, and the slope-scaled term is
+/// defined from a polygon's gradients, so a rasterizer bias would be silently
+/// ignored for lines and points on some backends and would vary with surface
+/// slope on others -- the same click would answer differently per backend.
+/// Surface passes use the unbiased stage, so nothing the user sees moves.
+/// </para>
+/// </remarks>
+public enum SilkPickDepthBias
+{
+    /// <summary>
+    /// Rasterize the transformed depth unchanged, used by the surface pass.
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// Pull the primitive toward the camera by the checked clip-space offset,
+    /// used by the edge and point passes so a primitive coincident with the
+    /// surface wins its less-equal test at every covered pixel while geometry
+    /// genuinely in front of it still occludes it.
+    /// </summary>
+    Coincident
+}
+
 /// <summary>Describes the checked single-sample RGBA8/D32 pick pipeline.</summary>
 public readonly record struct SilkPickPipelineDescriptor(
     SilkShaderModuleDescriptor VertexShader,
@@ -123,25 +177,160 @@ public readonly record struct SilkPickPipelineDescriptor(
     bool BlendEnabled,
     bool DepthTestEnabled,
     bool DepthWriteEnabled,
-    SilkPickDepthCompare DepthCompare)
+    SilkPickDepthCompare DepthCompare,
+    SilkPickDepthBias DepthBias = SilkPickDepthBias.None,
+    bool ColorWriteEnabled = true)
 {
     /// <summary>Creates the checked pick pipeline descriptor for one backend format.</summary>
     public static SilkPickPipelineDescriptor CreateChecked(
         SilkShaderBinaryFormat format) =>
-        new(
-            SilkCheckedShaderAssets.LoadPickVertex(format),
+        CreateChecked(format, SilkPickPrimitiveTopology.TriangleList);
+
+    /// <summary>
+    /// Creates the checked pick pipeline descriptor for one backend format and
+    /// one emitted topology, rasterizing whole rendered resources.
+    /// </summary>
+    /// <remarks>
+    /// Every topology uses the same checked fragment stage, the same vertex
+    /// layout, and the same depth convention, so a curve or point pass
+    /// rasterizes the identical transformed positions the color pass does -- the
+    /// deformed and displaced ones -- and its depth compares against the same
+    /// pre-pass depth. Only the primitive assembled from those positions
+    /// differs.
+    /// </remarks>
+    public static SilkPickPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        SilkPickPrimitiveTopology topology) =>
+        CreateChecked(format, topology, SilkVertexLayoutDescriptor.PositionNormal);
+
+    /// <summary>
+    /// Creates the checked pick pipeline descriptor for one backend format, one
+    /// emitted topology, and one mesh vertex layout, rasterizing whole rendered
+    /// resources.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every topology uses the same checked fragment stage, the same depth
+    /// convention, and the same position and normal attribute offsets, so a
+    /// curve or point pass rasterizes the identical transformed positions the
+    /// color pass does -- the deformed and displaced ones -- and its depth
+    /// compares against the same pre-pass depth.
+    /// </para>
+    /// <para>
+    /// The layout is a parameter because a mesh's vertex stride is not fixed: a
+    /// textured mesh interleaves texture coordinates and a normal-mapped one
+    /// interleaves tangents, so its vertices are 32 or 48 bytes apart rather
+    /// than 24. A pipeline pinned to the 24-byte layout reads every vertex after
+    /// the first from the wrong offset, which silently picks and outlines a
+    /// different surface from the one on screen. The stride is the only thing
+    /// that varies; position and normal keep offsets zero and twelve in all
+    /// three checked layouts, so the shaders never change.
+    /// </para>
+    /// </remarks>
+    public static SilkPickPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        SilkPickPrimitiveTopology topology,
+        SilkVertexLayoutDescriptor vertexLayout) =>
+        CreateChecked(format, topology, vertexLayout, SilkPickDepthBias.None);
+
+    /// <summary>
+    /// Creates the checked pick pipeline descriptor for one backend format, one
+    /// emitted topology, one mesh vertex layout, and one explicit pass stage.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The bias is the pass stage, not a rendering preference, so it is stated
+    /// by the caller rather than inferred from the topology. A whole basis-curve
+    /// or UsdGeomPoints resource is drawn as a line or point list by the surface
+    /// pass and must be <see cref="SilkPickDepthBias.None"/>: it is its own
+    /// surface, and pulling it toward the viewer would let a curve standing
+    /// behind a wall answer the pick. An authored mesh edge or point drawn by
+    /// the subprim overlay pass is genuinely coplanar with the triangles it came
+    /// from and must be <see cref="SilkPickDepthBias.Coincident"/>. Inferring
+    /// the bias from the topology alone conflated the two, because both stages
+    /// draw line and point lists.
+    /// </para>
+    /// <para>
+    /// The unbiased line and point stage is a distinct checked artifact rather
+    /// than the triangle stage, because Vulkan and Metal leave the rasterized
+    /// point size undefined unless the vertex stage writes it, and a whole point
+    /// cloud whose primitives covered no pixel would be unpickable and would
+    /// occlude nothing.
+    /// </para>
+    /// </remarks>
+    public static SilkPickPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        SilkPickPrimitiveTopology topology,
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkPickDepthBias depthBias) =>
+        CreateChecked(format, topology, vertexLayout, depthBias, colorWriteEnabled: true);
+
+    /// <summary>
+    /// Creates the checked pick pipeline descriptor for one backend format, one
+    /// emitted topology, one mesh vertex layout, one explicit pass stage, and
+    /// one colour-write policy.
+    /// </summary>
+    /// <remarks>
+    /// A pipeline with colour writes disabled is a pure occluder: it still
+    /// rasterizes and still writes depth, so what it covers stays hidden, but it
+    /// leaves the pick target's background token in place. That is the exact
+    /// contract a face request needs for a basis-curve or UsdGeomPoints
+    /// resource: those resources have no authored face, so a face pick that
+    /// lands on one must answer a miss rather than an index the scene never
+    /// authored, while a face behind the curve must still not be reported as
+    /// visible.
+    /// </remarks>
+    public static SilkPickPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        SilkPickPrimitiveTopology topology,
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkPickDepthBias depthBias,
+        bool colorWriteEnabled)
+    {
+        if (!Enum.IsDefined(topology))
+        {
+            throw new ArgumentOutOfRangeException(nameof(topology));
+        }
+        if (!Enum.IsDefined(depthBias))
+        {
+            throw new ArgumentOutOfRangeException(nameof(depthBias));
+        }
+        if (depthBias == SilkPickDepthBias.Coincident &&
+            topology == SilkPickPrimitiveTopology.TriangleList)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(depthBias),
+                "A triangle-list pick pass draws the surface itself and must not " +
+                "be separated from it.");
+        }
+
+        return new(
+            SelectPickVertexStage(format, topology, depthBias),
             SilkCheckedShaderAssets.LoadPickFragment(format),
-            SilkVertexLayoutDescriptor.PositionNormal,
+            vertexLayout,
             SilkPickBindingLayoutDescriptor.Checked,
             SilkTextureFormat.Rgba8Unorm,
             SilkTextureFormat.D32Float,
             1,
-            SilkPickPrimitiveTopology.TriangleList,
+            topology,
             SilkPickCullMode.None,
             BlendEnabled: false,
             DepthTestEnabled: true,
             DepthWriteEnabled: true,
-            DepthCompare: SilkPickDepthCompare.LessEqual);
+            DepthCompare: SilkPickDepthCompare.LessEqual,
+            DepthBias: depthBias,
+            ColorWriteEnabled: colorWriteEnabled);
+    }
+
+    private static SilkShaderModuleDescriptor SelectPickVertexStage(
+        SilkShaderBinaryFormat format,
+        SilkPickPrimitiveTopology topology,
+        SilkPickDepthBias depthBias) =>
+        depthBias == SilkPickDepthBias.Coincident
+            ? SilkCheckedShaderAssets.LoadPickSubprimVertex(format)
+            : topology == SilkPickPrimitiveTopology.TriangleList
+                ? SilkCheckedShaderAssets.LoadPickVertex(format)
+                : SilkCheckedShaderAssets.LoadPickWholeVertex(format);
 
     /// <summary>Validates checked shader stages, bindings, formats, and sample count.</summary>
     public void Validate()
@@ -158,7 +347,11 @@ public readonly record struct SilkPickPipelineDescriptor(
 
         string vertexEntryPoint = VertexShader.Format == SilkShaderBinaryFormat.SpirV
             ? "main"
-            : "pickVertexMain";
+            : DepthBias == SilkPickDepthBias.Coincident
+                ? "pickSubprimVertexMain"
+                : PrimitiveTopology == SilkPickPrimitiveTopology.TriangleList
+                    ? "pickVertexMain"
+                    : "pickWholeVertexMain";
         string fragmentEntryPoint = FragmentShader.Format == SilkShaderBinaryFormat.SpirV
             ? "main"
             : "pickFragmentMain";
@@ -180,17 +373,21 @@ public readonly record struct SilkPickPipelineDescriptor(
         if (ColorFormat != SilkTextureFormat.Rgba8Unorm ||
             DepthFormat != SilkTextureFormat.D32Float ||
             SampleCount != 1 ||
-            PrimitiveTopology != SilkPickPrimitiveTopology.TriangleList ||
+            !Enum.IsDefined(PrimitiveTopology) ||
             CullMode != SilkPickCullMode.None ||
             BlendEnabled ||
             !DepthTestEnabled ||
             !DepthWriteEnabled ||
-            DepthCompare != SilkPickDepthCompare.LessEqual)
+            DepthCompare != SilkPickDepthCompare.LessEqual ||
+            !Enum.IsDefined(DepthBias) ||
+            (PrimitiveTopology == SilkPickPrimitiveTopology.TriangleList &&
+                DepthBias != SilkPickDepthBias.None))
         {
             throw new ArgumentException(
-                "The Silk pick pipeline requires single-sample triangle-list " +
-                "RGBA8/D32 rendering with no culling or blending and writable " +
-                "less-equal depth.");
+                "The Silk pick pipeline requires single-sample triangle-, line- " +
+                "or point-list RGBA8/D32 rendering with no culling or blending, " +
+                "writable less-equal depth, and no coincident depth bias on the " +
+                "triangle surface topology.");
         }
     }
 }

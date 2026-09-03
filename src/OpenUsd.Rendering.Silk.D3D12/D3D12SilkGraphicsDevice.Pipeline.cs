@@ -307,12 +307,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     SilkTopologyKind.PointList => PrimitiveTopologyType.Point,
                     _ => PrimitiveTopologyType.Triangle
                 },
-                NumRenderTargets = 1,
+                NumRenderTargets = descriptor.DepthOnly ? 0u : 1u,
                 DSVFormat = Format.FormatD32Float,
                 SampleDesc = new SampleDesc(1, 0)
             };
-            pipelineDescription.RTVFormats[0] =
-                GetNativeFormat(descriptor.ColorFormat);
+            pipelineDescription.RTVFormats[0] = descriptor.DepthOnly
+                ? Format.FormatUnknown
+                : GetNativeFormat(descriptor.ColorFormat);
             Guid pipelineId = ID3D12PipelineState.Guid;
             SilkMarshal.ThrowHResult(_device->CreateGraphicsPipelineState(
                 &pipelineDescription,

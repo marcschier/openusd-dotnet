@@ -1,0 +1,169 @@
+#usda 1.0
+(
+    doc = """Deformation probe for hdSilk's CPU UsdSkel subset.
+
+    Every expected value in this stage is analytic, so the probe asserts
+    against arithmetic rather than a captured image:
+
+    * InbetweenTriangle authors an in-between shape at weight 0.5 whose point
+      and normal offsets are deliberately NOT the linear midpoint of the
+      primary shape, so a renderer that ignores in-betweens and interpolates
+      the primary shape linearly cannot produce the expected point.
+    * SkinnedNormalQuad authors per-point normals and a joint that rotates 90
+      degrees about X at timeCode 3, so bind-pose normals and skinned normals
+      differ by a full axis.
+    * FaceVaryingNormalTriangle authors face-varying normals on a deformed
+      mesh. UsdSkel addresses both blend-shape normal offsets and joint
+      influences by point index, so those normals cannot be deformed and are
+      omitted rather than published at the bind pose.
+    """
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 3
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def SkelRoot "Rig" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        rel skel:animationSource = </World/Rig/Animation>
+        rel skel:skeleton = </World/Rig/Skeleton>
+
+        def Skeleton "Skeleton"
+        {
+            uniform matrix4d[] bindTransforms = [
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)),
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+            ]
+            uniform token[] joints = ["Static", "Spin"]
+            uniform matrix4d[] restTransforms = [
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)),
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+            ]
+            rel skel:animationSource = </World/Rig/Animation>
+        }
+
+        def SkelAnimation "Animation"
+        {
+            uniform token[] blendShapes = ["Bulge"]
+            float[] blendShapeWeights.timeSamples = {
+                1: [0],
+                2: [0.5],
+                3: [1]
+            }
+            uniform token[] joints = ["Static", "Spin"]
+            quatf[] rotations.timeSamples = {
+                1: [(1, 0, 0, 0), (1, 0, 0, 0)],
+                2: [(1, 0, 0, 0), (1, 0, 0, 0)],
+                3: [(1, 0, 0, 0), (0.70710678, 0.70710678, 0, 0)]
+            }
+            half3[] scales = [(1, 1, 1), (1, 1, 1)]
+            float3[] translations = [(0, 0, 0), (0, 0, 0)]
+        }
+
+        def BlendShape "Bulge"
+        {
+            int[] pointIndices = [0]
+            vector3f[] offsets = [(2, 0, 0)]
+            vector3f[] normalOffsets = [(0, 2, 0)]
+            vector3f[] inbetweens:Half = [(0.25, 0, 0)] (
+                weight = 0.5
+            )
+            vector3f[] inbetweens:Half:normalOffsets = [(0, 0.25, 0)]
+        }
+
+        def Mesh "InbetweenTriangle" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            rel skel:animationSource = </World/Rig/Animation>
+            rel skel:skeleton = </World/Rig/Skeleton>
+            uniform token[] skel:blendShapes = ["Bulge"]
+            rel skel:blendShapeTargets = </World/Rig/Bulge>
+            matrix4d primvars:skel:geomBindTransform = (
+                (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)
+            )
+            int[] primvars:skel:jointIndices = [0, 0, 0] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+                interpolation = "vertex"
+            )
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.8, 0.4, 0.2)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+
+        def Mesh "SkinnedNormalQuad" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            rel skel:animationSource = </World/Rig/Animation>
+            rel skel:skeleton = </World/Rig/Skeleton>
+            matrix4d primvars:skel:geomBindTransform = (
+                (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)
+            )
+            int[] primvars:skel:jointIndices = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+                interpolation = "vertex"
+            )
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.2, 0.6, 0.9)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+
+        def Mesh "FaceVaryingNormalTriangle" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            rel skel:animationSource = </World/Rig/Animation>
+            rel skel:skeleton = </World/Rig/Skeleton>
+            matrix4d primvars:skel:geomBindTransform = (
+                (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)
+            )
+            int[] primvars:skel:jointIndices = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+                interpolation = "faceVarying"
+            )
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.4, 0.9, 0.3)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+    }
+}

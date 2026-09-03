@@ -1,0 +1,55 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "Anchor" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/DualContextAnchor>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+    }
+
+    def Scope "Looks"
+    {
+        def Material "DualContextAnchor" (
+            prepend apiSchemas = ["MaterialXConfigAPI"]
+        )
+        {
+            string config:mtlx:version = "1.39"
+
+            # Universal context: read by any UsdPreviewSurface-aware renderer.
+            token outputs:surface.connect = </World/Looks/DualContextAnchor/PreviewSurface.outputs:surface>
+
+            # MaterialX-specific context: read by MaterialX-aware consumers such as Kit.
+            token outputs:mtlx:surface.connect = </World/Looks/DualContextAnchor/StandardSurface.outputs:out>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.6, 0.2, 0.1)
+                float inputs:roughness = 0.4
+                token outputs:surface
+            }
+
+            def Shader "StandardSurface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.6, 0.2, 0.1)
+                float inputs:specular_roughness = 0.4
+                float inputs:metalness = 0.0
+                token outputs:out
+            }
+        }
+    }
+}

@@ -38,6 +38,13 @@ internal static unsafe class StormPickingInterop
     private const uint ResultStaleContextGeneration = 0x2000;
     private const uint ResultStaleBackendState = 0x4000;
     private const uint ResultStaleMask = 0x7f00;
+
+    // The packed selection ABI's per-item "has instance index" flag. It is
+    // deliberately never set: instance-specific selection is refused in
+    // SetSelection because a flattened ordinal cannot authoritatively name an
+    // instance this renderer can produce. The constant stays as the wire
+    // contract's documented bit so a future context-aware ABI has one place to
+    // grow from.
     private const uint SelectionHasInstanceIndex = 1;
     private const int ErrorBufferSize = 4096;
     private const int StackPathBytes = 512;
@@ -76,6 +83,18 @@ internal static unsafe class StormPickingInterop
                 binding.StateRevision,
                 binding.SceneRevision,
                 staleReasons);
+        }
+
+        // Storm resolves prims, instances, and coarse faces. Edge and point
+        // identity has no Storm counterpart, so refuse those targets here with
+        // the renderer-neutral "unsupported" outcome rather than letting a
+        // face index reach a caller that asked for an edge or a point.
+        if (request.Target is RenderPickTarget.Edge or RenderPickTarget.Point)
+        {
+            return RenderPickResult.Unsupported(
+                request,
+                binding.StateRevision,
+                binding.SceneRevision);
         }
 
         NativePickRequest nativeRequest = NativePickRequest.Create(request, binding);
@@ -208,6 +227,36 @@ internal static unsafe class StormPickingInterop
                 throw new NotSupportedException(
                     "Storm selection highlighting does not support face, edge, or point elements.");
             }
+
+            // Every instance-specific selection is refused, not just a nested
+            // one. The packed selection ABI carries exactly one (path, index)
+            // pair per item and reaches Hydra's legacy AddSelected, which
+            // addresses an instance by a flattened ordinal with no instancer
+            // context at all. That is not enough identity to name either of the
+            // two shapes this renderer can produce:
+            //
+            //   * A nested chain has one local index per level and no single
+            //     ordinal, so the innermost level's index names some unrelated
+            //     instance of the innermost instancer.
+            //   * Even a single-level chain is ambiguous once one instancer
+            //     instances several prototypes, because the local index is
+            //     per-prototype while the flattened ordinal runs across all of
+            //     them, so the same number denotes two different instances.
+            //
+            // A wrong highlight looks exactly like a working one, so the
+            // operation fails honestly until a context-aware native selection
+            // ABI exists. Whole-prim selection is unaffected: it carries no
+            // index and needs none.
+            if (item.InstancerContext.Count != 0)
+            {
+                throw new NotSupportedException(
+                    "Storm selection highlighting cannot express instance " +
+                    "identity: the packed selection ABI names one flattened " +
+                    "instance ordinal per item with no instancer context, " +
+                    "which cannot authoritatively address a nested instance " +
+                    "or a multi-prototype PointInstancer instance. Select the " +
+                    $"prim '{item.PrimPath}' itself instead.");
+            }
             byteCount = checked(byteCount + Encoding.UTF8.GetByteCount(item.PrimPath));
         }
         if (byteCount > MaximumPathBytes)
@@ -236,8 +285,13 @@ internal static unsafe class StormPickingInterop
             {
                 PathOffset = checked((uint)offset),
                 PathLength = checked((uint)written),
-                InstanceIndex = item.InstanceIndex ?? -1,
-                Flags = item.InstanceIndex.HasValue ? SelectionHasInstanceIndex : 0,
+
+                // Instance-specific items were refused above, so no packed item
+                // ever carries an index. The flag stays clear rather than being
+                // derived from the item, which is what makes it impossible for a
+                // local per-prototype index to leave here as a flattened one.
+                InstanceIndex = -1,
+                Flags = 0,
             };
             offset += written;
         }
@@ -334,11 +388,62 @@ internal static unsafe class StormPickingInterop
         Vector3 point = result.WorldPoint.ToVector3();
         Vector3 normal = result.WorldNormal.ToVector3();
         float depth = checked((float)result.NormalizedDepth);
+        SelectionElementKind elementKind = elementIndex is null
+            ? SelectionElementKind.None
+            : SelectionElementKind.Face;
+
+        // Every validated native context entry is carried through, in native
+        // order, which is outermost instancer first and innermost last -- the
+        // same order the native side takes its own innermost fallback from.
+        //
+        // Only the chain describes a nested instance. The flattened instancer
+        // path and index name one level each, and for a two- or three-level
+        // context they name the innermost one; reporting them alone would tell a
+        // consumer about a single instancer that does not exist in isolation.
+        // The chain is therefore preferred whenever the native side published
+        // one, and the flat pair is used only when it did not.
+        //
+        // The chain's innermost entry is deliberately not cross-checked against
+        // the flattened pair. Hydra's hit instance index is the flattened index
+        // of the whole nested instancing, while every context entry carries that
+        // level's own local index, so for a two-level context the two numbers
+        // legitimately disagree and comparing them rejected correct results. The
+        // flattened value stays in `instanceIndex` for the single-level legacy
+        // shape below, which is the only shape where it is a level's own index
+        // and the only shape Storm's selection ABI can express.
+        if (result.InstanceContextCount != 0)
+        {
+            var chain = new SelectionInstancerEntry[result.InstanceContextCount];
+            for (int index = 0; index < chain.Length; index++)
+            {
+                NativePickInstanceContext entry = context[index];
+                chain[index] = new SelectionInstancerEntry(
+                    StrictUtf8.GetString(
+                        contextPaths.Slice((int)entry.PathOffset, (int)entry.PathLength)),
+                    entry.InstanceIndex);
+            }
+
+            return RenderPickResult.Hit(
+                request,
+                result.StateRevision,
+                sceneRevision,
+                SelectionItem.FromInstancerContext(
+                    primPath,
+                    chain,
+                    elementIndex,
+                    elementKind),
+                point,
+                normal,
+                depth,
+                RenderBackendKind.Storm);
+        }
+
         var item = new SelectionItem(
             primPath,
             instancerPath,
             instanceIndex,
-            elementIndex);
+            elementIndex,
+            elementKind);
         return RenderPickResult.Hit(
             request,
             result.StateRevision,
@@ -382,6 +487,18 @@ internal static unsafe class StormPickingInterop
                 throw new OpenUsdStormException(
                     OpenUsdNativeStatus.NativeError,
                     $"Storm returned a non-UTF-8 instancer-context path: {exception.Message}");
+            }
+
+            // Every level has to be an absolute prim path, because the whole
+            // chain is published as authoritative scene identity. A relative or
+            // empty level would be rejected by the renderer-neutral selection
+            // item anyway, and rejecting it here names the backend that produced
+            // it instead of surfacing as an argument fault far from the wire.
+            if (entry.PathLength == 0 ||
+                contextPaths[(int)entry.PathOffset] != (byte)'/')
+            {
+                throw IncompatibleResult(
+                    "Storm returned a non-absolute instancer-context path.");
             }
         }
     }

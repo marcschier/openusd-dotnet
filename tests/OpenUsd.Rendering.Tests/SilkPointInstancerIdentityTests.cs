@@ -24,6 +24,7 @@ public sealed class SilkPointInstancerIdentityTests
     private const string AlphaPath = "/World/Instancer/Protos/Alpha";
     private const string BetaPath = "/World/Instancer/Protos/Beta";
     private const int InstancerId = 735836358;
+    private const string InstancerPath = "/World/Instancer";
 
     [Test]
     public async Task ASecondPrototypeResolvesItsPayloadWithoutAnIndexZeroRecord()
@@ -345,6 +346,7 @@ public sealed class SilkPointInstancerIdentityTests
         SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
+        byte[] instancerPathBytes = Encoding.UTF8.GetBytes(InstancerPath);
         // One primitive per topology kind, with the subprim count the wire
         // requires: three indices per triangle, two per line, one per point.
         (float[] Points, uint[] Indices, uint[] Subprims) geometry = topologyKind switch
@@ -357,11 +359,13 @@ public sealed class SilkPointInstancerIdentityTests
         float[] points = carriesGeometry ? geometry.Points : [];
         uint[] indices = carriesGeometry ? geometry.Indices : [];
         uint[] subprims = carriesGeometry ? geometry.Subprims : [];
-        int size = 224 +
+        int size = 268 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
-            (subprims.Length * sizeof(uint));
+            (subprims.Length * sizeof(uint)) +
+            instancerPathBytes.Length +
+            8 + instancerPathBytes.Length;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -392,8 +396,12 @@ public sealed class SilkPointInstancerIdentityTests
                 element % 5 == 0 ? 1 : 0);
         }
         BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (12 * 8)), translateX);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(260),
+            (uint)instancerPathBytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
 
-        int cursor = 224;
+        int cursor = 268;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)
@@ -411,6 +419,15 @@ public sealed class SilkPointInstancerIdentityTests
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
             cursor += sizeof(uint);
         }
+        instancerPathBytes.CopyTo(bytes.AsSpan(cursor));
+        cursor += instancerPathBytes.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(cursor),
+            (uint)instancerPathBytes.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            bytes.AsSpan(cursor + 4),
+            instanceIndex);
+        instancerPathBytes.CopyTo(bytes.AsSpan(cursor + 8));
         return bytes;
     }
 

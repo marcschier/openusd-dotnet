@@ -677,25 +677,24 @@ public sealed class ViewerCameraNavigationUiTests
             "OpenUsd.Viewer",
             "ViewerCameraNavigationUi.cs"));
 
-        await Assert.That(markup).Contains("x:Name=\"ResetCameraAutomaticButton\"");
-        await Assert.That(markup).Contains("x:Name=\"ResetCameraLegacyButton\"");
-        await Assert.That(markup).Contains("x:Name=\"ToggleCameraProjectionButton\"");
-        await Assert.That(markup).Contains("x:Name=\"UseSelectedCameraButton\"");
+        await Assert.That(markup).Contains("x:Name=\"ResetCameraAutomaticMenuItem\"");
+        await Assert.That(markup).Contains("x:Name=\"ResetCameraLegacyMenuItem\"");
+        await Assert.That(markup).Contains("x:Name=\"ToggleCameraProjectionMenuItem\"");
+        await Assert.That(markup).Contains("x:Name=\"UseSelectedCameraMenuItem\"");
         await Assert.That(markup).Contains("x:Name=\"FrameSelectedButton\"");
-        await Assert.That(markup).Contains("x:Name=\"CameraOrbitLeftButton\"");
-        await Assert.That(markup).Contains("x:Name=\"CameraOrbitRightButton\"");
-        await Assert.That(markup).Contains("x:Name=\"CameraOrbitUpButton\"");
-        await Assert.That(markup).Contains("x:Name=\"CameraOrbitDownButton\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitLeftMenuItem\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitRightMenuItem\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitUpMenuItem\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitDownMenuItem\"");
         await Assert.That(markup).Contains("x:Name=\"CameraStatus\"");
         await Assert.That(markup).Contains("AutomationProperties.Name=\"Frame selected prim\"");
         await Assert.That(markup).Contains("x:Name=\"ViewerToolbarGrid\"");
-        await Assert.That(markup).Contains("RowDefinitions=\"Auto,Auto,Auto\"");
-        await Assert.That(markup).Contains("Grid.ColumnSpan=\"5\"");
+        await Assert.That(markup).Contains("ColumnDefinitions=\"Auto,Auto,Auto,Auto,*,Auto\"");
+        await Assert.That(markup).Contains("Tag=\"Left\"");
+        await Assert.That(markup).Contains("Tag=\"Right\"");
+        await Assert.That(markup).Contains("Tag=\"Up\"");
+        await Assert.That(markup).Contains("Tag=\"Down\"");
         await Assert.That(markup).Contains("TextTrimming=\"CharacterEllipsis\"");
-        await Assert.That(markup).Contains("RowDefinitions=\"32,32\"");
-        await Assert.That(markup).Contains("ColumnDefinitions=\"32,32,32\"");
-        await Assert.That(markup).Contains("<Setter Property=\"Padding\" Value=\"0\" />");
-        await Assert.That(markup).Contains("<Setter Property=\"FontSize\" Value=\"18\" />");
         await Assert.That(window).Contains("RegisterCameraInputHandlers(this);");
         await Assert.That(window).Contains("RegisterCameraInputHandlers(ViewportHost);");
 
@@ -795,21 +794,21 @@ public sealed class ViewerCameraNavigationUiTests
             "private void SetActiveBackendStatus()");
         await Assert.That(window).Contains("UpdateCameraStatus();");
         await Assert.That(markup).Contains(
-            "x:Name=\"ResetCameraAutomaticButton\"");
+            "x:Name=\"ResetCameraAutomaticMenuItem\"");
         await Assert.That(markup).Contains(
-            "x:Name=\"UseSelectedCameraButton\"");
+            "x:Name=\"UseSelectedCameraMenuItem\"");
         await Assert.That(markup).Contains(
             "x:Name=\"FrameSelectedButton\"");
         await Assert.That(availability).Contains(
-            "ResetCameraAutomaticButton.IsEnabled = enabled;");
+            "ResetCameraAutomaticMenuItem.IsEnabled = enabled;");
         await Assert.That(availability).Contains(
-            "ToggleCameraProjectionButton.IsEnabled = enabled;");
+            "ToggleCameraProjectionMenuItem.IsEnabled = enabled;");
         await Assert.That(availability).Contains(
             "FrameSelectedButton.IsEnabled = enabled;");
         await Assert.That(availability).Contains(
-            "CameraOrbitLeftButton.IsEnabled = enabled;");
+            "CameraOrbitLeftMenuItem.IsEnabled = enabled;");
         await Assert.That(availability).Contains(
-            "CameraOrbitRightButton.IsEnabled = enabled;");
+            "CameraOrbitRightMenuItem.IsEnabled = enabled;");
         await Assert.That(availability).DoesNotContain(
             "RenderBackendKind.Storm");
         await Assert.That(documentation).Contains(

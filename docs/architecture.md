@@ -72,7 +72,7 @@ renderer plugin resources. See [Packaging](packaging.md).
 The data boundary is declared in `native/openusd_dotnet/include/openusd_dotnet.h`. It exposes opaque
 stage, access, layer, string-list, and payload-list handles. The managed declarations in
 `OpenUsdNativeMethods.g.cs` are generated from that header by `eng/generate-interop.py`.
-The current managed contract requires data ABI 15 and capability mask `0xFFFFFF`.
+The current managed contract requires data ABI 17 and capability mask `0x3FFFFFF`.
 
 The boundary uses a small status model:
 
@@ -240,7 +240,7 @@ buffers, and selection crosses the ABI once as a packed update.
 ### Hydra to Silk
 
 `openusd_hdsilk` session ABI 5 registers the hdSilk Hydra plugin against the exact retained stage.
-Each sync returns a native-owned immutable page. Managed code validates page ABI 15, copies the page
+Each sync returns a native-owned immutable page. Managed code validates page ABI 23, copies the page
 bytes once, and releases the native page.
 
 The wire format is pointer-free and little-endian. Commands currently describe the frame,
@@ -252,7 +252,10 @@ the material binding, which is how authored normals, texture coordinates and arb
 travel without a further ABI bump. Page ABI 5 adds the material commands, whose scalar and texture
 parameter tables are keyed the same way, so supporting a further UsdPreviewSurface input needs a new
 parameter id rather than another bump. Page ABI 8 keeps point-instancer prototype geometry in the
-instance-zero record and makes later records lightweight identity/transform references.
+instance-zero record and makes later records lightweight identity/transform references. Page ABI 18
+adds the `LIGHT_LINK` command, a sparse default-free table of per-prim UsdLux light and shadow link
+masks indexed against the same page's frame light table, so a scene that authors no linking still
+publishes no command at all.
 
 Every attribute entry carries its authored primvar name, whatever its semantic, because a mesh may
 carry several texture coordinate sets and a `UsdUVTexture` reader selects one of them by name. A

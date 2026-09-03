@@ -1,0 +1,213 @@
+#usda 1.0
+(
+    doc = """Nested-instancing light-linking probe stage for hdSilk.
+
+    /World/Sources/Cluster holds two instanceable prims that both reference the
+    same leaf mesh, and /World/GroupA and /World/GroupB instance that cluster.
+    UsdImaging therefore builds an inner instancer whose parent is the outer one,
+    and hdSilk publishes four composed identities:
+    outerIndex * innerInstanceCount + innerIndex.
+
+    /World/Key is a DistantLight whose collection:lightLink excludes
+    /World/GroupB, so exactly the two composed identities under the second outer
+    instance must lose the light bit. /World/Key also authors a
+    collection:shadowLink that excludes /World/GroupA, which is the opposite half
+    of the same claim: the caster restriction is resolved independently and must
+    land on the other two composed identities.
+
+    /World/Sky is a DomeLight whose collection:lightLink excludes /World/GroupA,
+    and /World/SkyScatter is a second DomeLight whose collection includes only
+    /World/GroupA, so the dome masks are two more independent partitions of the
+    same identities.
+
+    The whole point of the nested half is that no per-instance information exists
+    on the inner instancer at all: the collections name outer instances, and the
+    only way those reach a composed identity is through the ancestor level of the
+    chain.
+
+    /World/Scatter is the point-instancer half. It scatters two prototypes that
+    live outside its own namespace, with proto indices [0, 1, 0, 1] and instance
+    2 hidden through invisibleIds. Every collection that reaches its prototypes
+    names /World/Scatter itself and excludes /World/ScatterProtos, so a prototype
+    can only learn about it through the instancer prim's own path-wide
+    categories -- which is how HdsiLightLinkingSceneIndex reports a linked point
+    instancer, because it assigns the category to the instancer rather than to a
+    per-instance array. /World/Spot links and shadow-links only /World/Scatter,
+    /World/Sky reaches it and /World/SkyScatter does not, so the prototypes have
+    a non-default direct mask, shadow mask and dome mask at once and every one of
+    them comes from the instancer.
+
+    The sources live under an invisible scope so that only the instances are
+    drawn: a visible source would publish records of its own and the composed
+    identities would no longer be the whole published set.
+    """
+    defaultPrim = "World"
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    class Xform "Sources"
+    {
+        def Xform "LeafGroup"
+        {
+            def Mesh "Leaf"
+            {
+                uniform bool doubleSided = 1
+                uniform token subdivisionScheme = "none"
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+            }
+        }
+
+        def Xform "Cluster"
+        {
+            def Xform "TwigA" (
+                instanceable = true
+                prepend references = </World/Sources/LeafGroup>
+            )
+            {
+                double3 xformOp:translate = (0, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+
+            def Xform "TwigB" (
+                instanceable = true
+                prepend references = </World/Sources/LeafGroup>
+            )
+            {
+                double3 xformOp:translate = (2, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+    }
+
+    def Xform "GroupA" (
+        instanceable = true
+        prepend references = </World/Sources/Cluster>
+    )
+    {
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "GroupB" (
+        instanceable = true
+        prepend references = </World/Sources/Cluster>
+    )
+    {
+        double3 xformOp:translate = (100, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    # The point-instancer half. The prototypes live outside the instancer's
+    # namespace on purpose: a collection that names /World/Scatter then reaches
+    # them through nothing but the instancer prim's own categories, which is
+    # exactly how HdsiLightLinkingSceneIndex reports a linked point instancer --
+    # it assigns the category to the instancer rather than to per-instance
+    # arrays. Two prototypes share the instancer and instance 2 is hidden, so
+    # the fixture also proves that a hidden instance and a prototype's unused
+    # instances consume no row.
+    def Scope "ScatterProtos"
+    {
+        token visibility = "invisible"
+
+        def Mesh "Red"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+        }
+
+        def Mesh "Blue"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [(0, 0, 0), (2, 0, 0), (0, 2, 0), (2, 2, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 1, 3, 2]
+        }
+    }
+
+    def PointInstancer "Scatter"
+    {
+        rel prototypes = [
+            </World/ScatterProtos/Red>,
+            </World/ScatterProtos/Blue>,
+        ]
+
+        int[] protoIndices = [0, 1, 0, 1]
+        int64[] invisibleIds = [2]
+        point3f[] positions = [
+            (200, 0, 0), (201, 0, 0), (202, 0, 0), (203, 0, 0)
+        ]
+    }
+
+    def DistantLight "Key" (
+        prepend apiSchemas = ["CollectionAPI:lightLink", "CollectionAPI:shadowLink"]
+    )
+    {
+        color3f inputs:color = (1, 1, 1)
+        float inputs:intensity = 1
+        uniform bool collection:lightLink:includeRoot = 0
+        uniform token collection:lightLink:expansionRule = "expandPrims"
+        rel collection:lightLink:includes = </World>
+        rel collection:lightLink:excludes = [
+            </World/GroupB>,
+            </World/Scatter>,
+            </World/ScatterProtos>,
+        ]
+        uniform bool collection:shadowLink:includeRoot = 0
+        uniform token collection:shadowLink:expansionRule = "expandPrims"
+        rel collection:shadowLink:includes = </World>
+        rel collection:shadowLink:excludes = [
+            </World/GroupA>,
+            </World/Scatter>,
+            </World/ScatterProtos>,
+        ]
+    }
+
+    def DistantLight "Spot" (
+        prepend apiSchemas = ["CollectionAPI:lightLink", "CollectionAPI:shadowLink"]
+    )
+    {
+        color3f inputs:color = (1, 1, 1)
+        float inputs:intensity = 1
+        uniform bool collection:lightLink:includeRoot = 0
+        uniform token collection:lightLink:expansionRule = "expandPrims"
+        rel collection:lightLink:includes = </World/Scatter>
+        uniform bool collection:shadowLink:includeRoot = 0
+        uniform token collection:shadowLink:expansionRule = "expandPrims"
+        rel collection:shadowLink:includes = </World/Scatter>
+    }
+
+    def DomeLight "Sky" (
+        prepend apiSchemas = ["CollectionAPI:lightLink"]
+    )
+    {
+        color3f inputs:color = (1, 1, 1)
+        float inputs:intensity = 1
+        uniform bool collection:lightLink:includeRoot = 0
+        uniform token collection:lightLink:expansionRule = "expandPrims"
+        rel collection:lightLink:includes = </World>
+        rel collection:lightLink:excludes = [
+            </World/GroupA>,
+            </World/ScatterProtos>,
+        ]
+    }
+
+    def DomeLight "SkyScatter" (
+        prepend apiSchemas = ["CollectionAPI:lightLink"]
+    )
+    {
+        color3f inputs:color = (1, 1, 1)
+        float inputs:intensity = 1
+        uniform bool collection:lightLink:includeRoot = 0
+        uniform token collection:lightLink:expansionRule = "expandPrims"
+        rel collection:lightLink:includes = </World/GroupA>
+    }
+}

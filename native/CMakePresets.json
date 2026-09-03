@@ -95,6 +95,29 @@
       }
     },
     {
+      "name": "win-x64-mdl",
+      "inherits": "win-x64",
+      "cacheVariables": {
+        "OPENUSD_WITH_VULKAN": "OFF",
+        "OPENUSD_WITH_MDL": "ON"
+      }
+    },
+    {
+      "name": "linux-x64-mdl",
+      "inherits": "linux-x64",
+      "cacheVariables": {
+        "OPENUSD_WITH_VULKAN": "OFF",
+        "OPENUSD_WITH_MDL": "ON"
+      }
+    },
+    {
+      "name": "osx-arm64-mdl",
+      "inherits": "osx-arm64",
+      "cacheVariables": {
+        "OPENUSD_WITH_MDL": "ON"
+      }
+    },
+    {
       "name": "linux-x64-physx",
       "inherits": "linux-x64",
       "cacheVariables": {
@@ -136,6 +159,18 @@
     {
       "name": "linux-x64-physx",
       "configurePreset": "linux-x64-physx"
+    },
+    {
+      "name": "win-x64-mdl",
+      "configurePreset": "win-x64-mdl"
+    },
+    {
+      "name": "linux-x64-mdl",
+      "configurePreset": "linux-x64-mdl"
+    },
+    {
+      "name": "osx-arm64-mdl",
+      "configurePreset": "osx-arm64-mdl"
     }
   ]
 }

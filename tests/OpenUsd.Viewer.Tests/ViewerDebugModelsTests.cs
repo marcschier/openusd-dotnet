@@ -146,7 +146,7 @@ public sealed class ViewerDebugModelsTests
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
         int indexCount = checked(primitiveCount * 3);
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (pointCount * 12) +
             (indexCount * sizeof(uint)) +
@@ -175,8 +175,8 @@ public sealed class ViewerDebugModelsTests
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(208, 8), 0xB10CE);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216, 4), (uint)material.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220, 4), 0);
-        path.CopyTo(bytes, 224);
-        int pointsOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointsOffset = 268 + path.Length;
         for (int point = 0; point < pointCount * 3; point++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

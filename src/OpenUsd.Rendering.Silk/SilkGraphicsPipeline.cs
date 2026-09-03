@@ -631,7 +631,9 @@ public readonly record struct SilkBindingLayoutDescriptor(
     {
         MaterialSlots =
         [
-            .. SharedMeshSlots
+            .. SharedMeshSlots,
+            .. ShadowAtlasSlots,
+            .. EnvironmentSlots
         ]
     };
 
@@ -646,7 +648,137 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 SilkBindingKind.Sampler,
                 0,
                 SilkShaderStageVisibility.Fragment),
-            VolumeDensityTextureSlot
+            VolumeDensityTextureSlot,
+            .. ShadowAtlasSlots,
+            .. EnvironmentSlots
+        ]
+    };
+
+    /// <summary>The sampler the checked mesh fragment reads the shadow atlas through.</summary>
+    internal const uint ShadowSamplerBinding = 30;
+
+    /// <summary>
+    /// The single shadow atlas every checked mesh fragment permutation samples.
+    /// </summary>
+    /// <remarks>
+    /// One atlas rather than one texture per shadow map: a per-map slot would add
+    /// four sampled-texture bindings to every mesh pipeline, and the tile a map
+    /// occupies is a runtime value in the frame constants instead. The slot is
+    /// declared by every mesh layout because the checked binary references it in
+    /// every permutation, exactly as it does for the composite material image.
+    /// </remarks>
+    internal const uint ShadowAtlasTextureBinding = 31;
+
+    private static IReadOnlyList<SilkBindingSlot> ShadowAtlasSlots =>
+    [
+        new(
+            0,
+            ShadowSamplerBinding,
+            SilkBindingKind.Sampler,
+            0,
+            SilkShaderStageVisibility.Fragment),
+        new(
+            0,
+            ShadowAtlasTextureBinding,
+            SilkBindingKind.SampledTexture,
+            0,
+            SilkShaderStageVisibility.Fragment)
+    ];
+
+    /// <summary>
+    /// The sampler both prefiltered environment maps are read through.
+    /// </summary>
+    /// <remarks>
+    /// One sampler rather than two, because the reconstruction is identical for
+    /// both: linear filtering with a linear mip filter -- which is what makes the
+    /// roughness axis interpolate instead of band -- wrapping in U because
+    /// longitude is periodic, and clamping in V because latitude is not.
+    /// </remarks>
+    internal const uint EnvironmentSamplerBinding = 32;
+
+    /// <summary>The prefiltered cosine irradiance map, indexed by world normal.</summary>
+    internal const uint EnvironmentIrradianceTextureBinding = 33;
+
+    /// <summary>The prefiltered specular radiance atlas, indexed by roughness slice.</summary>
+    internal const uint EnvironmentSpecularTextureBinding = 34;
+
+    /// <summary>
+    /// The sampler the split-sum BRDF table is read through.
+    /// </summary>
+    /// <remarks>
+    /// Its own sampler rather than the environment one, because the table is a
+    /// function on a bounded square and has to clamp on both axes: a wrapped
+    /// incidence of one would read the grazing end of the table, and a wrapped
+    /// roughness of one would read the mirror end.
+    /// </remarks>
+    internal const uint EnvironmentBrdfSamplerBinding = 35;
+
+    /// <summary>The numerically integrated split-sum environment BRDF table.</summary>
+    internal const uint EnvironmentBrdfTextureBinding = 36;
+
+    /// <summary>
+    /// The environment slots every checked mesh fragment permutation declares.
+    /// </summary>
+    /// <remarks>
+    /// Declared by every mesh layout for the same reason the shadow atlas is: the
+    /// checked binary references them in every permutation, and a backend pipeline
+    /// layout requires every declared descriptor to exist. A frame with no
+    /// textured dome binds one-texel stand-ins the fragment never samples, because
+    /// the frame constants report the environment as disabled.
+    /// </remarks>
+    private static IReadOnlyList<SilkBindingSlot> EnvironmentSlots =>
+    [
+        new(
+            0,
+            EnvironmentSamplerBinding,
+            SilkBindingKind.Sampler,
+            0,
+            SilkShaderStageVisibility.Fragment),
+        new(
+            0,
+            EnvironmentIrradianceTextureBinding,
+            SilkBindingKind.SampledTexture,
+            0,
+            SilkShaderStageVisibility.Fragment),
+        new(
+            0,
+            EnvironmentSpecularTextureBinding,
+            SilkBindingKind.SampledTexture,
+            0,
+            SilkShaderStageVisibility.Fragment),
+        new(
+            0,
+            EnvironmentBrdfSamplerBinding,
+            SilkBindingKind.Sampler,
+            0,
+            SilkShaderStageVisibility.Fragment),
+        new(
+            0,
+            EnvironmentBrdfTextureBinding,
+            SilkBindingKind.SampledTexture,
+            0,
+            SilkShaderStageVisibility.Fragment)
+    ];
+
+    /// <summary>
+    /// Creates the depth-only shadow-caster layout.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately narrower than every mesh layout: a shadow pass binds no
+    /// material, no surface constants and no frame constants, and the caster
+    /// transform arrives already composed into light clip space in the same
+    /// instance table the mesh vertex stage reads.
+    /// </remarks>
+    internal static SilkBindingLayoutDescriptor ShadowParameters => SceneParameters with
+    {
+        MaterialSlots =
+        [
+            new(
+                0,
+                6,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex)
         ]
     };
 
@@ -698,7 +830,10 @@ public readonly record struct SilkBindingLayoutDescriptor(
         // checked mesh shaders also always declare the instance buffer and the
         // surface constants, so both are carried into every material layout.
         IReadOnlyList<SilkBindingSlot> shared = SharedMeshSlots;
-        var materialSlots = new SilkBindingSlot[slots.Count + shared.Count];
+        IReadOnlyList<SilkBindingSlot> shadow = ShadowAtlasSlots;
+        IReadOnlyList<SilkBindingSlot> environment = EnvironmentSlots;
+        var materialSlots = new SilkBindingSlot[
+            slots.Count + shared.Count + shadow.Count + environment.Count];
         for (int index = 0; index < shared.Count; index++)
         {
             materialSlots[index] = shared[index];
@@ -706,6 +841,18 @@ public readonly record struct SilkBindingLayoutDescriptor(
         for (int index = 0; index < slots.Count; index++)
         {
             materialSlots[index + shared.Count] = slots[index];
+        }
+        // Appended last on purpose, exactly as the composite image was: descriptor
+        // offsets follow slot order, so appending keeps every pre-existing offset
+        // where it was.
+        for (int index = 0; index < shadow.Count; index++)
+        {
+            materialSlots[index + shared.Count + slots.Count] = shadow[index];
+        }
+        for (int index = 0; index < environment.Count; index++)
+        {
+            materialSlots[index + shared.Count + slots.Count + shadow.Count] =
+                environment[index];
         }
         return SceneParameters with { MaterialSlots = materialSlots };
     }
@@ -955,6 +1102,19 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
     /// <summary>Gets or initializes whether fragments update depth.</summary>
     public bool DepthWriteEnabled { get; init; } = true;
 
+    /// <summary>
+    /// Gets or initializes whether the pipeline is used in a pass with no colour
+    /// attachment.
+    /// </summary>
+    /// <remarks>
+    /// The shadow-caster family writes depth and nothing else, so its fragment
+    /// stage declares no render target. <see cref="ColorFormat"/> is still
+    /// validated and still keys the pipeline cache, because a depth-only pipeline
+    /// is created against a device whose colour formats are already fixed and
+    /// leaving it unconstrained would let two different descriptors compare equal.
+    /// </remarks>
+    public bool DepthOnly { get; init; }
+
     /// <summary>Validates formats and vertex input.</summary>
     public void Validate()
     {
@@ -982,6 +1142,11 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
             not SilkTopologyKind.PointList)
         {
             throw new ArgumentException("The topology kind is unsupported.");
+        }
+        if (DepthOnly && (BlendMode != SilkBlendMode.None || !DepthWriteEnabled))
+        {
+            throw new ArgumentException(
+                "A depth-only pipeline has no colour attachment to blend into and must write depth.");
         }
     }
 }
@@ -1147,6 +1312,45 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         }
     }
 
+    /// <summary>Gets or creates the checked depth-only shadow caster pipeline.</summary>
+    internal ISilkGraphicsPipeline GetOrCreateShadowPipeline(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTextureFormat colorFormat,
+        SilkTextureFormat depthFormat,
+        SilkCullMode cullMode = SilkCullMode.None)
+    {
+        DeviceGenerationKey generation = ReadDeviceGeneration(_device);
+        PipelineCacheKey key = new(
+            "shadow-caster-depth-only",
+            CreateVertexLayoutKey(vertexLayout),
+            colorFormat,
+            depthFormat,
+            cullMode,
+            SilkTopologyKind.TriangleList,
+            SilkBlendMode.None,
+            DepthWriteEnabled: true,
+            _shaderFormat,
+            generation);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (generation != _generation)
+            {
+                DisposeEntries();
+                _generation = generation;
+            }
+
+            if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
+            {
+                entry = CreateShadowEntry(vertexLayout, colorFormat, depthFormat, cullMode);
+                _entries.Add(key, entry);
+            }
+
+            return entry.AcquireLease();
+        }
+    }
+
     /// <summary>Gets or creates a runtime material pipeline from compiled shader descriptors.</summary>
     internal ISilkGraphicsPipeline GetOrCreateMaterialPipeline(
         SilkMaterialShaderProgram materialProgram,
@@ -1260,6 +1464,57 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             {
                 BlendMode = blendMode,
                 DepthWriteEnabled = depthWriteEnabled,
+            });
+            return new CachedPipelineEntry(
+                vertexShader,
+                fragmentShader,
+                bindingLayout,
+                program,
+                pipeline);
+        }
+        catch
+        {
+            pipeline?.Dispose();
+            program?.Dispose();
+            bindingLayout?.Dispose();
+            fragmentShader?.Dispose();
+            vertexShader?.Dispose();
+            throw;
+        }
+    }
+
+    private CachedPipelineEntry CreateShadowEntry(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTextureFormat colorFormat,
+        SilkTextureFormat depthFormat,
+        SilkCullMode cullMode)
+    {
+        ISilkGraphicsShaderModule? vertexShader = null;
+        ISilkGraphicsShaderModule? fragmentShader = null;
+        ISilkGraphicsBindingLayout? bindingLayout = null;
+        ISilkGraphicsShaderProgram? program = null;
+        ISilkGraphicsPipeline? pipeline = null;
+        try
+        {
+            vertexShader = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadShadowVertex(_shaderFormat));
+            fragmentShader = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadShadowFragment(_shaderFormat));
+            bindingLayout = _device.CreateBindingLayout(
+                SilkBindingLayoutDescriptor.ShadowParameters);
+            program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
+                vertexShader,
+                fragmentShader,
+                bindingLayout));
+            pipeline = _device.CreateGraphicsPipeline(new SilkGraphicsPipelineDescriptor(
+                program,
+                vertexLayout,
+                colorFormat,
+                depthFormat,
+                cullMode,
+                SilkTopologyKind.TriangleList)
+            {
+                DepthOnly = true,
             });
             return new CachedPipelineEntry(
                 vertexShader,
@@ -1546,6 +1801,8 @@ public static partial class SilkCheckedShaderAssets
         new(LoadAndValidateReflection);
     private static readonly Lazy<SilkComputeReflection> ComputeReflectionValue =
         new(LoadAndValidateComputeReflection);
+    private static readonly Lazy<SilkDeformComputeReflection> DeformComputeReflectionValue =
+        new(LoadAndValidateDeformComputeReflection);
     private static readonly Lazy<SilkPickParametersReflection> PickReflectionValue =
         new(LoadAndValidatePickReflection);
 
@@ -1621,6 +1878,41 @@ public static partial class SilkCheckedShaderAssets
             format,
             "pickVertexMain");
 
+    /// <summary>Loads the checked edge and point pick vertex module.</summary>
+    /// <remarks>
+    /// The subprim variant differs from the surface pick vertex stage in exactly
+    /// two ways, and both are properties no pipeline state can express. It
+    /// offsets clip-space depth by a fixed normalized-device amount so a line or
+    /// point coincident with the surface wins its own less-equal test on every
+    /// backend, where a rasterizer depth bias would apply to filled primitives
+    /// only and would vary with surface slope. And it writes a one-pixel point
+    /// size, which Vulkan and Metal leave undefined unless the vertex stage
+    /// states it.
+    /// </remarks>
+    public static SilkShaderModuleDescriptor LoadPickSubprimVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "pick.subprim.vertex",
+            SilkShaderStage.Vertex,
+            format,
+            "pickSubprimVertexMain");
+
+    /// <summary>Loads the checked whole line and point resource pick vertex module.</summary>
+    /// <remarks>
+    /// A whole basis-curve or UsdGeomPoints resource is drawn by the surface
+    /// pass, not by the subprim overlay pass, so it needs the one-pixel point
+    /// size Vulkan and Metal leave undefined <em>without</em> the coincident
+    /// depth offset. Using the subprim stage for it pulled the whole prim
+    /// toward the viewer, which let a curve behind a wall answer a pick and win
+    /// an outline the visible-only mode exists to suppress.
+    /// </remarks>
+    public static SilkShaderModuleDescriptor LoadPickWholeVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "pick.whole.vertex",
+            SilkShaderStage.Vertex,
+            format,
+            "pickWholeVertexMain");
     /// <summary>Loads the checked pick fragment module.</summary>
     public static SilkShaderModuleDescriptor LoadPickFragment(
         SilkShaderBinaryFormat format) =>
@@ -1629,6 +1921,29 @@ public static partial class SilkCheckedShaderAssets
             SilkShaderStage.Fragment,
             format,
             "pickFragmentMain");
+
+    /// <summary>Loads the checked depth-only shadow caster vertex module.</summary>
+    public static SilkShaderModuleDescriptor LoadShadowVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "shadow",
+            SilkShaderStage.Vertex,
+            format,
+            "shadowVertexMain");
+
+    /// <summary>Loads the checked depth-only shadow caster fragment module.</summary>
+    /// <remarks>
+    /// The stage writes no colour. It exists because a graphics pipeline is
+    /// described by a linked program on every backend, not because a shadow pass
+    /// produces anything but depth.
+    /// </remarks>
+    public static SilkShaderModuleDescriptor LoadShadowFragment(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "shadow",
+            SilkShaderStage.Fragment,
+            format,
+            "shadowFragmentMain");
 
     /// <summary>Loads the checked fill compute module.</summary>
     public static SilkShaderModuleDescriptor LoadComputeFill(
@@ -1639,6 +1954,33 @@ public static partial class SilkCheckedShaderAssets
     public static SilkShaderModuleDescriptor LoadComputeScale(
         SilkShaderBinaryFormat format) =>
         LoadComputeModule("scale", "scaleMain", format);
+
+    /// <summary>Loads the checked GPU deformation compute module.</summary>
+    public static SilkShaderModuleDescriptor LoadDeformCompute(
+        SilkShaderBinaryFormat format)
+    {
+        byte[] code = format switch
+        {
+            SilkShaderBinaryFormat.Dxil => LoadEmbedded("deform.compute.dxil"),
+            SilkShaderBinaryFormat.SpirV => LoadEmbedded("deform.compute.spv"),
+            SilkShaderBinaryFormat.MetalLibrary => LoadPinnedMetalLibrary(),
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
+        string nativeEntryPoint =
+            format == SilkShaderBinaryFormat.SpirV ? "main" : "deformMain";
+        return new SilkShaderModuleDescriptor(
+            SilkShaderStage.Compute,
+            format,
+            nativeEntryPoint,
+            code);
+    }
+
+    /// <summary>
+    /// Gets the checked GPU deformation kernel's ordered binding layout and
+    /// dispatch shape, parsed from its own reflection.
+    /// </summary>
+    public static SilkDeformComputeReflection DeformCompute =>
+        DeformComputeReflectionValue.Value;
 
     private static SilkShaderModuleDescriptor LoadGraphicsModule(
         string program,
@@ -1810,6 +2152,72 @@ public static partial class SilkCheckedShaderAssets
             true);
     }
 
+    /// <summary>
+    /// Loads the deformation kernel's binding layout and pins the contract the
+    /// managed uploader writes against.
+    /// </summary>
+    /// <remarks>
+    /// The kernel and the host agree on nine buffers, a byte layout inside each
+    /// of them, and a parameter block. The reflection is the only place that
+    /// agreement is checked mechanically, so the slot count, the strides, the
+    /// parameter size and the thread-group width are all asserted here: a shader
+    /// edit that changed any of them would otherwise be discovered as wrong
+    /// pixels rather than as a rejected load.
+    /// </remarks>
+    private static SilkDeformComputeReflection LoadAndValidateDeformComputeReflection()
+    {
+        (SilkComputeBindingLayoutDescriptor layout,
+            uint threadGroupSizeX,
+            uint threadGroupSizeY,
+            uint threadGroupSizeZ,
+            uint d3dUniformByteSize,
+            uint vulkanUniformByteSize) = ParseComputeLayout(
+            LoadEmbedded("deform.compute.reflection.json"),
+            "deformMain");
+
+        ReadOnlySpan<uint> expectedStrides =
+            [4, 16, 4, 4, 16, 4, 8, 16, 8, SilkDeformComputeReflection.ParameterByteSize];
+        if (layout.Slots.Count != expectedStrides.Length)
+        {
+            throw new InvalidDataException(
+                "The checked deformation kernel must declare ten bindings.");
+        }
+        for (int slot = 0; slot < layout.Slots.Count; slot++)
+        {
+            if (layout.Slots[slot].Binding != (uint)slot ||
+                layout.Slots[slot].ElementStride != expectedStrides[slot])
+            {
+                throw new InvalidDataException(
+                    "The checked deformation kernel's binding layout does not match " +
+                    "the layout the host uploads.");
+            }
+        }
+        if (layout.Slots[0].Kind != SilkComputeSlotKind.ReadWriteStructured ||
+            layout.Slots[^1].Kind != SilkComputeSlotKind.Uniform)
+        {
+            throw new InvalidDataException(
+                "The checked deformation kernel writes binding zero and reads its " +
+                "parameters from the last binding.");
+        }
+        if (threadGroupSizeX != 64 || threadGroupSizeY != 1 || threadGroupSizeZ != 1)
+        {
+            throw new InvalidDataException(
+                "The checked deformation kernel requires 64x1x1 threads.");
+        }
+        if (d3dUniformByteSize != SilkDeformComputeReflection.ParameterByteSize ||
+            vulkanUniformByteSize != SilkDeformComputeReflection.ParameterByteSize)
+        {
+            throw new InvalidDataException(
+                "The checked deformation parameter block must be " +
+                $"{SilkDeformComputeReflection.ParameterByteSize} bytes on every backend.");
+        }
+        return new SilkDeformComputeReflection(
+            layout,
+            threadGroupSizeX,
+            threadGroupSizeY,
+            threadGroupSizeZ);
+    }
+
     private static SilkComputeReflection LoadAndValidateComputeReflection()
     {
         SilkComputeReflection fill = ParseComputeReflection(
@@ -1908,6 +2316,120 @@ public static partial class SilkCheckedShaderAssets
 
     private static SilkComputeReflection ParseComputeReflectionForTesting(byte[] json) =>
         ParseComputeReflection(json);
+
+    /// <summary>
+    /// Parses a checked compute program's reflection into an ordered binding
+    /// layout, holding it to the one convention this repository's compute
+    /// sources are required to follow.
+    /// </summary>
+    /// <remarks>
+    /// The convention is that a resource's Direct3D register number equals its
+    /// Vulkan binding, and that its register class follows from its access. One
+    /// number can then drive the Direct3D root signature, the Vulkan descriptor
+    /// set layout and the Metal buffer index without a per-backend table, and a
+    /// source whose registers and bindings drift apart is rejected here rather
+    /// than binding the wrong buffer on one backend only.
+    /// </remarks>
+    private static (SilkComputeBindingLayoutDescriptor Layout,
+        uint ThreadGroupSizeX,
+        uint ThreadGroupSizeY,
+        uint ThreadGroupSizeZ,
+        uint D3DUniformByteSize,
+        uint VulkanUniformByteSize) ParseComputeLayout(
+        ReadOnlySpan<byte> json,
+        string entryPoint)
+    {
+        using JsonDocument document = JsonDocument.Parse(json.ToArray());
+        JsonElement root = document.RootElement;
+        JsonElement entry = root.GetProperty("entryPoint");
+        if (entry.GetProperty("name").GetString() != entryPoint ||
+            entry.GetProperty("stage").GetString() != "compute")
+        {
+            throw new InvalidDataException(
+                $"The checked compute reflection is not '{entryPoint}'.");
+        }
+        JsonElement threadGroup = entry.GetProperty("threadGroupSize");
+        List<SilkComputeSlot> slots = [];
+        uint d3dUniformSize = 0;
+        uint vulkanUniformSize = 0;
+        foreach (JsonElement resource in root.GetProperty("resources").EnumerateArray())
+        {
+            JsonElement bindings = resource.GetProperty("bindings");
+            JsonElement d3d = bindings.GetProperty("d3d");
+            JsonElement vulkan = bindings.GetProperty("vulkan");
+            JsonElement shape = resource.GetProperty("shape");
+            string access = shape.GetProperty("access").GetString() ?? string.Empty;
+            SilkComputeSlotKind kind = access switch
+            {
+                "constant" => SilkComputeSlotKind.Uniform,
+                "readWrite" => SilkComputeSlotKind.ReadWriteStructured,
+                "read" => SilkComputeSlotKind.ReadOnlyStructured,
+                _ => throw new InvalidDataException(
+                    "A checked compute resource has an unsupported access.")
+            };
+            string expectedClass = kind switch
+            {
+                SilkComputeSlotKind.Uniform => "b",
+                SilkComputeSlotKind.ReadWriteStructured => "u",
+                _ => "t"
+            };
+            uint binding = vulkan.GetProperty("binding").GetUInt32();
+            uint set = vulkan.GetProperty("set").GetUInt32();
+            if (d3d.GetProperty("registerClass").GetString() != expectedClass ||
+                d3d.GetProperty("register").GetUInt32() != binding ||
+                d3d.GetProperty("space").GetUInt32() != set)
+            {
+                throw new InvalidDataException(
+                    "A checked compute resource's D3D register must equal its Vulkan " +
+                    "binding in the register class its access implies.");
+            }
+            uint stride;
+            if (kind == SilkComputeSlotKind.Uniform)
+            {
+                d3dUniformSize = shape.GetProperty("size").GetUInt32();
+                vulkanUniformSize = resource
+                    .GetProperty("vulkanLayout")
+                    .GetProperty("size")
+                    .GetUInt32();
+                if (d3dUniformSize == 0 || vulkanUniformSize == 0)
+                {
+                    throw new InvalidDataException(
+                        "A checked compute parameter block must declare a size.");
+                }
+                if (d3dUniformSize != vulkanUniformSize)
+                {
+                    // One slot carries one number, so two backend sizes cannot
+                    // both be represented. Leaving it unset would silently fall
+                    // back to the legacy checked block size, which is how a
+                    // 32-byte parameter block came to be described to Vulkan as
+                    // a 16-byte descriptor range.
+                    throw new InvalidDataException(
+                        "A checked compute parameter block must be the same size " +
+                        "on Direct3D and Vulkan.");
+                }
+                stride = vulkanUniformSize;
+            }
+            else
+            {
+                if (shape.GetProperty("kind").GetString() != "structuredBuffer")
+                {
+                    throw new InvalidDataException(
+                        "A checked compute buffer resource must be a structured buffer.");
+                }
+                stride = shape.GetProperty("elementStride").GetUInt32();
+            }
+            slots.Add(new SilkComputeSlot(kind, set, binding, stride));
+        }
+        var layout = new SilkComputeBindingLayoutDescriptor(slots);
+        layout.Validate();
+        return (
+            layout,
+            threadGroup[0].GetUInt32(),
+            threadGroup[1].GetUInt32(),
+            threadGroup[2].GetUInt32(),
+            d3dUniformSize,
+            vulkanUniformSize);
+    }
 
     private static void ValidateD3DBinding(
         JsonElement binding,

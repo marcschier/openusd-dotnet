@@ -15,6 +15,8 @@ deeper design or evidence documents only as needed.
 | Learning ownership and threading | [Programming model](programming-model.md) | [Data API](data-api.md) |
 | Using the data API | [Getting started](getting-started.md) | [Data API](data-api.md) |
 | Adding live updates | [Live authoring](live-authoring.md) | [Live authoring sample][live-authoring] |
+| Bridging to Omniverse Kit | [Omniverse bridge](omniverse-bridge.md) | [Live authoring](live-authoring.md) |
+| Implementing a Kit companion | [Kit companion spec](omniverse-kit-companion.md) | [Bridge](omniverse-bridge.md) |
 | Using the desktop Viewer | [Getting started](getting-started.md) | [Viewer](viewer.md) |
 | Using OpenUSD from an MCP agent | [MCP server](mcp.md) | [Troubleshooting](troubleshooting.md) |
 | Working on rendering | [Rendering](rendering.md) | [Shader pipeline](shader-pipeline.md) |
@@ -68,6 +70,8 @@ deeper design or evidence documents only as needed.
 | [Programming model](programming-model.md) | Lifetimes, scheduler callbacks, cancellation, errors, paths, AOT |
 | [Data API](data-api.md) | Stages, layers, prims, values, composition, schemas, and helpers |
 | [Live authoring](live-authoring.md) | Ordered batches, validation, backpressure, consumers, and disposal |
+| [Omniverse bridge](omniverse-bridge.md) | Optional `openusd.bridge.v1` contract, gRPC client, security, resync |
+| [Kit companion spec](omniverse-kit-companion.md) | Kit-side server ownership, gRPC workflow, acceptance matrix |
 | [Rendering](rendering.md) | Neutral contracts, Storm, hdSilk, picking, selection, and composition |
 | [Viewer](viewer.md) | Desktop inspection, editing, cameras, settings, and diagnostics |
 | [MCP server](mcp.md) | .NET tool install, Copilot CLI setup, workflow, tools, security, and RID bundles |
@@ -86,8 +90,10 @@ deeper design or evidence documents only as needed.
 | Project | What it demonstrates |
 | --- | --- |
 | [`OpenUsd.HelloStage`][hello-stage] | Create, save, reopen, and verify a stage |
-| [`OpenUsd.LiveAuthoring`][live-authoring-project] | Ordered update adapter and shared-stage ownership |
 | [`OpenUsd.LiveAuthoring.Sample`][live-authoring-sample] | End-to-end authoring, verification, and disposal |
+
+The [`OpenUsd.LiveAuthoring`][live-authoring-project] adapter package itself lives under `src/`; see
+[Live authoring](live-authoring.md) for its bounded admission, correlation, and health contracts.
 
 Managed sample builds do not require native binaries. Executing either sample application requires
 the matching Core runtime; [Getting started](getting-started.md) explains the supported path.
@@ -99,6 +105,6 @@ the matching Core runtime; [Getting started](getting-started.md) explains the su
 - [License](../LICENSE) and [third-party notices](../NOTICE).
 
 [hello-stage]: ../samples/OpenUsd.HelloStage/README.md
-[live-authoring]: ../samples/OpenUsd.LiveAuthoring/README.md
-[live-authoring-project]: ../samples/OpenUsd.LiveAuthoring/README.md
+[live-authoring]: ../samples/OpenUsd.LiveAuthoring.Sample/README.md
+[live-authoring-project]: ../src/OpenUsd.LiveAuthoring/README.md
 [live-authoring-sample]: ../samples/OpenUsd.LiveAuthoring.Sample/README.md

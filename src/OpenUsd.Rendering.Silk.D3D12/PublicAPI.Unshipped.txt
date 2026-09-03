@@ -1,4 +1,11 @@
 #nullable enable
+OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateDisplayTransformBinding(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding!
+OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateDisplayTransformGraphicsPipeline(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline!
+OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.DisplayTransformDeviceGeneration.get -> ulong
+~override OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.ToString() -> string
+~override OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult.ToString() -> string
 const OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.D3D11TextureNtHandle = "D3D11TextureNtHandle" -> string!
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.ActiveFrames.get -> int
@@ -33,8 +40,8 @@ OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.SilkRenderedFra
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.SilkRenderedFrameCount.init -> void
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.CreateGenerationAsync(OpenUsd.Rendering.ViewportDimensions size, int frameCount, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ICompositionPresentationGeneration!>
-OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.D3D12CompositionViewportPresenter(OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice! device) -> void
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.D3D12CompositionViewportPresenter(OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice! device, OpenUsd.Rendering.Silk.D3D12.ISilkPresentationRenderer? renderer) -> void
+OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.D3D12CompositionViewportPresenter(OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice! device) -> void
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.DeviceLossReason.get -> string?
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.DisposeAsync() -> System.Threading.Tasks.ValueTask
 OpenUsd.Rendering.Silk.D3D12.D3D12CompositionViewportPresenter.GetStatistics() -> OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics
@@ -61,6 +68,7 @@ OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateShaderModule(OpenUsd.
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateShaderProgram(OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderProgram!
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateTexture2D(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateTexture2D(uint width, uint height, OpenUsd.Rendering.Silk.SilkTextureFormat format = OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.DeviceLossGeneration.get -> ulong
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.Dispose() -> void
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.PickDeviceGeneration.get -> ulong
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.SelectionOutlineCapabilities.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
@@ -87,7 +95,3 @@ static OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.operator
 static OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.Create(bool useWarp = true) -> OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice!
 static OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult.operator !=(OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult left, OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult right) -> bool
 static OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult.operator ==(OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult left, OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult right) -> bool
-~override OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.D3D12.D3D12CompositionPresenterStatistics.ToString() -> string
-~override OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.D3D12.SilkPresentationRenderResult.ToString() -> string

@@ -507,6 +507,28 @@ public sealed class D3D12PickingTests
             .IsEqualTo(callback.RenderCount);
     }
 
+    /// <summary>
+    /// The Direct3D 12 reference for the same contract: an edge or point scope
+    /// that rasterizes nothing still clears the pick colour, so the surface
+    /// pre-pass's token cannot survive into the answer.
+    /// </summary>
+    [Test]
+    public async Task WarpEmptySubprimPassAnswersTokenZero()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkPickCommandListConformance
+            .EmptySubprimPassAfterSurfacePrepassAnswersTokenZero(
+                device,
+                SilkShaderBinaryFormat.Dxil);
+    }
+
     private static ISilkGraphicsTexture CreateColor(
         D3D12SilkGraphicsDevice device,
         uint width,

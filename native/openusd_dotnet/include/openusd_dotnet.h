@@ -46,6 +46,7 @@ typedef struct openusd_pcp_prim_index_list openusd_pcp_prim_index_list;
 typedef struct openusd_ts_spline openusd_ts_spline;
 typedef struct openusd_validation_metadata_list openusd_validation_metadata_list;
 typedef struct openusd_validation_error_list openusd_validation_error_list;
+typedef struct openusd_sdr_node_definition_list openusd_sdr_node_definition_list;
 
 typedef struct openusd_string_list_view
 {
@@ -251,16 +252,61 @@ typedef struct openusd_validation_error_view
     size_t string_count;
 } openusd_validation_error_view;
 
-#define OPENUSD_IMAGE_INFO_VERSION 1u
+/*
+ * One image's declared shape and whatever the image library could observe about
+ * how it should be read.
+ *
+ * Version 2 adds the observation fields. They exist so a consumer resolving
+ * UsdUVTexture's `sourceColorSpace = auto` and `wrap = useMetadata` can act on
+ * what the file actually states instead of guessing from the decoded format: a
+ * one-channel height map is not sRGB just because it is eight bits deep, and a
+ * file that carries wrap metadata states its own addressing. Every observation
+ * field is independently optional, and `observed` says which ones were answered,
+ * so a consumer can refuse exactly the case it could not observe rather than
+ * substituting a default and calling it resolved.
+ *
+ * The seam is versioned by its own struct_size and version pair rather than by
+ * the whole-library ABI version, and both versions are accepted. A caller that
+ * declares OPENUSD_IMAGE_INFO_VERSION_1_SIZE bytes and version 1 -- one compiled
+ * against the previous header -- is answered with width and height alone, and
+ * none of the appended fields is written past its allocation.
+ */
+#define OPENUSD_IMAGE_INFO_VERSION 2u
+#define OPENUSD_IMAGE_INFO_VERSION_1 1u
+#define OPENUSD_IMAGE_INFO_VERSION_1_SIZE (sizeof(uint32_t) * 4u)
+
+/* Bits of openusd_image_info.observed. */
+#define OPENUSD_IMAGE_OBSERVED_CHANNELS (UINT32_C(1) << 0)
+#define OPENUSD_IMAGE_OBSERVED_COLOR_SPACE (UINT32_C(1) << 1)
+#define OPENUSD_IMAGE_OBSERVED_ADDRESS_U (UINT32_C(1) << 2)
+#define OPENUSD_IMAGE_OBSERVED_ADDRESS_V (UINT32_C(1) << 3)
+
+/* openusd_image_info.color_space, meaningful only with OPENUSD_IMAGE_OBSERVED_COLOR_SPACE. */
+#define OPENUSD_IMAGE_COLOR_SPACE_RAW 0u
+#define OPENUSD_IMAGE_COLOR_SPACE_SRGB 1u
+
+/* openusd_image_info.address_u/address_v; mirrors HioAddressMode. */
+#define OPENUSD_IMAGE_ADDRESS_CLAMP_TO_EDGE 0u
+#define OPENUSD_IMAGE_ADDRESS_MIRROR_CLAMP_TO_EDGE 1u
+#define OPENUSD_IMAGE_ADDRESS_REPEAT 2u
+#define OPENUSD_IMAGE_ADDRESS_MIRROR_REPEAT 3u
+#define OPENUSD_IMAGE_ADDRESS_CLAMP_TO_BORDER 4u
+
 typedef struct openusd_image_info
 {
     uint32_t struct_size;
     uint32_t version;
     uint32_t width;
     uint32_t height;
+    uint32_t channel_count;
+    uint32_t observed;
+    uint32_t color_space;
+    uint32_t address_u;
+    uint32_t address_v;
+    uint32_t reserved;
 } openusd_image_info;
 
-#define OPENUSD_DATA_ABI_VERSION 16
+#define OPENUSD_DATA_ABI_VERSION 17
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -287,6 +333,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F (UINT64_C(1) << 22)
 #define OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION (UINT64_C(1) << 23)
 #define OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION (UINT64_C(1) << 24)
+#define OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY (UINT64_C(1) << 25)
 
 typedef struct openusd_ocio_processor openusd_ocio_processor;
 
@@ -3295,6 +3342,121 @@ OPENUSD_DOTNET_API openusd_status openusd_validation_validate_prim(
     openusd_error_buffer* error);
 OPENUSD_DOTNET_API void openusd_validation_error_list_release(openusd_validation_error_list* list);
 
+/*
+ * Sdr/Ndr shader node-definition registry introspection.
+ *
+ * The registry is process-global and independent of any stage: these calls never mutate or
+ * depend on any open stage. openusd_sdr_get_node_definitions enumerates every shader node the
+ * registry can currently discover in one bulk, read-only page -- UsdPreviewSurface and
+ * UsdUVTexture built-ins, MaterialX standard-library nodes when the usdMtlx discovery plugin is
+ * registered, and any MDL nodes an optional MDL SDK parser plugin has registered. The retained
+ * records and their string references are pointer-free and index-addressed, so they may be
+ * copied, compared, or stored independently of the registry that produced them; only the
+ * outer view struct that borrows them for the duration of one call carries raw pointers, and it
+ * must not outlive the list it was filled from. Every node and property name/type crosses this
+ * ABI as an index into one packed string table; no C++ Sdr type and no per-property call ever
+ * crosses the boundary.
+ */
+#define OPENUSD_SDR_NODE_DEFINITION_VIEW_VERSION 1u
+#define OPENUSD_SDR_NODE_DEFINITION_MAX_NODES (1u << 16)
+#define OPENUSD_SDR_NODE_DEFINITION_MAX_PROPERTIES (1u << 20)
+#define OPENUSD_SDR_NODE_DEFINITION_MAX_STRING_BYTES (1u << 26)
+
+typedef enum openusd_sdr_property_direction
+{
+    OPENUSD_SDR_PROPERTY_INPUT = 0,
+    OPENUSD_SDR_PROPERTY_OUTPUT = 1
+} openusd_sdr_property_direction;
+
+typedef enum openusd_sdr_node_definition_flags
+{
+    OPENUSD_SDR_NODE_DEFINITION_FLAG_NONE = 0,
+    /* At least one section hit its capacity bound and stopped accepting records. */
+    OPENUSD_SDR_NODE_DEFINITION_FLAG_TRUNCATED = 1u << 0
+} openusd_sdr_node_definition_flags;
+
+/*
+ * One shader input or output. string_offset always addresses exactly two consecutive strings
+ * in the owning view's packed string table: the property name, then its Sdr type.
+ */
+typedef struct openusd_sdr_property_record
+{
+    int32_t direction;
+    int32_t is_array;
+    int32_t is_connectable;
+    int32_t reserved;
+    size_t string_offset;
+    size_t string_count;
+} openusd_sdr_property_record;
+
+/*
+ * One registered shader node definition. string_offset always addresses exactly eight
+ * consecutive strings in the owning view's packed string table, in this fixed order:
+ * identifier, name, function (family), shading system (source type), context, resolved
+ * definition URI (source asset), resolved implementation URI, and implementation name.
+ */
+typedef struct openusd_sdr_node_definition_record
+{
+    int32_t is_valid;
+    int32_t reserved;
+    size_t string_offset;
+    size_t string_count;
+    size_t property_offset;
+    size_t property_count;
+} openusd_sdr_node_definition_record;
+
+typedef struct openusd_sdr_node_definition_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t flags;
+    uint32_t reserved;
+    const openusd_sdr_node_definition_record* records;
+    size_t records_size;
+    size_t record_count;
+    const openusd_sdr_property_record* properties;
+    size_t properties_size;
+    size_t property_count;
+    const char* data;
+    size_t data_size;
+    const size_t* offsets;
+    size_t offsets_size;
+    size_t string_count;
+} openusd_sdr_node_definition_view;
+
+/*
+ * Enumerates every shader node definition the process-global Sdr/Ndr registry can currently
+ * discover. The registry parses discovered nodes lazily; the first call may be expensive, and
+ * every subsequent call observes the same already-parsed set unless a caller has registered
+ * additional discovery plugins. Truncates rather than growing without bound: check
+ * OPENUSD_SDR_NODE_DEFINITION_FLAG_TRUNCATED on the returned view.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_sdr_get_node_definitions(
+    openusd_sdr_node_definition_list** list,
+    openusd_sdr_node_definition_view* view,
+    openusd_error_buffer* error);
+
+/*
+ * Resolves one shader node definition from a source asset, optionally scoped by a
+ * sub-identifier when the asset defines multiple node definitions and by a shading system when
+ * the asset can represent more than one source type -- the same "source asset" and
+ * "sub-identifier" concepts UsdShadeShader exposes as info:<sourceType>:sourceAsset and
+ * info:<sourceType>:sourceAsset:subIdentifier. Returns OPENUSD_STATUS_OK with *found == 0, not
+ * an error, when no registered parser plugin resolves the asset -- for example, an MDL asset
+ * with no MDL SDK parser plugin registered. The returned view then carries zero records.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_sdr_get_node_definition_from_asset(
+    const char* source_asset,
+    const char* sub_identifier,
+    const char* shading_system,
+    openusd_sdr_node_definition_list** list,
+    openusd_sdr_node_definition_view* view,
+    int32_t* found,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API void openusd_sdr_node_definition_list_release(
+    openusd_sdr_node_definition_list* list);
+
 /* Session overlay: atomic sublayer normalization for simulation results. */
 OPENUSD_DOTNET_API openusd_status openusd_stage_session_overlay_normalize(
     const openusd_stage* stage,
@@ -3502,6 +3664,85 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_apply_rgba16f_to_rgba8(
     float exposure,
     uint8_t* destination,
     size_t destination_size,
+    openusd_error_buffer* error);
+
+/*
+ * Applies the processor to tightly packed 32-bit float RGBA samples.
+ *
+ * This is the lattice-baking entry point. It exists alongside the half-float
+ * entry point rather than replacing it because a lattice is generated, not
+ * captured: its sample values are chosen by the caller and can legitimately sit
+ * outside the half-float normal range, where a half-float source would silently
+ * underflow to zero or overflow to infinity and misrepresent the requested
+ * sample. Capture data is genuinely half-float and keeps its own entry point,
+ * byte for byte.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_apply_rgba32f_to_rgba8(
+    const openusd_ocio_processor* processor,
+    const uint8_t* source,
+    size_t source_size,
+    uint32_t width,
+    uint32_t height,
+    float exposure,
+    uint8_t* destination,
+    size_t destination_size,
+    openusd_error_buffer* error);
+
+/*
+ * Writes the OpenColorIO cache identity of a config into destination.
+ *
+ * The identity is derived by OpenColorIO from the parsed config and from the
+ * file system state of every external file the config references, resolved
+ * through the config's current context, so it changes when the config is
+ * edited, when a referenced LUT changes, when a path is retargeted, or when a
+ * context environment variable that participates in resolution changes.
+ *
+ * The walk is transitive: a CTF or CLF transform names further files, and those
+ * are hashed too. Paths are canonicalized before de-duplication, so aliases and
+ * cycles terminate and one file is never weighed twice.
+ *
+ * exhaustive receives 1 when every reachable dependency was hashed in full, and
+ * 0 when the bounded walk had to stop early. A partial identity cannot detect
+ * every change, so a caller must not treat it as a safe cache key.
+ *
+ * required receives the byte count including the terminator. When destination
+ * is NULL or capacity is too small, OPENUSD_STATUS_BUFFER_TOO_SMALL is
+ * returned and required and exhaustive are set.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_ocio_config_cache_id(
+    const char* config_path,
+    char* destination,
+    size_t capacity,
+    size_t* required,
+    int* exhaustive,
+    openusd_error_buffer* error);
+
+/*
+ * Clears OpenColorIO's process-global caches.
+ *
+ * OpenColorIO caches parsed configs, file transforms, and processors keyed by
+ * identity. Those caches are what make repeated lookups cheap, and they are also
+ * what makes an externally edited LUT invisible: the file is re-referenced but
+ * not re-read. Clearing them is therefore required before any observation that
+ * has to reflect the current contents of disk.
+ *
+ * This is process-global and affects every OpenColorIO consumer in the process,
+ * so callers must serialize it against their own processor construction.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_ocio_clear_caches(
+    openusd_error_buffer* error);
+
+/**
+ * Reports how many transitive dependency walks the config identity entry point has
+ * completed in this process.
+ *
+ * The walk opens and hashes every file a config reaches, so performing it twice for one
+ * revalidation -- once to size a buffer and once to fill it -- doubles the cost of every
+ * observation. This counter exists so that regression can be asserted rather than
+ * assumed.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_ocio_config_dependency_walks(
+    uint64_t* walks,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API void openusd_ocio_processor_release(

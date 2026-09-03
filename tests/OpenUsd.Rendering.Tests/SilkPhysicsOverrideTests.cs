@@ -399,14 +399,19 @@ public sealed class SilkPhysicsOverrideTests
         double[]? transform = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
+        byte[] instancerPathBytes = instanceIndex == 0
+            ? []
+            : Encoding.UTF8.GetBytes("/Instancer");
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
         transform ??= AuthoredTransform;
-        int size = 224 +
+        int size = 268 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
-            sizeof(uint);
+            sizeof(uint) +
+            instancerPathBytes.Length +
+            (instancerPathBytes.Length == 0 ? 0 : 8 + instancerPathBytes.Length);
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -436,8 +441,8 @@ public sealed class SilkPhysicsOverrideTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (i * 8)), transform[i]);
         }
-        pathBytes.CopyTo(bytes, 224);
-        int pointsOffset = 224 + pathBytes.Length;
+        pathBytes.CopyTo(bytes, 268);
+        int pointsOffset = 268 + pathBytes.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -454,6 +459,26 @@ public sealed class SilkPhysicsOverrideTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(indicesOffset + (indices.Length * sizeof(uint))),
             0);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(260),
+            (uint)instancerPathBytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(264),
+            instancerPathBytes.Length == 0 ? 0u : 1u);
+        int instancerPathOffset =
+            indicesOffset + (indices.Length * sizeof(uint)) + sizeof(uint);
+        instancerPathBytes.CopyTo(bytes.AsSpan(instancerPathOffset));
+        if (instancerPathBytes.Length != 0)
+        {
+            int contextOffset = instancerPathOffset + instancerPathBytes.Length;
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(contextOffset),
+                (uint)instancerPathBytes.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(
+                bytes.AsSpan(contextOffset + 4),
+                instanceIndex);
+            instancerPathBytes.CopyTo(bytes.AsSpan(contextOffset + 8));
+        }
         return bytes;
     }
 

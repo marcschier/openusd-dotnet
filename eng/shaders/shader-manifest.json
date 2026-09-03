@@ -144,6 +144,97 @@
             "binding": 8,
             "set": 0
           }
+        },
+        {
+          "name": "shadowSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 13,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 30,
+            "set": 0
+          }
+        },
+        {
+          "name": "shadowAtlas",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 16,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 31,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 14,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 32,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentIrradiance",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 17,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 33,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentSpecular",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 18,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 34,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentBrdfSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 15,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 35,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentBrdf",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 19,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 36,
+            "set": 0
+          }
         }
       ],
       "permutationResources": [
@@ -561,13 +652,178 @@
             "binding": 9,
             "set": 0
           }
+        },
+        {
+          "name": "shadowSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 13,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 30,
+            "set": 0
+          }
+        },
+        {
+          "name": "shadowAtlas",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 16,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 31,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 14,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 32,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentIrradiance",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 17,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 33,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentSpecular",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 18,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 34,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentBrdfSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 15,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 35,
+            "set": 0
+          }
+        },
+        {
+          "name": "environmentBrdf",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 19,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 36,
+            "set": 0
+          }
         }
       ]
+    },
+    {
+      "name": "shadow.vertex",
+      "source": "eng/shaders/sources/shadow.vertex.slang",
+      "entryPoint": "shadowVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "shadowInstanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "shadow.fragment",
+      "source": "eng/shaders/sources/shadow.fragment.slang",
+      "entryPoint": "shadowFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": []
     },
     {
       "name": "pick.vertex",
       "source": "eng/shaders/sources/pick.vertex.slang",
       "entryPoint": "pickVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick.whole.vertex",
+      "source": "eng/shaders/sources/pick.whole.vertex.slang",
+      "entryPoint": "pickWholeVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick.subprim.vertex",
+      "source": "eng/shaders/sources/pick.subprim.vertex.slang",
+      "entryPoint": "pickSubprimVertexMain",
       "stage": "vertex",
       "profile": "vs_6_0",
       "resources": [
@@ -631,9 +887,61 @@
       ]
     },
     {
+      "name": "selection.mask.whole.vertex",
+      "source": "eng/shaders/sources/selection.mask.whole.vertex.slang",
+      "entryPoint": "selectionMaskWholeVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "selection.mask.subprim.vertex",
+      "source": "eng/shaders/sources/selection.mask.subprim.vertex.slang",
+      "entryPoint": "selectionMaskSubprimVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "selection.mask.fragment",
       "source": "eng/shaders/sources/selection.mask.fragment.slang",
       "entryPoint": "selectionMaskFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": []
+    },
+    {
+      "name": "selection.mask.occluded.fragment",
+      "source": "eng/shaders/sources/selection.mask.occluded.fragment.slang",
+      "entryPoint": "selectionMaskOccludedFragmentMain",
       "stage": "fragment",
       "profile": "ps_6_0",
       "resources": []
@@ -694,6 +1002,75 @@
         },
         {
           "name": "SelectionOutlineParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 3,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "display.transform.vertex",
+      "source": "eng/shaders/sources/display.transform.vertex.slang",
+      "entryPoint": "displayTransformVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": []
+    },
+    {
+      "name": "display.transform.fragment",
+      "source": "eng/shaders/sources/display.transform.fragment.slang",
+      "entryPoint": "displayTransformFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": [
+        {
+          "name": "sceneColor",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "displayLut",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "displaySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "name": "DisplayTransformParameters",
           "access": "constant",
           "d3d": {
             "registerClass": "b",
@@ -772,6 +1149,145 @@
           },
           "vulkan": {
             "binding": 1,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "deform.compute",
+      "source": "eng/shaders/sources/deform.slang",
+      "entryPoint": "deformMain",
+      "stage": "compute",
+      "profile": "cs_6_0",
+      "resources": [
+        {
+          "name": "deformedVertices",
+          "access": "readWrite",
+          "d3d": {
+            "registerClass": "u",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "bindPose",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "jointIndices",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 2,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "name": "jointWeights",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 3,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 3,
+            "set": 0
+          }
+        },
+        {
+          "name": "deformMatrices",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 4,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 4,
+            "set": 0
+          }
+        },
+        {
+          "name": "blendWeights",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 5,
+            "set": 0
+          }
+        },
+        {
+          "name": "blendSpans",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        },
+        {
+          "name": "blendDeltas",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 7,
+            "set": 0
+          }
+        },
+        {
+          "name": "texCoords",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        },
+        {
+          "name": "DeformParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
             "set": 0
           }
         }

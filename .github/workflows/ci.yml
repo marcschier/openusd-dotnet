@@ -263,9 +263,14 @@ jobs:
             Pop-Location
           }
       - name: Execute hdSilk native probe
+        # The default configuration compiles the probe without
+        # HDSILK_PROBE_MDL_ADAPTER, so this is the adapter-absent half of the MDL
+        # evidence. --no-tests=error is what makes the filter honest: CTest reports
+        # success when -R selects nothing, so an unregistered or renamed
+        # hdsilk_probe would otherwise pass this step having run no test at all.
         run: >
           ctest --test-dir native/build/shim/linux-x64
-          -R '^hdsilk_probe$' --output-on-failure
+          -R '^hdsilk_probe$' --no-tests=error --output-on-failure
       - name: Build coverage tests
         run: |
           dotnet build tests/OpenUsd.Tests/OpenUsd.Tests.csproj -c Release -f net10.0

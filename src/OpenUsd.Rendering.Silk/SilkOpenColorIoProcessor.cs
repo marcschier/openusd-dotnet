@@ -37,12 +37,21 @@ public sealed class SilkOpenColorIoProcessor : IDisposable
     {
         ArgumentNullException.ThrowIfNull(transform);
         Transform = transform;
-        _native = OpenUsdNativeRuntime.CreateOcioProcessor(
-            transform.ConfigPath,
-            transform.SourceColorSpace,
-            transform.Display,
-            transform.View,
-            transform.Looks);
+
+        // Built with OpenColorIO's process-global caches cleared first, under the shared
+        // interlock. Those caches hold parsed configs, loaded file transforms, and
+        // processors; without clearing them a config whose FileTransform points at a LUT
+        // that changed on disk keeps producing the previous colour indefinitely, because
+        // the file is re-referenced but never re-read. Clearing is process-global, so it
+        // has to exclude every other processor construction, which is what the interlock
+        // provides.
+        _native = SilkOpenColorIoInterlock.Refresh(() =>
+            OpenUsdNativeRuntime.CreateOcioProcessor(
+                transform.ConfigPath,
+                transform.SourceColorSpace,
+                transform.Display,
+                transform.View,
+                transform.Looks));
     }
 
     /// <summary>Gets the transform this processor was created from.</summary>
@@ -97,5 +106,38 @@ public sealed class SilkOpenColorIoProcessor : IDisposable
     public void Dispose()
     {
         _native.Dispose();
+    }
+
+    /// <summary>
+    /// Converts tightly packed RGBA32Float samples to display-referred RGBA8, applying
+    /// exposure (in stops) to RGB before the OCIO display/view transform.
+    /// </summary>
+    /// <remarks>
+    /// This exists for generated data such as a display-transform lattice, whose sample
+    /// values are chosen rather than captured and can legitimately sit outside the
+    /// half-float normal range. Capture data is genuinely half-float and keeps
+    /// <see cref="Apply"/>, unchanged.
+    /// </remarks>
+    internal void ApplyLinearFloat(
+        ReadOnlySpan<byte> sourceRgba32F,
+        Span<byte> destinationRgba8,
+        int width,
+        int height,
+        float exposure)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        if (!float.IsFinite(exposure))
+        {
+            throw new ArgumentOutOfRangeException(nameof(exposure), "Exposure must be finite.");
+        }
+
+        OpenUsdNativeRuntime.ApplyOcioProcessorRgba32FToRgba8(
+            _native,
+            sourceRgba32F,
+            destinationRgba8,
+            checked((uint)width),
+            checked((uint)height),
+            exposure);
     }
 }

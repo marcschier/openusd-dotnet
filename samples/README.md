@@ -8,11 +8,12 @@ adapter over a scheduler-owned stage.
 | Sample | Purpose |
 | --- | --- |
 | [OpenUsd.HelloStage](OpenUsd.HelloStage/README.md) | Create, save, reopen, and verify one small stage. |
-| [OpenUsd.LiveAuthoring](OpenUsd.LiveAuthoring/README.md) | Source-only adapter library for ordered external updates. |
 | [OpenUsd.LiveAuthoring.Sample](OpenUsd.LiveAuthoring.Sample/README.md) | Executable demonstration of the adapter. |
 
 These projects are not renderer tutorials, performance benchmarks, or stable application templates.
-The live-authoring projects do not contain OPC UA types or a production renderer.
+The live-authoring sample does not contain OPC UA types or a production renderer. The adapter package
+it demonstrates, [`OpenUsd.LiveAuthoring`](../src/OpenUsd.LiveAuthoring/README.md), lives under `src/`
+as a supported package, not here.
 
 ## Prerequisites and native runtime
 
@@ -59,7 +60,7 @@ Build the sample projects:
 
 ```powershell
 dotnet build samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj -c Release -f net10.0
-dotnet build samples/OpenUsd.LiveAuthoring/OpenUsd.LiveAuthoring.csproj -c Release
+dotnet build src/OpenUsd.LiveAuthoring/OpenUsd.LiveAuthoring.csproj -c Release
 dotnet build samples/OpenUsd.LiveAuthoring.Sample/OpenUsd.LiveAuthoring.Sample.csproj -c Release
 ```
 
@@ -104,16 +105,17 @@ source-mapping setup when validating repository-built packages. Use the RID-agno
 reference unless the application deliberately pins one RID-specific package. Keep one version
 across all shipped packages.
 
-`OpenUsd.LiveAuthoring` is not shipped to NuGet.org and is not part of the package set. External
-consumers that want this boundary should vendor `samples/OpenUsd.LiveAuthoring` as source, keep it as a
-source `ProjectReference` with its `OpenUsd` reference changed to `PackageReference`, or copy the
-specific adapter pattern into their own integration assembly. The final executable still owns the
-matching native runtime package.
+`OpenUsd.LiveAuthoring` is a supported package under `src/OpenUsd.LiveAuthoring` with its own
+`PublicAPI.Shipped.txt`/`PublicAPI.Unshipped.txt` baseline. External consumers reference it as an
+ordinary `PackageReference` at the same version as `OpenUsd`; see its
+[README](../src/OpenUsd.LiveAuthoring/README.md) for the bounded admission, correlation, and health
+contracts. The final executable still owns the matching native runtime package.
 
 ## Expected output and files
 
 - HelloStage prints the reopened values and writes the requested `.usda` file.
-- The live-authoring library build produces managed assemblies for .NET 8, 9, and 10 and no executable.
+- The `OpenUsd.LiveAuthoring` package build produces managed assemblies for .NET 8, 9, and 10 and no
+  executable.
 - The live-authoring executable prints identity, ordering, invalidation, verification, and disposal checks.
 - The live-authoring executable copies `Assets/reference.usda` and `Assets/payload.usda` to its output.
 - The live-authoring demonstration edits the session layer and does not promise a persisted authored stage.
@@ -121,9 +123,8 @@ matching native runtime package.
 ## Important code
 
 - `OpenUsd.HelloStage/Program.cs` is the smallest create/save/open round trip.
-- `OpenUsd.LiveAuthoring/LiveAuthoringContracts.cs` defines data-only updates and detached results.
-- `OpenUsd.LiveAuthoring/QueuedLiveAuthoringSink.cs` provides ordering, backpressure, and tail coalescing.
-- `OpenUsd.LiveAuthoring/UsdLiveAuthoringHost.cs` owns the scheduler and exact retained render source.
+- [`src/OpenUsd.LiveAuthoring`](../src/OpenUsd.LiveAuthoring/README.md) defines the data-only update
+  model, admission queue, health contracts, and stage executor consumed by this sample.
 - `OpenUsd.LiveAuthoring.Sample/Program.cs` wires the adapter to a fake render consumer.
 
 The samples call the public managed API. They do not add direct P/Invoke or per-element native loops.

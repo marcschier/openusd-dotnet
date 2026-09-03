@@ -17,6 +17,22 @@
                         "loadWithRenderer": "Silk.NET",
                         "priority": 0,
                         "displayName": "Scene index to turn implicit surfaces into meshes for hdSilk"
+                    },
+                    "HdSilk_MdlMaterialSceneIndexPlugin": {
+                        "bases": [
+                            "HdSceneIndexPlugin"
+                        ],
+                        "loadWithRenderer": "Silk.NET",
+                        "priority": 0,
+                        "displayName": "Scene index to give MDL shader nodes an identifier hdSilk can resolve"
+                    },
+                    "HdSilk_LightLinkingSceneIndexPlugin": {
+                        "bases": [
+                            "HdSceneIndexPlugin"
+                        ],
+                        "loadWithRenderer": "Silk.NET",
+                        "priority": 0,
+                        "displayName": "Scene index to resolve UsdLux light and shadow linking collections for hdSilk"
                     }
                 }
             },

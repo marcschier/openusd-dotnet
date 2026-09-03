@@ -14,7 +14,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
       ISilkGraphicsDevice,
       ISilkVolumeTextureGraphicsDevice,
       ISilkPickingGraphicsDevice,
-      ISilkSelectionOutlineGraphicsDevice
+      ISilkSelectionOutlineGraphicsDevice,
+      ISilkDeviceLossGraphicsDevice
 {
     private readonly Vk _api;
     private readonly Instance _instance;
@@ -26,7 +27,55 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private readonly VulkanDescriptorIndexingFeatures _descriptorIndexingFeatures;
     private readonly VulkanDescriptorIndexedTextureTables? _materialDescriptorTables;
     private readonly bool _ownsNativeObjects;
+    private long _deviceLossGeneration = 1;
+    private int _nextOffscreenSubmitDeviceLossForTesting;
     private bool _disposed;
+
+    /// <inheritdoc/>
+    public ulong DeviceLossGeneration =>
+        unchecked((ulong)Interlocked.Read(ref _deviceLossGeneration));
+
+    /// <summary>
+    /// Records that this device was observed to be lost, before the failure that
+    /// observed it is reported.
+    /// </summary>
+    /// <remarks>
+    /// Unconditional rather than latched: a consumer that reads the generation
+    /// either side of a failed call is asking whether *that* call lost the
+    /// device, so a second loss has to move it again. The picking latch stays as
+    /// it is, because it guards a one-time invalidation rather than a
+    /// per-failure signal.
+    /// </remarks>
+    internal void NotifyDeviceLost() =>
+        Interlocked.Increment(ref _deviceLossGeneration);
+
+    /// <summary>
+    /// Throws on a failed Vulkan call, recording a lost device first so a caller
+    /// that classifies the failure sees the loss before the exception.
+    /// </summary>
+    internal void ThrowIfDeviceCallFailed(Result result, string operation)
+    {
+        if (result == Result.ErrorDeviceLost)
+        {
+            NotifyDeviceLost();
+        }
+        ThrowIfFailed(result, operation);
+    }
+
+    /// <summary>
+    /// Arms the next offscreen queue submission to report a lost device.
+    /// </summary>
+    /// <remarks>
+    /// The injection substitutes the driver's result, not the handling: the
+    /// submission still runs the production path that records the loss and
+    /// raises the failure, which is what a conformance case has to exercise if
+    /// it is to prove anything about that path.
+    /// </remarks>
+    internal void InjectNextOffscreenSubmitDeviceLossForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenSubmitDeviceLossForTesting, 1);
+
+    internal bool TryConsumeOffscreenSubmitDeviceLossForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenSubmitDeviceLossForTesting, 0) != 0;
 
     private VulkanSilkGraphicsDevice(
         Vk api,
@@ -210,7 +259,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     materialDescriptorTables is null
                         ? descriptorIndexedTextureTablesDiagnostic
                         : null,
-                MaxSamplerAnisotropy = maxSamplerAnisotropy
+                MaxSamplerAnisotropy = maxSamplerAnisotropy,
+                // Dynamic rendering with no colour attachment and a pipeline whose
+                // fragment stage writes no colour are both core Vulkan 1.2 plus
+                // VK_KHR_dynamic_rendering, which this device already requires.
+                SupportsRasterShadows = true
             };
             return new VulkanSilkGraphicsDevice(
                 api,
@@ -356,7 +409,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     public void WaitIdle()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowIfFailed(_api.DeviceWaitIdle(_device), "vkDeviceWaitIdle");
+        ThrowIfDeviceCallFailed(_api.DeviceWaitIdle(_device), "vkDeviceWaitIdle");
     }
 
     /// <inheritdoc/>

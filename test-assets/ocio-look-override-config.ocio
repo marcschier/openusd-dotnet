@@ -1,0 +1,65 @@
+ocio_profile_version: 2.0
+
+# A deliberately awkward configuration for look-override semantics.
+#
+# * "look_space" is NOT the source space: it is the scene reference scaled by 1/4. The
+#   override look is a power function, which does not commute with that scale, so a look
+#   applied in the source space instead of in its declared process space produces a
+#   different -- and wrong -- answer.
+# * "ViewWithLook" declares its own look, so an explicit override that composes with the
+#   view instead of replacing it applies two looks and again produces a wrong answer.
+# * Every step is an exact scale or power, so the correct result is analytic:
+#     linear x -> look_space 0.25x -> look (0.25x)^2 -> reference 4*(0.25x)^2
+#              -> display 0.5*4*(0.25x)^2 = 0.125 x^2
+
+environment:
+  {}
+
+search_path: ""
+
+roles:
+  default: linear
+  scene_linear: linear
+
+displays:
+  LookDisplay:
+    - !<View> {name: PlainView, colorspace: display_scale}
+    - !<View> {name: ViewWithLook, colorspace: display_scale, looks: ViewLook}
+
+active_displays: [LookDisplay]
+active_views: [PlainView, ViewWithLook]
+
+looks:
+  - !<Look>
+    name: ViewLook
+    process_space: look_space
+    transform: !<MatrixTransform> {matrix: [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1]}
+
+  - !<Look>
+    name: OverrideLook
+    process_space: look_space
+    transform: !<ExponentTransform> {value: [2, 2, 2, 1]}
+
+colorspaces:
+  - !<ColorSpace>
+    name: linear
+    family: ""
+    bitdepth: 32f
+    isdata: false
+    allocation: uniform
+
+  - !<ColorSpace>
+    name: look_space
+    family: ""
+    bitdepth: 32f
+    isdata: false
+    allocation: uniform
+    from_scene_reference: !<MatrixTransform> {matrix: [0.25, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 1]}
+
+  - !<ColorSpace>
+    name: display_scale
+    family: ""
+    bitdepth: 32f
+    isdata: false
+    allocation: uniform
+    from_scene_reference: !<MatrixTransform> {matrix: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 1]}

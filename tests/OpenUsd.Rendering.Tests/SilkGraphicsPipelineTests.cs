@@ -30,11 +30,13 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(material.Set).IsEqualTo(0u);
         await Assert.That(material.Binding).IsEqualTo(0u);
         await Assert.That(material.UniformByteSize).IsEqualTo(80u);
-        await Assert.That(material.MaterialSlots.Count).IsEqualTo(6);
+        await Assert.That(material.MaterialSlots.Count).IsEqualTo(13);
 
-        // The mesh layout includes the always-on instance, surface, and frame buffers.
+        // The mesh layout includes the always-on instance, surface, and frame
+        // buffers, the shadow atlas and its sampler, and the two prefiltered
+        // environment maps and the sampler they share.
         await Assert.That(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count)
-            .IsEqualTo(3);
+            .IsEqualTo(10);
     }
 
     [Test]
@@ -384,6 +386,20 @@ public sealed class SilkGraphicsPipelineTests
                 // resource its binary names.
                 (28u, SilkBindingKind.Sampler),
                 (29u, SilkBindingKind.SampledTexture),
+                // The single shadow atlas and its sampler, declared by every mesh
+                // layout for the same reason: the checked mesh fragment samples the
+                // atlas in every permutation.
+                (30u, SilkBindingKind.Sampler),
+                (31u, SilkBindingKind.SampledTexture),
+                // The two prefiltered environment maps, the split-sum BRDF table, and
+                // the two samplers they read through, declared by every mesh
+                // layout because the checked fragment references all of them in
+                // every permutation.
+                (32u, SilkBindingKind.Sampler),
+                (33u, SilkBindingKind.SampledTexture),
+                (34u, SilkBindingKind.SampledTexture),
+                (35u, SilkBindingKind.Sampler),
+                (36u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -433,7 +449,18 @@ public sealed class SilkGraphicsPipelineTests
             // every one of them and a D3D12 root signature must cover every
             // resource its binary names.
             (28u, SilkBindingKind.Sampler),
-            (29u, SilkBindingKind.SampledTexture)
+            (29u, SilkBindingKind.SampledTexture),
+            // The single shadow atlas and its sampler, declared by every mesh
+            // layout for the same reason.
+            (30u, SilkBindingKind.Sampler),
+            (31u, SilkBindingKind.SampledTexture),
+            // The two prefiltered environment maps, the split-sum BRDF table and
+            // the two samplers they read through.
+            (32u, SilkBindingKind.Sampler),
+            (33u, SilkBindingKind.SampledTexture),
+            (34u, SilkBindingKind.SampledTexture),
+            (35u, SilkBindingKind.Sampler),
+            (36u, SilkBindingKind.SampledTexture)
         ]);
     }
 
@@ -480,7 +507,18 @@ public sealed class SilkGraphicsPipelineTests
             // every one of them and a D3D12 root signature must cover every
             // resource its binary names.
             (28u, SilkBindingKind.Sampler),
-            (29u, SilkBindingKind.SampledTexture)
+            (29u, SilkBindingKind.SampledTexture),
+            // The single shadow atlas and its sampler, declared by every mesh
+            // layout for the same reason.
+            (30u, SilkBindingKind.Sampler),
+            (31u, SilkBindingKind.SampledTexture),
+            // The two prefiltered environment maps, the split-sum BRDF table and
+            // the two samplers they read through.
+            (32u, SilkBindingKind.Sampler),
+            (33u, SilkBindingKind.SampledTexture),
+            (34u, SilkBindingKind.SampledTexture),
+            (35u, SilkBindingKind.Sampler),
+            (36u, SilkBindingKind.SampledTexture)
         ]);
         layout.Validate();
     }
@@ -540,7 +578,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(25);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(32);
     }
 
     [Test]
@@ -741,7 +779,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(outlineReflection.InverseViewportOffset).IsEqualTo(16U);
         await Assert.That(outlineReflection.WidthOffset).IsEqualTo(24U);
         await Assert.That(outlineReflection.DepthEpsilonOffset).IsEqualTo(28U);
-        await Assert.That(outlineReflection.ParameterByteSize).IsEqualTo(32U);
+        await Assert.That(outlineReflection.OccludedColorOffset).IsEqualTo(32U);
+        await Assert.That(outlineReflection.OccludedColorByteSize).IsEqualTo(16U);
+        await Assert.That(outlineReflection.ParameterByteSize).IsEqualTo(48U);
         await Assert.That(outlineReflection.UsesVertexId).IsTrue();
         await Assert.That(maskDescriptor.DepthWriteEnabled).IsFalse();
         await Assert.That(maskDescriptor.DepthTestEnabled).IsTrue();
@@ -754,7 +794,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(dxilMaskVertex.Code.Length).IsEqualTo(4052);
         await Assert.That(dxilMaskFragment.Code.Length).IsEqualTo(2752);
         await Assert.That(spirvOutlineVertex.Code.Length).IsEqualTo(960);
-        await Assert.That(spirvOutlineFragment.Code.Length).IsEqualTo(3316);
+        await Assert.That(spirvOutlineFragment.Code.Length).IsEqualTo(3784);
         await Assert.That(GetSha256(dxilMaskVertex.Code.Span)).IsEqualTo(
             "ac21f3441e4e80bbfea238591f17a43b14255e767cf07e26d2931ad536a6a84f");
         await Assert.That(GetSha256(dxilMaskFragment.Code.Span)).IsEqualTo(
@@ -762,13 +802,19 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(GetSha256(spirvOutlineVertex.Code.Span)).IsEqualTo(
             "8f5f6854662fa8d097ddcb6d339f0a89b217fb62115f02af30c4e90284fc51cf");
         await Assert.That(GetSha256(spirvOutlineFragment.Code.Span)).IsEqualTo(
-            "dc48741940caa7802a44b26d244333c0d01e56abafd6fe9f293d2c519993cad9");
+            "bee2374032de7cfe6e8b6cd27d43f34ad7986e4cfccc111eb8ce089d3eef3085");
         await Assert.That(ReadSingle(uniformBytes, 0)).IsEqualTo(1f);
         await Assert.That(ReadSingle(uniformBytes, 4)).IsEqualTo(0.005f);
         await Assert.That(ReadSingle(uniformBytes, 5)).IsEqualTo(0.01f);
         await Assert.That(ReadSingle(uniformBytes, 6)).IsEqualTo(2f);
         await Assert.That(ReadSingle(uniformBytes, 7))
             .IsEqualTo(SilkSelectionOutlineUniformWriter.DepthEpsilon);
+
+        // The default policy is visible-only, so the shared composite's occluded
+        // style is written with zero alpha and contributes nothing.
+        await Assert.That(ReadSingle(uniformBytes, 8))
+            .IsEqualTo(SilkSelectionOutlineSettings.DefaultOccludedColor.Red);
+        await Assert.That(ReadSingle(uniformBytes, 11)).IsEqualTo(0f);
     }
 
     [Test]
@@ -839,14 +885,136 @@ public sealed class SilkGraphicsPipelineTests
     }
 
     [Test]
-    public async Task CheckedComputeDescriptorsRejectWrongLayouts()
+    public async Task ComputeLayoutsRejectMalformedSlotTables()
     {
-        var layout = SilkComputeBindingLayoutDescriptor.Checked with
-        {
-            UniformBinding = 2
-        };
+        // The layout is no longer pinned to one shape, so what it rejects is
+        // what a backend cannot translate: a root signature, descriptor set
+        // layout, or Metal buffer table is built straight from these slots, so
+        // a duplicate register or a missing writable slot would produce a
+        // pipeline that reads or writes the wrong resource rather than one that
+        // fails to build.
+        await Assert.That(SilkComputeBindingLayoutDescriptor.Checked.Validate)
+            .ThrowsNothing();
 
-        await Assert.That(layout.Validate).Throws<ArgumentException>();
+        SilkComputeSlot writable = new(SilkComputeSlotKind.ReadWriteStructured, 0, 0, 16);
+        SilkComputeSlot uniform = new(SilkComputeSlotKind.Uniform, 0, 1, 0);
+        SilkComputeSlot readOnly = new(SilkComputeSlotKind.ReadOnlyStructured, 0, 0, 16);
+
+        await Assert.That(new SilkComputeBindingLayoutDescriptor([writable]).Validate)
+            .Throws<ArgumentException>();
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor([writable, writable, uniform]).Validate)
+            .Throws<ArgumentException>();
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor([writable, uniform, uniform]).Validate)
+            .Throws<ArgumentException>();
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor(
+                [writable, readOnly, readOnly, uniform]).Validate)
+            .Throws<ArgumentException>();
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor(
+            [
+                writable with { ElementStride = 0 },
+                uniform
+            ]).Validate)
+            .Throws<ArgumentException>();
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor(
+            [
+                writable with { Set = 1 },
+                uniform
+            ]).Validate)
+            .Throws<ArgumentException>();
+
+        // A duplicate set and binding is rejected regardless of the kinds that
+        // claim it. A Vulkan descriptor set layout has one binding number per
+        // set with no register class to separate two claimants, and IndexOf --
+        // which every backend resolves a recorded binding through -- can only
+        // return the first of them, so the second slot would be permanently
+        // unbindable while a dispatch still demanded a buffer for it.
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor(
+            [
+                writable,
+                readOnly with { Binding = 1 },
+                uniform with { Binding = 0 }
+            ]).Validate)
+            .Throws<ArgumentException>();
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor(
+            [
+                writable,
+                readOnly with { Binding = 1 },
+                uniform with { Binding = 1 }
+            ]).Validate)
+            .Throws<ArgumentException>();
+
+        // The same numbers spread across distinct bindings stay legitimate.
+        await Assert.That(
+            new SilkComputeBindingLayoutDescriptor(
+            [
+                writable,
+                readOnly with { Binding = 1 },
+                uniform with { Binding = 2 }
+            ]).Validate)
+            .ThrowsNothing();
+
+        // The bound is a root-signature bound, so a layout past it must be
+        // refused before a backend tries to build one.
+        List<SilkComputeSlot> tooMany = [writable, uniform];
+        for (uint binding = 2;
+             tooMany.Count <= SilkComputeBindingLayoutDescriptor.MaximumSlots;
+             binding++)
+        {
+            tooMany.Add(readOnly with { Binding = binding });
+        }
+        await Assert.That(new SilkComputeBindingLayoutDescriptor(tooMany).Validate)
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task ADuplicateComputeBindingCouldNotBeResolvedByAnyBackend()
+    {
+        // The rejection above is not a style rule: this shows what a layout that
+        // declared one binding twice would actually do to the shared resolver
+        // every backend records through, which is why the kinds cannot make it
+        // safe.
+        SilkComputeSlot writable = new(SilkComputeSlotKind.ReadWriteStructured, 0, 0, 16);
+        SilkComputeSlot uniform = new(SilkComputeSlotKind.Uniform, 0, 1, 32);
+        SilkComputeSlot readOnly = new(SilkComputeSlotKind.ReadOnlyStructured, 0, 1, 16);
+        var colliding = new SilkComputeBindingLayoutDescriptor(
+            [writable, readOnly, uniform]);
+
+        // Both the read-only slot and the uniform slot claim (0, 1), and the
+        // resolver can only ever answer with the first: the uniform slot at
+        // ordinal two is unreachable, so nothing could bind it and every
+        // dispatch would fail as unbound.
+        await Assert.That(colliding.IndexOf(0, 1)).IsEqualTo(1);
+        await Assert.That(colliding.Slots.Count).IsEqualTo(3);
+        await Assert.That(colliding.Validate).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task TheCheckedDeformLayoutCarriesItsOwnUniformByteSize()
+    {
+        // A uniform slot's stride is the smallest acceptable buffer size, and a
+        // zero there means "the legacy checked block size". The deformation
+        // kernel's parameter block is twice that, so a layout that left it zero
+        // described a 32-byte block to Vulkan as a 16-byte descriptor range and
+        // accepted a 16-byte buffer for it.
+        SilkComputeSlot parameters = SilkCheckedShaderAssets.DeformCompute.Layout.UniformSlot;
+        await Assert.That(parameters.ElementStride)
+            .IsEqualTo(SilkDeformComputeReflection.ParameterByteSize);
+        await Assert.That(parameters.ElementStride)
+            .IsGreaterThan(SilkCheckedShaderAssets.Compute.VulkanUniformByteSize);
+        await Assert.That(parameters.ElementStride)
+            .IsGreaterThan(SilkCheckedShaderAssets.Compute.D3DUniformByteSize);
+
+        // The checked fill and scale layout keeps reporting zero, so every
+        // existing checked-compute caller keeps the behaviour it had.
+        await Assert.That(SilkComputeBindingLayoutDescriptor.Checked.UniformSlot.ElementStride)
+            .IsEqualTo(0u);
     }
 
     [Test]

@@ -194,7 +194,15 @@ public sealed class SilkMaterialData
         SurfaceKind is SilkSurfaceKind.PreviewSurface or
         SilkSurfaceKind.MaterialXProjected or
         SilkSurfaceKind.MaterialXGenerated or
-        SilkSurfaceKind.VolumeDensity;
+        SilkSurfaceKind.VolumeDensity or
+        SilkSurfaceKind.MdlDistilled;
+
+    /// <summary>
+    /// Gets whether this material is an MDL-only surface this runtime could not
+    /// distil, so the reason it is unshaded can be reported as MDL rather than as
+    /// an unrecognised graph.
+    /// </summary>
+    public bool IsMdlUnavailable => SurfaceKind is SilkSurfaceKind.MdlUnavailable;
 
     /// <summary>Gets whether this material should travel through the runtime MaterialX shader service.</summary>
     internal bool UsesRuntimeMaterialShader =>
@@ -430,21 +438,37 @@ public sealed class SilkMaterialData
     /// texture through.
     /// </summary>
     /// <remarks>
-    /// The first entry that names one wins. hdSilk reconciles the primvar across
-    /// a material's textures before publishing, so this scan sees agreement for
-    /// any page hdSilk produced; the scan remains because the page is validated
-    /// wire data rather than trusted input, and an entry may legitimately name no
-    /// primvar at all.
+    /// The first surface entry that names one wins. hdSilk reconciles the primvar
+    /// across a material's surface textures before publishing, so this scan sees
+    /// agreement for any page hdSilk produced; the scan remains because the page
+    /// is validated wire data rather than trusted input, and an entry may
+    /// legitimately name no primvar at all.
+    ///
+    /// Displacement is sampled per vertex through its own authored coordinate
+    /// set, which may be a different primvar entirely, so it never names the
+    /// stream while a surface texture does -- a material shading through
+    /// <c>st</c> and displacing through <c>st2</c> must emit <c>st</c>. A
+    /// material whose only texture is the height field has no surface sampler to
+    /// mis-feed, and keeps emitting the coordinates it names.
     /// </remarks>
     internal string GetPrimaryUvPrimvar()
     {
+        string displacementPrimvar = string.Empty;
         foreach (SilkMaterialTexture texture in Textures)
         {
-            if (!string.IsNullOrEmpty(texture.UvPrimvar))
+            if (string.IsNullOrEmpty(texture.UvPrimvar))
+            {
+                continue;
+            }
+            if (texture.Parameter != SilkMaterialParameter.Displacement)
             {
                 return texture.UvPrimvar;
             }
+            if (displacementPrimvar.Length == 0)
+            {
+                displacementPrimvar = texture.UvPrimvar;
+            }
         }
-        return string.Empty;
+        return displacementPrimvar;
     }
 }

@@ -185,8 +185,9 @@ Read [Viewer](viewer.md) for controls and [Rendering](rendering.md) for backend 
 
 ## 7. Run live authoring
 
-The sample library models one ordered producer applying bounded batches to a scheduler-owned stage.
-Its executable requires the matching native runtime on the process library path:
+The `OpenUsd.LiveAuthoring` package models one ordered producer applying bounded batches to a
+scheduler-owned stage. Its executable sample requires the matching native runtime on the process
+library path:
 
 ```shell
 dotnet run --project samples/OpenUsd.LiveAuthoring.Sample/OpenUsd.LiveAuthoring.Sample.csproj -c Release

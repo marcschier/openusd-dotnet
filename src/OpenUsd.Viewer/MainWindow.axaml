@@ -15,249 +15,690 @@
         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
         BorderThickness="0,0,0,1"
         Padding="8">
-      <Grid
-          x:Name="ViewerToolbarGrid"
-          RowDefinitions="Auto,Auto,Auto"
-          ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
-          RowSpacing="6"
-          ColumnSpacing="8">
-        <Menu Grid.Column="0" VerticalAlignment="Center">
-          <MenuItem Header="_File">
-            <MenuItem
-                x:Name="OpenStageMenuItem"
-                AutomationProperties.Name="Open stage"
-                Header="_Open Stage..." />
-            <MenuItem
-                x:Name="ReloadStageMenuItem"
-                AutomationProperties.Name="Reload current stage"
-                Header="_Reload Stage"
-                IsEnabled="False" />
-            <MenuItem
-                x:Name="CaptureFrameMenuItem"
-                AutomationProperties.Name="Capture current frame"
-                Header="_Capture Frame..."
-                IsEnabled="False" />
-            <Separator />
-            <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />
-          </MenuItem>
-          <MenuItem Header="_View">
-            <MenuItem
-                x:Name="StagePanelMenuItem"
-                AutomationProperties.Name="Show stage panel"
-                Header="_Stage panel"
-                ToggleType="CheckBox"
-                IsChecked="True" />
-            <MenuItem
-                x:Name="InspectorPanelMenuItem"
-                AutomationProperties.Name="Show inspector panel"
-                Header="_Inspector panel"
-                ToggleType="CheckBox"
-                IsChecked="True" />
-            <MenuItem
-                x:Name="TimelineMenuItem"
-                AutomationProperties.Name="Show timeline"
-                Header="_Timeline"
-                ToggleType="CheckBox"
-                IsChecked="True" />
-            <MenuItem
-                x:Name="DiagnosticsMenuItem"
-                AutomationProperties.Name="Show diagnostics tab"
-                Header="_Diagnostics tab"
-                ToggleType="CheckBox"
-                IsChecked="True" />
-          </MenuItem>
-          <MenuItem Header="_Camera">
-            <MenuItem
-                x:Name="ResetCameraAutomaticMenuItem"
-                AutomationProperties.Name="Reset camera to automatic"
-                Header="Reset _Automatic"
-                IsEnabled="False" />
-            <MenuItem
-                x:Name="ResetCameraLegacyMenuItem"
-                AutomationProperties.Name="Use explicit legacy camera pose"
-                Header="Explicit _Legacy Pose"
-                IsEnabled="False" />
-            <MenuItem
-                x:Name="ToggleCameraProjectionMenuItem"
-                AutomationProperties.Name="Toggle camera projection"
-                Header="Toggle _Projection"
-                IsEnabled="False" />
-            <MenuItem
-                x:Name="UseSelectedCameraMenuItem"
-                AutomationProperties.Name="Use selected UsdGeomCamera"
-                Header="_Use Selected Camera"
-                IsEnabled="False"
-                ToolTip.Tip="Select a UsdGeomCamera prim to use its authored camera." />
-            <Separator x:Name="StageCameraMenuSeparator" IsVisible="False" />
-            <MenuItem
-                x:Name="StageCamerasMenu"
-                AutomationProperties.Name="Stage-authored cameras"
-                Header="Stage _Cameras"
-                IsEnabled="False"
-                IsVisible="False" />
-            <MenuItem
-                x:Name="FrameSelectedMenuItem"
-                AutomationProperties.Name="Frame selected prim"
-                Header="_Frame Selected"
-                IsEnabled="False" />
-          </MenuItem>
-          <MenuItem Header="_Help">
-            <MenuItem
-                x:Name="ShortcutsMenuItem"
-                AutomationProperties.Name="Show keyboard and mouse shortcuts"
-                Header="Keyboard _Shortcuts"
-                InputGesture="F1"
-                ToolTip.Tip="List the camera and navigation bindings (F1)." />
-          </MenuItem>
-        </Menu>
-        <Button
-            x:Name="OpenStageButton"
-            Grid.Column="1"
-            AutomationProperties.Name="Open stage"
-            Content="_Open"
-            ToolTip.Tip="Open a USD stage (Ctrl+O)" />
-        <Button
-            x:Name="ReloadStageButton"
-            Grid.Column="2"
-            AutomationProperties.Name="Reload current stage"
-            Content="_Reload"
-            IsEnabled="False"
-            ToolTip.Tip="Reload the current stage (Ctrl+R)" />
-        <ComboBox
-            x:Name="RendererSelector"
-            Grid.Column="3"
-            Width="180"
-            AutomationProperties.Name="Rendering backend"
-            SelectedIndex="0"
-            ToolTip.Tip="Select the rendering backend">
-          <ComboBoxItem Content="Automatic" Tag="Auto" />
-          <ComboBoxItem Content="Storm" Tag="Storm" />
-          <ComboBoxItem Content="Direct3D 12" Tag="D3D12" />
-          <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
-          <ComboBoxItem Content="Metal" Tag="Metal" />
-        </ComboBox>
-        <StackPanel
-            Grid.Row="1"
-            Grid.Column="0"
-            Grid.ColumnSpan="5"
-            Orientation="Horizontal"
-            Spacing="4">
+      <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+        <Grid
+            x:Name="ViewerToolbarGrid"
+            Grid.Row="0"
+            ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+            ColumnSpacing="8">
+          <Menu Grid.Column="0" VerticalAlignment="Center">
+            <MenuItem Header="_File">
+              <MenuItem
+                  x:Name="OpenStageMenuItem"
+                  AutomationProperties.Name="Open stage"
+                  Header="_Open Stage..."
+                  InputGesture="Ctrl+O" />
+              <MenuItem
+                  x:Name="ReloadStageMenuItem"
+                  AutomationProperties.Name="Reload current stage"
+                  Header="_Reload Stage"
+                  InputGesture="Ctrl+R"
+                  IsEnabled="False" />
+              <MenuItem
+                  x:Name="CaptureFrameMenuItem"
+                  AutomationProperties.Name="Capture current frame"
+                  Header="_Capture Frame..."
+                  IsEnabled="False" />
+              <Separator />
+              <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />
+              <Separator />
+              <MenuItem
+                  x:Name="FileExitMenuItem"
+                  AutomationProperties.Name="Exit OpenUsd Viewer"
+                  Header="E_xit" />
+            </MenuItem>
+            <MenuItem Header="_View">
+              <MenuItem
+                  x:Name="StagePanelMenuItem"
+                  AutomationProperties.Name="Show stage panel"
+                  Header="_Stage panel"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <MenuItem
+                  x:Name="InspectorPanelMenuItem"
+                  AutomationProperties.Name="Show inspector panel"
+                  Header="_Inspector panel"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <MenuItem
+                  x:Name="TimelineMenuItem"
+                  AutomationProperties.Name="Show timeline"
+                  Header="_Timeline"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <Separator />
+              <MenuItem Header="Inspector _Tabs">
+                <MenuItem
+                    x:Name="DiagnosticsMenuItem"
+                    AutomationProperties.Name="Show diagnostics tab"
+                    Header="_Diagnostics tab"
+                    ToggleType="CheckBox"
+                    IsChecked="False" />
+                <MenuItem
+                    x:Name="HydraTabVisibleMenuItem"
+                    AutomationProperties.Name="Show Hydra scene tab"
+                    Header="_Hydra tab"
+                    ToggleType="CheckBox"
+                    IsChecked="False" />
+                <MenuItem
+                    x:Name="TfDebugTabVisibleMenuItem"
+                    AutomationProperties.Name="Show TfDebug tab"
+                    Header="_TfDebug tab"
+                    ToggleType="CheckBox"
+                    IsChecked="False" />
+              </MenuItem>
+              <MenuItem
+                  x:Name="SnapTimelineCheckBox"
+                  AutomationProperties.Name="Snap manual timeline changes to authored frames"
+                  Header="Snap manual time changes to authored frames"
+                  ToggleType="CheckBox"
+                  IsChecked="False" />
+              <Separator />
+              <MenuItem
+                  x:Name="ResetLayoutMenuItem"
+                  AutomationProperties.Name="Reset the Viewer layout to its clean defaults"
+                  Header="_Reset Layout" />
+            </MenuItem>
+            <MenuItem x:Name="RenderMenu" Header="_Render">
+              <MenuItem Header="_Renderer">
+                <MenuItem
+                    x:Name="RenderRendererAutoMenuItem"
+                    AutomationProperties.Name="Rendering backend: Automatic"
+                    Header="Automatic"
+                    ToggleType="Radio"
+                    GroupName="render.renderer" />
+                <MenuItem
+                    x:Name="RenderRendererStormMenuItem"
+                    AutomationProperties.Name="Rendering backend: Storm"
+                    Header="Storm"
+                    ToggleType="Radio"
+                    GroupName="render.renderer" />
+                <MenuItem
+                    x:Name="RenderRendererD3D12MenuItem"
+                    AutomationProperties.Name="Rendering backend: Direct3D 12"
+                    Header="Direct3D 12"
+                    ToggleType="Radio"
+                    GroupName="render.renderer" />
+                <MenuItem
+                    x:Name="RenderRendererVulkanMenuItem"
+                    AutomationProperties.Name="Rendering backend: Vulkan"
+                    Header="Vulkan"
+                    ToggleType="Radio"
+                    GroupName="render.renderer" />
+                <MenuItem
+                    x:Name="RenderRendererMetalMenuItem"
+                    AutomationProperties.Name="Rendering backend: Metal"
+                    Header="Metal"
+                    ToggleType="Radio"
+                    GroupName="render.renderer" />
+              </MenuItem>
+              <MenuItem Header="_Draw Mode">
+                <MenuItem
+                    x:Name="RenderDrawModeWireframeMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Wireframe"
+                    Header="Wireframe"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeWireframeOnSurfaceMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Wireframe on surface"
+                    Header="Wireframe on surface"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeSmoothShadedMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Smooth shaded"
+                    Header="Smooth shaded"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeFlatShadedMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Flat shaded"
+                    Header="Flat shaded"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModePointsMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Points"
+                    Header="Points"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeGeomOnlyMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Geom only"
+                    Header="Geom only"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeGeomFlatMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Geom flat"
+                    Header="Geom flat"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeGeomSmoothMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Geom smooth"
+                    Header="Geom smooth"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+                <MenuItem
+                    x:Name="RenderDrawModeHiddenSurfaceWireframeMenuItem"
+                    AutomationProperties.Name="Viewport draw mode: Hidden surface wireframe"
+                    Header="Hidden surface wireframe"
+                    ToggleType="Radio"
+                    GroupName="render.drawMode" />
+              </MenuItem>
+              <MenuItem Header="Render _Purposes">
+                <MenuItem
+                    x:Name="RenderPurposeDefaultMenuItem"
+                    AutomationProperties.Name="Show default purpose"
+                    Header="Default"
+                    ToggleType="CheckBox"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="RenderPurposeProxyMenuItem"
+                    AutomationProperties.Name="Show proxy purpose"
+                    Header="Proxy"
+                    ToggleType="CheckBox"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="RenderPurposeRenderMenuItem"
+                    AutomationProperties.Name="Show render purpose"
+                    Header="Render"
+                    ToggleType="CheckBox"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="RenderPurposeGuideMenuItem"
+                    AutomationProperties.Name="Show guide purpose"
+                    Header="Guide"
+                    ToggleType="CheckBox"
+                    IsChecked="False" />
+              </MenuItem>
+              <MenuItem
+                  x:Name="RenderSceneLightingMenuItem"
+                  AutomationProperties.Name="Use scene lighting"
+                  Header="Use scene lighting"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <MenuItem
+                  x:Name="RenderSceneShadowsMenuItem"
+                  AutomationProperties.Name="Use scene shadows"
+                  Header="Use shadows"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <MenuItem
+                  x:Name="RenderBackfaceCullingMenuItem"
+                  AutomationProperties.Name="Cull backfaces"
+                  Header="Cull backfaces"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <MenuItem
+                  x:Name="RenderSceneMaterialsMenuItem"
+                  AutomationProperties.Name="Use authored scene materials"
+                  Header="Use scene materials"
+                  ToggleType="CheckBox"
+                  IsChecked="True" />
+              <MenuItem Header="Colour _Management">
+                <MenuItem
+                    x:Name="RenderColorManagementEnabledMenuItem"
+                    AutomationProperties.Name="Use OpenColorIO display transform"
+                    Header="Use OpenColorIO display transform"
+                    ToggleType="CheckBox"
+                    IsChecked="False" />
+                <Separator />
+                <MenuItem
+                    x:Name="RenderColorManagementChooseConfigMenuItem"
+                    AutomationProperties.Name="Choose OpenColorIO config"
+                    Header="Choose OpenColorIO _Config..." />
+                <MenuItem
+                    x:Name="RenderColorManagementClearConfigMenuItem"
+                    AutomationProperties.Name="Clear OpenColorIO config"
+                    Header="Clear OpenColorIO Config" />
+              </MenuItem>
+              <MenuItem Header="_Background Colour">
+                <MenuItem
+                    x:Name="RenderBackgroundColorBlackMenuItem"
+                    AutomationProperties.Name="Viewport background colour: Black"
+                    Header="Black"
+                    ToggleType="Radio"
+                    GroupName="render.backgroundColor" />
+                <MenuItem
+                    x:Name="RenderBackgroundColorDarkGrayMenuItem"
+                    AutomationProperties.Name="Viewport background colour: Dark gray"
+                    Header="Dark gray"
+                    ToggleType="Radio"
+                    GroupName="render.backgroundColor" />
+                <MenuItem
+                    x:Name="RenderBackgroundColorLightGrayMenuItem"
+                    AutomationProperties.Name="Viewport background colour: Light gray"
+                    Header="Light gray"
+                    ToggleType="Radio"
+                    GroupName="render.backgroundColor" />
+                <MenuItem
+                    x:Name="RenderBackgroundColorWhiteMenuItem"
+                    AutomationProperties.Name="Viewport background colour: White"
+                    Header="White"
+                    ToggleType="Radio"
+                    GroupName="render.backgroundColor" />
+              </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Camera">
+              <MenuItem
+                  x:Name="ResetCameraAutomaticMenuItem"
+                  AutomationProperties.Name="Reset camera to automatic"
+                  Header="Reset _Automatic"
+                  InputGesture="Home"
+                  IsEnabled="False" />
+              <MenuItem
+                  x:Name="ResetCameraLegacyMenuItem"
+                  AutomationProperties.Name="Use explicit legacy camera pose"
+                  Header="Explicit _Legacy Pose"
+                  IsEnabled="False" />
+              <MenuItem
+                  x:Name="ToggleCameraProjectionMenuItem"
+                  AutomationProperties.Name="Toggle camera projection"
+                  Header="Toggle _Projection"
+                  InputGesture="P"
+                  IsEnabled="False" />
+              <MenuItem
+                  x:Name="UseSelectedCameraMenuItem"
+                  AutomationProperties.Name="Use selected UsdGeomCamera"
+                  Header="_Use Selected Camera"
+                  IsEnabled="False"
+                  ToolTip.Tip="Select a UsdGeomCamera prim to use its authored camera." />
+              <Separator x:Name="StageCameraMenuSeparator" IsVisible="False" />
+              <MenuItem
+                  x:Name="StageCamerasMenu"
+                  AutomationProperties.Name="Stage-authored cameras"
+                  Header="Stage _Cameras"
+                  IsEnabled="False"
+                  IsVisible="False" />
+              <Separator />
+              <MenuItem
+                  x:Name="FrameSelectedMenuItem"
+                  AutomationProperties.Name="Frame selected prim"
+                  Header="_Frame Selected"
+                  InputGesture="F"
+                  IsEnabled="False" />
+              <MenuItem Header="_Orbit">
+                <MenuItem
+                    x:Name="CameraOrbitLeftMenuItem"
+                    AutomationProperties.Name="Orbit camera left"
+                    Header="Orbit Left"
+                    InputGesture="Left Arrow"
+                    Tag="Left"
+                    IsEnabled="False" />
+                <MenuItem
+                    x:Name="CameraOrbitRightMenuItem"
+                    AutomationProperties.Name="Orbit camera right"
+                    Header="Orbit Right"
+                    InputGesture="Right Arrow"
+                    Tag="Right"
+                    IsEnabled="False" />
+                <MenuItem
+                    x:Name="CameraOrbitUpMenuItem"
+                    AutomationProperties.Name="Orbit camera up"
+                    Header="Orbit Up"
+                    InputGesture="Up Arrow"
+                    Tag="Up"
+                    IsEnabled="False" />
+                <MenuItem
+                    x:Name="CameraOrbitDownMenuItem"
+                    AutomationProperties.Name="Orbit camera down"
+                    Header="Orbit Down"
+                    InputGesture="Down Arrow"
+                    Tag="Down"
+                    IsEnabled="False" />
+              </MenuItem>
+            </MenuItem>
+            <MenuItem x:Name="PhysicsMenu" Header="_Physics">
+              <MenuItem
+                  x:Name="PhysicsEnableButton"
+                  AutomationProperties.Name="Enable physics simulation"
+                  Header="_Physics" />
+              <Separator />
+              <MenuItem
+                  x:Name="PhysicsPlayPauseMenuItem"
+                  AutomationProperties.Name="Play or pause physics simulation"
+                  Header="_Play/Pause"
+                  InputGesture="K" />
+              <MenuItem
+                  x:Name="PhysicsStopMenuItem"
+                  AutomationProperties.Name="Stop physics simulation"
+                  Header="_Stop"
+                  InputGesture="J" />
+              <MenuItem
+                  x:Name="PhysicsStepMenuItem"
+                  AutomationProperties.Name="Step one physics frame"
+                  Header="Ste_p"
+                  InputGesture="N" />
+              <MenuItem
+                  x:Name="PhysicsLoopMenuItem"
+                  AutomationProperties.Name="Loop physics playback"
+                  Header="_Loop"
+                  ToggleType="CheckBox" />
+              <MenuItem Header="_Speed">
+                <MenuItem
+                    x:Name="PhysicsSpeedQuarterMenuItem"
+                    AutomationProperties.Name="Physics playback speed: 0.25x"
+                    Header="0.25x"
+                    ToggleType="Radio"
+                    GroupName="physics.speed" />
+                <MenuItem
+                    x:Name="PhysicsSpeedHalfMenuItem"
+                    AutomationProperties.Name="Physics playback speed: 0.5x"
+                    Header="0.5x"
+                    ToggleType="Radio"
+                    GroupName="physics.speed" />
+                <MenuItem
+                    x:Name="PhysicsSpeedNormalMenuItem"
+                    AutomationProperties.Name="Physics playback speed: 1x"
+                    Header="1x"
+                    ToggleType="Radio"
+                    GroupName="physics.speed"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="PhysicsSpeedDoubleMenuItem"
+                    AutomationProperties.Name="Physics playback speed: 2x"
+                    Header="2x"
+                    ToggleType="Radio"
+                    GroupName="physics.speed" />
+                <MenuItem
+                    x:Name="PhysicsSpeedQuadrupleMenuItem"
+                    AutomationProperties.Name="Physics playback speed: 4x"
+                    Header="4x"
+                    ToggleType="Radio"
+                    GroupName="physics.speed" />
+              </MenuItem>
+              <MenuItem
+                  x:Name="PhysicsPreviewMenuItem"
+                  AutomationProperties.Name="Apply physics preview to the session overlay"
+                  Header="Apply Pre_view"
+                  ToggleType="CheckBox" />
+              <MenuItem
+                  x:Name="PhysicsBakeButton"
+                  AutomationProperties.Name="Bake physics simulation"
+                  Header="_Bake..."
+                  InputGesture="B" />
+              <Separator />
+              <MenuItem Header="_Gizmo">
+                <MenuItem
+                    x:Name="PhysicsGizmoNoneMenuItem"
+                    AutomationProperties.Name="Physics manipulation gizmo: No Gizmo"
+                    Header="No Gizmo"
+                    InputGesture="Q"
+                    ToggleType="Radio"
+                    GroupName="physics.gizmo"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="PhysicsGizmoMoveMenuItem"
+                    AutomationProperties.Name="Physics manipulation gizmo: Move"
+                    Header="Move"
+                    InputGesture="G"
+                    ToggleType="Radio"
+                    GroupName="physics.gizmo" />
+                <MenuItem
+                    x:Name="PhysicsGizmoRotateMenuItem"
+                    AutomationProperties.Name="Physics manipulation gizmo: Rotate"
+                    Header="Rotate"
+                    InputGesture="E"
+                    ToggleType="Radio"
+                    GroupName="physics.gizmo" />
+                <MenuItem
+                    x:Name="PhysicsGizmoScaleMenuItem"
+                    AutomationProperties.Name="Physics manipulation gizmo: Scale"
+                    Header="Scale"
+                    InputGesture="R"
+                    ToggleType="Radio"
+                    GroupName="physics.gizmo" />
+                <MenuItem
+                    x:Name="PhysicsGizmoDragMenuItem"
+                    AutomationProperties.Name="Physics manipulation gizmo: Drag Body"
+                    Header="Drag Body"
+                    InputGesture="H"
+                    ToggleType="Radio"
+                    GroupName="physics.gizmo" />
+              </MenuItem>
+              <MenuItem
+                  x:Name="PhysicsSnapMenuItem"
+                  AutomationProperties.Name="Snap gizmo drags to increments"
+                  Header="_Snap"
+                  InputGesture="X"
+                  ToggleType="CheckBox" />
+              <Separator />
+              <MenuItem
+                  x:Name="PhysicsUndoButton"
+                  AutomationProperties.Name="Undo the last physics property edit"
+                  Header="_Undo"
+                  InputGesture="Z"
+                  IsEnabled="False" />
+              <MenuItem
+                  x:Name="PhysicsRedoButton"
+                  AutomationProperties.Name="Redo the last undone physics property edit"
+                  Header="_Redo"
+                  InputGesture="Y"
+                  IsEnabled="False" />
+              <Separator />
+              <MenuItem
+                  x:Name="PhysicsShowInspectorMenuItem"
+                  AutomationProperties.Name="Show the Physics inspector tab"
+                  Header="Show Physics _Inspector" />
+            </MenuItem>
+            <MenuItem x:Name="ToolsMenu" Header="_Tools">
+              <MenuItem
+                  x:Name="ToolsValidationRunMenuItem"
+                  AutomationProperties.Name="Refresh UsdValidation results"
+                  Header="_Refresh Validation" />
+              <MenuItem Header="Validation _Scope">
+                <MenuItem
+                    x:Name="ToolsValidationScopeStageMenuItem"
+                    AutomationProperties.Name="UsdValidation scope: Whole stage"
+                    Header="Whole stage"
+                    ToggleType="Radio"
+                    GroupName="tools.validationScope"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="ToolsValidationScopePrimMenuItem"
+                    AutomationProperties.Name="UsdValidation scope: Selected prim"
+                    Header="Selected prim"
+                    ToggleType="Radio"
+                    GroupName="tools.validationScope" />
+              </MenuItem>
+              <MenuItem Header="_Pick Mode">
+                <MenuItem
+                    x:Name="ToolsPickModePrimsMenuItem"
+                    AutomationProperties.Name="usdview pick mode: Prims"
+                    Header="Prims"
+                    ToggleType="Radio"
+                    GroupName="tools.pickMode"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="ToolsPickModeModelsMenuItem"
+                    AutomationProperties.Name="usdview pick mode: Models"
+                    Header="Models"
+                    ToggleType="Radio"
+                    GroupName="tools.pickMode" />
+                <MenuItem
+                    x:Name="ToolsPickModeInstancesMenuItem"
+                    AutomationProperties.Name="usdview pick mode: Instances"
+                    Header="Instances"
+                    ToggleType="Radio"
+                    GroupName="tools.pickMode" />
+                <MenuItem
+                    x:Name="ToolsPickModePrototypesMenuItem"
+                    AutomationProperties.Name="usdview pick mode: Prototypes"
+                    Header="Prototypes"
+                    ToggleType="Radio"
+                    GroupName="tools.pickMode" />
+              </MenuItem>
+              <MenuItem Header="Pick _Target">
+                <MenuItem
+                    x:Name="ToolsPickTargetPrimitiveMenuItem"
+                    AutomationProperties.Name="Pick target: Prim"
+                    Header="Prim"
+                    ToggleType="Radio"
+                    GroupName="tools.pickTarget"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="ToolsPickTargetFaceMenuItem"
+                    AutomationProperties.Name="Pick target: Authored face"
+                    Header="Face"
+                    ToggleType="Radio"
+                    GroupName="tools.pickTarget" />
+                <MenuItem
+                    x:Name="ToolsPickTargetEdgeMenuItem"
+                    AutomationProperties.Name="Pick target: Authored edge"
+                    Header="Edge"
+                    ToggleType="Radio"
+                    GroupName="tools.pickTarget" />
+                <MenuItem
+                    x:Name="ToolsPickTargetPointMenuItem"
+                    AutomationProperties.Name="Pick target: Authored point"
+                    Header="Point"
+                    ToggleType="Radio"
+                    GroupName="tools.pickTarget" />
+              </MenuItem>
+              <MenuItem Header="Se_lection Outline">
+                <MenuItem
+                    x:Name="ToolsSelectionVisibleOnlyMenuItem"
+                    AutomationProperties.Name="Selection outline: Visible only"
+                    Header="Visible only"
+                    ToggleType="Radio"
+                    GroupName="tools.selection"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="ToolsSelectionXRayMenuItem"
+                    AutomationProperties.Name="Selection outline: X-ray through occluders"
+                    Header="X-ray"
+                    ToggleType="Radio"
+                    GroupName="tools.selection" />
+              </MenuItem>
+              <Separator />
+              <MenuItem Header="_Developer">
+                <MenuItem Header="_Diagnostics">
+                  <MenuItem
+                      x:Name="ToolsDiagnosticsTabVisibleMenuItem"
+                      AutomationProperties.Name="Show diagnostics tab"
+                      Header="Show tab"
+                      ToggleType="CheckBox"
+                      IsChecked="False" />
+                  <Separator />
+                  <MenuItem
+                      x:Name="ToolsCopyDiagnosticsMenuItem"
+                      AutomationProperties.Name="Copy redacted diagnostics"
+                      Header="_Copy"
+                      IsEnabled="False" />
+                  <MenuItem
+                      x:Name="ToolsExportDiagnosticsMenuItem"
+                      AutomationProperties.Name="Export redacted diagnostics"
+                      Header="_Export..."
+                      IsEnabled="False" />
+                  <MenuItem
+                      x:Name="ToolsIncludeDiagnosticPathsMenuItem"
+                      AutomationProperties.Name="Include source and user paths in diagnostics"
+                      Header="Include paths"
+                      ToggleType="CheckBox" />
+                </MenuItem>
+                <MenuItem Header="_Hydra Scene">
+                  <MenuItem
+                      x:Name="ToolsHydraTabVisibleMenuItem"
+                      AutomationProperties.Name="Show Hydra scene tab"
+                      Header="Show tab"
+                      ToggleType="CheckBox"
+                      IsChecked="False" />
+                  <Separator />
+                  <MenuItem
+                      x:Name="ToolsRefreshHydraSceneMenuItem"
+                      AutomationProperties.Name="Refresh Hydra scene browser"
+                      Header="_Refresh"
+                      IsEnabled="False" />
+                </MenuItem>
+                <MenuItem Header="Tf_Debug">
+                  <MenuItem
+                      x:Name="ToolsTfDebugTabVisibleMenuItem"
+                      AutomationProperties.Name="Show TfDebug tab"
+                      Header="Show tab"
+                      ToggleType="CheckBox"
+                      IsChecked="False" />
+                  <Separator />
+                  <MenuItem
+                      x:Name="ToolsRefreshTfDebugMenuItem"
+                      AutomationProperties.Name="Refresh TfDebug flags"
+                      Header="_Refresh" />
+                </MenuItem>
+              </MenuItem>
+              <Separator />
+              <MenuItem Header="_Connections">
+                <MenuItem
+                    x:Name="ToolsOmniverseBridgeMenuItem"
+                    AutomationProperties.Name="Connect to an Omniverse Bridge session"
+                    Header="Omniverse _Bridge..."
+                    IsEnabled="False"
+                    IsVisible="False"
+                    ToolTip.Tip="No Omniverse Bridge provider is installed or configured." />
+              </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Help">
+              <MenuItem
+                  x:Name="ShortcutsMenuItem"
+                  AutomationProperties.Name="Show keyboard and mouse shortcuts"
+                  Header="Keyboard _Shortcuts"
+                  InputGesture="F1"
+                  ToolTip.Tip="List the camera and navigation bindings (F1)." />
+              <MenuItem
+                  x:Name="AboutMenuItem"
+                  AutomationProperties.Name="Show OpenUSD and Omniverse compatibility information"
+                  Header="_About OpenUsd Viewer..." />
+            </MenuItem>
+          </Menu>
           <Button
-              x:Name="ResetCameraAutomaticButton"
-              AutomationProperties.Name="Reset camera to automatic"
-              Content="_Auto"
-              IsEnabled="False"
-              ToolTip.Tip="Reset to the backend automatic camera (Home)" />
+              x:Name="OpenStageButton"
+              Grid.Column="1"
+              AutomationProperties.Name="Open stage"
+              Content="_Open"
+              ToolTip.Tip="Open a USD stage (Ctrl+O)" />
           <Button
-              x:Name="ResetCameraLegacyButton"
-              AutomationProperties.Name="Use explicit legacy camera pose"
-              Content="_Legacy"
+              x:Name="ReloadStageButton"
+              Grid.Column="2"
+              AutomationProperties.Name="Reload current stage"
+              Content="_Reload"
               IsEnabled="False"
-              ToolTip.Tip="Use the explicit legacy eye and projection" />
-          <Button
-              x:Name="ToggleCameraProjectionButton"
-              AutomationProperties.Name="Toggle camera projection"
-              Content="_Projection"
-              IsEnabled="False"
-              ToolTip.Tip="Toggle perspective or orthographic projection (P)" />
-          <Button
-              x:Name="UseSelectedCameraButton"
-              AutomationProperties.Name="Use selected UsdGeomCamera"
-              Content="_Use Camera"
-              IsEnabled="False"
-              ToolTip.Tip="Select a UsdGeomCamera prim to use its authored camera." />
+              ToolTip.Tip="Reload the current stage (Ctrl+R)" />
+          <ComboBox
+              x:Name="RendererSelector"
+              Grid.Column="3"
+              Width="180"
+              AutomationProperties.Name="Rendering backend"
+              SelectedIndex="0"
+              ToolTip.Tip="Select the rendering backend">
+            <ComboBoxItem Content="Automatic" Tag="Auto" />
+            <ComboBoxItem Content="Storm" Tag="Storm" />
+            <ComboBoxItem Content="Direct3D 12" Tag="D3D12" />
+            <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+            <ComboBoxItem Content="Metal" Tag="Metal" />
+          </ComboBox>
           <Button
               x:Name="FrameSelectedButton"
+              Grid.Column="5"
               AutomationProperties.Name="Frame selected prim"
-              Content="_Frame"
+              Content="_Frame Selected"
               IsEnabled="False"
               ToolTip.Tip="Center and frame the selected prim at the current time (F)" />
-          <Grid
-              RowDefinitions="32,32"
-              ColumnDefinitions="32,32,32"
-              RowSpacing="2"
-              ColumnSpacing="2">
-            <Grid.Styles>
-              <Style Selector="Button">
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="FontSize" Value="18" />
-                <Setter Property="HorizontalContentAlignment" Value="Center" />
-                <Setter Property="VerticalContentAlignment" Value="Center" />
-              </Style>
-            </Grid.Styles>
-            <Button
-                x:Name="CameraOrbitLeftButton"
-                Grid.Row="1"
-                Grid.Column="0"
-                AutomationProperties.Name="Orbit camera left"
-                Content="&#x2190;"
-                IsEnabled="False"
-                ToolTip.Tip="Orbit 5 degrees left (Left Arrow while the viewport has focus)" />
-            <Button
-                x:Name="CameraOrbitUpButton"
-                Grid.Row="0"
-                Grid.Column="1"
-                AutomationProperties.Name="Orbit camera up"
-                Content="&#x2191;"
-                IsEnabled="False"
-                ToolTip.Tip="Orbit 5 degrees up (Up Arrow while the viewport has focus)" />
-            <Button
-                x:Name="CameraOrbitDownButton"
-                Grid.Row="1"
-                Grid.Column="1"
-                AutomationProperties.Name="Orbit camera down"
-                Content="&#x2193;"
-                IsEnabled="False"
-                ToolTip.Tip="Orbit 5 degrees down (Down Arrow while the viewport has focus)" />
-            <Button
-                x:Name="CameraOrbitRightButton"
-                Grid.Row="1"
-                Grid.Column="2"
-                AutomationProperties.Name="Orbit camera right"
-                Content="&#x2192;"
-                IsEnabled="False"
-                ToolTip.Tip="Orbit 5 degrees right (Right Arrow while the viewport has focus)" />
-          </Grid>
-        </StackPanel>
-        <TextBlock
-            x:Name="CameraStatus"
-            Grid.Row="1"
-            Grid.Column="5"
-            MaxWidth="300"
-            AutomationProperties.Name="Camera navigation state"
-            HorizontalAlignment="Right"
-            TextTrimming="CharacterEllipsis"
-            VerticalAlignment="Center"
-            Text="Camera: Automatic" />
-        <TextBlock
-            x:Name="StageStatus"
-            Grid.Column="5"
-            MaxWidth="300"
-            AutomationProperties.Name="Current stage"
-            HorizontalAlignment="Right"
-            TextTrimming="CharacterEllipsis"
-            VerticalAlignment="Center"
-            Text="No stage loaded" />
+        </Grid>
         <Grid
             x:Name="PhysicsToolbarGrid"
-            Grid.Row="2"
-            Grid.Column="0"
-            Grid.ColumnSpan="6"
+            Grid.Row="1"
             ColumnDefinitions="Auto,Auto,Auto,*,Auto"
             ColumnSpacing="8"
-            ClipToBounds="False">
+            ClipToBounds="False"
+            IsVisible="False">
           <StackPanel
               x:Name="PhysicsCommandBar"
+              Grid.Column="0"
               AutomationProperties.Name="Physics simulation controls"
               Orientation="Horizontal"
               Spacing="4"
               ClipToBounds="False">
-            <Button
-                x:Name="PhysicsEnableButton"
-                AutomationProperties.Name="Enable physics simulation"
-                Content="_Physics"
-                IsEnabled="False"
-                ToolTip.Tip="Build an interactive simulation for this stage" />
             <Button
                 x:Name="PhysicsPlayPauseButton"
                 AutomationProperties.Name="Play physics simulation"
@@ -276,68 +717,6 @@
                 Content="Step"
                 IsEnabled="False"
                 ToolTip.Tip="Advance exactly one fixed simulation step (N)" />
-            <CheckBox
-                x:Name="PhysicsLoopCheckBox"
-                AutomationProperties.Name="Loop physics playback"
-                Content="Loop"
-                IsEnabled="False"
-                ToolTip.Tip="Wrap to the authored start when playback reaches the end" />
-            <ComboBox
-                x:Name="PhysicsSpeedSelector"
-                Width="96"
-                AutomationProperties.Name="Physics playback speed"
-                IsEnabled="False"
-                SelectedIndex="2"
-                ToolTip.Tip="Change how fast playback runs. The fixed simulation step never changes.">
-              <ComboBoxItem Content="0.25x" Tag="0.25" />
-              <ComboBoxItem Content="0.5x" Tag="0.5" />
-              <ComboBoxItem Content="1x" Tag="1" />
-              <ComboBoxItem Content="2x" Tag="2" />
-              <ComboBoxItem Content="4x" Tag="4" />
-            </ComboBox>
-            <CheckBox
-                x:Name="PhysicsPreviewCheckBox"
-                AutomationProperties.Name="Apply physics preview to the session overlay"
-                Content="Apply Preview"
-                IsEnabled="False"
-                ToolTip.Tip="Author the simulated poses into the session overlay" />
-            <Button
-                x:Name="PhysicsBakeButton"
-                AutomationProperties.Name="Bake physics simulation"
-                Content="Bake..."
-                IsEnabled="False"
-                ToolTip.Tip="Write simulated poses into a file-backed layer (B)" />
-            <ComboBox
-                x:Name="PhysicsGizmoSelector"
-                Width="104"
-                AutomationProperties.Name="Physics manipulation gizmo"
-                IsEnabled="False"
-                SelectedIndex="0"
-                ToolTip.Tip="Choose what a viewport drag manipulates">
-              <ComboBoxItem Content="No Gizmo" Tag="None" />
-              <ComboBoxItem Content="Move" Tag="Translate" />
-              <ComboBoxItem Content="Rotate" Tag="Rotate" />
-              <ComboBoxItem Content="Scale" Tag="Scale" />
-              <ComboBoxItem Content="Drag Body" Tag="Drag" />
-            </ComboBox>
-            <CheckBox
-                x:Name="PhysicsSnapCheckBox"
-                AutomationProperties.Name="Snap gizmo drags to increments"
-                Content="Snap"
-                IsEnabled="False"
-                ToolTip.Tip="Quantize gizmo drags to the configured increments" />
-            <Button
-                x:Name="PhysicsUndoButton"
-                AutomationProperties.Name="Undo the last physics property edit"
-                Content="Undo"
-                IsEnabled="False"
-                ToolTip.Tip="Undo the last physics property edit" />
-            <Button
-                x:Name="PhysicsRedoButton"
-                AutomationProperties.Name="Redo the last undone physics property edit"
-                Content="Redo"
-                IsEnabled="False"
-                ToolTip.Tip="Redo the last undone physics property edit" />
           </StackPanel>
           <Button
               x:Name="PhysicsOverflowButton"
@@ -388,6 +767,134 @@
               VerticalAlignment="Center"
               Text="Physics: off" />
         </Grid>
+        <!--
+          Controls whose selection/enabled state remains the single source of truth for
+          existing viewport, physics, pick-mode, and validation logic, but which are no longer
+          shown directly: the menu items above are the reachable UI and drive these by setting
+          their SelectedIndex/IsChecked, which raises the same SelectionChanged/Click events the
+          existing handlers already subscribe to. Hidden controls are excluded from tab order and
+          automation traversal, so no distinct route or focus stop is left behind for them.
+        -->
+        <StackPanel x:Name="LegacyStateHost" Grid.Row="0" IsVisible="False">
+          <ComboBox
+              x:Name="PickModeSelector"
+              AutomationProperties.Name="usdview pick mode"
+              SelectedIndex="0">
+            <ComboBoxItem Content="Prims" Tag="Prims" />
+            <ComboBoxItem Content="Models" Tag="Models" />
+            <ComboBoxItem Content="Instances" Tag="Instances" />
+            <ComboBoxItem Content="Prototypes" Tag="Prototypes" />
+          </ComboBox>
+          <ComboBox
+              x:Name="ViewportDrawModeSelector"
+              AutomationProperties.Name="Viewport draw mode"
+              IsEnabled="False"
+              SelectedIndex="0">
+            <ComboBoxItem Content="Wireframe" Tag="Wireframe" />
+            <ComboBoxItem Content="Wireframe on surface" Tag="WireframeOnSurface" />
+            <ComboBoxItem Content="Smooth shaded" Tag="SmoothShaded" />
+            <ComboBoxItem Content="Flat shaded" Tag="FlatShaded" />
+            <ComboBoxItem Content="Points" Tag="Points" />
+            <ComboBoxItem Content="Geom only" Tag="GeomOnly" />
+            <ComboBoxItem Content="Geom flat" Tag="GeomFlat" />
+            <ComboBoxItem Content="Geom smooth" Tag="GeomSmooth" />
+            <ComboBoxItem Content="Hidden surface wireframe" Tag="HiddenSurfaceWireframe" />
+          </ComboBox>
+          <CheckBox
+              x:Name="PurposeDefaultCheckBox"
+              AutomationProperties.Name="Show default purpose"
+              Content="Default"
+              IsChecked="True"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="PurposeProxyCheckBox"
+              AutomationProperties.Name="Show proxy purpose"
+              Content="Proxy"
+              IsChecked="True"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="PurposeRenderCheckBox"
+              AutomationProperties.Name="Show render purpose"
+              Content="Render"
+              IsChecked="True"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="PurposeGuideCheckBox"
+              AutomationProperties.Name="Show guide purpose"
+              Content="Guide"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="SceneLightingCheckBox"
+              AutomationProperties.Name="Use scene lighting"
+              Content="Use scene lighting"
+              IsChecked="True"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="SceneShadowsCheckBox"
+              AutomationProperties.Name="Use scene shadows"
+              Content="Use shadows"
+              IsChecked="True"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="BackfaceCullingCheckBox"
+              AutomationProperties.Name="Cull backfaces"
+              Content="Cull backfaces"
+              IsChecked="True"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="SceneMaterialsCheckBox"
+              AutomationProperties.Name="Use authored scene materials"
+              Content="Use scene materials"
+              IsChecked="True"
+              IsEnabled="False" />
+          <ComboBox
+              x:Name="BackgroundColorSelector"
+              AutomationProperties.Name="Viewport background colour"
+              IsEnabled="False"
+              SelectedIndex="0">
+            <ComboBoxItem Content="Black" Tag="Black" />
+            <ComboBoxItem Content="Dark gray" Tag="DarkGray" />
+            <ComboBoxItem Content="Light gray" Tag="LightGray" />
+            <ComboBoxItem Content="White" Tag="White" />
+          </ComboBox>
+          <ComboBox
+              x:Name="PhysicsSpeedSelector"
+              AutomationProperties.Name="Physics playback speed"
+              IsEnabled="False"
+              SelectedIndex="2">
+            <ComboBoxItem Content="0.25x" Tag="0.25" />
+            <ComboBoxItem Content="0.5x" Tag="0.5" />
+            <ComboBoxItem Content="1x" Tag="1" />
+            <ComboBoxItem Content="2x" Tag="2" />
+            <ComboBoxItem Content="4x" Tag="4" />
+          </ComboBox>
+          <ComboBox
+              x:Name="PhysicsGizmoSelector"
+              AutomationProperties.Name="Physics manipulation gizmo"
+              IsEnabled="False"
+              SelectedIndex="0">
+            <ComboBoxItem Content="No Gizmo" Tag="None" />
+            <ComboBoxItem Content="Move" Tag="Translate" />
+            <ComboBoxItem Content="Rotate" Tag="Rotate" />
+            <ComboBoxItem Content="Scale" Tag="Scale" />
+            <ComboBoxItem Content="Drag Body" Tag="Drag" />
+          </ComboBox>
+          <CheckBox
+              x:Name="PhysicsLoopCheckBox"
+              AutomationProperties.Name="Loop physics playback"
+              Content="Loop"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="PhysicsPreviewCheckBox"
+              AutomationProperties.Name="Apply physics preview to the session overlay"
+              Content="Apply Preview"
+              IsEnabled="False" />
+          <CheckBox
+              x:Name="PhysicsSnapCheckBox"
+              AutomationProperties.Name="Snap gizmo drags to increments"
+              Content="Snap"
+              IsEnabled="False" />
+        </StackPanel>
       </Grid>
     </Border>
 
@@ -593,7 +1100,7 @@
               </ScrollViewer>
             </Grid>
           </TabItem>
-          <TabItem x:Name="DiagnosticsTab" Header="_Diagnostics">
+          <TabItem x:Name="DiagnosticsTab" Header="_Diagnostics" IsVisible="False">
             <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
@@ -670,7 +1177,7 @@
                   TextWrapping="NoWrap" />
             </Grid>
           </TabItem>
-          <TabItem x:Name="HydraSceneTab" Header="_Hydra">
+          <TabItem x:Name="HydraSceneTab" Header="_Hydra" IsVisible="False">
             <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
@@ -989,7 +1496,7 @@
               </StackPanel>
             </ScrollViewer>
           </TabItem>
-          <TabItem x:Name="TfDebugTab" Header="_TfDebug">
+          <TabItem x:Name="TfDebugTab" Header="_TfDebug" IsVisible="False">
             <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
@@ -1010,143 +1517,6 @@
                     Spacing="6" />
               </ScrollViewer>
             </Grid>
-          </TabItem>
-          <TabItem x:Name="SettingsTab" Header="_Settings">
-            <ScrollViewer Margin="0,8,0,0">
-              <StackPanel Spacing="8">
-                <TextBlock
-                    FontWeight="SemiBold"
-                    Text="Viewer layout and accessibility" />
-                <CheckBox
-                    x:Name="StagePanelCheckBox"
-                    AutomationProperties.Name="Show stage panel"
-                    Content="Show stage panel"
-                    IsChecked="True" />
-                <CheckBox
-                    x:Name="InspectorPanelCheckBox"
-                    AutomationProperties.Name="Show inspector panel"
-                    Content="Show inspector panel"
-                    IsChecked="True" />
-                <CheckBox
-                    x:Name="TimelineCheckBox"
-                    AutomationProperties.Name="Show timeline"
-                    Content="Show timeline"
-                    IsChecked="True" />
-                <CheckBox
-                    x:Name="DiagnosticsCheckBox"
-                    AutomationProperties.Name="Show diagnostics tab"
-                    Content="Show diagnostics tab"
-                    IsChecked="True" />
-                <CheckBox
-                    x:Name="SnapTimelineCheckBox"
-                    AutomationProperties.Name="Snap manual timeline changes to authored frames"
-                    Content="Snap manual time changes to authored frames" />
-                <TextBlock
-                    Margin="0,8,0,0"
-                    FontWeight="SemiBold"
-                    Text="Debugging" />
-                <TextBlock Text="Pick mode" />
-                <ComboBox
-                    x:Name="PickModeSelector"
-                    AutomationProperties.Name="usdview pick mode"
-                    SelectedIndex="0">
-                  <ComboBoxItem Content="Prims" Tag="Prims" />
-                  <ComboBoxItem Content="Models" Tag="Models" />
-                  <ComboBoxItem Content="Instances" Tag="Instances" />
-                  <ComboBoxItem Content="Prototypes" Tag="Prototypes" />
-                </ComboBox>
-                <Button
-                    x:Name="CaptureFrameButton"
-                    AutomationProperties.Name="Capture current frame"
-                    Content="Capture _Frame..."
-                    IsEnabled="False" />
-                <TextBlock
-                    Margin="0,8,0,0"
-                    FontWeight="SemiBold"
-                    Text="Viewport display" />
-                <TextBlock Text="Draw mode" />
-                <ComboBox
-                    x:Name="ViewportDrawModeSelector"
-                    AutomationProperties.Name="Viewport draw mode"
-                    IsEnabled="False"
-                    SelectedIndex="0">
-                  <ComboBoxItem Content="Wireframe" Tag="Wireframe" />
-                  <ComboBoxItem Content="Wireframe on surface" Tag="WireframeOnSurface" />
-                  <ComboBoxItem Content="Smooth shaded" Tag="SmoothShaded" />
-                  <ComboBoxItem Content="Flat shaded" Tag="FlatShaded" />
-                  <ComboBoxItem Content="Points" Tag="Points" />
-                  <ComboBoxItem Content="Geom only" Tag="GeomOnly" />
-                  <ComboBoxItem Content="Geom flat" Tag="GeomFlat" />
-                  <ComboBoxItem Content="Geom smooth" Tag="GeomSmooth" />
-                  <ComboBoxItem Content="Hidden surface wireframe" Tag="HiddenSurfaceWireframe" />
-                </ComboBox>
-                <TextBlock Text="Render purposes" />
-                <WrapPanel>
-                  <CheckBox
-                      x:Name="PurposeDefaultCheckBox"
-                      AutomationProperties.Name="Show default purpose"
-                      Content="Default"
-                      IsChecked="True"
-                      IsEnabled="False" />
-                  <CheckBox
-                      x:Name="PurposeProxyCheckBox"
-                      AutomationProperties.Name="Show proxy purpose"
-                      Content="Proxy"
-                      IsChecked="True"
-                      IsEnabled="False" />
-                  <CheckBox
-                      x:Name="PurposeRenderCheckBox"
-                      AutomationProperties.Name="Show render purpose"
-                      Content="Render"
-                      IsChecked="True"
-                      IsEnabled="False" />
-                  <CheckBox
-                      x:Name="PurposeGuideCheckBox"
-                      AutomationProperties.Name="Show guide purpose"
-                      Content="Guide"
-                      IsEnabled="False" />
-                </WrapPanel>
-                <CheckBox
-                    x:Name="SceneLightingCheckBox"
-                    AutomationProperties.Name="Use scene lighting"
-                    Content="Use scene lighting"
-                    IsChecked="True"
-                    IsEnabled="False" />
-                <CheckBox
-                    x:Name="SceneShadowsCheckBox"
-                    AutomationProperties.Name="Use scene shadows"
-                    Content="Use shadows"
-                    IsChecked="True"
-                    IsEnabled="False" />
-                <CheckBox
-                    x:Name="BackfaceCullingCheckBox"
-                    AutomationProperties.Name="Cull backfaces"
-                    Content="Cull backfaces"
-                    IsChecked="True"
-                    IsEnabled="False" />
-                <CheckBox
-                    x:Name="SceneMaterialsCheckBox"
-                    AutomationProperties.Name="Use authored scene materials"
-                    Content="Use scene materials"
-                    IsChecked="True"
-                    IsEnabled="False" />
-                <TextBlock Text="Background colour" />
-                <ComboBox
-                    x:Name="BackgroundColorSelector"
-                    AutomationProperties.Name="Viewport background colour"
-                    IsEnabled="False"
-                    SelectedIndex="0">
-                  <ComboBoxItem Content="Black" Tag="Black" />
-                  <ComboBoxItem Content="Dark gray" Tag="DarkGray" />
-                  <ComboBoxItem Content="Light gray" Tag="LightGray" />
-                  <ComboBoxItem Content="White" Tag="White" />
-                </ComboBox>
-                <TextBlock
-                    x:Name="SettingsState"
-                    Text="Settings are saved atomically when the Viewer closes."
-                    TextWrapping="Wrap" />
-              </StackPanel>
-            </ScrollViewer>
           </TabItem>
         </TabControl>
       </Border>
@@ -1205,18 +1575,40 @@
         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
         BorderThickness="0,1,0,0"
         Padding="8,4">
-      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="16">
         <TextBlock x:Name="ViewerStatus" AutomationProperties.Name="Viewer status" Text="Ready" />
         <TextBlock
-            x:Name="CompositionStatus"
+            x:Name="StageStatus"
             Grid.Column="1"
+            MaxWidth="240"
+            AutomationProperties.Name="Current stage"
+            TextTrimming="CharacterEllipsis"
+            Text="No stage loaded" />
+        <TextBlock
+            x:Name="CameraStatus"
+            Grid.Column="2"
+            MaxWidth="240"
+            AutomationProperties.Name="Camera navigation state"
+            TextTrimming="CharacterEllipsis"
+            Text="Camera: Automatic" />
+        <TextBlock
+            x:Name="CompositionStatus"
+            Grid.Column="3"
             AutomationProperties.Name="Composition status"
             Text="GPU: probing" />
         <TextBlock
             x:Name="RendererStatus"
-            Grid.Column="2"
+            Grid.Column="4"
             AutomationProperties.Name="Renderer status"
             Text="Renderer: unavailable" />
+        <TextBlock
+            x:Name="BridgeStatus"
+            Grid.Column="5"
+            MaxWidth="320"
+            AutomationProperties.Name="Omniverse Bridge status"
+            TextTrimming="CharacterEllipsis"
+            IsVisible="False"
+            Text="" />
       </Grid>
     </Border>
   </Grid>

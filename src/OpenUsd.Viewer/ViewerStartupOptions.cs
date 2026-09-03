@@ -63,8 +63,76 @@ internal static class ViewerStartupOptions
         private set;
     }
 
+    /// <summary>
+    /// The fixed pick target an embedding host requested, used unless
+    /// <see cref="HostFollowsViewerPickTarget"/> is set.
+    /// </summary>
+    /// <remarks>
+    /// Non-nullable and defaulted, because a host that names
+    /// <see cref="RenderPickTarget.Primitive"/> is making a concrete request
+    /// that must survive every Tools-menu change. Following the operator is a
+    /// separate, explicitly stated mode rather than the absence of a target, so
+    /// stating the default target stays expressible.
+    /// </remarks>
     internal static RenderPickTarget HostPickTarget { get; private set; } =
-        RenderPickTarget.Primitive;
+        ViewerPickTargetPolicy.DefaultTarget;
+
+    /// <summary>
+    /// Whether the operator's own Tools &gt; Pick Target choice decides what a
+    /// viewport click resolves, instead of the fixed <see cref="HostPickTarget"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is <see langword="true"/> whenever there is no embedding host at all,
+    /// because a standalone command-line Viewer has nobody to hold a fixed target
+    /// on behalf of: the operator's Tools menu is the only request there is, and
+    /// treating its absence as a fixed primitive request is what made the menu
+    /// inert in the shipped CLI Viewer. It is <see langword="false"/> for an
+    /// embedding host that did not opt in, including one that explicitly asked
+    /// for <see cref="RenderPickTarget.Primitive"/> -- which is a concrete
+    /// request that must survive every later Tools-menu change.
+    /// </para>
+    /// <para>
+    /// The two cases are therefore distinguished by which initializer ran, not by
+    /// comparing the target against the default, so "no host" and "a host that
+    /// stated the default" stay separable.
+    /// </para>
+    /// </remarks>
+    internal static bool HostFollowsViewerPickTarget { get; private set; } = true;
+
+    /// <summary>
+    /// Resolves the pick target one viewport click actually requests, from the
+    /// startup configuration and the operator's current Tools &gt; Pick Target
+    /// choice.
+    /// </summary>
+    /// <param name="menuTarget">The operator's current Tools-menu choice.</param>
+    /// <remarks>
+    /// This is the single production seam every pick path goes through, so a
+    /// standalone Viewer and an embedded one cannot drift apart by one caller
+    /// forgetting to consult the follow-viewer mode.
+    /// </remarks>
+    internal static RenderPickTarget ResolveRequestedPickTarget(
+        RenderPickTarget menuTarget) =>
+        ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+            HostFollowsViewerPickTarget,
+            HostPickTarget,
+            menuTarget);
+
+    /// <summary>
+    /// Restores the no-embedding-host pick configuration: no fixed target is held
+    /// on anyone's behalf, so the operator's Tools &gt; Pick Target choice decides.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Initialize(ViewerHostOptions)"/> runs this first and then states
+    /// the host's own choice, so a host that configures nothing keeps the
+    /// documented fixed <see cref="RenderPickTarget.Primitive"/> request rather
+    /// than inheriting the standalone follow-the-operator mode.
+    /// </remarks>
+    internal static void ResetHostPickTarget()
+    {
+        HostPickTarget = ViewerPickTargetPolicy.DefaultTarget;
+        HostFollowsViewerPickTarget = true;
+    }
 
     internal static Func<ViewerViewportPointerEventArgs, CancellationToken, Task>?
         ViewportPointerPressedAsync
@@ -83,6 +151,13 @@ internal static class ViewerStartupOptions
     { get; private set; }
 
     internal static string? SelectionChangedPrimSubtree { get; private set; }
+
+    /// <summary>
+    /// The optional host-injected bridge provider. It is <c>null</c> for every command-line
+    /// run and for every host that does not opt in, which is what keeps the bridge surface
+    /// absent rather than merely disabled.
+    /// </summary>
+    internal static IViewerBridgeConnectionProvider? BridgeConnection { get; private set; }
 
     /// <summary>
     /// Window title override supplied by an embedding host.
@@ -206,7 +281,9 @@ internal static class ViewerStartupOptions
         PrimPickedAsync = PickSmokeEnabled
             ? ViewerPickingSmokeHostObserver.ObservePickAsync
             : null;
-        HostPickTarget = RenderPickTarget.Primitive;
+        // No embedding host: nobody holds a fixed target, so the operator's
+        // Tools > Pick Target choice is the only request there is.
+        ResetHostPickTarget();
         ViewportPointerPressedAsync = null;
         ViewportPointerMovedAsync = null;
         ViewportPointerReleasedAsync = null;
@@ -214,6 +291,9 @@ internal static class ViewerStartupOptions
             ? ViewerPickingSmokeHostObserver.ObserveSelectionAsync
             : null;
         SelectionChangedPrimSubtree = PickSmokeEnabled ? "/World" : null;
+        // A command-line run never has a bridge provider: the seam is host-injected only, and
+        // no switch, environment variable, or configuration file can conjure one.
+        BridgeConnection = null;
         WindowsRenderingOverride = null;
         NativeStormContextLoss = IsEnabled(
             Environment.GetEnvironmentVariable("OPENUSD_NATIVE_STORM_CONTEXT_LOSS"));
@@ -359,12 +439,17 @@ internal static class ViewerStartupOptions
         HostStageCameraPath = NormalizeStageCameraPath(options.StageCameraPath);
         StageReadyAsync = options.StageReadyAsync;
         PrimPickedAsync = options.PrimPicked;
+        // Stated unconditionally, after the environment defaults ran: an embedding
+        // host that configures nothing keeps the documented fixed primitive
+        // request instead of inheriting the standalone follow-the-operator mode.
         HostPickTarget = options.PickTarget;
+        HostFollowsViewerPickTarget = options.FollowViewerPickTarget;
         ViewportPointerPressedAsync = options.ViewportPointerPressed;
         ViewportPointerMovedAsync = options.ViewportPointerMoved;
         ViewportPointerReleasedAsync = options.ViewportPointerReleased;
         SelectionChangedAsync = options.SelectionChanged;
         SelectionChangedPrimSubtree = options.SelectionChangedPrimSubtree;
+        BridgeConnection = options.BridgeConnection;
     }
 
     private static string? NormalizeStageCameraPath(string? value)

@@ -606,7 +606,7 @@ public sealed class RenderBackendManagerTests
     }
 
     [Test]
-    public async Task CanceledObservedStateRemainsAuthoritativeForLaterFailover()
+    public async Task CanceledStateIsRolledBackBeforeALaterFailover()
     {
         StageRenderState initial = CreateState();
         StageRenderState updated = initial.WithTime(new StageTime(12));
@@ -633,15 +633,24 @@ public sealed class RenderBackendManagerTests
             canceled = true;
         }
 
-        storm.Instances[0].Frames.Enqueue(RenderFrameResult.LostDevice(
-            updated.Revision,
+        // A backend that was cancelled part-way through applying a state cannot be
+        // trusted to hold it, so it is discarded and a replacement of the same kind is
+        // built from the last accepted state.
+        await Assert.That(canceled).IsTrue();
+        await Assert.That(storm.Instances.Count).IsEqualTo(2);
+        await Assert.That(storm.Instances[1].InitializationState).IsSameReferenceAs(initial);
+        await Assert.That(manager.CurrentState).IsSameReferenceAs(initial);
+
+        storm.Instances[1].Frames.Enqueue(RenderFrameResult.LostDevice(
+            initial.Revision,
             RenderDeviceLossKind.Removed));
         ManagedRenderFrameResult rendered = await manager.RenderAsync();
 
-        await Assert.That(canceled).IsTrue();
-        await Assert.That(manager.CurrentState).IsSameReferenceAs(updated);
-        await Assert.That(storm.Instances[0].UpdatedState).IsSameReferenceAs(updated);
-        await Assert.That(d3d12.Instances[0].InitializationState).IsSameReferenceAs(updated);
+        // A state the active backend refused is not an accepted state, so it is rolled
+        // back rather than retained. Retaining it handed the very state that had just
+        // been cancelled to the replacement backend, and left every consumer mirroring
+        // the manager's retained state describing an image no backend had been given.
+        await Assert.That(d3d12.Instances[0].InitializationState).IsSameReferenceAs(initial);
         await Assert.That(rendered.IsSuccess).IsTrue();
     }
 

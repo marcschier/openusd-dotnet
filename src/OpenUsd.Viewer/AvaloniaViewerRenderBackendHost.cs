@@ -886,6 +886,7 @@ internal sealed class StormHostedBackendSession(
     StageRenderState initialState,
     RenderBackendDiagnostics diagnostics) :
     IViewerRenderBackendSession,
+    IViewerDisplayTransformDiagnosticsSource,
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerPhysicsOverrideTarget
@@ -917,6 +918,11 @@ internal sealed class StormHostedBackendSession(
     public RenderBackendDiagnostics Diagnostics { get; } = diagnostics;
 
     public StageRenderState CurrentState => Volatile.Read(ref _state);
+    public SilkDisplayTransformDiagnostics? DisplayTransformDiagnostics =>
+        ViewerUnsupportedDisplayTransform.Describe(CurrentState);
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        ViewerUnsupportedDisplayTransform.Diagnose(CurrentState);
 
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
@@ -1045,6 +1051,7 @@ internal sealed class StormNativeHostedBackendSession(
     StageRenderState initialState,
     RenderBackendDiagnostics diagnostics) :
     IViewerRenderBackendSession,
+    IViewerDisplayTransformDiagnosticsSource,
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerPhysicsOverrideTarget
@@ -1075,6 +1082,11 @@ internal sealed class StormNativeHostedBackendSession(
     public RenderBackendDiagnostics Diagnostics { get; private set; } = diagnostics;
 
     public StageRenderState CurrentState => Volatile.Read(ref _state);
+    public SilkDisplayTransformDiagnostics? DisplayTransformDiagnostics =>
+        ViewerUnsupportedDisplayTransform.Describe(CurrentState);
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        ViewerUnsupportedDisplayTransform.Diagnose(CurrentState);
 
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
@@ -1274,6 +1286,7 @@ internal sealed class CompositionHostedBackendSession(
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerSelectionOutlineDiagnosticsSource,
+    IViewerDisplayTransformDiagnosticsSource,
     IViewerFrameDiagnosticsSource,
     IViewerHydraSceneSnapshotSource,
     IViewerFrameCaptureBackend,
@@ -1325,6 +1338,12 @@ internal sealed class CompositionHostedBackendSession(
 
     public SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         resources.Renderer.SelectionOutlineDiagnostics;
+
+    public SilkDisplayTransformDiagnostics? DisplayTransformDiagnostics =>
+        resources.Renderer.DisplayTransformDiagnostics;
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        resources.Renderer.DisplayTransformDiagnostic;
 
     public ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
         resources.Renderer.LastCommandCount == 0 &&
@@ -1528,6 +1547,20 @@ internal interface ISilkStagePresentationRenderer :
 
     SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics { get; }
 
+    /// <summary>
+    /// Gets the live colour-managed display-transform evidence of the renderer behind
+    /// this presentation surface.
+    /// </summary>
+    /// <remarks>
+    /// Defaulted to inactive so a presentation renderer that never runs the pass reports
+    /// the honest thing without every implementation restating it, and overridden by the
+    /// ones that do.
+    /// </remarks>
+    SilkDisplayTransformDiagnostics DisplayTransformDiagnostics => default;
+
+    /// <summary>Gets the latest bounded display-transform diagnostic, if any.</summary>
+    RenderDiagnostic? DisplayTransformDiagnostic => null;
+
     ViewerHydraSceneSnapshot? HydraSceneSnapshot { get; }
 
     /// <summary>
@@ -1633,6 +1666,12 @@ internal sealed class D3D12StagePresentationRenderer(
     public SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics =>
         renderer.SelectionOutlineDiagnostics;
 
+    public SilkDisplayTransformDiagnostics DisplayTransformDiagnostics =>
+        renderer.DisplayTransformDiagnostics;
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        renderer.DisplayTransformDiagnostic;
+
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         Volatile.Read(ref _hydraSceneSnapshot);
 
@@ -1658,7 +1697,7 @@ internal sealed class D3D12StagePresentationRenderer(
         Volatile.Write(ref _hydraSceneSnapshot, ViewerHydraSceneSnapshot.FromPage(page));
         renderer.UpdateSelection(
             state.Selection,
-            SilkSelectionOutlineSettings.Default);
+            ViewerSelectionOutlinePolicy.Current);
         ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, renderer);
         _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(_physicsStage, _physicsDeformations, renderer);
         SilkMeshRenderResult result = renderer.ApplyAndRender(
@@ -1734,6 +1773,16 @@ internal sealed class VulkanStagePresentationRenderer(
     public SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics =>
         Volatile.Read(ref _currentRenderer)?.SelectionOutlineDiagnostics ?? default;
 
+    // Delegated to whichever renderer is presenting right now, not defaulted: a
+    // composition session reads its diagnostics through this adapter, so defaulting here
+    // would report "inactive" for a transform the renderer had actually refused and the
+    // Viewer would keep claiming it.
+    public SilkDisplayTransformDiagnostics DisplayTransformDiagnostics =>
+        Volatile.Read(ref _currentRenderer)?.DisplayTransformDiagnostics ?? default;
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        Volatile.Read(ref _currentRenderer)?.DisplayTransformDiagnostic;
+
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         Volatile.Read(ref _hydraSceneSnapshot);
 
@@ -1756,7 +1805,7 @@ internal sealed class VulkanStagePresentationRenderer(
         Volatile.Write(ref _hydraSceneSnapshot, ViewerHydraSceneSnapshot.FromPage(page));
         context.Renderer.UpdateSelection(
             state.Selection,
-            SilkSelectionOutlineSettings.Default);
+            ViewerSelectionOutlinePolicy.Current);
         ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
         _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(
             _physicsStage, _physicsDeformations, context.Renderer);
@@ -1834,6 +1883,16 @@ internal sealed class MetalStagePresentationRenderer(
     public SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics =>
         Volatile.Read(ref _currentRenderer)?.SelectionOutlineDiagnostics ?? default;
 
+    // Delegated to whichever renderer is presenting right now, not defaulted: a
+    // composition session reads its diagnostics through this adapter, so defaulting here
+    // would report "inactive" for a transform the renderer had actually refused and the
+    // Viewer would keep claiming it.
+    public SilkDisplayTransformDiagnostics DisplayTransformDiagnostics =>
+        Volatile.Read(ref _currentRenderer)?.DisplayTransformDiagnostics ?? default;
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        Volatile.Read(ref _currentRenderer)?.DisplayTransformDiagnostic;
+
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         Volatile.Read(ref _hydraSceneSnapshot);
 
@@ -1857,7 +1916,7 @@ internal sealed class MetalStagePresentationRenderer(
         Volatile.Write(ref _hydraSceneSnapshot, ViewerHydraSceneSnapshot.FromPage(page));
         context.Renderer.UpdateSelection(
             state.Selection,
-            SilkSelectionOutlineSettings.Default);
+            ViewerSelectionOutlinePolicy.Current);
         ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
         _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(
             _physicsStage, _physicsDeformations, context.Renderer);

@@ -47,6 +47,12 @@ public sealed class WorkflowStructureContractTests
         @"(\./)?eng/[A-Za-z0-9._/-]+\.(ps1|py|sh)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    /// <summary>Matches the CTest name filter <c>eng/build-mdl-shim.ps1</c> passes to <c>-R</c>.</summary>
+    private static readonly Regex MdlProbeFilter = new(
+        @"\$probeFilter = if \(\$MdlSdkRoot\)\s*\{\s*'(?<withSdk>[^']+)'\s*\}"
+            + @"\s*else\s*\{\s*'(?<withoutSdk>[^']+)'\s*\}",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     [Test]
     public async Task EveryJobRunningARepositoryScriptChecksOutTheRepository()
     {
@@ -356,10 +362,8 @@ public sealed class WorkflowStructureContractTests
         }
 
         await Assert.That(symbolPublished.Length)
-            .IsEqualTo(11)
-            .Because(
-                "the current 27-package release set has ten managed libraries plus the MCP tool " +
-                "that explicitly emit snupkg files");
+            .IsEqualTo(actual.Count)
+            .Because("-ListSymbolPublished must not emit duplicate package ids");
         await Assert.That(actual)
             .IsEquivalentTo(expected)
             .Because("-ListSymbolPublished must match the MSBuild conditions that govern snupkg production");
@@ -786,18 +790,35 @@ public sealed class WorkflowStructureContractTests
             "'eng/physx.lock.json'",
             "'eng/fetch-physx-native.ps1'",
             "'eng/build-physx-native.ps1'",
+            "'eng/build-physx-shim.ps1'",
+            "'eng/mdl.lock.json'",
+            "'eng/fetch-mdl-sdk.ps1'",
+            "'eng/build-mdl-shim.ps1'",
             "'native/**'",
             "'test-assets/fuzz-seeds/**'",
+            "'test-assets/omniverse/mdl-only-omnipbr.usda'",
         })
         {
-            await Assert.That(triggers)
-                .Contains(path, StringComparison.Ordinal)
+            // A path filter that names an input in only one of the two blocks is
+            // the failure this counts rather than contains: the pipeline would
+            // still fire on push while a pull request touching the same input
+            // merged with no native evidence at all.
+            int occurrences = triggers.Split(path, StringSplitOptions.None).Length - 1;
+            await Assert.That(occurrences)
+                .IsEqualTo(2)
                 .Because(
                     $"{path} can change archive bytes, archive-only validation " +
                     "that no other workflow exercises, the archive sidecar, " +
-                    "or the cache key that downstream workflows restore");
+                    "or the cache key that downstream workflows restore, so it " +
+                    "must appear in both the push and pull_request filters");
         }
 
+        await Assert.That(native)
+            .Contains("./eng/build-mdl-shim.ps1", StringComparison.Ordinal)
+            .Because(
+                "the optional MDL adapter build is the only place the distillation " +
+                "half of the MDL slice is proven, so its inputs must trigger the " +
+                "workflow that runs it");
         await Assert.That(native)
             .Contains("./eng/test-linux-native-prerequisites.ps1", StringComparison.Ordinal)
             .Because("the Linux prerequisite contract still has to run when native.yml runs");
@@ -818,6 +839,247 @@ public sealed class WorkflowStructureContractTests
                     $"{script} no longer triggers native.yml, so ordinary " +
                     "push CI must execute it before release-only workflows do");
         }
+    }
+
+    [Test]
+    public async Task NativeWorkflowFiresWhenTheMdlOnlyProbeFixtureChanges()
+    {
+        string root = FindRepositoryRoot();
+        string fixture = Path.Combine(
+            root, "test-assets", "omniverse", "mdl-only-omnipbr.usda");
+
+        await Assert.That(File.Exists(fixture))
+            .IsTrue()
+            .Because(
+                "the MDL-only surface terminal is proven by a stage the probe " +
+                "opens, so a renamed or deleted fixture must fail here rather " +
+                "than inside a native job that only runs on a release");
+
+        // Non-vacuity for the trigger below: the path filter is only worth
+        // anything while the probe still reads this exact fixture. A rename on
+        // the C++ side would otherwise leave a filter naming a file nothing
+        // consumes, and the MDL-only evidence would stop being rebuilt without
+        // a single failing check.
+        string probe = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "hdSilk", "tests", "hdsilk_probe.cpp"));
+        await Assert.That(probe)
+            .Contains(
+                "SiblingProbeStagePath(probeStagePath, \"omniverse/mdl-only-omnipbr.usda\")",
+                StringComparison.Ordinal)
+            .Because("VerifyMdlOnlyStageProbe must still open the fixture the filter names");
+        await Assert.That(probe)
+            .Contains("if (!VerifyMdlOnlyStageProbe(argv[1], argv[2], &error))", StringComparison.Ordinal)
+            .Because(
+                "a probe helper nothing dispatches proves nothing, so the " +
+                "fixture must stay wired into the probe's entry point");
+
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+        string triggers = ReadTriggerBlock(native);
+        await Assert.That(triggers).IsNotEmpty();
+
+        const string filter = "'test-assets/omniverse/mdl-only-omnipbr.usda'";
+        int occurrences = triggers.Split(filter, StringSplitOptions.None).Length - 1;
+        await Assert.That(occurrences)
+            .IsEqualTo(2)
+            .Because(
+                "the fixture drives the MDL-only stage probe that only this " +
+                "workflow runs, so editing it must fire the pipeline from a " +
+                "pull request as well as from a push; naming it in one block " +
+                "only lets a change merge with no MDL evidence at all");
+
+        // The filter is only honest while the workflow still runs the probes
+        // that read the fixture. Both halves are CTest runs of hdsilk_probe:
+        // the adapter-present one from the MDL build tree, the adapter-absent
+        // one from the default build tree this job already tests.
+        // MdlNativeProbeRunsFailClosedInBothAdapterStates owns the fail-closed
+        // half of that claim.
+        await Assert.That(native)
+            .Contains("./eng/build-mdl-shim.ps1", StringComparison.Ordinal)
+            .Because("the adapter-present half of the MDL-only probe runs from this workflow");
+        await Assert.That(native)
+            .Contains("-RunProbe", StringComparison.Ordinal)
+            .Because("the MDL shim build must still execute the probe rather than only compile it");
+
+        string adapterAbsent = ReadRunCommand(
+            ReadStep(ReadJob(native, "build"), "Run Windows native CTest"));
+        await Assert.That(adapterAbsent)
+            .Contains("--test-dir native/build/shim/win-x64\n", StringComparison.Ordinal)
+            .Because(
+                "the adapter-absent half is the default build tree's own CTest run: " +
+                "eng/run-silk-probe.ps1 publishes and runs the managed Silk probe and " +
+                "invokes no CTest at all, so it never executes hdsilk_probe and cannot " +
+                "be cited as this evidence");
+        await Assert.That(adapterAbsent)
+            .Contains("--no-tests=error", StringComparison.Ordinal)
+            .Because(
+                "a run that reports success on an empty test set is not evidence that " +
+                "the adapter-absent cases executed");
+    }
+
+    /// <summary>
+    /// The MDL slice's native evidence is one CTest selected by name out of two
+    /// separately configured build trees, and CTest reports success when a name
+    /// filter selects nothing.
+    /// </summary>
+    /// <remarks>
+    /// So three independent things have to hold, and none of them implies
+    /// another: <c>hdsilk_probe</c> is registered, and registered outside the
+    /// <c>OPENUSD_WITH_MDL</c> guard so the adapter-absent build has it too; the
+    /// filter <c>eng/build-mdl-shim.ps1</c> hands to <c>-R</c> actually selects
+    /// that name; and every run of it fails rather than passes when the
+    /// selection is empty. Without the third, a renamed probe would turn the
+    /// only MDL gate in the repository into a green step that ran nothing.
+    /// </remarks>
+    [Test]
+    public async Task MdlNativeProbeRunsFailClosedInBothAdapterStates()
+    {
+        string root = FindRepositoryRoot();
+        string cmake = (await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "hdSilk", "tests", "CMakeLists.txt")))
+            .ReplaceLineEndings("\n");
+        string mdlCmake = (await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "openusd_mdl", "tests", "CMakeLists.txt")))
+            .ReplaceLineEndings("\n");
+        string shim = (await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "build-mdl-shim.ps1")))
+            .ReplaceLineEndings("\n");
+        string silkProbe = (await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "run-silk-probe.ps1")))
+            .ReplaceLineEndings("\n");
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+        string ci = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "ci.yml"));
+
+        const string registration = "add_test(NAME hdsilk_probe\n";
+        int registered = cmake.IndexOf(registration, StringComparison.Ordinal);
+        await Assert.That(registered)
+            .IsGreaterThan(0)
+            .Because(
+                "every MDL probe run selects this CTest by name, so an unregistered " +
+                "or renamed probe must fail here rather than reach CI as a filter " +
+                "that matches nothing");
+
+        int guard = cmake.IndexOf("if(OPENUSD_WITH_MDL)", StringComparison.Ordinal);
+        await Assert.That(guard)
+            .IsGreaterThan(0)
+            .Because("the distillation cases are still compiled only with the adapter");
+        int guardEnd = cmake.IndexOf("\nendif()", guard, StringComparison.Ordinal);
+        await Assert.That(guardEnd)
+            .IsGreaterThan(guard)
+            .Because("the adapter guard must still close");
+        await Assert.That(registered)
+            .IsGreaterThan(guardEnd)
+            .Because(
+                "the adapter-absent state is the one every base package ships in, so " +
+                "registration must sit outside the OPENUSD_WITH_MDL guard; a probe " +
+                "registered only with the adapter would leave the default build with " +
+                "no MDL evidence at all");
+
+        Match filter = MdlProbeFilter.Match(shim);
+        await Assert.That(filter.Success)
+            .IsTrue()
+            .Because(
+                "the filter has to be read out of eng/build-mdl-shim.ps1 rather than " +
+                "restated here, or this passes against a stale copy of it");
+
+        string withoutSdk = filter.Groups["withoutSdk"].Value;
+        string withSdk = filter.Groups["withSdk"].Value;
+        foreach (string expression in new[] { withoutSdk, withSdk })
+        {
+            await Assert.That(Regex.IsMatch("hdsilk_probe", expression))
+                .IsTrue()
+                .Because(
+                    $"'{expression}' is handed to ctest -R, and a filter that does not " +
+                    "select hdsilk_probe runs neither the distillation cases nor the " +
+                    "MDL-only stage probe");
+        }
+
+        // Non-vacuity for the SDK arm: it claims to add the adapter probes, so
+        // those names must exist and the wider filter must actually reach them.
+        foreach (string adapterProbe in new[] { "mdl_adapter_probe", "mdl_sdk_adapter_probe" })
+        {
+            await Assert.That(mdlCmake)
+                .Contains($"NAME {adapterProbe}\n", StringComparison.Ordinal)
+                .Because("the SDK arm of the filter must name CTests that exist");
+            await Assert.That(Regex.IsMatch(adapterProbe, withSdk))
+                .IsTrue()
+                .Because(
+                    $"-MdlSdkRoot widens the filter to cover {adapterProbe}, and a " +
+                    "widening that selects nothing new proves nothing new");
+        }
+        await Assert.That(Regex.IsMatch("mdl_adapter_probe", withoutSdk))
+            .IsFalse()
+            .Because(
+                "the default arm must stay narrow: the adapter probes are not " +
+                "configured without an SDK acquisition, so selecting them there would " +
+                "either fail the run or, with --no-tests=error, hide which half ran");
+
+        int call = shim.IndexOf("& ctest --test-dir $buildRoot", StringComparison.Ordinal);
+        await Assert.That(call)
+            .IsGreaterThan(0)
+            .Because("the adapter-present half is a filtered CTest run from the MDL build tree");
+        int exitCheck = shim.IndexOf("if ($LASTEXITCODE -ne 0)", call, StringComparison.Ordinal);
+        await Assert.That(exitCheck)
+            .IsGreaterThan(call)
+            .Because("a probe whose exit code nothing reads cannot fail the build");
+
+        string invocation = shim[call..exitCheck];
+        foreach (string argument in new[]
+        {
+            "-C Release",
+            "-R $probeFilter",
+            "--no-tests=error",
+            "--output-on-failure",
+        })
+        {
+            await Assert.That(invocation)
+                .Contains(argument, StringComparison.Ordinal)
+                .Because(
+                    $"the filtered MDL probe run must pass {argument}; without " +
+                    "--no-tests=error CTest exits 0 when the filter selects nothing, " +
+                    "which is the whole failure mode a name filter can have");
+        }
+
+        string ciProbe = ReadRunCommand(
+            ReadStep(ReadJob(ci, "coverage"), "Execute hdSilk native probe"));
+        await Assert.That(ciProbe)
+            .IsNotEmpty()
+            .Because("ci.yml runs the adapter-absent probe on every push, not only on a release");
+        Match ciFilter = Regex.Match(ciProbe, @"-R '(?<expression>[^']+)'");
+        await Assert.That(ciFilter.Success)
+            .IsTrue()
+            .Because("that run selects the probe by name");
+        await Assert.That(Regex.IsMatch("hdsilk_probe", ciFilter.Groups["expression"].Value))
+            .IsTrue()
+            .Because(
+                $"'{ciFilter.Groups["expression"].Value}' must still select the CTest " +
+                "native/hdSilk/tests/CMakeLists.txt registers");
+        await Assert.That(ciProbe)
+            .Contains("--no-tests=error", StringComparison.Ordinal)
+            .Because(
+                "this is the adapter-absent half of the MDL evidence and it is filtered, " +
+                "so an empty selection must fail the step rather than pass it");
+
+        string windowsCtest = ReadRunCommand(
+            ReadStep(ReadJob(native, "build"), "Run Windows native CTest"));
+        await Assert.That(windowsCtest)
+            .Contains("--no-tests=error", StringComparison.Ordinal)
+            .Because(
+                "the same adapter-absent probe runs unfiltered from the default win-x64 " +
+                "build tree that the adapter-present run is compared against, and a " +
+                "build tree that configured no tests must fail rather than report success");
+
+        await Assert.That(silkProbe)
+            .DoesNotContain("ctest", StringComparison.Ordinal)
+            .Because(
+                "eng/run-silk-probe.ps1 publishes and runs the managed OpenUsd.SilkProbe " +
+                "executable; it configures, registers and invokes no CTest, so no claim " +
+                "may rest on it executing hdsilk_probe");
+        await Assert.That(silkProbe)
+            .DoesNotContain("hdsilk_probe", StringComparison.Ordinal)
+            .Because("the managed Silk probe does not run the native probe under any name");
     }
 
     [Test]
@@ -1834,6 +2096,21 @@ public sealed class WorkflowStructureContractTests
         }
 
         return string.Join("\n", step);
+    }
+
+    /// <summary>Returns a workflow step's run block, from the <c>run:</c> key onward.</summary>
+    /// <remarks>
+    /// A step's comments explain why a flag is there and therefore quote it, so
+    /// asserting against the whole step body would pass on the explanation alone
+    /// after the flag itself was deleted.
+    /// </remarks>
+    private static string ReadRunCommand(string step)
+    {
+        string[] lines = step.Split('\n');
+        int start = Array.FindIndex(
+            lines,
+            line => line.TrimStart().StartsWith("run:", StringComparison.Ordinal));
+        return start < 0 ? string.Empty : string.Join("\n", lines[start..]);
     }
 
     /// <summary>Returns the <c>on:</c> block, up to the next top-level key.</summary>

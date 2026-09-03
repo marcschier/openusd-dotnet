@@ -12,9 +12,10 @@ roles:
 displays:
   TestDisplay:
     - !<View> {name: TestView, colorspace: srgb_display}
+    - !<View> {name: IdentityView, colorspace: linear}
 
 active_displays: [TestDisplay]
-active_views: [TestView]
+active_views: [TestView, IdentityView]
 
 looks:
   - !<Look>

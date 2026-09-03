@@ -109,7 +109,7 @@ public sealed class SilkVertexAttributeTests
             }
         }
 
-        byte[] bytes = new byte[224 + variable.Count];
+        byte[] bytes = new byte[268 + variable.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(0, 4), (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)bytes.Length);
@@ -135,7 +135,7 @@ public sealed class SilkVertexAttributeTests
         }
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(220, 4), (uint)attributes.Length);
-        variable.CopyTo(bytes, 224);
+        variable.CopyTo(bytes, 268);
         return bytes;
     }
 }

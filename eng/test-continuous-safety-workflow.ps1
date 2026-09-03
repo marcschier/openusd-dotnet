@@ -71,7 +71,7 @@ Assert-Contains `
     'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    "-R '^hdsilk_probe$' --output-on-failure" `
+    "-R '^hdsilk_probe`$' --no-tests=error --output-on-failure" `
     'Managed CI workflow'
 Assert-Contains $ciWorkflow 'OPENUSD_PARITY_CAPTURE_REQUIRED: ''1''' 'Managed CI workflow'
 Assert-Contains $ciWorkflow 'x11-utils xvfb zlib1g-dev' 'Managed CI workflow'

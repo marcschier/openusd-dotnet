@@ -9,15 +9,19 @@ public sealed class PublicApiBaselineTests
     private static readonly string[] ExpectedApiProjects =
     [
         "OpenUsd",
+        "OpenUsd.Bridge.Grpc",
+        "OpenUsd.Bridge.Protocol",
         "OpenUsd.Cesium",
         "OpenUsd.Interop",
+        "OpenUsd.LiveAuthoring",
         "OpenUsd.Physics",
         "OpenUsd.Rendering",
         "OpenUsd.Rendering.Silk",
         "OpenUsd.Rendering.Silk.D3D12",
         "OpenUsd.Rendering.Silk.Metal",
         "OpenUsd.Rendering.Silk.Vulkan",
-        "OpenUsd.Rendering.Storm"
+        "OpenUsd.Rendering.Storm",
+        "OpenUsd.Viewer.Bridge.Grpc"
     ];
 
     private static readonly string[] ExpectedContentOnlyRuntimeProjects =
@@ -46,8 +50,11 @@ public sealed class PublicApiBaselineTests
     private static readonly string[] ExpectedPackableManagedProjects =
     [
         "OpenUsd",
+        "OpenUsd.Bridge.Grpc",
+        "OpenUsd.Bridge.Protocol",
         "OpenUsd.Cesium",
         "OpenUsd.Interop",
+        "OpenUsd.LiveAuthoring",
         "OpenUsd.Mcp",
         "OpenUsd.Physics",
         "OpenUsd.Rendering",
@@ -56,7 +63,8 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Rendering.Silk.Metal",
         "OpenUsd.Rendering.Silk.Vulkan",
         "OpenUsd.Rendering.Storm",
-        "OpenUsd.Viewer"
+        "OpenUsd.Viewer",
+        "OpenUsd.Viewer.Bridge.Grpc"
     ];
 
     [Test]

@@ -20,7 +20,20 @@ consume without touching any native pointers.
   `HdSceneDelegate` based on `HdDirtyBits`, triangulates with `HdMeshUtil::ComputeTriangleIndices`, and upserts
   the result into `HdSilkSceneState`.
 - **`src/renderPass.{h,cpp}`**: `HdSilkRenderPass::_Execute` captures the `HdRenderPassState` world-to-view
-  matrix, projection matrix, and viewport into `HdSilkSceneState`.
+  matrix, projection matrix, and viewport into `HdSilkSceneState`, and -- only while a light carries a
+  non-default UsdLux link collection -- collects the prim and instance categories the link table resolves from.
+- **`src/instanceLinking.{h,cpp}`**: The mapping from Hydra's per-level instance categories onto the composed
+  instance identities hdSilk publishes. Hydra reports one category array per instance of each instancer, indexed
+  by that instancer's own instance index; hdSilk publishes a nested instance under
+  `parentIndex * innerInstanceCount + innerIndex`. This module walks the whole instancer chain, enumerates
+  exactly the identities the chain publishes, unions each level's contribution onto them, and emits a membership
+  row only where the result differs from the prototype path's own row. Rows come out in ascending composed order.
+  `HdSilkAppendPathMemberships` is what the render pass calls per prim: it appends a path atomically, so a path
+  whose rows cannot be collected in full leaves no row at all and falls open to every light rather than publishing
+  a restrictive path row its own instances contradict. Nothing here is charged against the page ABI's entry
+  budget -- a category set that differs is not yet a mask that differs, and which rows survive is decided in
+  `HdSilkSceneState` against the page's own light and dome orderings. The only bound applied here is
+  `HdSilkMaxCollectedInstanceRows`, a transient-memory policy far above the ABI bound.
 - **`src/sceneState.{h,cpp}`**: `HdSilkSceneState`: thread-safe storage for the current frame state plus
   dirty/removed meshes, and `BuildPage()`, which serializes exactly the dirty upserts/removals plus the frame
   state into the wire format.
@@ -126,5 +139,9 @@ own `plugInfo.json` and built shared library, then runs against
 
 ```pwsh
 cd native/build/shim/win-x64
-ctest -R hdsilk_probe --output-on-failure
+ctest -R hdsilk_probe --no-tests=error --output-on-failure
 ```
+
+`--no-tests=error` is not optional decoration: CTest exits 0 when a `-R`
+expression selects nothing, so without it a renamed or unconfigured probe
+reports success having run no test at all.

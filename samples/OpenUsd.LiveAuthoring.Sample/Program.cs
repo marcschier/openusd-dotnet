@@ -25,28 +25,30 @@ UsdStageScheduler scheduler = host.Scheduler;
 UsdStageRenderSource renderSource = host.RenderSource;
 try
 {
-    LiveAuthoringBatchResult properties = await host.ApplyAsync(new LiveAuthoringBatch(
+    LiveAuthoringAdmissionReceipt propertiesReceipt = await host.ApplyAsync(new LiveAuthoringBatch(
         1,
         [
             new DefinePrimUpdate("/World", "Xform"),
             new DefinePrimUpdate("/World/Sensor", "Xform"),
             new DefinePrimUpdate("/World/Target", "Xform"),
-            new SetScalarUpdate(
+            new SetAttributeUpdate(
                 "/World/Sensor",
                 "custom:temperature",
-                LiveScalarValue.FromDouble(21.5)),
-            new SetScalarUpdate(
+                LiveAttributeValue.FromDouble(21.5)),
+            new SetAttributeUpdate(
                 "/World/Sensor",
                 "custom:temperature",
-                LiveScalarValue.FromDouble(22.75),
+                LiveAttributeValue.FromDouble(22.75),
                 TimeCode: 1),
             new SetRelationshipTargetsUpdate(
                 "/World/Sensor",
                 "custom:target",
                 ["/World/Target"])
-        ]));
+        ],
+        correlationId: "batch-properties"));
+    LiveAuthoringBatchResult properties = await propertiesReceipt.WaitForResultAsync();
 
-    LiveAuthoringBatchResult composition = await host.ApplyAsync(new LiveAuthoringBatch(
+    LiveAuthoringAdmissionReceipt compositionReceipt = await host.ApplyAsync(new LiveAuthoringBatch(
         2,
         [
             new DefinePrimUpdate("/World/Reference", "Xform"),
@@ -65,8 +67,9 @@ try
                 ["red", "blue"],
                 "red")
         ]));
+    LiveAuthoringBatchResult composition = await compositionReceipt.WaitForResultAsync();
 
-    LiveAuthoringBatchResult variantChange = await host.ApplyAsync(new LiveAuthoringBatch(
+    LiveAuthoringAdmissionReceipt variantReceipt = await host.ApplyAsync(new LiveAuthoringBatch(
         3,
         [
             new SetVariantSelectionUpdate(
@@ -76,6 +79,28 @@ try
                 "blue")
         ],
         coalescingKey: "variant-look"));
+    LiveAuthoringBatchResult variantChange = await variantReceipt.WaitForResultAsync();
+
+    LiveAuthoringAdmissionReceipt dataModelReceipt = await host.ApplyAsync(new LiveAuthoringBatch(
+        4,
+        [
+            new SetAttributeUpdate(
+                "/World/Sensor",
+                "custom:samples",
+                LiveAttributeValue.FromDoubleArray([1.0, 2.0, 3.0])),
+            new SetAttributeUpdate(
+                "/World/Sensor",
+                "custom:calibration",
+                LiveAttributeValue.FromMatrix4d(UsdMatrix4d.Identity)),
+            new SetMetadataUpdate(
+                "/World/Sensor",
+                "customData:vendor",
+                LiveMetadataValue.FromString("contoso")),
+            new ApiSchemaUpdate("/World/Sensor", "AssetPreviewsAPI", LiveApiSchemaOperation.Apply),
+            new ClearUpdate("/World/Sensor", LiveClearTargetKind.AttributeValue, "custom:samples")
+        ],
+        correlationId: "batch-data-model"));
+    LiveAuthoringBatchResult dataModel = await dataModelReceipt.WaitForResultAsync();
 
     bool stageBoundRejected;
     try
@@ -104,6 +129,7 @@ try
             variant.GetVariantSelection("look") == "blue";
         bool scalar = sensor.GetDouble("custom:temperature") == 21.5 &&
             sensor.GetDouble("custom:temperature", 1) == 22.75;
+        bool appliedSchema = sensor.GetAppliedSchemas().Contains("AssetPreviewsAPI");
         return string.Join(
             ", ",
             $"session={sessionLayer}",
@@ -113,7 +139,8 @@ try
             $"payload={payload}",
             $"active={active}",
             $"instanceable={instanceable}",
-            $"variants={variants}");
+            $"variants={variants}",
+            $"appliedSchema={appliedSchema}");
     });
 
     bool exactIdentity = renderConsumer.IsAttachedTo(host);
@@ -130,6 +157,13 @@ try
         $"property batch serials: {properties.BeforeChangeSerial}..{properties.AfterChangeSerial}");
     Console.WriteLine($"composition invalidation: {composition.Invalidation}");
     Console.WriteLine($"variant change sequence: {variantChange.LastSequence}");
+    Console.WriteLine(
+        $"data-model correlation: admitted={dataModelReceipt.CorrelationId} " +
+        $"applied={dataModel.CorrelationId}");
+    LiveAuthoringHealthSnapshot health = host.Sink.GetHealthSnapshot();
+    Console.WriteLine(
+        $"health: pending={health.PendingBatchCount} peak={health.PeakPendingBatchCount} " +
+        $"coalesced={health.CoalescedBatchCount} lastApplied={health.LastAppliedSequence}");
     Console.WriteLine(verification);
 }
 finally

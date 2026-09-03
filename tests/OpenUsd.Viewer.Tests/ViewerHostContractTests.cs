@@ -184,6 +184,151 @@ public sealed class ViewerHostContractTests
     }
 
     [Test]
+    public async Task AFixedHostPrimitiveTargetSurvivesEveryToolsMenuChange()
+    {
+        // The regression this pins: a host that explicitly asked for primitive
+        // picks used to be indistinguishable from a host that asked for nothing,
+        // so the one host that stated the default was the only one whose choice
+        // the Tools menu could override.
+        await Assert.That(ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+                followViewer: false,
+                RenderPickTarget.Primitive,
+                RenderPickTarget.Face))
+            .IsEqualTo(RenderPickTarget.Primitive);
+        await Assert.That(ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+                followViewer: false,
+                RenderPickTarget.Primitive,
+                RenderPickTarget.Edge))
+            .IsEqualTo(RenderPickTarget.Primitive);
+        await Assert.That(ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+                followViewer: false,
+                RenderPickTarget.Primitive,
+                RenderPickTarget.Point))
+            .IsEqualTo(RenderPickTarget.Primitive);
+        await Assert.That(ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+                followViewer: false,
+                RenderPickTarget.Primitive,
+                RenderPickTarget.Primitive))
+            .IsEqualTo(RenderPickTarget.Primitive);
+    }
+
+    [Test]
+    public async Task AFixedHostSubprimTargetSurvivesEveryToolsMenuChange()
+    {
+        foreach (RenderPickTarget fixedTarget in new[]
+        {
+            RenderPickTarget.Face,
+            RenderPickTarget.Edge,
+            RenderPickTarget.Point
+        })
+        {
+            foreach (RenderPickTarget menuTarget in new[]
+            {
+                RenderPickTarget.Primitive,
+                RenderPickTarget.Face,
+                RenderPickTarget.Edge,
+                RenderPickTarget.Point
+            })
+            {
+                await Assert.That(ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+                        followViewer: false,
+                        fixedTarget,
+                        menuTarget))
+                    .IsEqualTo(fixedTarget);
+            }
+        }
+    }
+
+    [Test]
+    public async Task AHostThatOptsIntoFollowViewerFollowsTheToolsMenu()
+    {
+        foreach (RenderPickTarget menuTarget in new[]
+        {
+            RenderPickTarget.Primitive,
+            RenderPickTarget.Face,
+            RenderPickTarget.Edge,
+            RenderPickTarget.Point
+        })
+        {
+            await Assert.That(ViewerPickTargetPolicy.ResolveHostRequestedTarget(
+                    followViewer: true,
+                    RenderPickTarget.Primitive,
+                    menuTarget))
+                .IsEqualTo(menuTarget);
+        }
+
+        // The fixed-target mode is the default and the target property keeps its
+        // long-standing non-nullable shape, so a host that configures nothing at
+        // all keeps the behaviour it always had.
+        await Assert.That(new ViewerHostOptions().PickTarget)
+            .IsEqualTo(RenderPickTarget.Primitive);
+        await Assert.That(new ViewerHostOptions().FollowViewerPickTarget).IsFalse();
+        await Assert.That(
+                new ViewerHostOptions { PickTarget = RenderPickTarget.Primitive }
+                    .PickTarget)
+            .IsEqualTo(RenderPickTarget.Primitive);
+        await Assert.That(
+                new ViewerHostOptions { FollowViewerPickTarget = true }
+                    .FollowViewerPickTarget)
+            .IsTrue();
+    }
+
+    [Test]
+    public async Task HostPickCallbackCarriesTheRequestedTargetAndCompleteIdentity()
+    {
+        StageRenderState state = CreateViewportState();
+        SelectionItem nested = SelectionItem.FromInstancerContext(
+            "/World/Prototypes/Leaf",
+            [
+                new SelectionInstancerEntry("/World/Outer", 2),
+                new SelectionInstancerEntry("/World/Outer/Inner", 5)
+            ],
+            elementIndex: 11,
+            SelectionElementKind.Edge);
+        var backend = new DelegatePickingBackend((request, _) =>
+            ValueTask.FromResult(RenderPickResult.Hit(
+                request,
+                state.Revision,
+                sceneRevision: null,
+                nested,
+                backendKind: RenderBackendKind.Vulkan)));
+        using ViewerPickOperationQueue queue = CreateQueue(state, backend, sceneRevision: null);
+        TaskCompletionSource<ViewerPickEventArgs> picked =
+            CreateCompletion<ViewerPickEventArgs>();
+
+        _ = await ViewerHostInteraction.PickAndDispatchAsync(
+            new ViewerPhysicalPixel(3, 4),
+            RenderPickTarget.Edge,
+            queue.PickAsync,
+            (args, _) =>
+            {
+                picked.SetResult(args);
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+        ViewerPickEventArgs callback = await picked.Task.WaitAsync(TestTimeout);
+
+        await Assert.That(callback.RequestedTarget).IsEqualTo(RenderPickTarget.Edge);
+        await Assert.That(callback.ElementKind).IsEqualTo(SelectionElementKind.Edge);
+        await Assert.That(callback.Item).IsNotNull();
+
+        // The complete ordered chain survives, outermost first, and the
+        // flattened convenience properties report the innermost level.
+        SelectionItem item = callback.Item!.Value;
+        await Assert.That(item.InstancerContext.Count).IsEqualTo(2);
+        await Assert.That(item.InstancerContext[0].InstancerPath)
+            .IsEqualTo("/World/Outer");
+        await Assert.That(item.InstancerContext[0].InstanceIndex).IsEqualTo(2);
+        await Assert.That(item.InstancerContext[1].InstancerPath)
+            .IsEqualTo("/World/Outer/Inner");
+        await Assert.That(item.InstancerContext[1].InstanceIndex).IsEqualTo(5);
+        await Assert.That(callback.InstancerPath).IsEqualTo("/World/Outer/Inner");
+        await Assert.That(callback.InstanceIndex).IsEqualTo(5);
+        await Assert.That(callback.ElementIndex).IsEqualTo(11);
+        await Assert.That(callback.PrimPath).IsEqualTo("/World/Prototypes/Leaf");
+    }
+
+    [Test]
     public async Task HostPickCallbackReceivesMissWithNullPrimPath()
     {
         StageRenderState state = CreateViewportState();
@@ -209,6 +354,13 @@ public sealed class ViewerHostContractTests
 
         await Assert.That(callback.Status).IsEqualTo(RenderPickStatus.Miss);
         await Assert.That(callback.PrimPath).IsNull();
+
+        // A miss carries no identity at all, so a host cannot mistake a stale
+        // item for a fresh one, but it still reports the target it asked for.
+        await Assert.That(callback.Item).IsNull();
+        await Assert.That(callback.ElementKind).IsEqualTo(SelectionElementKind.None);
+        await Assert.That(callback.RequestedTarget)
+            .IsEqualTo(RenderPickTarget.Primitive);
     }
 
     [Test]

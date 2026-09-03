@@ -224,9 +224,16 @@ public static class SilkFrameCapture
         ArgumentNullException.ThrowIfNull(device);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        renderSettings.ValidateDisplayTransform();
 
         if (renderer is not SilkMeshRenderer silkRenderer)
         {
+            if (renderSettings.DisplayTransform is not null)
+            {
+                throw new NotSupportedException(
+                    "A colour-managed display transform is only supported with the " +
+                    "built-in SilkMeshRenderer.");
+            }
             return CaptureCustomRenderer(
                 renderer,
                 device,
@@ -237,11 +244,30 @@ public static class SilkFrameCapture
         }
 
         using IDisposable captureLease = silkRenderer.AcquireDisplayCaptureLease();
-        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
                 checked((uint)width),
                 checked((uint)height)));
+        if (renderSettings.DisplayTransform is not null)
+        {
+            using ISilkGraphicsTexture display = CreateDisplayTarget(device, width, height);
+            SilkMeshRenderResult transformedResult =
+                silkRenderer.RenderForDisplayCapture(
+                    display,
+                    depth,
+                    CreateDisplayTransformRenderOptions(renderSettings));
+            return ReadbackDisplayTransformedFrame(
+                silkRenderer,
+                display,
+                depth,
+                width,
+                height,
+                transformedResult,
+                pageRevision,
+                commandCount: 0);
+        }
+
+        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         SilkMeshRenderOptions options = CreateRenderOptions(renderSettings);
         SilkMeshRenderResult result =
             silkRenderer.RenderForDisplayCapture(color, depth, options);
@@ -323,12 +349,39 @@ public static class SilkFrameCapture
         double timeCode,
         CameraState camera)
     {
+        renderSettings.ValidateDisplayTransform();
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
-        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
                 checked((uint)width),
                 checked((uint)height)));
+        if (renderSettings.DisplayTransform is not null)
+        {
+            using ISilkGraphicsTexture display = CreateDisplayTarget(device, width, height);
+            using OpenUsdSilkPage transformedPage = session.Sync(
+                width,
+                height,
+                timeCode,
+                camera,
+                renderSettings.Complexity);
+            SilkMeshRenderResult transformedResult =
+                renderer.ApplyAndRenderForDisplayCapture(
+                    transformedPage,
+                    display,
+                    depth,
+                    CreateDisplayTransformRenderOptions(renderSettings));
+            return ReadbackDisplayTransformedFrame(
+                renderer,
+                display,
+                depth,
+                width,
+                height,
+                transformedResult,
+                transformedPage.Revision,
+                transformedPage.CommandCount);
+        }
+
+        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using OpenUsdSilkPage page = session.Sync(
             width,
             height,
@@ -432,6 +485,65 @@ public static class SilkFrameCapture
             Exposure = renderSettings.Exposure,
         };
 
+    private static SilkMeshRenderOptions CreateDisplayTransformRenderOptions(
+        RenderSettings renderSettings) =>
+        CreateRenderOptions(renderSettings) with
+        {
+            DisplayTransform = renderSettings.DisplayTransform,
+            Exposure = renderSettings.Exposure,
+        };
+
+    private static SilkFrameCaptureResult ReadbackDisplayTransformedFrame(
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture display,
+        ISilkGraphicsTexture depth,
+        int width,
+        int height,
+        SilkMeshRenderResult result,
+        ulong pageRevision,
+        uint commandCount)
+    {
+        // The GPU already produced display-referred RGBA8, so there is no CPU
+        // conversion here at all. Running one would apply the display transform a
+        // second time, which is exactly the double conversion the settings validation
+        // exists to prevent.
+        byte[] rgba = new byte[checked(width * height * 4)];
+        display.ReadbackForTesting(rgba);
+        if (renderer.Selection.Items.Count != 0 &&
+            renderer.SelectionOutlineSettings.Enabled &&
+            renderer.TryRenderDisplaySelectionOutline(display, depth))
+        {
+            display.ReadbackForTesting(rgba);
+        }
+        return new SilkFrameCaptureResult(
+            width,
+            height,
+            rgba,
+            result,
+            pageRevision,
+            commandCount,
+            MergeDisplayTransformDiagnostics(renderer));
+    }
+
+    private static RenderDiagnosticsState MergeDisplayTransformDiagnostics(
+        SilkMeshRenderer renderer)
+    {
+        RenderDiagnosticsState diagnostics = renderer.GpuResources.Diagnostics;
+        RenderDiagnostic? displayDiagnostic = renderer.DisplayTransformDiagnostic;
+        if (displayDiagnostic is null)
+        {
+            return diagnostics;
+        }
+
+        // Appended rather than replacing, and bounded to exactly one entry, so a
+        // colour-management failure is visible next to the material and texture
+        // degradations a caller already reads without displacing any of them.
+        var entries = new List<RenderDiagnostic>(diagnostics.Entries.Count + 1);
+        entries.AddRange(diagnostics.Entries);
+        entries.Add(displayDiagnostic);
+        return new RenderDiagnosticsState(entries);
+    }
+
     private static SilkFrameCaptureResult ReadbackFrame(
         ISilkGraphicsDevice device,
         SilkMeshRenderer renderer,
@@ -518,6 +630,14 @@ public static class SilkFrameCapture
             throw new InvalidOperationException(
                 "RenderSettings.OutputTransform must be Identity when an OCIO processor is " +
                 "supplied. A non-Identity output transform would double-transform the image.");
+        }
+        if (renderSettings.DisplayTransform is not null)
+        {
+            throw new InvalidOperationException(
+                "RenderSettings.DisplayTransform must be null when a CPU OCIO processor is " +
+                "supplied. The GPU display transform and the CPU export processor are two " +
+                "conversions of the same image, and running both would apply colour " +
+                "management twice.");
         }
     }
 

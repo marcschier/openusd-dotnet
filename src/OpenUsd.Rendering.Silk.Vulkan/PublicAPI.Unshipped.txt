@@ -1,4 +1,6 @@
 #nullable enable
+~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ToString() -> string
 OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics
 OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ActiveFrames.get -> int
 OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ActiveFrames.init -> void
@@ -44,6 +46,8 @@ OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateCommandList() -> Op
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateComputeBindingLayout(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputeBindingLayout!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateComputePipeline(OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputePipeline!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateComputeShaderProgram(OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputeShaderProgram!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateDisplayTransformBinding(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateDisplayTransformGraphicsPipeline(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateGraphicsPipeline(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreatePickGraphicsPipeline(OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkPickGraphicsPipeline!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreatePickReadbackBuffer() -> OpenUsd.Rendering.Silk.ISilkPickReadbackBuffer!
@@ -55,6 +59,8 @@ OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateShaderModule(OpenUs
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateShaderProgram(OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderProgram!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateTexture2D(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateTexture2D(uint width, uint height, OpenUsd.Rendering.Silk.SilkTextureFormat format = OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.DeviceLossGeneration.get -> ulong
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.DisplayTransformDeviceGeneration.get -> ulong
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Dispose() -> void
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.PickDeviceGeneration.get -> ulong
 OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.SelectionOutlineCapabilities.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
@@ -68,5 +74,3 @@ static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(b
 static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback! renderCallback, bool required = false) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
 static OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Create() -> OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice!
 virtual OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback.Invoke(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext! context) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
-~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ToString() -> string

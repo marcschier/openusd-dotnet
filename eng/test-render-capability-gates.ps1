@@ -158,19 +158,36 @@ $stormParityTestNames = @([regex]::Matches(
         $stormParityTests,
         '(?s)\[Test\].*?public async Task (?<name>[A-Za-z0-9_]+)\(') |
         ForEach-Object { $_.Groups['name'].Value })
+$windowsOnlyStormParityTestNames = @([regex]::Matches(
+        $stormParityTests,
+        '(?s)\[Test\]\s*\[SupportedOSPlatform\("windows"\)\]\s*' +
+        'public async Task (?<name>[A-Za-z0-9_]+)\(') |
+        ForEach-Object { $_.Groups['name'].Value })
+$macosOnlyStormParityTestNames = @([regex]::Matches(
+        $stormParityTests,
+        '(?s)\[Test\]\s*\[SupportedOSPlatform\("macos"\)\]\s*' +
+        'public async Task (?<name>[A-Za-z0-9_]+)\(') |
+        ForEach-Object { $_.Groups['name'].Value })
 $expectedWindowsWglTests = @($stormParityTestNames |
-    Where-Object { $_ -notlike '*OnVulkan' -and $_ -notlike '*OnMetal' })
+    Where-Object {
+        $_ -notlike '*OnVulkan' -and
+        $_ -notlike '*OnMetal' -and
+        $_ -notin $macosOnlyStormParityTestNames
+    })
 $expectedMacosCglTests = @($stormParityTestNames |
     Where-Object {
         $_ -notlike '*OnVulkan' -and
         $_ -notlike '*OnD3D12' -and
-        $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels'
+        $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels' -and
+        $_ -notin $windowsOnlyStormParityTestNames
     })
 $expectedLinuxGlxTests = @($stormParityTestNames |
     Where-Object {
         $_ -notlike '*OnMetal' -and
         $_ -notlike '*OnD3D12' -and
-        $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels'
+        $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels' -and
+        $_ -notin $windowsOnlyStormParityTestNames -and
+        $_ -notin $macosOnlyStormParityTestNames
     })
 Assert-SetEqual $windowsWglTests $expectedWindowsWglTests 'Windows WGL parity test list'
 Assert-SetEqual $macosCglTests $expectedMacosCglTests 'macOS CGL parity test list'
@@ -256,5 +273,65 @@ Assert-Contains `
     $supportMatrixDoc `
     'testing.md#render-gate-capability-limits' `
     'Support matrix documentation'
+
+# The OpenColorIO alias evidence gate is only a gate if the workflow actually triggers on
+# the things that can change it, runs it as a required Linux step, and the script itself
+# builds what it is about to run on a clean runner.
+Assert-Contains `
+    $renderWorkflow `
+    "- 'eng/test-ocio-alias-evidence.ps1'" `
+    'Render workflow push paths'
+Assert-Contains `
+    $renderWorkflow `
+    "- 'tests/OpenUsd.Rendering.Tests/**'" `
+    'Render workflow push paths'
+Assert-Contains `
+    $renderWorkflow `
+    './eng/test-ocio-alias-evidence.ps1 -Configuration Release' `
+    'Render workflow Linux job'
+Assert-Contains `
+    $renderWorkflow `
+    'ocio-alias-evidence.txt' `
+    'Render workflow alias evidence artifact'
+
+$aliasEvidenceGate = Get-Content (
+    Join-Path $repoRoot 'eng/test-ocio-alias-evidence.ps1') -Raw
+Assert-Contains `
+    $aliasEvidenceGate `
+    'build $project -c $Configuration -f $Framework' `
+    'OpenColorIO alias evidence gate'
+Assert-Contains `
+    $aliasEvidenceGate `
+    'function Resolve-DotnetHost' `
+    'OpenColorIO alias evidence gate'
+Assert-Contains `
+    $aliasEvidenceGate `
+    'Test-Path -LiteralPath $pinned -PathType Leaf' `
+    'OpenColorIO alias evidence gate'
+Assert-Contains `
+    $aliasEvidenceGate `
+    'Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue' `
+    'OpenColorIO alias evidence gate'
+Assert-Contains `
+    $aliasEvidenceGate `
+    'No dotnet host was found.' `
+    'OpenColorIO alias evidence gate'
+Assert-DoesNotContain `
+    $aliasEvidenceGate `
+    "& (Join-Path `$repoRoot '.dotnet/dotnet')" `
+    'OpenColorIO alias evidence gate'
+Assert-Contains $aliasEvidenceGate 'if ($IsLinux)' 'OpenColorIO alias evidence gate'
+
+# Executed, not asserted about: the resolution itself is run against a pinned host, a
+# PATH host, and neither.
+& (Join-Path $PSScriptRoot 'test-ocio-alias-evidence-host.ps1')
+if ($LASTEXITCODE -ne 0)
+{
+    throw "The OpenColorIO alias evidence host resolution test exited with $LASTEXITCODE."
+}
+Assert-Contains `
+    $aliasEvidenceGate `
+    "if (`$mechanism -ne 'symlink')" `
+    'OpenColorIO alias evidence gate'
 
 Write-Output 'Render capability gate source contract passed.'

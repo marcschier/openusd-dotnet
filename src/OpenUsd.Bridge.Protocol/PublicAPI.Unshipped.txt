@@ -1,0 +1,200 @@
+#nullable enable
+~override OpenUsd.Bridge.Protocol.BridgeLimits.Equals(object obj) -> bool
+~override OpenUsd.Bridge.Protocol.BridgeLimits.ToString() -> string
+~override OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Equals(object obj) -> bool
+~override OpenUsd.Bridge.Protocol.BridgeWireError.Equals(object obj) -> bool
+const OpenUsd.Bridge.Protocol.BridgeProtocol.CurrentMajorVersion = 1 -> int
+const OpenUsd.Bridge.Protocol.BridgeProtocol.CurrentMinorVersion = 0 -> int
+const OpenUsd.Bridge.Protocol.BridgeProtocol.MaxFrameBytes = 16842752 -> long
+const OpenUsd.Bridge.Protocol.BridgeProtocol.PackageName = "openusd.bridge.v1" -> string!
+const OpenUsd.Bridge.Protocol.BridgeProtocol.ServiceName = "openusd.bridge.v1.LiveBridge" -> string!
+const OpenUsd.Bridge.Protocol.BridgeWireError.MaxDetailLength = 256 -> int
+OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.ApiSchema = 6 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.FullSnapshot = 1 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.HealthStatus = 4 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.LocalEditExport = 3 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.OrderedDelta = 2 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.PointInstancerOrientations = 5 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeCapability.ServerResyncRequest = 7 -> OpenUsd.Bridge.Protocol.BridgeCapability
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.BridgeRoot = 5 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.Capability = 2 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.Limits = 3 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.Malformed = 7 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.None = 0 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.Unauthenticated = 4 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.Unavailable = 6 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.Version = 1 -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.BridgeHandshakeRequest(OpenUsd.Bridge.Protocol.BridgeProtocolVersion version, System.Collections.Generic.IEnumerable<OpenUsd.Bridge.Protocol.BridgeCapability>! capabilities, string! clientOriginId, string! bridgeRootPath, OpenUsd.Bridge.Protocol.BridgeLimits limits, string? requestedSessionId = null, string? correlationId = null) -> void
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.BridgeRootPath.get -> string!
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.Capabilities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>!
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.ClientOriginId.get -> string!
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.CorrelationId.get -> string?
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.Limits.get -> OpenUsd.Bridge.Protocol.BridgeLimits
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.RequestedSessionId.get -> string?
+OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.Version.get -> OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.Accepted.get -> bool
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.BridgeHandshakeResponse(bool accepted, OpenUsd.Bridge.Protocol.BridgeProtocolVersion version, System.Collections.Generic.IEnumerable<OpenUsd.Bridge.Protocol.BridgeCapability>! capabilities, OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? epoch, string! bridgeRootPath, OpenUsd.Bridge.Protocol.BridgeLimits effectiveLimits, OpenUsd.Bridge.Protocol.BridgeHandshakeRejection rejection = OpenUsd.Bridge.Protocol.BridgeHandshakeRejection.None, string? detail = null) -> void
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.BridgeRootPath.get -> string!
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.Capabilities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>!
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.Detail.get -> string?
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.EffectiveLimits.get -> OpenUsd.Bridge.Protocol.BridgeLimits
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.Epoch.get -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch?
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.Rejection.get -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeHandshakeResponse.Version.get -> OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+OpenUsd.Bridge.Protocol.BridgeLimits
+OpenUsd.Bridge.Protocol.BridgeLimits.Allows(int updateCount, long payloadBytes) -> bool
+OpenUsd.Bridge.Protocol.BridgeLimits.BridgeLimits() -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.BridgeLimits(int MaxUpdatesPerMessage, int MaxCollectionElementCount, long MaxMessagePayloadBytes, int MaxIdentifierLength, int MaxPathLength, int MaxTextValueLength, int MaxOpaqueIdLength, long MaxTotalCollectionElementCount) -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.Deconstruct(out int MaxUpdatesPerMessage, out int MaxCollectionElementCount, out long MaxMessagePayloadBytes, out int MaxIdentifierLength, out int MaxPathLength, out int MaxTextValueLength, out int MaxOpaqueIdLength, out long MaxTotalCollectionElementCount) -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.Equals(OpenUsd.Bridge.Protocol.BridgeLimits other) -> bool
+OpenUsd.Bridge.Protocol.BridgeLimits.Intersect(OpenUsd.Bridge.Protocol.BridgeLimits other) -> OpenUsd.Bridge.Protocol.BridgeLimits
+OpenUsd.Bridge.Protocol.BridgeLimits.IsUsable.get -> bool
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxCollectionElementCount.get -> int
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxCollectionElementCount.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxIdentifierLength.get -> int
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxIdentifierLength.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxMessagePayloadBytes.get -> long
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxMessagePayloadBytes.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxOpaqueIdLength.get -> int
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxOpaqueIdLength.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxPathLength.get -> int
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxPathLength.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxTextValueLength.get -> int
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxTextValueLength.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxTotalCollectionElementCount.get -> long
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxTotalCollectionElementCount.init -> void
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxUpdatesPerMessage.get -> int
+OpenUsd.Bridge.Protocol.BridgeLimits.MaxUpdatesPerMessage.init -> void
+OpenUsd.Bridge.Protocol.BridgeLocalBatch
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.BridgeLocalBatch(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch! epoch, long sequence, System.Collections.Generic.IEnumerable<OpenUsd.LiveAuthoring.LiveStageUpdate!>! updates, string! originId, string? idempotencyKey = null, string? coalescingKey = null, string? correlationId = null) -> void
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.CoalescingKey.get -> string?
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.CorrelationId.get -> string?
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.Epoch.get -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch!
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.IdempotencyKey.get -> string!
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.OriginId.get -> string!
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.Sequence.get -> long
+OpenUsd.Bridge.Protocol.BridgeLocalBatch.Updates.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>!
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.Accepted.get -> bool
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.AgreedCapabilities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>!
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.Detail.get -> string!
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.EffectiveLimits.get -> OpenUsd.Bridge.Protocol.BridgeLimits
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.Epoch.get -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch?
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.PeerVersion.get -> OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.Rejection.get -> OpenUsd.Bridge.Protocol.BridgeHandshakeRejection
+OpenUsd.Bridge.Protocol.BridgeNegotiationResult.Supports(OpenUsd.Bridge.Protocol.BridgeCapability capability) -> bool
+OpenUsd.Bridge.Protocol.BridgeNegotiator
+OpenUsd.Bridge.Protocol.BridgeProtocol
+OpenUsd.Bridge.Protocol.BridgeProtocolException
+OpenUsd.Bridge.Protocol.BridgeProtocolException.BridgeProtocolException() -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolException.BridgeProtocolException(OpenUsd.Bridge.Protocol.BridgeWireError error) -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolException.BridgeProtocolException(string! message, System.Exception! innerException) -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolException.BridgeProtocolException(string! message) -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolException.Error.get -> OpenUsd.Bridge.Protocol.BridgeWireError
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.BridgeProtocolVersion() -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.BridgeProtocolVersion(int Major, int Minor) -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Deconstruct(out int Major, out int Minor) -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Equals(OpenUsd.Bridge.Protocol.BridgeProtocolVersion other) -> bool
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.IsCompatibleWith(OpenUsd.Bridge.Protocol.BridgeProtocolVersion other) -> bool
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Major.get -> int
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Major.init -> void
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Minor.get -> int
+OpenUsd.Bridge.Protocol.BridgeProtocolVersion.Minor.init -> void
+OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeResyncReason.ApplyFailed = 5 -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeResyncReason.EpochChanged = 3 -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeResyncReason.Initial = 1 -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeResyncReason.Reconnected = 2 -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeResyncReason.SequenceGap = 4 -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeResyncReason.ServerRequested = 6 -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeStreamFrame
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Acknowledgement.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionResult
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Delta.get -> OpenUsd.LiveAuthoring.LiveAuthoringDelta!
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Detail.get -> string?
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Epoch.get -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch?
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Handshake.get -> OpenUsd.Bridge.Protocol.BridgeHandshakeResponse!
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Kind.get -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.ResyncReason.get -> OpenUsd.Bridge.Protocol.BridgeResyncReason
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.SessionEvent.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.SessionStatus.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.Snapshot.get -> OpenUsd.LiveAuthoring.LiveAuthoringSnapshot!
+OpenUsd.Bridge.Protocol.BridgeStreamFrame.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.Acknowledgement = 4 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.Delta = 3 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.Handshake = 1 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.KeepAlive = 8 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.ResyncRequired = 7 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.SessionEvent = 5 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.SessionStatus = 6 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeStreamFrameKind.Snapshot = 2 -> OpenUsd.Bridge.Protocol.BridgeStreamFrameKind
+OpenUsd.Bridge.Protocol.BridgeWireCodec
+OpenUsd.Bridge.Protocol.BridgeWireError
+OpenUsd.Bridge.Protocol.BridgeWireError.BridgeWireError() -> void
+OpenUsd.Bridge.Protocol.BridgeWireError.BridgeWireError(OpenUsd.Bridge.Protocol.BridgeWireErrorCode Code, string! Detail) -> void
+OpenUsd.Bridge.Protocol.BridgeWireError.Code.get -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireError.Code.init -> void
+OpenUsd.Bridge.Protocol.BridgeWireError.Deconstruct(out OpenUsd.Bridge.Protocol.BridgeWireErrorCode Code, out string! Detail) -> void
+OpenUsd.Bridge.Protocol.BridgeWireError.Detail.get -> string!
+OpenUsd.Bridge.Protocol.BridgeWireError.Detail.init -> void
+OpenUsd.Bridge.Protocol.BridgeWireError.Equals(OpenUsd.Bridge.Protocol.BridgeWireError other) -> bool
+OpenUsd.Bridge.Protocol.BridgeWireError.IsError.get -> bool
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.FieldOutOfRange = 4 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.FrameTooLarge = 2 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.LimitExceeded = 5 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.MalformedPayload = 1 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.MissingField = 3 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.None = 0 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.OverlayReplacementNotAllowed = 10 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.UnknownEnumValue = 8 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.UnknownStreamFrame = 9 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.UnknownUpdateKind = 6 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.UnknownValueKind = 7 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+OpenUsd.Bridge.Protocol.BridgeWireErrorCode.UnsupportedVersion = 11 -> OpenUsd.Bridge.Protocol.BridgeWireErrorCode
+override OpenUsd.Bridge.Protocol.BridgeLimits.GetHashCode() -> int
+override OpenUsd.Bridge.Protocol.BridgeProtocolVersion.GetHashCode() -> int
+override OpenUsd.Bridge.Protocol.BridgeProtocolVersion.ToString() -> string!
+override OpenUsd.Bridge.Protocol.BridgeWireError.GetHashCode() -> int
+override OpenUsd.Bridge.Protocol.BridgeWireError.ToString() -> string!
+static OpenUsd.Bridge.Protocol.BridgeHandshakeRequest.CreateLocal(string! clientOriginId, string! bridgeRootPath, string? requestedSessionId = null, string? correlationId = null) -> OpenUsd.Bridge.Protocol.BridgeHandshakeRequest!
+static OpenUsd.Bridge.Protocol.BridgeLimits.Local.get -> OpenUsd.Bridge.Protocol.BridgeLimits
+static OpenUsd.Bridge.Protocol.BridgeLimits.operator !=(OpenUsd.Bridge.Protocol.BridgeLimits left, OpenUsd.Bridge.Protocol.BridgeLimits right) -> bool
+static OpenUsd.Bridge.Protocol.BridgeLimits.operator ==(OpenUsd.Bridge.Protocol.BridgeLimits left, OpenUsd.Bridge.Protocol.BridgeLimits right) -> bool
+static OpenUsd.Bridge.Protocol.BridgeNegotiator.Evaluate(OpenUsd.Bridge.Protocol.BridgeHandshakeRequest! request, OpenUsd.Bridge.Protocol.BridgeHandshakeResponse! response) -> OpenUsd.Bridge.Protocol.BridgeNegotiationResult!
+static OpenUsd.Bridge.Protocol.BridgeProtocol.CreateDescriptorSet() -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeProtocol.GetRequiredCapability(OpenUsd.LiveAuthoring.LiveStageUpdate! update) -> OpenUsd.Bridge.Protocol.BridgeCapability?
+static OpenUsd.Bridge.Protocol.BridgeProtocol.IsSupported(OpenUsd.Bridge.Protocol.BridgeCapability capability) -> bool
+static OpenUsd.Bridge.Protocol.BridgeProtocol.Limits.get -> OpenUsd.Bridge.Protocol.BridgeLimits
+static OpenUsd.Bridge.Protocol.BridgeProtocol.RequiredCapabilities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>!
+static OpenUsd.Bridge.Protocol.BridgeProtocol.SupportedCapabilities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Bridge.Protocol.BridgeCapability>!
+static OpenUsd.Bridge.Protocol.BridgeProtocol.Version.get -> OpenUsd.Bridge.Protocol.BridgeProtocolVersion
+static OpenUsd.Bridge.Protocol.BridgeProtocolVersion.operator !=(OpenUsd.Bridge.Protocol.BridgeProtocolVersion left, OpenUsd.Bridge.Protocol.BridgeProtocolVersion right) -> bool
+static OpenUsd.Bridge.Protocol.BridgeProtocolVersion.operator ==(OpenUsd.Bridge.Protocol.BridgeProtocolVersion left, OpenUsd.Bridge.Protocol.BridgeProtocolVersion right) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeAcknowledgement(OpenUsd.LiveAuthoring.LiveAuthoringSessionResult result) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeDelta(OpenUsd.LiveAuthoring.LiveAuthoringDelta! delta) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeHandshakeRequest(OpenUsd.Bridge.Protocol.BridgeHandshakeRequest! request) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeHandshakeResponse(OpenUsd.Bridge.Protocol.BridgeHandshakeResponse! response) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeLocalBatch(OpenUsd.Bridge.Protocol.BridgeLocalBatch! batch) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeSessionEvent(OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent sessionEvent) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeSessionStatus(OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus status) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeSnapshot(OpenUsd.LiveAuthoring.LiveAuthoringSnapshot! snapshot) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.EncodeStreamFrame(OpenUsd.Bridge.Protocol.BridgeStreamFrame! frame) -> byte[]!
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeAcknowledgement(System.ReadOnlySpan<byte> payload, out OpenUsd.LiveAuthoring.LiveAuthoringSessionResult result, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeDelta(System.ReadOnlySpan<byte> payload, out OpenUsd.LiveAuthoring.LiveAuthoringDelta? delta, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeHandshakeRequest(System.ReadOnlySpan<byte> payload, out OpenUsd.Bridge.Protocol.BridgeHandshakeRequest? request, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeHandshakeResponse(System.ReadOnlySpan<byte> payload, out OpenUsd.Bridge.Protocol.BridgeHandshakeResponse? response, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeLocalBatch(System.ReadOnlySpan<byte> payload, out OpenUsd.Bridge.Protocol.BridgeLocalBatch? batch, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeSessionEvent(System.ReadOnlySpan<byte> payload, out OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent sessionEvent, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeSessionStatus(System.ReadOnlySpan<byte> payload, out OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus status, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeSnapshot(System.ReadOnlySpan<byte> payload, out OpenUsd.LiveAuthoring.LiveAuthoringSnapshot? snapshot, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireCodec.TryDecodeStreamFrame(System.ReadOnlySpan<byte> payload, out OpenUsd.Bridge.Protocol.BridgeStreamFrame? frame, out OpenUsd.Bridge.Protocol.BridgeWireError error) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireError.Create(OpenUsd.Bridge.Protocol.BridgeWireErrorCode code, string! detail) -> OpenUsd.Bridge.Protocol.BridgeWireError
+static OpenUsd.Bridge.Protocol.BridgeWireError.None.get -> OpenUsd.Bridge.Protocol.BridgeWireError
+static OpenUsd.Bridge.Protocol.BridgeWireError.operator !=(OpenUsd.Bridge.Protocol.BridgeWireError left, OpenUsd.Bridge.Protocol.BridgeWireError right) -> bool
+static OpenUsd.Bridge.Protocol.BridgeWireError.operator ==(OpenUsd.Bridge.Protocol.BridgeWireError left, OpenUsd.Bridge.Protocol.BridgeWireError right) -> bool

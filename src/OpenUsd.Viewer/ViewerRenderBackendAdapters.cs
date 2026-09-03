@@ -43,6 +43,67 @@ internal interface IViewerSelectionOutlineDiagnosticsSource
     SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics { get; }
 }
 
+/// <summary>
+/// Reports the live colour-managed display-transform evidence of a backend, so the
+/// Viewer never claims a transform is running that the renderer refused.
+/// </summary>
+internal interface IViewerDisplayTransformDiagnosticsSource
+{
+    SilkDisplayTransformDiagnostics? DisplayTransformDiagnostics { get; }
+
+    RenderDiagnostic? DisplayTransformDiagnostic { get; }
+}
+
+/// <summary>
+/// Reports what a backend with no display-transform capability must say about a requested
+/// colour-managed transform.
+/// </summary>
+/// <remarks>
+/// Silence is not an option here. A backend that cannot run the fullscreen pass -- Storm,
+/// in every one of its hosting shapes -- would otherwise present untransformed colour
+/// while the Viewer's menu still claimed the transform was active. Saying
+/// <see cref="SilkDisplayTransformStatus.UnsupportedDevice"/> is what lets the Viewer
+/// disable the toggle and name the reason, exactly as it does for a missing config.
+/// </remarks>
+internal static class ViewerUnsupportedDisplayTransform
+{
+    internal static SilkDisplayTransformDiagnostics Describe(StageRenderState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return new SilkDisplayTransformDiagnostics(
+            state.RenderSettings.DisplayTransform is null
+                ? SilkDisplayTransformStatus.Inactive
+                : SilkDisplayTransformStatus.UnsupportedDevice,
+            LatticeSize: 0,
+            LatticeByteSize: 0,
+            Passes: 0,
+            LatticeBuilds: 0,
+            LatticeCacheHits: 0,
+            LatticeUploads: 0,
+            PipelineCreations: 0,
+            BindingCreations: 0,
+            IntermediateCreations: 0,
+            ParameterUploads: 0,
+            DeviceInvalidations: 0,
+            Failures: state.RenderSettings.DisplayTransform is null ? 0UL : 1UL,
+            // Correlated with the exact request, so a consumer that ignores reports for
+            // superseded transforms still acts on this one.
+            RequestKey: state.RenderSettings.DisplayTransform?.CacheKey);
+    }
+
+    internal static RenderDiagnostic? Diagnose(StageRenderState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.RenderSettings.DisplayTransform is null
+            ? null
+            : new RenderDiagnostic(
+                RenderDiagnosticSeverity.Warning,
+                SilkRenderDiagnosticCodes.DisplayTransformDeviceUnsupported,
+                "The active render backend cannot apply a colour-managed display " +
+                "transform, so the viewport shows untransformed colour.");
+    }
+}
+
 internal interface IViewerFrameDiagnosticsSource
 {
     ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics { get; }
@@ -157,6 +218,24 @@ internal sealed class ViewerRenderBackendRegistry
         }
     }
 
+    internal SilkDisplayTransformDiagnostics? CaptureDisplayTransform()
+    {
+        lock (_gate)
+        {
+            return (_active as IViewerDisplayTransformDiagnosticsSource)?
+                .DisplayTransformDiagnostics;
+        }
+    }
+
+    internal RenderDiagnostic? CaptureDisplayTransformDiagnostic()
+    {
+        lock (_gate)
+        {
+            return (_active as IViewerDisplayTransformDiagnosticsSource)?
+                .DisplayTransformDiagnostic;
+        }
+    }
+
     internal SilkSelectionOutlineDiagnostics? CaptureSelectionOutline()
     {
         lock (_gate)
@@ -241,6 +320,7 @@ internal sealed class ViewerRenderBackend :
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerSelectionOutlineDiagnosticsSource,
+    IViewerDisplayTransformDiagnosticsSource,
     IViewerFrameDiagnosticsSource,
     IViewerHydraSceneSnapshotSource,
     IViewerFrameCaptureBackend,
@@ -277,6 +357,14 @@ internal sealed class ViewerRenderBackend :
     public SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         (_session as IViewerSelectionOutlineDiagnosticsSource)?
             .SelectionOutlineDiagnostics;
+
+    public SilkDisplayTransformDiagnostics? DisplayTransformDiagnostics =>
+        (_session as IViewerDisplayTransformDiagnosticsSource)?
+            .DisplayTransformDiagnostics;
+
+    public RenderDiagnostic? DisplayTransformDiagnostic =>
+        (_session as IViewerDisplayTransformDiagnosticsSource)?
+            .DisplayTransformDiagnostic;
 
     public ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
         (_session as IViewerFrameDiagnosticsSource)?.FrameDiagnostics;

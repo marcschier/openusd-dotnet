@@ -665,7 +665,10 @@ public sealed class SilkPickIdentityTableTests
             target: RenderPickTarget.Face);
         var item = new SelectionItem(
             identity.Path,
-            elementIndex: identity.SubprimIndex);
+            instancerPath: null,
+            instanceIndex: null,
+            elementIndex: identity.SubprimIndex,
+            elementKind: SelectionElementKind.Face);
         RenderPickResult result = RenderPickResult.Hit(
             request,
             stateRevision: 5,
@@ -893,7 +896,16 @@ public sealed class SilkPickIdentityTableTests
             references.Add(new WeakReference(mesh));
             AddBackingArrayReference(references, mesh.Points);
             AddBackingArrayReference(references, mesh.Indices);
-            AddBackingArrayReference(references, mesh.TriangleSubprims);
+
+            // The still-active record's own subprim table is deliberately not
+            // tracked here: the identity it publishes IS that table, and the
+            // table shares it with the record rather than copying it once per
+            // resolved instance. Only the retired revisions must be released,
+            // which is what this churn measures.
+            if (revision != 24)
+            {
+                AddBackingArrayReference(references, mesh.TriangleSubprims);
+            }
             SilkPickTokenRange range = table.Upsert(mesh);
             firstToken = firstToken == 0 ? range.FirstToken : firstToken;
             activeToken = range.FirstToken;

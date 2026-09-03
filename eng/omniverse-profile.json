@@ -1,0 +1,202 @@
+{
+  "$schemaVersion": 1,
+  "runtimeVersion": "0.12.3-alpha",
+  "generatedDocPath": "docs/omniverse-profile.md",
+  "supportManifestPath": "eng/support-manifest.json",
+  "openUsdLockPath": "eng/openusd.lock.json",
+  "platforms": ["win-x64", "linux-x64", "osx-arm64"],
+  "dependencies": [
+    {
+      "id": "openusd",
+      "kind": "runtime-pinned",
+      "description": "Pinned OpenUSD core version this runtime builds against and this profile targets for interchange.",
+      "version": "26.05",
+      "versionSource": {
+        "file": "eng/openusd.lock.json",
+        "pointer": "openUsd.version"
+      }
+    },
+    {
+      "id": "materialx",
+      "kind": "runtime-pinned",
+      "description": "Pinned MaterialX SDK version behind the bounded MaterialX projection; MaterialX 1.39 adds the OpenPBR node definitions this profile's accepted corpus targets.",
+      "version": "1.39.4",
+      "versionSource": {
+        "file": "eng/openusd.lock.json",
+        "pointer": "dependencies[name=MaterialX].version"
+      }
+    },
+    {
+      "id": "kit-baseline",
+      "kind": "external-optional",
+      "description": "Named Omniverse Kit baseline(s) this profile targets for interchange evidence. Tracked by its own dependency id and, once authorized, its own repository-relative provenance source; never inferred or copied from the openusd dependency version.",
+      "version": "pending",
+      "versionSource": null
+    },
+    {
+      "id": "usd-exchange",
+      "kind": "external-optional",
+      "description": "NVIDIA usd-exchange SDK baseline used only to validate authored-asset interchange with Kit tooling. Tracked by its own dependency id and, once authorized, its own repository-relative provenance source.",
+      "version": "pending",
+      "versionSource": null
+    },
+    {
+      "id": "mdl-sdk",
+      "kind": "external-optional",
+      "description": "Pinned NVIDIA MDL SDK baseline for the optional SDK-backed openusd_mdl_sdk adapter. eng/fetch-mdl-sdk.ps1 acquires it on demand for developers and CI, verified against the SHA-256 recorded in eng/mdl.lock.json; this repository vendors no part of it, links nothing against it, and redistributes it in no package. The shipped-by-default path has no MDL adapter at all, and the dependency-free openusd_mdl adapter distils authored USD input values without opening a module. The baseline is BSD-3-Clause, not Apache-2.0. The base runtime never depends on this; it stays out of Core/Imaging/Viewer/MCP packages.",
+      "version": "2026.0.2",
+      "versionSource": {
+        "file": "eng/mdl.lock.json",
+        "pointer": "mdlSdk.release"
+      }
+    },
+    {
+      "id": "physx-schema-test-only",
+      "kind": "external-test-only",
+      "description": "Externally supplied PhysxSchema/plugin tree used only by opt-in integration tests against an externally supplied Kit/schema environment. Never vendored into shipped packages.",
+      "version": "pending",
+      "versionSource": null
+    }
+  ],
+  "features": [
+    {
+      "id": "unknown-metadata-roundtrip",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "unknown-metadata-roundtrip"
+    },
+    {
+      "id": "custom-property-roundtrip",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "custom-property-roundtrip"
+    },
+    {
+      "id": "applied-schema-token-roundtrip",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "applied-schema-token-roundtrip"
+    },
+    {
+      "id": "dual-context-material-anchor",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "dual-context-material-anchor"
+    },
+    {
+      "id": "nested-vendor-metadata-roundtrip",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "nested-vendor-metadata-roundtrip"
+    },
+    {
+      "id": "shader-node-definition-query",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "shader-node-definition-query"
+    },
+    {
+      "id": "external-schema-plugin-registration",
+      "manifestArea": "omniverse-interchange",
+      "manifestEntry": "external-schema-plugin-registration"
+    },
+    {
+      "id": "composition-tab",
+      "manifestArea": "viewer",
+      "manifestEntry": "composition-tab"
+    },
+    {
+      "id": "mdl-only-material-reporting",
+      "manifestArea": "rendering",
+      "manifestEntry": "mdl-only-material-reporting"
+    },
+    {
+      "id": "mdl-accepted-subset-distillation",
+      "manifestArea": "rendering",
+      "manifestEntry": "mdl-accepted-subset-distillation"
+    },
+    {
+      "id": "bridge-wire-contract",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-wire-contract"
+    },
+    {
+      "id": "bridge-version-capability-negotiation",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-version-capability-negotiation"
+    },
+    {
+      "id": "bridge-grpc-client-adapter",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-grpc-client-adapter"
+    },
+    {
+      "id": "bridge-reconnect-full-resync",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-reconnect-full-resync"
+    },
+    {
+      "id": "bridge-client-security-defaults",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-client-security-defaults"
+    },
+    {
+      "id": "bridge-local-edit-export",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-local-edit-export"
+    },
+    {
+      "id": "bridge-package-isolation",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-package-isolation"
+    },
+    {
+      "id": "bridge-session-policy-enforcement",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-session-policy-enforcement"
+    },
+    {
+      "id": "bridge-epoch-consistency",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-epoch-consistency"
+    },
+    {
+      "id": "bridge-client-lifetime",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-client-lifetime"
+    },
+    {
+      "id": "bridge-python-descriptor",
+      "manifestArea": "omniverse-bridge",
+      "manifestEntry": "bridge-python-descriptor"
+    }
+  ],
+  "permanentExclusions": [
+    {
+      "id": "omniverse-rtx",
+      "manifestArea": "excluded-unreachable",
+      "manifestEntry": "omniverse-rtx"
+    },
+    {
+      "id": "cesium-fabric-path",
+      "manifestArea": "excluded-unreachable",
+      "manifestEntry": "cesium-fabric-path"
+    },
+    {
+      "id": "nucleus-omni-client-runtime",
+      "manifestArea": "excluded-unreachable",
+      "manifestEntry": "nucleus-omni-client-runtime"
+    },
+    {
+      "id": "kit-extension-companion-repo",
+      "manifestArea": "excluded-unreachable",
+      "manifestEntry": "kit-extension-companion-repo"
+    },
+    {
+      "id": "physx-schema-vendoring",
+      "manifestArea": "excluded-unreachable",
+      "manifestEntry": "physx-schema-vendoring"
+    }
+  ],
+  "kitExecutionEvidence": {
+    "status": "pending",
+    "description": "Round-trip execution of OpenUsd-authored assets against a pinned headless Kit build, reopening Kit-authored outputs in OpenUsd, and running the implemented openusd.bridge.v1 client against a live Kit session. The client protocol, its bounds, its negotiation, and its reconnect/full-resync behaviour are implemented and locally proven against the contract, an in-memory peer, and a Python protobuf/gRPC runtime; only execution against a real Kit or Nucleus process is pending.",
+    "blockedOn": "An authorized external job against a named Kit/Nucleus baseline. No such job exists in this repository yet. RTX screenshots, if ever captured, are evidence of usability only and are never treated as raster-parity or execution evidence.",
+    "evidenceWorkflow": null,
+    "evidenceWorkflowJobs": []
+  }
+}

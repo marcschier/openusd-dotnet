@@ -55,7 +55,36 @@ public sealed class ViewerHostOptions
     /// <summary>
     /// Gets the renderer target used for host pick callbacks. Defaults to primitive picks.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is a fixed concrete request: a host that leaves the default, or that
+    /// sets <see cref="RenderPickTarget.Face"/>, gets exactly that target for the
+    /// lifetime of the shell, whatever the operator later chooses in
+    /// <c>Tools &gt; Pick Target</c>. That is the point of naming one -- a host
+    /// that drives selection from prim paths cannot suddenly start receiving face
+    /// indices because the user changed a menu item.
+    /// </para>
+    /// <para>
+    /// A host that wants the operator's choice instead sets
+    /// <see cref="FollowViewerPickTarget"/>, which is the only way to ask for it.
+    /// The mode is a separate property rather than a null target so that stating
+    /// the default target stays expressible and stays distinct from stating
+    /// nothing.
+    /// </para>
+    /// </remarks>
     public RenderPickTarget PickTarget { get; init; } = RenderPickTarget.Primitive;
+
+    /// <summary>
+    /// Gets whether host pick callbacks follow the operator's own
+    /// <c>Tools &gt; Pick Target</c> choice instead of <see cref="PickTarget"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default is <see langword="false"/>, which keeps the fixed-target
+    /// behavior a host has always had. When set, <see cref="PickTarget"/> is
+    /// ignored and every callback reports whatever target the operator selected,
+    /// including after the operator changes it mid-session.
+    /// </remarks>
+    public bool FollowViewerPickTarget { get; init; }
 
     /// <summary>
     /// Invoked when the viewport receives a framework-neutral pointer press inside the
@@ -105,6 +134,26 @@ public sealed class ViewerHostOptions
     /// Absolute prim subtree that scopes <see cref="SelectionChanged"/> notifications.
     /// </summary>
     public string? SelectionChangedPrimSubtree { get; init; }
+
+    /// <summary>
+    /// Optional live-bridge connection the host exposes to the operator through
+    /// <c>Tools &gt; Connections &gt; Omniverse Bridge</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The bridge surface exists only when a host sets this. There is no static registration
+    /// and no discovery, so a Viewer that is embedded without one has no bridge menu entry,
+    /// no bridge dialog, and no bridge status: opening, rendering, and simulating a local
+    /// stage is completely unaffected.
+    /// </para>
+    /// <para>
+    /// The Viewer never learns the transport, endpoint, or credential behind a provider. A
+    /// host configures those itself - for example through the optional
+    /// <c>OpenUsd.Viewer.Bridge.Grpc</c> package - and the Viewer only ever sees the bounded,
+    /// redacted snapshots the provider hands back.
+    /// </para>
+    /// </remarks>
+    public IViewerBridgeConnectionProvider? BridgeConnection { get; init; }
 
     /// <summary>
     /// Closes the shell when cancelled, so a host that runs the viewport for a bounded

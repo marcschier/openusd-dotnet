@@ -775,6 +775,59 @@ OpenUsd.UsdSessionOverlay.MigrateContamination() -> void
 OpenUsd.UsdSessionOverlay.PhysicsLayerIdentifier.get -> string!
 OpenUsd.UsdSessionOverlay.SetEditTargetToUserLayer() -> void
 OpenUsd.UsdSessionOverlay.UserLayerIdentifier.get -> string!
+OpenUsd.UsdShaderNodeDefinition
+OpenUsd.UsdShaderNodeDefinition.<Clone>$() -> OpenUsd.UsdShaderNodeDefinition!
+OpenUsd.UsdShaderNodeDefinition.Context.get -> string!
+OpenUsd.UsdShaderNodeDefinition.Context.init -> void
+OpenUsd.UsdShaderNodeDefinition.Deconstruct(out string! Identifier, out string! Name, out string! Function, out string! ShadingSystem, out string! Context, out string! ResolvedDefinitionUri, out string! ResolvedImplementationUri, out string! ImplementationName, out System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderProperty!>! Properties, out bool IsValid) -> void
+OpenUsd.UsdShaderNodeDefinition.Equals(OpenUsd.UsdShaderNodeDefinition? other) -> bool
+OpenUsd.UsdShaderNodeDefinition.Function.get -> string!
+OpenUsd.UsdShaderNodeDefinition.Function.init -> void
+OpenUsd.UsdShaderNodeDefinition.Identifier.get -> string!
+OpenUsd.UsdShaderNodeDefinition.Identifier.init -> void
+OpenUsd.UsdShaderNodeDefinition.ImplementationName.get -> string!
+OpenUsd.UsdShaderNodeDefinition.ImplementationName.init -> void
+OpenUsd.UsdShaderNodeDefinition.IsValid.get -> bool
+OpenUsd.UsdShaderNodeDefinition.IsValid.init -> void
+OpenUsd.UsdShaderNodeDefinition.Name.get -> string!
+OpenUsd.UsdShaderNodeDefinition.Name.init -> void
+OpenUsd.UsdShaderNodeDefinition.Properties.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderProperty!>!
+OpenUsd.UsdShaderNodeDefinition.Properties.init -> void
+OpenUsd.UsdShaderNodeDefinition.ResolvedDefinitionUri.get -> string!
+OpenUsd.UsdShaderNodeDefinition.ResolvedDefinitionUri.init -> void
+OpenUsd.UsdShaderNodeDefinition.ResolvedImplementationUri.get -> string!
+OpenUsd.UsdShaderNodeDefinition.ResolvedImplementationUri.init -> void
+OpenUsd.UsdShaderNodeDefinition.ShadingSystem.get -> string!
+OpenUsd.UsdShaderNodeDefinition.ShadingSystem.init -> void
+OpenUsd.UsdShaderNodeDefinition.UsdShaderNodeDefinition(string! Identifier, string! Name, string! Function, string! ShadingSystem, string! Context, string! ResolvedDefinitionUri, string! ResolvedImplementationUri, string! ImplementationName, System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderProperty!>! Properties, bool IsValid) -> void
+OpenUsd.UsdShaderNodeDefinitionSnapshot
+OpenUsd.UsdShaderNodeDefinitionSnapshot.<Clone>$() -> OpenUsd.UsdShaderNodeDefinitionSnapshot!
+OpenUsd.UsdShaderNodeDefinitionSnapshot.Deconstruct(out System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderNodeDefinition!>! Definitions, out bool IsTruncated) -> void
+OpenUsd.UsdShaderNodeDefinitionSnapshot.Definitions.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderNodeDefinition!>!
+OpenUsd.UsdShaderNodeDefinitionSnapshot.Definitions.init -> void
+OpenUsd.UsdShaderNodeDefinitionSnapshot.Equals(OpenUsd.UsdShaderNodeDefinitionSnapshot? other) -> bool
+OpenUsd.UsdShaderNodeDefinitionSnapshot.IsTruncated.get -> bool
+OpenUsd.UsdShaderNodeDefinitionSnapshot.IsTruncated.init -> void
+OpenUsd.UsdShaderNodeDefinitionSnapshot.UsdShaderNodeDefinitionSnapshot(System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderNodeDefinition!>! Definitions, bool IsTruncated) -> void
+OpenUsd.UsdShaderProperty
+OpenUsd.UsdShaderProperty.<Clone>$() -> OpenUsd.UsdShaderProperty!
+OpenUsd.UsdShaderProperty.Deconstruct(out string! Name, out string! Type, out OpenUsd.UsdShaderPropertyDirection Direction, out bool IsArray, out bool IsConnectable) -> void
+OpenUsd.UsdShaderProperty.Direction.get -> OpenUsd.UsdShaderPropertyDirection
+OpenUsd.UsdShaderProperty.Direction.init -> void
+OpenUsd.UsdShaderProperty.Equals(OpenUsd.UsdShaderProperty? other) -> bool
+OpenUsd.UsdShaderProperty.IsArray.get -> bool
+OpenUsd.UsdShaderProperty.IsArray.init -> void
+OpenUsd.UsdShaderProperty.IsConnectable.get -> bool
+OpenUsd.UsdShaderProperty.IsConnectable.init -> void
+OpenUsd.UsdShaderProperty.Name.get -> string!
+OpenUsd.UsdShaderProperty.Name.init -> void
+OpenUsd.UsdShaderProperty.Type.get -> string!
+OpenUsd.UsdShaderProperty.Type.init -> void
+OpenUsd.UsdShaderProperty.UsdShaderProperty(string! Name, string! Type, OpenUsd.UsdShaderPropertyDirection Direction, bool IsArray, bool IsConnectable) -> void
+OpenUsd.UsdShaderPropertyDirection
+OpenUsd.UsdShaderPropertyDirection.Input = 0 -> OpenUsd.UsdShaderPropertyDirection
+OpenUsd.UsdShaderPropertyDirection.Output = 1 -> OpenUsd.UsdShaderPropertyDirection
+OpenUsd.UsdShaderRegistry
 OpenUsd.UsdStage
 OpenUsd.UsdStage.ChangeSerial.get -> ulong
 OpenUsd.UsdStage.ClearDefaultPrim() -> void
@@ -945,6 +998,15 @@ override OpenUsd.UsdPayloadArc.GetHashCode() -> int
 override OpenUsd.UsdQuatf.Equals(object? obj) -> bool
 override OpenUsd.UsdQuatf.GetHashCode() -> int
 override OpenUsd.UsdQuatf.ToString() -> string!
+override OpenUsd.UsdShaderNodeDefinition.Equals(object? obj) -> bool
+override OpenUsd.UsdShaderNodeDefinition.GetHashCode() -> int
+override OpenUsd.UsdShaderNodeDefinition.ToString() -> string!
+override OpenUsd.UsdShaderNodeDefinitionSnapshot.Equals(object? obj) -> bool
+override OpenUsd.UsdShaderNodeDefinitionSnapshot.GetHashCode() -> int
+override OpenUsd.UsdShaderNodeDefinitionSnapshot.ToString() -> string!
+override OpenUsd.UsdShaderProperty.Equals(object? obj) -> bool
+override OpenUsd.UsdShaderProperty.GetHashCode() -> int
+override OpenUsd.UsdShaderProperty.ToString() -> string!
 override OpenUsd.UsdStageChange.GetHashCode() -> int
 override OpenUsd.UsdValidationError.Equals(object? obj) -> bool
 override OpenUsd.UsdValidationError.GetHashCode() -> int
@@ -1049,6 +1111,15 @@ static OpenUsd.UsdPayloadArc.operator ==(OpenUsd.UsdPayloadArc left, OpenUsd.Usd
 static OpenUsd.UsdQuatf.Identity.get -> OpenUsd.UsdQuatf
 static OpenUsd.UsdQuatf.operator !=(OpenUsd.UsdQuatf left, OpenUsd.UsdQuatf right) -> bool
 static OpenUsd.UsdQuatf.operator ==(OpenUsd.UsdQuatf left, OpenUsd.UsdQuatf right) -> bool
+static OpenUsd.UsdShaderNodeDefinition.operator !=(OpenUsd.UsdShaderNodeDefinition? left, OpenUsd.UsdShaderNodeDefinition? right) -> bool
+static OpenUsd.UsdShaderNodeDefinition.operator ==(OpenUsd.UsdShaderNodeDefinition? left, OpenUsd.UsdShaderNodeDefinition? right) -> bool
+static OpenUsd.UsdShaderNodeDefinitionSnapshot.operator !=(OpenUsd.UsdShaderNodeDefinitionSnapshot? left, OpenUsd.UsdShaderNodeDefinitionSnapshot? right) -> bool
+static OpenUsd.UsdShaderNodeDefinitionSnapshot.operator ==(OpenUsd.UsdShaderNodeDefinitionSnapshot? left, OpenUsd.UsdShaderNodeDefinitionSnapshot? right) -> bool
+static OpenUsd.UsdShaderProperty.operator !=(OpenUsd.UsdShaderProperty? left, OpenUsd.UsdShaderProperty? right) -> bool
+static OpenUsd.UsdShaderProperty.operator ==(OpenUsd.UsdShaderProperty? left, OpenUsd.UsdShaderProperty? right) -> bool
+static OpenUsd.UsdShaderRegistry.GetNodeDefinitions() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdShaderNodeDefinition!>!
+static OpenUsd.UsdShaderRegistry.GetNodeDefinitionsSnapshot() -> OpenUsd.UsdShaderNodeDefinitionSnapshot!
+static OpenUsd.UsdShaderRegistry.TryGetNodeDefinitionFromAsset(string! sourceAsset, string? subIdentifier, string? shadingSystem, out OpenUsd.UsdShaderNodeDefinition? definition) -> bool
 static OpenUsd.UsdStage.Create(string! path) -> OpenUsd.UsdStage!
 static OpenUsd.UsdStage.Open(string! path) -> OpenUsd.UsdStage!
 static OpenUsd.UsdStage.OpenMasked(string! path, System.ReadOnlySpan<string!> maskPaths) -> OpenUsd.UsdStage!

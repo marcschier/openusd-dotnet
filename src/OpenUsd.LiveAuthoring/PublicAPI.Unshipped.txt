@@ -1,0 +1,729 @@
+#nullable enable
+OpenUsd.LiveAuthoring.ApiSchemaUpdate
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.ApiSchemaUpdate(string! PrimPath, string! SchemaToken, OpenUsd.LiveAuthoring.LiveApiSchemaOperation Operation) -> void
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.Deconstruct(out string! PrimPath, out string! SchemaToken, out OpenUsd.LiveAuthoring.LiveApiSchemaOperation Operation) -> void
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.Equals(OpenUsd.LiveAuthoring.ApiSchemaUpdate? other) -> bool
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.Operation.get -> OpenUsd.LiveAuthoring.LiveApiSchemaOperation
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.Operation.init -> void
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.SchemaToken.get -> string!
+OpenUsd.LiveAuthoring.ApiSchemaUpdate.SchemaToken.init -> void
+OpenUsd.LiveAuthoring.ClearUpdate
+OpenUsd.LiveAuthoring.ClearUpdate.ClearUpdate(string! PrimPath, OpenUsd.LiveAuthoring.LiveClearTargetKind TargetKind, string? Name = null) -> void
+OpenUsd.LiveAuthoring.ClearUpdate.Deconstruct(out string! PrimPath, out OpenUsd.LiveAuthoring.LiveClearTargetKind TargetKind, out string? Name) -> void
+OpenUsd.LiveAuthoring.ClearUpdate.Equals(OpenUsd.LiveAuthoring.ClearUpdate? other) -> bool
+OpenUsd.LiveAuthoring.ClearUpdate.Name.get -> string?
+OpenUsd.LiveAuthoring.ClearUpdate.Name.init -> void
+OpenUsd.LiveAuthoring.ClearUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.ClearUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.ClearUpdate.TargetKind.get -> OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.ClearUpdate.TargetKind.init -> void
+OpenUsd.LiveAuthoring.DefinePrimUpdate
+OpenUsd.LiveAuthoring.DefinePrimUpdate.Deconstruct(out string! PrimPath, out string? TypeName) -> void
+OpenUsd.LiveAuthoring.DefinePrimUpdate.DefinePrimUpdate(string! PrimPath, string? TypeName = null) -> void
+OpenUsd.LiveAuthoring.DefinePrimUpdate.Equals(OpenUsd.LiveAuthoring.DefinePrimUpdate? other) -> bool
+OpenUsd.LiveAuthoring.DefinePrimUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.DefinePrimUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.DefinePrimUpdate.TypeName.get -> string?
+OpenUsd.LiveAuthoring.DefinePrimUpdate.TypeName.init -> void
+OpenUsd.LiveAuthoring.ILiveAuthoringBatchExecutor
+OpenUsd.LiveAuthoring.ILiveAuthoringBatchExecutor.ExecuteAsync(OpenUsd.LiveAuthoring.LiveAuthoringBatch! batch, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringBatchResult>
+OpenUsd.LiveAuthoring.ILiveAuthoringSink
+OpenUsd.LiveAuthoring.ILiveAuthoringSink.ApplyAsync(OpenUsd.LiveAuthoring.LiveAuthoringBatch! batch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt!>
+OpenUsd.LiveAuthoring.IUsdStageRenderSourceConsumer
+OpenUsd.LiveAuthoring.IUsdStageRenderSourceConsumer.AttachAsync(OpenUsd.UsdStageScheduler! scheduler, OpenUsd.UsdStageRenderSource! renderSource, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+OpenUsd.LiveAuthoring.LiveApiSchemaOperation
+OpenUsd.LiveAuthoring.LiveApiSchemaOperation.Apply = 0 -> OpenUsd.LiveAuthoring.LiveApiSchemaOperation
+OpenUsd.LiveAuthoring.LiveApiSchemaOperation.Remove = 1 -> OpenUsd.LiveAuthoring.LiveApiSchemaOperation
+OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Boolean = 0 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.BooleanArray = 13 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Color3fArray = 12 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Double = 2 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.DoubleArray = 9 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.FloatArray = 8 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Int32Array = 7 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Int64 = 1 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Matrix4d = 6 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.String = 3 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.StringArray = 15 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Token = 4 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.TokenArray = 14 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Vec2fArray = 10 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Vec3f = 5 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeKind.Vec3fArray = 11 -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeValue
+OpenUsd.LiveAuthoring.LiveAttributeValue.Boolean.get -> bool
+OpenUsd.LiveAuthoring.LiveAttributeValue.BooleanArray.get -> System.Collections.Generic.IReadOnlyList<bool>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.Color3fArray.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdVec3f>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.DoubleArray.get -> System.Collections.Generic.IReadOnlyList<double>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.DoubleValue.get -> double
+OpenUsd.LiveAuthoring.LiveAttributeValue.Equals(OpenUsd.LiveAuthoring.LiveAttributeValue other) -> bool
+OpenUsd.LiveAuthoring.LiveAttributeValue.FloatArray.get -> System.Collections.Generic.IReadOnlyList<float>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.Int32Array.get -> System.Collections.Generic.IReadOnlyList<int>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.Int64Value.get -> long
+OpenUsd.LiveAuthoring.LiveAttributeValue.Kind.get -> OpenUsd.LiveAuthoring.LiveAttributeKind
+OpenUsd.LiveAuthoring.LiveAttributeValue.LiveAttributeValue() -> void
+OpenUsd.LiveAuthoring.LiveAttributeValue.Matrix4d.get -> OpenUsd.UsdMatrix4d
+OpenUsd.LiveAuthoring.LiveAttributeValue.StringArray.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.StringValue.get -> string!
+OpenUsd.LiveAuthoring.LiveAttributeValue.TokenArray.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.TokenValue.get -> string!
+OpenUsd.LiveAuthoring.LiveAttributeValue.Vec2fArray.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdVec2f>!
+OpenUsd.LiveAuthoring.LiveAttributeValue.Vec3f.get -> OpenUsd.UsdVec3f
+OpenUsd.LiveAuthoring.LiveAttributeValue.Vec3fArray.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdVec3f>!
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.Applied.get -> System.Threading.Tasks.Task<OpenUsd.LiveAuthoring.LiveAuthoringBatchResult>!
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.Coalesced.get -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.LiveAuthoringAdmissionReceipt(long sequence, string? correlationId, string? originId, bool coalesced, System.Threading.Tasks.Task<OpenUsd.LiveAuthoring.LiveAuthoringBatchResult>! applied) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.OriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.Sequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt.WaitForResultAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringBatchResult>
+OpenUsd.LiveAuthoring.LiveAuthoringBatch
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.CoalescingKey.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.LiveAuthoringBatch(long sequence, System.Collections.Generic.IEnumerable<OpenUsd.LiveAuthoring.LiveStageUpdate!>! updates, string? coalescingKey = null, string? correlationId = null, string? originId = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.OriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.Sequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringBatch.Updates.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>!
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.AfterChangeSerial.get -> ulong
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.AfterChangeSerial.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.BatchCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.BatchCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.BeforeChangeSerial.get -> ulong
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.BeforeChangeSerial.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.CorrelationId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.Deconstruct(out long FirstSequence, out long LastSequence, out int BatchCount, out int UpdateCount, out OpenUsd.UsdStageInvalidationKind Invalidation, out ulong BeforeChangeSerial, out ulong AfterChangeSerial, out string! EditTargetLayerIdentifier, out string? CorrelationId, out string? OriginId) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.EditTargetLayerIdentifier.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.EditTargetLayerIdentifier.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.Equals(OpenUsd.LiveAuthoring.LiveAuthoringBatchResult other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.FirstSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.FirstSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.Invalidation.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.LastSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.LastSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.LiveAuthoringBatchResult() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.LiveAuthoringBatchResult(long FirstSequence, long LastSequence, int BatchCount, int UpdateCount, OpenUsd.UsdStageInvalidationKind Invalidation, ulong BeforeChangeSerial, ulong AfterChangeSerial, string! EditTargetLayerIdentifier, string? CorrelationId = null, string? OriginId = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.OriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.OriginId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.UpdateCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.UpdateCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringDelta
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.CoalescingKey.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.Epoch.get -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch!
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.LiveAuthoringDelta(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch! epoch, long sequence, System.Collections.Generic.IEnumerable<OpenUsd.LiveAuthoring.LiveStageUpdate!>! updates, string? coalescingKey = null, string? correlationId = null, string? originId = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.OriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.Sequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringDelta.Updates.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>!
+OpenUsd.LiveAuthoring.LiveAuthoringEditLayer
+OpenUsd.LiveAuthoring.LiveAuthoringEditLayer.Root = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringEditLayer
+OpenUsd.LiveAuthoring.LiveAuthoringEditLayer.Session = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringEditLayer
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.CorrelationId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Deconstruct(out OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind Kind, out long Sequence, out string? CorrelationId, out string? OriginId, out System.DateTimeOffset TimestampUtc, out int PendingBatchCount, out string? Detail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Detail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Detail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Equals(OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Kind.get -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Kind.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.LiveAuthoringHealthEvent() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.LiveAuthoringHealthEvent(OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind Kind, long Sequence, string? CorrelationId, string? OriginId, System.DateTimeOffset TimestampUtc, int PendingBatchCount, string? Detail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.OriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.OriginId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.PendingBatchCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.PendingBatchCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Sequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Sequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.TimestampUtc.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind.Admitted = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind.Applied = 3 -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind.Coalesced = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind.Disposed = 5 -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind.Failed = 4 -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind.Rejected = 2 -> OpenUsd.LiveAuthoring.LiveAuthoringHealthEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.Capacity.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.Capacity.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.CoalescedBatchCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.CoalescedBatchCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.Deconstruct(out int Capacity, out int PendingBatchCount, out int PeakPendingBatchCount, out long CoalescedBatchCount, out bool IsAccepting, out long LastAdmittedSequence, out long? LastAppliedSequence, out long? LastFailedSequence, out string? LastFailureDetail, out System.DateTimeOffset TimestampUtc, out long HealthObserverFailureCount, out string? LastHealthObserverFailureDetail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.Equals(OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.HealthObserverFailureCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.HealthObserverFailureCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.IsAccepting.get -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.IsAccepting.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastAdmittedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastAdmittedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastAppliedSequence.get -> long?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastAppliedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastFailedSequence.get -> long?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastFailedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastFailureDetail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastFailureDetail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastHealthObserverFailureDetail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LastHealthObserverFailureDetail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LiveAuthoringHealthSnapshot() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.LiveAuthoringHealthSnapshot(int Capacity, int PendingBatchCount, int PeakPendingBatchCount, long CoalescedBatchCount, bool IsAccepting, long LastAdmittedSequence, long? LastAppliedSequence, long? LastFailedSequence, string? LastFailureDetail, System.DateTimeOffset TimestampUtc, long HealthObserverFailureCount = 0, string? LastHealthObserverFailureDetail = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.PeakPendingBatchCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.PeakPendingBatchCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.PendingBatchCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.PendingBatchCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.TimestampUtc.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringOriginId
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.<Clone>$() -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch!
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.Epoch.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.Equals(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.IsSameSession(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.LiveAuthoringRemoteEpoch(string! remoteOriginId, string! sessionId, long epoch) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.RemoteOriginId.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.SessionId.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.ApplyDeltaAsync(OpenUsd.LiveAuthoring.LiveAuthoringDelta! delta, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringSessionResult>
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.ApplySnapshotAsync(OpenUsd.LiveAuthoring.LiveAuthoringSnapshot! snapshot, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringSessionResult>
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.BridgeRootPath.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.ConnectAsync(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch! epoch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus>
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.DisconnectAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus>
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.ExportOverlayUpdates() -> System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>!
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.ExportSnapshot(string? correlationId = null) -> OpenUsd.LiveAuthoring.LiveAuthoringSnapshot!
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.GetStatus() -> OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.LiveAuthoringSessionCoordinator(OpenUsd.LiveAuthoring.ILiveAuthoringSink! sink, OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions? options = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.LocalOriginId.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.RequestResync(string? detail = null) -> OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus
+OpenUsd.LiveAuthoring.LiveAuthoringSessionCoordinator.State.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.CorrelationId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Deconstruct(out OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind Kind, out OpenUsd.LiveAuthoring.LiveAuthoringSessionState PreviousState, out OpenUsd.LiveAuthoring.LiveAuthoringSessionState State, out string? RemoteOriginId, out string? SessionId, out long Epoch, out long LastAcceptedSequence, out long LastAppliedSequence, out string? CorrelationId, out System.DateTimeOffset TimestampUtc, out string? Detail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Detail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Detail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Epoch.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Epoch.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Equals(OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Kind.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Kind.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.LastAcceptedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.LastAcceptedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.LastAppliedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.LastAppliedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.LiveAuthoringSessionEvent() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.LiveAuthoringSessionEvent(OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind Kind, OpenUsd.LiveAuthoring.LiveAuthoringSessionState PreviousState, OpenUsd.LiveAuthoring.LiveAuthoringSessionState State, string? RemoteOriginId, string? SessionId, long Epoch, long LastAcceptedSequence, long LastAppliedSequence, string? CorrelationId, System.DateTimeOffset TimestampUtc, string? Detail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.PreviousState.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.PreviousState.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.RemoteOriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.RemoteOriginId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.SessionId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.SessionId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.State.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.State.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.TimestampUtc.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.Connecting = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.DeltaApplied = 3 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.DeltaDuplicate = 4 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.DeltaRejected = 5 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.Disconnected = 8 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.Disposed = 10 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.Faulted = 9 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.LoopSuppressed = 6 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.ResyncRequired = 7 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.SnapshotApplied = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind.SnapshotRejected = 2 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionEventKind
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.BridgeRootPath.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.BridgeRootPath.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.InitialBatchSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.InitialBatchSequence.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.LiveAuthoringSessionOptions() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.LocalOriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.LocalOriginId.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.LocalOriginIdFactory.get -> System.Func<string!>?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.LocalOriginIdFactory.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.OwnsSink.get -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.OwnsSink.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.ReplayWindowLength.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.ReplayWindowLength.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.SessionObserver.get -> System.IProgress<OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent>?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOptions.SessionObserver.set -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome.Applied = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome.Duplicate = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome.LoopSuppressed = 2 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome.Rejected = 3 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.ApplyFailed = 12 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.BridgeScope = 8 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.DuplicateConflict = 10 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.EpochAdvanced = 6 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.EpochRetired = 5 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.None = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.OverlayBudget = 9 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.RemoteOrigin = 3 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.ReplayExpired = 11 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.ResyncRequired = 2 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.SequenceGap = 7 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.SessionIdentity = 4 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection.SessionState = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.CorrelationId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Deconstruct(out OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome Outcome, out OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection Rejection, out long Sequence, out OpenUsd.LiveAuthoring.LiveAuthoringSessionState State, out long LastAcceptedSequence, out long LastAppliedSequence, out string? CorrelationId, out string? Detail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Detail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Detail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Equals(OpenUsd.LiveAuthoring.LiveAuthoringSessionResult other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.IsApplied.get -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.LastAcceptedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.LastAcceptedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.LastAppliedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.LastAppliedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.LiveAuthoringSessionResult() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.LiveAuthoringSessionResult(OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome Outcome, OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection Rejection, long Sequence, OpenUsd.LiveAuthoring.LiveAuthoringSessionState State, long LastAcceptedSequence, long LastAppliedSequence, string? CorrelationId, string? Detail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Outcome.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionOutcome
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Outcome.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Rejection.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionRejection
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Rejection.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Sequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Sequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.State.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.State.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState.Connecting = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState.Disconnected = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState.Faulted = 5 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState.ResyncRequired = 3 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState.Stopping = 4 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionState.Synchronized = 2 -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.AppliedDeltaCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.AppliedDeltaCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.AppliedSnapshotCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.AppliedSnapshotCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.Deconstruct(out OpenUsd.LiveAuthoring.LiveAuthoringSessionState State, out string? RemoteOriginId, out string? SessionId, out long Epoch, out long LastAcceptedSequence, out long LastAppliedSequence, out long AppliedSnapshotCount, out long AppliedDeltaCount, out long DuplicateDeltaCount, out long RejectedDeltaCount, out long LoopSuppressedDeltaCount, out long ResyncRequiredCount, out int OverlayPrimCount, out int OverlayUpdateCount, out int ReplayWindowLength, out int ReplayLedgerCount, out long ReplayLedgerBytes, out long OldestRetainedSequence, out string? LastFailureDetail, out System.DateTimeOffset TimestampUtc, out long SessionObserverFailureCount, out string? LastSessionObserverFailureDetail) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.DuplicateDeltaCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.DuplicateDeltaCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.Epoch.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.Epoch.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.Equals(OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus other) -> bool
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastAcceptedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastAcceptedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastAppliedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastAppliedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastFailureDetail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastFailureDetail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastSessionObserverFailureDetail.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LastSessionObserverFailureDetail.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LiveAuthoringSessionStatus() -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LiveAuthoringSessionStatus(OpenUsd.LiveAuthoring.LiveAuthoringSessionState State, string? RemoteOriginId, string? SessionId, long Epoch, long LastAcceptedSequence, long LastAppliedSequence, long AppliedSnapshotCount, long AppliedDeltaCount, long DuplicateDeltaCount, long RejectedDeltaCount, long LoopSuppressedDeltaCount, long ResyncRequiredCount, int OverlayPrimCount, int OverlayUpdateCount, int ReplayWindowLength, int ReplayLedgerCount, long ReplayLedgerBytes, long OldestRetainedSequence, string? LastFailureDetail, System.DateTimeOffset TimestampUtc, long SessionObserverFailureCount = 0, string? LastSessionObserverFailureDetail = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LoopSuppressedDeltaCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.LoopSuppressedDeltaCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.OldestRetainedSequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.OldestRetainedSequence.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.OverlayPrimCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.OverlayPrimCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.OverlayUpdateCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.OverlayUpdateCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.RejectedDeltaCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.RejectedDeltaCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.RemoteOriginId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.RemoteOriginId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ReplayLedgerBytes.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ReplayLedgerBytes.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ReplayLedgerCount.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ReplayLedgerCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ReplayWindowLength.get -> int
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ReplayWindowLength.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ResyncRequiredCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ResyncRequiredCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.SessionId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.SessionId.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.SessionObserverFailureCount.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.SessionObserverFailureCount.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.State.get -> OpenUsd.LiveAuthoring.LiveAuthoringSessionState
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.State.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.TimestampUtc.get -> System.DateTimeOffset
+OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.TimestampUtc.init -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot.BridgeRootPath.get -> string!
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot.CorrelationId.get -> string?
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot.Epoch.get -> OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch!
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot.LiveAuthoringSnapshot(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch! epoch, long sequence, string! bridgeRootPath, System.Collections.Generic.IEnumerable<OpenUsd.LiveAuthoring.LiveStageUpdate!>! updates, string? correlationId = null) -> void
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot.Sequence.get -> long
+OpenUsd.LiveAuthoring.LiveAuthoringSnapshot.Updates.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>!
+OpenUsd.LiveAuthoring.LiveAuthoringStageMode
+OpenUsd.LiveAuthoring.LiveAuthoringStageMode.Create = 0 -> OpenUsd.LiveAuthoring.LiveAuthoringStageMode
+OpenUsd.LiveAuthoring.LiveAuthoringStageMode.Open = 1 -> OpenUsd.LiveAuthoring.LiveAuthoringStageMode
+OpenUsd.LiveAuthoring.LiveAuthoringValidation
+OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.LiveClearTargetKind.AttributeValue = 0 -> OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.LiveClearTargetKind.Metadata = 4 -> OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.LiveClearTargetKind.Payloads = 3 -> OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.LiveClearTargetKind.References = 2 -> OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.LiveClearTargetKind.RelationshipTargets = 1 -> OpenUsd.LiveAuthoring.LiveClearTargetKind
+OpenUsd.LiveAuthoring.LiveMetadataKind
+OpenUsd.LiveAuthoring.LiveMetadataKind.Boolean = 0 -> OpenUsd.LiveAuthoring.LiveMetadataKind
+OpenUsd.LiveAuthoring.LiveMetadataKind.Double = 2 -> OpenUsd.LiveAuthoring.LiveMetadataKind
+OpenUsd.LiveAuthoring.LiveMetadataKind.Int64 = 1 -> OpenUsd.LiveAuthoring.LiveMetadataKind
+OpenUsd.LiveAuthoring.LiveMetadataKind.String = 3 -> OpenUsd.LiveAuthoring.LiveMetadataKind
+OpenUsd.LiveAuthoring.LiveMetadataValue
+OpenUsd.LiveAuthoring.LiveMetadataValue.Boolean.get -> bool
+OpenUsd.LiveAuthoring.LiveMetadataValue.DoubleValue.get -> double
+OpenUsd.LiveAuthoring.LiveMetadataValue.Equals(OpenUsd.LiveAuthoring.LiveMetadataValue other) -> bool
+OpenUsd.LiveAuthoring.LiveMetadataValue.Int64Value.get -> long
+OpenUsd.LiveAuthoring.LiveMetadataValue.Kind.get -> OpenUsd.LiveAuthoring.LiveMetadataKind
+OpenUsd.LiveAuthoring.LiveMetadataValue.LiveMetadataValue() -> void
+OpenUsd.LiveAuthoring.LiveMetadataValue.StringValue.get -> string!
+OpenUsd.LiveAuthoring.LiveStageUpdate
+OpenUsd.LiveAuthoring.LiveStageUpdate.LiveStageUpdate(OpenUsd.LiveAuthoring.LiveStageUpdate! original) -> void
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.ApplyAsync(OpenUsd.LiveAuthoring.LiveAuthoringBatch! batch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt!>
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.Capacity.get -> int
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.CoalescedBatchCount.get -> long
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.Completion.get -> System.Threading.Tasks.Task!
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.GetHealthSnapshot() -> OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.HealthObserverFailureCount.get -> long
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.PeakPendingBatchCount.get -> int
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.PendingBatchCount.get -> int
+OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink.QueuedLiveAuthoringSink(OpenUsd.LiveAuthoring.ILiveAuthoringBatchExecutor! executor, int capacity, System.IProgress<OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent>? healthObserver = null) -> void
+OpenUsd.LiveAuthoring.RemovePrimUpdate
+OpenUsd.LiveAuthoring.RemovePrimUpdate.Deconstruct(out string! PrimPath) -> void
+OpenUsd.LiveAuthoring.RemovePrimUpdate.Equals(OpenUsd.LiveAuthoring.RemovePrimUpdate? other) -> bool
+OpenUsd.LiveAuthoring.RemovePrimUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.RemovePrimUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.RemovePrimUpdate.RemovePrimUpdate(string! PrimPath) -> void
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.BridgeRootPath.get -> string!
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.BridgeRootPath.init -> void
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Deconstruct(out string! BridgeRootPath, out System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>! Updates) -> void
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Equals(OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate? other) -> bool
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.ReplaceBridgeOverlayUpdate(string! BridgeRootPath, System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>! Updates) -> void
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Updates.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.LiveAuthoring.LiveStageUpdate!>!
+OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Updates.init -> void
+OpenUsd.LiveAuthoring.SetActiveUpdate
+OpenUsd.LiveAuthoring.SetActiveUpdate.Active.get -> bool
+OpenUsd.LiveAuthoring.SetActiveUpdate.Active.init -> void
+OpenUsd.LiveAuthoring.SetActiveUpdate.Deconstruct(out string! PrimPath, out bool Active) -> void
+OpenUsd.LiveAuthoring.SetActiveUpdate.Equals(OpenUsd.LiveAuthoring.SetActiveUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetActiveUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetActiveUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetActiveUpdate.SetActiveUpdate(string! PrimPath, bool Active) -> void
+OpenUsd.LiveAuthoring.SetAttributeUpdate
+OpenUsd.LiveAuthoring.SetAttributeUpdate.AttributeName.get -> string!
+OpenUsd.LiveAuthoring.SetAttributeUpdate.AttributeName.init -> void
+OpenUsd.LiveAuthoring.SetAttributeUpdate.Deconstruct(out string! PrimPath, out string! AttributeName, out OpenUsd.LiveAuthoring.LiveAttributeValue Value, out double? TimeCode) -> void
+OpenUsd.LiveAuthoring.SetAttributeUpdate.Equals(OpenUsd.LiveAuthoring.SetAttributeUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetAttributeUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetAttributeUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetAttributeUpdate.SetAttributeUpdate(string! PrimPath, string! AttributeName, OpenUsd.LiveAuthoring.LiveAttributeValue Value, double? TimeCode = null) -> void
+OpenUsd.LiveAuthoring.SetAttributeUpdate.TimeCode.get -> double?
+OpenUsd.LiveAuthoring.SetAttributeUpdate.TimeCode.init -> void
+OpenUsd.LiveAuthoring.SetAttributeUpdate.Value.get -> OpenUsd.LiveAuthoring.LiveAttributeValue
+OpenUsd.LiveAuthoring.SetAttributeUpdate.Value.init -> void
+OpenUsd.LiveAuthoring.SetInstanceableUpdate
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.Deconstruct(out string! PrimPath, out bool Instanceable) -> void
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.Equals(OpenUsd.LiveAuthoring.SetInstanceableUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.Instanceable.get -> bool
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.Instanceable.init -> void
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetInstanceableUpdate.SetInstanceableUpdate(string! PrimPath, bool Instanceable) -> void
+OpenUsd.LiveAuthoring.SetMetadataUpdate
+OpenUsd.LiveAuthoring.SetMetadataUpdate.Deconstruct(out string! PrimPath, out string! Key, out OpenUsd.LiveAuthoring.LiveMetadataValue Value) -> void
+OpenUsd.LiveAuthoring.SetMetadataUpdate.Equals(OpenUsd.LiveAuthoring.SetMetadataUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetMetadataUpdate.Key.get -> string!
+OpenUsd.LiveAuthoring.SetMetadataUpdate.Key.init -> void
+OpenUsd.LiveAuthoring.SetMetadataUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetMetadataUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetMetadataUpdate.SetMetadataUpdate(string! PrimPath, string! Key, OpenUsd.LiveAuthoring.LiveMetadataValue Value) -> void
+OpenUsd.LiveAuthoring.SetMetadataUpdate.Value.get -> OpenUsd.LiveAuthoring.LiveMetadataValue
+OpenUsd.LiveAuthoring.SetMetadataUpdate.Value.init -> void
+OpenUsd.LiveAuthoring.SetPayloadUpdate
+OpenUsd.LiveAuthoring.SetPayloadUpdate.AssetPath.get -> string?
+OpenUsd.LiveAuthoring.SetPayloadUpdate.AssetPath.init -> void
+OpenUsd.LiveAuthoring.SetPayloadUpdate.Deconstruct(out string! PrimPath, out string? AssetPath, out string? TargetPrimPath) -> void
+OpenUsd.LiveAuthoring.SetPayloadUpdate.Equals(OpenUsd.LiveAuthoring.SetPayloadUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetPayloadUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetPayloadUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetPayloadUpdate.SetPayloadUpdate(string! PrimPath, string? AssetPath, string? TargetPrimPath = null) -> void
+OpenUsd.LiveAuthoring.SetPayloadUpdate.TargetPrimPath.get -> string?
+OpenUsd.LiveAuthoring.SetPayloadUpdate.TargetPrimPath.init -> void
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Deconstruct(out string! PrimPath, out System.Collections.Generic.IReadOnlyList<OpenUsd.UsdQuatf>! Orientations) -> void
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Equals(OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Orientations.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdQuatf>!
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Orientations.init -> void
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.SetPointInstancerOrientationsUpdate(string! PrimPath, System.Collections.Generic.IReadOnlyList<OpenUsd.UsdQuatf>! Orientations) -> void
+OpenUsd.LiveAuthoring.SetReferenceUpdate
+OpenUsd.LiveAuthoring.SetReferenceUpdate.AssetPath.get -> string?
+OpenUsd.LiveAuthoring.SetReferenceUpdate.AssetPath.init -> void
+OpenUsd.LiveAuthoring.SetReferenceUpdate.Deconstruct(out string! PrimPath, out string? AssetPath, out string? TargetPrimPath) -> void
+OpenUsd.LiveAuthoring.SetReferenceUpdate.Equals(OpenUsd.LiveAuthoring.SetReferenceUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetReferenceUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetReferenceUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetReferenceUpdate.SetReferenceUpdate(string! PrimPath, string? AssetPath, string? TargetPrimPath = null) -> void
+OpenUsd.LiveAuthoring.SetReferenceUpdate.TargetPrimPath.get -> string?
+OpenUsd.LiveAuthoring.SetReferenceUpdate.TargetPrimPath.init -> void
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Deconstruct(out string! PrimPath, out string! RelationshipName, out System.Collections.Generic.IReadOnlyList<string!>! Targets) -> void
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Equals(OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.RelationshipName.get -> string!
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.RelationshipName.init -> void
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.SetRelationshipTargetsUpdate(string! PrimPath, string! RelationshipName, System.Collections.Generic.IReadOnlyList<string!>! Targets) -> void
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Targets.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Targets.init -> void
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Deconstruct(out string! PrimPath, out string! VariantSetName, out System.Collections.Generic.IReadOnlyList<string!>! KnownVariants, out string? Selection) -> void
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Equals(OpenUsd.LiveAuthoring.SetVariantSelectionUpdate? other) -> bool
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.KnownVariants.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.KnownVariants.init -> void
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.PrimPath.get -> string!
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.PrimPath.init -> void
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Selection.get -> string?
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Selection.init -> void
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.SetVariantSelectionUpdate(string! PrimPath, string! VariantSetName, System.Collections.Generic.IReadOnlyList<string!>! KnownVariants, string? Selection) -> void
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.VariantSetName.get -> string!
+OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.VariantSetName.init -> void
+OpenUsd.LiveAuthoring.UsdLiveAuthoringHost
+OpenUsd.LiveAuthoring.UsdLiveAuthoringHost.ApplyAsync(OpenUsd.LiveAuthoring.LiveAuthoringBatch! batch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringAdmissionReceipt!>
+OpenUsd.LiveAuthoring.UsdLiveAuthoringHost.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.LiveAuthoring.UsdLiveAuthoringHost.RenderSource.get -> OpenUsd.UsdStageRenderSource!
+OpenUsd.LiveAuthoring.UsdLiveAuthoringHost.Scheduler.get -> OpenUsd.UsdStageScheduler!
+OpenUsd.LiveAuthoring.UsdLiveAuthoringHost.Sink.get -> OpenUsd.LiveAuthoring.QueuedLiveAuthoringSink!
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.EditLayer.get -> OpenUsd.LiveAuthoring.LiveAuthoringEditLayer
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.EditLayer.set -> void
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.HealthObserver.get -> System.IProgress<OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent>?
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.HealthObserver.set -> void
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.NotificationCapacity.get -> int
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.NotificationCapacity.set -> void
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.QueueCapacity.get -> int
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.QueueCapacity.set -> void
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.SchedulerCapacity.get -> int
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.SchedulerCapacity.set -> void
+OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions.UsdLiveAuthoringOptions() -> void
+OpenUsd.LiveAuthoring.UsdStageBatchExecutor
+OpenUsd.LiveAuthoring.UsdStageBatchExecutor.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.LiveAuthoring.UsdStageBatchExecutor.EditLayer.get -> OpenUsd.LiveAuthoring.LiveAuthoringEditLayer
+OpenUsd.LiveAuthoring.UsdStageBatchExecutor.ExecuteAsync(OpenUsd.LiveAuthoring.LiveAuthoringBatch! batch, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.LiveAuthoringBatchResult>
+OpenUsd.LiveAuthoring.UsdStageBatchExecutor.UsdStageBatchExecutor(OpenUsd.UsdStageScheduler! scheduler, OpenUsd.LiveAuthoring.LiveAuthoringEditLayer editLayer = OpenUsd.LiveAuthoring.LiveAuthoringEditLayer.Session) -> void
+abstract OpenUsd.LiveAuthoring.LiveStageUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.LiveStageUpdate!
+abstract OpenUsd.LiveAuthoring.LiveStageUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.DefaultReplayWindowLength = 64 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxBridgeOverlayPayloadBytes = 16711680 -> long
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxBridgeOverlayUpdates = 4096 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxCollectionElementCount = 65536 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxEstimatedBatchPayloadBytes = 16777216 -> long
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxIdentifierLength = 512 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxOpaqueIdLength = 256 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxPathLength = 4096 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxReplayLedgerBytes = 262144 -> long
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxReplayWindowLength = 4096 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxTextValueLength = 8192 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxTotalCollectionElementCountPerBatch = 4194304 -> long
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.MaxUpdatesPerBatch = 4096 -> int
+const OpenUsd.LiveAuthoring.LiveAuthoringValidation.ReplayLedgerEntryBytes = 64 -> int
+override OpenUsd.LiveAuthoring.ApiSchemaUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.ApiSchemaUpdate!
+override OpenUsd.LiveAuthoring.ApiSchemaUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.ApiSchemaUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.ApiSchemaUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.ApiSchemaUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.ClearUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.ClearUpdate!
+override OpenUsd.LiveAuthoring.ClearUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.ClearUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.ClearUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.ClearUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.DefinePrimUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.DefinePrimUpdate!
+override OpenUsd.LiveAuthoring.DefinePrimUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.DefinePrimUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.DefinePrimUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.DefinePrimUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.LiveAttributeValue.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.LiveAttributeValue.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.ToString() -> string!
+override OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveMetadataValue.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.LiveMetadataValue.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveStageUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.LiveStageUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.LiveStageUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.RemovePrimUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.RemovePrimUpdate!
+override OpenUsd.LiveAuthoring.RemovePrimUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.RemovePrimUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.RemovePrimUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.RemovePrimUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate!
+override OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetActiveUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetActiveUpdate!
+override OpenUsd.LiveAuthoring.SetActiveUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetActiveUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetActiveUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetActiveUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetAttributeUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetAttributeUpdate!
+override OpenUsd.LiveAuthoring.SetAttributeUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetAttributeUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetAttributeUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetAttributeUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetInstanceableUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetInstanceableUpdate!
+override OpenUsd.LiveAuthoring.SetInstanceableUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetInstanceableUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetInstanceableUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetInstanceableUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetMetadataUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetMetadataUpdate!
+override OpenUsd.LiveAuthoring.SetMetadataUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetMetadataUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetMetadataUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetMetadataUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetPayloadUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetPayloadUpdate!
+override OpenUsd.LiveAuthoring.SetPayloadUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetPayloadUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetPayloadUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetPayloadUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate!
+override OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetReferenceUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetReferenceUpdate!
+override OpenUsd.LiveAuthoring.SetReferenceUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetReferenceUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetReferenceUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetReferenceUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate!
+override OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.ToString() -> string!
+override OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.<Clone>$() -> OpenUsd.LiveAuthoring.SetVariantSelectionUpdate!
+override OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Equals(object? obj) -> bool
+override OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.GetHashCode() -> int
+override OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+override OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.ToString() -> string!
+override sealed OpenUsd.LiveAuthoring.ApiSchemaUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.ClearUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.DefinePrimUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.RemovePrimUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetActiveUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetAttributeUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetInstanceableUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetMetadataUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetPayloadUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetReferenceUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+override sealed OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+static OpenUsd.LiveAuthoring.ApiSchemaUpdate.operator !=(OpenUsd.LiveAuthoring.ApiSchemaUpdate? left, OpenUsd.LiveAuthoring.ApiSchemaUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.ApiSchemaUpdate.operator ==(OpenUsd.LiveAuthoring.ApiSchemaUpdate? left, OpenUsd.LiveAuthoring.ApiSchemaUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.ClearUpdate.operator !=(OpenUsd.LiveAuthoring.ClearUpdate? left, OpenUsd.LiveAuthoring.ClearUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.ClearUpdate.operator ==(OpenUsd.LiveAuthoring.ClearUpdate? left, OpenUsd.LiveAuthoring.ClearUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.DefinePrimUpdate.operator !=(OpenUsd.LiveAuthoring.DefinePrimUpdate? left, OpenUsd.LiveAuthoring.DefinePrimUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.DefinePrimUpdate.operator ==(OpenUsd.LiveAuthoring.DefinePrimUpdate? left, OpenUsd.LiveAuthoring.DefinePrimUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromBoolean(bool value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromBooleanArray(System.Collections.Generic.IReadOnlyList<bool>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromColor3fArray(System.Collections.Generic.IReadOnlyList<OpenUsd.UsdVec3f>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromDouble(double value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromDoubleArray(System.Collections.Generic.IReadOnlyList<double>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromFloatArray(System.Collections.Generic.IReadOnlyList<float>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromInt32Array(System.Collections.Generic.IReadOnlyList<int>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromInt64(long value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromMatrix4d(OpenUsd.UsdMatrix4d value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromString(string! value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromStringArray(System.Collections.Generic.IReadOnlyList<string!>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromToken(string! value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromTokenArray(System.Collections.Generic.IReadOnlyList<string!>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromVec2fArray(System.Collections.Generic.IReadOnlyList<OpenUsd.UsdVec2f>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromVec3f(OpenUsd.UsdVec3f value) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.FromVec3fArray(System.Collections.Generic.IReadOnlyList<OpenUsd.UsdVec3f>! values) -> OpenUsd.LiveAuthoring.LiveAttributeValue
+static OpenUsd.LiveAuthoring.LiveAttributeValue.operator !=(OpenUsd.LiveAuthoring.LiveAttributeValue left, OpenUsd.LiveAuthoring.LiveAttributeValue right) -> bool
+static OpenUsd.LiveAuthoring.LiveAttributeValue.operator ==(OpenUsd.LiveAuthoring.LiveAttributeValue left, OpenUsd.LiveAuthoring.LiveAttributeValue right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringBatchResult left, OpenUsd.LiveAuthoring.LiveAuthoringBatchResult right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringBatchResult left, OpenUsd.LiveAuthoring.LiveAuthoringBatchResult right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent left, OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent left, OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot left, OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot left, OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringOriginId.CreateProcessInstanceUnique() -> string!
+static OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? left, OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? left, OpenUsd.LiveAuthoring.LiveAuthoringRemoteEpoch? right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent left, OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent left, OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringSessionResult left, OpenUsd.LiveAuthoring.LiveAuthoringSessionResult right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringSessionResult left, OpenUsd.LiveAuthoring.LiveAuthoringSessionResult right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.operator !=(OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus left, OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.operator ==(OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus left, OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus right) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringValidation.IsWellFormedUtf16(string? value) -> bool
+static OpenUsd.LiveAuthoring.LiveAuthoringValidation.Validate(OpenUsd.LiveAuthoring.LiveAuthoringBatch! batch) -> void
+static OpenUsd.LiveAuthoring.LiveMetadataValue.FromBoolean(bool value) -> OpenUsd.LiveAuthoring.LiveMetadataValue
+static OpenUsd.LiveAuthoring.LiveMetadataValue.FromDouble(double value) -> OpenUsd.LiveAuthoring.LiveMetadataValue
+static OpenUsd.LiveAuthoring.LiveMetadataValue.FromInt64(long value) -> OpenUsd.LiveAuthoring.LiveMetadataValue
+static OpenUsd.LiveAuthoring.LiveMetadataValue.FromString(string! value) -> OpenUsd.LiveAuthoring.LiveMetadataValue
+static OpenUsd.LiveAuthoring.LiveMetadataValue.operator !=(OpenUsd.LiveAuthoring.LiveMetadataValue left, OpenUsd.LiveAuthoring.LiveMetadataValue right) -> bool
+static OpenUsd.LiveAuthoring.LiveMetadataValue.operator ==(OpenUsd.LiveAuthoring.LiveMetadataValue left, OpenUsd.LiveAuthoring.LiveMetadataValue right) -> bool
+static OpenUsd.LiveAuthoring.LiveStageUpdate.operator !=(OpenUsd.LiveAuthoring.LiveStageUpdate? left, OpenUsd.LiveAuthoring.LiveStageUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.LiveStageUpdate.operator ==(OpenUsd.LiveAuthoring.LiveStageUpdate? left, OpenUsd.LiveAuthoring.LiveStageUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.RemovePrimUpdate.operator !=(OpenUsd.LiveAuthoring.RemovePrimUpdate? left, OpenUsd.LiveAuthoring.RemovePrimUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.RemovePrimUpdate.operator ==(OpenUsd.LiveAuthoring.RemovePrimUpdate? left, OpenUsd.LiveAuthoring.RemovePrimUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.operator !=(OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate? left, OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate.operator ==(OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate? left, OpenUsd.LiveAuthoring.ReplaceBridgeOverlayUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetActiveUpdate.operator !=(OpenUsd.LiveAuthoring.SetActiveUpdate? left, OpenUsd.LiveAuthoring.SetActiveUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetActiveUpdate.operator ==(OpenUsd.LiveAuthoring.SetActiveUpdate? left, OpenUsd.LiveAuthoring.SetActiveUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetAttributeUpdate.operator !=(OpenUsd.LiveAuthoring.SetAttributeUpdate? left, OpenUsd.LiveAuthoring.SetAttributeUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetAttributeUpdate.operator ==(OpenUsd.LiveAuthoring.SetAttributeUpdate? left, OpenUsd.LiveAuthoring.SetAttributeUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetInstanceableUpdate.operator !=(OpenUsd.LiveAuthoring.SetInstanceableUpdate? left, OpenUsd.LiveAuthoring.SetInstanceableUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetInstanceableUpdate.operator ==(OpenUsd.LiveAuthoring.SetInstanceableUpdate? left, OpenUsd.LiveAuthoring.SetInstanceableUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetMetadataUpdate.operator !=(OpenUsd.LiveAuthoring.SetMetadataUpdate? left, OpenUsd.LiveAuthoring.SetMetadataUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetMetadataUpdate.operator ==(OpenUsd.LiveAuthoring.SetMetadataUpdate? left, OpenUsd.LiveAuthoring.SetMetadataUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetPayloadUpdate.operator !=(OpenUsd.LiveAuthoring.SetPayloadUpdate? left, OpenUsd.LiveAuthoring.SetPayloadUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetPayloadUpdate.operator ==(OpenUsd.LiveAuthoring.SetPayloadUpdate? left, OpenUsd.LiveAuthoring.SetPayloadUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.operator !=(OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate? left, OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate.operator ==(OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate? left, OpenUsd.LiveAuthoring.SetPointInstancerOrientationsUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetReferenceUpdate.operator !=(OpenUsd.LiveAuthoring.SetReferenceUpdate? left, OpenUsd.LiveAuthoring.SetReferenceUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetReferenceUpdate.operator ==(OpenUsd.LiveAuthoring.SetReferenceUpdate? left, OpenUsd.LiveAuthoring.SetReferenceUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.operator !=(OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate? left, OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate.operator ==(OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate? left, OpenUsd.LiveAuthoring.SetRelationshipTargetsUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.operator !=(OpenUsd.LiveAuthoring.SetVariantSelectionUpdate? left, OpenUsd.LiveAuthoring.SetVariantSelectionUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.SetVariantSelectionUpdate.operator ==(OpenUsd.LiveAuthoring.SetVariantSelectionUpdate? left, OpenUsd.LiveAuthoring.SetVariantSelectionUpdate? right) -> bool
+static OpenUsd.LiveAuthoring.UsdLiveAuthoringHost.CreateAsync(string! stagePath, OpenUsd.LiveAuthoring.LiveAuthoringStageMode stageMode, OpenUsd.LiveAuthoring.IUsdStageRenderSourceConsumer! consumer, OpenUsd.LiveAuthoring.UsdLiveAuthoringOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.LiveAuthoring.UsdLiveAuthoringHost!>
+static OpenUsd.LiveAuthoring.UsdStageBatchExecutor.SupportedApiSchemaTokens.get -> System.Collections.Generic.IReadOnlyCollection<string!>!
+virtual OpenUsd.LiveAuthoring.LiveStageUpdate.EqualityContract.get -> System.Type!
+virtual OpenUsd.LiveAuthoring.LiveStageUpdate.Equals(OpenUsd.LiveAuthoring.LiveStageUpdate? other) -> bool
+virtual OpenUsd.LiveAuthoring.LiveStageUpdate.PrintMembers(System.Text.StringBuilder! builder) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.Equals(object obj) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringBatchResult.ToString() -> string
+~override OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.Equals(object obj) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringHealthEvent.ToString() -> string
+~override OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.Equals(object obj) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringHealthSnapshot.ToString() -> string
+~override OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.Equals(object obj) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringSessionEvent.ToString() -> string
+~override OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.Equals(object obj) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringSessionResult.ToString() -> string
+~override OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.Equals(object obj) -> bool
+~override OpenUsd.LiveAuthoring.LiveAuthoringSessionStatus.ToString() -> string

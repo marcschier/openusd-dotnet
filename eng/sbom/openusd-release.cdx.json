@@ -23,11 +23,15 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "d4e8a9824d198313bbd7ae208ed0f776ead7d7b20f264a273ab6e9920c3a9549"
+        "value": "b25383f5a034241e28c5691e07cd408b6f462407b20a6d64925e50ca5e572d86"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
         "value": "0074d7ab113c0299e35cb023ed5d78bc84eeb3573ad6001caa5a5d4493edb7cd"
+      },
+      {
+        "name": "openusd:input:eng/mdl.lock.json:sha256",
+        "value": "cef8931283c495043bac1a503a8a341b832231ab58270614a4c545f60352e665"
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
@@ -35,7 +39,7 @@
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "9f32386d9e0fdc780dac8497cb3b3d3af34b9b051b7cb1487a458106c161b39d"
+        "value": "348d82c1db3a325c26920ff449c9540deb6c7c47291844000433c99c4c5efceb"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",
@@ -1009,6 +1013,58 @@
     },
     {
       "type": "library",
+      "bom-ref": "nuget-dependency:Google.Protobuf",
+      "name": "Google.Protobuf",
+      "version": "3.36.1",
+      "purl": "pkg:nuget/Google.Protobuf@3.36.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Grpc.Core.Api",
+      "name": "Grpc.Core.Api",
+      "version": "2.83.0",
+      "purl": "pkg:nuget/Grpc.Core.Api@2.83.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Grpc.Net.Client",
+      "name": "Grpc.Net.Client",
+      "version": "2.83.0",
+      "purl": "pkg:nuget/Grpc.Net.Client@2.83.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Grpc.Tools",
+      "name": "Grpc.Tools",
+      "version": "2.83.0",
+      "purl": "pkg:nuget/Grpc.Tools@2.83.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.CodeAnalysis.PublicApiAnalyzers",
       "name": "Microsoft.CodeAnalysis.PublicApiAnalyzers",
       "version": "5.6.0",
@@ -1269,6 +1325,32 @@
     },
     {
       "type": "library",
+      "bom-ref": "nuget:OpenUsd.Bridge.Grpc",
+      "name": "OpenUsd.Bridge.Grpc",
+      "version": "0.12.3-alpha",
+      "purl": "pkg:nuget/OpenUsd.Bridge.Grpc@0.12.3-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Bridge.Protocol",
+      "name": "OpenUsd.Bridge.Protocol",
+      "version": "0.12.3-alpha",
+      "purl": "pkg:nuget/OpenUsd.Bridge.Protocol@0.12.3-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "nuget:OpenUsd.Cesium",
       "name": "OpenUsd.Cesium",
       "version": "0.12.3-alpha",
@@ -1286,6 +1368,19 @@
       "name": "OpenUsd.Interop",
       "version": "0.12.3-alpha",
       "purl": "pkg:nuget/OpenUsd.Interop@0.12.3-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.LiveAuthoring",
+      "name": "OpenUsd.LiveAuthoring",
+      "version": "0.12.3-alpha",
+      "purl": "pkg:nuget/OpenUsd.LiveAuthoring@0.12.3-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1598,6 +1693,19 @@
       "name": "OpenUsd.Viewer",
       "version": "0.12.3-alpha",
       "purl": "pkg:nuget/OpenUsd.Viewer@0.12.3-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Viewer.Bridge.Grpc",
+      "name": "OpenUsd.Viewer.Bridge.Grpc",
+      "version": "0.12.3-alpha",
+      "purl": "pkg:nuget/OpenUsd.Viewer.Bridge.Grpc@0.12.3-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2509,6 +2617,9 @@
       "dependsOn": [
         "nuget:OpenUsd",
         "nuget:OpenUsd.Interop",
+        "nuget:OpenUsd.LiveAuthoring",
+        "nuget:OpenUsd.Bridge.Protocol",
+        "nuget:OpenUsd.Bridge.Grpc",
         "nuget:OpenUsd.Rendering",
         "nuget:OpenUsd.Rendering.Silk",
         "nuget:OpenUsd.Rendering.Silk.D3D12",
@@ -2518,6 +2629,7 @@
         "nuget:OpenUsd.Cesium",
         "nuget:OpenUsd.Physics",
         "nuget:OpenUsd.Viewer",
+        "nuget:OpenUsd.Viewer.Bridge.Grpc",
         "nuget:OpenUsd.Mcp.Tool",
         "nuget:OpenUsd.Runtime.Core",
         "nuget:OpenUsd.Runtime.Core.win-x64",
@@ -2540,6 +2652,10 @@
         "nuget-dependency:Avalonia.Themes.Fluent",
         "nuget-dependency:Avalonia.Wayland",
         "nuget-dependency:BenchmarkDotNet",
+        "nuget-dependency:Google.Protobuf",
+        "nuget-dependency:Grpc.Core.Api",
+        "nuget-dependency:Grpc.Net.Client",
+        "nuget-dependency:Grpc.Tools",
         "nuget-dependency:Microsoft.CodeAnalysis.PublicApiAnalyzers",
         "nuget-dependency:Microsoft.Direct3D.DXC",
         "nuget-dependency:Microsoft.Extensions.Hosting",
@@ -2639,6 +2755,18 @@
       "dependsOn": []
     },
     {
+      "ref": "nuget:OpenUsd.LiveAuthoring",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Bridge.Protocol",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Bridge.Grpc",
+      "dependsOn": []
+    },
+    {
       "ref": "nuget:OpenUsd.Rendering",
       "dependsOn": []
     },
@@ -2672,6 +2800,10 @@
     },
     {
       "ref": "nuget:OpenUsd.Viewer",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Viewer.Bridge.Grpc",
       "dependsOn": []
     },
     {
@@ -2760,6 +2892,22 @@
     },
     {
       "ref": "nuget-dependency:BenchmarkDotNet",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Google.Protobuf",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Grpc.Core.Api",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Grpc.Net.Client",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Grpc.Tools",
       "dependsOn": []
     },
     {

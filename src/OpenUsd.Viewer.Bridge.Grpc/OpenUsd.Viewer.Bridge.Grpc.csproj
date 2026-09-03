@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    This package is the only place the Viewer and a real bridge transport meet. It references
+    both; neither references it. That direction is the whole point: OpenUsd.Viewer keeps no
+    gRPC, protobuf, or NVIDIA-adjacent dependency, and a host that never installs this package
+    gets a Viewer with no bridge surface at all rather than a disabled one.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Viewer\OpenUsd.Viewer.csproj" />
+    <ProjectReference Include="..\OpenUsd.Bridge.Grpc\OpenUsd.Bridge.Grpc.csproj" />
+  </ItemGroup>
+
+  <!--
+    The .NET 9 lock type is used the same way here as in the Viewer shell. Linking the shell's
+    own compatibility shim, rather than restating it, keeps one definition of what "a lock" means
+    across the multi-targeted assemblies and compiles to nothing on net9.0 and net10.0.
+  -->
+  <ItemGroup>
+    <Compile Include="..\OpenUsd.Viewer\LockCompat.cs" Link="LockCompat.cs" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Viewer.Bridge.Grpc</AssemblyName>
+    <RootNamespace>OpenUsd.Viewer.Bridge.Grpc</RootNamespace>
+    <Description>Optional integration package that exposes an OpenUsd.Bridge.Grpc session to the OpenUsd Viewer's host-injected bridge seam. The embedding host supplies the coordinator, endpoint, and credential provider programmatically; this adapter never reads, persists, or displays a credential, and the base Viewer package keeps no gRPC or NVIDIA dependency.</Description>
+    <PackageTags>openusd;usd;omniverse;bridge;grpc;viewer;live-authoring</PackageTags>
+  </PropertyGroup>
+
+</Project>

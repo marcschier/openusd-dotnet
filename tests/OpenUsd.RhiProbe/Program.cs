@@ -546,7 +546,7 @@ internal static class Program
              0.75f, -0.75f, 0.25f
         ];
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -588,8 +588,8 @@ internal static class Program
                 bytes.AsSpan(80 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 224);
-        int pointOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointOffset = 268 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -1217,11 +1217,13 @@ internal static class Program
     /// last two rows are the ABI 14 folded UV transform, written as the identity
     /// because a probe with no material transforms no coordinates; a buffer that
     /// stopped short of them left the shader reading an all-zero affine, which
-    /// collapses every texture coordinate onto one texel.
+    /// collapses every texture coordinate onto one texel. The ABI 18 light-link
+    /// mask in the fifth row and the shadow-link mask in the ninth are written
+    /// with every bit set, because a zero mask means "linked to no light".
     /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
-        const int surfaceConstantsByteSize = 12 * 4 * sizeof(float);
+        const int surfaceConstantsByteSize = 13 * 4 * sizeof(float);
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             surfaceConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
@@ -1231,14 +1233,15 @@ internal static class Program
             0, 0, 0, 1,
             0, 0, 0, 1.5f,
             0, 0.5f, 0, 0,
-            0, 0.01f, 0, 0,
+            0, 0.01f, 0, 255,
             0, 0, 1, 1,
             1, 1, 1, 1,
             0, 0, 0, 0,
-            0, 0, 0, 0,
+            0, 0, 0, 255,
             1, 0, 0, 0,
             0, 1, 0, 0,
-            0, 0, 0, 0
+            0, 0, 0, 0,
+            255, 0, 0, 0
         ]));
         return buffer;
     }
@@ -1248,7 +1251,7 @@ internal static class Program
     /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>. It grew
     /// when per-frame lighting and area-light bases moved <c>eyeToWorld</c>.
     /// </summary>
-    private const int FrameConstantsByteSize = 1056;
+    private const int FrameConstantsByteSize = 1856;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {

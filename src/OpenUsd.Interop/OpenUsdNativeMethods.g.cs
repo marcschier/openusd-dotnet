@@ -115,6 +115,28 @@ public static unsafe partial class OpenUsdNativeRuntime
         internal nuint StringCount;
     }
 
+    // Internal rather than private (unlike its sibling native views) so
+    // OpenUsd.Interop.Tests can construct malformed instances directly at the decoder seam.
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeSdrNodeDefinitionView
+    {
+        internal uint StructSize;
+        internal uint Version;
+        internal uint Flags;
+        internal uint Reserved;
+        internal OpenUsdNativeSdrNodeDefinitionRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint RecordCount;
+        internal OpenUsdNativeSdrPropertyRecord* Properties;
+        internal nuint PropertiesSize;
+        internal nuint PropertyCount;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeErrorBuffer
     {
@@ -4458,6 +4480,37 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_sdr_get_node_definitions")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SdrGetNodeDefinitions(
+            out nint list,
+            ref NativeSdrNodeDefinitionView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_sdr_get_node_definition_from_asset",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SdrGetNodeDefinitionFromAsset(
+            string sourceAsset,
+            string? subIdentifier,
+            string? shadingSystem,
+            out nint list,
+            ref NativeSdrNodeDefinitionView view,
+            out int found,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_sdr_node_definition_list_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void SdrNodeDefinitionListRelease(
+            nint list);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_stage_session_overlay_normalize")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial OpenUsdNativeStatus StageSessionOverlayNormalize(
@@ -4612,6 +4665,50 @@ public static unsafe partial class OpenUsdNativeRuntime
             float exposure,
             byte* destination,
             nuint destinationSize,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_processor_apply_rgba32f_to_rgba8")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus OcioProcessorApplyRgba32fToRgba8(
+            nint processor,
+            byte* source,
+            nuint sourceSize,
+            uint width,
+            uint height,
+            float exposure,
+            byte* destination,
+            nuint destinationSize,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_config_cache_id",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus OcioConfigCacheId(
+            string configPath,
+            byte* destination,
+            nuint capacity,
+            out nuint required,
+            out int exhaustive,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_clear_caches")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus OcioClearCaches(
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_config_dependency_walks")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus OcioConfigDependencyWalks(
+            out ulong walks,
             ref NativeErrorBuffer error);
 
         [LibraryImport(

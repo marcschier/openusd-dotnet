@@ -371,6 +371,42 @@ native-owned record array plus packed string table. Fixers, filtered contexts, l
 time-range selection, and structured site objects are deliberately omitted; a validation panel can still
 enumerate validators and render all errors for a stage or selected prim without further ABI work.
 
+### UsdShaderRegistry
+
+`UsdShaderRegistry` exposes the process-global OpenUSD Sdr/Ndr shader node-definition registry, not any
+open stage, through the same detached-list pattern:
+
+```csharp
+UsdShaderNodeDefinitionSnapshot snapshot = UsdShaderRegistry.GetNodeDefinitionsSnapshot();
+IReadOnlyList<UsdShaderNodeDefinition> definitions = UsdShaderRegistry.GetNodeDefinitions();
+bool found = UsdShaderRegistry.TryGetNodeDefinitionFromAsset(
+    sourceAsset, subIdentifier: null, shadingSystem: null, out UsdShaderNodeDefinition? definition);
+```
+
+`GetNodeDefinitionsSnapshot()` enumerates every shader node the registry can currently discover in one
+bulk page: UsdPreviewSurface/UsdUVTexture built-ins, MaterialX standard-library nodes when the usdMtlx
+discovery plugin is registered, and any MDL nodes an optional MDL SDK parser plugin has registered. Each
+`UsdShaderNodeDefinition` carries identifier, name, function (family), shading system (source type),
+context, resolved definition/implementation URIs, implementation name, a validity flag, and a bounded
+list of `UsdShaderProperty` records (name, Sdr type, input/output direction, array and connectable
+flags). The returned `UsdShaderNodeDefinitionSnapshot` also carries `IsTruncated`: the native page is
+bounded (`OPENUSD_SDR_NODE_DEFINITION_MAX_NODES`/`_PROPERTIES`/`_STRING_BYTES`) and truncates rather than
+growing without bound, so a caller that must know whether the registry held more than the page could
+carry uses the snapshot rather than silently trusting an incomplete list. `GetNodeDefinitions()` is a
+convenience wrapper over the snapshot for callers that do not need truncation awareness; it throws
+`InvalidOperationException` if the page was truncated instead of returning an incomplete list silently.
+`TryGetNodeDefinitionFromAsset` mirrors `UsdShadeShader`'s `info:<sourceType>:sourceAsset` /
+`info:<sourceType>:sourceAsset:subIdentifier` terminals, returns `false`, never an exception, when no
+registered parser plugin resolves the asset -- for example, an MDL asset with no MDL SDK parser plugin
+registered -- and throws the same way `GetNodeDefinitions()` does in the (essentially unreachable, for
+any real shader definition) case where the resolved node's own bounded property page was truncated.
+
+No C++ Sdr type and no per-property call cross the ABI: every string is an index into one packed table
+shared by both native calls. The retained records and their string references are pointer-free and
+index-addressed, so a decoded `UsdShaderNodeDefinitionSnapshot` may be held or compared independently of
+the call that produced it; only the native view struct that borrows the underlying page for the
+duration of one call carries raw pointers.
+
 ### World bounds
 
 Stage and prim bounds use one `UsdGeomBBoxCache` query and return a detached finite value:
@@ -950,7 +986,7 @@ without invoking managed callbacks from OpenUSD threads.
 Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
 `bool[]`, `token[]`, and `string[]` attribute array accessors through
 `OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
-`0x1FFFFFF`.
+`0x3FFFFFF`.
 
 The additive `OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION` capability (`0x40000`)
 adds allocation-free prim-count and total-path-byte preflight before packed path
@@ -960,7 +996,10 @@ adds batched preview and transactional bake page authoring.
 Data ABI v16 preserves every v15 export and capability and adds
 `OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION` (`0x1000000`) for resolver contexts, bulk asset
 resolution, and plugin enumeration.
-Current managed startup requires the v16 `0x1FFFFFF` mask and rejects
+Data ABI v17 preserves every v16 export and capability and adds
+`OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY` (`0x2000000`) for bulk, read-only shader
+node-definition registry introspection.
+Current managed startup requires the v17 `0x3FFFFFF` mask and rejects
 older runtimes or runtimes missing required exports. Every status-returning
 export executes its complete body inside the common exception/TfError guard, so C++ exceptions and
 unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated

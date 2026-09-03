@@ -89,18 +89,23 @@ constants, package validation, and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 16, required capabilities `0x1FFFFFF` | Managed runtime validates both. |
+| Data shim `openusd_dotnet` | ABI 17, required capabilities `0x3FFFFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 8 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 8 | Managed child runtime requires an exact version. |
 | hdSilk session API | ABI 5 | Kept aligned through the matched Imaging runtime. |
-| hdSilk command page | ABI 11 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 23 | Every managed page is validated before parsing. |
 | Retained physics `openusd_physx` | ABI 7 | Negotiated exactly, including every record size. |
 | Physics extraction page | ABI 1 | Every managed page is validated before parsing. |
 
-The data capability mask is part of compatibility. A native library with ABI 16 but an older capability
+The data capability mask is part of compatibility. A native library with ABI 17 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.
 
-ABI 16 is additive over ABI 15: every v15 export and capability is preserved, and
+ABI 17 is additive over ABI 16: every v16 export and capability is preserved, and
+`OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY` (`0x2000000`) adds bulk, read-only introspection of
+the process-global Sdr shader node-definition registry, including the source-asset lookup that
+reports not-found rather than erroring when no MDL SDK parser plugin is registered.
+
+ABI 16 was additive over ABI 15 in the same way: every v15 export and capability is preserved, and
 `OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION` (`0x1000000`) adds resolver contexts, scoped
 context binding, bulk asset resolution, and plugin enumeration. The new exports are bulk and
 handle based by contract, so no managed callback is reachable from a native asset path and a
@@ -207,7 +212,7 @@ When diagnosing or reviewing a deployment, verify:
 2. the publish RID is one of the current runtime RIDs;
 3. all managed and runtime OpenUsd packages use the same version;
 4. Imaging's exact Core dependency resolved without override;
-5. data ABI 16 and capabilities `0x1FFFFFF` are reported;
+5. data ABI 17 and capabilities `0x3FFFFFF` are reported;
 6. any selected rendering path has its matching ABI and plugin assets;
 7. `usd/**` and `plugin/usd/**` retain their directory structure, and any third-party resolver tree
    keeps its own directory and `plugInfo.json` beside them;

@@ -19,25 +19,29 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         try
         {
             DescriptorSetLayoutBinding* bindings =
-                stackalloc DescriptorSetLayoutBinding[2];
-            bindings[0] = new DescriptorSetLayoutBinding
+                stackalloc DescriptorSetLayoutBinding[
+                    SilkComputeBindingLayoutDescriptor.MaximumSlots];
+            IReadOnlyList<SilkComputeSlot> slots = descriptor.Slots;
+            for (int slot = 0; slot < slots.Count; slot++)
             {
-                Binding = descriptor.StorageBinding,
-                DescriptorType = DescriptorType.StorageBuffer,
-                DescriptorCount = 1,
-                StageFlags = ShaderStageFlags.ComputeBit
-            };
-            bindings[1] = new DescriptorSetLayoutBinding
-            {
-                Binding = descriptor.UniformBinding,
-                DescriptorType = DescriptorType.UniformBuffer,
-                DescriptorCount = 1,
-                StageFlags = ShaderStageFlags.ComputeBit
-            };
+                // A read-only structured slot is a Slang StructuredBuffer, which
+                // SPIR-V expresses as a NonWritable storage buffer rather than a
+                // uniform one, so both structured kinds share a descriptor type
+                // and only the shader's own decoration separates them.
+                bindings[slot] = new DescriptorSetLayoutBinding
+                {
+                    Binding = slots[slot].Binding,
+                    DescriptorType = slots[slot].Kind == SilkComputeSlotKind.Uniform
+                        ? DescriptorType.UniformBuffer
+                        : DescriptorType.StorageBuffer,
+                    DescriptorCount = 1,
+                    StageFlags = ShaderStageFlags.ComputeBit
+                };
+            }
             var createInfo = new DescriptorSetLayoutCreateInfo
             {
                 SType = StructureType.DescriptorSetLayoutCreateInfo,
-                BindingCount = 2,
+                BindingCount = checked((uint)slots.Count),
                 PBindings = bindings
             };
             ThrowIfFailed(

@@ -308,6 +308,29 @@ public sealed partial class MainWindow
             ViewerGizmoAxis.None,
             ViewerGizmoSpace.World,
             0d));
+        SyncPhysicsGizmoMenu();
+    }
+
+    /// <summary>
+    /// Reflects <see cref="PhysicsGizmoSelector"/>'s current selection into the Physics &gt;
+    /// Gizmo menu's radio items, so the menu never shows a stale checked gizmo after the
+    /// selector changes it directly (for example from the Q/G/E/R/H shortcuts).
+    /// </summary>
+    private void SyncPhysicsGizmoMenu()
+    {
+        MenuItem[] items =
+        [
+            PhysicsGizmoNoneMenuItem,
+            PhysicsGizmoMoveMenuItem,
+            PhysicsGizmoRotateMenuItem,
+            PhysicsGizmoScaleMenuItem,
+            PhysicsGizmoDragMenuItem,
+        ];
+        for (int index = 0; index < items.Length; index++)
+        {
+            items[index].IsEnabled = PhysicsGizmoSelector.IsEnabled;
+            items[index].IsChecked = PhysicsGizmoSelector.SelectedIndex == index;
+        }
     }
 
     private void OnPhysicsSnapChanged(object? sender, RoutedEventArgs e)
@@ -901,7 +924,10 @@ public sealed partial class MainWindow
             ViewerPhysicsController? physics = _physics;
             bool enabled = snapshot.IsEnabled && physics is not null;
             PhysicsGizmoSelector.IsEnabled = enabled;
+            SyncPhysicsGizmoMenu();
             PhysicsSnapCheckBox.IsEnabled = enabled;
+            PhysicsSnapMenuItem.IsEnabled = enabled;
+            PhysicsSnapMenuItem.IsChecked = PhysicsSnapCheckBox.IsChecked == true;
             PhysicsRefreshPropertiesButton.IsEnabled = enabled;
             PhysicsObjectSelector.IsEnabled = enabled && _physicsSections.Count != 0;
             PhysicsPropertyList.IsEnabled = enabled && _physicsSelectedSection is not null;

@@ -9,6 +9,7 @@ install(
         include/openusd_render_lighting.h
         include/openusd_render_pick.h
         include/openusd_render_physics.h
+        include/openusd_mdl.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 option(OPENUSD_ENABLE_ASAN "Enable AddressSanitizer for project native targets" OFF)
@@ -18,6 +19,10 @@ option(OPENUSD_BUILD_NATIVE_TESTS "Build native ABI probes" ON)
 option(OPENUSD_BUILD_NATIVE_FUZZERS "Build Linux Clang libFuzzer targets" OFF)
 option(OPENUSD_WITH_CESIUM "Build the quarantined cesium-native C ABI shim" OFF)
 option(OPENUSD_WITH_PHYSX "Resolve the quarantined PhysX simulation SDK" OFF)
+# The optional MDL material adapter is off by default and is never part of a
+# base package. See native/openusd_mdl/README.md and eng/mdl.lock.json for what
+# it does and does not contain.
+option(OPENUSD_WITH_MDL "Build the optional openusd_mdl material adapter" OFF)
 
 if(OPENUSD_BUILD_NATIVE_FUZZERS)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
@@ -108,6 +113,10 @@ add_subdirectory(openusd_dotnet)
 add_subdirectory(openusd_hydra)
 if(WIN32 OR UNIX)
     add_subdirectory(openusd_storm_child)
+endif()
+if(OPENUSD_WITH_MDL)
+    # Configured before hdSilk so the hdSilk probe can name the built adapter.
+    add_subdirectory(openusd_mdl)
 endif()
 add_subdirectory(hdSilk)
 if(OPENUSD_WITH_CESIUM)

@@ -321,7 +321,7 @@ public sealed class StormViewportControl : OpenGlControlBase
             if (_appliedSelection != state.Selection)
             {
                 _renderer.SetSelection(
-                    state.Selection,
+                    ViewerPickingPolicy.ProjectForStorm(state.Selection),
                     ViewerPickingPolicy.StormSelectionColor);
                 _appliedSelection = state.Selection;
             }

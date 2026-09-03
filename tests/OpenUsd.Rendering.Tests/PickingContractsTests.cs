@@ -101,7 +101,8 @@ public sealed class PickingContractsTests
             "/World/Prototype",
             "/World/Instancer",
             instanceIndex: 3,
-            elementIndex: 8);
+            elementIndex: 8,
+            elementKind: SelectionElementKind.Face);
 
         await Assert.That(item.PrimPath).IsEqualTo("/World/Prototype");
         await Assert.That(item.InstancerPath).IsEqualTo("/World/Instancer");
@@ -120,6 +121,101 @@ public sealed class PickingContractsTests
             () => _ = new SelectionItem("/World/Cube", "/World/Instancer", -1));
         _ = Assert.Throws<ArgumentOutOfRangeException>(
             () => _ = new SelectionItem("/World/Cube", elementIndex: -1));
+    }
+
+    /// <summary>
+    /// The four-parameter constructor states no element kind, and a hit
+    /// resolves that unstated kind against the request's own target.
+    /// </summary>
+    /// <remarks>
+    /// The old shape predates the kind, so classifying its index as a face
+    /// turned an edge or point selection built by a legacy producer into a face
+    /// selection with no diagnostic at all -- the exact ambiguity the kind was
+    /// added to remove. The index is preserved instead and named by the only
+    /// thing that knows: the request that was answered.
+    /// </remarks>
+    [Test]
+    [Arguments(RenderPickTarget.Face, SelectionElementKind.Face)]
+    [Arguments(RenderPickTarget.Edge, SelectionElementKind.Edge)]
+    [Arguments(RenderPickTarget.Point, SelectionElementKind.Point)]
+    public async Task ALegacyElementItemIsResolvedAgainstTheRequestedTarget(
+        RenderPickTarget target,
+        SelectionElementKind expected)
+    {
+        var legacy = new SelectionItem(
+            "/World/Prototype",
+            "/World/Instancer",
+            instanceIndex: 2,
+            elementIndex: 9);
+
+        await Assert.That(legacy.ElementKind)
+            .IsEqualTo(SelectionElementKind.Unspecified);
+        await Assert.That(legacy.ElementIndex).IsEqualTo(9);
+
+        var request = new RenderPickRequest(
+            1,
+            1,
+            new ViewportDimensions(8, 8),
+            requestedStateRevision: 4,
+            requestedSceneRevision: null,
+            target);
+        RenderPickResult hit = RenderPickResult.Hit(request, 4, null, legacy);
+
+        await Assert.That(hit.Item!.Value.ElementKind).IsEqualTo(expected);
+        await Assert.That(hit.Item!.Value.ElementIndex).IsEqualTo(9);
+        await Assert.That(hit.ElementIndex).IsEqualTo(9);
+        await Assert.That(hit.Item!.Value.PrimPath).IsEqualTo("/World/Prototype");
+        await Assert.That(hit.Item!.Value.InstancerPath).IsEqualTo("/World/Instancer");
+        await Assert.That(hit.Item!.Value.InstanceIndex).IsEqualTo(2);
+
+        // The normalized item is what the result publishes: it is a complete,
+        // self-describing identity, not the unstated one that went in.
+        await Assert.That(hit.Item!.Value).IsNotEqualTo(legacy);
+        await Assert.That(hit.Item!.Value).IsEqualTo(new SelectionItem(
+            "/World/Prototype",
+            "/World/Instancer",
+            instanceIndex: 2,
+            elementIndex: 9,
+            elementKind: expected));
+    }
+
+    /// <summary>
+    /// An unstated kind has no meaning for a prim request, and an explicitly
+    /// stated kind that disagrees with the target still fails.
+    /// </summary>
+    [Test]
+    public async Task AnUnstatedKindIsRefusedForAPrimitiveRequestAndMismatchesStillThrow()
+    {
+        var primitiveRequest = new RenderPickRequest(
+            1,
+            1,
+            new ViewportDimensions(8, 8),
+            requestedStateRevision: 4);
+        var edgeRequest = new RenderPickRequest(
+            1,
+            1,
+            new ViewportDimensions(8, 8),
+            requestedStateRevision: 4,
+            requestedSceneRevision: null,
+            RenderPickTarget.Edge);
+        var legacy = new SelectionItem("/World/Cube", null, null, elementIndex: 9);
+        var statedFace = new SelectionItem(
+            "/World/Cube",
+            instancerPath: null,
+            instanceIndex: null,
+            elementIndex: 9,
+            elementKind: SelectionElementKind.Face);
+
+        _ = Assert.Throws<ArgumentException>(
+            () => RenderPickResult.Hit(primitiveRequest, 4, null, legacy));
+        _ = Assert.Throws<ArgumentException>(
+            () => RenderPickResult.Hit(edgeRequest, 4, null, statedFace));
+
+        // Unspecified and Face are different identities, so a selection set
+        // keeps both rather than collapsing one into the other.
+        await Assert.That(legacy).IsNotEqualTo(statedFace);
+        await Assert.That(new SelectionState([legacy, statedFace]).Items.Count)
+            .IsEqualTo(2);
     }
 
     [Test]
@@ -150,8 +246,18 @@ public sealed class PickingContractsTests
     [Test]
     public async Task SelectionPreservesOrderAndDistinctInstanceSubprimIdentity()
     {
-        var first = new SelectionItem("/World/Prototype", "/World/Instancer", 0, 4);
-        var second = new SelectionItem("/World/Prototype", "/World/Instancer", 1, 4);
+        var first = new SelectionItem(
+            "/World/Prototype",
+            "/World/Instancer",
+            0,
+            4,
+            SelectionElementKind.Face);
+        var second = new SelectionItem(
+            "/World/Prototype",
+            "/World/Instancer",
+            1,
+            4,
+            SelectionElementKind.Face);
         var items = new List<SelectionItem> { first, second };
 
         var selection = new SelectionState(items);
@@ -172,22 +278,42 @@ public sealed class PickingContractsTests
         var first = new SelectionState(
             new SelectionItem[]
             {
-                new("/World/Prototype", "/World/Instancer", 2, 9)
+                new(
+                    "/World/Prototype",
+                    "/World/Instancer",
+                    2,
+                    9,
+                    SelectionElementKind.Face)
             });
         var equal = new SelectionState(
             new SelectionItem[]
             {
-                new("/World/Prototype", "/World/Instancer", 2, 9)
+                new(
+                    "/World/Prototype",
+                    "/World/Instancer",
+                    2,
+                    9,
+                    SelectionElementKind.Face)
             });
         var differentInstance = new SelectionState(
             new SelectionItem[]
             {
-                new("/World/Prototype", "/World/Instancer", 3, 9)
+                new(
+                    "/World/Prototype",
+                    "/World/Instancer",
+                    3,
+                    9,
+                    SelectionElementKind.Face)
             });
         var differentElement = new SelectionState(
             new SelectionItem[]
             {
-                new("/World/Prototype", "/World/Instancer", 2, 10)
+                new(
+                    "/World/Prototype",
+                    "/World/Instancer",
+                    2,
+                    10,
+                    SelectionElementKind.Face)
             });
 
         await Assert.That(first).IsEqualTo(equal);
@@ -210,7 +336,8 @@ public sealed class PickingContractsTests
             "/World/Prototype",
             "/World/Instancer",
             instanceIndex: 6,
-            elementIndex: 14);
+            elementIndex: 14,
+            elementKind: SelectionElementKind.Face);
         var worldPosition = new Vector3(1, 2, 3);
         var worldNormal = Vector3.UnitY;
 
@@ -626,15 +753,27 @@ public sealed class PickingContractsTests
             4,
             new ViewportDimensions(10, 10),
             requestedStateRevision: 2,
-            requestedSceneRevision: 1);
+            requestedSceneRevision: 1,
+            RenderPickTarget.Face);
         var equalRequest = new RenderPickRequest(
             3,
             4,
             new ViewportDimensions(10, 10),
             requestedStateRevision: 2,
-            requestedSceneRevision: 1);
-        var item = new SelectionItem("/World/Cube", elementIndex: 4);
-        var equalItem = new SelectionItem("/World/Cube", elementIndex: 4);
+            requestedSceneRevision: 1,
+            RenderPickTarget.Face);
+        var item = new SelectionItem(
+            "/World/Cube",
+            instancerPath: null,
+            instanceIndex: null,
+            elementIndex: 4,
+            elementKind: SelectionElementKind.Face);
+        var equalItem = new SelectionItem(
+            "/World/Cube",
+            instancerPath: null,
+            instanceIndex: null,
+            elementIndex: 4,
+            elementKind: SelectionElementKind.Face);
         RenderPickResult result = RenderPickResult.Hit(
             request,
             2,
@@ -673,7 +812,8 @@ public sealed class PickingContractsTests
             "/World/Prototype",
             "/World/Instancer",
             instanceIndex: 2,
-            elementIndex: 7);
+            elementIndex: 7,
+            elementKind: SelectionElementKind.Face);
 
         StageRenderState selected = original.WithSelection(
             new SelectionState(new SelectionItem[] { item }));
@@ -721,7 +861,8 @@ public sealed class PickingContractsTests
             "/World/Prototype",
             "/World/Instancer",
             instanceIndex: 1,
-            elementIndex: 2);
+            elementIndex: 2,
+            elementKind: SelectionElementKind.Face);
         var worldPosition = new Vector3(1, 2, 3);
         var worldNormal = Vector3.UnitY;
         ulong checksum = 0;

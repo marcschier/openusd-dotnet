@@ -13,14 +13,17 @@ public sealed class ViewerPickEventArgs : EventArgs
 {
     internal ViewerPickEventArgs(RenderPickResult result)
     {
+        Item = result.Status == RenderPickStatus.Hit ? result.Item : null;
         PrimPath = result.Status == RenderPickStatus.Hit ? result.PrimPath : null;
         InstancerPath = result.InstancerPath;
         InstanceIndex = result.InstanceIndex;
         ElementIndex = result.ElementIndex;
+        ElementKind = Item?.ElementKind ?? SelectionElementKind.None;
         WorldPosition = result.WorldPosition;
         WorldNormal = result.WorldNormal;
         Status = result.Status;
         StaleReasons = result.StaleReasons;
+        RequestedTarget = result.Request.Target;
         PixelX = result.Request.X;
         PixelY = result.Request.Y;
         Viewport = result.Request.Viewport;
@@ -28,17 +31,70 @@ public sealed class ViewerPickEventArgs : EventArgs
         SceneRevision = result.SceneRevision;
     }
 
+    /// <summary>
+    /// Gets the complete resolved selection identity, or <see langword="null"/>
+    /// for a non-hit result.
+    /// </summary>
+    /// <remarks>
+    /// This is the only place the full identity survives. The flattened
+    /// properties below are convenience views of it, and two of them are lossy
+    /// by construction: <see cref="InstancerPath"/> and
+    /// <see cref="InstanceIndex"/> report the innermost instancing level only,
+    /// so a hit inside a nested instancer describes one level of a chain the
+    /// host cannot reconstruct from them. A host that cares about nested
+    /// instancing must read <see cref="SelectionItem.InstancerContext"/> here,
+    /// which is ordered outermost to innermost and is the only complete
+    /// description of the instance.
+    /// </remarks>
+    public SelectionItem? Item { get; }
+
+    /// <summary>
+    /// Gets the scene element the pick was requested for.
+    /// </summary>
+    /// <remarks>
+    /// A host that fixed its own target through
+    /// <see cref="ViewerHostOptions.PickTarget"/> sees exactly that value on
+    /// every callback, whatever the operator later chooses in the Tools menu. A
+    /// host that set <see cref="ViewerHostOptions.FollowViewerPickTarget"/> sees
+    /// the operator's current choice, which is what makes the two modes
+    /// distinguishable from inside the callback.
+    /// </remarks>
+    public RenderPickTarget RequestedTarget { get; }
+
     /// <summary>Gets the hit prim path, or <see langword="null"/> for non-hit results.</summary>
     public string? PrimPath { get; }
 
-    /// <summary>Gets the hit instancer path, when the hit resolves an instance.</summary>
+    /// <summary>
+    /// Gets the innermost hit instancer path, when the hit resolves an instance.
+    /// </summary>
+    /// <remarks>
+    /// This is a convenience view of the last <see cref="Item"/> instancing
+    /// level. For the overwhelmingly common single-level scene it is the whole
+    /// truth; for a nested instancer it names one level of a chain, and the
+    /// outer levels exist only in <see cref="SelectionItem.InstancerContext"/>.
+    /// </remarks>
     public string? InstancerPath { get; }
 
-    /// <summary>Gets the zero-based hit instance index, when available.</summary>
+    /// <summary>
+    /// Gets the zero-based hit instance index inside <see cref="InstancerPath"/>,
+    /// when available.
+    /// </summary>
+    /// <remarks>
+    /// It is the innermost level's own index, which is what
+    /// <see cref="InstancerPath"/> names. It is deliberately not a composed
+    /// mixed-radix ordinal across the chain: an index from one level reported
+    /// beside a path from another describes an instance that does not exist.
+    /// </remarks>
     public int? InstanceIndex { get; }
 
     /// <summary>Gets the zero-based hit subprim element index, when available.</summary>
     public int? ElementIndex { get; }
+
+    /// <summary>
+    /// Gets what <see cref="ElementIndex"/> identifies, so a bare index never
+    /// reaches a host without the kind that interprets it.
+    /// </summary>
+    public SelectionElementKind ElementKind { get; }
 
     /// <summary>Gets the world-space hit point, when the backend provides one.</summary>
     public Vector3? WorldPosition { get; }

@@ -260,6 +260,11 @@ HdSilkBasisCurves::Sync(
         record.path = id.GetString();
         record.primId = GetPrimId();
         record.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
+        // A curve's emitted vertices and segments are resampled from authored
+        // control points and are not authored mesh points or edges, so both
+        // exact targets are refused by topology rather than answered with an
+        // emitted index.
+        record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE;
         record.topologyRevision = _topologyRevision;
         HdSilkFlattenMatrix(_transform, record.transform);
         record.displayColor[0] = _displayColor[0];
@@ -332,6 +337,10 @@ HdSilkBasisCurves::_BuildInstanceRecords(
     const int32_t instanceId = HdSilkStableInstanceId(instancerId.GetString());
     std::vector<HdSilkMeshRecord> records;
     records.reserve(samples.size());
+    // Built once and copied per instance: it holds no geometry and no identity
+    // table, so an instance reference never costs a copy of the prototype's
+    // curve points.
+    const HdSilkMeshRecord reference = HdSilkMakeInstanceReference(record);
     for (size_t position = 0; position < samples.size(); ++position)
     {
         const HdSilkInstanceSample& sample = samples[position];
@@ -341,20 +350,15 @@ HdSilkBasisCurves::_BuildInstanceRecords(
             throw std::overflow_error(
                 "The hdSilk basisCurves instance index exceeds the 32-bit instance index.");
         }
-        HdSilkMeshRecord instanceRecord = record;
+        HdSilkMeshRecord instanceRecord =
+            position == 0 ? std::move(record) : reference;
         instanceRecord.instanceId = instanceId;
+        instanceRecord.instancerPath = instancerId.GetString();
         instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
+        instanceRecord.instancerContext = sample.context;
         HdSilkFlattenMatrix(
             _transform * sample.transform,
             instanceRecord.transform);
-        if (position != 0)
-        {
-            instanceRecord.points.clear();
-            instanceRecord.indices.clear();
-            instanceRecord.triangleSubprims.clear();
-            instanceRecord.materialPath.clear();
-            instanceRecord.attributes.clear();
-        }
         records.push_back(std::move(instanceRecord));
     }
     return records;

@@ -1,5 +1,6 @@
 set(OPENUSD_HDSILK_SOURCES
     ../include/openusd_render_camera.h
+    ../include/openusd_mdl.h
     include/openusd_hdsilk.h
     ../private/openusd_render_camera_internal.h
     src/api.cpp
@@ -9,14 +10,22 @@ set(OPENUSD_HDSILK_SOURCES
     src/curveWidths.cpp
     src/implicitSurfaceSceneIndexPlugin.h
     src/implicitSurfaceSceneIndexPlugin.cpp
+    src/instanceLinking.h
+    src/instanceLinking.cpp
     src/instancer.h
     src/instancer.cpp
     src/light.h
     src/light.cpp
+    src/lightLinkingSceneIndexPlugin.h
+    src/lightLinkingSceneIndexPlugin.cpp
     src/material.h
     src/material.cpp
     src/materialXBridge.h
     src/materialXBridge.cpp
+    src/mdlAdapter.h
+    src/mdlAdapter.cpp
+    src/mdlMaterialSceneIndexPlugin.h
+    src/mdlMaterialSceneIndexPlugin.cpp
     src/mesh.h
     src/mesh.cpp
     src/points.h
@@ -28,9 +37,28 @@ set(OPENUSD_HDSILK_SOURCES
     src/renderPass.h
     src/renderPass.cpp
     src/sceneState.h
-    src/sceneState.cpp)
+    src/sceneState.cpp
+    src/subdivision.h
+    src/subdivision.cpp)
 
 find_package(MaterialX CONFIG REQUIRED)
+
+# OpenSubdiv ships inside the pinned OpenUSD install prefix but exports no CMake
+# package, and pxrTargets does not re-export it: OpenUSD links osdCPU privately
+# into its monolithic library, so its symbols never reach a consumer. hdSilk
+# evaluates subdivision surfaces itself and therefore resolves the same pinned
+# static library directly from that prefix. Its headers are already reachable
+# through the pxr include directory.
+find_library(OPENUSD_OPENSUBDIV_CPU_LIBRARY
+    NAMES osdCPU
+    HINTS "${pxr_DIR}/lib" "${pxr_DIR}/lib64"
+    NO_DEFAULT_PATH)
+if(NOT OPENUSD_OPENSUBDIV_CPU_LIBRARY)
+    message(
+        FATAL_ERROR
+        "hdSilk requires the OpenSubdiv osdCPU library from the pinned OpenUSD "
+        "install prefix (${pxr_DIR}).")
+endif()
 
 set(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
 if(OPENUSD_WITH_VULKAN AND TARGET Vulkan::shaderc_combined)
@@ -73,6 +101,7 @@ function(configure_openusd_hdsilk_target target_name core_target)
             ${core_target}
             usd_m
             hio
+            ${OPENUSD_OPENSUBDIV_CPU_LIBRARY}
             MaterialXFormat
             ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS}
             ${OPENUSD_HDSILK_MATERIALX_MSL_LIBS})

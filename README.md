@@ -134,14 +134,19 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All 27 package IDs below are buildable from this repository and published to NuGet.org at
-`0.12.0-alpha`. The five Cesium IDs became public after being withheld at `0.5.0-alpha`; the
+All 31 package IDs below are buildable from this repository. Twenty-seven are already published to
+NuGet.org at `0.12.0-alpha`; `OpenUsd.LiveAuthoring`, the two optional Omniverse bridge IDs, and
+`OpenUsd.Viewer.Bridge.Grpc` are new in this repository and have not yet shipped a release. The five
+Cesium IDs became public after being withheld at `0.5.0-alpha`; the
 `OpenUsd.Mcp.Tool` .NET tool and the four physics IDs are new in `0.12.0-alpha`.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
 | `OpenUsd.Interop` | 8/9/10 | Generated NativeAOT-safe C ABI declarations |
 | `OpenUsd` | 8/9/10 | Managed stage, layer, prim, value, and schema API |
+| `OpenUsd.LiveAuthoring` | 8/9/10 | Bounded live-authoring admission, correlation, and health contracts |
+| `OpenUsd.Bridge.Protocol` | 8/9/10 | Optional transport-neutral `openusd.bridge.v1` wire model and codec |
+| `OpenUsd.Bridge.Grpc` | 8/9/10 | Optional gRPC bridge client for an externally owned Omniverse Kit peer |
 | `OpenUsd.Rendering` | 8/9/10 | Renderer-neutral state, capabilities, picking, and failover |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
 | `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
@@ -151,6 +156,7 @@ All 27 package IDs below are buildable from this repository and published to NuG
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Metal backend |
 | `OpenUsd.Viewer` | 8/9/10 | Embeddable Avalonia Viewer shell |
+| `OpenUsd.Viewer.Bridge.Grpc` | 8/9/10 | Optional Viewer bridge integration; no transport in the base Viewer |
 | `OpenUsd.Mcp.Tool` | 10 tool | Framework-dependent MCP stdio host; native runtime separate |
 | `OpenUsd.Runtime.Core` | 8 carrier | RID-agnostic Core metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
 | `OpenUsd.Runtime.Core.win-x64` | 8 carrier | Windows OpenUSD core runtime and data plugins |
@@ -177,7 +183,7 @@ target .NET 8, 9, and 10. Package layout and clean-consumer gates are documented
 | Surface | `net8.0` | `net9.0` | `net10.0` | Notes |
 | --- | :---: | :---: | :---: | --- |
 | Packable managed libraries | ✅ | ✅ | ✅ | AOT, trim, and single-file analyzers enabled |
-| `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Source sample, not a package |
+| `OpenUsd.LiveAuthoring` | ✅ | ✅ | ✅ | Package-consumer live-authoring adapter |
 | Runtime asset carrier projects | Carrier | — | — | RID assets consumed by supported applications |
 | Viewer, executable samples, probes | — | — | ✅ | Repository development and evidence tools |
 | `OpenUsd.Mcp.Tool` | — | — | ✅ | Framework-dependent `openusd-mcp` command |
@@ -267,7 +273,7 @@ not claim.
 | MaterialX | Projection plus generated Vulkan SPIR-V and Metal MSL source | Vulkan generated path gated |
 | `UsdLux` lighting | Distant, sphere, and untextured dome ambient with exposure | Parity-gated |
 | Shadows | Transport exists; Storm produces no offscreen reference to gate against | Measured, ungated |
-| Image-based lighting | Dome textures and IBL | Not implemented |
+| Image-based lighting | Textured dome diffuse/specular prefilter and BRDF table | Analytic and WARP/SwiftShader gates |
 | Point instancing | Prototype-plus-instance wire format, hardware instanced draws | Parity-gated |
 | Basis curves | Linear curves as line topology | Implemented subset; gated |
 | Points | `UsdGeomPoints` as point-list topology | Parity-gated |
@@ -336,11 +342,11 @@ divergence.
 | Sample | Purpose | Native runtime |
 | --- | --- | --- |
 | [`OpenUsd.HelloStage`](samples/OpenUsd.HelloStage/README.md) | Create/save/open round trip | Required to run |
-| [`OpenUsd.LiveAuthoring`](samples/OpenUsd.LiveAuthoring/README.md) | Ordered update adapter | No for build/tests |
 | [`OpenUsd.LiveAuthoring.Sample`](samples/OpenUsd.LiveAuthoring.Sample/README.md) | End-to-end authoring | Required |
 
 See the [samples overview](samples/README.md) for prerequisites, expected output, and package versus
-source consumption.
+source consumption. The [`OpenUsd.LiveAuthoring`](src/OpenUsd.LiveAuthoring/README.md) adapter package
+itself lives under `src/` and is documented in [Live authoring](docs/live-authoring.md).
 
 ## 📚 Documentation
 

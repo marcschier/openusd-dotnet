@@ -1,0 +1,88 @@
+/******************************************************************************
+ * Copyright (c) marcschier. Licensed under the MIT License.
+ *
+ * Synthetic MDL fixtures for the openusd_mdl SDK-backed adapter.
+ *
+ * Everything in this file is written for this repository. No NVIDIA Omniverse
+ * module source -- OmniPBR, OmniSurface, OmniGlass or any other -- is copied,
+ * adapted, or paraphrased here. The parameter *names* are the public interface
+ * names an Omniverse-authored stage binds, which is data, not source: the whole
+ * point of the fixture is that the adapter's public-name mapping is exercised
+ * without redistributing anyone's shader.
+ *
+ * The module uses the MDL standard library only.
+ *****************************************************************************/
+mdl 1.7;
+
+import ::df::*;
+import ::state::*;
+import ::math::*;
+
+// A material whose every accepted parameter has a *default* and nothing else.
+// It exists to prove that the SDK-backed adapter reads module defaults: a stage
+// that binds this material and authors nothing must still shade, and each value
+// must arrive marked as coming from the module rather than from the stage.
+export material openusd_probe_defaults(
+    color diffuse_color_constant = color(0.25f, 0.5f, 0.75f),
+    float reflection_roughness_constant = 0.375f,
+    float metallic_constant = 0.125f,
+    uniform bool enable_emission = true,
+    color emissive_color = color(0.1f, 0.2f, 0.3f)
+) = let
+{
+    bsdf diffuse = ::df::diffuse_reflection_bsdf(tint: diffuse_color_constant);
+    bsdf glossy = ::df::microfacet_ggx_smith_bsdf(
+        roughness_u: reflection_roughness_constant * reflection_roughness_constant,
+        tint: color(1.0f));
+    bsdf surface = ::df::weighted_layer(
+        weight: metallic_constant,
+        layer: glossy,
+        base: diffuse);
+} in material(
+    surface: material_surface(
+        scattering: surface,
+        emission: material_emission(
+            emission: ::df::diffuse_edf(),
+            intensity: enable_emission ? emissive_color : color(0.0f))));
+
+// A material whose defaults are constant *expressions* rather than literals:
+// a broadcast conversion constructor and an alias that forwards one parameter's
+// default to another. Both are shapes the adapter's expression reducer must
+// fold to a value, and neither is a call it may evaluate by guessing.
+export material openusd_probe_expressions(
+    float base_level = 0.4f,
+    color diffuse_color_constant = color(0.6f),
+    float reflection_roughness_constant = base_level,
+    float metallic_constant = 0.5f,
+    float opacity_constant = 0.75f,
+    uniform bool enable_opacity = true
+) = let
+{
+    bsdf diffuse = ::df::diffuse_reflection_bsdf(tint: diffuse_color_constant);
+    bsdf glossy = ::df::microfacet_ggx_smith_bsdf(
+        roughness_u: reflection_roughness_constant, tint: color(1.0f));
+    bsdf surface = ::df::weighted_layer(
+        weight: metallic_constant, layer: glossy, base: diffuse);
+} in material(
+    thin_walled: true,
+    surface: material_surface(scattering: surface),
+    geometry: material_geometry(
+        cutout_opacity: enable_opacity ? opacity_constant : 1.0f));
+
+// A material whose accepted defaults are computations this adapter deliberately
+// does not evaluate, over a layered BSDF. It must distil nothing and report
+// every affected parameter by name rather than publish a plausible-looking
+// value the module does not produce.
+export material openusd_probe_unsupported(
+    color diffuse_color_constant = ::math::lerp(
+        color(0.0f), color(1.0f), ::state::normal().x),
+    float reflection_roughness_constant = ::math::abs(::state::position().y),
+    float metallic_constant = ::state::animation_time()
+) = let
+{
+    bsdf diffuse = ::df::diffuse_reflection_bsdf(tint: diffuse_color_constant);
+    bsdf coat = ::df::microfacet_ggx_smith_bsdf(
+        roughness_u: reflection_roughness_constant);
+    bsdf layered = ::df::fresnel_layer(
+        ior: 1.5f + metallic_constant, layer: coat, base: diffuse);
+} in material(surface: material_surface(scattering: layered));

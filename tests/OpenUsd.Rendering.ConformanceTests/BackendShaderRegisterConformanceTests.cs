@@ -49,6 +49,23 @@ public sealed class BackendShaderRegisterConformanceTests
         ("iorTexture", SilkBindingKind.SampledTexture, 27),
     ];
 
+    // The shadow atlas and the two prefiltered environment maps are declared by
+    // every mesh fragment permutation rather than by a feature, so they are
+    // listed beside the material slots and pinned the same way. The shadow
+    // entries are here because the Metal table did not have them: the identity
+    // fallback resolved the atlas to argument index 31 while the checked MSL
+    // declares [[texture(16)]], which is the same silent mis-binding the metallic
+    // slot hit and which this file exists to prevent.
+    private static readonly (string Resource, SilkBindingKind Kind, uint Binding)[]
+        FrameBindings =
+    [
+        ("shadowSampler", SilkBindingKind.Sampler, 30),
+        ("shadowAtlas", SilkBindingKind.SampledTexture, 31),
+        ("environmentSampler", SilkBindingKind.Sampler, 32),
+        ("environmentIrradiance", SilkBindingKind.SampledTexture, 33),
+        ("environmentSpecular", SilkBindingKind.SampledTexture, 34),
+    ];
+
     // The sampled density volume is its own checked fragment program, because only
     // its binding layout declares the 3D texture and its sampler. Its registers are
     // still part of the same allocation, so they are pinned the same way.
@@ -70,7 +87,7 @@ public sealed class BackendShaderRegisterConformanceTests
         }
 
         foreach ((string resource, SilkBindingKind kind, uint binding) in
-            MeshBindings.Concat(VolumeBindings))
+            MeshBindings.Concat(VolumeBindings).Concat(FrameBindings))
         {
             (string registerClass, uint register, uint reflectedBinding) = declared[resource];
 
@@ -158,7 +175,7 @@ public sealed class BackendShaderRegisterConformanceTests
         }
 
         foreach ((string resource, SilkBindingKind kind, uint binding) in
-            MeshBindings.Concat(VolumeBindings))
+            MeshBindings.Concat(VolumeBindings).Concat(FrameBindings))
         {
             (_, uint register, uint reflectedBinding) = declared[resource];
 

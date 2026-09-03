@@ -380,7 +380,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     null,
                     &pipelineLayout),
                 "vkCreatePipelineLayout");
-            renderPass = CreateTriangleRenderPass(descriptor.ColorFormat);
+            renderPass = CreateTriangleRenderPass(
+                descriptor.ColorFormat,
+                descriptor.DepthOnly);
             pipeline = CreateTrianglePipeline(
                 descriptor,
                 program,
@@ -422,21 +424,37 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
     }
 
-    private RenderPass CreateTriangleRenderPass(SilkTextureFormat colorFormat)
+    private RenderPass CreateTriangleRenderPass(SilkTextureFormat colorFormat) =>
+        CreateTriangleRenderPass(colorFormat, depthOnly: false);
+
+    /// <summary>
+    /// Creates the render pass a mesh or shadow pipeline is compatible with.
+    /// </summary>
+    /// <remarks>
+    /// A depth-only pass declares one attachment and no colour reference, which is
+    /// what a shadow map is rendered into. Everything else -- load and store ops,
+    /// the depth layout, and the external dependency -- is identical, so the two
+    /// passes cannot drift apart.
+    /// </remarks>
+    private RenderPass CreateTriangleRenderPass(
+        SilkTextureFormat colorFormat,
+        bool depthOnly)
     {
         AttachmentDescription* attachments = stackalloc AttachmentDescription[2];
-        attachments[0] = new AttachmentDescription
-        {
-            Format = GetNativeFormat(colorFormat),
-            Samples = SampleCountFlags.Count1Bit,
-            LoadOp = AttachmentLoadOp.Load,
-            StoreOp = AttachmentStoreOp.Store,
-            StencilLoadOp = AttachmentLoadOp.DontCare,
-            StencilStoreOp = AttachmentStoreOp.DontCare,
-            InitialLayout = ImageLayout.ColorAttachmentOptimal,
-            FinalLayout = ImageLayout.ColorAttachmentOptimal
-        };
-        attachments[1] = new AttachmentDescription
+        attachments[0] = depthOnly
+            ? default
+            : new AttachmentDescription
+            {
+                Format = GetNativeFormat(colorFormat),
+                Samples = SampleCountFlags.Count1Bit,
+                LoadOp = AttachmentLoadOp.Load,
+                StoreOp = AttachmentStoreOp.Store,
+                StencilLoadOp = AttachmentLoadOp.DontCare,
+                StencilStoreOp = AttachmentStoreOp.DontCare,
+                InitialLayout = ImageLayout.ColorAttachmentOptimal,
+                FinalLayout = ImageLayout.ColorAttachmentOptimal
+            };
+        var depthAttachment = new AttachmentDescription
         {
             Format = Format.D32Sfloat,
             Samples = SampleCountFlags.Count1Bit,
@@ -447,17 +465,25 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             InitialLayout = ImageLayout.DepthStencilAttachmentOptimal,
             FinalLayout = ImageLayout.DepthStencilAttachmentOptimal
         };
+        if (depthOnly)
+        {
+            attachments[0] = depthAttachment;
+        }
+        else
+        {
+            attachments[1] = depthAttachment;
+        }
         var colorReference = new AttachmentReference(
             0,
             ImageLayout.ColorAttachmentOptimal);
         var depthReference = new AttachmentReference(
-            1,
+            depthOnly ? 0u : 1u,
             ImageLayout.DepthStencilAttachmentOptimal);
         var subpass = new SubpassDescription
         {
             PipelineBindPoint = PipelineBindPoint.Graphics,
-            ColorAttachmentCount = 1,
-            PColorAttachments = &colorReference,
+            ColorAttachmentCount = depthOnly ? 0u : 1u,
+            PColorAttachments = depthOnly ? null : &colorReference,
             PDepthStencilAttachment = &depthReference
         };
         var dependency = new SubpassDependency
@@ -475,7 +501,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         var createInfo = new RenderPassCreateInfo
         {
             SType = StructureType.RenderPassCreateInfo,
-            AttachmentCount = 2,
+            AttachmentCount = depthOnly ? 1u : 2u,
             PAttachments = attachments,
             SubpassCount = 1,
             PSubpasses = &subpass,
@@ -598,8 +624,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             var colorBlend = new PipelineColorBlendStateCreateInfo
             {
                 SType = StructureType.PipelineColorBlendStateCreateInfo,
-                AttachmentCount = 1,
-                PAttachments = &colorAttachment
+                AttachmentCount = descriptor.DepthOnly ? 0u : 1u,
+                PAttachments = descriptor.DepthOnly ? null : &colorAttachment
             };
             DynamicState* dynamicStates = stackalloc DynamicState[2]
             {

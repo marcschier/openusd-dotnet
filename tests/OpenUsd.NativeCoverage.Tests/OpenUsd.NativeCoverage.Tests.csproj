@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Interop\OpenUsd.Interop.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.LiveAuthoring\OpenUsd.LiveAuthoring.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Physics\OpenUsd.Physics.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk.D3D12\OpenUsd.Rendering.Silk.D3D12.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />

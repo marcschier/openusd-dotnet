@@ -254,7 +254,10 @@ openusd_status openusd_layer_set_metadata(
         {
             TfErrorMark mark;
             VtDictionary data = layer->value->GetCustomLayerData();
-            data[std::string(key)] = MakeMetadataValue(value, string_value);
+            // Match UsdObject::SetCustomDataByKey's ':'-separated key-path semantics, so a
+            // caller cannot get flat top-level keys on a layer and nested sub-dictionaries on
+            // a prim from what looks like the same key.
+            data.SetValueAtPath(std::string(key), MakeMetadataValue(value, string_value));
             layer->value->SetCustomLayerData(data);
             if (!mark.IsClean())
             {
@@ -295,14 +298,14 @@ openusd_status openusd_layer_get_metadata(
         return Guard(error, [&]()
         {
             const VtDictionary data = layer->value->GetCustomLayerData();
-            const auto entry = data.find(std::string(key));
-            if (entry == data.end())
+            const VtValue* stored = data.GetValueAtPath(std::string(key));
+            if (stored == nullptr)
             {
                 WriteError(error, "The requested layer metadata was not found.");
                 return OPENUSD_STATUS_NOT_FOUND;
             }
             return ReadMetadataValue(
-                entry->second,
+                *stored,
                 requested_kind,
                 value,
                 string_buffer,
@@ -331,15 +334,14 @@ openusd_status openusd_layer_clear_metadata(
         return Guard(error, [&]()
         {
             VtDictionary data = layer->value->GetCustomLayerData();
-            const auto entry = data.find(std::string(key));
-            if (entry == data.end())
+            if (data.GetValueAtPath(std::string(key)) == nullptr)
             {
                 WriteError(error, "The requested layer metadata was not found.");
                 return OPENUSD_STATUS_NOT_FOUND;
             }
 
             TfErrorMark mark;
-            data.erase(entry);
+            data.EraseValueAtPath(std::string(key));
             layer->value->SetCustomLayerData(data);
             if (!mark.IsClean())
             {

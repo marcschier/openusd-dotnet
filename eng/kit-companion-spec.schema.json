@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openusd.example/schemas/kit-companion-spec.schema.json",
+  "title": "OpenUsd Omniverse Kit companion specification",
+  "description": "Machine-readable shape of eng/kit-companion-spec.json, the structured facts behind docs/omniverse-kit-companion.md. This schema describes a specification-only document: it validates the facts this repository asserts about a separately owned and separately distributed Omniverse Kit extension, never that extension's own shipped configuration. eng/generate-kit-companion-spec.py enforces this shape without an external JSON Schema library, and eng/tests/test_generate_kit_companion_spec.py fails if the two drift apart.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schemaVersion",
+    "generatedDocPath",
+    "specStatus",
+    "specStatusNote",
+    "protocol",
+    "kitBaseline",
+    "repositoryBoundary",
+    "extensionManifestDependencies",
+    "pythonGrpcWorkflow",
+    "serverBehavior",
+    "idempotencyLedger",
+    "updateMapping",
+    "unsupportedEdits",
+    "scoping",
+    "executionModes",
+    "observability",
+    "installation",
+    "acceptanceMatrix",
+    "exampleArtifacts",
+    "docLinks"
+  ],
+  "properties": {
+    "$schemaVersion": { "const": 1 },
+    "generatedDocPath": { "type": "string", "const": "docs/omniverse-kit-companion-reference.g.md" },
+    "specStatus": { "type": "string", "const": "specification-only" },
+    "specStatusNote": { "type": "string", "minLength": 1 },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageName", "serviceName", "currentMajorVersion", "currentMinorVersion",
+        "protoFiles", "maxUpdatesPerBatch", "maxCollectionElementCount",
+        "maxTotalCollectionElementCountPerBatch", "maxEstimatedBatchPayloadBytes",
+        "maxFrameOverheadBytes", "replayWindowDefaultLength", "replayWindowMaxLength",
+        "replayLedgerEntryBytes"
+      ],
+      "properties": {
+        "packageName": { "type": "string", "minLength": 1 },
+        "serviceName": { "type": "string", "minLength": 1 },
+        "currentMajorVersion": { "type": "integer", "minimum": 0 },
+        "currentMinorVersion": { "type": "integer", "minimum": 0 },
+        "protoFiles": {
+          "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }
+        },
+        "maxUpdatesPerBatch": { "type": "integer", "minimum": 1 },
+        "maxCollectionElementCount": { "type": "integer", "minimum": 1 },
+        "maxTotalCollectionElementCountPerBatch": { "type": "integer", "minimum": 1 },
+        "maxEstimatedBatchPayloadBytes": { "type": "integer", "minimum": 1 },
+        "maxFrameOverheadBytes": { "type": "integer", "minimum": 0 },
+        "replayWindowDefaultLength": { "type": "integer", "minimum": 1 },
+        "replayWindowMaxLength": { "type": "integer", "minimum": 1 },
+        "replayLedgerEntryBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "kitBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileFile", "dependencyId", "note"],
+      "properties": {
+        "profileFile": { "type": "string", "const": "eng/omniverse-profile.json" },
+        "dependencyId": { "type": "string", "const": "kit-baseline" },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "repositoryBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thisRepository", "companionExtension", "boundaryStatement"],
+      "properties": {
+        "thisRepository": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owns", "license", "distribution"],
+          "properties": {
+            "owns": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "license": { "type": "string", "minLength": 1 },
+            "distribution": { "type": "string", "minLength": 1 }
+          }
+        },
+        "companionExtension": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owns", "repository", "license", "distributionChannels"],
+          "properties": {
+            "owns": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "repository": { "type": "string", "minLength": 1 },
+            "license": { "type": "string", "minLength": 1 },
+            "distributionChannels": {
+              "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "boundaryStatement": { "type": "string", "minLength": 1 }
+      }
+    },
+    "extensionManifestDependencies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "purpose", "versionConstraint"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "purpose": { "type": "string", "minLength": 1 },
+          "versionConstraint": { "type": "string", "const": "pending" }
+        }
+      }
+    },
+    "pythonGrpcWorkflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps", "packageNegotiation", "maxMessageOptions"],
+      "properties": {
+        "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "packageNegotiation": { "type": "string", "minLength": 1 },
+        "maxMessageOptions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["grpcMaxSendMessageLength", "grpcMaxReceiveMessageLength"],
+          "properties": {
+            "grpcMaxSendMessageLength": { "type": "string", "minLength": 1 },
+            "grpcMaxReceiveMessageLength": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "serverBehavior": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rpc", "kind", "retrySafe", "preconditions", "steps", "failureModes"],
+        "properties": {
+          "rpc": { "type": "string", "enum": ["Negotiate", "GetSnapshot", "GetStatus", "PublishLocalBatch", "StreamChanges"] },
+          "kind": { "type": "string", "enum": ["unary", "bidi-stream"] },
+          "retrySafe": { "type": "boolean" },
+          "preconditions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "failureModes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "idempotencyLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keySource", "windowDefaultLength", "windowMaxLength", "entryBytes", "maxLedgerBytes", "rules"],
+      "properties": {
+        "keySource": { "type": "string", "minLength": 1 },
+        "windowDefaultLength": { "type": "integer", "minimum": 1 },
+        "windowMaxLength": { "type": "integer", "minimum": 1 },
+        "entryBytes": { "type": "integer", "minimum": 1 },
+        "maxLedgerBytes": { "type": "integer", "minimum": 1 },
+        "rules": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "updateMapping": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["authoringType", "wireCase"],
+        "properties": {
+          "authoringType": { "type": "string", "minLength": 1 },
+          "wireCase": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "unsupportedEdits": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kitEdit", "reason"],
+        "properties": {
+          "kitEdit": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "scoping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bridgeRootRule", "layerRule", "mergeRule"],
+      "properties": {
+        "bridgeRootRule": { "type": "string", "minLength": 1 },
+        "layerRule": { "type": "string", "minLength": 1 },
+        "mergeRule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "executionModes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headlessKitService", "guiExtension"],
+      "properties": {
+        "headlessKitService": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "healthEndpoints"],
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "healthEndpoints": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "guiExtension": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "healthEndpoints"],
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "healthEndpoints": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logging", "metrics", "credentialRedaction"],
+      "properties": {
+        "logging": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "metrics": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "credentialRedaction": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "installation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["channel", "status", "steps"],
+        "properties": {
+          "channel": { "type": "string", "enum": ["ngc", "extension-manager", "local-development"] },
+          "status": { "type": "string", "const": "not-yet-published" },
+          "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "acceptanceMatrix": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "method", "passCriteria"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "method": { "type": "string", "minLength": 1 },
+          "passCriteria": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "exampleArtifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "disclaimer"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "disclaimer": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "docLinks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "path"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

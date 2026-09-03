@@ -45,6 +45,34 @@ else()
         "${pxr_DIR}/../../.."
         ABSOLUTE)
 endif()
+
+# A prefix that reaches this file with surrounding whitespace or a leftover
+# quote pair -- a configure line such as -DCMAKE_PREFIX_PATH='<path> ' produces
+# both -- is not a cosmetic problem. Every path below is built by concatenation,
+# so one trailing space turns "<prefix>/lib" into a directory that does not
+# exist, the probe's dependent libraries are never found, and on Windows the
+# loader failure is a modal error box that hangs the test instead of failing it.
+# The normalization removes only what a shell would have consumed; a quote
+# inside the path is part of the path. See cmake/OpenUsdNormalizePrefixPath.cmake.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenUsdNormalizePrefixPath.cmake)
+openusd_normalize_prefix_path(_openusd_test_prefix)
+get_filename_component(_openusd_test_prefix "${_openusd_test_prefix}" ABSOLUTE)
+if(NOT EXISTS "${_openusd_test_prefix}/lib/usd")
+    message(
+        FATAL_ERROR
+        "The native probe needs the OpenUSD plugin registry at "
+        "'${_openusd_test_prefix}/lib/usd'. Point CMAKE_PREFIX_PATH at the "
+        "install prefix that owns it.")
+endif()
+
+# The normalization is gated in its own right, through "cmake -P" so the test
+# runs the same function the configure step just ran.
+add_test(
+    NAME openusd_prefix_path_contract
+    COMMAND
+        ${CMAKE_COMMAND}
+        -P
+        "${CMAKE_CURRENT_SOURCE_DIR}/normalize-prefix-path-contract.cmake")
 add_test(
     NAME openusd_native_probe
     COMMAND

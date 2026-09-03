@@ -386,6 +386,21 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 {
                     leases.Add(selectionBinding.AcquireLease());
                 }
+                if (command.DisplayTransformPipeline is
+                    { } leasedDisplayTransformPipeline)
+                {
+                    leases.Add(leasedDisplayTransformPipeline.AcquireLease());
+                }
+                if (command.DisplayTransformBinding is
+                    { } leasedDisplayTransformBinding)
+                {
+                    leases.Add(leasedDisplayTransformBinding.AcquireLease());
+                }
+                if (command.DisplayTransformLattice is { } displayTransformLattice &&
+                    leasedTextures.Add(displayTransformLattice))
+                {
+                    leases.Add(displayTransformLattice.AcquireLease());
+                }
                 if (command.Buffer is { } buffer && leasedBuffers.Add(buffer))
                 {
                     leases.Add(buffer.AcquireLease());
@@ -411,11 +426,19 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             VulkanSilkGraphicsBuffer? indexBuffer = null;
             VulkanSilkGraphicsBuffer? uniformBuffer = null;
             VulkanSilkComputePipeline? computePipeline = null;
+            // Compute bindings are keyed by their declared coordinate rather
+            // than held in one field, because a generalized layout binds
+            // several buffers and a dispatch resolves each by the slot its own
+            // layout declares.
+            Dictionary<(uint Set, uint Binding), VulkanSilkGraphicsBuffer> computeBuffers = [];
             VulkanSilkSelectionMaskGraphicsPipeline? selectionMaskPipeline = null;
             VulkanSilkSelectionOutlineGraphicsPipeline? selectionOutlinePipeline = null;
             VulkanSilkSelectionOutlineBinding? selectionOutlineBinding = null;
             VulkanSelectionRenderingScope selectionScope =
                 VulkanSelectionRenderingScope.None;
+            VulkanSilkDisplayTransformGraphicsPipeline? displayTransformPipeline = null;
+            VulkanSilkDisplayTransformBinding? displayTransformBinding = null;
+            bool displayTransformRendering = false;
             VulkanSilkGraphicsBuffer? storageBuffer = null;
             VulkanSilkGraphicsBuffer? computeUniformBuffer = null;
             List<VulkanMaterialBinding> materialBindings = [];
@@ -423,8 +446,101 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             SilkViewport? currentViewport = null;
             SilkScissor? currentScissor = null;
             bool rendering = false;
+            bool shadowRendering = false;
             foreach (VulkanGraphicsCommand command in commands.Commands)
             {
+                if (command.DisplayTransformKind != VulkanDisplayTransformCommandKind.None)
+                {
+                    switch (command.DisplayTransformKind)
+                    {
+                        case VulkanDisplayTransformCommandKind.Begin:
+                            colorAttachment = command.Texture!;
+                            VulkanSilkGraphicsTexture displaySceneColor =
+                                command.DepthTexture!;
+                            VulkanSilkGraphicsTexture displayLattice =
+                                command.DisplayTransformLattice!;
+                            colorAttachment.ThrowIfDisposed();
+                            displaySceneColor.ThrowIfDisposed();
+                            displayLattice.ThrowIfDisposed();
+                            Transition(
+                                nativeCommands,
+                                displaySceneColor.Image,
+                                ImageAspectFlags.ColorBit,
+                                GetCurrentLayout(finalLayouts, displaySceneColor),
+                                ImageLayout.ShaderReadOnlyOptimal);
+                            finalLayouts[displaySceneColor] =
+                                ImageLayout.ShaderReadOnlyOptimal;
+                            Transition(
+                                nativeCommands,
+                                displayLattice.Image,
+                                ImageAspectFlags.ColorBit,
+                                GetCurrentLayout(finalLayouts, displayLattice),
+                                ImageLayout.ShaderReadOnlyOptimal);
+                            finalLayouts[displayLattice] =
+                                ImageLayout.ShaderReadOnlyOptimal;
+                            Transition(
+                                nativeCommands,
+                                colorAttachment.Image,
+                                ImageAspectFlags.ColorBit,
+                                GetCurrentLayout(finalLayouts, colorAttachment),
+                                ImageLayout.ColorAttachmentOptimal);
+                            finalLayouts[colorAttachment] =
+                                ImageLayout.ColorAttachmentOptimal;
+                            depthAttachment = null;
+                            displayTransformRendering = true;
+                            selectionScope = VulkanSelectionRenderingScope.None;
+                            rendering = true;
+                            continue;
+                        case VulkanDisplayTransformCommandKind.SetPipeline:
+                            displayTransformPipeline =
+                                command.DisplayTransformPipeline!;
+                            displayTransformPipeline.ThrowIfDisposed();
+                            if (displayTransformPipeline.DeviceGeneration !=
+                                DisplayTransformDeviceGeneration)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered Vulkan display-transform pipeline " +
+                                    "generation is no longer current.");
+                            }
+                            continue;
+                        case VulkanDisplayTransformCommandKind.SetBinding:
+                            displayTransformBinding =
+                                command.DisplayTransformBinding!;
+                            displayTransformBinding.ThrowIfDisposed();
+                            if (displayTransformBinding.DeviceGeneration !=
+                                DisplayTransformDeviceGeneration)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered Vulkan display-transform binding " +
+                                    "generation is no longer current.");
+                            }
+                            continue;
+                        case VulkanDisplayTransformCommandKind.DrawFullscreenTriangle:
+                            if (!rendering ||
+                                !displayTransformRendering ||
+                                colorAttachment is null ||
+                                displayTransformPipeline is null ||
+                                displayTransformBinding is null ||
+                                currentViewport is null ||
+                                currentScissor is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered Vulkan display-transform draw state " +
+                                    "is incomplete.");
+                            }
+                            RecordDisplayTransformDraw(
+                                nativeCommands,
+                                displayTransformPipeline,
+                                displayTransformBinding,
+                                colorAttachment,
+                                currentViewport.Value,
+                                currentScissor.Value);
+                            continue;
+                        default:
+                            throw new InvalidOperationException(
+                                "Unknown Vulkan display-transform command.");
+                    }
+                }
                 switch (command.Kind)
                 {
                     case SilkGraphicsCommandKind.UploadTexture:
@@ -608,6 +724,22 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         rendering = true;
                         selectionScope = VulkanSelectionRenderingScope.None;
                         break;
+                    case SilkGraphicsCommandKind.BeginShadowRendering:
+                        colorAttachment = null;
+                        depthAttachment = command.DepthTexture!;
+                        depthAttachment.ThrowIfDisposed();
+                        Transition(
+                            nativeCommands,
+                            depthAttachment.Image,
+                            ImageAspectFlags.DepthBit,
+                            GetCurrentLayout(finalLayouts, depthAttachment),
+                            ImageLayout.DepthStencilAttachmentOptimal);
+                        finalLayouts[depthAttachment] =
+                            ImageLayout.DepthStencilAttachmentOptimal;
+                        rendering = true;
+                        shadowRendering = true;
+                        selectionScope = VulkanSelectionRenderingScope.None;
+                        break;
                     case SilkGraphicsCommandKind.BeginSelectionMaskRendering:
                         colorAttachment = command.Texture!;
                         depthAttachment = command.DepthTexture!;
@@ -691,10 +823,18 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         materialTexture.ThrowIfDisposed();
                         // The render pass only begins inside DrawIndexed, so this
                         // transition is legitimately outside any render pass.
+                        //
+                        // The aspect is the texture's own rather than a hard-coded
+                        // colour aspect. A depth texture bound for sampling -- a
+                        // shadow map written by an earlier pass is the case that
+                        // exists -- is a D32Float image whose only aspect is depth,
+                        // and a barrier naming the colour aspect of a depth image is
+                        // invalid usage that a validation layer rejects and a driver
+                        // is free to mistranslate.
                         Transition(
                             nativeCommands,
                             materialTexture.Image,
-                            ImageAspectFlags.ColorBit,
+                            materialTexture.AspectMask,
                             GetCurrentLayout(finalLayouts, materialTexture),
                             ImageLayout.ShaderReadOnlyOptimal,
                             materialTexture.MipLevelCount);
@@ -749,8 +889,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                                 command.IndexCount);
                             break;
                         }
-                        if (!rendering || colorAttachment is null ||
-                            depthAttachment is null || currentPipeline is null ||
+                        if (!rendering || depthAttachment is null ||
+                            (colorAttachment is null && !shadowRendering) ||
+                            currentPipeline is null ||
                             vertexBuffer is null || indexBuffer is null ||
                             uniformBuffer is null || currentViewport is null ||
                             currentScissor is null)
@@ -794,8 +935,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             RenderArea = new Rect2D(
                                 new Offset2D(0, 0),
                                 new Extent2D(
-                                    colorAttachment.Width,
-                                    colorAttachment.Height))
+                                    colorAttachment?.Width ?? depthAttachment.Width,
+                                    colorAttachment?.Height ?? depthAttachment.Height))
                         };
                         _api.CmdBeginRenderPass(
                             nativeCommands,
@@ -898,14 +1039,33 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             currentScissor.Value);
                         break;
                     case SilkGraphicsCommandKind.EndRendering:
-                        if (!rendering || colorAttachment is null)
+                        if (!rendering || (colorAttachment is null && !shadowRendering))
                         {
                             throw new InvalidOperationException(
                                 "The ordered Vulkan command stream ended no rendering scope.");
                         }
-                        if (selectionScope == VulkanSelectionRenderingScope.Mask)
+                        if (shadowRendering)
                         {
                             if (depthAttachment is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The Vulkan shadow scope lost its depth attachment.");
+                            }
+                            // The colour pass samples this image next, so the layout
+                            // moves here with the image's own depth aspect rather than
+                            // being left for the sampling path to discover.
+                            Transition(
+                                nativeCommands,
+                                depthAttachment.Image,
+                                ImageAspectFlags.DepthBit,
+                                ImageLayout.DepthStencilAttachmentOptimal,
+                                ImageLayout.ShaderReadOnlyOptimal);
+                            finalLayouts[depthAttachment] =
+                                ImageLayout.ShaderReadOnlyOptimal;
+                        }
+                        else if (selectionScope == VulkanSelectionRenderingScope.Mask)
+                        {
+                            if (depthAttachment is null || colorAttachment is null)
                             {
                                 throw new InvalidOperationException(
                                     "The Vulkan selection-mask scope lost its depth attachment.");
@@ -924,6 +1084,28 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         else if (selectionScope ==
                                  VulkanSelectionRenderingScope.Outline)
                         {
+                            if (colorAttachment is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The Vulkan outline scope lost its color attachment.");
+                            }
+                            Transition(
+                                nativeCommands,
+                                colorAttachment.Image,
+                                ImageAspectFlags.ColorBit,
+                                ImageLayout.ColorAttachmentOptimal,
+                                ImageLayout.TransferSrcOptimal);
+                            finalLayouts[colorAttachment] =
+                                ImageLayout.TransferSrcOptimal;
+                        }
+                        else if (displayTransformRendering)
+                        {
+                            if (colorAttachment is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The Vulkan display-transform scope lost its " +
+                                    "color attachment.");
+                            }
                             Transition(
                                 nativeCommands,
                                 colorAttachment.Image,
@@ -935,7 +1117,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         }
                         else
                         {
-                            if (depthAttachment is null)
+                            if (depthAttachment is null || colorAttachment is null)
                             {
                                 throw new InvalidOperationException(
                                     "The Vulkan rendering scope lost its depth attachment.");
@@ -960,7 +1142,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         colorAttachment = null;
                         depthAttachment = null;
                         rendering = false;
+                        shadowRendering = false;
                         selectionScope = VulkanSelectionRenderingScope.None;
+                        displayTransformRendering = false;
                         break;
                     case SilkGraphicsCommandKind.SetComputePipeline:
                         computePipeline = command.ComputePipeline!;
@@ -980,24 +1164,41 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                                     null,
                                     storageBuffer));
                         }
+                        else
+                        {
+                            computeBuffers[(command.SetIndex, command.Binding)] =
+                                storageBuffer;
+                        }
                         break;
                     case SilkGraphicsCommandKind.SetComputeUniformBuffer:
                         computeUniformBuffer = command.Buffer!;
                         computeUniformBuffer.ThrowIfDisposed();
+                        computeBuffers[(command.SetIndex, command.Binding)] =
+                            computeUniformBuffer;
                         break;
                     case SilkGraphicsCommandKind.Dispatch:
-                        if (computePipeline is null ||
-                            storageBuffer is null ||
-                            computeUniformBuffer is null)
+                        if (computePipeline is null)
                         {
                             throw new InvalidOperationException(
                                 "The ordered Vulkan command stream has incomplete compute state.");
                         }
+                        foreach (SilkComputeSlot computeSlot in computePipeline
+                            .Descriptor.Program.BindingLayout.Descriptor.Slots)
+                        {
+                            if (!computeBuffers.TryGetValue(
+                                    (computeSlot.Set, computeSlot.Binding),
+                                    out VulkanSilkGraphicsBuffer? slotBuffer))
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered Vulkan command stream has incomplete " +
+                                    "compute state.");
+                            }
+                            slotBuffer.ThrowIfDisposed();
+                        }
                         VulkanComputeSubmissionResource computeResource =
                             CreateComputeSubmissionResource(
                                 computePipeline,
-                                storageBuffer,
-                                computeUniformBuffer);
+                                computeBuffers);
                         computeResources.Add(computeResource);
                         _api.CmdBindPipeline(
                             nativeCommands,
@@ -1013,11 +1214,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             &computeSet,
                             0,
                             null);
-                        _api.CmdDispatch(
-                            nativeCommands,
-                            checked((command.ElementCount + 63) / 64),
-                            1,
-                            1);
+                        _api.CmdDispatch(nativeCommands, command.GroupCount, 1, 1);
                         break;
                     case SilkGraphicsCommandKind.BufferBarrier:
                         VulkanSilkGraphicsBuffer barrierBuffer = command.Buffer!;
@@ -1133,15 +1330,30 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     private VulkanComputeSubmissionResource CreateComputeSubmissionResource(
         VulkanSilkComputePipeline pipeline,
-        VulkanSilkGraphicsBuffer storageBuffer,
-        VulkanSilkGraphicsBuffer uniformBuffer)
+        Dictionary<(uint Set, uint Binding), VulkanSilkGraphicsBuffer> buffers)
     {
+        SilkComputeBindingLayoutDescriptor layout =
+            pipeline.Descriptor.Program.BindingLayout.Descriptor;
+        IReadOnlyList<SilkComputeSlot> slots = layout.Slots;
+        uint storageCount = 0;
+        uint uniformCount = 0;
+        foreach (SilkComputeSlot slot in slots)
+        {
+            if (slot.Kind == SilkComputeSlotKind.Uniform)
+            {
+                uniformCount++;
+            }
+            else
+            {
+                storageCount++;
+            }
+        }
         DescriptorPool descriptorPool = default;
         try
         {
             DescriptorPoolSize* poolSizes = stackalloc DescriptorPoolSize[2];
-            poolSizes[0] = new DescriptorPoolSize(DescriptorType.StorageBuffer, 1);
-            poolSizes[1] = new DescriptorPoolSize(DescriptorType.UniformBuffer, 1);
+            poolSizes[0] = new DescriptorPoolSize(DescriptorType.StorageBuffer, storageCount);
+            poolSizes[1] = new DescriptorPoolSize(DescriptorType.UniformBuffer, uniformCount);
             var poolInfo = new DescriptorPoolCreateInfo
             {
                 SType = StructureType.DescriptorPoolCreateInfo,
@@ -1171,35 +1383,45 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     &allocationInfo,
                     &descriptorSet),
                 "vkAllocateDescriptorSets");
-            DescriptorBufferInfo* bufferInfos = stackalloc DescriptorBufferInfo[2];
-            bufferInfos[0] = new DescriptorBufferInfo(
-                storageBuffer.Buffer,
-                0,
-                checked((ulong)storageBuffer.Size));
-            bufferInfos[1] = new DescriptorBufferInfo(
-                uniformBuffer.Buffer,
-                0,
-                SilkCheckedShaderAssets.Compute.VulkanUniformByteSize);
-            WriteDescriptorSet* writes = stackalloc WriteDescriptorSet[2];
-            writes[0] = new WriteDescriptorSet
+            DescriptorBufferInfo* bufferInfos = stackalloc DescriptorBufferInfo[
+                SilkComputeBindingLayoutDescriptor.MaximumSlots];
+            WriteDescriptorSet* writes = stackalloc WriteDescriptorSet[
+                SilkComputeBindingLayoutDescriptor.MaximumSlots];
+            for (int slot = 0; slot < slots.Count; slot++)
             {
-                SType = StructureType.WriteDescriptorSet,
-                DstSet = descriptorSet,
-                DstBinding = 0,
-                DescriptorCount = 1,
-                DescriptorType = DescriptorType.StorageBuffer,
-                PBufferInfo = &bufferInfos[0]
-            };
-            writes[1] = new WriteDescriptorSet
-            {
-                SType = StructureType.WriteDescriptorSet,
-                DstSet = descriptorSet,
-                DstBinding = 1,
-                DescriptorCount = 1,
-                DescriptorType = DescriptorType.UniformBuffer,
-                PBufferInfo = &bufferInfos[1]
-            };
-            _api.UpdateDescriptorSets(_device, 2, writes, 0, null);
+                SilkComputeSlot computeSlot = slots[slot];
+                VulkanSilkGraphicsBuffer slotBuffer =
+                    buffers[(computeSlot.Set, computeSlot.Binding)];
+                bool uniform = computeSlot.Kind == SilkComputeSlotKind.Uniform;
+                // A uniform descriptor is sized to the parameters the kernel
+                // declares rather than to the whole buffer, because a driver may
+                // bound a uniform range far below a storage one; a structured
+                // descriptor covers the whole buffer, which is what the kernel's
+                // own count parameters then index inside.
+                ulong range = uniform
+                    ? (computeSlot.ElementStride == 0
+                        ? SilkCheckedShaderAssets.Compute.VulkanUniformByteSize
+                        : computeSlot.ElementStride)
+                    : checked((ulong)slotBuffer.Size);
+                bufferInfos[slot] = new DescriptorBufferInfo(slotBuffer.Buffer, 0, range);
+                writes[slot] = new WriteDescriptorSet
+                {
+                    SType = StructureType.WriteDescriptorSet,
+                    DstSet = descriptorSet,
+                    DstBinding = computeSlot.Binding,
+                    DescriptorCount = 1,
+                    DescriptorType = uniform
+                        ? DescriptorType.UniformBuffer
+                        : DescriptorType.StorageBuffer,
+                    PBufferInfo = &bufferInfos[slot]
+                };
+            }
+            _api.UpdateDescriptorSets(
+                _device,
+                checked((uint)slots.Count),
+                writes,
+                0,
+                null);
             return new VulkanComputeSubmissionResource(
                 descriptorPool,
                 descriptorSet);
@@ -1598,19 +1820,28 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     private Framebuffer CreateDrawFramebuffer(VulkanDrawState command)
     {
+        // A depth-only shadow pass declares its depth image as attachment zero,
+        // matching the depth-only render pass the shadow pipeline was created with.
+        bool depthOnly = command.ColorAttachment is null;
         ImageView* attachments = stackalloc ImageView[2]
         {
-            command.ColorAttachment.ImageView,
+            depthOnly
+                ? command.DepthAttachment.ImageView
+                : command.ColorAttachment!.ImageView,
             command.DepthAttachment.ImageView
         };
         var framebufferInfo = new FramebufferCreateInfo
         {
             SType = StructureType.FramebufferCreateInfo,
             RenderPass = command.Pipeline.RenderPass,
-            AttachmentCount = 2,
+            AttachmentCount = depthOnly ? 1u : 2u,
             PAttachments = attachments,
-            Width = command.ColorAttachment.Width,
-            Height = command.ColorAttachment.Height,
+            Width = depthOnly
+                ? command.DepthAttachment.Width
+                : command.ColorAttachment!.Width,
+            Height = depthOnly
+                ? command.DepthAttachment.Height
+                : command.ColorAttachment!.Height,
             Layers = 1
         };
         Framebuffer framebuffer = default;
@@ -1908,9 +2139,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 CommandBufferCount = 1,
                 PCommandBuffers = &commands
             };
-            ThrowIfFailed(
-                _api.QueueSubmit(_queue, 1, &submitInfo, fence),
-                "vkQueueSubmit");
+            Result submitted = _api.QueueSubmit(_queue, 1, &submitInfo, fence);
+            if (TryConsumeOffscreenSubmitDeviceLossForTesting())
+            {
+                submitted = Result.ErrorDeviceLost;
+            }
+            ThrowIfDeviceCallFailed(submitted, "vkQueueSubmit");
             success = true;
             return fence;
         }
@@ -1925,7 +2159,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     private void WaitForFence(Fence fence)
     {
-        ThrowIfFailed(
+        ThrowIfDeviceCallFailed(
             _api.WaitForFences(_device, 1, &fence, true, ulong.MaxValue),
             "vkWaitForFences");
     }
@@ -2189,7 +2423,9 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     : ISilkGraphicsCommandList,
       ISilkVolumeTextureCommandList,
       ISilkPickGraphicsCommandList,
-      ISilkSelectionOutlineGraphicsCommandList
+      ISilkSelectionOutlineGraphicsCommandList,
+      ISilkShadowGraphicsCommandList,
+      ISilkDisplayTransformGraphicsCommandList
 {
     private readonly List<VulkanGraphicsCommand> _commands = [];
     private VulkanSilkGraphicsTexture? _colorAttachment;
@@ -2201,9 +2437,14 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     private VulkanSilkComputePipeline? _computePipeline;
     private VulkanSilkGraphicsBuffer? _storageBuffer;
     private VulkanSilkGraphicsBuffer? _computeUniformBuffer;
+    // One entry per declared compute slot ordinal, so a dispatch can require
+    // every slot its layout declares to have been bound.
+    private readonly VulkanSilkGraphicsBuffer?[] _computeBuffers =
+        new VulkanSilkGraphicsBuffer?[SilkComputeBindingLayoutDescriptor.MaximumSlots];
     private SilkViewport? _viewport;
     private SilkScissor? _scissor;
     private bool _rendering;
+    private bool _shadowRendering;
     private bool _submitted;
     private bool _disposed;
 
@@ -2277,6 +2518,12 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
             color.Validate();
         }
         _commands.Add(VulkanGraphicsCommand.ClearColor(vulkanTexture, color));
+        // A colour clear recorded between two pick scopes becomes an in-render-pass
+        // attachment clear at replay, so the surface pre-pass's depth survives it.
+        if (ReferenceEquals(vulkanTexture, _pickColorAttachment))
+        {
+            _pickColorClearedSinceScope = true;
+        }
     }
 
     public void ClearDepth(ISilkGraphicsTexture texture, float depth)
@@ -2321,6 +2568,24 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         _commands.Add(VulkanGraphicsCommand.BeginRendering(color, depth));
     }
 
+    public void BeginShadowRendering(SilkShadowRenderingDescriptor descriptor)
+    {
+        ThrowIfUnavailable();
+        if (_rendering)
+        {
+            throw new InvalidOperationException("A rendering scope is already active.");
+        }
+        descriptor.Validate();
+        VulkanSilkGraphicsTexture depth = ValidateTexture(descriptor.DepthAttachment);
+        _colorAttachment = null;
+        _depthAttachment = depth;
+        BeginPickRenderingScope();
+        EndSelectionRenderingScope();
+        _rendering = true;
+        _shadowRendering = true;
+        _commands.Add(VulkanGraphicsCommand.BeginShadowRendering(depth));
+    }
+
     public void SetGraphicsPipeline(ISilkGraphicsPipeline pipeline)
     {
         ThrowIfRendering();
@@ -2336,7 +2601,16 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
                 nameof(pipeline));
         }
         vulkanPipeline.ThrowIfDisposed();
-        if (_colorAttachment?.Format != vulkanPipeline.Descriptor.ColorFormat)
+        if (_shadowRendering)
+        {
+            if (!vulkanPipeline.Descriptor.DepthOnly)
+            {
+                throw new ArgumentException(
+                    "A shadow pass requires a depth-only pipeline.",
+                    nameof(pipeline));
+            }
+        }
+        else if (_colorAttachment?.Format != vulkanPipeline.Descriptor.ColorFormat)
         {
             throw new ArgumentException(
                 "The pipeline color format does not match the active color attachment.",
@@ -2464,7 +2738,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfRendering();
         ArgumentOutOfRangeException.ThrowIfZero(indexCount);
-        if (_colorAttachment is null || _depthAttachment is null ||
+        if ((_colorAttachment is null && !_shadowRendering) || _depthAttachment is null ||
             (_pipeline is null &&
              _pickPipeline is null &&
              _selectionMaskPipeline is null) ||
@@ -2502,9 +2776,11 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         ThrowIfRendering();
         _commands.Add(VulkanGraphicsCommand.EndRendering());
         _rendering = false;
+        _shadowRendering = false;
         _colorAttachment = null;
         _depthAttachment = null;
         EndSelectionRenderingScope();
+        DisposeDisplayTransformState();
     }
 
     public void SetComputePipeline(ISilkComputePipeline pipeline)
@@ -2520,8 +2796,20 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         }
         vulkanPipeline.ThrowIfDisposed();
         _computePipeline = vulkanPipeline;
+        // A new pipeline may declare a different layout, so bindings made for
+        // the previous one are dropped rather than reinterpreted against slot
+        // ordinals that no longer mean the same thing.
+        Array.Clear(_computeBuffers);
         _commands.Add(VulkanGraphicsCommand.SetComputePipeline(vulkanPipeline));
     }
+
+    /// <summary>
+    /// The layout a compute binding is validated against: the bound pipeline's
+    /// own layout, or the checked two-slot layout when none is bound yet.
+    /// </summary>
+    private SilkComputeBindingLayoutDescriptor ActiveComputeLayout =>
+        _computePipeline?.Descriptor.Program.BindingLayout.Descriptor ??
+        SilkComputeBindingLayoutDescriptor.Checked;
 
     public void SetStorageBuffer(
         uint setIndex,
@@ -2530,14 +2818,14 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfUnavailable();
         VulkanSilkGraphicsBuffer vulkanBuffer = ValidateBuffer(buffer);
-        if (!vulkanBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
-        {
-            throw new ArgumentException(
-                "A storage binding requires a storage buffer.",
-                nameof(buffer));
-        }
         if (_rendering)
         {
+            if (!vulkanBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
+            {
+                throw new ArgumentException(
+                    "A storage binding requires a storage buffer.",
+                    nameof(buffer));
+            }
             RequireMaterialSlot(setIndex, binding, SilkBindingKind.StorageBuffer);
             _commands.Add(VulkanGraphicsCommand.SetStorageBuffer(
                 setIndex,
@@ -2545,13 +2833,18 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
                 vulkanBuffer));
             return;
         }
-        if (setIndex != 0 || binding != 0)
+        SilkComputeBindingLayoutDescriptor layout = ActiveComputeLayout;
+        int ordinal = SilkComputeRecording.ResolveStructuredSlot(
+            layout,
+            setIndex,
+            binding,
+            vulkanBuffer.Usage,
+            nameof(buffer));
+        _computeBuffers[ordinal] = vulkanBuffer;
+        if (layout.Slots[ordinal].Kind == SilkComputeSlotKind.ReadWriteStructured)
         {
-            throw new ArgumentException(
-                "outputValues requires a storage buffer at set 0, binding 0.",
-                nameof(buffer));
+            _storageBuffer = vulkanBuffer;
         }
-        _storageBuffer = vulkanBuffer;
         _commands.Add(VulkanGraphicsCommand.SetStorageBuffer(
             setIndex,
             binding,
@@ -2565,14 +2858,15 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfOutsideRendering();
         VulkanSilkGraphicsBuffer vulkanBuffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 1 ||
-            !vulkanBuffer.Usage.HasFlag(SilkBufferUsage.Uniform) ||
-            vulkanBuffer.Size < SilkCheckedShaderAssets.Compute.VulkanUniformByteSize)
-        {
-            throw new ArgumentException(
-                "ComputeParameters requires a 16-byte uniform buffer at set 0, binding 1.",
-                nameof(buffer));
-        }
+        int ordinal = SilkComputeRecording.ResolveUniformSlot(
+            ActiveComputeLayout,
+            setIndex,
+            binding,
+            vulkanBuffer.Usage,
+            vulkanBuffer.Size,
+            SilkCheckedShaderAssets.Compute.VulkanUniformByteSize,
+            nameof(buffer));
+        _computeBuffers[ordinal] = vulkanBuffer;
         _computeUniformBuffer = vulkanBuffer;
         _commands.Add(VulkanGraphicsCommand.SetComputeUniformBuffer(
             setIndex,
@@ -2591,13 +2885,13 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
             throw new InvalidOperationException(
                 "Dispatch requires a compute pipeline, storage buffer, and uniform buffer.");
         }
-        if (checked((nuint)elementCount * 16) > _storageBuffer.Size)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(elementCount),
-                "The storage buffer is too small for the dispatch.");
-        }
-        _commands.Add(VulkanGraphicsCommand.Dispatch(elementCount));
+        uint groupCount = SilkComputeRecording.ValidateDispatch(
+            ActiveComputeLayout,
+            elementCount,
+            _computePipeline.Descriptor.ThreadGroupSizeX,
+            ordinal => _computeBuffers[ordinal] is not null,
+            _storageBuffer.Size);
+        _commands.Add(VulkanGraphicsCommand.Dispatch(elementCount, groupCount));
     }
 
     public void BufferBarrier(ISilkGraphicsBuffer buffer)
@@ -2617,6 +2911,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         DisposePickState();
         DisposeSelectionOutlineState();
+        DisposeDisplayTransformState();
         _commands.Clear();
         _disposed = true;
     }
@@ -2727,7 +3022,13 @@ internal readonly record struct VulkanGraphicsCommand(
     uint SetIndex,
     uint Binding,
     uint IndexCount,
-    uint ElementCount)
+    uint ElementCount,
+    uint GroupCount,
+    VulkanDisplayTransformCommandKind DisplayTransformKind,
+    VulkanSilkDisplayTransformGraphicsPipeline? DisplayTransformPipeline,
+    VulkanSilkDisplayTransformBinding? DisplayTransformBinding,
+    // Reuses Texture = colour attachment, DepthTexture = scene-colour source.
+    VulkanSilkGraphicsTexture? DisplayTransformLattice)
 {
     internal static VulkanGraphicsCommand Upload(
         VulkanSilkGraphicsTexture texture,
@@ -2767,6 +3068,12 @@ internal readonly record struct VulkanGraphicsCommand(
         Create(
             SilkGraphicsCommandKind.BeginRendering,
             texture: color,
+            depthTexture: depth);
+
+    internal static VulkanGraphicsCommand BeginShadowRendering(
+        VulkanSilkGraphicsTexture depth) =>
+        Create(
+            SilkGraphicsCommandKind.BeginShadowRendering,
             depthTexture: depth);
 
     internal static VulkanGraphicsCommand BeginSelectionMask(
@@ -2892,12 +3199,47 @@ internal readonly record struct VulkanGraphicsCommand(
             setIndex: setIndex,
             binding: binding);
 
-    internal static VulkanGraphicsCommand Dispatch(uint elementCount) =>
-        Create(SilkGraphicsCommandKind.Dispatch, elementCount: elementCount);
+    internal static VulkanGraphicsCommand Dispatch(uint elementCount, uint groupCount) =>
+        Create(
+            SilkGraphicsCommandKind.Dispatch,
+            elementCount: elementCount,
+            groupCount: groupCount);
 
     internal static VulkanGraphicsCommand BufferBarrier(
         VulkanSilkGraphicsBuffer buffer) =>
         Create(SilkGraphicsCommandKind.BufferBarrier, buffer: buffer);
+
+    internal static VulkanGraphicsCommand BeginDisplayTransform(
+        VulkanSilkGraphicsTexture color,
+        VulkanSilkGraphicsTexture sceneColor,
+        VulkanSilkGraphicsTexture lattice) =>
+        Create(
+            SilkGraphicsCommandKind.BeginRendering,
+            texture: color,
+            depthTexture: sceneColor,
+            displayTransformLattice: lattice,
+            displayTransformKind: VulkanDisplayTransformCommandKind.Begin);
+
+    internal static VulkanGraphicsCommand SetDisplayTransformPipeline(
+        VulkanSilkDisplayTransformGraphicsPipeline pipeline) =>
+        Create(
+            SilkGraphicsCommandKind.SetGraphicsPipeline,
+            displayTransformPipeline: pipeline,
+            displayTransformKind: VulkanDisplayTransformCommandKind.SetPipeline);
+
+    internal static VulkanGraphicsCommand SetDisplayTransformBinding(
+        VulkanSilkDisplayTransformBinding binding) =>
+        Create(
+            SilkGraphicsCommandKind.SetUniformBuffer,
+            displayTransformBinding: binding,
+            displayTransformKind: VulkanDisplayTransformCommandKind.SetBinding);
+
+    internal static VulkanGraphicsCommand
+        DrawDisplayTransformFullscreenTriangle() =>
+        Create(
+            SilkGraphicsCommandKind.DrawIndexed,
+            displayTransformKind:
+                VulkanDisplayTransformCommandKind.DrawFullscreenTriangle);
 
     private static VulkanGraphicsCommand Create(
         SilkGraphicsCommandKind kind,
@@ -2918,7 +3260,13 @@ internal readonly record struct VulkanGraphicsCommand(
         uint setIndex = 0,
         uint binding = 0,
         uint indexCount = 0,
-        uint elementCount = 0) =>
+        uint elementCount = 0,
+        uint groupCount = 0,
+        VulkanDisplayTransformCommandKind displayTransformKind =
+            VulkanDisplayTransformCommandKind.None,
+        VulkanSilkDisplayTransformGraphicsPipeline? displayTransformPipeline = null,
+        VulkanSilkDisplayTransformBinding? displayTransformBinding = null,
+        VulkanSilkGraphicsTexture? displayTransformLattice = null) =>
         new(
             kind,
             texture,
@@ -2938,11 +3286,25 @@ internal readonly record struct VulkanGraphicsCommand(
             setIndex,
             binding,
             indexCount,
-            elementCount);
+            elementCount,
+            groupCount,
+            displayTransformKind,
+            displayTransformPipeline,
+            displayTransformBinding,
+            displayTransformLattice);
+}
+
+internal enum VulkanDisplayTransformCommandKind
+{
+    None,
+    Begin,
+    SetPipeline,
+    SetBinding,
+    DrawFullscreenTriangle
 }
 
 internal readonly record struct VulkanDrawState(
-    VulkanSilkGraphicsTexture ColorAttachment,
+    VulkanSilkGraphicsTexture? ColorAttachment,
     VulkanSilkGraphicsTexture DepthAttachment,
     VulkanSilkGraphicsPipeline Pipeline,
     VulkanSilkGraphicsBuffer VertexBuffer,
@@ -3017,6 +3379,7 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
             }
             if (result == Result.ErrorDeviceLost)
             {
+                _owner.NotifyDeviceLost();
                 _owner.NotifyPickDeviceLost();
                 if (_selectionOutlineSubmission)
                 {
@@ -3149,6 +3512,7 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
         }
         if (result == Result.ErrorDeviceLost)
         {
+            _owner.NotifyDeviceLost();
             _owner.NotifyPickDeviceLost();
             if (_selectionOutlineSubmission)
             {

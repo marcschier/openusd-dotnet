@@ -25,9 +25,23 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     public ulong SelectionOutlineDeviceGeneration =>
         unchecked((ulong)Interlocked.Read(ref _selectionOutlineDeviceGeneration));
 
+    /// <summary>
+    /// Advances the device generation so every resource keyed on it is
+    /// rebuilt, without recreating the device.
+    /// </summary>
+    /// <remarks>
+    /// A real generation change comes from the device invalidating what it is
+    /// holding. There is no portable way to provoke one on a software adapter,
+    /// so a conformance case that has to prove the deformation pass recovers
+    /// from a reset advances it directly, exactly as the Direct3D 12 backend
+    /// already allows.
+    /// </remarks>
+    internal void InvalidateSelectionOutlineDeviceGenerationForTesting() =>
+        Interlocked.Increment(ref _selectionOutlineDeviceGeneration);
+
     /// <inheritdoc/>
     public SilkSelectionOutlineCapabilities SelectionOutlineCapabilities =>
-        SilkSelectionOutlineCapabilities.VisibleOnly;
+        SilkSelectionOutlineCapabilities.Full;
 
     /// <inheritdoc/>
     public ISilkSelectionMaskGraphicsPipeline CreateSelectionMaskGraphicsPipeline(
@@ -229,8 +243,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         return failure != 0;
     }
 
-    internal void NotifySelectionOutlineDeviceLost() =>
+    internal void NotifySelectionOutlineDeviceLost()
+    {
+        NotifyDeviceLost();
         AdvanceSelectionOutlineDeviceGeneration(deviceLost: true);
+    }
 
     internal void CountSelectionFramebufferCreation() =>
         Interlocked.Increment(ref _selectionFramebufferCreations);
@@ -854,18 +871,52 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
             PColorAttachments = &colorReference,
             PDepthStencilAttachment = &depthReference
         };
-        var dependency = new SubpassDependency
+        // The mask attachment is loaded, not cleared: one selection produces one
+        // mask pass per selected mesh, each of them reading what the previous
+        // pass left behind. Without a colour-attachment-write to
+        // colour-attachment-read/write dependency the loads race the earlier
+        // pass's stores, and the visible failure is a mask that keeps only the
+        // last drawn item -- an outline around one mesh of a multi-mesh
+        // selection, which looks like a selection bug rather than a
+        // synchronization one.
+        //
+        // The transfer and late-depth sources stay: the first pass of a frame is
+        // preceded by the clear and by the scene pass's depth writes instead.
+        SubpassDependency* dependencies = stackalloc SubpassDependency[2];
+        dependencies[0] = new SubpassDependency
         {
             SrcSubpass = Vk.SubpassExternal,
             DstSubpass = 0,
-            SrcStageMask = PipelineStageFlags.TransferBit |
+            SrcStageMask = PipelineStageFlags.ColorAttachmentOutputBit |
+                PipelineStageFlags.TransferBit |
                 PipelineStageFlags.LateFragmentTestsBit,
             DstStageMask = PipelineStageFlags.ColorAttachmentOutputBit |
                 PipelineStageFlags.EarlyFragmentTestsBit,
-            SrcAccessMask = AccessFlags.TransferWriteBit |
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit |
+                AccessFlags.TransferWriteBit |
                 AccessFlags.DepthStencilAttachmentWriteBit,
-            DstAccessMask = AccessFlags.ColorAttachmentWriteBit |
-                AccessFlags.DepthStencilAttachmentReadBit
+            DstAccessMask = AccessFlags.ColorAttachmentReadBit |
+                AccessFlags.ColorAttachmentWriteBit |
+                AccessFlags.DepthStencilAttachmentReadBit,
+            DependencyFlags = DependencyFlags.ByRegionBit
+        };
+
+        // The matching outgoing half. Without it this pass's stores are only
+        // ordered against work that declares an incoming dependency, and the
+        // very next mask pass's load and the outline pass's sample of the mask
+        // are both such consumers.
+        dependencies[1] = new SubpassDependency
+        {
+            SrcSubpass = 0,
+            DstSubpass = Vk.SubpassExternal,
+            SrcStageMask = PipelineStageFlags.ColorAttachmentOutputBit,
+            DstStageMask = PipelineStageFlags.ColorAttachmentOutputBit |
+                PipelineStageFlags.FragmentShaderBit,
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            DstAccessMask = AccessFlags.ColorAttachmentReadBit |
+                AccessFlags.ColorAttachmentWriteBit |
+                AccessFlags.ShaderReadBit,
+            DependencyFlags = DependencyFlags.ByRegionBit
         };
         var createInfo = new RenderPassCreateInfo
         {
@@ -874,8 +925,8 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
             PAttachments = attachments,
             SubpassCount = 1,
             PSubpasses = &subpass,
-            DependencyCount = 1,
-            PDependencies = &dependency
+            DependencyCount = 2,
+            PDependencies = dependencies
         };
         RenderPass renderPass = default;
         VulkanSilkGraphicsDevice.ThrowIfFailed(
@@ -907,7 +958,7 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
             };
             var vertexBinding = new VertexInputBindingDescription(
                 0,
-                24,
+                Descriptor.VertexLayout.Stride,
                 VertexInputRate.Vertex);
             VertexInputAttributeDescription* attributes =
                 stackalloc VertexInputAttributeDescription[2];
@@ -932,7 +983,14 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
             var inputAssembly = new PipelineInputAssemblyStateCreateInfo
             {
                 SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-                Topology = PrimitiveTopology.TriangleList
+                Topology = Descriptor.PrimitiveTopology switch
+                {
+                    SilkSelectionMaskPrimitiveTopology.LineList =>
+                        PrimitiveTopology.LineList,
+                    SilkSelectionMaskPrimitiveTopology.PointList =>
+                        PrimitiveTopology.PointList,
+                    _ => PrimitiveTopology.TriangleList
+                }
             };
             var viewportState = new PipelineViewportStateCreateInfo
             {
@@ -956,9 +1014,15 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
             var depthStencil = new PipelineDepthStencilStateCreateInfo
             {
                 SType = StructureType.PipelineDepthStencilStateCreateInfo,
-                DepthTestEnable = true,
+                // The x-ray mask rasterizes the whole selected silhouette,
+                // including the part behind an occluder, so its pipeline
+                // disables the depth test; the composite's own depth comparison
+                // separates visible from occluded.
+                DepthTestEnable = Descriptor.DepthTestEnabled,
                 DepthWriteEnable = false,
-                DepthCompareOp = CompareOp.LessOrEqual
+                DepthCompareOp = Descriptor.DepthTestEnabled
+                    ? CompareOp.LessOrEqual
+                    : CompareOp.Always
             };
             var colorAttachment = new PipelineColorBlendAttachmentState
             {
@@ -1320,17 +1384,27 @@ internal sealed unsafe class VulkanSilkSelectionOutlineGraphicsPipeline :
             ColorAttachmentCount = 1,
             PColorAttachments = &colorReference
         };
+        // The composite loads the visible colour target the scene pass wrote, so
+        // the colour-attachment write has to be the source of this dependency.
+        // The fragment-shader and transfer sources stay for the mask sample and
+        // for a preceding clear or copy, but neither of them orders the scene
+        // pass's own colour stores; without the colour-attachment source the
+        // composite can load a partially written frame and the outline appears
+        // over stale or torn colour.
         var dependency = new SubpassDependency
         {
             SrcSubpass = Vk.SubpassExternal,
             DstSubpass = 0,
-            SrcStageMask = PipelineStageFlags.FragmentShaderBit |
+            SrcStageMask = PipelineStageFlags.ColorAttachmentOutputBit |
+                PipelineStageFlags.FragmentShaderBit |
                 PipelineStageFlags.TransferBit,
             DstStageMask = PipelineStageFlags.ColorAttachmentOutputBit,
-            SrcAccessMask = AccessFlags.ShaderReadBit |
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit |
+                AccessFlags.ShaderReadBit |
                 AccessFlags.TransferReadBit,
             DstAccessMask = AccessFlags.ColorAttachmentReadBit |
-                AccessFlags.ColorAttachmentWriteBit
+                AccessFlags.ColorAttachmentWriteBit,
+            DependencyFlags = DependencyFlags.ByRegionBit
         };
         var createInfo = new RenderPassCreateInfo
         {

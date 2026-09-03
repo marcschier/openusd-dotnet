@@ -1,0 +1,107 @@
+<Window
+    x:Class="OpenUsd.Viewer.BridgeConnectionWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    AutomationProperties.Name="Omniverse Bridge connection"
+    Title="Omniverse Bridge"
+    Width="520"
+    Height="360"
+    MinWidth="420"
+    MinHeight="300"
+    WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="16">
+    <TextBlock
+        x:Name="BridgeProviderText"
+        DockPanel.Dock="Top"
+        AutomationProperties.Name="Bridge provider"
+        Text="Bridge provider"
+        FontSize="16"
+        FontWeight="SemiBold"
+        TextTrimming="CharacterEllipsis"
+        Margin="0,0,0,4" />
+    <TextBlock
+        DockPanel.Dock="Top"
+        AutomationProperties.Name="Bridge credential notice"
+        Text="The endpoint and its credential are configured by the embedding host. The Viewer never reads, stores, or displays them."
+        TextWrapping="Wrap"
+        Margin="0,0,0,12" />
+    <StackPanel
+        DockPanel.Dock="Bottom"
+        Orientation="Horizontal"
+        HorizontalAlignment="Right"
+        Spacing="8"
+        Margin="0,12,0,0">
+      <Button
+          x:Name="BridgeConnectButton"
+          AutomationProperties.Name="Connect to the selected Omniverse Bridge session"
+          Content="_Connect"
+          MinWidth="88"
+          IsEnabled="False" />
+      <Button
+          x:Name="BridgeDisconnectButton"
+          AutomationProperties.Name="Disconnect the current Omniverse Bridge session"
+          Content="_Disconnect"
+          MinWidth="88"
+          IsEnabled="False" />
+      <Button
+          x:Name="BridgeResyncButton"
+          AutomationProperties.Name="Resynchronize the Omniverse Bridge session"
+          Content="_Resync"
+          MinWidth="88"
+          IsEnabled="False" />
+      <Button
+          x:Name="BridgeCloseButton"
+          AutomationProperties.Name="Close the Omniverse Bridge dialog"
+          Content="Close"
+          IsCancel="True"
+          MinWidth="88" />
+    </StackPanel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" ColumnDefinitions="Auto,*" ColumnSpacing="8" RowSpacing="8">
+      <TextBlock
+          Grid.Row="0"
+          Grid.Column="0"
+          VerticalAlignment="Center"
+          Text="Session" />
+      <ComboBox
+          x:Name="BridgeSessionSelector"
+          Grid.Row="0"
+          Grid.Column="1"
+          AutomationProperties.Name="Omniverse Bridge session"
+          HorizontalAlignment="Stretch"
+          ToolTip.Tip="Choose one of the sessions the host offers. Leave empty to use the host default." />
+      <TextBlock
+          Grid.Row="1"
+          Grid.Column="0"
+          VerticalAlignment="Center"
+          Text="Status" />
+      <TextBlock
+          x:Name="BridgeStatusText"
+          Grid.Row="1"
+          Grid.Column="1"
+          AutomationProperties.Name="Omniverse Bridge status"
+          TextWrapping="Wrap"
+          Text="Bridge: disconnected" />
+      <TextBlock
+          Grid.Row="2"
+          Grid.Column="0"
+          VerticalAlignment="Top"
+          Text="Counters" />
+      <TextBlock
+          x:Name="BridgeCountersText"
+          Grid.Row="2"
+          Grid.Column="1"
+          AutomationProperties.Name="Omniverse Bridge counters"
+          TextWrapping="Wrap"
+          Text="Attempts: 0 · Applied: 0 · Pending: 0" />
+      <TextBlock
+          x:Name="BridgeErrorText"
+          Grid.Row="3"
+          Grid.Column="0"
+          Grid.ColumnSpan="2"
+          AutomationProperties.Name="Omniverse Bridge error"
+          TextWrapping="Wrap"
+          IsVisible="False"
+          Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}" />
+    </Grid>
+  </DockPanel>
+</Window>

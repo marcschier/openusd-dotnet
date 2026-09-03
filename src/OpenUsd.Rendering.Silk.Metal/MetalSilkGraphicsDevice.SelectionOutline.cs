@@ -21,7 +21,7 @@ public sealed partial class MetalSilkGraphicsDevice
 
     /// <inheritdoc/>
     public SilkSelectionOutlineCapabilities SelectionOutlineCapabilities =>
-        SilkSelectionOutlineCapabilities.VisibleOnly;
+        SilkSelectionOutlineCapabilities.Full;
 
     /// <inheritdoc/>
     public ISilkSelectionMaskGraphicsPipeline CreateSelectionMaskGraphicsPipeline(
@@ -55,12 +55,19 @@ public sealed partial class MetalSilkGraphicsDevice
             var depthDescriptor = new MTLDepthStencilDescriptor();
             try
             {
-                ConfigureMeshVertexDescriptor(vertexDescriptor);
+                ConfigureMeshVertexDescriptor(vertexDescriptor, descriptor.VertexLayout.Stride);
                 pipelineDescriptor.VertexFunction = vertexFunction;
                 pipelineDescriptor.FragmentFunction = fragmentFunction;
                 pipelineDescriptor.VertexDescriptor = vertexDescriptor;
                 pipelineDescriptor.InputPrimitiveTopology =
-                    MTLPrimitiveTopologyClass.Triangle;
+                    descriptor.PrimitiveTopology switch
+                    {
+                        SilkSelectionMaskPrimitiveTopology.LineList =>
+                            MTLPrimitiveTopologyClass.Line,
+                        SilkSelectionMaskPrimitiveTopology.PointList =>
+                            MTLPrimitiveTopologyClass.Point,
+                        _ => MTLPrimitiveTopologyClass.Triangle
+                    };
                 pipelineDescriptor.RasterSampleCount = descriptor.SampleCount;
                 MTLRenderPipelineColorAttachmentDescriptor color =
                     pipelineDescriptor.ColorAttachments.Object(0);
@@ -78,7 +85,13 @@ public sealed partial class MetalSilkGraphicsDevice
                         "Could not create the checked Metal selection-mask pipeline.");
                 }
 
-                depthDescriptor.DepthCompareFunction = MTLCompareFunction.LessEqual;
+                // The x-ray mask rasterizes the whole selected silhouette,
+                // including the part behind an occluder, so its state compares
+                // Always; the composite's own depth comparison separates
+                // visible from occluded.
+                depthDescriptor.DepthCompareFunction = descriptor.DepthTestEnabled
+                    ? MTLCompareFunction.LessEqual
+                    : MTLCompareFunction.Always;
                 depthDescriptor.IsDepthWriteEnabled = false;
                 depthState = _device.NewDepthStencilState(depthDescriptor);
                 if (depthState.NativePtr == 0)
@@ -312,7 +325,8 @@ public sealed partial class MetalSilkGraphicsDevice
     }
 
     private static void ConfigureMeshVertexDescriptor(
-        MTLVertexDescriptor vertexDescriptor)
+        MTLVertexDescriptor vertexDescriptor,
+        uint stride)
     {
         MTLVertexAttributeDescriptor position =
             vertexDescriptor.Attributes.Object(0);
@@ -326,7 +340,7 @@ public sealed partial class MetalSilkGraphicsDevice
         normal.BufferIndex = 30;
         MTLVertexBufferLayoutDescriptor layout =
             vertexDescriptor.Layouts.Object(30);
-        layout.Stride = 24;
+        layout.Stride = stride;
         layout.StepFunction = MTLVertexStepFunction.PerVertex;
     }
 

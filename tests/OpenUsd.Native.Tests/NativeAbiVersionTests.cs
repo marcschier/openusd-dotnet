@@ -655,7 +655,6 @@ public sealed class NativeAbiVersionTests
             .Any(parameter =>
                 parameter.Contains('*') &&
                 !Regex.IsMatch(parameter, @"\bconst\b", RegexOptions.CultureInvariant) &&
-                !Regex.IsMatch(parameter, @"\bcontext\b", RegexOptions.CultureInvariant) &&
                 !Regex.IsMatch(
                     parameter,
                     @"openusd_error_buffer\s*\*\s*error\b",

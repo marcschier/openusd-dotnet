@@ -107,7 +107,8 @@ public sealed class ViewerRenderBackendTests
             "/World/Prototype",
             "/World/Instances",
             instanceIndex: 4,
-            elementIndex: 8);
+            elementIndex: 8,
+            elementKind: SelectionElementKind.Face);
         StageRenderState state = StageRenderState
             .Create(new StageIdentity("stage.usda"))
             .WithSelection(new SelectionState([selectedItem]));

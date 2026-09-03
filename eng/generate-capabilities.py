@@ -137,25 +137,24 @@ def format_schema_mask(capabilities: list[Capability]) -> str:
 
 
 def ordinal(value: int) -> str:
-    names = {
-        1: "first",
-        2: "second",
-        3: "third",
-        4: "fourth",
-        5: "fifth",
-        6: "sixth",
-        7: "seventh",
-        8: "eighth",
-        9: "ninth",
-        10: "tenth",
-        11: "eleventh",
-        12: "twelfth",
-        13: "thirteenth",
-        14: "fourteenth",
-        15: "fifteenth",
-        16: "sixteenth",
-    }
-    return names.get(value, f"version {value}")
+    ordinal_ones = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh",
+                    "eighth", "ninth"]
+    ordinal_teens = ["tenth", "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth",
+                      "sixteenth", "seventeenth", "eighteenth", "nineteenth"]
+    cardinal_tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
+                      "ninety"]
+    ordinal_tens = ["", "", "twentieth", "thirtieth", "fortieth", "fiftieth", "sixtieth",
+                     "seventieth", "eightieth", "ninetieth"]
+
+    if value < 1 or value > 99:
+        return f"version {value}"
+    if value < 10:
+        return ordinal_ones[value]
+    if value < 20:
+        return ordinal_teens[value - 10]
+    if value % 10 == 0:
+        return ordinal_tens[value // 10]
+    return f"{cardinal_tens[value // 10]}-{ordinal_ones[value % 10]}"
 
 
 def generate_contract(current: str, abi_version: int, capabilities: list[Capability]) -> str:

@@ -201,6 +201,115 @@ public sealed class SilkDeformationRetentionTests
         await Assert.That(renderer.PooledBatchCount).IsEqualTo(0);
     }
 
+    [Test]
+    public async Task ADeformedMeshRepublishesItsNormalsAndKeepsRetentionBounded()
+    {
+        using var device = new RetentionGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(64, 64));
+
+        // The bind pose. The authored normal points along +Z while the triangle lies in the XZ
+        // plane, so a topology-derived normal would point along Y: nothing here can pass by
+        // accident from recomputed normals.
+        float[] bindNormals = RepeatNormal(0, 0, 1);
+        using (OpenUsdSilkPage bindPose = CreateDeformedPage(revision: 1, AuthoredPoints, bindNormals))
+        {
+            _ = renderer.ApplyAndRender(bindPose, color, depth);
+        }
+
+        await Assert.That(ReadNormals(device, renderer, FirstPath)).IsEquivalentTo(bindNormals);
+
+        const int frames = 600;
+        int steadyBatchKeys = 0;
+        int steadyGeometry = 0;
+        int steadyLiveBuffers = 0;
+        WeakReference? earlyGeometry = null;
+        float[] lastNormals = bindNormals;
+
+        // Every frame republishes both arrays, exactly as a CPU-resolved UsdSkel mesh does: the
+        // points and the normals of one time code always travel together.
+        for (int frame = 0; frame < frames; frame++)
+        {
+            double angle = (frame + 1) * 0.001;
+            float[] points = LiftPoints((float)angle);
+            lastNormals = RepeatNormal(0, (float)Math.Sin(angle), (float)Math.Cos(angle));
+            using (OpenUsdSilkPage deformed =
+                CreateDeformedPage((ulong)frame + 2, points, lastNormals))
+            {
+                _ = renderer.ApplyAndRender(deformed, color, depth);
+            }
+
+            if (frame == 2)
+            {
+                steadyBatchKeys = renderer.BatchKeyCount;
+                steadyGeometry = renderer.GpuResources.GeometryResourceCount;
+                steadyLiveBuffers = device.LiveBufferCount;
+                earlyGeometry = SampleGeometry(renderer, FirstPath);
+            }
+        }
+
+        // The last published normal is the one on the GPU. A renderer that kept the bind pose, or
+        // that recomputed normals from the deformed points, fails here rather than only looking
+        // wrong.
+        await Assert.That(ReadNormals(device, renderer, FirstPath)).IsEquivalentTo(lastNormals);
+        await Assert.That(renderer.GpuResources.GeometryResourceCount).IsEqualTo(steadyGeometry);
+        await Assert.That(renderer.BatchKeyCount).IsEqualTo(steadyBatchKeys);
+        await Assert.That(device.LiveBufferCount).IsLessThanOrEqualTo(steadyLiveBuffers);
+        await Assert.That(renderer.Scene.MeshesByPath.Count).IsEqualTo(2);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        await Assert.That(earlyGeometry!.IsAlive).IsFalse();
+
+        // Scrubbing back to the bind pose restores the bind-pose normals: invalidation has to run
+        // in both directions, or a scrub backwards leaves the deformed shading behind.
+        using (OpenUsdSilkPage restored =
+            CreateDeformedPage(frames + 2, AuthoredPoints, bindNormals))
+        {
+            _ = renderer.ApplyAndRender(restored, color, depth);
+        }
+
+        await Assert.That(ReadNormals(device, renderer, FirstPath)).IsEquivalentTo(bindNormals);
+        await Assert.That(ReadPositions(device, renderer, FirstPath)).IsEquivalentTo(AuthoredPoints);
+        await Assert.That(renderer.GpuResources.GeometryResourceCount)
+            .IsLessThanOrEqualTo(steadyGeometry);
+    }
+
+    [Test]
+    public async Task ADeformedMeshWithoutPublishedNormalsStillShadesFromItsDeformedPoints()
+    {
+        using var device = new RetentionGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(64, 64));
+
+        // The delegate omits normals it cannot deform rather than publishing the bind pose, so the
+        // consumer must derive them from the points it did receive. The authored triangle lies in
+        // the XZ plane and the deformed one is tilted, so the two derived normals differ.
+        using (OpenUsdSilkPage bindPose = CreateDeformedPage(revision: 1, AuthoredPoints, []))
+        {
+            _ = renderer.ApplyAndRender(bindPose, color, depth);
+        }
+
+        float[] bindDerived = ReadNormals(device, renderer, FirstPath);
+        await Assert.That(Math.Abs(bindDerived[1])).IsGreaterThan(0.99f);
+
+        float[] tilted = [0, 0, 0, 1, 0, 0, 1, 1, 1];
+        using (OpenUsdSilkPage deformed = CreateDeformedPage(revision: 2, tilted, []))
+        {
+            _ = renderer.ApplyAndRender(deformed, color, depth);
+        }
+
+        float[] deformedDerived = ReadNormals(device, renderer, FirstPath);
+        await Assert.That(Math.Abs(deformedDerived[1])).IsLessThan(0.99f);
+    }
+
     private static PhysicsRenderObjectId FirstIdentity =>
         new(0xB0A701, PhysicsRenderObjectKind.Deformable);
 
@@ -276,6 +385,71 @@ public sealed class SilkDeformationRetentionTests
 
         return positions;
     }
+
+    /// <summary>Reads the interleaved normals the renderer actually uploaded.</summary>
+    private static float[] ReadNormals(
+        RetentionGraphicsDevice device,
+        SilkMeshRenderer renderer,
+        string path)
+    {
+        SilkMeshData mesh = renderer.Scene.MeshesByPath[(path, 0)];
+        SilkMeshGpuResource resource = renderer.GpuResources.Meshes[mesh.Id];
+        RetentionGraphicsBuffer buffer = device.Track(resource.VertexBuffer);
+        int pointCount = mesh.Points.Length / 3;
+        var normals = new float[pointCount * 3];
+        ReadOnlySpan<float> floats = MemoryMarshal.Cast<byte, float>(buffer.Data);
+        for (int point = 0; point < pointCount; point++)
+        {
+            int source = (point * StrideFloats) + 3;
+            normals[point * 3] = floats[source];
+            normals[(point * 3) + 1] = floats[source + 1];
+            normals[(point * 3) + 2] = floats[source + 2];
+        }
+
+        return normals;
+    }
+
+    /// <summary>One per-point normal repeated across the authored triangle.</summary>
+    private static float[] RepeatNormal(float x, float y, float z)
+    {
+        int pointCount = AuthoredPoints.Length / 3;
+        var normals = new float[pointCount * 3];
+        for (int point = 0; point < pointCount; point++)
+        {
+            normals[point * 3] = x;
+            normals[(point * 3) + 1] = y;
+            normals[(point * 3) + 2] = z;
+        }
+
+        return normals;
+    }
+
+    private static float[] LiftPoints(float lift)
+    {
+        float[] points = (float[])AuthoredPoints.Clone();
+        for (int index = 1; index < points.Length; index += 3)
+        {
+            points[index] += lift;
+        }
+
+        return points;
+    }
+
+    /// <summary>
+    /// One deformed frame: a mesh that republishes points and, when the delegate resolved them,
+    /// per-point normals, plus a second mesh so the renderer keeps using its batch table.
+    /// </summary>
+    private static OpenUsdSilkPage CreateDeformedPage(
+        ulong revision,
+        float[] points,
+        float[] normals) =>
+        CreatePage(
+            revision,
+            Concat(
+                CreateFrameCommand(),
+                CreateMeshCommand(FirstPath, 7, points, normals),
+                CreateMeshCommand(SecondPath, 8, AuthoredPoints, [])),
+            commandCount: 3);
 
     /// <summary>The path of one mesh in the wide scene.</summary>
     private static string WidePath(int index) => $"/World/Wide{index}";
@@ -388,15 +562,28 @@ public sealed class SilkDeformationRetentionTests
     private static byte[] CreateMeshCommand(string meshPath, int primId) =>
         CreateMeshCommand(meshPath, primId, AuthoredPoints);
 
-    private static byte[] CreateMeshCommand(string meshPath, int primId, float[] points)
+    private static byte[] CreateMeshCommand(string meshPath, int primId, float[] points) =>
+        CreateMeshCommand(meshPath, primId, points, []);
+
+    private static byte[] CreateMeshCommand(
+        string meshPath,
+        int primId,
+        float[] points,
+        float[] normals)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(meshPath);
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        byte[] normalName = Encoding.UTF8.GetBytes("normals");
+        int attributeCount = normals.Length == 0 ? 0 : 1;
+        int attributeBytes = attributeCount == 0
+            ? 0
+            : (5 * sizeof(uint)) + normalName.Length + (normals.Length * sizeof(float));
+        int size = 268 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
-            sizeof(uint);
+            sizeof(uint) +
+            attributeBytes;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -429,7 +616,8 @@ public sealed class SilkDeformationRetentionTests
                 index % 5 == 0 ? 1 : 0);
         }
 
-        int cursor = 224;
+        int cursor = 268;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), (uint)attributeCount);
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)
@@ -444,6 +632,32 @@ public sealed class SilkDeformationRetentionTests
         }
 
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), 0);
+        cursor += sizeof(uint);
+        if (attributeCount != 0)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(cursor),
+                (uint)SilkAttributeSemantic.Normal);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor + 4), 3);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(cursor + 8),
+                (uint)SilkAttributeInterpolation.Vertex);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(cursor + 12),
+                (uint)normalName.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(cursor + 16),
+                (uint)(normals.Length / 3));
+            cursor += 5 * sizeof(uint);
+            normalName.CopyTo(bytes.AsSpan(cursor));
+            cursor += normalName.Length;
+            foreach (float value in normals)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(cursor), value);
+                cursor += sizeof(float);
+            }
+        }
+
         return bytes;
     }
 

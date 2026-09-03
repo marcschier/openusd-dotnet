@@ -791,7 +791,7 @@ public sealed class SilkPickingTests
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -837,8 +837,8 @@ public sealed class SilkPickingTests
                 bytes.AsSpan(80 + (index * 8)),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 224);
-        int pointOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointOffset = 268 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

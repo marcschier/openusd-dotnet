@@ -1,0 +1,194 @@
+{
+  "$comment": [
+    "Provenance for the optional MDL slice. This file is a pin, a licence",
+    "record, and the digest source eng/fetch-mdl-sdk.ps1 verifies a download",
+    "against. The MDL SDK is acquired on demand for developers and CI; no",
+    "part of it is vendored into this repository, linked into any target, or",
+    "redistributed in any package. tests/OpenUsd.Package.Tests holds the",
+    "gates: MdlAdapterIsolationTests requires this pin to stay honest and the",
+    "release SBOM to carry no MDL or NVIDIA component, and",
+    "RuntimePackageTests.WindowsBasePackagesExcludeABuiltMdlAdapter packs the",
+    "base packages from a shim prefix that contains a built adapter and an",
+    "NVIDIA SDK runtime beside it and requires both to be excluded.",
+    "",
+    "There are two adapters behind one C ABI. openusd_mdl links nothing and",
+    "distils authored USD input values. openusd_mdl_sdk additionally compiles",
+    "MDL modules through a user-supplied MDL SDK runtime to resolve unauthored",
+    "parameter defaults and constant expression defaults. Neither is shipped in",
+    "any package, and the SDK runtime is never redistributed at all."
+  ],
+  "adapters": [
+    {
+      "name": "openusd_mdl",
+      "cmakeOption": "OPENUSD_WITH_MDL",
+      "default": "off",
+      "linksMdlSdk": false,
+      "sdkBacked": false,
+      "capabilities": [
+        "authored-subset"
+      ],
+      "capability": "authored-value distillation of the accepted OmniPBR/OmniSurface/OmniGlass parameter subset; no .mdl module is opened, parsed, or evaluated"
+    },
+    {
+      "name": "openusd_mdl_sdk",
+      "cmakeOption": "OPENUSD_MDL_SDK_ROOT",
+      "default": "off",
+      "linksMdlSdk": false,
+      "sdkBacked": true,
+      "capabilities": [
+        "authored-subset",
+        "module-defaults",
+        "constant-expressions",
+        "texture-resolution"
+      ],
+      "capability": "everything openusd_mdl does, plus: compiles an MDL module from an explicitly configured absolute search path through a user-supplied MDL SDK runtime, resolves unauthored parameter defaults, folds constant expression defaults (elemental and conversion constructors, and parameter aliases), and resolves texture-valued defaults the SDK can materialise",
+      "notImplemented": [
+        "MDL-generated GPU shader code",
+        "layered BSDF evaluation",
+        "arbitrary MDL expression evaluation: anything other than a constant, a parameter alias, or an elemental/conversion/copy constructor over operands that themselves fold is reported by parameter name"
+      ],
+      "linkage": "neuraylib is a header-only interface layer, so this target compiles against the SDK headers and has no MDL link line. The runtime is opened through the documented mi_factory entry point at run time, from the absolute path in OPENUSD_MDL_SDK_RUNTIME.",
+      "shippedInAnyPackage": false
+    }
+  ],
+  "adapter": {
+    "name": "openusd_mdl",
+    "abi": 2,
+    "cmakeOption": "OPENUSD_WITH_MDL",
+    "default": "off",
+    "shippedInBasePackages": false,
+    "kind": "authored-value distillation, with an optional SDK-backed sibling",
+    "buildableRids": [
+      "win-x64",
+      "linux-x64",
+      "osx-arm64"
+    ],
+    "gatedRids": [
+      "win-x64"
+    ],
+    "gatedRidsNote": "native.yml builds the OPENUSD_WITH_MDL configuration and runs the hdSilk probe against it on Windows only. The adapter is dependency-free C++ and the linux-x64-mdl and osx-arm64-mdl presets build the identical source, but no workflow builds them, so those RIDs are buildable rather than proven and are not claimed as evidence platforms. The SDK-backed sibling is proven on win-x64 only, against the acquisition tree eng/fetch-mdl-sdk.ps1 produces.",
+    "linksMdlSdk": false,
+    "sdkBacked": false,
+    "capability": "authored-value distillation of the accepted OmniPBR/OmniSurface/OmniGlass parameter subset; no .mdl module is opened, parsed, or evaluated",
+    "loader": {
+      "defaultLocation": "absolute sibling of the module hosting the hdSilk loader, formed from that module's own path",
+      "override": "OPENUSD_MDL_ADAPTER_PATH, which must be absolute",
+      "moduleSearchPath": "OPENUSD_MDL_MODULE_PATH, a platform path list of absolute directories, bounded to 16 entries of at most 4096 bytes each; a relative entry is dropped and no implicit or system location is ever added",
+      "bareLibraryNameLoad": false,
+      "windowsSearchFlags": [
+        "LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR",
+        "LOAD_LIBRARY_SEARCH_DEFAULT_DIRS"
+      ],
+      "environmentRead": [
+        "OPENUSD_MDL_ADAPTER_PATH",
+        "OPENUSD_MDL_MODULE_PATH"
+      ],
+      "note": "The loader never passes a bare library name to the platform, so neither the process directory nor the working directory participates in resolution. It reads only the named variables, never enumerates the environment block, and records no value other than the adapter path it was asked to load. OPENUSD_MDL_SDK_RUNTIME is read by the SDK-backed adapter itself, not by the loader, and is likewise required to be absolute."
+    }
+  },
+  "mdlSdk": {
+    "status": "pinned-and-acquired-for-development",
+    "name": "NVIDIA MDL SDK",
+    "repository": "https://github.com/NVIDIA/MDL-SDK",
+    "release": "2026.0.2",
+    "releaseName": "MDL SDK 2026.0.2 (391700.2276): 24 Aug 2026",
+    "releaseUrl": "https://github.com/NVIDIA/MDL-SDK/releases/tag/2026.0.2",
+    "publishedAt": "2026-08-31T09:22:09Z",
+    "tag": "2026.0.2",
+    "commit": "1b9592c1b086b691b44d1a30eee4827d1ff55b8c",
+    "sourceArchive": "https://api.github.com/repos/NVIDIA/MDL-SDK/tarball/2026.0.2",
+    "prebuiltAssets": [
+      {
+        "name": "MDL-SDK-2026.0.2-391700.2276-nt-x86-64.zip",
+        "rid": "win-x64",
+        "size": 289283312,
+        "sha256": "ab1ce5d0621cf222c6dd1ec2eeff4fd71d2efd8126e4251714b1a0171d84f9fd"
+      },
+      {
+        "name": "MDL-SDK-2026.0.2-391700.2276-linux-x86-64.tgz",
+        "rid": "linux-x64",
+        "size": 315089666,
+        "sha256": "5aa37997647c757d27a0c16d467d5f3f26244a2303e697d4eabf0e3719b8dc19"
+      },
+      {
+        "name": "MDL-SDK-2026.0.2-391700.2276-macosx-aarch64.tgz",
+        "rid": "osx-arm64",
+        "size": 257110132,
+        "sha256": "dd9b196008c1fa06ec8dd6dd3d6fbb6621a4b9b92d986199cce2f8ec9793d73e"
+      },
+      {
+        "name": "MDL-SDK-2026.0.2-391700.2276-linux-aarch64.tgz",
+        "rid": "linux-arm64",
+        "size": 303912102,
+        "sha256": "7041a22a81101608f636b1d9496a18c88a8232be5144d0a9c032826eb0469788"
+      },
+      {
+        "name": "MDL-SDK-2026.0.2-391700.2276-macosx-x86-64.tgz",
+        "rid": "osx-x64",
+        "size": 268180368,
+        "sha256": "5c5f50b824d9b346b79a3f1d7c42d3915303b9c92a5c583e64e11282bc61b18d"
+      }
+    ],
+    "assetDigestSource": "GitHub release asset digests for tag 2026.0.2, read with `gh api repos/NVIDIA/MDL-SDK/releases/tags/2026.0.2 --jq '.assets[] | {name, size, digest}'`. eng/fetch-mdl-sdk.ps1 recomputes the SHA-256 of whatever it downloads and refuses any archive that does not match the value recorded here.",
+    "license": {
+      "spdx": "BSD-3-Clause",
+      "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+      "path": "LICENSE.md",
+      "blobSha": "22ff7b6e48e3d71ce5e239dc3315ec545e6875eb",
+      "copyright": "Copyright (c) 2018-2026, NVIDIA CORPORATION.",
+      "note": "Verified against the repository's own LICENSE.md at the pinned tag on 2026-09-01. It is BSD-3-Clause, not Apache-2.0; earlier notes in this repository that called the MDL SDK Apache-2.0 were wrong and are corrected by this record.",
+      "verifiedAt": "2026-09-01",
+      "verificationCommands": [
+        "gh api repos/NVIDIA/MDL-SDK/git/ref/tags/2026.0.2 --jq '.object.sha'",
+        "gh api repos/NVIDIA/MDL-SDK/license --jq '{spdx: .license.spdx_id, path: .path, sha: .sha}'",
+        "gh api repos/NVIDIA/MDL-SDK/releases/tags/2026.0.2 --jq '[.assets[].name]'"
+      ]
+    },
+    "acquisition": {
+      "performed": true,
+      "performedFor": [
+        "win-x64"
+      ],
+      "script": "eng/fetch-mdl-sdk.ps1",
+      "verification": "The archive is verified against the SHA-256 recorded above before it is extracted. The digest is compared, never written back from the download: a hash computed from whatever arrived attests to nothing. A mismatch deletes the download and fails.",
+      "extracted": [
+        "include/ -- the neuraylib headers the SDK-backed adapter compiles against",
+        "runtime/libmdl_sdk -- the runtime the adapter loads at run time, for developer and CI use only",
+        "LICENSE.md, LICENSE_THIRDPARTY.md, LICENSE_IMAGES.md -- the licence and third-party notices, which travel with the runtime always"
+      ],
+      "notExtracted": "Examples, documentation, the freeimage and OpenImageIO plugins and the example material libraries stay in the archive, so nothing this repository builds depends on them.",
+      "redistribution": {
+        "permitted": false,
+        "reason": "BSD-3-Clause would permit binary redistribution with the notices attached, but this repository does not take that on: the SDK runtime is ~100 MiB of NVIDIA-built binaries with their own third-party notice set, and shipping it would put an NVIDIA binary into an OpenUsd package for the first time. The adapter therefore loads a user-supplied runtime through OPENUSD_MDL_SDK_RUNTIME instead, and no package contains any part of the SDK.",
+        "packagingStatus": "not-supported"
+      }
+    }
+  },
+  "acceptedMaterials": [
+    {
+      "module": "OmniPBR.mdl",
+      "material": "OmniPBR",
+      "parameterNameSource": "https://github.com/NVIDIA-Omniverse/usd-exchange/blob/main/source/rtx/library/MaterialAlgo.cpp",
+      "parameterNameSourceLicense": "Apache-2.0"
+    },
+    {
+      "module": "OmniGlass.mdl",
+      "material": "OmniGlass",
+      "parameterNameSource": "https://github.com/NVIDIA-Omniverse/usd-exchange/blob/main/source/rtx/library/MaterialAlgo.cpp",
+      "parameterNameSourceLicense": "Apache-2.0"
+    },
+    {
+      "module": "OmniSurface.mdl",
+      "material": "OmniSurface",
+      "parameterNameSource": "https://docs.omniverse.nvidia.com/materials-and-rendering/latest/templates/OmniSurface.html",
+      "parameterNameSourceLicense": "documentation reference only; no module source is copied into this repository"
+    }
+  ],
+  "prohibited": [
+    "Copying NVIDIA MDL module source (.mdl) into this repository.",
+    "Shipping any MDL SDK or NVIDIA binary in OpenUsd, OpenUsd.Imaging, OpenUsd.Viewer, OpenUsd.Mcp, or any runtime package.",
+    "Shipping the MDL SDK runtime in any package at all, including an optional one: the adapter loads a user-supplied runtime instead.",
+    "Claiming MDL rendering fidelity that the accepted-subset distillation does not deliver.",
+    "Claiming MDL-generated shader code or layered BSDF evaluation, neither of which is implemented."
+  ]
+}

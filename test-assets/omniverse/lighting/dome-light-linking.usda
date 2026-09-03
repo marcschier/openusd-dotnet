@@ -1,0 +1,102 @@
+#usda 1.0
+(
+    "Synthetic UsdLux dome-linking fixture. Repository-authored under this repository's MIT"
+    "license; it contains no vendor content and references no external asset."
+    ""
+    "Three quads under two DomeLights. /World/Lights/SkyA opts out of the includeRoot default and"
+    "names one include, which is the 'only what is listed' shape; the include is a *nested*"
+    "collection on /World/Geom rather than a prim, so the fixture exercises the collection-in-a-"
+    "collection expansion UsdImaging collapses before Hydra reports a category. /World/Lights/SkyB"
+    "keeps the schema default includeRoot = true and names one exclusion, which is the"
+    "'everything, minus a set' shape."
+    ""
+    "The two domes are pure red and pure blue and neither emits green, so the expected result is"
+    "measurable per channel without a reference image: /World/Geom/UnderA is lit only by SkyA and"
+    "comes back red, /World/Geom/UnderB is lit only by SkyB and comes back blue, and"
+    "/World/Geom/UnderBoth is lit by both and comes back magenta."
+    ""
+    "/World/Lights/SkyB also authors collection:shadowLink:excludes. hdSilk casts no dome shadow"
+    "at all, so that collection is named through"
+    "OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION rather than applied: turning a caster"
+    "restriction into a receiver restriction would darken exactly the prim the author asked to"
+    "keep lit."
+    doc = "Synthetic UsdLux dome light linking fixture"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Scope "Geom" (
+        prepend apiSchemas = ["CollectionAPI:onlyA"]
+    )
+    {
+        # The nested collection SkyA's lightLink collection includes. UsdImaging
+        # expands a collection-valued include before Hydra ever reports a
+        # category, so a renderer sees the same single identity it would for a
+        # flat include -- which is exactly what this fixture is here to keep true.
+        uniform token collection:onlyA:expansionRule = "expandPrims"
+        rel collection:onlyA:includes = </World/Geom/UnderA>
+
+        def Mesh "UnderA"
+        {
+            float3[] extent = [(-0.6, -0.35, 0), (-0.2, 0.35, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+            point3f[] points = [(-0.6, -0.35, 0), (-0.2, -0.35, 0), (-0.2, 0.35, 0), (-0.6, 0.35, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "UnderB"
+        {
+            float3[] extent = [(0.2, -0.35, 0), (0.6, 0.35, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+            point3f[] points = [(0.2, -0.35, 0), (0.6, -0.35, 0), (0.6, 0.35, 0), (0.2, 0.35, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "UnderBoth"
+        {
+            float3[] extent = [(-0.2, 0.45, 0), (0.2, 0.75, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+            point3f[] points = [(-0.2, 0.45, 0), (0.2, 0.45, 0), (0.2, 0.75, 0), (-0.2, 0.75, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Scope "Lights"
+    {
+        def DomeLight "SkyA"
+        {
+            color3f inputs:color = (1, 0, 0)
+            float inputs:intensity = 1
+
+            # includeRoot is authored false, so this collection is "only what is
+            # listed" rather than "everything except". The single include is the
+            # nested collection above.
+            uniform bool collection:lightLink:includeRoot = 0
+            rel collection:lightLink:includes = </World/Geom.collection:onlyA>
+        }
+
+        def DomeLight "SkyB"
+        {
+            color3f inputs:color = (0, 0, 1)
+            float inputs:intensity = 1
+
+            # includeRoot keeps its UsdLuxLightAPI schema default of true, so this
+            # is "everything except the excluded prim".
+            rel collection:lightLink:excludes = </World/Geom/UnderA>
+
+            # A dome caster collection. hdSilk renders no dome shadow map, so it is
+            # diagnosed against this prim rather than applied; the fixture exists so
+            # that the diagnosed case is authored somewhere rather than only
+            # constructed in a test.
+            rel collection:shadowLink:excludes = </World/Geom/UnderBoth>
+        }
+    }
+}

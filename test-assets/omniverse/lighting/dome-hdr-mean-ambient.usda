@@ -1,0 +1,61 @@
+#usda 1.0
+(
+    doc = """Textured UsdLuxDomeLight mean-radiance ambient fixture.
+
+    Synthetic, repository-authored, MIT-licensed. Contains no NVIDIA proprietary
+    content and no asset captured from or derived from an Omniverse or Kit
+    installation. UsdLux and UsdPreviewSurface are open USD standards.
+
+    This is an ambient approximation, not image-based lighting: the renderer
+    reduces the whole image to one colour, so every surface normal receives the
+    same value and the dome's orientation is not read.
+
+    The dome references dome-sky-ground-latlong.hdr, an 8-row equirectangular
+    image whose upper half is (2.0, 1.0, 0.5) and lower half (0.5, 0.25, 0.125)
+    in linear radiance. The two hemispheres carry equal solid angle, so the
+    solid-angle-weighted mean radiance is exactly (1.25, 0.625, 0.3125).
+
+    With inputs:color (1, 1, 1), inputs:intensity 1, inputs:exposure 0 and
+    inputs:diffuse 1, that mean is scaled by the 0.96 unit-white-dome
+    normalization an untextured dome already uses, giving an ambient of
+    (1.2, 0.6, 0.3).
+
+    inputs:specular is authored non-zero deliberately: no specular environment
+    response exists, and this fixture is what a consumer uses to see
+    OPENUSD_SILK_ENVIRONMENT_SPECULAR_UNSUPPORTED reported against
+    </World/Lights/DomeLight> rather than silently approximated."""
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Scope "Lights"
+    {
+        def DomeLight "DomeLight"
+        {
+            asset inputs:texture:file = @dome-sky-ground-latlong.hdr@
+            token inputs:texture:format = "latlong"
+            color3f inputs:color = (1, 1, 1)
+            float inputs:intensity = 1
+            float inputs:exposure = 0
+            float inputs:diffuse = 1
+            float inputs:specular = 1
+        }
+    }
+
+    def Mesh "Ground"
+    {
+        float3[] extent = [(-50, 0, -50), (50, 0, 50)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-50, 0, -50), (50, 0, -50), (50, 0, 50), (-50, 0, 50)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(1, 1, 1)] (
+            interpolation = "constant"
+        )
+    }
+}

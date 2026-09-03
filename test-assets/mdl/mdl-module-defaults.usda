@@ -1,0 +1,70 @@
+#usda 1.0
+(
+    doc = """Synthetic MDL-only material bound to a repository-authored module.
+
+    The companion of `mdl-only-omnipbr.usda`. That fixture names a module that is
+    deliberately absent, to pin the reported-not-shaded behaviour. This one names
+    `openusd_probe.mdl`, which lives beside it in `test-assets/mdl/` and is
+    written by this repository under its own MIT licence, so the SDK-backed
+    adapter has a real module to compile.
+
+    The material authors *only* the MDL render context, and it authors exactly
+    one input value. Everything else the accepted subset covers is left
+    unauthored on purpose: those values can only come from the module's own
+    parameter defaults, which is what makes this fixture evidence that module
+    evaluation happened rather than that authored values were echoed back.
+
+    * `reflection_roughness_constant` is authored, and must win over the module
+      default of 0.375.
+    * `diffuse_color_constant`, `metallic_constant` and `emissive_color` are not
+      authored, and must arrive from the module as (0.25, 0.5, 0.75), 0.125 and
+      (0.1, 0.2, 0.3).
+    """
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "MdlModuleCard" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/ProbeMat>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.8, -0.6, 0), (0.8, -0.6, 0), (0.8, 0.6, 0), (-0.8, 0.6, 0)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.18, 0.18, 0.18)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+
+    def Scope "Looks"
+    {
+        def Material "ProbeMat"
+        {
+            token outputs:mdl:surface.connect = </World/Looks/ProbeMat/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @openusd_probe.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "openusd_probe_defaults"
+
+                float inputs:reflection_roughness_constant = 0.9
+
+                token outputs:out
+            }
+        }
+    }
+}

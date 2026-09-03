@@ -30,12 +30,15 @@ public sealed class D3D12DeviceTests
         await Assert.That(plan.RootParameterCount).IsEqualTo(6u);
         await Assert.That(plan.RootSignatureDwordCost).IsEqualTo(10u);
         await Assert.That(plan.RootSignatureDwordCost).IsLessThanOrEqualTo(64u);
-        // Twelve, not eleven: the eleven material slots plus the material's single
-        // two-image composite image. The composite is one universal slot rather
-        // than one per material input precisely so this stays bounded -- a
-        // per-input composite would double both counts.
-        await Assert.That(plan.SampledTextureCount).IsEqualTo(12u);
-        await Assert.That(plan.SamplerCount).IsEqualTo(12u);
+        // Sixteen, not eleven: the eleven material slots, the material's single
+        // two-image composite image, the one shadow atlas every mesh permutation
+        // samples, the two prefiltered environment maps, and the split-sum BRDF
+        // table. Every extra is a universal slot rather than one per material
+        // input precisely so this stays bounded -- a per-input composite, a
+        // per-map shadow texture or a per-dome environment would multiply both
+        // counts.
+        await Assert.That(plan.SampledTextureCount).IsEqualTo(16u);
+        await Assert.That(plan.SamplerCount).IsEqualTo(15u);
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.CompositeTextureBinding,
@@ -827,6 +830,23 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpRendersReadsAndReusesASampledDepthTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        await OffscreenRhiConformance.SampledDepthTargetSurvivesRenderReadAndReuse(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
     public async Task WarpUsesDescriptorIndexedMaterialTextureTablesWhenAvailable()
     {
         if (!OperatingSystem.IsWindows())
@@ -877,6 +897,417 @@ public sealed class D3D12DeviceTests
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
         await SilkMeshRendererConformance.RendersRetainedMeshes(device);
+    }
+
+    [Test]
+    public async Task WarpAppliesUsdLuxLightLinking()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkLightLinkConformance.LinkedLightsReachOnlyTheirPrims(device);
+    }
+
+    [Test]
+    public async Task WarpResolvesNestedInstanceLinkMasks()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkNestedInstanceLinkConformance.ComposedInstancesResolveTheirOwnMasks(device);
+    }
+
+    [Test]
+    public async Task WarpAppliesUsdLuxDomeLinking()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.LinkedDomesReachOnlyTheirPrims(device);
+    }
+
+    [Test]
+    public async Task WarpSplitsTheSpecularSkyByDomeLink()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.LinkedDomesSplitTheSpecularSky(device);
+    }
+
+    [Test]
+    public async Task WarpMasksAnUntexturedDomePerDraw()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.AnUntexturedDomeIsMaskablePerDraw(device);
+    }
+
+    [Test]
+    public async Task WarpKeepsEveryInstanceTransformAcrossSplitDomeMasks()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.SplitDomeMasksKeepEveryInstanceTransform(device);
+    }
+
+    [Test]
+    public async Task WarpReleasesEverySubmissionResourceWhenTheWaitFails()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        // The window between handing a submission to the queue and its wait
+        // completing is where the submission still owns its fence, its command
+        // list, its allocator, the upload staging it holds leases on, the
+        // descriptor heaps it retained, and the device's own dependent
+        // registration. A removed device is the ordinary way that wait fails, and
+        // a failure that dropped any of those on the floor would make the device
+        // permanently undisposable and the memory unreclaimable -- on top of the
+        // failure the caller already has to handle.
+        D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                8,
+                8,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+
+        var injected = new InvalidOperationException("The injected fence wait failed.");
+        InvalidOperationException? observed = null;
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.ClearColor(color, new SilkColor(0.25f, 0.5f, 0.75f, 1f));
+            ISilkGraphicsSubmission submission = device.Submit(commands);
+
+            // Armed after the work is queued and before its wait completes,
+            // which is exactly the window the submission owns everything in.
+            device.FailFenceWaitsForTesting(() => injected);
+            try
+            {
+                submission.Wait();
+            }
+            catch (InvalidOperationException exception)
+            {
+                observed = exception;
+            }
+
+            // Disposal runs while the original failure is still unwinding, and
+            // its own wait fails for the same reason the first one did, so it
+            // must neither throw nor replace the failure the caller has.
+            submission.Dispose();
+            device.FailFenceWaitsForTesting(null);
+        }
+
+        device.WaitIdle();
+
+        await Assert.That(observed)
+            .IsSameReferenceAs(injected)
+            .Because("The original wait failure must reach the caller unchanged.");
+
+        // The device refuses to dispose while any submission, buffer or texture
+        // is still registered against it, so disposing cleanly below is the proof
+        // that the failed submission released its dependent registration and
+        // everything it held.
+        color.Dispose();
+        string? teardownFailure = null;
+        try
+        {
+            device.Dispose();
+        }
+        catch (InvalidOperationException exception)
+        {
+            teardownFailure = exception.Message;
+        }
+
+        await Assert.That(teardownFailure)
+            .IsNull()
+            .Because(
+                "A submission whose wait failed must release its fence, list, " +
+                "allocator, leases and dependent registration, or the device can " +
+                "never be torn down.");
+    }
+
+    [Test]
+    public async Task WarpUploadsTheEnvironmentAgainAfterAFailedSubmission()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.AFailedSubmissionUploadsTheEnvironmentAgain(device);
+    }
+
+    [Test]
+    public async Task WarpCastsAnAuthoredDistantLightShadow()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.AnAuthoredDistantLightCastsAMeasurableShadow(device);
+    }
+
+    [Test]
+    public async Task WarpReusesARetainedShadowMap()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.ARetainedShadowMapIsReusedUntilItsCastersMove(device);
+    }
+
+    [Test]
+    public async Task WarpCastsAnUnlitBlockersShadow()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.AnUnlitBlockerStillCastsItsShadow(device);
+    }
+
+    [Test]
+    public async Task WarpPlacesAYTiltedShadowOnTheComputedSide()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.AYTiltedShadowLandsOnTheComputedSide(device);
+    }
+
+    [Test]
+    public async Task WarpDoesNotSelfShadowARotatedNonUniformReceiver()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.ARotatedNonUniformReceiverDoesNotSelfShadow(device);
+    }
+
+    [Test]
+    public async Task WarpSkipsAndNamesAnOpacityMaskedCaster()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.AnOpacityMaskedCasterIsSkippedAndNamed(device);
+    }
+
+    [Test]
+    public async Task WarpReRendersTheShadowMapWhenACastersMaterialChanges()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkShadowConformance.AMaterialTurningMaskedAndOpaqueAgainReRendersTheMap(device);
+    }
+
+    [Test]
+    public async Task WarpLightsAQuadByTheDirectionAndOrientationOfATexturedDome()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .ADirectionalSkyLightsTheQuadByDirectionAndOrientation(device);
+    }
+
+    [Test]
+    public async Task WarpResolvesTheDomeContributionScalesAndRoughness()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .TheContributionScalesAndRoughnessDriveTheResponse(device);
+    }
+
+    [Test]
+    public async Task WarpFallsBackForAnUnsupportedDomeAndReleasesTheEnvironment()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .AnUnsupportedDomeFallsBackAndRetiringItReleasesTheMaps(device);
+    }
+
+    [Test]
+    public async Task WarpLetsATexturedDomeSuppressTheDeterministicHeadlight()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .ATexturedDomeSuppressesTheDeterministicHeadlight(device);
+    }
+
+    [Test]
+    public async Task WarpLetsAnUnsupportedDomeSuppressTheDeterministicHeadlight()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .AnUnsupportedDomeSuppressesTheDeterministicHeadlight(device);
+    }
+
+    [Test]
+    public async Task WarpReturnsTheSpecularPeakAtExactAlignment()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .TheSpecularLobeReturnsItsPeakAtExactAlignment(device);
+    }
+
+    [Test]
+    public async Task WarpKeepsANearMirrorBoundedAtEveryRoughness()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .ANearMirrorStaysBoundedAtEveryRoughness(device);
+    }
+
+    [Test]
+    public async Task WarpFollowsRotatedAndNonUniformlyScaledPrimsWithTheEnvironment()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .TheEnvironmentFollowsRotatedAndScaledPrims(device);
+    }
+
+    [Test]
+    public async Task WarpLeavesAGeneratedUnlitMaterialUnlitUnderADome()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkEnvironmentLightingConformance
+            .AGeneratedUnlitMaterialReceivesNoEnvironment(device);
     }
 
     [Test]
@@ -964,6 +1395,284 @@ public sealed class D3D12DeviceTests
         await OffscreenRhiConformance.DispatchesCheckedComputeKernels(
             device,
             SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    public async Task WarpDeformationKernelMatchesTheCpuEvaluator()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDeformationComputeConformance.DeformationKernelMatchesTheCpuEvaluator(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    public async Task WarpDeformationKernelWritesOnlyPositionsAndNormals()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDeformationComputeConformance
+            .DeformationKernelWritesOnlyPositionsAndNormals(
+                device,
+                SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpGpuDeformedImageMatchesTheCpuResolvedImage()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.GpuDeformedImageMatchesTheCpuResolvedImage(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpRendersAConstantDisplacementAsDisplacedGeometry()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.AConstantDisplacementRendersTheDisplacedSurface(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpRendersATextureDisplacementPerVertex()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance
+            .ATextureDisplacementRendersThePerVertexDisplacedSurface(
+                () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+                SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpShadowsFollowTheDisplacedSurface()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.ShadowsFollowTheDisplacedSurface(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpRendersAnUnsupportedDisplacementUndisplaced()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.AnUnsupportedDisplacementRendersTheUndisplacedSurface(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpRepeatedFramesReuseTheDisplacedGeometry()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.RepeatedFramesReuseTheDisplacedGeometry(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpDisplacesTheDeformedSurfaceRatherThanTheBindPose()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.ADisplacedRigDrawsTheDeformedSurfaceDisplaced(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpRepairingAHeightFieldReachesSelectionAndShadows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.RepairingAHeightFieldReachesSelectionAndShadows(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpRepeatedFramesReuseAndChangedPosesDispatchOnce()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.RepeatedFramesReuseAndChangedPosesDispatchOnce(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpDeformationSurvivesADeviceGenerationReset()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.ADeviceGenerationResetRedispatchesOnce(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil,
+            device => ((D3D12SilkGraphicsDevice)device)
+                .InvalidateSelectionOutlineDeviceGenerationForTesting());
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpAnIneligibleRigDrawsTheCpuGeometry()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.AnIneligibleRigDrawsTheCpuGeometry(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpDeformationParametersAreBoundedByTheirOwnSize()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using ISilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDeformationComputeConformance.DeformationParametersAreBoundedByTheirOwnSize(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpAFailedDeformationSetupDrawsTheCpuGeometry()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.AFailedDeformationSetupDrawsTheCpuGeometry(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpAFailedDeformationDispatchDrawsTheCpuGeometry()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.AFailedDeformationDispatchDrawsTheCpuGeometry(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpADeviceLossDuringDeformationDispatchPropagates()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.ADeviceLossDuringDispatchPropagates(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil,
+            device => ((D3D12SilkGraphicsDevice)device)
+                .InjectNextOffscreenSubmitDeviceLossForTesting(),
+            selectionGenerationTracksSubmissionLoss: true);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task WarpShadowsFollowTheDeformedSurface()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.ShadowsFollowTheDeformedSurface(
+            () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    public async Task WarpDeformationKernelIsIdempotentForOneIdentity()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDeformationComputeConformance
+            .DeformationKernelIsIdempotentForOneIdentity(
+                device,
+                SilkShaderBinaryFormat.Dxil);
     }
 
     [Test]

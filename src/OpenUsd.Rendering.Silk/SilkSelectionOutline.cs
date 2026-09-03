@@ -6,7 +6,26 @@ using System.Text.Json;
 namespace OpenUsd.Rendering.Silk;
 
 /// <summary>
-/// Shared visible-only selection-outline policy.
+/// How a selected surface's outline treats fragments hidden behind occluders.
+/// </summary>
+public enum SilkSelectionOutlineMode
+{
+    /// <summary>
+    /// Only unoccluded selected fragments contribute, so a selected prim behind
+    /// a wall shows no outline at all.
+    /// </summary>
+    VisibleOnly,
+
+    /// <summary>
+    /// Occluded selected fragments contribute too, in a distinct style, so a
+    /// selected prim behind a wall stays locatable without losing the ordinary
+    /// depth-tested outline where it is visible.
+    /// </summary>
+    XRay
+}
+
+/// <summary>
+/// Shared selection-outline policy for the visible-only and x-ray modes.
 /// </summary>
 public sealed record SilkSelectionOutlineSettings
 {
@@ -15,6 +34,22 @@ public sealed record SilkSelectionOutlineSettings
 
     /// <summary>Gets the widest supported physical-pixel outline.</summary>
     public const float MaximumWidth = 16;
+
+    /// <summary>
+    /// Gets the default occluded style: a desaturated cyan drawn at reduced
+    /// opacity.
+    /// </summary>
+    /// <remarks>
+    /// The occluded style must be distinguishable from the visible style by
+    /// something other than brightness, because a viewer who cannot separate the
+    /// two hues still has to tell "this part of the selection is in front of the
+    /// wall" from "this part is behind it". Cyan against the visible orange is a
+    /// hue pair that survives the common forms of colour vision deficiency, and
+    /// the lower alpha keeps the occluded outline from competing with the
+    /// visible one where both appear in the same image.
+    /// </remarks>
+    public static SilkColor DefaultOccludedColor { get; } =
+        new(0.25f, 0.8f, 1, 0.55f);
 
     /// <summary>Gets the shared orange, two-physical-pixel, visible-only policy.</summary>
     public static SilkSelectionOutlineSettings Default { get; } = new(
@@ -29,8 +64,31 @@ public sealed record SilkSelectionOutlineSettings
         SilkColor color,
         float width,
         bool visibleOnly)
+        : this(
+            enabled,
+            color,
+            width,
+            visibleOnly
+                ? SilkSelectionOutlineMode.VisibleOnly
+                : SilkSelectionOutlineMode.XRay,
+            DefaultOccludedColor)
+    {
+    }
+
+    /// <summary>Initializes immutable selection-outline settings with an explicit mode.</summary>
+    public SilkSelectionOutlineSettings(
+        bool enabled,
+        SilkColor color,
+        float width,
+        SilkSelectionOutlineMode mode,
+        SilkColor occludedColor)
     {
         color.Validate();
+        occludedColor.Validate();
+        if (!Enum.IsDefined(mode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        }
         if (!float.IsFinite(width) ||
             width < MinimumWidth ||
             width > MaximumWidth)
@@ -44,7 +102,8 @@ public sealed record SilkSelectionOutlineSettings
         Enabled = enabled;
         Color = color;
         Width = width;
-        VisibleOnly = visibleOnly;
+        Mode = mode;
+        OccludedColor = occludedColor;
     }
 
     /// <summary>Gets whether selection outlining is enabled.</summary>
@@ -56,14 +115,28 @@ public sealed record SilkSelectionOutlineSettings
     /// <summary>Gets the edge-kernel radius in physical pixels.</summary>
     public float Width { get; }
 
+    /// <summary>Gets how occluded selected fragments are treated.</summary>
+    public SilkSelectionOutlineMode Mode { get; }
+
+    /// <summary>
+    /// Gets the straight-alpha color the occluded outline is composited with in
+    /// <see cref="SilkSelectionOutlineMode.XRay"/>.
+    /// </summary>
+    /// <remarks>
+    /// It is ignored in <see cref="SilkSelectionOutlineMode.VisibleOnly"/>,
+    /// where no occluded outline is composited at all.
+    /// </remarks>
+    public SilkColor OccludedColor { get; }
+
     /// <summary>
     /// Gets whether only unoccluded selected fragments may contribute.
     /// </summary>
     /// <remarks>
-    /// A value of <see langword="false"/> requests x-ray selection, which is
-    /// explicitly unsupported by the initial Silk capability.
+    /// A value of <see langword="false"/> requests x-ray selection, which draws
+    /// the occluded part of the outline in <see cref="OccludedColor"/> under the
+    /// ordinary depth-tested outline rather than replacing it.
     /// </remarks>
-    public bool VisibleOnly { get; }
+    public bool VisibleOnly => Mode == SilkSelectionOutlineMode.VisibleOnly;
 }
 
 /// <summary>Selection-outline features exposed by one Silk device.</summary>
@@ -80,6 +153,20 @@ public readonly record struct SilkSelectionOutlineCapabilities(
     public static SilkSelectionOutlineCapabilities VisibleOnly => new(
         SupportsVisibleOnly: true,
         SupportsXRay: false);
+
+    /// <summary>
+    /// Gets the single-sample capability that also composites occluded outlines.
+    /// </summary>
+    /// <remarks>
+    /// X-ray needs no device feature the visible-only composite does not already
+    /// have: it is the same checked mask and outline pipelines, run a second
+    /// time with a depth tolerance that admits occluded neighbours and a
+    /// distinct color. A backend reports it only once it actually records that
+    /// second composite.
+    /// </remarks>
+    public static SilkSelectionOutlineCapabilities Full => new(
+        SupportsVisibleOnly: true,
+        SupportsXRay: true);
 
     /// <summary>Validates a coherent capability set.</summary>
     public void Validate()
@@ -137,11 +224,11 @@ public readonly record struct SilkSelectionOutlineDiagnostics(
     ulong DeviceInvalidations,
     ulong UnsupportedXRayRequests);
 
-/// <summary>Writes the checked 32-byte selection-outline constant buffer.</summary>
+/// <summary>Writes the checked 48-byte selection-outline constant buffer.</summary>
 public static class SilkSelectionOutlineUniformWriter
 {
     /// <summary>Gets the exact checked constant-buffer byte size.</summary>
-    public const int ByteSize = 32;
+    public const int ByteSize = 48;
 
     /// <summary>
     /// Gets the normalized-depth tolerance used to suppress outlines over nearer
@@ -149,7 +236,24 @@ public static class SilkSelectionOutlineUniformWriter
     /// </summary>
     public const float DepthEpsilon = 0.00001f;
 
-    /// <summary>Writes color, inverse viewport, width, and depth tolerance.</summary>
+    /// <summary>
+    /// Writes colour, inverse viewport, width, depth tolerance, and the occluded
+    /// x-ray colour for the one composite that draws both silhouettes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both colours travel in one buffer because both silhouettes are composited
+    /// in one pass. Compositing them one after the other blended the two styles
+    /// wherever they overlapped, so a visible edge came out as a mixture rather
+    /// than as exactly the colour the visible-only mode draws.
+    /// </para>
+    /// <para>
+    /// In <see cref="SilkSelectionOutlineMode.VisibleOnly"/> the occluded colour
+    /// is written with zero alpha. Straight-alpha-over blending then leaves the
+    /// target untouched wherever the shader takes its occluded branch, so the
+    /// visible-only image is exactly what it was before the branch existed.
+    /// </para>
+    /// </remarks>
     public static void Write(
         SilkSelectionOutlineSettings settings,
         uint width,
@@ -166,14 +270,22 @@ public static class SilkSelectionOutlineUniformWriter
                 nameof(destination));
         }
 
-        WriteSingle(destination, 0, settings.Color.Red);
-        WriteSingle(destination, 4, settings.Color.Green);
-        WriteSingle(destination, 8, settings.Color.Blue);
-        WriteSingle(destination, 12, settings.Color.Alpha);
+        SilkColor color = settings.Color;
+        WriteSingle(destination, 0, color.Red);
+        WriteSingle(destination, 4, color.Green);
+        WriteSingle(destination, 8, color.Blue);
+        WriteSingle(destination, 12, color.Alpha);
         WriteSingle(destination, 16, 1f / width);
         WriteSingle(destination, 20, 1f / height);
         WriteSingle(destination, 24, settings.Width);
         WriteSingle(destination, 28, DepthEpsilon);
+
+        SilkColor occluded = settings.OccludedColor;
+        bool visibleOnly = settings.Mode == SilkSelectionOutlineMode.VisibleOnly;
+        WriteSingle(destination, 32, occluded.Red);
+        WriteSingle(destination, 36, occluded.Green);
+        WriteSingle(destination, 40, occluded.Blue);
+        WriteSingle(destination, 44, visibleOnly ? 0f : occluded.Alpha);
     }
 
     private static void WriteSingle(Span<byte> destination, int offset, float value) =>
@@ -204,6 +316,8 @@ public readonly record struct SilkSelectionOutlineReflection(
     uint WidthByteSize,
     uint DepthEpsilonOffset,
     uint DepthEpsilonByteSize,
+    uint OccludedColorOffset,
+    uint OccludedColorByteSize,
     uint ParameterByteSize,
     bool UsesVertexId);
 
@@ -309,7 +423,58 @@ public enum SilkSelectionOutlinePrimitive
     FullscreenTriangle
 }
 
-/// <summary>Checked single-sample RGBA8/D32 visible-only mask pipeline.</summary>
+/// <summary>Primitive topology one selection-mask pipeline rasterizes.</summary>
+/// <remarks>
+/// The mask is scoped to what the selection actually names. A whole prim or a
+/// selected face is a triangle list, a selected authored edge is a line list,
+/// and a selected authored point is a point list, so the mask contains exactly
+/// the component the outline is drawn around rather than the whole prototype.
+/// </remarks>
+public enum SilkSelectionMaskPrimitiveTopology
+{
+    /// <summary>Independent indexed triangles, for a prim or a face.</summary>
+    TriangleList,
+
+    /// <summary>Independent indexed lines, for an authored edge.</summary>
+    LineList,
+
+    /// <summary>Independent indexed points, for an authored point.</summary>
+    PointList
+}
+
+/// <summary>
+/// Which selection-mask stage one mask pipeline rasterizes with.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The stage is not implied by the topology, because both stages draw line and
+/// point lists. A whole basis-curve resource, a whole UsdGeomPoints resource,
+/// and a wireframe line list are drawn as lines and points by the
+/// <see cref="WholeResource"/> stage; a selected authored mesh edge or point is
+/// drawn as a line or point by the <see cref="SubprimOverlay"/> stage.
+/// </para>
+/// <para>
+/// The difference is the checked coincident clip-space depth offset. A subprim
+/// overlay lies exactly on the triangles it was derived from and loses its own
+/// less-equal test at an arbitrary subset of its pixels without the separation.
+/// A whole resource has no surface behind it to be separated from, so applying
+/// the same offset to it pulls the entire prim toward the viewer and outlines a
+/// curve the visible-only mode exists to hide.
+/// </para>
+/// </remarks>
+public enum SilkSelectionMaskStage
+{
+    /// <summary>Rasterizes a whole rendered resource without any depth offset.</summary>
+    WholeResource,
+
+    /// <summary>
+    /// Rasterizes an authored mesh edge or point over the surface it lies on,
+    /// separated by the checked coincident clip-space offset.
+    /// </summary>
+    SubprimOverlay
+}
+
+/// <summary>Checked single-sample RGBA8/D32 selection mask pipeline.</summary>
 public readonly record struct SilkSelectionMaskPipelineDescriptor(
     SilkShaderModuleDescriptor VertexShader,
     SilkShaderModuleDescriptor FragmentShader,
@@ -322,24 +487,141 @@ public readonly record struct SilkSelectionMaskPipelineDescriptor(
     bool BlendEnabled,
     bool DepthTestEnabled,
     bool DepthWriteEnabled,
-    SilkSelectionDepthCompare DepthCompare)
+    SilkSelectionDepthCompare DepthCompare,
+    SilkSelectionMaskPrimitiveTopology PrimitiveTopology =
+        SilkSelectionMaskPrimitiveTopology.TriangleList,
+    SilkSelectionMaskStage Stage = SilkSelectionMaskStage.WholeResource)
 {
     /// <summary>Creates the exact checked mask pipeline.</summary>
     public static SilkSelectionMaskPipelineDescriptor CreateChecked(
         SilkShaderBinaryFormat format) =>
-        new(
-            SilkCheckedShaderAssets.LoadSelectionMaskVertex(format),
-            SilkCheckedShaderAssets.LoadSelectionMaskFragment(format),
-            SilkVertexLayoutDescriptor.PositionNormal,
+        CreateChecked(format, depthTested: true);
+
+    /// <summary>
+    /// Creates the checked mask pipeline for either the depth-tested
+    /// visible-only mask or the untested x-ray mask.
+    /// </summary>
+    /// <remarks>
+    /// The visible-only composite needs a mask that only unoccluded selected
+    /// fragments reach, so its mask rasterizes with a read-only less-equal depth
+    /// test. The x-ray composite needs the whole selected silhouette, including
+    /// the part behind an occluder, so its mask rasterizes with no depth test at
+    /// all; the composite's own depth comparison is then what separates the
+    /// visible part from the occluded one. Everything else -- the stages, the
+    /// vertex layout, the formats, the sample count, the culling and the
+    /// blending -- is identical, so the two masks differ in exactly one piece of
+    /// pipeline state and produce silhouettes a consumer can compare.
+    /// </remarks>
+    public static SilkSelectionMaskPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        bool depthTested) =>
+        CreateChecked(
+            format,
+            depthTested,
+            SilkSelectionMaskPrimitiveTopology.TriangleList);
+
+    /// <summary>
+    /// Creates the checked mask pipeline for one depth policy and one emitted
+    /// topology, rasterizing a whole rendered resource.
+    /// </summary>
+    public static SilkSelectionMaskPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        bool depthTested,
+        SilkSelectionMaskPrimitiveTopology topology) =>
+        CreateChecked(
+            format,
+            depthTested,
+            topology,
+            SilkVertexLayoutDescriptor.PositionNormal);
+
+    /// <summary>
+    /// Creates the checked mask pipeline for one depth policy, one emitted
+    /// topology, and one mesh vertex layout, rasterizing a whole rendered
+    /// resource.
+    /// </summary>
+    /// <remarks>
+    /// The layout is a parameter for the same reason the pick pipeline's is: a
+    /// textured or normal-mapped mesh has a 32- or 48-byte vertex, and a mask
+    /// pipeline pinned to the 24-byte layout would outline a silhouette read
+    /// from the wrong offsets.
+    /// </remarks>
+    public static SilkSelectionMaskPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        bool depthTested,
+        SilkSelectionMaskPrimitiveTopology topology,
+        SilkVertexLayoutDescriptor vertexLayout) =>
+        CreateChecked(
+            format,
+            depthTested,
+            topology,
+            vertexLayout,
+            SilkSelectionMaskStage.WholeResource);
+
+    /// <summary>
+    /// Creates the checked mask pipeline for one depth policy, one emitted
+    /// topology, one mesh vertex layout, and one explicit mask stage.
+    /// </summary>
+    /// <remarks>
+    /// The stage is stated by the caller rather than inferred from the topology,
+    /// because both stages rasterize line and point lists. A whole basis-curve
+    /// or UsdGeomPoints selection is its own surface and must be masked
+    /// unbiased, or the visible-only mask would outline a curve standing behind
+    /// an occluder; a selected authored mesh edge or point genuinely is coplanar
+    /// with its own triangles and must be separated by the checked coincident
+    /// offset, which is exactly the offset the subprim pick applies.
+    /// </remarks>
+    public static SilkSelectionMaskPipelineDescriptor CreateChecked(
+        SilkShaderBinaryFormat format,
+        bool depthTested,
+        SilkSelectionMaskPrimitiveTopology topology,
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkSelectionMaskStage stage)
+    {
+        if (!Enum.IsDefined(topology))
+        {
+            throw new ArgumentOutOfRangeException(nameof(topology));
+        }
+        if (!Enum.IsDefined(stage))
+        {
+            throw new ArgumentOutOfRangeException(nameof(stage));
+        }
+        if (stage == SilkSelectionMaskStage.SubprimOverlay &&
+            topology == SilkSelectionMaskPrimitiveTopology.TriangleList)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(stage),
+                "A triangle-list mask covers the surface itself and must not be " +
+                "separated from it.");
+        }
+
+        return new(
+            SelectMaskVertexStage(format, topology, stage),
+            depthTested
+                ? SilkCheckedShaderAssets.LoadSelectionMaskFragment(format)
+                : SilkCheckedShaderAssets.LoadSelectionMaskOccludedFragment(format),
+            vertexLayout,
             SilkSelectionMaskBindingLayoutDescriptor.Checked,
             SilkTextureFormat.Rgba8Unorm,
             SilkTextureFormat.D32Float,
             1,
             SilkSelectionCullMode.None,
             BlendEnabled: false,
-            DepthTestEnabled: true,
+            DepthTestEnabled: depthTested,
             DepthWriteEnabled: false,
-            SilkSelectionDepthCompare.LessEqual);
+            SilkSelectionDepthCompare.LessEqual,
+            topology,
+            stage);
+    }
+
+    private static SilkShaderModuleDescriptor SelectMaskVertexStage(
+        SilkShaderBinaryFormat format,
+        SilkSelectionMaskPrimitiveTopology topology,
+        SilkSelectionMaskStage stage) =>
+        stage == SilkSelectionMaskStage.SubprimOverlay
+            ? SilkCheckedShaderAssets.LoadSelectionMaskSubprimVertex(format)
+            : topology == SilkSelectionMaskPrimitiveTopology.TriangleList
+                ? SilkCheckedShaderAssets.LoadSelectionMaskVertex(format)
+                : SilkCheckedShaderAssets.LoadSelectionMaskWholeVertex(format);
 
     /// <summary>Validates the exact mask stages, formats, and depth policy.</summary>
     public void Validate()
@@ -356,10 +638,16 @@ public readonly record struct SilkSelectionMaskPipelineDescriptor(
 
         string vertexEntry = VertexShader.Format == SilkShaderBinaryFormat.SpirV
             ? "main"
-            : "selectionMaskVertexMain";
+            : Stage == SilkSelectionMaskStage.SubprimOverlay
+                ? "selectionMaskSubprimVertexMain"
+                : PrimitiveTopology == SilkSelectionMaskPrimitiveTopology.TriangleList
+                    ? "selectionMaskVertexMain"
+                    : "selectionMaskWholeVertexMain";
         string fragmentEntry = FragmentShader.Format == SilkShaderBinaryFormat.SpirV
             ? "main"
-            : "selectionMaskFragmentMain";
+            : DepthTestEnabled
+                ? "selectionMaskFragmentMain"
+                : "selectionMaskOccludedFragmentMain";
         if (!string.Equals(VertexShader.EntryPoint, vertexEntry, StringComparison.Ordinal) ||
             !string.Equals(FragmentShader.EntryPoint, fragmentEntry, StringComparison.Ordinal))
         {
@@ -374,13 +662,17 @@ public readonly record struct SilkSelectionMaskPipelineDescriptor(
             SampleCount != 1 ||
             CullMode != SilkSelectionCullMode.None ||
             BlendEnabled ||
-            !DepthTestEnabled ||
             DepthWriteEnabled ||
+            !Enum.IsDefined(PrimitiveTopology) ||
+            !Enum.IsDefined(Stage) ||
+            (PrimitiveTopology == SilkSelectionMaskPrimitiveTopology.TriangleList &&
+                Stage != SilkSelectionMaskStage.WholeResource) ||
             DepthCompare != SilkSelectionDepthCompare.LessEqual)
         {
             throw new ArgumentException(
                 "The selection mask requires single-sample RGBA8/D32 rendering, " +
-                "no culling or blending, and read-only less-equal depth.");
+                "no culling or blending, read-only less-equal depth, and the " +
+                "whole-resource stage on the triangle topology.");
         }
     }
 }
@@ -651,6 +943,41 @@ public static partial class SilkCheckedShaderAssets
     public static SilkSelectionOutlineReflection SelectionOutline =>
         SelectionOutlineReflectionValue.Value;
 
+    /// <summary>Loads the checked line and point selection-mask vertex module.</summary>
+    /// <remarks>
+    /// A selected edge or point is coplanar with the surface it came from, so
+    /// the mask needs exactly the clip-space depth offset the subprim pick uses
+    /// -- or the outline would flicker at the pixels the pick answers -- and the
+    /// explicit one-pixel point size SPIR-V and Metal require, or a selected
+    /// point would produce no mask coverage at all.
+    /// </remarks>
+    public static SilkShaderModuleDescriptor LoadSelectionMaskSubprimVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "selection.mask.subprim.vertex",
+            SilkShaderStage.Vertex,
+            format,
+            "selectionMaskSubprimVertexMain");
+
+    /// <summary>
+    /// Loads the checked whole line and point resource selection-mask vertex
+    /// module.
+    /// </summary>
+    /// <remarks>
+    /// A whole basis-curve or UsdGeomPoints resource is its own surface, not a
+    /// component coplanar with one, so its mask must be rasterized unbiased --
+    /// otherwise the visible-only mask would outline a curve standing behind an
+    /// occluder. It still needs the explicit one-pixel point size SPIR-V and
+    /// Metal require, or a selected point cloud would produce no mask coverage.
+    /// </remarks>
+    public static SilkShaderModuleDescriptor LoadSelectionMaskWholeVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "selection.mask.whole.vertex",
+            SilkShaderStage.Vertex,
+            format,
+            "selectionMaskWholeVertexMain");
+
     /// <summary>Loads the checked selection-mask vertex module.</summary>
     public static SilkShaderModuleDescriptor LoadSelectionMaskVertex(
         SilkShaderBinaryFormat format) =>
@@ -668,6 +995,25 @@ public static partial class SilkCheckedShaderAssets
             SilkShaderStage.Fragment,
             format,
             "selectionMaskFragmentMain");
+
+    /// <summary>
+    /// Loads the checked occluded selection-mask fragment module, which writes
+    /// the whole selected silhouette into the mask's green channel.
+    /// </summary>
+    /// <remarks>
+    /// The x-ray composite reads both silhouettes at once, so they share one
+    /// mask texture and differ by channel: this pass runs first and writes green
+    /// only, and the depth-tested visible pass runs second and writes every
+    /// channel. That order is correct because the visible silhouette is a subset
+    /// of the whole one, so green survives wherever this pass set it.
+    /// </remarks>
+    public static SilkShaderModuleDescriptor LoadSelectionMaskOccludedFragment(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "selection.mask.occluded.fragment",
+            SilkShaderStage.Fragment,
+            format,
+            "selectionMaskOccludedFragmentMain");
 
     /// <summary>Loads the checked fullscreen-outline vertex module.</summary>
     public static SilkShaderModuleDescriptor LoadSelectionOutlineVertex(
@@ -693,7 +1039,10 @@ public static partial class SilkCheckedShaderAssets
             LoadEmbedded("selection.mask.vertex.reflection.json"));
         using JsonDocument fragment = JsonDocument.Parse(
             LoadEmbedded("selection.mask.fragment.reflection.json"));
-        if (fragment.RootElement.GetProperty("resources").GetArrayLength() != 0)
+        using JsonDocument occludedFragment = JsonDocument.Parse(
+            LoadEmbedded("selection.mask.occluded.fragment.reflection.json"));
+        if (fragment.RootElement.GetProperty("resources").GetArrayLength() != 0 ||
+            occludedFragment.RootElement.GetProperty("resources").GetArrayLength() != 0)
         {
             throw new InvalidDataException(
                 "Checked selection-mask fragment reflection must contain no resources.");
@@ -792,6 +1141,8 @@ public static partial class SilkCheckedShaderAssets
             4,
             28,
             4,
+            32,
+            16,
             SilkSelectionOutlineUniformWriter.ByteSize,
             usesVertexId);
     }
@@ -892,15 +1243,17 @@ public static partial class SilkCheckedShaderAssets
             shape.GetProperty("access").GetString() != "constant" ||
             shape.GetProperty("size").GetUInt32() !=
                 SilkSelectionOutlineUniformWriter.ByteSize ||
-            fields.GetArrayLength() != 4 ||
+            fields.GetArrayLength() != 5 ||
             !HasSelectionField(fields[0], "outlineColor", "vector", 4, 0, 16) ||
             !HasSelectionField(fields[1], "inverseViewportSize", "vector", 2, 16, 8) ||
             !HasSelectionField(fields[2], "outlineWidthPixels", "scalar", 1, 24, 4) ||
-            !HasSelectionField(fields[3], "depthEpsilon", "scalar", 1, 28, 4))
+            !HasSelectionField(fields[3], "depthEpsilon", "scalar", 1, 28, 4) ||
+            !HasSelectionField(fields[4], "occludedOutlineColor", "vector", 4, 32, 16))
         {
             throw new InvalidDataException(
                 "Checked SelectionOutlineParameters must contain float4 color, " +
-                "float2 inverse viewport, float width, and float depth epsilon.");
+                "float2 inverse viewport, float width, float depth epsilon, and " +
+                "float4 occluded color.");
         }
     }
 

@@ -375,7 +375,13 @@ public sealed class ResourceStabilityTests
             throw new InvalidOperationException("Instance buffer updater is unavailable.");
         method.Invoke(
             geometry,
-            [device, scene.Frame, instances, ((ISilkGraphicsDevice)device).ClipSpaceYPointsDown]);
+            [
+                device,
+                scene.Frame,
+                instances,
+                ((ISilkGraphicsDevice)device).ClipSpaceYPointsDown,
+                0,
+            ]);
     }
 
     private static CountingGraphicsBuffer GetInstanceBuffer(
@@ -383,11 +389,11 @@ public sealed class ResourceStabilityTests
     {
         SilkMeshGpuResource first = resources.Meshes.Values.First();
         object geometry = GetGeometry(first);
-        PropertyInfo property = geometry.GetType().GetProperty(
-            "InstanceBuffer",
+        MethodInfo method = geometry.GetType().GetMethod(
+            "RequireInstanceBuffer",
             BindingFlags.Instance | BindingFlags.NonPublic) ??
-            throw new InvalidOperationException("Instance buffer property is unavailable.");
-        return (CountingGraphicsBuffer)(property.GetValue(geometry) ??
+            throw new InvalidOperationException("Instance buffer accessor is unavailable.");
+        return (CountingGraphicsBuffer)(method.Invoke(geometry, [0]) ??
             throw new InvalidOperationException("Instance buffer was not created."));
     }
 

@@ -116,11 +116,11 @@ Typical messages name the managed and native ABI values or report missing requir
 
 The current contracts are:
 
-- data ABI 15 with required capabilities `0xFFFFFF`;
+- data ABI 17 with required capabilities `0x3FFFFFF`;
 - direct Storm ABI 8;
 - Storm child ABI 8;
 - hdSilk session ABI 5;
-- hdSilk command-page ABI 15;
+- hdSilk command-page ABI 23;
 - retained physics world ABI 7; and
 - physics extraction page ABI 1.
 

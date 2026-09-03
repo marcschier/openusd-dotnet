@@ -3850,7 +3850,8 @@ bool VerifyImageDecode(
         const char* path,
         uint32_t convertSrgbToLinear,
         uint32_t expectedWidth,
-        uint32_t expectedHeight)
+        uint32_t expectedHeight,
+        openusd_image_info* observed)
     {
         openusd_image_info info{
             sizeof(openusd_image_info),
@@ -3900,12 +3901,34 @@ bool VerifyImageDecode(
         {
             return std::vector<uint8_t>{};
         }
+        if (observed != nullptr)
+        {
+            *observed = info;
+        }
         return pixels;
     };
 
-    const std::vector<uint8_t> grayscale = decode(grayscalePath, 0, 1024, 1024);
+    openusd_image_info grayscaleInfo{};
+    const std::vector<uint8_t> grayscale =
+        decode(grayscalePath, 0, 1024, 1024, &grayscaleInfo);
     if (grayscale.empty())
     {
+        return false;
+    }
+    // Image-info v2 observations. The channel count and the library's own
+    // effective colour space are what a consumer resolving `sourceColorSpace =
+    // auto` acts on, and a one-channel height map must not be reported sRGB just
+    // because it is eight bits deep -- reporting it sRGB would linearize every
+    // untagged height field a material left at the schema default.
+    if ((grayscaleInfo.observed & OPENUSD_IMAGE_OBSERVED_CHANNELS) == 0 ||
+        grayscaleInfo.channel_count != 1u ||
+        (grayscaleInfo.observed & OPENUSD_IMAGE_OBSERVED_COLOR_SPACE) == 0 ||
+        grayscaleInfo.color_space != OPENUSD_IMAGE_COLOR_SPACE_RAW)
+    {
+        std::cerr << "A one-channel image was not observed as one raw channel: channels="
+                  << grayscaleInfo.channel_count
+                  << " observed=" << grayscaleInfo.observed
+                  << " colorSpace=" << grayscaleInfo.color_space << "\n";
         return false;
     }
     for (size_t offset = 0; offset < grayscale.size(); offset += 4)
@@ -3918,14 +3941,30 @@ bool VerifyImageDecode(
         }
     }
 
-    const std::vector<uint8_t> grayscaleAlpha = decode(grayscaleAlphaPath, 0, 2, 1);
+    const std::vector<uint8_t> grayscaleAlpha =
+        decode(grayscaleAlphaPath, 0, 2, 1, nullptr);
     if (grayscaleAlpha != std::vector<uint8_t>{64, 64, 64, 128, 200, 200, 200, 255})
     {
         return false;
     }
 
-    const std::vector<uint8_t> rgb = decode(rgbPath, 0, 1024, 1024);
-    const std::vector<uint8_t> linear = decode(rgbPath, 1, 1024, 1024);
+    openusd_image_info rgbInfo{};
+    const std::vector<uint8_t> rgb = decode(rgbPath, 0, 1024, 1024, &rgbInfo);
+    const std::vector<uint8_t> linear = decode(rgbPath, 1, 1024, 1024, nullptr);
+    // Non-vacuity for the observation above: a three-channel eight-bit image is
+    // the case the library does resolve to sRGB, so the raw answer for the
+    // one-channel image is a real distinction rather than a constant.
+    if ((rgbInfo.observed & OPENUSD_IMAGE_OBSERVED_CHANNELS) == 0 ||
+        rgbInfo.channel_count != 3u ||
+        (rgbInfo.observed & OPENUSD_IMAGE_OBSERVED_COLOR_SPACE) == 0 ||
+        rgbInfo.color_space != OPENUSD_IMAGE_COLOR_SPACE_SRGB)
+    {
+        std::cerr << "A three-channel image was not observed as three sRGB channels: channels="
+                  << rgbInfo.channel_count
+                  << " observed=" << rgbInfo.observed
+                  << " colorSpace=" << rgbInfo.color_space << "\n";
+        return false;
+    }
     if (rgb.empty() || linear.size() != rgb.size())
     {
         return false;
@@ -4706,7 +4745,7 @@ int main(int argc, char** argv)
         }
     }
 
-    if (openusd_get_abi_version() != 16 ||
+    if (openusd_get_abi_version() != 17 ||
         (openusd_get_capabilities() &
          (OPENUSD_CAPABILITY_STRING_LIST_V2 |
           OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -4732,7 +4771,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
           OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
           OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION |
-          OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION)) !=
+          OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION |
+          OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -4757,7 +4797,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
              OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
              OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION |
-             OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION))
+             OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION |
+             OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
@@ -7524,5 +7565,57 @@ int main(int argc, char** argv)
     openusd_string_list_release(sourcesList);
     openusd_stage_release(stage);
     std::cout << "ABI v10 hardening passed.\n";
+
+    // Sdr node-definition capacity preflight: overflow-safe arithmetic at small, injected sizes
+    // distinct from OPENUSD_SDR_NODE_DEFINITION_MAX_STRING_BYTES, and atomic all-or-nothing
+    // appends -- a two-string record that does not fit must leave the table completely
+    // unchanged rather than partially written.
+    if (openusd_test_sdr_has_string_capacity(5, 5, 10) != 1 ||
+        openusd_test_sdr_has_string_capacity(6, 5, 10) != 0 ||
+        openusd_test_sdr_has_string_capacity(5, std::numeric_limits<size_t>::max(), 10) != 0 ||
+        openusd_test_sdr_has_string_capacity(10, 0, 10) != 1 ||
+        openusd_test_sdr_has_string_capacity(11, 0, 10) != 0)
+    {
+        std::cerr << "Sdr string-capacity preflight did not match expected boundary/overflow results.\n";
+        return 122;
+    }
+
+    size_t dataSizeAfter = 0;
+    const int32_t fitsExactly = openusd_test_sdr_try_append_two_strings("ab", "c", 0, 5, &dataSizeAfter);
+    if (fitsExactly != 1 || dataSizeAfter != 5)
+    {
+        std::cerr << "Sdr append did not accept a record that exactly fits: appended=" << fitsExactly
+                  << ", data_size=" << dataSizeAfter << ".\n";
+        return 123;
+    }
+
+    dataSizeAfter = 12345;
+    const int32_t oneByteShort = openusd_test_sdr_try_append_two_strings("ab", "c", 0, 4, &dataSizeAfter);
+    if (oneByteShort != 0 || dataSizeAfter != 0)
+    {
+        std::cerr << "Sdr append partially wrote a record that did not fit: appended=" << oneByteShort
+                  << ", data_size=" << dataSizeAfter << " (expected 0, unchanged).\n";
+        return 124;
+    }
+
+    dataSizeAfter = 0;
+    const int32_t fitsWithExisting = openusd_test_sdr_try_append_two_strings("ab", "c", 3, 8, &dataSizeAfter);
+    if (fitsWithExisting != 1 || dataSizeAfter != 8)
+    {
+        std::cerr << "Sdr append did not account for pre-existing table bytes correctly: appended="
+                  << fitsWithExisting << ", data_size=" << dataSizeAfter << ".\n";
+        return 125;
+    }
+
+    dataSizeAfter = 12345;
+    const int32_t overWithExisting = openusd_test_sdr_try_append_two_strings("ab", "c", 4, 8, &dataSizeAfter);
+    if (overWithExisting != 0 || dataSizeAfter != 4)
+    {
+        std::cerr << "Sdr append did not atomically reject a record over budget with existing data: "
+                  << "appended=" << overWithExisting << ", data_size=" << dataSizeAfter
+                  << " (expected 4, unchanged).\n";
+        return 126;
+    }
+    std::cout << "Sdr node-definition capacity preflight hardening passed.\n";
     return 0;
 }

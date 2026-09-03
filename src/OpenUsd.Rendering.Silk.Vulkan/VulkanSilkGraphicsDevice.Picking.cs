@@ -155,6 +155,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     internal void NotifyPickDeviceLost()
     {
+        // The general signal is per-failure and the pick invalidation is
+        // one-time, so the unlatched notification comes first.
+        NotifyDeviceLost();
         if (Interlocked.Exchange(ref _pickDeviceLostNotified, 1) == 0)
         {
             AdvancePickDeviceGeneration(deviceLost: true);
@@ -305,9 +308,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     : "Injected Vulkan pick submission failure.");
         }
 
-        VulkanSilkPickGraphicsPipeline pipeline = commands.PickPipeline ??
+        IReadOnlyList<VulkanPickPass> passes = commands.PickPasses;
+        if (passes.Count == 0)
+        {
             throw new InvalidOperationException(
-                "The Vulkan pick command list has no pick pipeline.");
+                "The Vulkan pick command list has no recorded pick pass.");
+        }
+        VulkanSilkPickGraphicsPipeline pipeline = passes[0].Pipeline;
         VulkanSilkGraphicsTexture color = commands.PickColorAttachment ??
             throw new InvalidOperationException(
                 "The Vulkan pick command list has no color attachment.");
@@ -325,28 +332,38 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 "A Vulkan pick pass requires explicit ID and depth clears.");
         }
 
-        IReadOnlyList<VulkanPickDrawCommand> draws = commands.PickDraws;
-        var leases = new IDisposable[checked(3 + (draws.Count * 3))];
+        int drawCount = 0;
+        foreach (VulkanPickPass pass in passes)
+        {
+            drawCount += pass.Draws.Count;
+        }
+        var leases = new IDisposable[checked(3 + passes.Count + (drawCount * 4))];
         int acquired = 0;
         try
         {
             leases[acquired++] = pipeline.AcquireLease();
             leases[acquired++] = color.AcquireLease();
             leases[acquired++] = depth.AcquireLease();
-            foreach (VulkanPickDrawCommand draw in draws)
+            foreach (VulkanPickPass pass in passes)
             {
-                leases[acquired++] = draw.VertexBuffer.AcquireLease();
-                leases[acquired++] = draw.IndexBuffer.AcquireLease();
-                leases[acquired++] = draw.UniformBuffer.AcquireLease();
+                leases[acquired++] = pass.Pipeline.AcquireLease();
+                foreach (VulkanPickDrawCommand draw in pass.Draws)
+                {
+                    // Each draw's own pipeline is kept alive for the submission,
+                    // not only the one the pass opened with.
+                    leases[acquired++] = draw.Pipeline.AcquireLease();
+                    leases[acquired++] = draw.VertexBuffer.AcquireLease();
+                    leases[acquired++] = draw.IndexBuffer.AcquireLease();
+                    leases[acquired++] = draw.UniformBuffer.AcquireLease();
+                }
             }
 
             ulong serial = readback.RecordAndSubmit(
-                pipeline,
                 color,
                 depth,
                 clearColor,
                 clearDepth,
-                draws,
+                passes,
                 commands.PickCoordinate);
             Interlocked.Increment(ref _pickSubmissions);
             Interlocked.Increment(ref _pickCopies);
@@ -488,7 +505,8 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
                 vertexShader,
                 fragmentShader,
                 layout,
-                renderPass);
+                renderPass,
+                descriptor);
             return new VulkanSilkPickGraphicsPipeline(
                 owner,
                 api,
@@ -747,7 +765,8 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
         ShaderModule vertexShader,
         ShaderModule fragmentShader,
         PipelineLayout layout,
-        RenderPass renderPass)
+        RenderPass renderPass,
+        SilkPickPipelineDescriptor descriptor)
     {
         byte[] vertexEntry = System.Text.Encoding.UTF8.GetBytes(
             vertexEntryPoint + "\0");
@@ -773,7 +792,7 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
             };
             var binding = new VertexInputBindingDescription(
                 0,
-                24,
+                descriptor.VertexLayout.Stride,
                 VertexInputRate.Vertex);
             VertexInputAttributeDescription* attributes =
                 stackalloc VertexInputAttributeDescription[2];
@@ -798,7 +817,12 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
             var inputAssembly = new PipelineInputAssemblyStateCreateInfo
             {
                 SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-                Topology = PrimitiveTopology.TriangleList
+                Topology = descriptor.PrimitiveTopology switch
+                {
+                    SilkPickPrimitiveTopology.LineList => PrimitiveTopology.LineList,
+                    SilkPickPrimitiveTopology.PointList => PrimitiveTopology.PointList,
+                    _ => PrimitiveTopology.TriangleList
+                }
             };
             var viewportState = new PipelineViewportStateCreateInfo
             {
@@ -812,6 +836,16 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
                 PolygonMode = PolygonMode.Fill,
                 CullMode = CullModeFlags.None,
                 FrontFace = FrontFace.CounterClockwise,
+                // No rasterizer depth bias at all. Vulkan applies depth bias to
+                // polygon primitives only unless depthBiasEnable is combined
+                // with a line rasterization mode, and the slope term is defined
+                // from a polygon's gradients, so a bias set here would not
+                // separate lines or points portably. The checked subprim vertex
+                // stage offsets clip-space depth instead.
+                DepthBiasEnable = false,
+                DepthBiasConstantFactor = 0.0f,
+                DepthBiasSlopeFactor = 0.0f,
+                DepthBiasClamp = 0.0f,
                 LineWidth = 1
             };
             var multisample = new PipelineMultisampleStateCreateInfo
@@ -829,11 +863,18 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
             var colorAttachment = new PipelineColorBlendAttachmentState
             {
                 BlendEnable = false,
-                ColorWriteMask =
-                    ColorComponentFlags.RBit |
-                    ColorComponentFlags.GBit |
-                    ColorComponentFlags.BBit |
-                    ColorComponentFlags.ABit
+
+                // A cleared mask makes the pass a pure occluder: it still
+                // rasterizes and still writes depth, so what it covers stays
+                // hidden, but it leaves the pick target's background token in
+                // place. A face request draws curves and point clouds that way,
+                // because neither has an authored face to answer with.
+                ColorWriteMask = descriptor.ColorWriteEnabled
+                    ? ColorComponentFlags.RBit |
+                        ColorComponentFlags.GBit |
+                        ColorComponentFlags.BBit |
+                        ColorComponentFlags.ABit
+                    : 0
             };
             var colorBlend = new PipelineColorBlendStateCreateInfo
             {
@@ -886,6 +927,15 @@ internal sealed unsafe class VulkanSilkPickGraphicsPipeline :
 
 internal sealed partial class VulkanSilkGraphicsCommandList
 {
+    // One recorded pick rendering scope: the pipeline it bound, the draws it
+    // recorded, and whether the colour target was cleared before it.
+    //
+    // A subprim pick is two scopes, not one: a surface depth pre-pass followed
+    // by the edge or point pass that depth-tests against it. Collapsing them
+    // into a single retained pipeline and draw list -- which is what this list
+    // replaced -- silently dropped the pre-pass, so an occluded edge answered
+    // the pick as if nothing were in front of it.
+    private readonly List<VulkanPickPass> _pickPasses = [];
     private readonly List<VulkanPickDrawCommand> _pickDraws = [];
     private VulkanSilkPickGraphicsPipeline? _pickPipeline;
     private VulkanSilkGraphicsTexture? _pickColorAttachment;
@@ -893,6 +943,10 @@ internal sealed partial class VulkanSilkGraphicsCommandList
     private VulkanSilkPickReadbackBuffer? _pickReadback;
     private SilkTexturePixelCoordinate _pickCoordinate;
     private uint _pickBaseToken;
+    private bool _pickColorClearedSinceScope;
+
+    /// <summary>Whether the scope being recorded clears the pick colour first.</summary>
+    private bool _pickPassClearsColor;
 
     internal bool HasPickSubmission => _pickReadback is not null;
 
@@ -909,6 +963,9 @@ internal sealed partial class VulkanSilkGraphicsCommandList
     internal SilkTexturePixelCoordinate PickCoordinate => _pickCoordinate;
 
     internal IReadOnlyList<VulkanPickDrawCommand> PickDraws => _pickDraws;
+
+    /// <summary>Every recorded pick scope, in the order it was recorded.</summary>
+    internal IReadOnlyList<VulkanPickPass> PickPasses => _pickPasses;
 
     public void SetPickGraphicsPipeline(ISilkPickGraphicsPipeline pipeline)
     {
@@ -1010,12 +1067,53 @@ internal sealed partial class VulkanSilkGraphicsCommandList
 
     private void BeginPickRenderingScope()
     {
+        // A scope that follows an earlier one keeps the depth the earlier one
+        // wrote. Only the colour target is cleared between them, which the
+        // replay does inside the single render pass so nothing the pre-pass
+        // wrote to depth is lost.
+        FlushPickPass();
         _pickPipeline = null;
-        _pickColorAttachment = null;
-        _pickDepthAttachment = null;
-        _pickReadback = null;
-        _pickCoordinate = default;
+
+        // A colour clear recorded before this scope began belongs to THIS pass,
+        // not to the one that just closed: the caller clears the pick colour and
+        // then opens the next scope. Capturing it here is what makes the
+        // mid-sequence clear land on the edge or point pass rather than being
+        // attributed to the surface pre-pass and dropped.
+        _pickPassClearsColor = _pickPasses.Count != 0 && _pickColorClearedSinceScope;
+        _pickColorClearedSinceScope = false;
+        if (_pickPasses.Count == 0)
+        {
+            _pickColorAttachment = null;
+            _pickDepthAttachment = null;
+            _pickReadback = null;
+            _pickCoordinate = default;
+        }
         _pickBaseToken = 0;
+        _pickDraws.Clear();
+    }
+
+    /// <summary>Closes the scope being recorded and retains it as one pass.</summary>
+    /// <remarks>
+    /// A scope with a bound pipeline and no draws is still a pass: it clears the
+    /// pick colour and rasterizes nothing, which is exactly how an edge or point
+    /// request over geometry that answers neither resolves to token zero rather
+    /// than to whatever the surface pre-pass left behind. The viewport and
+    /// scissor the scope set are retained with it, because they are the only
+    /// record of the rectangle that clear must cover once the scope contributed
+    /// no draw to read one from.
+    /// </remarks>
+    private void FlushPickPass()
+    {
+        if (_pickPipeline is null)
+        {
+            return;
+        }
+        _pickPasses.Add(new VulkanPickPass(
+            _pickPipeline,
+            [.. _pickDraws],
+            _pickPassClearsColor,
+            _viewport,
+            _scissor));
         _pickDraws.Clear();
     }
 
@@ -1025,15 +1123,34 @@ internal sealed partial class VulkanSilkGraphicsCommandList
         VulkanSilkGraphicsBuffer uniformBuffer,
         uint indexCount)
     {
-        if (_pickBaseToken == 0 ||
+        // The index count must divide the bound pipeline's primitive size: three
+        // for the surface pass, two for the edge pass, one for the point pass.
+        VulkanSilkPickGraphicsPipeline? pipeline = _pickPipeline;
+        uint indicesPerPrimitive =
+            pipeline?.Descriptor.PrimitiveTopology switch
+            {
+                SilkPickPrimitiveTopology.LineList => 2u,
+                SilkPickPrimitiveTopology.PointList => 1u,
+                _ => 3u
+            };
+        if (pipeline is null ||
+            _pickBaseToken == 0 ||
             _viewport is null ||
             _scissor is null ||
-            indexCount % 3 != 0)
+            indexCount % indicesPerPrimitive != 0)
         {
             throw new InvalidOperationException(
-                "A Vulkan pick draw requires a nonzero base token, viewport, and scissor.");
+                "A Vulkan pick draw requires a bound pipeline, a nonzero base token, " +
+                "a viewport, and a scissor.");
         }
+
+        // The pipeline is captured per draw, not per scope. Meshes are drawn
+        // through the pipeline that matches their own vertex stride, so one
+        // scope over a scene mixing 24-, 32-, and 48-byte vertices legitimately
+        // binds three pipelines; recording only the last one would rasterize
+        // every earlier mesh at the wrong stride.
         _pickDraws.Add(new VulkanPickDrawCommand(
+            pipeline,
             vertexBuffer,
             indexBuffer,
             uniformBuffer,
@@ -1045,11 +1162,12 @@ internal sealed partial class VulkanSilkGraphicsCommandList
 
     private void ValidatePickSubmission()
     {
-        if (_pickPipeline is null && _pickReadback is null)
+        FlushPickPass();
+        if (_pickPasses.Count == 0 && _pickReadback is null)
         {
             return;
         }
-        if (_pickPipeline is null ||
+        if (_pickPasses.Count == 0 ||
             _pickColorAttachment is null ||
             _pickDepthAttachment is null ||
             _pickReadback is null)
@@ -1071,14 +1189,49 @@ internal sealed partial class VulkanSilkGraphicsCommandList
     private void DisposePickState()
     {
         _pickDraws.Clear();
+        _pickPasses.Clear();
         _pickPipeline = null;
+        _pickPassClearsColor = false;
+        _pickColorClearedSinceScope = false;
         _pickColorAttachment = null;
         _pickDepthAttachment = null;
         _pickReadback = null;
     }
 }
 
+/// <summary>One recorded Vulkan pick rendering scope.</summary>
+/// <remarks>
+/// A scope's draws do not all share one pipeline. Meshes are drawn through the
+/// pipeline that matches their own vertex stride, so a scene mixing 24-, 32-,
+/// and 48-byte vertices binds three pipelines inside one scope. The pass keeps
+/// the pipeline that was bound when it opened -- which is what selects the
+/// render pass and the primitive size -- while each draw carries the pipeline it
+/// must actually be issued with.
+/// </remarks>
+internal readonly record struct VulkanPickPass(
+    VulkanSilkPickGraphicsPipeline Pipeline,
+    IReadOnlyList<VulkanPickDrawCommand> Draws,
+    bool ClearColorBefore,
+    SilkViewport? Viewport,
+    SilkScissor? Scissor)
+{
+    /// <summary>
+    /// The rectangle an in-render-pass colour clear for this pass covers.
+    /// </summary>
+    /// <remarks>
+    /// The scissor the scope set is preferred over the first draw's, because a
+    /// pass that recorded no draw still has to be cleared: an edge or point
+    /// request over geometry that answers neither must resolve to token zero,
+    /// and the only thing that erases the surface pre-pass's tokens is this
+    /// clear. Falling back to the first draw keeps a recorded pass clearable
+    /// even if a caller ever opens a scope without setting state of its own.
+    /// </remarks>
+    internal SilkScissor? ClearRect =>
+        Scissor ?? (Draws.Count != 0 ? Draws[0].Scissor : null);
+}
+
 internal readonly record struct VulkanPickDrawCommand(
+    VulkanSilkPickGraphicsPipeline Pipeline,
     VulkanSilkGraphicsBuffer VertexBuffer,
     VulkanSilkGraphicsBuffer IndexBuffer,
     VulkanSilkGraphicsBuffer UniformBuffer,
@@ -1088,11 +1241,26 @@ internal readonly record struct VulkanPickDrawCommand(
     uint IndexCount);
 
 internal readonly record struct VulkanPickDrawCacheEntry(
+    VulkanSilkPickGraphicsPipeline Pipeline,
     VulkanSilkGraphicsBuffer VertexBuffer,
     VulkanSilkGraphicsBuffer IndexBuffer,
     SilkViewport Viewport,
     SilkScissor Scissor,
     uint IndexCount);
+
+/// <summary>
+/// The per-pass state a recorded secondary command buffer was produced from.
+/// </summary>
+/// <remarks>
+/// A pass contributes an attachment clear and a pipeline bind even when it
+/// records no draw, so a cache keyed only on draws would replay a buffer whose
+/// clears belong to a different sequence.
+/// </remarks>
+internal readonly record struct VulkanPickPassCacheEntry(
+    VulkanSilkPickGraphicsPipeline Pipeline,
+    bool ClearColorBefore,
+    SilkScissor? ClearRect,
+    int DrawCount);
 
 internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     ISilkPickReadbackBuffer
@@ -1129,7 +1297,9 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     private nint _pickUniformMapped;
     private int _descriptorCapacity;
     private VulkanPickDrawCacheEntry[]? _secondaryDraws;
+    private VulkanPickPassCacheEntry[]? _secondaryPasses;
     private int _secondaryDrawCount;
+    private int _secondaryPassCount;
     private VulkanSilkPickGraphicsPipeline? _secondaryPipeline;
     private uint _secondaryWidth;
     private uint _secondaryHeight;
@@ -1264,14 +1434,14 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         ObjectDisposedException.ThrowIf(_disposed, this);
 
     internal ulong RecordAndSubmit(
-        VulkanSilkPickGraphicsPipeline pipeline,
         VulkanSilkGraphicsTexture color,
         VulkanSilkGraphicsTexture depth,
         SilkColor clearColor,
         float clearDepth,
-        IReadOnlyList<VulkanPickDrawCommand> draws,
+        IReadOnlyList<VulkanPickPass> passes,
         SilkTexturePixelCoordinate coordinate)
     {
+        VulkanSilkPickGraphicsPipeline pipeline = passes[0].Pipeline;
         ThrowIfDisposed();
         if (_state != PickSlotState.Idle)
         {
@@ -1290,10 +1460,16 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         }
 
         EnsureFramebuffer(pipeline, color, depth);
-        int primitiveCount = CountPrimitives(draws);
+        int primitiveCount = 0;
+        bool clearsColor = false;
+        foreach (VulkanPickPass pass in passes)
+        {
+            primitiveCount += CountPrimitives(pass.Draws);
+            clearsColor |= pass.ClearColorBefore && pass.ClearRect is not null;
+        }
         EnsureDescriptorCapacity(pipeline, primitiveCount);
-        UpdateDescriptorsAndTokens(draws);
-        EnsureSecondaryCommands(pipeline, color, draws);
+        UpdateDescriptorsAndTokens(passes);
+        EnsureSecondaryCommands(color, passes);
 
         VulkanSilkGraphicsDevice.ThrowIfFailed(
             _api.ResetFences(_device, 1, in _fence),
@@ -1356,7 +1532,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             _commands,
             &renderPassBegin,
             SubpassContents.SecondaryCommandBuffers);
-        if (primitiveCount > 0)
+        if (primitiveCount > 0 || clearsColor)
         {
             CommandBuffer secondary = _secondaryCommands;
             _api.CmdExecuteCommands(_commands, 1, &secondary);
@@ -1845,79 +2021,94 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         int count = 0;
         foreach (VulkanPickDrawCommand draw in draws)
         {
-            if (draw.IndexCount % 3 != 0)
+            uint indicesPerPrimitive = IndicesPerPrimitive(draw);
+            if (draw.IndexCount % indicesPerPrimitive != 0)
             {
                 throw new InvalidOperationException(
-                    "A Vulkan pick draw must contain complete triangles.");
+                    "A Vulkan pick draw must contain complete primitives.");
             }
-            count = checked(count + (int)(draw.IndexCount / 3));
+            count = checked(count + (int)(draw.IndexCount / indicesPerPrimitive));
         }
         return count;
     }
 
-    private void UpdateDescriptorsAndTokens(
-        IReadOnlyList<VulkanPickDrawCommand> draws)
-    {
-        if (draws.Count == 0)
+    /// <summary>The index count one primitive of a draw's own pipeline uses.</summary>
+    private static uint IndicesPerPrimitive(in VulkanPickDrawCommand draw) =>
+        draw.Pipeline.Descriptor.PrimitiveTopology switch
         {
-            return;
-        }
+            SilkPickPrimitiveTopology.LineList => 2u,
+            SilkPickPrimitiveTopology.PointList => 1u,
+            _ => 3u
+        };
+
+    private void UpdateDescriptorsAndTokens(
+        IReadOnlyList<VulkanPickPass> passes)
+    {
         int descriptorIndex = 0;
         ulong stride = AlignUp(16, _uniformOffsetAlignment);
         DescriptorBufferInfo* bufferInfos =
             stackalloc DescriptorBufferInfo[2];
         WriteDescriptorSet* writes = stackalloc WriteDescriptorSet[2];
-        foreach (VulkanPickDrawCommand draw in draws)
+        foreach (VulkanPickPass pass in passes)
         {
-            uint drawPrimitiveCount = draw.IndexCount / 3;
-            for (uint primitive = 0;
-                 primitive < drawPrimitiveCount;
-                 primitive++)
+            foreach (VulkanPickDrawCommand draw in pass.Draws)
             {
-                ulong tokenOffset = checked(
-                    stride * (ulong)descriptorIndex);
-                Span<byte> tokenBytes = new(
-                    (byte*)_pickUniformMapped +
-                        checked((int)tokenOffset),
-                    16);
-                tokenBytes.Clear();
-                BinaryPrimitives.WriteUInt32LittleEndian(
-                    tokenBytes,
-                    checked(draw.BaseToken + primitive));
-                bufferInfos[0] = new DescriptorBufferInfo(
-                    draw.UniformBuffer.Buffer,
-                    0,
-                    SilkCheckedShaderAssets.SceneParameters.ByteSize);
-                bufferInfos[1] = new DescriptorBufferInfo(
-                    _pickUniformBuffer,
-                    tokenOffset,
-                    16);
-                writes[0] = new WriteDescriptorSet
+                uint drawPrimitiveCount =
+                    draw.IndexCount / IndicesPerPrimitive(draw);
+                for (uint primitive = 0;
+                     primitive < drawPrimitiveCount;
+                     primitive++)
                 {
-                    SType = StructureType.WriteDescriptorSet,
-                    DstSet = _descriptorSets![descriptorIndex],
-                    DstBinding = 0,
-                    DescriptorCount = 1,
-                    DescriptorType = DescriptorType.UniformBuffer,
-                    PBufferInfo = &bufferInfos[0]
-                };
-                writes[1] = new WriteDescriptorSet
-                {
-                    SType = StructureType.WriteDescriptorSet,
-                    DstSet = _descriptorSets[descriptorIndex],
-                    DstBinding = 1,
-                    DescriptorCount = 1,
-                    DescriptorType = DescriptorType.UniformBuffer,
-                    PBufferInfo = &bufferInfos[1]
-                };
-                _api.UpdateDescriptorSets(
-                    _device,
-                    2,
-                    writes,
-                    0,
-                    null);
-                descriptorIndex++;
+                    ulong tokenOffset = checked(
+                        stride * (ulong)descriptorIndex);
+                    Span<byte> tokenBytes = new(
+                        (byte*)_pickUniformMapped +
+                            checked((int)tokenOffset),
+                        16);
+                    tokenBytes.Clear();
+                    BinaryPrimitives.WriteUInt32LittleEndian(
+                        tokenBytes,
+                        checked(draw.BaseToken + primitive));
+                    bufferInfos[0] = new DescriptorBufferInfo(
+                        draw.UniformBuffer.Buffer,
+                        0,
+                        SilkCheckedShaderAssets.SceneParameters.ByteSize);
+                    bufferInfos[1] = new DescriptorBufferInfo(
+                        _pickUniformBuffer,
+                        tokenOffset,
+                        16);
+                    writes[0] = new WriteDescriptorSet
+                    {
+                        SType = StructureType.WriteDescriptorSet,
+                        DstSet = _descriptorSets![descriptorIndex],
+                        DstBinding = 0,
+                        DescriptorCount = 1,
+                        DescriptorType = DescriptorType.UniformBuffer,
+                        PBufferInfo = &bufferInfos[0]
+                    };
+                    writes[1] = new WriteDescriptorSet
+                    {
+                        SType = StructureType.WriteDescriptorSet,
+                        DstSet = _descriptorSets[descriptorIndex],
+                        DstBinding = 1,
+                        DescriptorCount = 1,
+                        DescriptorType = DescriptorType.UniformBuffer,
+                        PBufferInfo = &bufferInfos[1]
+                    };
+                    _api.UpdateDescriptorSets(
+                        _device,
+                        2,
+                        writes,
+                        0,
+                        null);
+                    descriptorIndex++;
+                }
             }
+        }
+
+        if (descriptorIndex == 0)
+        {
+            return;
         }
 
         var range = new MappedMemoryRange
@@ -1932,12 +2123,21 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             "vkFlushMappedMemoryRanges(pick uniforms)");
     }
 
+    /// <summary>
+    /// Records every retained pick pass into the one secondary command buffer.
+    /// </summary>
+    /// <remarks>
+    /// All passes share a single render pass so the depth a surface pre-pass
+    /// wrote survives into the edge or point pass that tests against it. A pass
+    /// that asked for a colour clear gets an in-render-pass attachment clear
+    /// rather than a second render pass, because ending and restarting the
+    /// render pass is exactly what would discard that depth.
+    /// </remarks>
     private void EnsureSecondaryCommands(
-        VulkanSilkPickGraphicsPipeline pipeline,
         VulkanSilkGraphicsTexture color,
-        IReadOnlyList<VulkanPickDrawCommand> draws)
+        IReadOnlyList<VulkanPickPass> passes)
     {
-        if (MatchesSecondaryCommands(pipeline, color, draws))
+        if (MatchesSecondaryCommands(color, passes))
         {
             return;
         }
@@ -1950,7 +2150,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         var inheritance = new CommandBufferInheritanceInfo
         {
             SType = StructureType.CommandBufferInheritanceInfo,
-            RenderPass = pipeline.RenderPass,
+            RenderPass = passes[0].Pipeline.RenderPass,
             Subpass = 0,
             Framebuffer = _framebuffer
         };
@@ -1963,135 +2163,238 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         VulkanSilkGraphicsDevice.ThrowIfFailed(
             _api.BeginCommandBuffer(_secondaryCommands, &beginInfo),
             "vkBeginCommandBuffer(pick secondary)");
-        _api.CmdBindPipeline(
-            _secondaryCommands,
-            PipelineBindPoint.Graphics,
-            pipeline.Pipeline);
 
         int descriptorIndex = 0;
-        foreach (VulkanPickDrawCommand draw in draws)
+        foreach (VulkanPickPass pass in passes)
         {
-            var viewport = new global::Silk.NET.Vulkan.Viewport(
-                draw.Viewport.X,
-                draw.Viewport.Y,
-                draw.Viewport.Width,
-                draw.Viewport.Height,
-                draw.Viewport.MinDepth,
-                draw.Viewport.MaxDepth);
-            _api.CmdSetViewport(
-                _secondaryCommands,
-                0,
-                1,
-                &viewport);
-            var scissor = new Rect2D(
-                new Offset2D(draw.Scissor.X, draw.Scissor.Y),
-                new Extent2D(
-                    draw.Scissor.Width,
-                    draw.Scissor.Height));
-            _api.CmdSetScissor(
-                _secondaryCommands,
-                0,
-                1,
-                &scissor);
-            VkBuffer vertexBuffer = draw.VertexBuffer.Buffer;
-            ulong vertexOffset = 0;
-            _api.CmdBindVertexBuffers(
-                _secondaryCommands,
-                0,
-                1,
-                &vertexBuffer,
-                &vertexOffset);
-            _api.CmdBindIndexBuffer(
-                _secondaryCommands,
-                draw.IndexBuffer.Buffer,
-                0,
-                IndexType.Uint32);
-            uint primitiveCount = draw.IndexCount / 3;
-            for (uint primitive = 0;
-                 primitive < primitiveCount;
-                 primitive++)
+            // Issued independently of the draw count. A pass that rasterizes
+            // nothing is exactly the pass whose clear matters most: it is what
+            // erases the surface pre-pass's tokens so an edge or point request
+            // over geometry that answers neither resolves to zero instead of to
+            // the surface token underneath it.
+            if (pass.ClearColorBefore && pass.ClearRect is { } clearScissor)
             {
-                DescriptorSet descriptorSet =
-                    _descriptorSets![descriptorIndex++];
-                _api.CmdBindDescriptorSets(
+                var clearAttachment = new ClearAttachment
+                {
+                    AspectMask = ImageAspectFlags.ColorBit,
+                    ColorAttachment = 0,
+                    ClearValue = new ClearValue
+                    {
+                        Color = new ClearColorValue
+                        {
+                            Float32_0 = 0,
+                            Float32_1 = 0,
+                            Float32_2 = 0,
+                            Float32_3 = 0
+                        }
+                    }
+                };
+                var clearRect = new ClearRect
+                {
+                    Rect = new Rect2D(
+                        new Offset2D(clearScissor.X, clearScissor.Y),
+                        new Extent2D(clearScissor.Width, clearScissor.Height)),
+                    BaseArrayLayer = 0,
+                    LayerCount = 1
+                };
+                _api.CmdClearAttachments(
                     _secondaryCommands,
-                    PipelineBindPoint.Graphics,
-                    pipeline.Layout,
+                    1,
+                    &clearAttachment,
+                    1,
+                    &clearRect);
+            }
+
+            _api.CmdBindPipeline(
+                _secondaryCommands,
+                PipelineBindPoint.Graphics,
+                pass.Pipeline.Pipeline);
+            VulkanSilkPickGraphicsPipeline bound = pass.Pipeline;
+            foreach (VulkanPickDrawCommand draw in pass.Draws)
+            {
+                // Each draw is issued through its own pipeline, so a scope over
+                // a scene of mixed vertex strides rasterizes every mesh from the
+                // vertices it was uploaded with.
+                if (!ReferenceEquals(bound, draw.Pipeline))
+                {
+                    _api.CmdBindPipeline(
+                        _secondaryCommands,
+                        PipelineBindPoint.Graphics,
+                        draw.Pipeline.Pipeline);
+                    bound = draw.Pipeline;
+                }
+                uint indicesPerPrimitive = IndicesPerPrimitive(draw);
+                var viewport = new global::Silk.NET.Vulkan.Viewport(
+                    draw.Viewport.X,
+                    draw.Viewport.Y,
+                    draw.Viewport.Width,
+                    draw.Viewport.Height,
+                    draw.Viewport.MinDepth,
+                    draw.Viewport.MaxDepth);
+                _api.CmdSetViewport(
+                    _secondaryCommands,
                     0,
                     1,
-                    &descriptorSet,
-                    0,
-                    null);
-                _api.CmdDrawIndexed(
+                    &viewport);
+                var scissor = new Rect2D(
+                    new Offset2D(draw.Scissor.X, draw.Scissor.Y),
+                    new Extent2D(
+                        draw.Scissor.Width,
+                        draw.Scissor.Height));
+                _api.CmdSetScissor(
                     _secondaryCommands,
-                    3,
-                    1,
-                    primitive * 3,
                     0,
-                    0);
+                    1,
+                    &scissor);
+                VkBuffer vertexBuffer = draw.VertexBuffer.Buffer;
+                ulong vertexOffset = 0;
+                _api.CmdBindVertexBuffers(
+                    _secondaryCommands,
+                    0,
+                    1,
+                    &vertexBuffer,
+                    &vertexOffset);
+                _api.CmdBindIndexBuffer(
+                    _secondaryCommands,
+                    draw.IndexBuffer.Buffer,
+                    0,
+                    IndexType.Uint32);
+                uint primitiveCount = draw.IndexCount / indicesPerPrimitive;
+                for (uint primitive = 0;
+                     primitive < primitiveCount;
+                     primitive++)
+                {
+                    DescriptorSet descriptorSet =
+                        _descriptorSets![descriptorIndex++];
+                    _api.CmdBindDescriptorSets(
+                        _secondaryCommands,
+                        PipelineBindPoint.Graphics,
+                        draw.Pipeline.Layout,
+                        0,
+                        1,
+                        &descriptorSet,
+                        0,
+                        null);
+                    _api.CmdDrawIndexed(
+                        _secondaryCommands,
+                        indicesPerPrimitive,
+                        1,
+                        primitive * indicesPerPrimitive,
+                        0,
+                        0);
+                }
             }
         }
         VulkanSilkGraphicsDevice.ThrowIfFailed(
             _api.EndCommandBuffer(_secondaryCommands),
             "vkEndCommandBuffer(pick secondary)");
-        CacheSecondaryCommands(pipeline, color, draws);
+        CacheSecondaryCommands(color, passes);
         Owner.CountPickSecondaryCommandRecording();
     }
 
     private bool MatchesSecondaryCommands(
-        VulkanSilkPickGraphicsPipeline pipeline,
         VulkanSilkGraphicsTexture color,
-        IReadOnlyList<VulkanPickDrawCommand> draws)
+        IReadOnlyList<VulkanPickPass> passes)
     {
-        if (!ReferenceEquals(_secondaryPipeline, pipeline) ||
+        int drawCount = 0;
+        foreach (VulkanPickPass pass in passes)
+        {
+            drawCount += pass.Draws.Count;
+        }
+        if (!ReferenceEquals(_secondaryPipeline, passes[0].Pipeline) ||
             _secondaryWidth != color.Width ||
             _secondaryHeight != color.Height ||
-            _secondaryDrawCount != draws.Count ||
-            _secondaryDraws is null)
+            _secondaryPassCount != passes.Count ||
+            _secondaryDrawCount != drawCount ||
+            _secondaryDraws is null ||
+            _secondaryPasses is null)
         {
             return false;
         }
-        for (int index = 0; index < draws.Count; index++)
+        int index = 0;
+        for (int passIndex = 0; passIndex < passes.Count; passIndex++)
         {
-            VulkanPickDrawCommand draw = draws[index];
-            VulkanPickDrawCacheEntry cached = _secondaryDraws[index];
-            if (!ReferenceEquals(cached.VertexBuffer, draw.VertexBuffer) ||
-                !ReferenceEquals(cached.IndexBuffer, draw.IndexBuffer) ||
-                cached.IndexCount != draw.IndexCount ||
-                cached.Viewport != draw.Viewport ||
-                cached.Scissor != draw.Scissor)
+            VulkanPickPass pass = passes[passIndex];
+
+            // The clear is part of the key. A recorded secondary buffer carries
+            // its attachment clears with it, so a sequence that stopped -- or
+            // started -- asking for one while every draw stayed identical would
+            // otherwise be replayed with the previous sequence's clears.
+            VulkanPickPassCacheEntry cachedPass = _secondaryPasses[passIndex];
+            if (!ReferenceEquals(cachedPass.Pipeline, pass.Pipeline) ||
+                cachedPass.ClearColorBefore != pass.ClearColorBefore ||
+                cachedPass.ClearRect != pass.ClearRect ||
+                cachedPass.DrawCount != pass.Draws.Count)
             {
                 return false;
+            }
+            foreach (VulkanPickDrawCommand draw in pass.Draws)
+            {
+                VulkanPickDrawCacheEntry cached = _secondaryDraws[index++];
+
+                // The pipeline is part of the key: a scene whose meshes changed
+                // stride keeps every buffer, viewport, and scissor identical
+                // while needing a different pipeline bound per draw.
+                if (!ReferenceEquals(cached.Pipeline, draw.Pipeline) ||
+                    !ReferenceEquals(cached.VertexBuffer, draw.VertexBuffer) ||
+                    !ReferenceEquals(cached.IndexBuffer, draw.IndexBuffer) ||
+                    cached.IndexCount != draw.IndexCount ||
+                    cached.Viewport != draw.Viewport ||
+                    cached.Scissor != draw.Scissor)
+                {
+                    return false;
+                }
             }
         }
         return true;
     }
 
     private void CacheSecondaryCommands(
-        VulkanSilkPickGraphicsPipeline pipeline,
         VulkanSilkGraphicsTexture color,
-        IReadOnlyList<VulkanPickDrawCommand> draws)
+        IReadOnlyList<VulkanPickPass> passes)
     {
+        int drawCount = 0;
+        foreach (VulkanPickPass pass in passes)
+        {
+            drawCount += pass.Draws.Count;
+        }
         if (_secondaryDraws is null ||
-            _secondaryDraws.Length < draws.Count)
+            _secondaryDraws.Length < drawCount)
         {
             _secondaryDraws =
-                new VulkanPickDrawCacheEntry[Math.Max(1, draws.Count)];
+                new VulkanPickDrawCacheEntry[Math.Max(1, drawCount)];
         }
-        for (int index = 0; index < draws.Count; index++)
+        if (_secondaryPasses is null ||
+            _secondaryPasses.Length < passes.Count)
         {
-            VulkanPickDrawCommand draw = draws[index];
-            _secondaryDraws[index] = new VulkanPickDrawCacheEntry(
-                draw.VertexBuffer,
-                draw.IndexBuffer,
-                draw.Viewport,
-                draw.Scissor,
-                draw.IndexCount);
+            _secondaryPasses =
+                new VulkanPickPassCacheEntry[Math.Max(1, passes.Count)];
         }
-        _secondaryPipeline = pipeline;
+        int index = 0;
+        for (int passIndex = 0; passIndex < passes.Count; passIndex++)
+        {
+            VulkanPickPass pass = passes[passIndex];
+            _secondaryPasses[passIndex] = new VulkanPickPassCacheEntry(
+                pass.Pipeline,
+                pass.ClearColorBefore,
+                pass.ClearRect,
+                pass.Draws.Count);
+            foreach (VulkanPickDrawCommand draw in pass.Draws)
+            {
+                _secondaryDraws[index++] = new VulkanPickDrawCacheEntry(
+                    draw.Pipeline,
+                    draw.VertexBuffer,
+                    draw.IndexBuffer,
+                    draw.Viewport,
+                    draw.Scissor,
+                    draw.IndexCount);
+            }
+        }
+        _secondaryPipeline = passes[0].Pipeline;
         _secondaryWidth = color.Width;
         _secondaryHeight = color.Height;
-        _secondaryDrawCount = draws.Count;
+        _secondaryDrawCount = drawCount;
+        _secondaryPassCount = passes.Count;
     }
 
     private Result GetFenceResult(bool wait)
@@ -2218,6 +2521,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         _secondaryWidth = 0;
         _secondaryHeight = 0;
         _secondaryDrawCount = 0;
+        _secondaryPassCount = 0;
     }
 
     private void DestroyNativeResources()

@@ -84,19 +84,35 @@ public sealed partial class MetalSilkGraphicsDevice
                 normal.BufferIndex = 30;
                 MTLVertexBufferLayoutDescriptor layout =
                     vertexDescriptor.Layouts.Object(30);
-                layout.Stride = 24;
+                layout.Stride = descriptor.VertexLayout.Stride;
                 layout.StepFunction = MTLVertexStepFunction.PerVertex;
 
                 pipelineDescriptor.VertexFunction = vertexFunction;
                 pipelineDescriptor.FragmentFunction = fragmentFunction;
                 pipelineDescriptor.VertexDescriptor = vertexDescriptor;
                 pipelineDescriptor.InputPrimitiveTopology =
-                    MTLPrimitiveTopologyClass.Triangle;
+                    descriptor.PrimitiveTopology switch
+                    {
+                        SilkPickPrimitiveTopology.LineList =>
+                            MTLPrimitiveTopologyClass.Line,
+                        SilkPickPrimitiveTopology.PointList =>
+                            MTLPrimitiveTopologyClass.Point,
+                        _ => MTLPrimitiveTopologyClass.Triangle
+                    };
                 pipelineDescriptor.RasterSampleCount = descriptor.SampleCount;
                 MTLRenderPipelineColorAttachmentDescriptor colorAttachment =
                     pipelineDescriptor.ColorAttachments.Object(0);
                 colorAttachment.PixelFormat = MTLPixelFormat.RGBA8Unorm;
                 colorAttachment.IsBlendingEnabled = false;
+
+                // A cleared mask makes the pass a pure occluder: it still
+                // rasterizes and still writes depth, so what it covers stays
+                // hidden, but it leaves the pick target's background token in
+                // place. A face request draws curves and point clouds that way,
+                // because neither has an authored face to answer with.
+                colorAttachment.WriteMask = descriptor.ColorWriteEnabled
+                    ? MTLColorWriteMask.All
+                    : MTLColorWriteMask.None;
                 pipelineDescriptor.DepthAttachmentPixelFormat =
                     MTLPixelFormat.Depth32Float;
 

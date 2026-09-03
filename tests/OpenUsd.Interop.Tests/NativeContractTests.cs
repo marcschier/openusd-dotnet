@@ -16,13 +16,13 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiSixteenRequiresAllSchemaCapabilities()
+    public async Task DataAbiSeventeenRequiresAllSchemaCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
-        await Assert.That(abiVersion).IsEqualTo(16U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFFUL);
+        await Assert.That(abiVersion).IsEqualTo(17U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
@@ -53,6 +53,56 @@ public sealed class NativeContractTests
 
         // Resolver context inspection: bulk resolution, scoped binding and plugin enumeration.
         await Assert.That(requiredCapabilities & 0x1000000UL).IsEqualTo(0x1000000UL);
+
+        // Sdr/Ndr node-definition query: bulk shader node-definition registry introspection.
+        await Assert.That(requiredCapabilities & 0x2000000UL).IsEqualTo(0x2000000UL);
+    }
+
+    /// <summary>
+    /// The image-info seam's version-2 layout, and the version-1 prefix a native
+    /// consumer compiled against the previous header still declares.
+    /// </summary>
+    /// <remarks>
+    /// The offsets are pinned individually rather than only through the total
+    /// size, because an appended field inserted anywhere but at the end would
+    /// keep the size right and move every observation a native writer produces
+    /// onto a different managed field.
+    /// </remarks>
+    [Test]
+    public async Task ImageInfoLayoutMatchesTheVersionTwoCAbi()
+    {
+        await Assert.That(Marshal.SizeOf<OpenUsdNativeImageInfo>()).IsEqualTo(40);
+        OpenUsdNativeImageInfo created = OpenUsdNativeImageInfo.Create();
+        await Assert.That(created.StructSize).IsEqualTo(40u);
+        await Assert.That(created.Version).IsEqualTo(2u);
+
+        (string Name, int Offset)[] expected =
+        [
+            (nameof(OpenUsdNativeImageInfo.StructSize), 0),
+            (nameof(OpenUsdNativeImageInfo.Version), 4),
+            (nameof(OpenUsdNativeImageInfo.Width), 8),
+            (nameof(OpenUsdNativeImageInfo.Height), 12),
+            (nameof(OpenUsdNativeImageInfo.ChannelCount), 16),
+            (nameof(OpenUsdNativeImageInfo.Observed), 20),
+            (nameof(OpenUsdNativeImageInfo.ColorSpace), 24),
+            (nameof(OpenUsdNativeImageInfo.AddressU), 28),
+            (nameof(OpenUsdNativeImageInfo.AddressV), 32),
+            (nameof(OpenUsdNativeImageInfo.Reserved), 36),
+        ];
+        foreach ((string name, int offset) in expected)
+        {
+            await Assert.That(Marshal.OffsetOf<OpenUsdNativeImageInfo>(name).ToInt32())
+                .IsEqualTo(offset)
+                .Because($"{name} must stay at its version-2 offset");
+        }
+
+        // The version-1 prefix is exactly the shape, and nothing else: a native
+        // consumer that declares it must never have an appended field written
+        // past its allocation.
+        await Assert
+            .That(Marshal.OffsetOf<OpenUsdNativeImageInfo>(
+                nameof(OpenUsdNativeImageInfo.ChannelCount)).ToInt32())
+            .IsEqualTo((int)OpenUsdNativeImageInfo.Version1Size);
     }
 
     [Test]

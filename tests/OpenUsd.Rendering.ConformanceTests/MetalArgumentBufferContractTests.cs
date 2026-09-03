@@ -119,10 +119,12 @@ public sealed class MetalArgumentBufferContractTests
     {
         // The negative control. Without it every assertion above could pass because the
         // predicate refuses everything unconditionally, which would also be wrong: the
-        // buffer-only scene layout never reaches the table path and must not be reported
-        // as an argument-buffer incompatibility.
+        // buffer-only depth-only shadow caster layout never reaches the table path and
+        // must not be reported as an argument-buffer incompatibility. Every mesh layout
+        // now carries the shadow atlas and its sampler, so the shadow caster layout is
+        // the buffer-only one this control needs.
         bool rejected = MetalArgumentBufferCompatibility.TryGetRejectionReason(
-            SilkBindingLayoutDescriptor.SceneParameters,
+            SilkBindingLayoutDescriptor.ShadowParameters,
             out _);
 
         await Assert.That(rejected).IsFalse();
@@ -153,9 +155,13 @@ public sealed class MetalArgumentBufferContractTests
             .GetFiles(checkedRoot, "*.metal")
             .Order(StringComparer.Ordinal)];
 
-        // Seventeen checked programs expand from the manifest. A glob that silently matched
-        // fewer files would make the loop below vacuous.
-        await Assert.That(sources.Length).IsEqualTo(17);
+        // Twenty-seven checked programs expand from the manifest, including the
+        // two display-transform programs, the subprim pick vertex stage, the two
+        // unbiased whole-resource stages, and the occluded selection-mask
+        // fragment stage the one-pass x-ray composite reads its second
+        // silhouette channel from. A glob that silently matched fewer files
+        // would make the loop below vacuous.
+        await Assert.That(sources.Length).IsEqualTo(27);
 
         var directBindingPrograms = new List<string>();
         foreach (string source in sources)

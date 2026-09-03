@@ -1,0 +1,81 @@
+#usda 1.0
+(
+    "Synthetic UsdLux light-linking fixture. Repository-authored under this repository's MIT"
+    "license; it contains no vendor content and references no external asset."
+    ""
+    "Two identical quads under two distant lights. /World/Lights/Key excludes /World/Geom/Unlinked"
+    "from its lightLink collection while keeping the UsdLuxLightAPI schema default"
+    "includeRoot = true, which is the shape an Omniverse-authored stage uses most: the light lights"
+    "the world, minus a set. /World/Lights/Fill authors no collection at all and therefore links to"
+    "everything, which is what an empty Hydra category identity means."
+    ""
+    "The two lights are pure red and pure blue and neither emits green, so the expected result is"
+    "measurable per channel without a reference image: /World/Geom/Linked is lit by both and comes"
+    "back magenta, /World/Geom/Unlinked is lit only by the fill light and comes back blue, and"
+    "neither is ever green. /World/Geom/ShadowOnly narrows only the shadow link, which hdSilk"
+    "resolves and publishes but does not apply, because it implements no shadow pass."
+    doc = "Synthetic UsdLux light and shadow linking fixture"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Scope "Geom"
+    {
+        def Mesh "Linked"
+        {
+            float3[] extent = [(-0.2, -0.35, 0), (0.2, 0.35, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+            point3f[] points = [(-0.6, -0.35, 0), (-0.2, -0.35, 0), (-0.2, 0.35, 0), (-0.6, 0.35, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Unlinked"
+        {
+            float3[] extent = [(0.2, -0.35, 0), (0.6, 0.35, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+            point3f[] points = [(0.2, -0.35, 0), (0.6, -0.35, 0), (0.6, 0.35, 0), (0.2, 0.35, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "ShadowOnly"
+        {
+            float3[] extent = [(-0.2, 0.45, 0), (0.2, 0.75, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 3, 2]
+            point3f[] points = [(-0.2, 0.45, 0), (0.2, 0.45, 0), (0.2, 0.75, 0), (-0.2, 0.75, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Scope "Lights"
+    {
+        def DistantLight "Key"
+        {
+            color3f inputs:color = (1, 0, 0)
+            float inputs:intensity = 1
+
+            # includeRoot keeps its UsdLuxLightAPI schema default of true, so this is
+            # "everything except the excluded prim" rather than "only the included prims".
+            rel collection:lightLink:excludes = </World/Geom/Unlinked>
+
+            # A shadow link that is narrower than the light link. hdSilk resolves and
+            # publishes the resulting shadow mask and applies nothing, because it has no
+            # shadow pass; the fixture exists so the resolved value is authored somewhere
+            # rather than only constructed in a test.
+            rel collection:shadowLink:excludes = </World/Geom/ShadowOnly>
+        }
+
+        def DistantLight "Fill"
+        {
+            color3f inputs:color = (0, 0, 1)
+            float inputs:intensity = 1
+        }
+    }
+}

@@ -37,6 +37,15 @@ protected:
 
 private:
     std::shared_ptr<HdSilkSceneState> _sceneState;
+    // Whether the previous frame published a category membership table. Tracked
+    // so that unlinking every light clears the table exactly once instead of
+    // republishing an empty one on every frame that follows.
+    bool _collectedMemberships = false;
+
+    /// Collects the prim and instance categories UsdLux linking resolves
+    /// against, but only while at least one light carries a non-default link
+    /// collection.
+    void _CollectCategoryMemberships();
 
     HdSilkRenderPass(const HdSilkRenderPass&) = delete;
     HdSilkRenderPass& operator=(const HdSilkRenderPass&) = delete;

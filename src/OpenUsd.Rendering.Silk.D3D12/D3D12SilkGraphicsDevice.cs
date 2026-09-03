@@ -13,7 +13,10 @@ namespace OpenUsd.Rendering.Silk.D3D12;
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed unsafe partial class D3D12SilkGraphicsDevice
-    : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkVolumeTextureGraphicsDevice
+    : SilkGraphicsDeviceLifetimeBase,
+      ISilkGraphicsDevice,
+      ISilkVolumeTextureGraphicsDevice,
+      ISilkDeviceLossGraphicsDevice
 {
     private readonly global::Silk.NET.Direct3D12.D3D12 _api;
     private readonly DXGI _dxgi;
@@ -26,6 +29,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private readonly List<D3D12RetainedResources> _retainedResources = [];
     private ulong _fenceValue;
     private ID3D12DeviceTeardownHook? _teardownHookForTesting;
+    private Func<Exception>? _fenceWaitFailureForTesting;
     private int _retainedRecordReleaseCount;
     private int _fenceReleaseCount;
     private int _queueReleaseCount;
@@ -35,8 +39,42 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private int _apiDisposeCount;
     private int _dxgiDisposeCount;
     private D3D12DescriptorIndexedTextureTables? _materialDescriptorTables;
+    private long _deviceLossGeneration = 1;
+    private int _nextOffscreenSubmitDeviceLossForTesting;
     private bool _apiDisposed;
     private bool _dxgiDisposed;
+
+    /// <inheritdoc/>
+    public ulong DeviceLossGeneration =>
+        unchecked((ulong)Interlocked.Read(ref _deviceLossGeneration));
+
+    /// <summary>
+    /// Records that this device was observed to be removed, before the failure
+    /// that observed it is reported.
+    /// </summary>
+    /// <remarks>
+    /// Unconditional rather than latched: a consumer that reads the generation
+    /// either side of a failed call is asking whether *that* call lost the
+    /// device, so a second removal has to move it again. The picking latch stays
+    /// as it is, because it guards a one-time invalidation rather than a
+    /// per-failure signal.
+    /// </remarks>
+    internal void NotifyDeviceLost() =>
+        Interlocked.Increment(ref _deviceLossGeneration);
+
+    /// <summary>
+    /// Arms the next offscreen queue submission to report a removed device.
+    /// </summary>
+    /// <remarks>
+    /// The injection substitutes the queue's result, not the handling: the
+    /// submission still runs the production path that observes the removal and
+    /// raises the failure.
+    /// </remarks>
+    internal void InjectNextOffscreenSubmitDeviceLossForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenSubmitDeviceLossForTesting, 1);
+
+    internal bool TryConsumeOffscreenSubmitDeviceLossForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenSubmitDeviceLossForTesting, 0) != 0;
 
     private D3D12SilkGraphicsDevice(
         global::Silk.NET.Direct3D12.D3D12 api,
@@ -79,7 +117,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     : null,
             // Direct3D 11 and 12 both require every feature-level 11_0+ device -- including
             // WARP -- to support up to 16x anisotropic filtering (D3D12_REQ_MAXANISOTROPY).
-            MaxSamplerAnisotropy = 16f
+            MaxSamplerAnisotropy = 16f,
+            // A pipeline state with zero render targets and OMSetRenderTargets with
+            // a depth view alone are core Direct3D 12, so every device this backend
+            // creates can record the depth-only shadow pass.
+            SupportsRasterShadows = true
         };
     }
 
@@ -323,11 +365,33 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 
     internal void WaitForFence(ID3D12Fence* fence, ulong value)
     {
+        if (_fenceWaitFailureForTesting is { } injected)
+        {
+            throw injected();
+        }
         while (!IsFenceCompleted(fence, value))
         {
             Thread.Yield();
         }
     }
+
+    /// <summary>
+    /// Makes every fence wait fail, the way a removed device makes them fail,
+    /// until the failure is cleared with <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// The window between a submission being handed to the queue and its wait
+    /// completing is where every resource that submission owns is still held:
+    /// the fence, the command list, the allocator, the upload staging, the
+    /// descriptor heaps and the device's own dependent registration. A real
+    /// device removal is not reproducible on demand, and once it has happened
+    /// every later wait fails too -- including the one disposal makes, which is
+    /// the wait that must not replace the failure the caller is already
+    /// unwinding. A one-shot failure would let that second wait succeed and hide
+    /// exactly the defect this exists to find.
+    /// </remarks>
+    internal void FailFenceWaitsForTesting(Func<Exception>? failure) =>
+        _fenceWaitFailureForTesting = failure;
 
     internal bool IsDeviceRemoved()
     {

@@ -1,0 +1,71 @@
+# === SPECIFICATION EXAMPLE -- NOT A SHIPPED OR INSTALLABLE KIT EXTENSION =====================
+#
+# This file is a structural sketch checked into marcschier/openusd2, the repository that owns
+# the openusd.bridge.v1 wire contract and its C# client (OpenUsd.Bridge.Protocol,
+# OpenUsd.Bridge.Grpc). It illustrates docs/omniverse-kit-companion.md and
+# eng/kit-companion-spec.json in code-shaped form; it is not the companion extension itself.
+# The companion extension is a separate repository, not yet created or authorized.
+#
+# Every version field below is the literal string "pending", which Kit's own extension.toml
+# parser does not accept as a semantic version. That is deliberate: this file must fail to load
+# as a real extension rather than risk being mistaken for one. Once a named Kit baseline is
+# independently authorized and pinned in eng/omniverse-profile.json's "kit-baseline" dependency
+# (see that file's versionSource), a real companion repository would replace every "pending"
+# below with the versions it actually targets -- never by editing this example, which stays
+# pending on purpose.
+#
+# =============================================================================================
+
+[package]
+# Placeholder identifier. A real, authorized companion chooses its own package name; this one
+# is not reserved and must not be assumed available.
+title = "OpenUsd Live Bridge Companion (SPECIFICATION EXAMPLE -- DO NOT PUBLISH)"
+version = "pending"
+description = """
+Illustrates the Kit-side half of the openusd.bridge.v1 contract described by
+docs/omniverse-kit-companion.md in the marcschier/openusd2 repository. Not a working extension.
+"""
+authors = ["pending"]
+repository = "pending -- a separate repository, not yet authorized or created"
+category = "Services"
+keywords = ["pending", "specification-example", "openusd-bridge"]
+
+# The named Omniverse Kit baseline this extension would target, once authorized. Tied to
+# eng/omniverse-profile.json's "kit-baseline" dependency in the marcschier/openusd2 repository:
+# that file's value is the only place this placeholder may ever be resolved from, and it reads
+# "pending" until a baseline is independently pinned with its own repository-relative
+# provenance source.
+[package.target]
+kit = "pending"  # see eng/omniverse-profile.json -> dependencies[id=kit-baseline].version
+
+[dependencies]
+# GUI-mode window/menu host. Only required when this extension's optional GUI mode (see
+# docs/omniverse-kit-companion.md "Execution modes") is enabled; a headless Kit Service build
+# would omit it.
+"omni.kit.uiapp" = { version = "pending" }
+
+# Kit-side stage access, stage notices, and .live layer authoring -- the ownership boundary
+# docs/omniverse-kit-companion.md assigns to the companion extension, never to this repository.
+"omni.usd" = { version = "pending" }
+
+# omni:// URI resolution and Nucleus connectivity. Also owned entirely by the companion side;
+# marcschier/openusd2 contains no omni.client dependency anywhere.
+"omni.client" = { version = "pending" }
+
+# Runs the bidirectional openusd.bridge.v1 gRPC stream loop on Kit's own async event loop
+# instead of blocking it.
+"omni.kit.async_engine" = { version = "pending" }
+
+[[python.module]]
+# Placeholder module path matching companion_service.py in this same directory.
+name = "openusd.bridge.companion"
+
+[settings]
+# Structural sketch only -- see docs/omniverse-kit-companion.md "Installation" and "Execution
+# modes" for what a real companion would need to expose here (listen address, TLS material
+# path, token validation, loopback-vs-non-loopback posture). None of these settings exist in a
+# shipped extension today.
+exts."openusd.bridge.companion".protocol_package = "pending"   # must read "openusd.bridge.v1"
+exts."openusd.bridge.companion".protocol_major_version = "pending"  # must read 1
+exts."openusd.bridge.companion".bridge_root_path = "pending"
+exts."openusd.bridge.companion".listen_loopback_only = "pending"    # must default to true

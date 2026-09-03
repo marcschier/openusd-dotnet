@@ -30,6 +30,7 @@ PINNED_INPUTS = [
     "eng/openusd.install.lock.json",
     "eng/cesium.lock.json",
     "eng/physx.lock.json",
+    "eng/mdl.lock.json",
     "eng/shaders/toolchain.lock.json",
     "eng/pack-packages.ps1",
     "eng/publish-viewer-bundle.ps1",

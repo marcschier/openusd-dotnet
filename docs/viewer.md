@@ -89,6 +89,40 @@ ViewerEntryPoint.Run(new ViewerHostOptions
 `PrimPicked` is awaited off the UI thread, so a callback that performs I/O cannot stall the render
 loop. A miss raises the callback with `Status` set to `RenderPickStatus.Miss` and a null `PrimPath`.
 
+`PickTarget` is a non-nullable `RenderPickTarget` that defaults to
+`RenderPickTarget.Primitive`, and it is a fixed concrete request: the host receives that target for
+the lifetime of the shell, whatever the operator later chooses under `Tools > Pick Target`. A host
+that drives its own selection from prim paths therefore needs to do nothing at all -- the default
+already protects it from a Tools-menu change delivering face indices.
+
+A host that wants the operator's choice instead sets `FollowViewerPickTarget = true`, which is the
+only way to ask for it; `PickTarget` is then ignored. The mode is a separate property rather than a
+null target so that stating the default target stays expressible and stays distinct from stating
+nothing. Every callback reports what was actually asked for in
+`ViewerPickEventArgs.RequestedTarget`, so the mode is observable from inside the callback.
+
+Running the Viewer standalone from the command line is a third case, and it is not the same as a
+host that leaves `PickTarget` at its default. There is no host holding a fixed target on anyone's
+behalf, so the operator's `Tools > Pick Target` choice is the only request that exists and it is
+what every viewport click resolves. `ViewerStartupOptions.ResolveRequestedPickTarget` is the single
+seam every pick path goes through, and the mode it consults is set by which initializer ran --
+`Initialize(string[])` for a command-line run, `Initialize(ViewerHostOptions)` for an embedded one --
+rather than by comparing the target against `Primitive`. That is what keeps "no embedding host" and
+"a host that explicitly asked for `Primitive`" separable: the first follows the menu, the second
+never does.
+
+`ViewerPickEventArgs.Item` carries the complete resolved `SelectionItem` for a hit, including
+`ElementKind` and the full ordered `InstancerContext`. The flattened `PrimPath`, `InstancerPath`,
+`InstanceIndex`, `ElementIndex` and `ElementKind` properties remain, and are convenience views of it.
+`InstancerPath` and `InstanceIndex` name the *innermost* instancing level, which is the whole truth
+for the overwhelmingly common single-level scene; a host that cares about nested instancing must read
+`Item.InstancerContext`, which is ordered outermost to innermost and is the only description that
+decodes back to a scene instance. `Item` is null for every non-hit result, so a host can never
+mistake a stale identity for a fresh one. `ElementKind` on a hit is always a concrete
+`Face`/`Edge`/`Point`: `RenderPickResult.Hit` resolves an item that states no kind -- what
+`SelectionItem`'s legacy four-parameter constructor produces -- against the request's own target
+before publishing it, so a status line never has to guess what a bare index names.
+
 `SelectionChanged` reports the current selection independently of clicks. Set
 `SelectionChangedPrimSubtree` to scope it to one subtree; a host that is itself authoring live values
 into the stage would otherwise be woken by its own edits. Leave it unset to receive every selection.
@@ -295,9 +329,12 @@ scaled diagonal radius so point-sized and very large finite bounds produce finit
 clipping values. Control-agnostic pixel and wheel delta helpers define deterministic signs and
 sensitivity without depending on Avalonia.
 
-Toolbar and Camera-menu controls provide **Reset Automatic**, **Explicit Legacy Pose**,
-**Toggle Projection**, **Use Selected Camera**, and **Frame Selected**. Four toolbar arrow controls
-orbit left, right, up, or down by 5 degrees per press. The toolbar reports
+Camera-menu controls provide **Reset Automatic**, **Explicit Legacy Pose**,
+**Toggle Projection**, **Use Selected Camera**, and **Frame Selected**; **Frame Selected** also
+stays in the compact always-visible toolbar row. The Camera menu's **Orbit** submenu orbits left,
+right, up, or down by 5 degrees per activation; the same four directions are bound to the arrow keys
+while the viewport has keyboard focus, so orbit remains reachable with the viewport uncluttered by a
+dedicated button cluster. The status area reports
 `Automatic`, orbit `Perspective`/`Orthographic`, or `Stage Perspective`/`Stage Orthographic` plus
 the active camera path. Reset Automatic clears stage-camera mode. Orbit, pan, zoom, explicit legacy
 pose, projection toggle, and Frame Selected all leave stage-camera mode and continue with the
@@ -315,10 +352,154 @@ the native delta by 120, Linux maps wheel buttons 4/5 to +1/-1, and macOS maps t
 events to signed detents. Precise macOS trackpad deltas use 40 points per logical step, retain
 fractional movement, clamp each event to four steps, and compensate for device-direction inversion.
 
-The Viewport display controls expose the usdview draw-mode ladder: Wireframe, Wireframe on
+The Render menu's Draw Mode submenu exposes the usdview draw-mode ladder: Wireframe, Wireframe on
 surface, Smooth shaded, Flat shaded, Points, Geom only, Geom flat, Geom smooth, and Hidden
 surface wireframe. The statistics HUD displays stage AABB and OBB values from the world-bounds
 query capability at the stage start time.
+
+The Render menu's Colour Management submenu is the whole colour-management control surface: one
+"Use OpenColorIO display transform" toggle, one "Choose OpenColorIO Config..." file chooser, and
+one "Clear OpenColorIO Config" item. Nothing is added to the toolbar. The toggle is disabled until
+a config is available, and a config is available when one has been chosen or when the standard
+`OCIO` environment variable names one, so an environment already configured for colour-managed
+work needs no Viewer configuration at all. The chosen config path is shown in the toggle's
+tooltip.
+
+Enabling the transform sets `RenderSettings.DisplayTransform` on the authoritative
+`StageRenderState`, which is the same path lighting, shadows, and background colour take, so the
+transform reaches live presentation and ordinary captures without a separate presentation-only
+code path. Every viewport mutation copies the settings through one shared helper, so toggling
+lighting, shadows, culling, materials, the background, the draw mode, or a purpose can never drop
+the transform. Selecting a display transform moves the built-in output transform to `Identity` and
+clearing it restores the presentation default, because applying both would colour manage the same
+image twice.
+
+Enabling is validated, not assumed: the Viewer bakes the requested transform before claiming it,
+so a missing, unreadable, or incomplete config turns the toggle back off and reports the exact
+reason in the status line rather than leaving an untransformed image that looks like a successful
+one. Validation alone is not enough either, because a config can be deleted or edited while the
+Viewer is open, so while colour management is enabled the Viewer also polls the active backend's
+display-transform diagnostics twice a second; a renderer that fell back clears the transform from
+the authoritative state, unchecks the menu item, and reports the renderer's own bounded reason.
+Every backend session reports those diagnostics, not only the hdSilk ones: a Storm viewport has no
+fullscreen display-transform pass, so it reports `UnsupportedDevice` for a requested transform and
+the same reconciliation disables the toggle. The D3D12, Vulkan, and Metal presentation renderer
+adapters each delegate their diagnostics to whichever `SilkMeshRenderer` is presenting at that
+moment rather than accepting the interface's inactive default, so a composition session sees the
+renderer's real refusal instead of a success-shaped silence. The Viewer never leaves the item
+checked while the image is untransformed.
+
+Requests are versioned and serialized. Baking a lattice takes long enough that a user can toggle
+the setting or choose a different config while an earlier request is still running, so each request
+takes a version, cancels the one before it, and discards its own result after every suspension
+point if it is no longer current. Enabling config A and then disabling cannot end with A applied
+because A's bake happened to finish second. Cancellation is advisory -- a bake already inside
+OpenColorIO cannot be interrupted -- so correctness rests on the discard rather than on the token.
+
+A pending selection is kept separate from the committed state. Pending is a generation comparison,
+not a count of running operations: a bake already inside OpenColorIO cannot be cancelled, so a
+superseded request can still be running long after the request that replaced it committed, and
+counting operations would suppress every diagnostic about the request that is actually live --
+including its own failure. Once the newest generation commits, nothing older can make the state
+pending again. Reconciliation is also correlated: the renderer publishes the cache key of the
+transform it evaluated, and a report whose key is not the committed one is ignored. Without that, a
+slow failure for config A observed after config B was committed and applied would disable a
+transform that is running correctly. The one combination the reconciliation never leaves standing is
+the inverse: a committed transform while the menu and the persisted settings say colour management
+is off is cleared rather than tolerated.
+
+Nothing is committed until the coordinator confirms the mutation. `RenderBackendManager` and
+`ViewerRenderCoordinator` are both transactional: the backend is told first, and the retained and
+published state advances only once it accepted. All three coordinator paths that write the
+authoritative state -- the computed mutation, the direct replacement, and the live stage-change
+pump -- follow that order, so a refused state is never published, never raises `StateChanged`, and
+never announces a `StageChanged`.
+
+A backend that threw or was cancelled part-way through applying a state is not merely rolled back
+from: it may have applied some of the state and not the rest, so it is discarded and a replacement
+of the same kind is built from the last accepted state before the failure is reported. Recovery
+deactivates that backend through `IRenderBackendActivationControl` *first*, then disposes it, and
+activates a replacement only once one of the two proved the old presenter stopped -- a successful
+deactivation, or a successful disposal, which tears the presenter down with it. When neither holds,
+the backend is retired and the manager is left with none: two presenters on one surface is a worse
+outcome than a reported recovery failure, and retired cleanup runs later and may never run at all,
+so it can never be the thing that deactivates. Recovery deliberately ignores the caller's
+cancellation token, because abandoning it would leave the manager with no backend at all rather than
+one holding a known state. The next frame therefore renders the last accepted state rather than a
+half-applied one, and a later failover hands the replacement backend that same state rather than the
+one that had just been refused.
+
+The run-time reconciliation commits the same way. Its repair goes through the transactional
+mutation, and the disabled model, the cached key, and the persisted settings move only after the
+coordinator publishes a state with no transform. A busy window, a cancelled lifetime, or a backend
+that refuses leaves the previous commit exactly as it was, records a generation-tagged deferral, and
+leaves the poll loop armed so the repair is attempted again.
+
+A request made while there is no coordinator, while a document change is in flight, or against a
+backend that refuses is *deferred* rather than applied or dropped: the four views keep agreeing with
+each other, and the deferred choice is folded into the render settings the next document opens with.
+A deferred request carries the pipeline generation that produced it, so a later request replaces it
+outright instead of being overwritten by a stale replay, and an open replays it only while it is
+still the newest. The drain compares the deferred generation against the pipeline's current version
+immediately before replaying: a superseded deferral is discarded outright rather than entered into
+the pipeline, because starting a request cancels whatever is validating, and that would be the very
+request that superseded it. An open marks only the generation its opening choice actually
+represents: without a matching deferred result it carries the prior committed generation forward, so
+a request whose validation is still in flight stays pending instead of being declared decided by an
+open that never saw it. Nothing is marked committed by building the opening settings -- the opening
+choice is held aside and becomes the committed one only after `ViewerRenderCoordinator.OpenAsync`
+has returned a coordinator, with the committed key read back from that coordinator's published
+state. Requests that outlived the open are drained after the window reports ready, because draining
+while it is still busy would defer them straight back. The commit decision reads the committed view
+after its own await rather than from a snapshot taken before it, so a request that ends up deferred
+cannot roll back a newer choice an open committed while it was validating.
+
+The colour-management commit uses the state the coordinator published rather than what was
+requested. The menu's checked state, the persisted choice, the cached transform key, and the
+transform in `StageRenderState` therefore move together or not at all.
+
+The reconciliation poll is a tracked, cancellable task tied to the window's lifetime, not an
+`async void` timer tick. Closing cancels it and awaits the tick that may be in flight before
+anything that tick touches -- the coordinator, the settings store, the lifetime token -- is
+disposed. Disposal paths that never went through closing cancel it without waiting, because
+disposal runs on the very dispatcher thread the tick marshals back to.
+
+The persisted choice is restored into the render settings a newly opened stage is initialized
+with, not merely into the menu, so a restart or a newly opened stage presents its very first frame
+through the restored transform. A restored choice is validated exactly as an interactively chosen
+one is -- it is baked before it is allowed into the opening state -- so a config that was deleted,
+replaced, or made incompatible while the Viewer was closed disables the setting and reports why
+instead of briefly claiming an active transform that the first frame then contradicts. That bake
+runs on a worker and is awaited rather than waited on, so it never blocks the dispatcher thread
+its own continuation needs.
+
+The opening choice is generation-checked, because a document open is not instantaneous. The choice
+is captured, then the open suspends twice: once to bake the restored transform, and again while
+`ViewerRenderCoordinator.OpenAsync` creates the coordinator. A View &gt; Reset Layout clear that
+lands in either window takes a newer pipeline generation while committing nothing -- the document is
+busy, so its mutation is refused and the clear is merely deferred -- which leaves the committed
+model, the cached key, and the deferral the open already consumed all still describing the world
+before the reset. The generation is the only trace of it the open can see, so the capture is checked
+against the pipeline's current version at both points. A capture superseded before the coordinator
+exists is dropped and the opening settings are rebuilt from the newest generation, so no coordinator
+is ever created with a transform the reset has already declared gone. A capture superseded while the
+coordinator was being created commits nothing at all -- not the model, not the cached key, not the
+generation, and not the reset's deferred clear -- and the transform it opened with is taken back out
+of the authoritative state before the render loop starts, which is the last moment it can be removed
+before a frame carries it. Comparison is against the newest generation observed at capture rather
+than the generation the open would commit, because those differ whenever some other request's
+validation is still in flight, and using the latter would rebuild every such open forever. If
+requests keep arriving faster than the choice can be rebuilt, the open falls back to opening with no
+display transform, which is the one choice that can never present a superseded enable; whatever is
+newest is still in the pipeline or deferred, and the drain applies it once the window reports ready.
+A clear the backend then refuses at confirmation commits nothing either: the previously committed
+choice, menu, and cached key stand, the deferred clear is retained, and the reconciliation poll loop
+stays armed, so the repair is retried rather than claimed.
+
+Only paths and names are persisted: the config path and the colour-space, display, view, and look
+names, under the `colorManagement*` keys of the Viewer settings file. No credential or token is
+ever written there. The config path must be absolute; a relative one is rejected with a reported
+reason rather than resolved against whatever the working directory happens to be.
 
 Pointer and wheel snapshots use a bounded latest-wins update pump. Physical-pixel resize publishes
 viewport and any required orbit or stage-camera projection revision in one coordinator mutation.
@@ -374,19 +555,38 @@ renderer-neutral snapshots.
 
 ### Transport controls
 
-| Control | Behaviour |
-| --- | --- |
-| Play / Pause | Paces the world forward in wall-clock time. |
-| Stop | Returns to the authored start, clears the preview, and restores authored transforms. |
-| Step | Advances exactly one fixed simulation step while paused. |
-| Loop | Wraps to the authored start at the authored end. |
-| Speed | `0.25x` to `4x`. |
-| Apply Preview | Authors the simulated poses into the session overlay. |
-| Bake... | Opens the bake dialog. |
-| Gizmo | Chooses what a viewport drag manipulates: nothing, move, rotate, scale, or drag a body. |
-| Snap | Quantizes gizmo drags to the configured translation, rotation, and scale increments. |
-| Undo / Redo | Reverses or replays the newest physics property edit. |
-| Scrubber | Seeks within the authored start/end range. |
+The Viewer keeps the physics transport strip out of the way until it is relevant: the strip is
+hidden entirely while physics is off, and once **Physics** (in the Physics menu) builds a world, the
+strip shows only Play/Pause, Stop, Step, the scrubber, and the status line. Loop, Speed, Apply
+Preview, Bake, Gizmo, Snap, Undo, and Redo all moved into the **Physics** menu, alongside **Physics**
+itself and **Show Physics Inspector**, so the always-visible strip never grows past the controls
+that are meaningful every time physics is running.
+
+| Control | Location | Behaviour |
+| --- | --- | --- |
+| Physics | Physics menu | Builds the world; once built, the same command rebuilds it. |
+| Play / Pause | Transport strip | Paces the world forward in wall-clock time. |
+| Stop | Transport strip | Returns to the authored start, clears the preview, and restores authored transforms. |
+| Step | Transport strip | Advances exactly one fixed simulation step while paused. |
+| Loop | Physics menu | Wraps to the authored start at the authored end. |
+| Speed | Physics menu | `0.25x` to `4x`. |
+| Apply Preview | Physics menu | Authors the simulated poses into the session overlay. |
+| Bake... | Physics menu | Opens the bake dialog. |
+| Gizmo | Physics menu | Chooses what a viewport drag manipulates: nothing, move, rotate, scale, or drag a body. |
+| Snap | Physics menu | Quantizes gizmo drags to the configured translation, rotation, and scale increments. |
+| Undo / Redo | Physics menu | Reverses or replays the newest physics property edit. |
+| Scrubber | Transport strip | Seeks within the authored start/end range. |
+| Show Physics Inspector | Physics menu | Selects the Physics inspector tab. |
+
+A **Physics** build is transactional: the new world is built before the live one is released, so a
+rebuild that fails or is cancelled leaves the world that was already playing intact and paused rather
+than dropping the session into an empty state. Only a first build that fails leaves the transport
+faulted, and a faulted transport refuses to play.
+
+Build, reset, seek, step, and invalidate all run asynchronously on the stage scheduler and the
+physics worker. Nothing simulates on the UI or render threads, and no USD or PhysX handle crosses
+the worker or render boundary: the controller exchanges only time codes, whole step counts, and
+renderer-neutral snapshots.
 
 Speed scales how much wall-clock time playback accepts, never the fixed simulation step. Scaling
 the step would change what the solver computes, so a user who slows playback down to inspect a
@@ -398,14 +598,11 @@ elapsed wall-clock time times the speed into whole fixed steps and requests exac
 accumulator is bounded, so a stalled shell slows playback down instead of asking the worker for an
 unbounded catch-up burst.
 
-The toolbar row never clips a control. Every command is either shown at its full width or moved
-into the **More physics controls** overflow menu, in authored order. A control that moves into the
-menu stays operable there: the speed selector contributes one checkable entry per speed, and
-choosing one changes the speed exactly as the inline selector would. The menu is not rebuilt while
-it is open, so the entry under the pointer does not move out from under it.
+The transport strip never clips a control. Every command still shown in the strip is either at its
+full width or moved into the **More physics controls** overflow menu, in authored order.
 
 Playback repaints the status line about as often as it steps, but only the fields that changed are
-written. Paced steps never mark the toolbar busy - only a command the operator issued does - and a
+written. Paced steps never mark the transport busy - only a command the operator issued does - and a
 timeline the operator is dragging is never overwritten by a repaint.
 
 ### Rendering simulated poses
@@ -693,6 +890,157 @@ Storm/Silk/page/GPU resource counters.
 Copy and export redact the source-tree and user-profile paths by default. Select **Include paths**
 only when an unredacted report is required.
 
+## Menu-first shell
+
+The default window shows one compact, always-visible toolbar row: the **File**/**View**/**Render**/
+**Camera**/**Physics**/**Tools**/**Help** menu bar, **Open**, **Reload**, the renderer selector, and
+**Frame Selected**. Every other command that used to live in a second or third toolbar row, or in
+the removed Settings tab, now lives in the menu that owns it:
+
+- **File**: Open, Recent Stages, Reload, Capture Frame, Exit.
+- **View**: Stage/Inspector/Timeline panel visibility, an Inspector Tabs submenu that shows or
+  hides the Diagnostics, Hydra, and TfDebug developer tabs, snap-to-authored-frames, and
+  **Reset Layout**.
+- **Render**: renderer backend, draw mode, render purposes, scene lighting/shadows/materials,
+  backface culling, and background colour.
+- **Camera**: Reset Automatic, Explicit Legacy Pose, Toggle Projection, Use Selected Camera, Stage
+  Cameras, Frame Selected, and an Orbit submenu for the four discrete orbit commands.
+- **Physics**: enable/rebuild, play/pause, stop, step, loop, speed, apply preview, bake, gizmo,
+  snap, undo/redo, and Show Physics Inspector.
+- **Tools**: UsdValidation run/scope, pick mode, **Pick Target**, **Selection Outline**, and a
+  Developer submenu with a Show Tab toggle
+  plus the refresh/copy/export/path-inclusion actions for each of Diagnostics, Hydra Scene, and
+  TfDebug, plus a Connections submenu holding the Omniverse Bridge entry. That entry ships hidden
+  and disabled and becomes visible only when an embedding host injects a bridge provider; see
+  [Bridge connections](#bridge-connections).
+- **Help**: keyboard/mouse shortcuts and an About dialog.
+
+### Pick target and selection outline
+
+**Tools &gt; Pick Target** is a four-item radio group -- **Prim**, **Face**, **Edge**, **Point** --
+that decides what a later viewport click resolves. In a standalone Viewer this group is what every
+click actually requests; only an embedding host that named a fixed `PickTarget` overrides it, and
+only for its own `PrimPicked` callbacks (see [Reacting to the operator](#reacting-to-the-operator)).
+**Tools &gt; Selection Outline** is a two-item
+radio group choosing between the ordinary depth-tested **Visible only** outline and the **X-ray**
+outline, which also draws the occluded part of the selection in a distinct, accessible style so a
+selection behind geometry stays locatable. Both are modes rather than actions: they change what a
+later click means, so neither is promoted to the toolbar, which is exactly the clutter the
+menu-first policy exists to avoid.
+
+Both groups use stable command identities (`tools.pickTarget.*` and `tools.selection.*`) rather than
+menu positions or labels, so a persisted profile survives a menu reordering and a screen reader
+announces the same control after a relabelling. Each item carries an accessible name in the command
+catalog, so `ViewerCommandCatalog` remains the single source for the accessibility surface.
+
+Only the hdSilk backends -- D3D12, Vulkan, and Metal -- answer the subprim targets and composite the
+occluded outline. On Storm those entries are **disabled rather than hidden**: a hidden control makes
+a capability difference look like a missing feature, while a disabled one keeps the control
+discoverable and its accessible name names the backend that would answer it. Choosing an
+unsupported combination -- from the menu or from a persisted profile -- leaves the applied state
+alone and reports the named reason on the status line.
+
+What the user asked for and what the attached backend can answer are tracked separately. A refused
+request is still remembered, so a Viewer that opened on Storm -- or before any backend attached --
+does not write its restrictive fallback back over a saved edge-picking or x-ray profile, and
+switching to a capable backend restores the request without the user choosing it again. The desired
+values are re-resolved against the backend every time the active backend changes, which is the only
+moment at which a refused request can become answerable or an applied one can stop being.
+
+Both settings persist in the `openusd-viewer-settings=3` profile as `pickTarget` and
+`selectionMode`, written from the desired values rather than the applied ones. A v0, v1, or v2
+profile has neither key, and migration is exactly that: both fall
+back to **Prim** and **Visible only**, which reproduce the pre-v3 behaviour, and the profile is
+rewritten with them on the next save. A token this build does not recognise falls back the same way
+rather than rejecting the whole profile, because a forward-compatible token must not cost the user
+their unrelated layout.
+
+Diagnostics, Hydra, and TfDebug visibility is independently toggleable from two places that stay in
+sync: View &gt; Inspector Tabs, and Tools &gt; Developer &gt; (Diagnostics | Hydra Scene | TfDebug)
+&gt; Show tab.
+
+The physics transport strip is hidden entirely while physics is off. Once **Physics** builds a
+world, the strip shows only Play/Pause, Stop, Step, the scrubber, and the status line; everything
+else physics-related lives in the Physics menu and the Physics inspector tab. See
+[Transport controls](#transport-controls).
+
+Moving a control into a menu never removes the state it drove: each menu item sets the same
+selection or checked state the pre-existing control read, so existing viewport, physics, pick-mode,
+and validation logic is unchanged behind the new command surface.
+
+## Bridge connections
+
+The Viewer can drive one live bridge session, and only when an embedding host asks it to. There is
+no static registration and no discovery: the surface exists exactly when a host sets
+`ViewerHostOptions.BridgeConnection` to an `IViewerBridgeConnectionProvider`. With no provider the
+**Tools &gt; Connections &gt; Omniverse Bridge** entry stays hidden and disabled as it ships in
+markup, the status bar shows nothing about a bridge, and opening, rendering, and simulating a local
+stage behaves exactly as it does today.
+
+The public seam is deliberately small and carries no transport:
+
+| Member | Purpose |
+| --- | --- |
+| `IViewerBridgeConnectionProvider.DisplayName` | The name the menu, tooltip, and dialog show. |
+| `IViewerBridgeConnectionProvider.IsAvailable` | Injected but unusable keeps the entry visible and disabled. |
+| `GetStatus()` / `StatusChanged` | Bounded, detached `ViewerBridgeStatus` snapshots. |
+| `GetSessionsAsync()` | The bounded session choices the operator picks from. |
+| `ConnectAsync` / `DisconnectAsync` / `ResyncAsync` | The three commands the dialog offers. |
+
+`ViewerBridgeStatus` is a readonly record struct of values and immutable strings: connection state,
+opaque session identifier, a redacted endpoint description, connect-attempt, applied-update, and
+pending-outbound counts, a timestamp, and one bounded detail string. No gRPC type, native handle,
+credential, or authored payload can cross the seam, because none of them appear in it.
+`ViewerBridgeText` and `ViewerBridgeEndpoint` are public for the same reason: an integration package
+applies the identical redaction rule at its own boundary rather than reimplementing it.
+
+**Omniverse Bridge...** opens a focused dialog with a session list, the current status, the three
+counters, and Connect, Disconnect, and Resync. There is no endpoint field and no credential field
+anywhere in the Viewer, including its settings: those are host configuration, and a text box here
+would turn the Viewer into a place secrets are typed and, eventually, persisted. Nothing about a
+bridge is written to the settings store. Any endpoint the Viewer displays has its userinfo, query,
+and fragment removed first, and the same redaction is applied to every provider-supplied message, so
+a failure that quotes a URL back cannot leak a token into a status bar or an exported diagnostic.
+
+The status-bar indicator is hidden until a session is configured or active, and hides again after a
+successful disconnect, so a Viewer that is only opening local files never grows a bridge field. A
+session that is still active keeps being reported even if the provider starts reporting itself
+unavailable: availability gates the commands, not the truth that something is still connected.
+
+Behaviour under load and failure is decided by `ViewerBridgeConnectionModel`, which is headless and
+independently tested:
+
+- Provider callbacks are handled off the UI thread. `StatusChanged` only copies a detached snapshot
+  into a bounded queue and posts a drain, so a provider raising events from its own transport thread
+  never touches a control and never blocks rendering.
+- The queue holds at most `ViewerBridgeLimits.MaxPendingStatusEvents` snapshots, drops the oldest
+  under a burst, and reports the drop count in the dialog. A bound that discards silently is
+  indistinguishable from a provider that stopped sending.
+- Exactly one command runs at a time, and Connect, Disconnect, and Resync are gated on the current
+  state, so a second click cannot overlap a command in flight.
+- A provider that throws, faults, is cancelled, or misbehaves in its own properties produces an
+  explicit redacted message in the dialog rather than an exception crossing into UI code.
+- Closing the window disposes the model: the subscription is dropped, in-flight commands are
+  cancelled, and every later command is refused, so a provider cannot keep a closed window alive.
+- The subscription itself never throws back at the provider. A failed hand-off to the UI thread -
+  a dispatcher that is shutting down, for example - is counted as a dropped notification and
+  reported as an error, because a Viewer-side defect that escaped into a transport's observer
+  callback would be blamed on the transport and could end the session that raised it.
+
+The base `OpenUsd.Viewer` package has no gRPC, protobuf, or NVIDIA dependency and never gains one.
+A real transport arrives through the optional `OpenUsd.Viewer.Bridge.Grpc` package, which is the
+only assembly that references both the Viewer and `OpenUsd.Bridge.Grpc`. A host constructs
+`OmniverseViewerBridgeProvider` with an `OmniverseViewerBridgeOptions` whose session factory returns
+the coordinator and the fully configured `BridgeClientOptions` - endpoint and credential provider
+included - at the moment the operator asks for a connection. The adapter never reads, stores, logs,
+or displays a credential, and never mutates the options instance the host handed it.
+
+The session the operator picks in the dialog is not decorative: it becomes the client's
+`RequestedSessionId` and reaches the peer on the handshake. A connect that fails, times out, or is
+cancelled leaves nothing running behind it, and the redacted, bounded status the dialog shows is
+already redacted by the provider before the Viewer sees it. See
+[Omniverse bridge](omniverse-bridge.md#viewer-integration).
+
 ## Settings and accessibility
 
 Viewer settings are stored under:
@@ -701,17 +1049,85 @@ Viewer settings are stored under:
 LocalApplicationData\OpenUsd\Viewer\viewer-settings.txt
 ```
 
-The versioned, NativeAOT-safe text store is written atomically. It contains only window dimensions,
-panel widths and visibility, renderer preference, selected details tab, diagnostics visibility, and
-the manual timeline snap preference. Stage-specific camera and session state are not persisted.
-Malformed or oversized settings are ignored with an explicit Viewer diagnostic; I/O failures are
-shown in the status area.
+The versioned, NativeAOT-safe text store is written atomically. It contains window dimensions, panel
+widths and visibility, renderer preference, the selected inspector tab's stable string identity,
+Diagnostics/Hydra/TfDebug tab visibility, and the manual timeline snap preference. Stage-specific
+camera and session state are not persisted. Malformed or oversized settings are ignored with an
+explicit Viewer diagnostic; I/O failures are shown in the status area.
+
+Settings schema v2 selects the inspector tab by a stable string identity (`properties`, `value`,
+`metadata`, `composition`, `layers`, `diagnostics`, `validation`, `hydra`, `physics`, `tfdebug`)
+rather than a visual index, and tracks Diagnostics, Hydra, and TfDebug visibility as three
+independent flags. A new profile defaults all three developer tabs to hidden; Stage, Inspector, and
+Timeline remain visible. **Reset Layout** (View menu) restores these clean v2 defaults deliberately.
+
+Reset Layout is transactional where colour management is concerned. Restoring the default profile
+also means restoring "no display transform", and the profile may not claim that before the image
+does: an active OpenColorIO transform is cleared from the coordinator first, through exactly the
+request/mutation pipeline the Render &gt; Colour Management items use, and the default
+colour-management model, menu item, cached key, and persisted choice are committed only once the
+coordinator has published a state without the transform. A reset that finds nothing active and
+nothing outstanding skips the pipeline entirely. The "active" test consults the committed model, the
+cached key, *and* the transform the state actually carries, so a state still carrying a transform the
+model has already disowned is cleared rather than mistaken for a clean one.
+
+The clear is also what supersedes colour management's in-flight work, so the reset requests it
+whenever a request is still outstanding even if nothing is committed yet and the viewport carries
+nothing. A request whose OpenColorIO bake is still running, one suspended inside its transactional
+mutation, and one deferred because there was no coordinator are all invisible to the committed model,
+the cached key, and the state's transform alike; a reset that consulted only those three would skip
+the pipeline, report success, and then be contradicted when the older request landed and colour
+managed the viewport it had just declared clean. Requesting the default clear takes a newer pipeline
+generation, which cancels the older request and discards its result, and replaces any deferred one
+with the default clear, so an enable made just before a reset can neither commit nor be replayed by
+the next document open afterwards. Because the mutation is itself a suspension point the pipeline
+cannot see through, a request re-checks that it is still the newest generation on both sides of it
+and commits nothing when it is not. A deferred *clear* left behind by a refused reset does not make
+the viewport colour managed, so it is not reported as though it had. A document open in flight is
+covered by the same generation: the open re-checks its captured choice immediately before creating
+the coordinator and again immediately before committing it, so a reset that reports the viewport
+clean can never be contradicted by the enable an open captured before it.
+
+A clear that cannot reach the image -- no coordinator, a document change in flight, a cancelled
+lifetime, or a backend that refuses -- is carried by the same deferral semantics an interactive
+request uses: nothing colour-management-related is committed, the previous commit stands, the
+request is recorded so the next document open replays it, and the status line says so. Only the
+layout half of the profile is applied in that case, so the menu, the model, the cached key, and the
+image still agree. Reset Layout can therefore never uncheck the toggle or disarm the reconciliation
+poll loop while the viewport is still colour managed; for the same reason the loop is armed whenever
+the toggle is on *or* the committed key is non-null, rather than on the toggle alone.
+
+Existing v1 and v0 settings keep working:
+
+- v1's integer `selectedTab` maps to the v2 tab identity through a fixed table (`0` Properties,
+  `1` Value, `2` Metadata, `3` Composition, `4` Layers, `5` Diagnostics, `6` Validation, `7` Hydra,
+  `8` Physics, `9` TfDebug). Index `10`, the removed Settings tab, was never actually persisted:
+  the v1 writer clamped every persisted index to `9`, so a literal persisted `9` cannot be
+  distinguished from a Settings selection and is preserved as TfDebug. This is the one documented,
+  unrecoverable ambiguity in the v1 format.
+- v1's `diagnosticsVisible` flag is preserved as authored. v1 had no Hydra or TfDebug visibility
+  flag and always showed both tabs, so a migrated v1 profile initializes both visible rather than
+  applying the v2 clean default of hidden: preserving an existing user's layout takes priority over
+  a default that only applies to new profiles.
+- v0 predates every tab-visibility flag and always showed Diagnostics, Hydra, and TfDebug, so a
+  migrated v0 profile also initializes all three visible, preserving that legacy layout. Every
+  other field v0 never had an opinion about (the selected tab, panel visibility, snap-to-frames)
+  falls back to the v2 clean default.
+
+If a selected tab is hidden or removed, the Viewer falls back to Properties, resolved through the
+same pure layout policy used for developer-tab visibility; no behaviour is ever derived from a
+visual tab index.
+
+Diagnostics, Hydra, and TfDebug are developer tabs: while any one of them is hidden, the Viewer
+performs no background sampling or per-frame refresh for it. Diagnostics capture and Hydra scene
+capture are both gated on their tab's visibility before doing any work; TfDebug is refreshed only on
+an explicit Refresh action, so hiding it has nothing further to skip.
 
 Access keys are shown with underlined menu/button labels. Keyboard shortcuts include:
 
 - `Ctrl+O`: open a stage
 - `Ctrl+R`: reload the current stage
-- `Ctrl+1` through `Ctrl+4`: Properties, Layers, Diagnostics, and Settings
+- `F1`: show the keyboard and mouse shortcuts dialog
 - `Space`: play or pause the timeline when focus is not in a text box
 - `F`: frame the selected prim
 - `Home`: reset the camera to Automatic
@@ -721,6 +1137,9 @@ Access keys are shown with underlined menu/button labels. Keyboard shortcuts inc
 - `J`: stop the physics simulation and restore the authored state
 - `N`: advance the physics simulation by one fixed step
 - `B`: open the physics bake dialog
+- `Q`/`G`/`E`/`R`/`H`: physics gizmo none/move/rotate/scale/drag
+- `X`: toggle physics gizmo snapping
+- `Z`/`Y`: undo/redo the last physics property edit
 
 Camera and physics shortcuts are ignored while a text box or combo box is being edited, and never
 fire with a modifier held. Controls use logical markup order, automation names, and theme resources

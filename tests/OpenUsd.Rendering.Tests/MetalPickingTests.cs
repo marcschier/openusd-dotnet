@@ -47,8 +47,12 @@ public sealed class MetalPickingTests
     }
 
     [Test]
-    public async Task MipCopyPlanBuildsOnePlanPerLevelMatchingThePackedChainLayout()
+    public async Task MipCopyPlanBuildsAnAlignedStagingFootprintPerLevel()
     {
+        // Metal requires the source offset and row pitch of a buffer-to-texture
+        // blit to be 256-byte aligned. A tightly packed chain satisfies neither
+        // past the base level -- a 2x2 RGBA8 mip has an eight-byte pitch -- so the
+        // plan describes a staging footprint the packed bytes are copied into.
         MetalMipCopyPlan[] plans = MetalMipCopyPlan.Create(
             4,
             4,
@@ -57,11 +61,74 @@ public sealed class MetalPickingTests
 
         await Assert.That(plans.Length).IsEqualTo(3);
         await Assert.That(plans[0]).IsEqualTo(
-            new MetalMipCopyPlan(0, 16, 64, 4, 4, 0));
+            new MetalMipCopyPlan(0, 256, 1024, 4, 4, 0));
         await Assert.That(plans[1]).IsEqualTo(
-            new MetalMipCopyPlan(64, 8, 16, 2, 2, 1));
+            new MetalMipCopyPlan(1024, 256, 512, 2, 2, 1));
         await Assert.That(plans[2]).IsEqualTo(
-            new MetalMipCopyPlan(80, 4, 4, 1, 1, 2));
+            new MetalMipCopyPlan(1536, 256, 256, 1, 1, 2));
+
+        foreach (MetalMipCopyPlan plan in plans)
+        {
+            await Assert.That(plan.SourceOffset % MetalMipCopyPlan.Alignment).IsEqualTo(0UL);
+            await Assert.That(plan.SourceBytesPerRow % MetalMipCopyPlan.Alignment)
+                .IsEqualTo(0UL);
+            await Assert.That(plan.SourceBytesPerImage)
+                .IsEqualTo(plan.SourceBytesPerRow * plan.Height);
+        }
+        await Assert.That(MetalMipCopyPlan.GetStagingByteSize(plans)).IsEqualTo(1792UL);
+    }
+
+    [Test]
+    public async Task MipCopyPlanStagingCopiesEveryPackedRowIntoItsAlignedSlot()
+    {
+        // The staging copy is what makes the aligned footprint carry the right
+        // pixels: every packed row has to land at its own aligned offset, and the
+        // padding between rows must not be read as image data by the blit.
+        MetalMipCopyPlan[] plans = MetalMipCopyPlan.Create(
+            4,
+            4,
+            SilkTextureFormat.Rgba8Unorm,
+            mipLevelCount: 3);
+        byte[] source = new byte[SilkMipChainLayout.GetTotalByteSize(
+            4,
+            4,
+            SilkTextureFormat.Rgba8Unorm,
+            3)];
+        for (int index = 0; index < source.Length; index++)
+        {
+            source[index] = (byte)(index + 1);
+        }
+
+        byte[] staged = new byte[MetalMipCopyPlan.GetStagingByteSize(plans)];
+        MetalMipCopyPlan.Stage(
+            plans,
+            4,
+            4,
+            SilkTextureFormat.Rgba8Unorm,
+            source,
+            staged);
+
+        SilkMipLevelLayout[] levels = SilkMipChainLayout.Create(
+            4,
+            4,
+            SilkTextureFormat.Rgba8Unorm,
+            3);
+        for (int level = 0; level < levels.Length; level++)
+        {
+            for (uint row = 0; row < levels[level].Height; row++)
+            {
+                ReadOnlySpan<byte> expected = source.AsSpan(
+                    levels[level].Offset + checked((int)(row * (uint)levels[level].RowPitch)),
+                    levels[level].RowPitch);
+                ReadOnlySpan<byte> actual = staged.AsSpan(
+                    checked((int)(plans[level].SourceOffset +
+                        (row * plans[level].SourceBytesPerRow))),
+                    levels[level].RowPitch);
+                await Assert.That(actual.SequenceEqual(expected))
+                    .IsTrue()
+                    .Because($"Level {level} row {row} must land at its aligned offset.");
+            }
+        }
     }
 
     [Test]
@@ -75,11 +142,11 @@ public sealed class MetalPickingTests
 
         await Assert.That(plans.Length).IsEqualTo(1);
         await Assert.That(plans[0]).IsEqualTo(
-            new MetalMipCopyPlan(0, 8, 24, 2, 3, 0));
+            new MetalMipCopyPlan(0, 256, 768, 2, 3, 0));
     }
 
     [Test]
-    public async Task UploadTextureUsesOneCopyFromBufferCallPerMipCopyPlan()
+    public async Task UploadTextureStagesIntoAnAlignedBufferBeforeEncodingCopies()
     {
         string root = FindRepositoryRoot();
         string offscreen = await File.ReadAllTextAsync(Path.Combine(
@@ -93,6 +160,10 @@ public sealed class MetalPickingTests
             "case SilkGraphicsCommandKind.ClearColor:");
 
         await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.Create(");
+        await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.GetStagingByteSize(");
+        await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.Stage(");
+        // The staged buffer, not the caller's packed bytes, is what reaches Metal.
+        await Assert.That(uploadEncoding).Contains("CreateTextureUpload(staged)");
         await Assert.That(uploadEncoding).Contains("foreach (MetalMipCopyPlan uploadPlan in uploadPlans)");
         await Assert.That(uploadEncoding).Contains("uploadPlan.DestinationLevel");
     }

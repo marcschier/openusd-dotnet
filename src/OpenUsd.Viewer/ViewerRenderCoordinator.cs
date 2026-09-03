@@ -7,6 +7,15 @@ using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Viewer;
 
+/// <summary>The outcome of one authoritative state mutation.</summary>
+/// <param name="Applied">Whether the coordinator accepted the mutation.</param>
+/// <param name="Changed">Whether the state actually differed.</param>
+/// <param name="PublishedState">The state the coordinator now holds.</param>
+internal readonly record struct ViewerStateMutationResult(
+    bool Applied,
+    bool Changed,
+    StageRenderState PublishedState);
+
 internal sealed class ViewerRenderCoordinator : IAsyncDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
@@ -71,6 +80,20 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     internal SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         _backendRegistry.CaptureSelectionOutline();
 
+    /// <summary>
+    /// Gets the active backend's live colour-managed display-transform evidence, or
+    /// <see langword="null"/> when the active backend has none.
+    /// </summary>
+    internal SilkDisplayTransformDiagnostics? DisplayTransformDiagnostics =>
+        _backendRegistry.CaptureDisplayTransform();
+
+    /// <summary>
+    /// Gets the active backend's latest bounded display-transform diagnostic, or
+    /// <see langword="null"/> when the transform ran or was never requested.
+    /// </summary>
+    internal RenderDiagnostic? DisplayTransformDiagnostic =>
+        _backendRegistry.CaptureDisplayTransformDiagnostic();
+
     internal IRenderPickingBackend? PickingBackend =>
         _backendRegistry.CapturePickingBackend();
 
@@ -96,10 +119,32 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         string stagePath,
         Func<UsdStageScheduler, UsdStageRenderSource, IViewerRenderBackendHost> hostFactory,
         RenderBackendKind? requestedBackend,
+        CancellationToken cancellationToken = default) =>
+        await OpenAsync(
+            stagePath,
+            hostFactory,
+            requestedBackend,
+            RenderSettings.PresentationDefault,
+            cancellationToken).ConfigureAwait(false);
+
+    /// <summary>Opens a coordinator with explicit initial render settings.</summary>
+    /// <remarks>
+    /// The settings a stage opens with are a caller decision, not a constant. A viewer
+    /// that restored a colour-managed display transform at start-up used to lose it the
+    /// moment a stage was opened, because every coordinator reset to the presentation
+    /// default; the restored choice now travels into the very first state the backend is
+    /// initialized with.
+    /// </remarks>
+    internal static async ValueTask<ViewerRenderCoordinator> OpenAsync(
+        string stagePath,
+        Func<UsdStageScheduler, UsdStageRenderSource, IViewerRenderBackendHost> hostFactory,
+        RenderBackendKind? requestedBackend,
+        RenderSettings initialRenderSettings,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stagePath);
         ArgumentNullException.ThrowIfNull(hostFactory);
+        initialRenderSettings.ValidateDisplayTransform();
 
         ViewerStartupOptions.WriteStatus(
             "Renderer coordinator: open entered " +
@@ -126,7 +171,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             ViewerStartupOptions.WriteStatus("Renderer coordinator: root layer query completed");
             StageRenderState state = StageRenderState
                 .Create(new StageIdentity(identifier))
-                .WithRenderSettings(RenderSettings.PresentationDefault);
+                .WithRenderSettings(initialRenderSettings);
             IViewerRenderBackendHost host = hostFactory(scheduler, source);
             RenderPlatform platform = GetPlatform();
             var backendRegistry = new ViewerRenderBackendRegistry();
@@ -243,6 +288,13 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         }
     }
 
+    /// <summary>Replaces the authoritative state transactionally.</summary>
+    /// <remarks>
+    /// Backend first, publish second, exactly as <see cref="TryMutateStateAsync"/> does.
+    /// A direct replacement is no more trustworthy than a computed one: publishing before
+    /// the manager accepted left the coordinator, its subscribers, and every mirrored view
+    /// describing a state the renderer had refused.
+    /// </remarks>
     internal async ValueTask<RenderBackendManagerResult> UpdateStateAsync(
         StageRenderState state,
         CancellationToken cancellationToken = default)
@@ -252,11 +304,11 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Volatile.Write(ref _currentState, state);
-            StateChanged?.Invoke(state);
             RenderBackendManagerResult result = await _manager
                 .UpdateStateAsync(state, cancellationToken)
                 .ConfigureAwait(false);
+            Volatile.Write(ref _currentState, state);
+            StateChanged?.Invoke(state);
             PublishResult("Renderer state", result);
             return result;
         }
@@ -268,6 +320,22 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
 
     internal async ValueTask<bool> MutateStateAsync(
         Func<StageRenderState, StageRenderState> update,
+        CancellationToken cancellationToken = default) =>
+        (await TryMutateStateAsync(update, cancellationToken).ConfigureAwait(false)).Changed;
+
+    /// <summary>
+    /// Mutates the authoritative state transactionally and reports what was published.
+    /// </summary>
+    /// <remarks>
+    /// The backend is told first and the coordinator publishes only once that succeeded.
+    /// Publishing before the update meant a backend that threw or was cancelled left the
+    /// coordinator claiming a state no renderer had ever been given -- and a caller that
+    /// mirrors that state into a menu, a persisted setting, or a cache key mirrored the
+    /// claim rather than the truth. The published state is returned so such a caller
+    /// commits what the coordinator actually holds instead of what it asked for.
+    /// </remarks>
+    internal async ValueTask<ViewerStateMutationResult> TryMutateStateAsync(
+        Func<StageRenderState, StageRenderState> update,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -275,19 +343,21 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            StageRenderState state = update(CurrentState);
+            StageRenderState previous = CurrentState;
+            StageRenderState state = update(previous);
             ArgumentNullException.ThrowIfNull(state);
-            if (ReferenceEquals(state, CurrentState))
+            if (ReferenceEquals(state, previous))
             {
-                return false;
+                return new ViewerStateMutationResult(true, false, previous);
             }
-            Volatile.Write(ref _currentState, state);
-            StateChanged?.Invoke(state);
+
             RenderBackendManagerResult result = await _manager
                 .UpdateStateAsync(state, cancellationToken)
                 .ConfigureAwait(false);
+            Volatile.Write(ref _currentState, state);
+            StateChanged?.Invoke(state);
             PublishResult("Renderer state", result);
-            return true;
+            return new ViewerStateMutationResult(true, true, state);
         }
         finally
         {
@@ -437,12 +507,15 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // Backend first, publish second. A live stage edit the renderer refuses
+                // must not advance the coordinator's revision or announce a stage change
+                // that no backend ever saw.
                 StageRenderState revised = CurrentState.AdvanceRevision();
-                Volatile.Write(ref _currentState, revised);
-                StateChanged?.Invoke(revised);
                 RenderBackendManagerResult result = await _manager
                     .UpdateStateAsync(revised, cancellationToken)
                     .ConfigureAwait(false);
+                Volatile.Write(ref _currentState, revised);
+                StateChanged?.Invoke(revised);
                 PublishResult("Live stage update", result);
                 StageChanged?.Invoke(change);
             }

@@ -444,6 +444,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 {
                     leases.Add(leasedSelectionOutlineBinding.AcquireLease());
                 }
+                if (command.DisplayTransformPipeline is
+                    { } leasedDisplayTransformPipeline)
+                {
+                    leases.Add(leasedDisplayTransformPipeline.AcquireLease());
+                }
+                if (command.DisplayTransformBinding is
+                    { } leasedDisplayTransformBinding)
+                {
+                    leases.Add(leasedDisplayTransformBinding.AcquireLease());
+                }
+                if (command.DisplayTransformLattice is { } displayTransformLattice &&
+                    leasedTextures.Add(displayTransformLattice))
+                {
+                    leases.Add(displayTransformLattice.AcquireLease());
+                }
                 if (command.ComputePipeline is { } leasedComputePipeline &&
                     leasedComputePipelines.Add(leasedComputePipeline))
                 {
@@ -504,17 +519,139 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             D3D12SilkComputePipeline? computePipeline = null;
             D3D12SilkGraphicsBuffer? storageBuffer = null;
             D3D12SilkGraphicsBuffer? computeUniformBuffer = null;
+            // Compute bindings are keyed by their declared coordinate rather
+            // than held in one field, because a generalized layout binds
+            // several buffers and a dispatch has to find each one by the slot
+            // its own layout declares.
+            Dictionary<(uint Set, uint Binding), D3D12SilkGraphicsBuffer> computeBuffers = [];
             List<D3D12MaterialBinding> materialBindings = [];
             D3D12SilkGraphicsTexture? materialTexture;
             uint vertexStride = SilkVertexLayoutDescriptor.PositionNormal.Stride;
             SilkViewport? currentViewport = null;
             SilkScissor? currentScissor = null;
             bool rendering = false;
+            bool shadowRendering = false;
+            D3D12SilkDisplayTransformGraphicsPipeline? displayTransformPipeline = null;
+            D3D12SilkDisplayTransformBinding? displayTransformBinding = null;
+            bool displayTransformRendering = false;
             float* color = stackalloc float[4];
             ID3D12DescriptorHeap** descriptorHeaps =
                 stackalloc ID3D12DescriptorHeap*[2];
             foreach (D3D12GraphicsCommand command in commands.Commands)
             {
+                switch (command.DisplayTransformKind)
+                {
+                    case D3D12DisplayTransformCommandKind.Begin:
+                        colorAttachment = command.Texture!;
+                        D3D12SilkGraphicsTexture displaySceneColor = command.DepthTexture!;
+                        D3D12SilkGraphicsTexture displayLattice =
+                            command.DisplayTransformLattice!;
+                        colorAttachment.ThrowIfDisposed();
+                        displaySceneColor.ThrowIfDisposed();
+                        displayLattice.ThrowIfDisposed();
+                        Transition(
+                            nativeCommands,
+                            displaySceneColor.Resource,
+                            GetCurrentState(finalStates, displaySceneColor),
+                            ResourceStates.PixelShaderResource);
+                        finalStates[displaySceneColor] =
+                            ResourceStates.PixelShaderResource;
+                        Transition(
+                            nativeCommands,
+                            displayLattice.Resource,
+                            GetCurrentState(finalStates, displayLattice),
+                            ResourceStates.PixelShaderResource);
+                        finalStates[displayLattice] =
+                            ResourceStates.PixelShaderResource;
+                        Transition(
+                            nativeCommands,
+                            colorAttachment.Resource,
+                            GetCurrentState(finalStates, colorAttachment),
+                            ResourceStates.RenderTarget);
+                        CpuDescriptorHandle displayAttachmentView =
+                            colorAttachment.AttachmentView;
+                        nativeCommands->OMSetRenderTargets(
+                            1,
+                            &displayAttachmentView,
+                            false,
+                            null);
+                        finalStates[colorAttachment] = ResourceStates.RenderTarget;
+                        depthAttachment = null;
+                        displayTransformRendering = true;
+                        selectionRenderingKind = D3D12SelectionRenderingKind.None;
+                        rendering = true;
+                        continue;
+                    case D3D12DisplayTransformCommandKind.SetPipeline:
+                        displayTransformPipeline = command.DisplayTransformPipeline!;
+                        displayTransformPipeline.ThrowIfDisposed();
+                        if (displayTransformPipeline.DeviceGeneration !=
+                            DisplayTransformDeviceGeneration)
+                        {
+                            throw new InvalidOperationException(
+                                "The ordered D3D12 display-transform pipeline generation " +
+                                "is no longer current.");
+                        }
+                        pipeline = null;
+                        pickPipeline = null;
+                        selectionMaskPipeline = null;
+                        selectionOutlinePipeline = null;
+                        selectionOutlineBinding = null;
+                        nativeCommands->SetGraphicsRootSignature(
+                            displayTransformPipeline.RootSignature);
+                        nativeCommands->SetPipelineState(
+                            displayTransformPipeline.Pipeline);
+                        continue;
+                    case D3D12DisplayTransformCommandKind.SetBinding:
+                        displayTransformBinding = command.DisplayTransformBinding!;
+                        displayTransformBinding.ThrowIfDisposed();
+                        if (displayTransformBinding.DeviceGeneration !=
+                            DisplayTransformDeviceGeneration)
+                        {
+                            throw new InvalidOperationException(
+                                "The ordered D3D12 display-transform binding generation " +
+                                "is no longer current.");
+                        }
+                        descriptorHeaps[0] =
+                            displayTransformBinding.ResourceHeap;
+                        descriptorHeaps[1] =
+                            displayTransformBinding.SamplerHeap;
+                        nativeCommands->SetDescriptorHeaps(2, descriptorHeaps);
+                        nativeCommands->SetGraphicsRootDescriptorTable(
+                            0,
+                            displayTransformBinding.ResourceHeap
+                                ->GetGPUDescriptorHandleForHeapStart());
+                        nativeCommands->SetGraphicsRootDescriptorTable(
+                            1,
+                            displayTransformBinding.SamplerHeap
+                                ->GetGPUDescriptorHandleForHeapStart());
+                        nativeCommands->SetGraphicsRootConstantBufferView(
+                            2,
+                            displayTransformBinding.Parameters.Resource
+                                ->GetGPUVirtualAddress());
+                        continue;
+                    case D3D12DisplayTransformCommandKind.DrawFullscreenTriangle:
+                        if (!rendering ||
+                            !displayTransformRendering ||
+                            colorAttachment is null ||
+                            displayTransformPipeline is null ||
+                            displayTransformBinding is null ||
+                            currentViewport is null ||
+                            currentScissor is null)
+                        {
+                            throw new InvalidOperationException(
+                                "The ordered D3D12 display-transform draw state is incomplete.");
+                        }
+                        nativeCommands->IASetPrimitiveTopology(
+                            D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist);
+                        nativeCommands->DrawInstanced(3, 1, 0, 0);
+                        continue;
+                    case D3D12DisplayTransformCommandKind.None:
+                        break;
+                    default:
+                        throw new InvalidOperationException(
+                            "Unknown D3D12 display-transform command.");
+                }
+
                 switch (command.SelectionOutlineKind)
                 {
                     case D3D12SelectionOutlineCommandKind.BeginMask:
@@ -559,6 +696,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         pickPipeline = null;
                         selectionOutlinePipeline = null;
                         selectionOutlineBinding = null;
+                        // The mask reads the mesh's own vertex buffer, whose stride is 24,
+                        // 32 or 48 bytes depending on whether the mesh carries texture
+                        // coordinates and tangents. Taking it from the bound pipeline is
+                        // what keeps the mask reading the same vertices the colour pass did.
+                        vertexStride = selectionMaskPipeline.Descriptor.VertexLayout.Stride;
                         nativeCommands->SetGraphicsRootSignature(
                             selectionMaskPipeline.RootSignature);
                         nativeCommands->SetPipelineState(
@@ -670,6 +812,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         selectionOutlinePipeline = null;
                         selectionOutlineBinding = null;
                         pickBaseToken = 0;
+                        vertexStride = pickPipeline.Descriptor.VertexLayout.Stride;
                         nativeCommands->SetGraphicsRootSignature(
                             pickPipeline.RootSignature);
                         nativeCommands->SetPipelineState(pickPipeline.Pipeline);
@@ -916,6 +1059,29 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         selectionRenderingKind = D3D12SelectionRenderingKind.None;
                         rendering = true;
                         break;
+                    case SilkGraphicsCommandKind.BeginShadowRendering:
+                        colorAttachment = null;
+                        depthAttachment = command.DepthTexture!;
+                        depthAttachment.ThrowIfDisposed();
+                        Transition(
+                            nativeCommands,
+                            depthAttachment.Resource,
+                            GetCurrentState(finalStates, depthAttachment),
+                            ResourceStates.DepthWrite);
+                        CpuDescriptorHandle shadowView = depthAttachment.AttachmentView;
+                        // Zero render targets, not a null one: a depth-only pass
+                        // binds no colour attachment at all, so the pipeline state
+                        // it uses declares none either.
+                        nativeCommands->OMSetRenderTargets(
+                            0,
+                            null,
+                            false,
+                            &shadowView);
+                        finalStates[depthAttachment] = ResourceStates.DepthWrite;
+                        selectionRenderingKind = D3D12SelectionRenderingKind.None;
+                        shadowRendering = true;
+                        rendering = true;
+                        break;
                     case SilkGraphicsCommandKind.SetGraphicsPipeline:
                         pipeline = command.Pipeline!;
                         pipeline.ThrowIfDisposed();
@@ -1028,7 +1194,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         break;
                     case SilkGraphicsCommandKind.DrawIndexed:
                     case SilkGraphicsCommandKind.DrawIndexedInstanced:
-                        if (!rendering || colorAttachment is null ||
+                        if (!rendering || (colorAttachment is null && !shadowRendering) ||
                             depthAttachment is null ||
                             (pipeline is null &&
                                 pickPipeline is null &&
@@ -1082,14 +1248,32 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             SetPickRootConstants(nativeCommands, pickBaseToken);
                         }
                         nativeCommands->IASetPrimitiveTopology(
-                            pipeline?.Descriptor.TopologyKind switch
-                            {
-                                SilkTopologyKind.LineList =>
-                                    D3DPrimitiveTopology.D3DPrimitiveTopologyLinelist,
-                                SilkTopologyKind.PointList =>
-                                    D3DPrimitiveTopology.D3DPrimitiveTopologyPointlist,
-                                _ => D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist
-                            });
+                            pickPipeline is not null
+                                ? pickPipeline.Descriptor.PrimitiveTopology switch
+                                {
+                                    SilkPickPrimitiveTopology.LineList =>
+                                        D3DPrimitiveTopology.D3DPrimitiveTopologyLinelist,
+                                    SilkPickPrimitiveTopology.PointList =>
+                                        D3DPrimitiveTopology.D3DPrimitiveTopologyPointlist,
+                                    _ => D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist
+                                }
+                                : selectionMaskPipeline is not null
+                                    ? selectionMaskPipeline.Descriptor.PrimitiveTopology switch
+                                    {
+                                        SilkSelectionMaskPrimitiveTopology.LineList =>
+                                            D3DPrimitiveTopology.D3DPrimitiveTopologyLinelist,
+                                        SilkSelectionMaskPrimitiveTopology.PointList =>
+                                            D3DPrimitiveTopology.D3DPrimitiveTopologyPointlist,
+                                        _ => D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist
+                                    }
+                                    : pipeline?.Descriptor.TopologyKind switch
+                                    {
+                                        SilkTopologyKind.LineList =>
+                                            D3DPrimitiveTopology.D3DPrimitiveTopologyLinelist,
+                                        SilkTopologyKind.PointList =>
+                                            D3DPrimitiveTopology.D3DPrimitiveTopologyPointlist,
+                                        _ => D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist
+                                    });
                         nativeCommands->DrawIndexedInstanced(
                             command.IndexCount,
                             command.Kind == SilkGraphicsCommandKind.DrawIndexedInstanced
@@ -1100,15 +1284,33 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             0);
                         break;
                     case SilkGraphicsCommandKind.EndRendering:
-                        if (!rendering || colorAttachment is null)
+                        if (!rendering || (colorAttachment is null && !shadowRendering))
                         {
                             throw new InvalidOperationException(
                                 "The ordered D3D12 command stream ended no rendering scope.");
                         }
-                        if (selectionRenderingKind ==
-                            D3D12SelectionRenderingKind.Mask)
+                        if (shadowRendering)
                         {
                             if (depthAttachment is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered D3D12 shadow pass has no depth attachment.");
+                            }
+                            // The colour pass samples this image next, so it is
+                            // transitioned here rather than left in DepthWrite for
+                            // the binding path to discover.
+                            Transition(
+                                nativeCommands,
+                                depthAttachment.Resource,
+                                ResourceStates.DepthWrite,
+                                ResourceStates.PixelShaderResource);
+                            finalStates[depthAttachment] =
+                                ResourceStates.PixelShaderResource;
+                        }
+                        else if (selectionRenderingKind ==
+                            D3D12SelectionRenderingKind.Mask)
+                        {
+                            if (depthAttachment is null || colorAttachment is null)
                             {
                                 throw new InvalidOperationException(
                                     "The ordered D3D12 selection-mask pass has no depth attachment.");
@@ -1131,6 +1333,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         else if (selectionRenderingKind ==
                             D3D12SelectionRenderingKind.Outline)
                         {
+                            if (colorAttachment is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered D3D12 outline pass has no color attachment.");
+                            }
                             Transition(
                                 nativeCommands,
                                 colorAttachment.Resource,
@@ -1139,9 +1346,25 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             finalStates[colorAttachment] =
                                 ResourceStates.CopySource;
                         }
+                        else if (displayTransformRendering)
+                        {
+                            if (colorAttachment is null)
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered D3D12 display-transform pass has no " +
+                                    "color attachment.");
+                            }
+                            Transition(
+                                nativeCommands,
+                                colorAttachment.Resource,
+                                ResourceStates.RenderTarget,
+                                ResourceStates.PixelShaderResource);
+                            finalStates[colorAttachment] =
+                                ResourceStates.PixelShaderResource;
+                        }
                         else if (pickPipeline is null)
                         {
-                            if (depthAttachment is null)
+                            if (depthAttachment is null || colorAttachment is null)
                             {
                                 throw new InvalidOperationException(
                                     "The ordered D3D12 graphics pass has no depth attachment.");
@@ -1161,7 +1384,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         }
                         else
                         {
-                            if (depthAttachment is null)
+                            if (depthAttachment is null || colorAttachment is null)
                             {
                                 throw new InvalidOperationException(
                                     "The ordered D3D12 pick pass has no depth attachment.");
@@ -1172,6 +1395,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         colorAttachment = null;
                         depthAttachment = null;
                         selectionRenderingKind = D3D12SelectionRenderingKind.None;
+                        displayTransformRendering = false;
+                        shadowRendering = false;
                         rendering = false;
                         break;
                     case SilkGraphicsCommandKind.SetComputePipeline:
@@ -1201,39 +1426,105 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                     null,
                                     storageBuffer));
                         }
+                        else
+                        {
+                            computeBuffers[(command.SetIndex, command.Binding)] =
+                                storageBuffer;
+                        }
                         break;
                     case SilkGraphicsCommandKind.SetComputeUniformBuffer:
                         computeUniformBuffer = command.Buffer!;
                         computeUniformBuffer.ThrowIfDisposed();
+                        computeBuffers[(command.SetIndex, command.Binding)] =
+                            computeUniformBuffer;
                         break;
                     case SilkGraphicsCommandKind.Dispatch:
-                        if (computePipeline is null ||
-                            storageBuffer is null ||
-                            computeUniformBuffer is null)
+                        if (computePipeline is null)
                         {
                             throw new InvalidOperationException(
                                 "The ordered D3D12 command stream has incomplete compute state.");
+                        }
+                        SilkComputeBindingLayoutDescriptor computeLayout =
+                            computePipeline.Descriptor.Program.BindingLayout.Descriptor;
+                        D3D12SilkGraphicsBuffer? writableBuffer = null;
+                        for (int slot = 0; slot < computeLayout.Slots.Count; slot++)
+                        {
+                            SilkComputeSlot computeSlot = computeLayout.Slots[slot];
+                            if (!computeBuffers.TryGetValue(
+                                    (computeSlot.Set, computeSlot.Binding),
+                                    out D3D12SilkGraphicsBuffer? slotBuffer))
+                            {
+                                throw new InvalidOperationException(
+                                    "The ordered D3D12 command stream has incomplete " +
+                                    "compute state.");
+                            }
+                            slotBuffer.ThrowIfDisposed();
+                            if (computeSlot.Kind ==
+                                SilkComputeSlotKind.ReadWriteStructured)
+                            {
+                                writableBuffer = slotBuffer;
+                            }
+                        }
+                        if (writableBuffer is null)
+                        {
+                            throw new InvalidOperationException(
+                                "The ordered D3D12 command stream has incomplete compute state.");
+                        }
+                        // Every read-only slot moves to the shader-resource state
+                        // before the writable one moves to unordered access, so a
+                        // buffer that was written by an earlier dispatch is
+                        // transitioned exactly once and in a deterministic order.
+                        for (int slot = 0; slot < computeLayout.Slots.Count; slot++)
+                        {
+                            SilkComputeSlot computeSlot = computeLayout.Slots[slot];
+                            if (computeSlot.Kind != SilkComputeSlotKind.ReadOnlyStructured)
+                            {
+                                continue;
+                            }
+                            PrepareBufferState(
+                                nativeCommands,
+                                finalBufferStates,
+                                pendingUavWrites,
+                                computeBuffers[(computeSlot.Set, computeSlot.Binding)],
+                                ResourceStates.NonPixelShaderResource);
                         }
                         PrepareBufferState(
                             nativeCommands,
                             finalBufferStates,
                             pendingUavWrites,
-                            storageBuffer,
+                            writableBuffer,
                             ResourceStates.UnorderedAccess);
                         nativeCommands->SetComputeRootSignature(
                             computePipeline.RootSignature);
                         nativeCommands->SetPipelineState(computePipeline.Pipeline);
-                        nativeCommands->SetComputeRootUnorderedAccessView(
-                            0,
-                            storageBuffer.Resource->GetGPUVirtualAddress());
-                        nativeCommands->SetComputeRootConstantBufferView(
-                            1,
-                            computeUniformBuffer.Resource->GetGPUVirtualAddress());
-                        nativeCommands->Dispatch(
-                            checked((command.ElementCount + 63) / 64),
-                            1,
-                            1);
-                        pendingUavWrites.Add(storageBuffer);
+                        for (int slot = 0; slot < computeLayout.Slots.Count; slot++)
+                        {
+                            SilkComputeSlot computeSlot = computeLayout.Slots[slot];
+                            ulong address = computeBuffers[
+                                (computeSlot.Set, computeSlot.Binding)]
+                                .Resource->GetGPUVirtualAddress();
+                            switch (computeSlot.Kind)
+                            {
+                                case SilkComputeSlotKind.ReadWriteStructured:
+                                    nativeCommands->SetComputeRootUnorderedAccessView(
+                                        checked((uint)slot),
+                                        address);
+                                    break;
+                                case SilkComputeSlotKind.Uniform:
+                                    nativeCommands->SetComputeRootConstantBufferView(
+                                        checked((uint)slot),
+                                        address);
+                                    break;
+                                default:
+                                    nativeCommands->SetComputeRootShaderResourceView(
+                                        checked((uint)slot),
+                                        address);
+                                    break;
+                            }
+                        }
+                        nativeCommands->Dispatch(command.GroupCount, 1, 1);
+                        pendingUavWrites.Add(writableBuffer);
+                        storageBuffer = writableBuffer;
                         break;
                     case SilkGraphicsCommandKind.BufferBarrier:
                         D3D12SilkGraphicsBuffer barrierBuffer = command.Buffer!;
@@ -1260,9 +1551,18 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             ID3D12CommandList* commandListPointer = (ID3D12CommandList*)nativeCommands;
             _queue->ExecuteCommandLists(1, &commandListPointer);
             workSubmitted = true;
-            SilkMarshal.ThrowHResult(_queue->Signal(
-                completionFence,
-                completionValue));
+            int signalled = TryConsumeOffscreenSubmitDeviceLossForTesting()
+                ? unchecked((int)0x887A0005)
+                : _queue->Signal(completionFence, completionValue);
+            if (signalled < 0)
+            {
+                // A queue that will not signal has lost the device far more
+                // often than not, and a consumer classifying the failure needs
+                // the removal recorded before the throw rather than after the
+                // next unrelated call happens to notice it.
+                ObserveNativeDeviceRemoval();
+            }
+            SilkMarshal.ThrowHResult(signalled);
             foreach (KeyValuePair<D3D12SilkGraphicsTexture, ResourceStates> state in finalStates)
             {
                 state.Key.State = state.Value;
@@ -2125,7 +2425,7 @@ internal sealed unsafe class D3D12SilkGraphicsSampler(
 
 [SupportedOSPlatform("windows")]
 internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevice device)
-    : ISilkGraphicsCommandList, ISilkVolumeTextureCommandList
+    : ISilkGraphicsCommandList, ISilkVolumeTextureCommandList, ISilkShadowGraphicsCommandList
 {
     private readonly List<D3D12GraphicsCommand> _commands = [];
     private D3D12SilkGraphicsTexture? _colorAttachment;
@@ -2137,9 +2437,15 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     private D3D12SilkComputePipeline? _computePipeline;
     private D3D12SilkGraphicsBuffer? _storageBuffer;
     private D3D12SilkGraphicsBuffer? _computeUniformBuffer;
+    // One entry per declared compute slot ordinal. A generalized layout binds
+    // several buffers, and a dispatch has to know that every slot its layout
+    // declares was actually bound before it is recorded.
+    private readonly D3D12SilkGraphicsBuffer?[] _computeBuffers =
+        new D3D12SilkGraphicsBuffer?[SilkComputeBindingLayoutDescriptor.MaximumSlots];
     private SilkViewport? _viewport;
     private SilkScissor? _scissor;
     private bool _rendering;
+    private bool _shadowRendering;
     private bool _submitted;
     private bool _disposed;
 
@@ -2259,6 +2565,22 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         _commands.Add(D3D12GraphicsCommand.BeginRendering(color, depth));
     }
 
+    public void BeginShadowRendering(SilkShadowRenderingDescriptor descriptor)
+    {
+        ThrowIfUnavailable();
+        if (_rendering)
+        {
+            throw new InvalidOperationException("A rendering scope is already active.");
+        }
+        descriptor.Validate();
+        D3D12SilkGraphicsTexture depth = ValidateTexture(descriptor.DepthAttachment);
+        _colorAttachment = null;
+        _depthAttachment = depth;
+        _rendering = true;
+        _shadowRendering = true;
+        _commands.Add(D3D12GraphicsCommand.BeginShadowRendering(depth));
+    }
+
     public void SetGraphicsPipeline(ISilkGraphicsPipeline pipeline)
     {
         ThrowIfRendering();
@@ -2274,7 +2596,16 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
                 nameof(pipeline));
         }
         d3d12Pipeline.ThrowIfDisposed();
-        if (_colorAttachment?.Format != d3d12Pipeline.Descriptor.ColorFormat)
+        if (_shadowRendering)
+        {
+            if (!d3d12Pipeline.Descriptor.DepthOnly)
+            {
+                throw new ArgumentException(
+                    "A shadow pass requires a depth-only pipeline.",
+                    nameof(pipeline));
+            }
+        }
+        else if (_colorAttachment?.Format != d3d12Pipeline.Descriptor.ColorFormat)
         {
             throw new ArgumentException(
                 "The pipeline color format does not match the active color attachment.",
@@ -2407,7 +2738,7 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     {
         ThrowIfRendering();
         ArgumentOutOfRangeException.ThrowIfZero(indexCount);
-        if (_colorAttachment is null || _depthAttachment is null ||
+        if ((_colorAttachment is null && !_shadowRendering) || _depthAttachment is null ||
             (_pipeline is null &&
                 _pickPipeline is null &&
                 _selectionMaskPipeline is null) ||
@@ -2442,6 +2773,10 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         ThrowIfRendering();
         _commands.Add(D3D12GraphicsCommand.EndRendering());
         _rendering = false;
+        _shadowRendering = false;
+        _displayTransformRendering = false;
+        _displayTransformPipeline = null;
+        _displayTransformBinding = null;
         _colorAttachment = null;
         _depthAttachment = null;
         _selectionRenderingKind = D3D12SelectionRenderingKind.None;
@@ -2460,8 +2795,26 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         }
         d3d12Pipeline.ThrowIfDisposed();
         _computePipeline = d3d12Pipeline;
+        // A new pipeline may declare a different layout, so the bindings made
+        // for the previous one are dropped rather than silently reinterpreted
+        // against slot ordinals that no longer mean the same thing.
+        Array.Clear(_computeBuffers);
         _commands.Add(D3D12GraphicsCommand.SetComputePipeline(d3d12Pipeline));
     }
+
+    /// <summary>
+    /// The layout a compute binding is validated against: the bound pipeline's
+    /// own layout, or the checked two-slot layout when no pipeline is bound yet.
+    /// </summary>
+    /// <remarks>
+    /// Binding before setting a pipeline is what the existing checked-compute
+    /// rejection conformance does, and it must keep rejecting the same
+    /// coordinates it always did, so the checked layout is the fallback rather
+    /// than an error.
+    /// </remarks>
+    private SilkComputeBindingLayoutDescriptor ActiveComputeLayout =>
+        _computePipeline?.Descriptor.Program.BindingLayout.Descriptor ??
+        SilkComputeBindingLayoutDescriptor.Checked;
 
     public void SetStorageBuffer(
         uint setIndex,
@@ -2470,14 +2823,14 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     {
         ThrowIfUnavailable();
         D3D12SilkGraphicsBuffer d3d12Buffer = ValidateBuffer(buffer);
-        if (!d3d12Buffer.Usage.HasFlag(SilkBufferUsage.Storage))
-        {
-            throw new ArgumentException(
-                "A storage binding requires a storage buffer.",
-                nameof(buffer));
-        }
         if (_rendering)
         {
+            if (!d3d12Buffer.Usage.HasFlag(SilkBufferUsage.Storage))
+            {
+                throw new ArgumentException(
+                    "A storage binding requires a storage buffer.",
+                    nameof(buffer));
+            }
             RequireMaterialSlot(setIndex, binding, SilkBindingKind.StorageBuffer);
             _commands.Add(D3D12GraphicsCommand.SetStorageBuffer(
                 setIndex,
@@ -2485,13 +2838,18 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
                 d3d12Buffer));
             return;
         }
-        if (setIndex != 0 || binding != 0)
+        SilkComputeBindingLayoutDescriptor layout = ActiveComputeLayout;
+        int ordinal = SilkComputeRecording.ResolveStructuredSlot(
+            layout,
+            setIndex,
+            binding,
+            d3d12Buffer.Usage,
+            nameof(buffer));
+        _computeBuffers[ordinal] = d3d12Buffer;
+        if (layout.Slots[ordinal].Kind == SilkComputeSlotKind.ReadWriteStructured)
         {
-            throw new ArgumentException(
-                "outputValues requires a storage buffer at set 0, binding 0.",
-                nameof(buffer));
+            _storageBuffer = d3d12Buffer;
         }
-        _storageBuffer = d3d12Buffer;
         _commands.Add(D3D12GraphicsCommand.SetStorageBuffer(
             setIndex,
             binding,
@@ -2505,14 +2863,15 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     {
         ThrowIfOutsideRendering();
         D3D12SilkGraphicsBuffer d3d12Buffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 1 ||
-            !d3d12Buffer.Usage.HasFlag(SilkBufferUsage.Uniform) ||
-            d3d12Buffer.Size < SilkCheckedShaderAssets.Compute.D3DUniformByteSize)
-        {
-            throw new ArgumentException(
-                "ComputeParameters requires an 8-byte uniform buffer at set 0, binding 1.",
-                nameof(buffer));
-        }
+        int ordinal = SilkComputeRecording.ResolveUniformSlot(
+            ActiveComputeLayout,
+            setIndex,
+            binding,
+            d3d12Buffer.Usage,
+            d3d12Buffer.Size,
+            SilkCheckedShaderAssets.Compute.D3DUniformByteSize,
+            nameof(buffer));
+        _computeBuffers[ordinal] = d3d12Buffer;
         _computeUniformBuffer = d3d12Buffer;
         _commands.Add(D3D12GraphicsCommand.SetComputeUniformBuffer(
             setIndex,
@@ -2531,13 +2890,13 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
             throw new InvalidOperationException(
                 "Dispatch requires a compute pipeline, storage buffer, and uniform buffer.");
         }
-        if (checked((nuint)elementCount * 16) > _storageBuffer.Size)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(elementCount),
-                "The storage buffer is too small for the dispatch.");
-        }
-        _commands.Add(D3D12GraphicsCommand.Dispatch(elementCount));
+        uint groupCount = SilkComputeRecording.ValidateDispatch(
+            ActiveComputeLayout,
+            elementCount,
+            _computePipeline.Descriptor.ThreadGroupSizeX,
+            ordinal => _computeBuffers[ordinal] is not null,
+            _storageBuffer.Size);
+        _commands.Add(D3D12GraphicsCommand.Dispatch(elementCount, groupCount));
     }
 
     public void BufferBarrier(ISilkGraphicsBuffer buffer)
@@ -2563,6 +2922,9 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         _selectionOutlinePipeline = null;
         _selectionOutlineBinding = null;
         _selectionRenderingKind = D3D12SelectionRenderingKind.None;
+        _displayTransformPipeline = null;
+        _displayTransformBinding = null;
+        _displayTransformRendering = false;
         _disposed = true;
     }
 
@@ -2676,6 +3038,11 @@ internal readonly record struct D3D12GraphicsCommand(
     D3D12SilkGraphicsSampler? Sampler,
     D3D12PickCommandKind PickKind,
     D3D12SelectionOutlineCommandKind SelectionOutlineKind,
+    D3D12DisplayTransformCommandKind DisplayTransformKind,
+    D3D12SilkDisplayTransformGraphicsPipeline? DisplayTransformPipeline,
+    D3D12SilkDisplayTransformBinding? DisplayTransformBinding,
+    // Reuses Texture = colour attachment, DepthTexture = scene-colour source.
+    D3D12SilkGraphicsTexture? DisplayTransformLattice,
     SilkTexturePixelCoordinate PickCoordinate,
     uint PickBaseToken,
     SilkColor Color,
@@ -2686,7 +3053,8 @@ internal readonly record struct D3D12GraphicsCommand(
     uint SetIndex,
     uint Binding,
     uint IndexCount,
-    uint ElementCount)
+    uint ElementCount,
+    uint GroupCount)
 {
     internal static D3D12GraphicsCommand Upload(
         D3D12SilkGraphicsTexture texture,
@@ -2726,6 +3094,12 @@ internal readonly record struct D3D12GraphicsCommand(
         Create(
             SilkGraphicsCommandKind.BeginRendering,
             texture: color,
+            depthTexture: depth);
+
+    internal static D3D12GraphicsCommand BeginShadowRendering(
+        D3D12SilkGraphicsTexture depth) =>
+        Create(
+            SilkGraphicsCommandKind.BeginShadowRendering,
             depthTexture: depth);
 
     internal static D3D12GraphicsCommand BeginSelectionMask(
@@ -2886,12 +3260,47 @@ internal readonly record struct D3D12GraphicsCommand(
             setIndex: setIndex,
             binding: binding);
 
-    internal static D3D12GraphicsCommand Dispatch(uint elementCount) =>
-        Create(SilkGraphicsCommandKind.Dispatch, elementCount: elementCount);
+    internal static D3D12GraphicsCommand Dispatch(uint elementCount, uint groupCount) =>
+        Create(
+            SilkGraphicsCommandKind.Dispatch,
+            elementCount: elementCount,
+            groupCount: groupCount);
 
     internal static D3D12GraphicsCommand BufferBarrier(
         D3D12SilkGraphicsBuffer buffer) =>
         Create(SilkGraphicsCommandKind.BufferBarrier, buffer: buffer);
+
+    internal static D3D12GraphicsCommand BeginDisplayTransform(
+        D3D12SilkGraphicsTexture color,
+        D3D12SilkGraphicsTexture sceneColor,
+        D3D12SilkGraphicsTexture lattice) =>
+        Create(
+            SilkGraphicsCommandKind.BeginRendering,
+            texture: color,
+            depthTexture: sceneColor,
+            displayTransformLattice: lattice,
+            displayTransformKind: D3D12DisplayTransformCommandKind.Begin);
+
+    internal static D3D12GraphicsCommand SetDisplayTransformPipeline(
+        D3D12SilkDisplayTransformGraphicsPipeline pipeline) =>
+        Create(
+            SilkGraphicsCommandKind.SetGraphicsPipeline,
+            displayTransformPipeline: pipeline,
+            displayTransformKind: D3D12DisplayTransformCommandKind.SetPipeline);
+
+    internal static D3D12GraphicsCommand SetDisplayTransformBinding(
+        D3D12SilkDisplayTransformBinding binding) =>
+        Create(
+            SilkGraphicsCommandKind.SetUniformBuffer,
+            displayTransformBinding: binding,
+            displayTransformKind: D3D12DisplayTransformCommandKind.SetBinding);
+
+    internal static D3D12GraphicsCommand
+        DrawDisplayTransformFullscreenTriangle() =>
+        Create(
+            SilkGraphicsCommandKind.DrawIndexed,
+            displayTransformKind:
+                D3D12DisplayTransformCommandKind.DrawFullscreenTriangle);
 
     private static D3D12GraphicsCommand Create(
         SilkGraphicsCommandKind kind,
@@ -2909,6 +3318,11 @@ internal readonly record struct D3D12GraphicsCommand(
         D3D12PickCommandKind pickKind = D3D12PickCommandKind.None,
         D3D12SelectionOutlineCommandKind selectionOutlineKind =
             D3D12SelectionOutlineCommandKind.None,
+        D3D12DisplayTransformCommandKind displayTransformKind =
+            D3D12DisplayTransformCommandKind.None,
+        D3D12SilkDisplayTransformGraphicsPipeline? displayTransformPipeline = null,
+        D3D12SilkDisplayTransformBinding? displayTransformBinding = null,
+        D3D12SilkGraphicsTexture? displayTransformLattice = null,
         SilkTexturePixelCoordinate pickCoordinate = default,
         uint pickBaseToken = 0,
         SilkColor color = default,
@@ -2919,7 +3333,8 @@ internal readonly record struct D3D12GraphicsCommand(
         uint setIndex = 0,
         uint binding = 0,
         uint indexCount = 0,
-        uint elementCount = 0) =>
+        uint elementCount = 0,
+        uint groupCount = 0) =>
         new(
             kind,
             texture,
@@ -2935,6 +3350,10 @@ internal readonly record struct D3D12GraphicsCommand(
             sampler,
             pickKind,
             selectionOutlineKind,
+            displayTransformKind,
+            displayTransformPipeline,
+            displayTransformBinding,
+            displayTransformLattice,
             pickCoordinate,
             pickBaseToken,
             color,
@@ -2945,7 +3364,8 @@ internal readonly record struct D3D12GraphicsCommand(
             setIndex,
             binding,
             indexCount,
-            elementCount);
+            elementCount,
+            groupCount);
 }
 
 [SupportedOSPlatform("windows")]
@@ -2984,8 +3404,20 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     public void Wait()
     {
         ObjectDisposedException.ThrowIf(_fence == null, this);
-        _device.WaitForFence(_fence, 1);
-        ReleaseLeases();
+        try
+        {
+            _device.WaitForFence(_fence, 1);
+        }
+        finally
+        {
+            // A wait that failed -- a removed device is the ordinary reason --
+            // still ends this submission's claim on the upload staging, the
+            // descriptor heaps and the resource leases it held for the duration
+            // of the work. The work is not going to complete, so holding them
+            // keeps the device undisposable and the memory unreclaimable, and
+            // the caller sees a leak rather than the failure it was told about.
+            ReleaseLeases();
+        }
     }
 
     public void Dispose()
@@ -2994,43 +3426,64 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
         {
             return;
         }
-        Wait();
-        D3D12SilkGraphicsDevice.Release(ref _fence);
-        D3D12SilkGraphicsDevice.Release(ref _commands);
-        D3D12SilkGraphicsDevice.Release(ref _allocator);
-        _device.ReleaseDependentObject();
+        try
+        {
+            Wait();
+        }
+        catch (Exception)
+        {
+            // Disposal is reached from the unwinding of whatever the failed wait
+            // threw at the caller, so throwing again here would replace the
+            // reason the frame failed with the same failure observed a second
+            // time. The wait already released everything it owned in its finally,
+            // and the native objects below are released whatever happened.
+        }
+        finally
+        {
+            ReleaseLeases();
+            D3D12SilkGraphicsDevice.Release(ref _fence);
+            D3D12SilkGraphicsDevice.Release(ref _commands);
+            D3D12SilkGraphicsDevice.Release(ref _allocator);
+            _device.ReleaseDependentObject();
+        }
     }
 
     private void ReleaseLeases()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _leases, null);
-        if (leases is null)
+        // Each stage is released whatever the one before it did: a lease whose
+        // disposal throws must not strand the upload resources or the descriptor
+        // heaps, because those are native allocations nothing else refers to.
+        try
         {
-            return;
+            IDisposable[]? leases = Interlocked.Exchange(ref _leases, null);
+            if (leases is not null)
+            {
+                foreach (IDisposable lease in leases)
+                {
+                    lease.Dispose();
+                }
+            }
         }
-        foreach (IDisposable lease in leases)
+        finally
         {
-            lease.Dispose();
-        }
-        nint[]? resources = Interlocked.Exchange(ref _uploadResources, null);
-        if (resources is null)
-        {
-            return;
-        }
-        foreach (nint resource in resources)
-        {
-            ID3D12Resource* pointer = (ID3D12Resource*)resource;
-            D3D12SilkGraphicsDevice.Release(ref pointer);
-        }
-        nint[]? heaps = Interlocked.Exchange(ref _descriptorHeaps, null);
-        if (heaps is null)
-        {
-            return;
-        }
-        foreach (nint heap in heaps)
-        {
-            ID3D12DescriptorHeap* pointer = (ID3D12DescriptorHeap*)heap;
-            D3D12SilkGraphicsDevice.Release(ref pointer);
+            nint[]? resources = Interlocked.Exchange(ref _uploadResources, null);
+            if (resources is not null)
+            {
+                foreach (nint resource in resources)
+                {
+                    ID3D12Resource* pointer = (ID3D12Resource*)resource;
+                    D3D12SilkGraphicsDevice.Release(ref pointer);
+                }
+            }
+            nint[]? heaps = Interlocked.Exchange(ref _descriptorHeaps, null);
+            if (heaps is not null)
+            {
+                foreach (nint heap in heaps)
+                {
+                    ID3D12DescriptorHeap* pointer = (ID3D12DescriptorHeap*)heap;
+                    D3D12SilkGraphicsDevice.Release(ref pointer);
+                }
+            }
         }
     }
 }

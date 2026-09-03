@@ -312,6 +312,22 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderRendersReadsAndReusesASampledDepthTarget()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.SampledDepthTargetSurvivesRenderReadAndReuse(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
     public async Task SwiftShaderRejectsMaterialResourcesTheLayoutDoesNotDeclare()
     {
         if (!OperatingSystem.IsWindows())
@@ -338,6 +354,314 @@ public sealed class VulkanDeviceTests
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         await SilkMeshRendererConformance.RendersRetainedMeshes(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderAppliesUsdLuxLightLinking()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkLightLinkConformance.LinkedLightsReachOnlyTheirPrims(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderResolvesNestedInstanceLinkMasks()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkNestedInstanceLinkConformance.ComposedInstancesResolveTheirOwnMasks(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderAppliesUsdLuxDomeLinking()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDomeLinkConformance.LinkedDomesReachOnlyTheirPrims(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderSplitsTheSpecularSkyByDomeLink()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDomeLinkConformance.LinkedDomesSplitTheSpecularSky(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderMasksAnUntexturedDomePerDraw()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDomeLinkConformance.AnUntexturedDomeIsMaskablePerDraw(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderKeepsEveryInstanceTransformAcrossSplitDomeMasks()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDomeLinkConformance.SplitDomeMasksKeepEveryInstanceTransform(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderUploadsTheEnvironmentAgainAfterAFailedSubmission()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDomeLinkConformance.AFailedSubmissionUploadsTheEnvironmentAgain(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderCastsAnAuthoredDistantLightShadow()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.AnAuthoredDistantLightCastsAMeasurableShadow(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderReusesARetainedShadowMap()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.ARetainedShadowMapIsReusedUntilItsCastersMove(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderCastsAnUnlitBlockersShadow()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.AnUnlitBlockerStillCastsItsShadow(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderPlacesAYTiltedShadowOnTheComputedSide()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.AYTiltedShadowLandsOnTheComputedSide(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderDoesNotSelfShadowARotatedNonUniformReceiver()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.ARotatedNonUniformReceiverDoesNotSelfShadow(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderSkipsAndNamesAnOpacityMaskedCaster()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.AnOpacityMaskedCasterIsSkippedAndNamed(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderReRendersTheShadowMapWhenACastersMaterialChanges()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkShadowConformance.AMaterialTurningMaskedAndOpaqueAgainReRendersTheMap(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderLightsAQuadByTheDirectionAndOrientationOfATexturedDome()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .ADirectionalSkyLightsTheQuadByDirectionAndOrientation(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderResolvesTheDomeContributionScalesAndRoughness()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .TheContributionScalesAndRoughnessDriveTheResponse(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderFallsBackForAnUnsupportedDomeAndReleasesTheEnvironment()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .AnUnsupportedDomeFallsBackAndRetiringItReleasesTheMaps(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderLetsATexturedDomeSuppressTheDeterministicHeadlight()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .ATexturedDomeSuppressesTheDeterministicHeadlight(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderLetsAnUnsupportedDomeSuppressTheDeterministicHeadlight()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .AnUnsupportedDomeSuppressesTheDeterministicHeadlight(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderReturnsTheSpecularPeakAtExactAlignment()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .TheSpecularLobeReturnsItsPeakAtExactAlignment(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderKeepsANearMirrorBoundedAtEveryRoughness()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .ANearMirrorStaysBoundedAtEveryRoughness(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderFollowsRotatedAndNonUniformlyScaledPrimsWithTheEnvironment()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .TheEnvironmentFollowsRotatedAndScaledPrims(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderLeavesAGeneratedUnlitMaterialUnlitUnderADome()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkEnvironmentLightingConformance
+            .AGeneratedUnlitMaterialReceivesNoEnvironment(device);
     }
 
     [Test]
@@ -420,6 +744,266 @@ public sealed class VulkanDeviceTests
         await OffscreenRhiConformance.DispatchesCheckedComputeKernels(
             device,
             SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderDeformationKernelMatchesTheCpuEvaluator()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDeformationComputeConformance.DeformationKernelMatchesTheCpuEvaluator(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderDeformationKernelWritesOnlyPositionsAndNormals()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDeformationComputeConformance
+            .DeformationKernelWritesOnlyPositionsAndNormals(
+                device,
+                SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderGpuDeformedImageMatchesTheCpuResolvedImage()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.GpuDeformedImageMatchesTheCpuResolvedImage(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRendersAConstantDisplacementAsDisplacedGeometry()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.AConstantDisplacementRendersTheDisplacedSurface(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRendersATextureDisplacementPerVertex()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance
+            .ATextureDisplacementRendersThePerVertexDisplacedSurface(
+                VulkanSilkGraphicsDevice.Create,
+                SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderShadowsFollowTheDisplacedSurface()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.ShadowsFollowTheDisplacedSurface(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRendersAnUnsupportedDisplacementUndisplaced()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance
+            .AnUnsupportedDisplacementRendersTheUndisplacedSurface(
+                VulkanSilkGraphicsDevice.Create,
+                SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRepeatedFramesReuseTheDisplacedGeometry()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.RepeatedFramesReuseTheDisplacedGeometry(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderDisplacesTheDeformedSurfaceRatherThanTheBindPose()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.ADisplacedRigDrawsTheDeformedSurfaceDisplaced(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRepairingAHeightFieldReachesSelectionAndShadows()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDisplacementRenderConformance.RepairingAHeightFieldReachesSelectionAndShadows(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRepeatedFramesReuseAndChangedPosesDispatchOnce()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.RepeatedFramesReuseAndChangedPosesDispatchOnce(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderDeformationSurvivesADeviceGenerationReset()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.ADeviceGenerationResetRedispatchesOnce(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV,
+            device => ((VulkanSilkGraphicsDevice)device)
+                .InvalidateSelectionOutlineDeviceGenerationForTesting());
+    }
+
+    [Test]
+    public async Task SwiftShaderAnIneligibleRigDrawsTheCpuGeometry()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.AnIneligibleRigDrawsTheCpuGeometry(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderDeformationParametersAreBoundedByTheirOwnSize()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using ISilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDeformationComputeConformance.DeformationParametersAreBoundedByTheirOwnSize(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderAFailedDeformationSetupDrawsTheCpuGeometry()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.AFailedDeformationSetupDrawsTheCpuGeometry(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderAFailedDeformationDispatchDrawsTheCpuGeometry()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.AFailedDeformationDispatchDrawsTheCpuGeometry(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderADeviceLossDuringDeformationDispatchPropagates()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.ADeviceLossDuringDispatchPropagates(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV,
+            device => ((VulkanSilkGraphicsDevice)device)
+                .InjectNextOffscreenSubmitDeviceLossForTesting(),
+            selectionGenerationTracksSubmissionLoss: false);
+    }
+
+    [Test]
+    public async Task SwiftShaderShadowsFollowTheDeformedSurface()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        await SilkDeformationRenderConformance.ShadowsFollowTheDeformedSurface(
+            VulkanSilkGraphicsDevice.Create,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderDeformationKernelIsIdempotentForOneIdentity()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDeformationComputeConformance
+            .DeformationKernelIsIdempotentForOneIdentity(
+                device,
+                SilkShaderBinaryFormat.SpirV);
     }
 
     [Test]

@@ -1,0 +1,52 @@
+#usda 1.0
+(
+    doc = """Solid-angle weighting fixture for the textured-dome ambient term.
+
+    Synthetic, repository-authored, MIT-licensed.
+
+    dome-polar-cap-latlong.hdr is an 8x8 equirectangular image whose top row is
+    linear white and whose remaining seven rows are black. A row that close to
+    the pole covers a very small part of the sphere, so the correct
+    solid-angle-weighted mean radiance is sin(pi/16) divided by the sum of
+    sin(pi*(row+0.5)/8) over all eight rows, which is roughly 0.0383 -- less than
+    a third of the 0.125 an implementation that averaged texels rather than solid
+    angle would report.
+
+    The distinction is not academic. A bright polar cap and a bright horizon band
+    of the same pixel count light a scene very differently, and an unweighted
+    average makes them identical."""
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Scope "Lights"
+    {
+        def DomeLight "PolarCapDome"
+        {
+            asset inputs:texture:file = @dome-polar-cap-latlong.hdr@
+            token inputs:texture:format = "latlong"
+            color3f inputs:color = (1, 1, 1)
+            float inputs:intensity = 1
+            float inputs:exposure = 0
+            float inputs:diffuse = 1
+            float inputs:specular = 0
+        }
+    }
+
+    def Mesh "Ground"
+    {
+        float3[] extent = [(-50, 0, -50), (50, 0, 50)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-50, 0, -50), (50, 0, -50), (50, 0, 50), (-50, 0, 50)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(1, 1, 1)] (
+            interpolation = "constant"
+        )
+    }
+}

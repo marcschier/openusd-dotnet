@@ -1,0 +1,29 @@
+# Portions of this file are shaped after usdGenSchema's codeless plugInfo.json layout.
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "OmniverseExternalFixtureWidget": {
+                        "bases": [
+                            "UsdTyped"
+                        ],
+                        "schemaIdentifier": "OmniverseExternalFixtureWidget",
+                        "schemaKind": "concreteTyped"
+                    },
+                    "OmniverseExternalFixtureTagAPI": {
+                        "bases": [
+                            "UsdAPISchemaBase"
+                        ],
+                        "schemaIdentifier": "OmniverseExternalFixtureTagAPI",
+                        "schemaKind": "singleApplyAPI"
+                    }
+                }
+            },
+            "Name": "omniverseExternalSchemaFixture",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "resource"
+        }
+    ]
+}

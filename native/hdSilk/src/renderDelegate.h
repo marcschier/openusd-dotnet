@@ -79,6 +79,16 @@ public:
 
     void CommitResources(HdChangeTracker* tracker) override;
 
+    /// Material render contexts, in descending order of preference.
+    ///
+    /// The universal context is first so an authored `outputs:surface` --
+    /// UsdPreviewSurface, or a MaterialX shader bound in the universal context
+    /// -- always wins. `mdl` follows so a material that authors *only*
+    /// `outputs:mdl:surface`, which is how Omniverse-authored stages that never
+    /// got a preview context are written, reaches this delegate at all instead
+    /// of arriving with no surface terminal and being drawn as a default.
+    TfTokenVector GetMaterialRenderContexts() const override;
+
     HdRenderParam* GetRenderParam() const override;
 
     static uint64_t BeginSceneStateCapture();

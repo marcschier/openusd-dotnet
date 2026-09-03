@@ -1475,7 +1475,7 @@ public sealed class SilkTextureResidencyTests
             SilkTopologyKind.LineList => ([0u, 1u], [0u]),
             _ => ([0u, 1u, 2u], [0u, 1u, 2u]),
         };
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (points.Length * sizeof(float)) +
             (topology.Indices.Length * sizeof(uint)) +
@@ -1507,8 +1507,8 @@ public sealed class SilkTextureResidencyTests
                 bytes.AsSpan(80 + (i * 8)),
                 i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 224);
-        int pointsOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointsOffset = 268 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -1544,7 +1544,7 @@ public sealed class SilkTextureResidencyTests
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -1581,8 +1581,8 @@ public sealed class SilkTextureResidencyTests
             bytes.AsSpan(208),
             SilkWireFormat.ComputeStableHash(materialPath));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216), (uint)material.Length);
-        path.CopyTo(bytes, 224);
-        int pointsOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointsOffset = 268 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -1896,10 +1896,14 @@ public sealed class SilkTextureResidencyTests
             // Only sampled, non-attachment descriptors are material/volume textures for the
             // purposes of this test: render targets (color, depth, and the selection mask) reuse
             // the same descriptor overload but must not be counted as retained material textures.
+            // The prefiltered environment maps and their stand-in are excluded by format for the
+            // same reason: they are fixed-function renderer resources the frame always binds, not
+            // decoded material images, and the native decoder never produces RGBA16F.
             bool isMaterialTexture =
                 (descriptor.Usage & SilkTextureUsage.Sampled) != 0 &&
                 (descriptor.Usage & (SilkTextureUsage.ColorRenderTarget |
-                    SilkTextureUsage.DepthRenderTarget)) == 0;
+                    SilkTextureUsage.DepthRenderTarget)) == 0 &&
+                descriptor.Format != SilkTextureFormat.Rgba16Float;
             var texture = new RenderPipelineTexture(
                 descriptor, isMaterialTexture ? MaterialTextureKind : "target", this);
             if (isMaterialTexture)

@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/deform.slang",
+  "entryPoint": {
+    "name": "deformMain",
+    "stage": "compute",
+    "profile": "cs_6_0",
+    "threadGroupSize": [
+      64,
+      1,
+      1
+    ]
+  },
+  "resources": [
+    {
+      "name": "deformedVertices",
+      "bindings": {
+        "d3d": {
+          "registerClass": "u",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 0,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "readWrite",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": 4,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "readWrite",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": 4,
+        "size": null
+      }
+    },
+    {
+      "name": "bindPose",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 1,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 1,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      }
+    },
+    {
+      "name": "jointIndices",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 2,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 2,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "uint32"
+        },
+        "elementStride": 4,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "uint32"
+        },
+        "elementStride": 4,
+        "size": null
+      }
+    },
+    {
+      "name": "jointWeights",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 3,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 3,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": 4,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": 4,
+        "size": null
+      }
+    },
+    {
+      "name": "deformMatrices",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 4,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 4,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      }
+    },
+    {
+      "name": "blendWeights",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 5,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 5,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": 4,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": 4,
+        "size": null
+      }
+    },
+    {
+      "name": "blendSpans",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 6,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 6,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 2,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "uint32"
+          }
+        },
+        "elementStride": 8,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 2,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "uint32"
+          }
+        },
+        "elementStride": 8,
+        "size": null
+      }
+    },
+    {
+      "name": "blendDeltas",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 7,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 7,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      }
+    },
+    {
+      "name": "texCoords",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 8,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 8,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 2,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 8,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 2,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 8,
+        "size": null
+      }
+    },
+    {
+      "name": "DeformParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "b",
+          "register": 9,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 9,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "pointCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 0,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "influencesPerPoint",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 4,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "vertexStrideFloats",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 8,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "hasBindNormals",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 12,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "jointCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 16,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "normalMatrixRow",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 20,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "blendDeltaCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 24,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "deformReserved",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 28,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 32
+      },
+      "vulkanLayout": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "pointCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 0,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "influencesPerPoint",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 4,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "vertexStrideFloats",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 8,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "hasBindNormals",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 12,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "jointCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 16,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "normalMatrixRow",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 20,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "blendDeltaCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 24,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "deformReserved",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 28,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 32
+      }
+    }
+  ],
+  "stageInputs": [
+    {
+      "name": "dispatchThreadId",
+      "semantic": {
+        "name": "SV_DISPATCHTHREADID",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "uint32"
+        }
+      }
+    }
+  ],
+  "stageOutputs": []
+}

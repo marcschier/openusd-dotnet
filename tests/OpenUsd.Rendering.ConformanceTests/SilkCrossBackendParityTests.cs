@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Text;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Vulkan;
@@ -236,16 +237,35 @@ public sealed class SilkCrossBackendParityTests
             x,
             0.25,
             [0, 0, 1, 1]);
+        byte[] instancerPath = Encoding.UTF8.GetBytes("/Instancer");
         BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(20), 7);
         BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(24), instanceIndex);
         if (instanceIndex == 0)
         {
-            return command;
+            // ABI v22 requires the authoritative instancer path on every
+            // instance record, including the one that carries the payload.
+            var payload = new byte[
+                command.Length + instancerPath.Length + 8 + instancerPath.Length];
+            command.CopyTo(payload, 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                payload.AsSpan(4),
+                (uint)payload.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                payload.AsSpan(260),
+                (uint)instancerPath.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(264), 1);
+            instancerPath.CopyTo(payload, command.Length);
+            WriteInstancerContextEntry(
+                payload.AsSpan(command.Length + instancerPath.Length),
+                instancerPath,
+                instanceIndex);
+            return payload;
         }
 
         int pathLength = BinaryPrimitives.ReadInt32LittleEndian(command.AsSpan(48));
-        var lightweight = new byte[224 + pathLength];
-        command.AsSpan(0, 224).CopyTo(lightweight);
+        var lightweight = new byte[
+            268 + pathLength + instancerPath.Length + 8 + instancerPath.Length];
+        command.AsSpan(0, 268).CopyTo(lightweight);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(4), (uint)lightweight.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(52), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(56), 0);
@@ -253,8 +273,34 @@ public sealed class SilkCrossBackendParityTests
         BinaryPrimitives.WriteUInt64LittleEndian(lightweight.AsSpan(208), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(216), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(220), 0);
-        command.AsSpan(224, pathLength).CopyTo(lightweight.AsSpan(224));
+        lightweight.AsSpan(224, 44).Clear();
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            lightweight.AsSpan(260),
+            (uint)instancerPath.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(264), 1);
+        command.AsSpan(268, pathLength).CopyTo(lightweight.AsSpan(268));
+        instancerPath.CopyTo(lightweight, 268 + pathLength);
+        WriteInstancerContextEntry(
+            lightweight.AsSpan(268 + pathLength + instancerPath.Length),
+            instancerPath,
+            instanceIndex);
         return lightweight;
+    }
+
+    /// <summary>
+    /// Writes one ABI v23 instancing level: its path byte count, the instance's
+    /// own index inside it, and the path bytes.
+    /// </summary>
+    private static void WriteInstancerContextEntry(
+        Span<byte> destination,
+        byte[] instancerPath,
+        int instanceIndex)
+    {
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            destination,
+            (uint)instancerPath.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(destination[4..], instanceIndex);
+        instancerPath.CopyTo(destination[8..]);
     }
 
     private static (float[] Points, uint[] Indices) CreateGrid(int resolution)

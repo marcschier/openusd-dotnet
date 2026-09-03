@@ -43,13 +43,21 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 ## Packages
 
 All package projects below are packable from source. Availability here means repository production,
-not public-feed publication. All 27 IDs are published to NuGet.org at `0.12.0-alpha`; the five
-Cesium IDs became public after being withheld at `0.5.0-alpha`.
+not public-feed publication. All 27 IDs other than `OpenUsd.LiveAuthoring`,
+`OpenUsd.Bridge.Protocol`, `OpenUsd.Bridge.Grpc`, and `OpenUsd.Viewer.Bridge.Grpc` are published to
+NuGet.org
+at `0.12.0-alpha`; the five Cesium IDs became public after being withheld at `0.5.0-alpha`.
+`OpenUsd.LiveAuthoring`, the two optional Omniverse bridge IDs, and the optional Viewer bridge
+integration are newly added to `eng/pack-packages.ps1`'s published set and ship starting with the
+next release.
 
 | Package | Framework project | Native requirement |
 | --- | --- | --- |
 | `OpenUsd.Interop` | 8/9/10 | Native library only when invoked |
 | `OpenUsd` | 8/9/10 | Core runtime |
+| `OpenUsd.LiveAuthoring` | 8/9/10 | Core runtime when its executor creates or opens a stage |
+| `OpenUsd.Bridge.Protocol` | 8/9/10 | None; a transport-neutral wire model with no networking dependency |
+| `OpenUsd.Bridge.Grpc` | 8/9/10 | None; an optional gRPC client for an externally owned Kit peer |
 | `OpenUsd.Rendering` | 8/9/10 | None for neutral contracts |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Imaging runtime |
 | `OpenUsd.Cesium` | 8/9/10 | Cesium runtime |
@@ -58,6 +66,7 @@ Cesium IDs became public after being withheld at `0.5.0-alpha`.
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Imaging runtime; Windows/Linux execution |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Imaging runtime; macOS execution |
 | `OpenUsd.Viewer` | 8/9/10 | Backend runtime of the renderer it activates |
+| `OpenUsd.Viewer.Bridge.Grpc` | 8/9/10 | None; optional Viewer-to-bridge adapter, host-configured |
 | `OpenUsd.Mcp.Tool` | 10 tool | Core/Imaging runtime required for scene and render operations |
 | `OpenUsd.Runtime.Core` | `net8.0` carrier | Core metapackage for all supported RIDs |
 | `OpenUsd.Runtime.Core.win-x64` | `net8.0` carrier | Windows x64 native install |
@@ -73,9 +82,15 @@ Cesium IDs became public after being withheld at `0.5.0-alpha`.
 | `OpenUsd.Runtime.Cesium.osx-arm64` | `net8.0` carrier | macOS Cesium shim |
 
 The runtime projects use `net8.0` to carry RID assets and transitive build targets. The managed
-libraries they support target all three production frameworks. `OpenUsd.LiveAuthoring` is intentionally
-absent from this package table: it remains source-only sample code until its admission/completion,
-correlation, ordering, update-coverage, and health-reporting gaps are resolved by a production consumer.
+libraries they support target all three production frameworks. `OpenUsd.LiveAuthoring` moved from
+`samples/` to `src/OpenUsd.LiveAuthoring` once its data-model and admission/observability contracts
+were productized (bounded arrays/matrix/vector attribute values, explicit clear/API-schema updates,
+opaque correlation/origin tracking, an admission receipt separate from the applied result, and
+structured health snapshots/events); see [Live authoring](live-authoring.md). Its recovery contracts
+(explicit session states, one authoritative remote epoch, fingerprint-backed duplicate/replay rules,
+loop prevention, and bounded full-snapshot replacement of a bridge-owned overlay) are now implemented in
+the same package. Network transport — a versioned wire contract and its gRPC or WebSocket adapter —
+remains a later phase and is out of scope for this package.
 
 ## Target frameworks
 
@@ -84,7 +99,7 @@ correlation, ordering, update-coverage, and health-reporting gaps are resolved b
 | Packable managed libraries | ✅ | ✅ | ✅ | Multi-TFM build and tests |
 | Public API analyzer baseline | ✅ | ✅ | ✅ | Production managed libraries |
 | AOT, trim, single-file analyzers | ✅ | ✅ | ✅ | Enabled for production libraries |
-| `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Analyzer-enabled source-only sample |
+| `OpenUsd.LiveAuthoring` | ✅ | ✅ | ✅ | Package-consumer live-authoring adapter |
 | Viewer library | ✅ | ✅ | ✅ | Embeddable `OpenUsd.Viewer` package |
 | Viewer desktop application | — | — | ✅ | `OpenUsd.Viewer.App` entry point |
 | MCP .NET tool | — | — | ✅ | `OpenUsd.Mcp.Tool`; command `openusd-mcp` |
@@ -127,7 +142,16 @@ The limits below distinguish that from work that is merely not built yet.
 
 - **Omniverse RTX, Carbonite, omni.ui, Kit, Nucleus, and OptiX are unreachable.** They are closed
   NVIDIA platform pieces, not open standards this runtime can ship or reimplement.
-- **MDL SDK is reachable but not integrated.** It is an Apache-2.0 SDK with HLSL and GLSL backends.
+- **MDL SDK is reachable and integrated behind an optional adapter.** The pinned baseline in
+  `eng/mdl.lock.json` is NVIDIA MDL SDK 2026.0.2 (tag commit
+  `1b9592c1b086b691b44d1a30eee4827d1ff55b8c`), which is **BSD-3-Clause**, not Apache-2.0 as earlier
+  notes in this repository stated. Two optional adapters sit behind one project-owned C ABI:
+  `openusd_mdl` distils an accepted OmniPBR/OmniSurface/OmniGlass subset from authored USD values
+  with no dependency at all, and `openusd_mdl_sdk` additionally compiles a user-supplied module
+  through a user-supplied MDL SDK runtime to resolve unauthored defaults and constant expression
+  defaults. Neither is shipped in any package, no package contains an MDL SDK binary, and
+  MDL-generated shader code and layered BSDF evaluation remain unimplemented. See
+  [Optional MDL materials](rendering.md#optional-mdl-materials).
 - **PhysX, `UsdPhysics`, and MaterialX are reachable.** `UsdPhysics` authoring and a MaterialX subset
   already exist in this repository.
 - **Cesium for Omniverse's Fabric path is unreachable.** It bypasses Hydra and writes tiles through
@@ -220,12 +244,21 @@ that alone stays over budget once no stale entry remains to evict. `SilkSceneGpu
 current and peak decoded/GPU resident bytes, both configured budgets, the total cache entry count
 across every kind, and a cumulative eviction count.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
-`ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
-driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes, a chain of constant
+`ND_standard_surface_surfaceshader` base colour (scaled by `base`), emission colour (scaled by `emission`), metalness,
+roughness, index of refraction (`specular_IOR`), coat weight and coat roughness, monochrome constant opacity, and normal
+can be constant, driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes;
+`ND_open_pbr_surface_surfaceshader` (OpenPBR Surface 1.1, the identifier the pinned MaterialX 1.39.4 libraries declare)
+projects the same way from `base_color`/`base_weight`, `emission_color`/`emission_luminance`, `base_metalness`,
+`specular_roughness`, `specular_ior`, `coat_weight`, `coat_roughness`, `geometry_opacity`, and `geometry_normal`.
+A chain of constant
 multiply/add/subtract/mix nodes over exactly one image is folded into that texture's scale and bias, and a constant
 texture-coordinate chain of `ND_place2d_vector2` and `UsdTransform2d` nodes is composed into the single per-material
 UV transform its images sample through. Unsupported nodes are
-reported with `TF_WARN` diagnostics that name the material input and node id. That source support is broader than the
+reported with `TF_WARN` diagnostics that name the material input and node id. Transmission, subsurface, sheen/fuzz,
+thin film, anisotropy, coat tint/coat IOR/coat normal, and MaterialX `specular_color` as a specular workflow are
+explicitly **not** projected: each is reported by name and left at the renderer default rather than folded into a
+parameter with a similar range. OpenPBR is supported only as this projection; hdSilk generates no MaterialX shader code
+for it. That source support is broader than the
 Storm parity evidence: the only gated MaterialX-adjacent scene is a hand-authored PreviewSurface equivalent of constant
 base colour, roughness, and zero metalness. Storm currently renders the authored MaterialX standard-surface parity mesh
 as black in this harness, so the scene is recorded but not gated.
@@ -319,7 +352,7 @@ Selection rendering is related but separate from the capability enum:
 | --- | --- | --- | --- | --- |
 | Visible selection | Native yellow highlight | Orange outline | Orange outline | Orange outline |
 | Occlusion policy | Storm-native | Visible-only | Visible-only | Visible-only |
-| X-ray mode | Not exposed | Not supported | Not supported | Not supported |
+| X-ray mode | Not exposed | Implemented | Implemented | Source path only |
 | Hosted pixel evidence | Workflow-gated | Workflow-gated | Workflow-gated | Pending hosted proof |
 
 See [Rendering](rendering.md) for request binding, stale results, GPU passes, and lifecycle detail.
@@ -397,6 +430,7 @@ limitation and needs a GPU-equipped self-hosted runner.
 | Disk light direct transport | `light-disk-*-self-consistency`, `light-disk-*-divergence-self-consistency` |
 | Cylinder light direct transport | `light-cylinder-*` equivalence and divergence |
 | Dome light ambient | `light-dome-ambient` |
+| Dome light textured IBL | Analytic tests plus WARP/SwiftShader environment conformance |
 | Shadows | None |
 | Point instancing | `point-instancer-cluster` |
 | Point-instancer instance identity | None; page-level gated by `hdsilk_probe` and managed identity tests (see below) |
@@ -408,7 +442,7 @@ limitation and needs a GPU-equipped self-hosted runner.
 | Front cull styles and orientation | None; cross-backend and page-level gated (see below) |
 | Time-varying transform/display colour | `time-varying-transform-primvar` |
 | UsdSkel CPU skinning | `skinned-pennant` |
-| Subdivision surfaces | None |
+| Subdivision surfaces | Catmull-Clark, Loop, and bilinear levels 0-3 with tags and refined primvars |
 
 ### Ungated because Storm cannot be the reference
 
@@ -418,10 +452,39 @@ produce a usable reference image for the authored feature.
 - **MaterialX standard surface:** Storm shades only the 347-pixel PreviewSurface anchor while hdSilk
   shades 4314 MaterialX pixels. `materialx-standard-surface-constant` is registered, measured, and not
   gated.
-- **Catmull-Clark subdivision:** `subdivision-catmull-clark` measures 0.931015 adjusted IoU against
-  Storm's coarse/control-cage-like output, so it remains measured and not gated.
+- **Catmull-Clark Storm parity:** `subdivision-catmull-clark` measures 0.931015 adjusted IoU against
+  Storm's coarse/control-cage-like Low-complexity output, so that parity scene remains measured and not gated.
+  Subdivision itself is gated analytically by `hdsilk_subdivision_probe` at refinement levels 1-3.
 - **Shadows:** `light-distant-shadow` is byte-identical with shadows disabled
   (`disabledAdjustedIoU=1.000000`), so it remains registered, measured, and not gated.
+- **Textured dome-light image-based lighting:** Storm's offscreen harness renders no dome texture, so
+  there is no usable reference image for the authored feature, and Storm's offscreen path has no
+  directional environment response to compare against in any case. hdSilk prefilters an accepted
+  textured dome into a world-oriented cosine irradiance map, a roughness-sliced GGX specular atlas and a
+  numerically integrated split-sum BRDF table, so the response depends on the world-space shading
+  direction, on the dome's authored orientation, and on the material's roughness. It is gated
+  analytically and by its own cross-backend pixel gates instead.
+  `SilkEnvironmentLightingTests` pins the prefilter -- the exact `pi * L` cosine identity, a hemisphere
+  that lights one pole and not the other, rotation equivalence, monotonic lobe broadening, energy
+  preservation at every roughness, the exact `irradiance / pi` identity at roughness 1, the independent
+  diffuse and specular contribution scales, multi-dome composition, colour-space resolution from the
+  image-info v2 observation, half-precision saturation, USD's lat-long convention against external
+  reference directions, the BRDF table against an independent integration of the same equations, and
+  every budget and cache-identity rule. `SilkEnvironmentRetentionTests` pins the retention rules,
+  including that a prefiltered dome
+  contributes nothing to the frame ambient term and that every unsupported cause falls back and is
+  named, that an in-place asset repair is observed without a new command, and that a device loss
+  recreates every environment-owned GPU object. `SilkEnvironmentLightingConformance` runs the executed
+  pixel gates on D3D12 WARP and Vulkan SwiftShader, including a dome-only stage that suppresses the
+  fallback headlight and rotated and non-uniformly scaled meshes. `SilkDomeEnvironmentTests` still
+  pins the ABI v16 environment record and the
+  mean-radiance ambient **fallback**, including its rotation invariance and the parity case in which a
+  constant-1.0 environment reproduces the untextured unit dome's ambient exactly.
+  `OmniverseDomeFixtureTests` decodes the committed `test-assets/omniverse/lighting/*.hdr` fixtures and
+  proves the bytes on disk carry exactly the radiance their stages document. The reflection resolution
+  bound, the four-dome composition bound, the absence of dome shadows and of per-prim dome linking, and
+  the unlit generated-MaterialX terminal are all reported against the affected prim; see
+  `docs/rendering.md` for the diagnostic codes and budgets.
 
 Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
 
@@ -480,10 +543,11 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   uniform scenes exercise hdSilk's expanded-topology path, so treating those primvars as ordinary
   point/vertex data is not a passing shortcut.
 
-At the parity harness complexity, Storm renders the Catmull-Clark probe as a
-coarse/control-cage-like surface rather than full refinement. An eager
-OpenSubdiv refinement experiment moved hdSilk away from Storm, so subdivision
-remains measured but ungated until the remaining divergence is eliminated.
+At the parity harness's Low complexity, Storm renders the Catmull-Clark probe as
+a coarse/control-cage-like surface rather than full refinement. hdSilk also keeps
+Low at refinement level 0, preserving the established parity corpus. Medium,
+High, and VeryHigh select OpenSubdiv levels 1, 2, and 3 and are gated by exact
+analytic native fixtures rather than this unsuitable Storm reference.
 
 ### Implemented or reachable but not yet parity-gated
 
@@ -491,20 +555,43 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Varying, uniform, and face-varying texture-coordinate primvar interpolation modes are gated.
 - Other primvar names beyond constant `displayColor`, normals, and `st` texture coordinates are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
-  space are gated. `useMetadata`/black is gated as clamp-to-edge, which is what the renderer implements for
-  it; no backend is given a border colour.
+  space are gated. `useMetadata` and `black` are distinct wire values: the fragment stage resolves both
+  to clamp-to-edge, because the wire carries no border colour and no backend is given one, while the
+  vertex-stage displacement sampler implements both exactly as a transparent-black border and resolves
+  `useMetadata` from the image's own per-axis wrap metadata.
 - Specular, opacity, and occlusion texture slots have no parity scene.
-- `displacement` is not implemented in hdSilk. The material ABI can carry the authored input, but the
-  checked mesh shader has no tessellation or vertex/fragment displacement path that changes pixels.
+- `displacement` moves geometry in hdSilk, resolved from the authored `displacement` material terminal
+  rather than inferred from a surface input. A constant authored amount, or a per-vertex float sample
+  of a connected `UsdUVTexture` height field, offsets every emitted point along its object-space
+  shading normal in the one retained vertex buffer the colour pass, the raster shadow depth pass, the
+  pick pass and the selection outline all draw. It is gated by the native producer probe, by analytic
+  cases, and by WARP and SwiftShader pixel gates (constant, texture-driven, shadows, cache reuse and
+  invalidation, refusals) rather than by a Storm parity scene. What is *not* implemented is named in
+  [`rendering.md`](rendering.md#usdpreviewsurface-displacement): no re-derived shading frame, no
+  adaptive or limit-surface tessellation, no UDIM or two-image composite height field, and no
+  displacement inside the ABI v20 GPU deformation kernel.
 - The Vulkan renderer-consumption path for emissive colour, occlusion, opacity threshold, clearcoat,
   clearcoat roughness, and IOR is self-consistency-gated, but not yet Storm-gated from authored USD.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
+- OpenPBR (`ND_open_pbr_surface_surfaceshader`) and the broadened `standard_surface` inputs are gated by the native
+  hdSilk projection probe and by managed page/renderer self-consistency, not by Storm parity. Both models carry only
+  the inputs that are the same quantity as an existing wire parameter. Not projected, and reported by name instead:
+  `transmission*`, `subsurface*`, `sheen`/`fuzz_weight`, `thin_film*`, every anisotropy and rotation input,
+  `coat_color`, `coat_IOR`/`coat_ior`, `coat_normal`/`geometry_coat_normal`, `coat_affect_*`, `coat_darkening`,
+  `thin_walled`/`geometry_thin_walled`, `diffuse_roughness`/`base_diffuse_roughness`, and `tangent`/`geometry_tangent`.
+  MaterialX `specular_color` is an edge tint rather than the normal-incidence reflectance
+  `UsdPreviewSurface.specularColor` carries, so **no specular workflow is derived from it**. A nodedef weight the graph
+  *connects* is a per-pixel multiply this projection has no slot for, and the input it scales is left at the renderer
+  default. `standard_surface.opacity` is `color3` while the wire binds one channel, so only a constant with equal
+  channels projects; a per-channel or connected colour-typed opacity is refused. There is **no generated OpenPBR
+  shader path**: an OpenPBR material needing a lobe the projection omits renders without it and says so.
 - The MaterialX `place2d` / `UsdTransform2d` UV transform fold is gated by Vulkan and D3D12 pixel self-consistency and
   divergence, not by Storm parity, and only one texture-coordinate stream per material is carried: **both** the UV
   transform and the UV primvar are reconciled across a material's textures, so divergent per-image transforms,
   divergent per-image primvars (a base colour on `uvSet0` beside a normal map on `uvSet1`),
   non-constant transform inputs, transforms behind unsupported intermediate nodes, and chains that never reach a
-  coordinate node are rejected with diagnostics rather than rendered.
+  coordinate node are rejected with diagnostics rather than rendered. **Multiple UV sets are not supported** by the
+  wire or by the checked shaders, and the expanded surface-model projection does not change that.
 - Constant arithmetic over one image folds into that texture's scale and bias and is gated the same way. Two images
   joined by one constant `multiply`, `add`, `subtract` or `mix` are supported as a per-pixel composite and gated by
   pixels on both executable backends, but **one composite per material** only: a graph that composites a second
@@ -517,7 +604,10 @@ remains measured but ungated until the remaining divergence is eliminated.
   identically to `SilkTextureWrap.Clamp` and a sample outside the unit range returns the edge texel rather than black
   or a MaterialX node's `default` colour. The `default` colour is transported only in its other role, as the
   unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not supported.
-- Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
+- Sphere-light glossy shaping and area-light texture inputs are not gated. Dome textures have no gated
+  Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome
+  image-based lighting is gated analytically and by its own D3D12 WARP and Vulkan SwiftShader pixel
+  gates instead.
 - Multiple point-instancer prototypes, proto-index variation, `invisibleIds`, and two levels of nesting have no
   Storm parity scene, and instanced shadows are not gated at all. What is gated is the published identity, at page
   level rather than by pixels, under manifest capability `point-instancer-instance-identity`: `hdsilk_probe` drives
@@ -566,25 +656,88 @@ remains measured but ungated until the remaining divergence is eliminated.
   `leftHanded` quad pair so neither a dropped nor a duplicated correction can regress silently. There is no
   Storm parity scene for orientation.
 - Animated materials, textures, lights, and topology have no parity scene.
-- GPU skinning is not implemented or gated. `docs/rendering.md` records the ABI/shader design that
-  must land before this can become a backend gate.
-- OCIO final display/view/look correction for live GPU presentation is not yet implemented.
-  OpenUSD exposes it through `HdxColorCorrectionTask`, but hdSilk does not run the Hdx task
-  graph and has no render-settings ABI for OCIO config names, LUT resources, or generated
-  colour-correction shader code. CPU capture/export OCIO is supported through
+- GPU blend-shape deformation and linear skinning are gated on D3D12 WARP and Vulkan SwiftShader for the bounded
+  triangle-list subset described in `docs/rendering.md`. Metal and ineligible rigs retain the authoritative CPU path.
+- Live GPU display/view/look correction is implemented as a precise 3D-LUT subset, not as
+  arbitrary OCIO GPU shader generation. `RenderSettings.DisplayTransform` carries a
+  renderer-neutral `RenderDisplayTransform` (config path plus optional display, view, and look);
+  hdSilk renders the scene into a linear RGBA16Float intermediate and applies exposure and one
+  baked lattice in a fullscreen pass, so the transform reaches live presentation and ordinary
+  captures alike. The lattice is baked once through the same `SilkOpenColorIoProcessor` the CPU
+  export path uses, in a single bulk native call, and is bounded and LRU-cached. D3D12 WARP and
+  Vulkan SwiftShader gates compare every GPU pixel against the CPU processor within 2 code values;
+  Metal is source-complete and compile-only. OCIO GPU shader generation, config-authored shaper
+  spaces, and OCIO dynamic properties other than exposure remain outside the claim, and there is
+  still no Hydra-side render-settings path that selects the transform from a scene, because hdSilk
+  does not run the Hdx task graph. Failures are reported as bounded diagnostics rather than a
+  silent identity result. See `docs/rendering.md` for the exact exclusions.
+  CPU capture/export OCIO is unchanged and still supported through
   `SilkOpenColorIoProcessor` applied after readback: create a processor from a
   `SilkOpenColorIoDisplayTransform` (config path, source color space, optional display/view/looks)
   and pass it to the OCIO `SilkFrameCapture.Capture` / `CaptureRetained` / `SilkFrameCapturer.Capture`
   overloads. Exposure is applied before the OCIO transform; `RenderSettings.OutputTransform`
-  must be `Identity` when an OCIO processor is supplied.
+  must be `Identity` when an OCIO processor is supplied, and `RenderSettings.DisplayTransform`
+  must be null so the image is never colour managed twice.
 
 ### Unimplemented or deliberately excluded from the next-alpha parity claim
 
-- Full Catmull-Clark/Loop/bilinear subdivision, creases, and subdivision primvar refinement are not part of the
-  next-alpha parity claim.
-- hdSilk evaluates the narrow CPU blend-shape subset described in `docs/rendering.md` before CPU
-  skinning. GPU blend-shape deformation and in-between/primvar/tangent deltas are not implemented.
-- Light linking is not implemented.
+- Catmull-Clark, Loop, and bilinear uniform subdivision, creases, corners, holes, and subdivision primvar refinement
+  are implemented and analytically gated. Adaptive and limit-surface tessellation and GPU refinement
+  remain outside the current claim.
+- UsdPreviewSurface `displacement` moves the drawn geometry, resolved from the authored `displacement`
+  material terminal and refused by name for any other terminal or driving node. It is applied at
+  whatever emitted vertex density the display style's refinement produced: refinement is the
+  tessellation, and complexity Low keeps refinement level 0, so a displaced prim at Low is displaced
+  at its control cage. The order is subdivide, then deform, then displace, in the prim's object space
+  along the object-space shading normal, and the shading frame is never re-derived. A displaced
+  skinned prim is refused by the ABI v20 GPU deformation kernel with the named reason
+  `SilkDeformationGpuFallback.MaterialDisplacement` and drawn from hdSilk's authoritative CPU-resolved
+  points, which is what keeps the deform-then-displace ordering exact. Height samples stay
+  single-precision through the authored `scale` and `bias`, applied after filtering so a
+  transparent-black border carries the bias, including signed and over-unit values;
+  `sourceColorSpace = auto` and `wrap = useMetadata` are resolved from what the image library observed
+  and refused by name when it observed nothing; an unreadable image displaces by the authored
+  `fallback` and says so. UDIM height fields, two-image composite operands, a coordinate set the mesh
+  does not carry, non-triangle topology, a non-finite amount, an unrepresentable metadata wrap mode,
+  and both preflighted budgets are reported by name.
+- hdSilk evaluates the UsdSkel subset described in `docs/rendering.md`: blend-shape point and normal offsets,
+  in-between shapes, and linear joint-weighted skinning of points and per-point normals, all re-resolved per evaluation
+  time. D3D12 and Vulkan execute the eligible subset on the GPU and compare against that CPU answer; Metal and rigs
+  needing derived tangents, expanded topology, subdivision, dual quaternions, or over-budget payloads use the CPU
+  fallback. Tangent and arbitrary primvar deltas are not authorable in `UsdSkelBlendShape`; face-varying or uniform
+  normals on a deformed prim are omitted rather than published at the bind pose.
+- UsdLux light linking is implemented on hdSilk: `collection:lightLink` resolves to a per-draw light mask, and
+  a prim a light's collection excludes is not lit by that light. It is gated by analytic cross-backend
+  rendering rather than by Storm parity, because Storm's offscreen harness has no linked-light reference.
+  `collection:shadowLink` is applied where UsdLux defines it, as a caster restriction: a prim a light's
+  shadow collection excludes is not drawn into that light's shadow map, while every prim the light
+  illuminates still receives. hdSilk casts raster shadows for authored `UsdLuxDistantLight`s through a
+  bounded light-space shadow map and a depth-only pass, gated analytically on D3D12 WARP and Vulkan
+  SwiftShader; every other light type, and any device that cannot record a depth-only pass, is reported
+  as `OPENUSD_SILK_SHADOW_UNSUPPORTED` rather than silently rendering unshadowed.
+  `collection:lightLink` on a `UsdLuxDomeLight` is implemented too, for textured and untextured domes
+  alike: up to eight domes carry a stable bit in a bounded dome table, a linked prim receives only the
+  skies its collection admits in both the diffuse and the specular response, and a scene that links no
+  dome renders byte-identical pixels. A scene with more domes than the table admits publishes no dome
+  bits at all and reports `OPENUSD_SILK_LIGHT_LINK_DOME_BUDGET`, and `collection:shadowLink` on a dome
+  is reported through `OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION` rather than applied,
+  because no dome shadow pass exists to restrict.
+  Per-instance linking is resolved onto the composed identities hdSilk publishes under nested
+  instancing: the whole instancer chain is walked, each level's contribution is unioned onto the
+  identities it actually publishes, and one sparse entry per composed identity carries its own light,
+  shadow and dome masks. Every level's path-wide categories are included, the level a prim names as
+  well, which is what carries a collection that names a point instancer to the prototypes it
+  scatters. The per-instance categories `HdsiLightLinkingSceneIndex` reports for a *nested* level are
+  the union over every ancestor instance -- upstream documents that linking through nested instances
+  is not resolved -- so hdSilk drops them with a warning naming the prim rather than handing one
+  ancestor's collection to identities the author excluded from it; the root instancer's per-instance
+  categories and every level's path-wide categories still reach every identity exactly. The 4096-entry
+  bound is applied in exactly one place, to the resolved and sparsified table, so prims that link to
+  everything and instances whose categories differ but whose masks do not cost nothing; the collector
+  bounds only its own transient memory, through a separate constant far above the ABI bound. A path is
+  published whole or omitted whole so truncation always fails open.
+  See "hdSilk UsdLux light and shadow linking", "hdSilk UsdLux dome linking" and "hdSilk raster
+  shadows" in `docs/rendering.md`.
 
 ## hdSilk lighting parity
 
@@ -593,11 +746,18 @@ remains measured but ungated until the remaining divergence is eliminated.
 | Deterministic headlight | Implemented and parity-gated | Used when no authored UsdLux light is present |
 | `UsdLuxDistantLight` | Implemented subset and parity-gated | Matte and glossy scenes gate; margin 0.609274 |
 | `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
-| `UsdLuxDomeLight` | Ambient-only, parity-gated | Authored scalar/color controls; no image IBL |
+| `UsdLuxDomeLight` (untextured) | Ambient-only, parity-gated | Authored scalar/color controls |
+| `UsdLuxDomeLight` (textured) | Analytic and pixel-gated | Diffuse/specular prefilter; named mean fallback |
 | Display output | Reinhard presentation, identity parity | MCP/Viewer preserve highlights |
-| Shadows | Measured, ungated | Offscreen Storm shadows are not a reference |
+| Storm shadow parity | Measured, ungated | Offscreen Storm shadows are not a reference |
 | Rect/disk/cylinder area lights | Implemented and self-consistency-gated | Storm renders authored references black |
-| Light linking | Not implemented | No linked-light filtering; no instanced-shadow parity |
+| Light linking | Implemented, analytically gated | Per-draw light mask on D3D12 WARP and Vulkan SwiftShader |
+| Nested-instance linking | Implemented, analytically gated | Composed `parent * count + inner` masks |
+| Dome linking | Implemented, analytically gated | Per-draw dome mask, bounded at 8; unlinked pixels byte-identical |
+| Dome shadow linking | Excluded and diagnosed | No dome shadow pass exists to restrict casters |
+| Shadow linking | Implemented, analytically gated | Caster restriction applied in the depth-only pass |
+| hdSilk raster shadows | Distant lights implemented, gated | Bounded light-space maps on WARP and SwiftShader |
+| Shadow-map depth resource path | Implemented and gated | Render, sample and re-render a sampled depth target |
 
 `light-distant-shadow` is one of the measured Storm offscreen-harness limits, alongside area lights,
 subdivision, and MaterialX. Storm's authored-shadow and shadow-disabled captures are byte-identical
@@ -660,7 +820,8 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 Complete generated bindings for every OpenUSD schema are not a current claim.
 UsdShade binding coverage includes purpose, strength, and collection bindings. UsdSkel blend-shape
 coverage includes inbetweens, skinning method, and target relationships for authoring and
-inspection; hdSilk blend-shape rendering is not implemented.
+inspection; hdSilk renders that blend-shape subset on the CPU, including in-between shapes and
+normal offsets, and does not evaluate it on the GPU.
 
 ## Picking and selection
 
@@ -668,14 +829,14 @@ inspection; hdSilk blend-shape rendering is not implemented.
 | --- | --- | --- | --- | --- |
 | Primitive picking | Implemented | Implemented | Implemented | Implemented source path |
 | Face identity | Not supported | Implemented | Implemented | Implemented source path |
-| Edge picking | Not supported | Not supported | Not supported | Not supported |
-| Point picking | Not supported | Not supported | Not supported | Not supported |
+| Edge picking | Not supported | Implemented | Implemented | Implemented source path |
+| Point picking | Not supported | Implemented | Implemented | Implemented source path |
 | Stale-result reporting | Implemented | Implemented | Implemented | Implemented |
 | Selection survives switching | Implemented | Implemented | Implemented | Implemented |
 | Hosted real-pixel proof | Workflow-gated | Workflow-gated | Workflow-gated | Pending hosted proof |
 
-The interactive Viewer currently issues primitive picks. Optional geometry values are not fabricated
-when a backend returns identity-only results.
+The Viewer exposes Prim, Face, Edge, and Point targets plus visible-only and x-ray outline modes.
+Optional geometry values are not fabricated when a backend returns identity-only results.
 
 ## Viewer features
 
@@ -722,7 +883,7 @@ here.
 - OpenUSD C++ types and layouts do not cross the project C ABI.
 - Per-element P/Invoke is not accepted on scene or render hot paths.
 - The schema facades are intentionally focused rather than generated-complete.
-- Edge/point picking and x-ray selection are not supported.
+- Storm component picking and x-ray selection are not supported; D3D12 and Vulkan provide them.
 - The Viewer is an inspector and focused editor, not a `usdview` clone or full DCC.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
 - The curated Storm/hdSilk parity matrix is observed on D3D12 WARP and Vulkan SwiftShader. Metal is

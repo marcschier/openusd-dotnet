@@ -72,6 +72,36 @@ public interface ISilkGraphicsDevice : IDisposable
     void WaitIdle();
 }
 
+/// <summary>
+/// A device that reports when it has noticed losing the GPU.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A backend reports a lost device the same way it reports every other failure
+/// -- a Vulkan <c>Result</c> carried in an exception message, an HRESULT from
+/// the Direct3D marshaller -- so a caller that has to tell "the device is gone"
+/// apart from "this allocation was refused" cannot do it from the exception.
+/// This generation is what makes the distinction observable: it advances once
+/// per detected loss, on every path that detects one, and it advances *before*
+/// the failure is thrown, so a caller that reads it either side of a failed
+/// call learns which kind it was.
+/// </para>
+/// <para>
+/// It is deliberately separate from the picking and selection-outline
+/// generations. Those advance when their own resources are invalidated, which
+/// includes but is not limited to device loss, and neither of them advances for
+/// a loss detected on a submission that had nothing to do with them -- which is
+/// exactly the case a general consumer such as the deformation pass runs into.
+/// </para>
+/// </remarks>
+public interface ISilkDeviceLossGraphicsDevice
+{
+    /// <summary>
+    /// Gets a value that advances every time the device notices it was lost.
+    /// </summary>
+    ulong DeviceLossGeneration { get; }
+}
+
 internal interface ISilkVolumeTextureGraphicsDevice
 {
     ISilkGraphicsTexture CreateTexture3D(
@@ -541,7 +571,54 @@ public enum SilkGraphicsCommandKind
     DrawIndexedInstanced,
 
     /// <summary>Uploads one tightly packed 3D texture image.</summary>
-    UploadTexture3D
+    UploadTexture3D,
+
+    /// <summary>Begins a depth-only shadow-caster scope with no color attachment.</summary>
+    BeginShadowRendering
+}
+
+/// <summary>The depth attachment of one depth-only shadow-caster pass.</summary>
+/// <remarks>
+/// There is deliberately no color attachment. A shadow pass produces depth and
+/// nothing else, and describing a color target it never writes would make every
+/// backend allocate and transition a resource that exists only to be discarded.
+/// </remarks>
+public readonly record struct SilkShadowRenderingDescriptor(
+    ISilkGraphicsTexture DepthAttachment)
+{
+    /// <summary>Validates a sampled D32 depth target.</summary>
+    public void Validate()
+    {
+        ArgumentNullException.ThrowIfNull(DepthAttachment);
+        if (DepthAttachment.Format != SilkTextureFormat.D32Float ||
+            (DepthAttachment.Usage & SilkTextureUsage.DepthRenderTarget) == 0 ||
+            (DepthAttachment.Usage & SilkTextureUsage.Sampled) == 0)
+        {
+            throw new ArgumentException(
+                "A shadow attachment must be a sampled D32 depth target.",
+                nameof(DepthAttachment));
+        }
+    }
+}
+
+/// <summary>
+/// Optional commands exposed by a command list that can record a depth-only
+/// shadow-caster pass.
+/// </summary>
+/// <remarks>
+/// Optional for the same reason the selection-outline commands are: the interface
+/// is implemented by three backends and several test doubles, and a device that
+/// cannot record a color-attachment-free pass reports
+/// <see cref="SilkGraphicsCapabilities.SupportsRasterShadows"/> as
+/// <see langword="false"/> instead of failing at draw time.
+/// </remarks>
+public interface ISilkShadowGraphicsCommandList
+{
+    /// <summary>
+    /// Begins a pass that writes only depth into the shadow attachment and stores
+    /// it for sampling by the colour pass that follows.
+    /// </summary>
+    void BeginShadowRendering(SilkShadowRenderingDescriptor descriptor);
 }
 
 /// <summary>
@@ -668,6 +745,18 @@ public readonly record struct SilkGraphicsCapabilities(
     /// caller that does not opt in keeps its prior isotropic-only behavior.
     /// </summary>
     public float MaxSamplerAnisotropy { get; init; } = 1f;
+
+    /// <summary>
+    /// Gets whether the device can record a depth-only pass with no colour
+    /// attachment, which is what a raster shadow map is rendered with.
+    /// </summary>
+    /// <remarks>
+    /// A device that reports <see langword="false"/> allocates no shadow map and
+    /// submits no shadow pass; the renderer reports
+    /// <c>OPENUSD_SILK_SHADOW_UNSUPPORTED</c> against the device instead of
+    /// rendering a plausible unshadowed image.
+    /// </remarks>
+    public bool SupportsRasterShadows { get; init; }
 }
 
 /// <summary>

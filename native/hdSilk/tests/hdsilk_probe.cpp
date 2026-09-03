@@ -3,11 +3,15 @@
 #include "openusd_hdsilk.h"
 #include "hdsilk_test_hooks.h"
 #include "curveWidths.h"
+#include "instanceLinking.h"
 #include "material.h"
 #include "materialXBridge.h"
+#include "mdlAdapter.h"
 #include "openusd_dotnet_test_hooks.h"
 #include "sceneState.h"
 
+#include "pxr/base/arch/env.h"
+#include "pxr/base/arch/fileSystem.h"
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/half.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -25,7 +29,14 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#if defined(_WIN32)
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -54,9 +65,19 @@ constexpr char RightHandedMeshPath[] = "/World/ProbeRightHandedMesh";
 constexpr char LeftHandedMeshPath[] = "/World/ProbeLeftHandedMesh";
 constexpr char LeftHandedFaceVaryingMeshPath[] =
     "/World/ProbeLeftHandedFaceVaryingMesh";
+constexpr char ExpandedTopologyToggleMeshPath[] =
+    "/World/ProbeExpandedTopologyToggleMesh";
+constexpr char StrayPointMeshPath[] = "/World/ProbeStrayPointMesh";
+constexpr char LinkedLitMeshPath[] = "/World/LinkedLitMesh";
+constexpr char LinkedUnlitMeshPath[] = "/World/LinkedUnlitMesh";
+constexpr char LinkedLightPath[] = "/World/LinkedKeyLight";
+constexpr char LinkedDomePath[] = "/World/LinkedDome";
 
 constexpr char BlendShapeMeshPath[] = "/World/Rig/BlendShapeTriangle";
-
+constexpr char InbetweenMeshPath[] = "/World/Rig/InbetweenTriangle";
+constexpr char SkinnedNormalMeshPath[] = "/World/Rig/SkinnedNormalQuad";
+constexpr char FaceVaryingNormalMeshPath[] =
+    "/World/Rig/FaceVaryingNormalTriangle";
 /// One parsed entry of the ABI 4 vertex attribute table.
 struct ParsedAttribute
 {
@@ -69,7 +90,33 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 5);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 15);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 23);
+
+/// One decoded ABI v20 deformation block. The probe decodes the whole rig
+/// rather than its header, because the only assertion worth making about a
+/// bounded rig is that evaluating it reproduces the deformed points published
+/// beside it: a header check would pass for a rig that describes a different
+/// surface.
+struct ParsedDeformation
+{
+    bool present = false;
+    uint32_t flags = 0;
+    uint32_t unsupported = 0;
+    uint32_t joint_count = 0;
+    uint32_t influences_per_point = 0;
+    uint32_t bind_point_count = 0;
+    uint64_t identity = 0;
+    std::array<float, 16> geom_bind_transform{};
+    std::vector<float> bind_points;
+    std::vector<float> bind_normals;
+    std::vector<uint32_t> joint_indices;
+    std::vector<float> joint_weights;
+    std::vector<float> joint_matrices;
+    std::vector<std::array<float, 3>> blend_range;  // first, count, weight.
+    std::vector<uint32_t> blend_delta_points;
+    std::vector<float> blend_delta_offsets;   // 3 per delta.
+    std::vector<float> blend_delta_normals;   // 3 per delta.
+};
 
 openusd_render_camera AutomaticCamera()
 {
@@ -125,6 +172,11 @@ struct ParsedMeshIdentity
     // other parsed field can stand in for.
     uint32_t point_count = 0;
     std::array<double, 16> transform{};
+    // ABI v23. The complete ordered instancing chain, outermost level first.
+    // A composed ordinal cannot be decoded back to a scene instance once more
+    // than one level is involved, so nested-instancing evidence has to assert
+    // on the chain itself.
+    std::vector<std::pair<std::string, int32_t>> instancer_context;
 };
 
 /// One published basis-curves line list, including the resolved width
@@ -135,11 +187,27 @@ struct ParsedCurves
 {
     bool found = false;
     uint32_t topology_kind = 0;
+    uint64_t topology_revision = 0;
     uint32_t triangle_count = 0;
+    std::vector<uint32_t> point_origins;
     std::vector<float> points;
     std::vector<uint32_t> indices;
     std::vector<uint32_t> subprims;
     std::vector<ParsedAttribute> attributes;
+};
+
+/// One published material, kept so a stage that publishes several on purpose can
+/// be checked material by material rather than only by whichever came last.
+///
+/// Each texture entry is (parameter, output channel, asset, uv primvar). The
+/// primvar is per entry on the wire, which is what lets a displacement sample its
+/// own coordinate set while the surface samples another.
+struct ParsedMaterialRecord
+{
+    std::string path;
+    uint32_t surface_kind = 0;
+    std::vector<std::tuple<uint32_t, float>> scalars;
+    std::vector<std::tuple<uint32_t, uint32_t, std::string, std::string>> textures;
 };
 
 struct ParsedPage
@@ -170,7 +238,40 @@ struct ParsedPage
     std::vector<uint32_t> mesh_attribute_counts;
     std::vector<uint32_t> mesh_cull_styles;
     std::vector<uint32_t> mesh_topology_kinds;
+    // The topology revision each record published, in wire order. It is the
+    // presentation revision, not the authored one: draw mode and complexity
+    // rebuild the emitted arrays a consumer retains, so a record drawn as
+    // points and the same record drawn shaded must not arrive under one
+    // revision.
+    std::vector<uint64_t> mesh_topology_revisions;
     std::vector<uint32_t> mesh_triangle_counts;
+    // ABI v20 deformation evidence. The published count and the reason mask are
+    // separate because a page that publishes no rig and a page that publishes
+    // one it could not describe are different outcomes, and only the second one
+    // names a reason.
+    uint32_t deformation_published_count = 0;
+    uint32_t deformation_unsupported_mask = 0;
+    bool deformation_valid = true;
+    // Whether every MESH_UPSERT this page carried declared an ABI v22
+    // subprim-identity claim that matched the tables it published, and every
+    // published entry named an authored component inside the count the record
+    // declared or the explicit "no authored counterpart" sentinel.
+    bool subprim_identity_valid = true;
+    // ABI v22 per-record subprim evidence, in wire order. The claim and the
+    // reasons are separate from the tables because a record that answers a
+    // target and one that refuses it with a reason are different outcomes, and
+    // only the emitted arrays can show which components a claim describes.
+    std::vector<uint32_t> mesh_subprim_identities;
+    std::vector<uint32_t> mesh_subprim_unsupported;
+    std::vector<std::vector<uint32_t>> mesh_point_origins;
+    // The authored point space each record declares, in wire order. Separate
+    // from the table because a transform that keeps the table while zeroing
+    // the count -- or the reverse -- publishes an authored space no consumer
+    // can resolve into.
+    std::vector<uint32_t> mesh_authored_point_counts;
+    std::vector<std::vector<uint32_t>> mesh_primitive_subprims;
+    bool deformation_reproduces_points = true;
+    float deformation_worst_point_error = 0.0F;
     uint32_t material_upsert_count = 0;
     uint32_t material_remove_count = 0;
     bool material_valid = true;
@@ -182,13 +283,21 @@ struct ParsedPage
     uint32_t material_texture_count = 0;
     std::array<float, 6> material_uv_transform{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
     float material_roughness = -1.0F;
+    // Every published scalar as (parameter, first component). The MDL
+    // module-default check needs more than one input, because the claim is
+    // that an authored value and a module default arrived together.
+    std::vector<std::tuple<uint32_t, float>> material_scalars;
     std::string material_texture_asset;
     std::string material_texture_uv;
     uint32_t material_texture_parameter = 0;
     // Every published texture entry as (parameter, output channel, asset), in
     // wire order. The channel is what proves the authored UsdUVTexture output
     // token survived resolution, which no other field can stand in for.
-    std::vector<std::tuple<uint32_t, uint32_t, std::string>> material_textures;
+    std::vector<std::tuple<uint32_t, uint32_t, std::string, std::string>> material_textures;
+    // Every published material, in wire order. The single-material fields above
+    // describe whichever one came last, which is enough for a stage with one
+    // material and useless for a stage that publishes several on purpose.
+    std::vector<ParsedMaterialRecord> materials;
     std::vector<std::string> material_remove_paths;
     std::vector<ParsedAttribute> primvar_mesh_attributes;
     bool found_primvar_mesh = false;
@@ -198,13 +307,49 @@ struct ParsedPage
     ParsedCurves right_handed_mesh;
     ParsedCurves left_handed_mesh;
     ParsedCurves left_handed_face_varying_mesh;
+    ParsedCurves expanded_topology_toggle_mesh;
+    ParsedCurves stray_point_mesh;
 
     bool found_blend_shape_mesh = false;
     float blend_shape_first_x = 0.0F;
+    ParsedCurves inbetween_mesh;
+    ParsedCurves skinned_normal_mesh;
+    ParsedCurves face_varying_normal_mesh;
     int32_t frame_width = 0;
     int32_t frame_height = 0;
     std::array<double, 16> frame_view{};
     std::array<double, 16> frame_projection{};
+    uint32_t frame_light_count = 0;
+    // ABI v21 dome table. dome_count is the ordering a LIGHT_LINK dome_mask
+    // indexes; the per-dome ambient and flags are read so a masked dome sum can
+    // be checked against the scene-wide ambient it must reproduce.
+    uint32_t frame_dome_count = 0;
+    std::array<float, 3> frame_ambient{};
+    std::vector<std::tuple<float, float, float, uint32_t>> frame_domes;
+
+    // ABI v18 light linking. The table is sparse and default-free, so its
+    // presence and exact contents are the evidence that a collection resolved
+    // into per-prim masks rather than into a table that names every prim.
+    uint32_t light_link_count = 0;
+    bool light_link_valid = true;
+    uint32_t light_link_light_count = 0;
+    uint32_t light_link_unsupported = 0;
+    uint32_t light_link_dome_count = 0;
+    // (path, instance_index, light_mask, shadow_mask, dome_mask)
+    std::vector<std::tuple<std::string, int32_t, uint32_t, uint32_t, uint32_t>>
+        light_links;
+    // ABI v21 environment dome indices, keyed by dome prim path, so a probe can
+    // prove the bit an ENVIRONMENT record claims is the bit the dome table
+    // published. The third element is unsupported_features, which is where a
+    // dome's collection:shadowLink is named.
+    std::vector<std::tuple<std::string, uint32_t, uint32_t>> environment_dome_indices;
+    uint32_t shadow_count = 0;
+    bool shadow_valid = true;
+    uint32_t shadow_descriptor_count = 0;
+    uint32_t shadow_light_count = 0;
+    uint32_t shadow_unsupported = 0;
+    // (light_index, map_index, resolution, flags) per published descriptor.
+    std::vector<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> shadows;
 };
 
 class StartBarrier
@@ -273,6 +418,299 @@ bool MultiplySize(size_t left, size_t right, size_t* result)
     return true;
 }
 
+/// Decodes one ABI v20 deformation block and checks every bound and every
+/// internal reference it declares. A block that does not decode exactly is a
+/// parse failure rather than a tolerated one: the whole point of publishing a
+/// self-describing rig is that a consumer can reject it before evaluating it.
+bool DecodeDeformation(
+    const uint8_t* data,
+    size_t size,
+    size_t offset,
+    uint32_t byteCount,
+    uint32_t flags,
+    uint32_t pointCount,
+    ParsedDeformation* deformation)
+{
+    const uint32_t knownFlags =
+        OPENUSD_SILK_DEFORMATION_FLAG_BIND_NORMALS |
+        OPENUSD_SILK_DEFORMATION_FLAG_BLEND_NORMAL_OFFSETS;
+    if ((flags & ~knownFlags) != 0)
+    {
+        return false;
+    }
+    uint32_t blendRangeCount = 0;
+    uint32_t blendDeltaCount = 0;
+    uint32_t reserved = 1;
+    if (!ReadValue(data, size, offset, &deformation->joint_count) ||
+        !ReadValue(data, size, offset + 4, &deformation->influences_per_point) ||
+        !ReadValue(data, size, offset + 8, &deformation->bind_point_count) ||
+        !ReadValue(data, size, offset + 12, &blendRangeCount) ||
+        !ReadValue(data, size, offset + 16, &blendDeltaCount) ||
+        !ReadValue(data, size, offset + 20, &reserved) ||
+        !ReadValue(data, size, offset + 24, &deformation->identity))
+    {
+        return false;
+    }
+    if (reserved != 0 ||
+        deformation->joint_count == 0 ||
+        deformation->joint_count > OPENUSD_SILK_MAX_DEFORMATION_JOINTS ||
+        deformation->influences_per_point == 0 ||
+        deformation->influences_per_point >
+            OPENUSD_SILK_MAX_DEFORMATION_INFLUENCES ||
+        deformation->bind_point_count != pointCount ||
+        blendRangeCount > OPENUSD_SILK_MAX_DEFORMATION_BLEND_RANGES ||
+        blendDeltaCount > OPENUSD_SILK_MAX_DEFORMATION_BLEND_DELTAS)
+    {
+        return false;
+    }
+
+    size_t cursor = offset + 32;
+    for (size_t element = 0; element < 16; ++element)
+    {
+        if (!ReadValue(
+                data,
+                size,
+                cursor + (element * sizeof(float)),
+                &deformation->geom_bind_transform[element]))
+        {
+            return false;
+        }
+    }
+    cursor += 16 * sizeof(float);
+
+    const size_t pointComponents = static_cast<size_t>(pointCount) * 3;
+    const bool hasBindNormals =
+        (flags & OPENUSD_SILK_DEFORMATION_FLAG_BIND_NORMALS) != 0;
+    const size_t influences =
+        static_cast<size_t>(pointCount) * deformation->influences_per_point;
+    const auto readFloats =
+        [&](std::vector<float>* target, size_t count) -> bool
+    {
+        target->resize(count);
+        for (size_t element = 0; element < count; ++element)
+        {
+            if (!ReadValue(
+                    data,
+                    size,
+                    cursor + (element * sizeof(float)),
+                    &(*target)[element]))
+            {
+                return false;
+            }
+        }
+        cursor += count * sizeof(float);
+        return true;
+    };
+
+    if (!readFloats(&deformation->bind_points, pointComponents))
+    {
+        return false;
+    }
+    if (hasBindNormals && !readFloats(&deformation->bind_normals, pointComponents))
+    {
+        return false;
+    }
+    deformation->joint_indices.resize(influences);
+    for (size_t element = 0; element < influences; ++element)
+    {
+        if (!ReadValue(
+                data,
+                size,
+                cursor + (element * sizeof(uint32_t)),
+                &deformation->joint_indices[element]) ||
+            deformation->joint_indices[element] >= deformation->joint_count)
+        {
+            return false;
+        }
+    }
+    cursor += influences * sizeof(uint32_t);
+    if (!readFloats(&deformation->joint_weights, influences) ||
+        !readFloats(
+            &deformation->joint_matrices,
+            static_cast<size_t>(deformation->joint_count) * 16))
+    {
+        return false;
+    }
+
+    deformation->blend_range.resize(blendRangeCount);
+    for (uint32_t range = 0; range < blendRangeCount; ++range)
+    {
+        uint32_t firstDelta = 0;
+        uint32_t deltaCount = 0;
+        float weight = 0.0F;
+        uint32_t rangeReserved = 1;
+        const size_t entry = cursor + (static_cast<size_t>(range) * 16);
+        if (!ReadValue(data, size, entry, &firstDelta) ||
+            !ReadValue(data, size, entry + 4, &deltaCount) ||
+            !ReadValue(data, size, entry + 8, &weight) ||
+            !ReadValue(data, size, entry + 12, &rangeReserved) ||
+            rangeReserved != 0 ||
+            static_cast<uint64_t>(firstDelta) + deltaCount > blendDeltaCount)
+        {
+            return false;
+        }
+        deformation->blend_range[range] = {
+            static_cast<float>(firstDelta),
+            static_cast<float>(deltaCount),
+            weight};
+    }
+    cursor += static_cast<size_t>(blendRangeCount) * 16;
+
+    deformation->blend_delta_points.resize(blendDeltaCount);
+    deformation->blend_delta_offsets.resize(
+        static_cast<size_t>(blendDeltaCount) * 3);
+    deformation->blend_delta_normals.resize(
+        static_cast<size_t>(blendDeltaCount) * 3);
+    for (uint32_t delta = 0; delta < blendDeltaCount; ++delta)
+    {
+        const size_t entry = cursor + (static_cast<size_t>(delta) * 28);
+        if (!ReadValue(
+                data,
+                size,
+                entry,
+                &deformation->blend_delta_points[delta]) ||
+            deformation->blend_delta_points[delta] >= pointCount)
+        {
+            return false;
+        }
+        for (size_t component = 0; component < 3; ++component)
+        {
+            if (!ReadValue(
+                    data,
+                    size,
+                    entry + 4 + (component * sizeof(float)),
+                    &deformation->blend_delta_offsets[
+                        (static_cast<size_t>(delta) * 3) + component]) ||
+                !ReadValue(
+                    data,
+                    size,
+                    entry + 16 + (component * sizeof(float)),
+                    &deformation->blend_delta_normals[
+                        (static_cast<size_t>(delta) * 3) + component]))
+            {
+                return false;
+            }
+        }
+    }
+    cursor += static_cast<size_t>(blendDeltaCount) * 28;
+
+    if (cursor != offset + byteCount)
+    {
+        return false;
+    }
+    // The identity is an index over the block's own bytes, so recomputing it
+    // here proves the producer indexed the bytes it actually published.
+    uint64_t identity = 14695981039346656037ull;
+    for (size_t byte = offset + 32; byte < cursor; ++byte)
+    {
+        identity ^= static_cast<uint64_t>(data[byte]);
+        identity *= 1099511628211ull;
+    }
+    if (identity != deformation->identity)
+    {
+        return false;
+    }
+    deformation->flags = flags;
+    deformation->present = true;
+    return true;
+}
+
+/// Evaluates a decoded rig in the order the ABI documents and compares it with
+/// the deformed points published beside it. This is the analytic gate the whole
+/// deformation block exists for: a rig that does not reproduce the CPU answer
+/// is a rig a consumer must not evaluate.
+bool DeformationReproducesPoints(
+    const ParsedDeformation& deformation,
+    const std::vector<float>& published,
+    float* worstError)
+{
+    const size_t pointCount = deformation.bind_point_count;
+    if (published.size() != pointCount * 3)
+    {
+        return false;
+    }
+    std::vector<float> offsets(pointCount * 3, 0.0F);
+    for (const std::array<float, 3>& range : deformation.blend_range)
+    {
+        const size_t first = static_cast<size_t>(range[0]);
+        const size_t count = static_cast<size_t>(range[1]);
+        for (size_t entry = 0; entry < count; ++entry)
+        {
+            const size_t delta = first + entry;
+            const size_t point = deformation.blend_delta_points[delta];
+            for (size_t component = 0; component < 3; ++component)
+            {
+                offsets[(point * 3) + component] +=
+                    range[2] *
+                    deformation.blend_delta_offsets[(delta * 3) + component];
+            }
+        }
+    }
+
+    const auto transform =
+        [](const float* matrix, const float* point, float* out)
+    {
+        out[0] = (point[0] * matrix[0]) + (point[1] * matrix[4]) +
+            (point[2] * matrix[8]) + matrix[12];
+        out[1] = (point[0] * matrix[1]) + (point[1] * matrix[5]) +
+            (point[2] * matrix[9]) + matrix[13];
+        out[2] = (point[0] * matrix[2]) + (point[1] * matrix[6]) +
+            (point[2] * matrix[10]) + matrix[14];
+    };
+
+    bool matches = true;
+    for (size_t point = 0; point < pointCount; ++point)
+    {
+        float bind[3];
+        for (size_t component = 0; component < 3; ++component)
+        {
+            bind[component] = deformation.bind_points[(point * 3) + component] +
+                offsets[(point * 3) + component];
+        }
+        float bound[3];
+        transform(deformation.geom_bind_transform.data(), bind, bound);
+        float skinned[3] = {0.0F, 0.0F, 0.0F};
+        for (uint32_t influence = 0;
+             influence < deformation.influences_per_point;
+             ++influence)
+        {
+            const size_t slot =
+                (point * deformation.influences_per_point) + influence;
+            const float weight = deformation.joint_weights[slot];
+            if (weight == 0.0F)
+            {
+                continue;
+            }
+            float moved[3];
+            transform(
+                deformation.joint_matrices.data() +
+                    (static_cast<size_t>(deformation.joint_indices[slot]) * 16),
+                bound,
+                moved);
+            for (size_t component = 0; component < 3; ++component)
+            {
+                skinned[component] += moved[component] * weight;
+            }
+        }
+        for (size_t component = 0; component < 3; ++component)
+        {
+            const float expected = published[(point * 3) + component];
+            const float error = std::fabs(skinned[component] - expected);
+            const float scale = std::fmax(1.0F, std::fabs(expected));
+            const float relative = error / scale;
+            if (relative > *worstError)
+            {
+                *worstError = relative;
+            }
+            if (!(relative <= OPENUSD_SILK_DEFORMATION_VERIFY_TOLERANCE))
+            {
+                matches = false;
+            }
+        }
+    }
+    return matches;
+}
+
 bool Utf8PathLess(const std::string& left, const std::string& right)
 {
     return std::lexicographical_compare(
@@ -334,6 +772,60 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 result.frame_projection.data(),
                 data + offset + projectionOffset,
                 sizeof(result.frame_projection));
+
+            // The direct-light count the LIGHT_LINK masks index. Reading it here
+            // keeps a link-table assertion from passing for the wrong reason,
+            // because a table that indexes no lights masks nothing.
+            constexpr size_t lightCountOffset = 536;
+            if (static_cast<size_t>(byteSize) >= lightCountOffset + sizeof(uint32_t))
+            {
+                static_cast<void>(ReadValue(
+                    data,
+                    size,
+                    offset + lightCountOffset,
+                    &result.frame_light_count));
+            }
+
+            // The ABI v21 dome table. It follows the eight fixed light entries
+            // and the scene-wide ambient term: 552 header, 8 * 176 lights, 16
+            // ambient.
+            constexpr size_t ambientOffset = 552 + (8 * 176);
+            constexpr size_t domeCountOffset = ambientOffset + 16;
+            constexpr size_t domeTableOffset = domeCountOffset + 16;
+            if (static_cast<size_t>(byteSize) >=
+                domeTableOffset + (OPENUSD_SILK_MAX_DOME_LIGHTS * 32))
+            {
+                for (size_t component = 0; component < 3; ++component)
+                {
+                    static_cast<void>(ReadValue(
+                        data,
+                        size,
+                        offset + ambientOffset + (component * sizeof(float)),
+                        &result.frame_ambient[component]));
+                }
+                static_cast<void>(ReadValue(
+                    data,
+                    size,
+                    offset + domeCountOffset,
+                    &result.frame_dome_count));
+                result.frame_domes.clear();
+                for (uint32_t dome = 0; dome < result.frame_dome_count &&
+                    dome < OPENUSD_SILK_MAX_DOME_LIGHTS; ++dome)
+                {
+                    const size_t entry = domeTableOffset + (static_cast<size_t>(dome) * 32);
+                    float red = 0.0f;
+                    float green = 0.0f;
+                    float blue = 0.0f;
+                    uint32_t flags = 0;
+                    if (ReadValue(data, size, offset + entry, &red) &&
+                        ReadValue(data, size, offset + entry + 4, &green) &&
+                        ReadValue(data, size, offset + entry + 8, &blue) &&
+                        ReadValue(data, size, offset + entry + 16, &flags))
+                    {
+                        result.frame_domes.emplace_back(red, green, blue, flags);
+                    }
+                }
+            }
         }
         else if (type == OPENUSD_SILK_COMMAND_MESH_UPSERT)
         {
@@ -352,7 +844,18 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             uint32_t triangleCount = 0;
             uint32_t materialPathSize = 0;
             uint32_t attributeCount = 0;
-            constexpr size_t pathOffset = 224;
+            uint32_t deformationFlags = 0;
+            uint32_t deformationUnsupported = 0;
+            uint32_t deformationByteCount = 0;
+            uint32_t subprimIdentity = 0;
+            uint32_t subprimUnsupported = 0;
+            uint32_t pointOriginCount = 0;
+            uint32_t cornerEdgeCount = 0;
+            uint32_t authoredEdgeCount = 0;
+            uint32_t authoredPointCount = 0;
+            uint32_t instancerPathByteCount = 0;
+            uint32_t instancerContextCount = 0;
+            constexpr size_t pathOffset = 268;
             if (ReadValue(data, size, offset + 8, &stableHash) &&
                 ReadValue(data, size, offset + 16, &primId) &&
                 ReadValue(data, size, offset + 20, &instanceId) &&
@@ -366,7 +869,18 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 ReadValue(data, size, offset + 56, &indexCount) &&
                 ReadValue(data, size, offset + 60, &triangleCount) &&
                 ReadValue(data, size, offset + 216, &materialPathSize) &&
-                ReadValue(data, size, offset + 220, &attributeCount))
+                ReadValue(data, size, offset + 220, &attributeCount) &&
+                ReadValue(data, size, offset + 224, &deformationFlags) &&
+                ReadValue(data, size, offset + 228, &deformationUnsupported) &&
+                ReadValue(data, size, offset + 232, &deformationByteCount) &&
+                ReadValue(data, size, offset + 236, &subprimIdentity) &&
+                ReadValue(data, size, offset + 240, &subprimUnsupported) &&
+                ReadValue(data, size, offset + 244, &pointOriginCount) &&
+                ReadValue(data, size, offset + 248, &cornerEdgeCount) &&
+                ReadValue(data, size, offset + 252, &authoredEdgeCount) &&
+                ReadValue(data, size, offset + 256, &authoredPointCount) &&
+                ReadValue(data, size, offset + 260, &instancerPathByteCount) &&
+                ReadValue(data, size, offset + 264, &instancerContextCount))
             {
                 size_t pointBytes = 0;
                 size_t indexBytes = 0;
@@ -447,12 +961,163 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     }
                     attributes.push_back(std::move(parsed));
                 }
+                // The deformation block closes the record, so decoding it is
+                // what keeps the exact-size check exact after ABI v20.
+                ParsedDeformation deformation;
+                const size_t deformationOffset = offset + expectedSize;
+                if (sizesValid && deformationByteCount != 0)
+                {
+                    sizesValid =
+                        DecodeDeformation(
+                            data,
+                            size,
+                            deformationOffset,
+                            deformationByteCount,
+                            deformationFlags,
+                            pointCount,
+                            &deformation) &&
+                        AddSize(&expectedSize, deformationByteCount);
+                    if (!sizesValid)
+                    {
+                        result.deformation_valid = false;
+                    }
+                }
                 const uint32_t indicesPerPrimitive =
                     topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST
                         ? 3u
                         : (topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 2u : 1u);
-                sizesValid = sizesValid &&
+                // The ABI v22 subprim-identity tables close the record after the
+                // deformation block, so decoding them is what keeps the
+                // exact-size check exact. Each table is either absent or
+                // complete, and every entry either names an authored component
+                // inside the count the record declares or is the explicit
+                // "no authored counterpart" sentinel.
+                size_t pointOriginBytes = 0;
+                size_t cornerEdgeBytes = 0;
+                const size_t pointOriginOffset = offset + expectedSize;
+                if (sizesValid)
+                {
+                    sizesValid =
+                        MultiplySize(
+                            pointOriginCount, sizeof(uint32_t), &pointOriginBytes) &&
+                        MultiplySize(
+                            cornerEdgeCount, sizeof(uint32_t), &cornerEdgeBytes) &&
+                        AddSize(&expectedSize, pointOriginBytes) &&
+                        AddSize(&expectedSize, cornerEdgeBytes) &&
+                        AddSize(&expectedSize, instancerPathByteCount);
+                }
+                const size_t cornerEdgeOffset = pointOriginOffset + pointOriginBytes;
+                const uint32_t cornersPerPrimitive =
+                    topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST
+                        ? 3u
+                        : (topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 1u : 0u);
+                bool subprimValid = sizesValid &&
+                    (subprimIdentity & ~(OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
+                        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
+                        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT)) == 0 &&
+                    (subprimUnsupported &
+                        ~(OPENUSD_SILK_SUBPRIM_UNSUPPORTED_REFINED_SUBDIVISION |
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE |
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY |
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET)) == 0 &&
+                    ((subprimIdentity & OPENUSD_SILK_SUBPRIM_IDENTITY_POINT) != 0) ==
+                        (pointOriginCount != 0) &&
+                    ((subprimIdentity & OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE) != 0) ==
+                        (cornerEdgeCount != 0) &&
+                    (pointOriginCount == 0 || pointOriginCount == pointCount) &&
+                    (cornerEdgeCount == 0 ||
+                        (cornersPerPrimitive != 0 &&
+                            cornerEdgeCount ==
+                                triangleCount * cornersPerPrimitive)) &&
+                    (pointOriginCount != 0 || authoredPointCount == 0) &&
+                    (cornerEdgeCount != 0 || authoredEdgeCount == 0);
+                std::vector<uint32_t> parsedPointOrigins;
+                parsedPointOrigins.reserve(pointOriginCount);
+                for (uint32_t entry = 0; subprimValid && entry < pointOriginCount;
+                     ++entry)
+                {
+                    uint32_t origin = 0;
+                    subprimValid =
+                        ReadValue(
+                            data,
+                            size,
+                            pointOriginOffset + (entry * sizeof(uint32_t)),
+                            &origin) &&
+                        (origin == OPENUSD_SILK_SUBPRIM_NONE ||
+                            origin < authoredPointCount);
+                    parsedPointOrigins.push_back(origin);
+                }
+                for (uint32_t entry = 0; subprimValid && entry < cornerEdgeCount;
+                     ++entry)
+                {
+                    uint32_t edge = 0;
+                    subprimValid =
+                        ReadValue(
+                            data,
+                            size,
+                            cornerEdgeOffset + (entry * sizeof(uint32_t)),
+                            &edge) &&
+                        (edge == OPENUSD_SILK_SUBPRIM_NONE ||
+                            edge < authoredEdgeCount);
+                }
+                if (!subprimValid)
+                {
+                    result.subprim_identity_valid = false;
+                }
+
+                // The ABI v23 instancer-context block closes the record, so
+                // walking it is what keeps the exact-size check exact. Every
+                // entry names an absolute path and a non-negative index, the
+                // chain is published exactly when the record belongs to an
+                // instancer, and it ends at the instancer the record separately
+                // names.
+                const size_t instancerPathOffset =
+                    cornerEdgeOffset + cornerEdgeBytes;
+                std::vector<std::pair<std::string, int32_t>> parsedContext;
+                bool contextValid = sizesValid &&
+                    ((instancerContextCount != 0) ==
+                        (instancerPathByteCount != 0)) &&
+                    instancerContextCount <=
+                        OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES;
+                size_t contextOffset =
+                    instancerPathOffset + instancerPathByteCount;
+                for (uint32_t entry = 0;
+                     contextValid && entry < instancerContextCount;
+                     ++entry)
+                {
+                    uint32_t entryPathSize = 0;
+                    int32_t entryIndex = 0;
+                    contextValid =
+                        ReadValue(data, size, contextOffset, &entryPathSize) &&
+                        ReadValue(data, size, contextOffset + 4, &entryIndex) &&
+                        entryIndex >= 0 &&
+                        entryPathSize != 0 &&
+                        contextOffset + 8 + entryPathSize <= offset + byteSize &&
+                        data[contextOffset + 8] == '/' &&
+                        AddSize(&expectedSize, 8) &&
+                        AddSize(&expectedSize, entryPathSize);
+                    if (!contextValid)
+                    {
+                        break;
+                    }
+                    parsedContext.emplace_back(
+                        std::string(
+                            reinterpret_cast<const char*>(data + contextOffset + 8),
+                            entryPathSize),
+                        entryIndex);
+                    contextOffset += 8 + entryPathSize;
+                }
+                if (contextValid && instancerContextCount != 0)
+                {
+                    const std::string instancerPath(
+                        reinterpret_cast<const char*>(data + instancerPathOffset),
+                        instancerPathByteCount);
+                    contextValid = parsedContext.back().first == instancerPath;
+                }
+                sizesValid = sizesValid && contextValid;
+                sizesValid = sizesValid && subprimValid &&
                     expectedSize == byteSize &&
+                    ((instancerPathByteCount != 0) == (instanceId != 0)) &&
                     (topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
                      topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
                      topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST) &&
@@ -475,7 +1140,45 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     result.mesh_attribute_counts.push_back(attributeCount);
                     result.mesh_cull_styles.push_back(cullStyle);
                     result.mesh_topology_kinds.push_back(topologyKind);
+                    result.mesh_topology_revisions.push_back(topologyRevision);
                     result.mesh_triangle_counts.push_back(triangleCount);
+                    result.mesh_subprim_identities.push_back(subprimIdentity);
+                    result.mesh_subprim_unsupported.push_back(subprimUnsupported);
+                    result.mesh_point_origins.push_back(parsedPointOrigins);
+                    result.mesh_authored_point_counts.push_back(authoredPointCount);
+                    result.deformation_unsupported_mask |= deformationUnsupported;
+                    if (deformation.present)
+                    {
+                        ++result.deformation_published_count;
+                        const size_t publishedPointsOffset =
+                            offset + pathOffset + pathSize;
+                        std::vector<float> published(
+                            static_cast<size_t>(pointCount) * 3);
+                        for (size_t component = 0;
+                             component < published.size();
+                             ++component)
+                        {
+                            if (!ReadValue(
+                                    data,
+                                    size,
+                                    publishedPointsOffset +
+                                        (component * sizeof(float)),
+                                    &published[component]))
+                            {
+                                result.deformation_valid = false;
+                                published.clear();
+                                break;
+                            }
+                        }
+                        if (!published.empty() &&
+                            !DeformationReproducesPoints(
+                                deformation,
+                                published,
+                                &result.deformation_worst_point_error))
+                        {
+                            result.deformation_reproduces_points = false;
+                        }
+                    }
                     ParsedMeshIdentity identity{
                         path,
                         primId,
@@ -483,7 +1186,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         instanceId,
                         instanceIndex,
                         pointCount,
-                        {}};
+                        {},
+                        parsedContext};
                     std::memcpy(
                         identity.transform.data(),
                         data + offset + 80,
@@ -521,6 +1225,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                             break;
                         }
                     }
+                    result.mesh_primitive_subprims.push_back(subprims);
 
                     float firstX = 0.0F;
                     if (path == SharedMeshPath && pointCount > 0 &&
@@ -554,23 +1259,60 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                              path == UniformWidthCurvesPath ||
                              path == RightHandedMeshPath ||
                              path == LeftHandedMeshPath ||
-                             path == LeftHandedFaceVaryingMeshPath)
+                             path == LeftHandedFaceVaryingMeshPath ||
+                             path == ExpandedTopologyToggleMeshPath ||
+                             path == StrayPointMeshPath ||
+                             path == InbetweenMeshPath ||
+                             path == SkinnedNormalMeshPath ||
+                             path == FaceVaryingNormalMeshPath)
                     {
-                        ParsedCurves& curves = path == BasisCurvesPath
-                            ? result.basis_curves
-                            : (path == VaryingWidthCurvesPath
-                                ? result.varying_width_curves
-                                : (path == UniformWidthCurvesPath
-                                    ? result.uniform_width_curves
-                                    : (path == RightHandedMeshPath
-                                        ? result.right_handed_mesh
-                                        : (path == LeftHandedMeshPath
-                                            ? result.left_handed_mesh
-                                            : result
-                                                .left_handed_face_varying_mesh))));
+                        ParsedCurves* target = &result.basis_curves;
+                        if (path == VaryingWidthCurvesPath)
+                        {
+                            target = &result.varying_width_curves;
+                        }
+                        else if (path == UniformWidthCurvesPath)
+                        {
+                            target = &result.uniform_width_curves;
+                        }
+                        else if (path == RightHandedMeshPath)
+                        {
+                            target = &result.right_handed_mesh;
+                        }
+                        else if (path == LeftHandedMeshPath)
+                        {
+                            target = &result.left_handed_mesh;
+                        }
+                        else if (path == LeftHandedFaceVaryingMeshPath)
+                        {
+                            target = &result.left_handed_face_varying_mesh;
+                        }
+                        else if (path == ExpandedTopologyToggleMeshPath)
+                        {
+                            target = &result.expanded_topology_toggle_mesh;
+                        }
+                        else if (path == StrayPointMeshPath)
+                        {
+                            target = &result.stray_point_mesh;
+                        }
+                        else if (path == InbetweenMeshPath)
+                        {
+                            target = &result.inbetween_mesh;
+                        }
+                        else if (path == SkinnedNormalMeshPath)
+                        {
+                            target = &result.skinned_normal_mesh;
+                        }
+                        else if (path == FaceVaryingNormalMeshPath)
+                        {
+                            target = &result.face_varying_normal_mesh;
+                        }
+                        ParsedCurves& curves = *target;
                         curves.found = true;
                         curves.topology_kind = topologyKind;
+                        curves.topology_revision = topologyRevision;
                         curves.triangle_count = triangleCount;
+                        curves.point_origins = parsedPointOrigins;
                         curves.subprims = std::move(subprims);
                         curves.attributes = std::move(attributes);
                         curves.points.resize(
@@ -670,6 +1412,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 reinterpret_cast<const char*>(data + offset + pathOffset),
                 pathSize);
             float roughness = -1.0F;
+            std::vector<std::tuple<uint32_t, float>> scalarEntries;
             for (uint32_t scalar = 0; valid && scalar < scalarCount; ++scalar)
             {
                 uint32_t parameter = 0;
@@ -678,6 +1421,14 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 valid = ReadValue(data, size, entry, &parameter) &&
                     ReadValue(data, size, entry + 4, &componentCount) &&
                     componentCount >= 1 && componentCount <= 4;
+                if (valid)
+                {
+                    float first = 0.0F;
+                    if (ReadValue(data, size, entry + 8, &first))
+                    {
+                        scalarEntries.emplace_back(parameter, first);
+                    }
+                }
                 if (valid && parameter == OPENUSD_SILK_MATERIAL_ROUGHNESS)
                 {
                     valid = ReadValue(data, size, entry + 8, &roughness);
@@ -691,7 +1442,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             std::string textureAsset;
             std::string textureUv;
             uint32_t textureParameter = 0;
-            std::vector<std::tuple<uint32_t, uint32_t, std::string>> textures;
+            std::vector<std::tuple<uint32_t, uint32_t, std::string, std::string>> textures;
             for (uint32_t texture = 0; valid && texture < textureCount; ++texture)
             {
                 uint32_t parameter = 0;
@@ -727,7 +1478,11 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                                 data + entry + 88 + assetSize),
                             uvSize);
                     }
-                    textures.emplace_back(parameter, outputChannel, std::move(asset));
+                    std::string entryUv(
+                        reinterpret_cast<const char*>(data + entry + 88 + assetSize),
+                        uvSize);
+                    textures.emplace_back(
+                        parameter, outputChannel, std::move(asset), std::move(entryUv));
                 }
                 valid = valid &&
                     AddSize(&cursor, 88) &&
@@ -773,6 +1528,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 result.material_scalar_count = scalarCount;
                 result.material_texture_count = textureCount;
                 result.material_roughness = roughness;
+                result.materials.push_back(
+                    ParsedMaterialRecord{path, surfaceKind, scalarEntries, textures});
+                result.material_scalars = std::move(scalarEntries);
                 result.material_texture_asset = std::move(textureAsset);
                 result.material_texture_uv = std::move(textureUv);
                 result.material_texture_parameter = textureParameter;
@@ -798,6 +1556,166 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             {
                 result.material_valid = false;
             }
+        }
+        else if (type == OPENUSD_SILK_COMMAND_ENVIRONMENT_UPSERT ||
+            type == OPENUSD_SILK_COMMAND_ENVIRONMENT_REMOVE)
+        {
+            // The ABI v21 dome index is decoded, and nothing else is: it is the
+            // bit a LIGHT_LINK dome_mask sets, so a probe that asserts on dome
+            // linking has to be able to see it. The rest of the record's layout
+            // is owned by the managed round trip in
+            // tests/OpenUsd.Rendering.Tests/SilkDomeEnvironmentTests.cs.
+            if (type == OPENUSD_SILK_COMMAND_ENVIRONMENT_UPSERT)
+            {
+                uint32_t pathSize = 0;
+                uint32_t unsupported = 0;
+                uint32_t domeIndex = OPENUSD_SILK_DOME_INDEX_NONE;
+                if (ReadValue(data, size, offset + 16, &pathSize) &&
+                    ReadValue(data, size, offset + 32, &unsupported) &&
+                    ReadValue(data, size, offset + 36, &domeIndex) &&
+                    pathSize > 0 &&
+                    static_cast<size_t>(byteSize) >= 200 + static_cast<size_t>(pathSize))
+                {
+                    result.environment_dome_indices.emplace_back(
+                        std::string(
+                            reinterpret_cast<const char*>(data + offset + 200),
+                            pathSize),
+                        domeIndex,
+                        unsupported);
+                }
+            }
+        }
+        else if (type == OPENUSD_SILK_COMMAND_LIGHT_LINK)
+        {
+            ++result.light_link_count;
+            uint32_t entryCount = 0;
+            uint32_t lightCount = 0;
+            uint32_t unsupported = 0;
+            uint32_t domeCount = 0;
+            bool valid = ReadValue(data, size, offset + 8, &entryCount) &&
+                ReadValue(data, size, offset + 12, &lightCount) &&
+                ReadValue(data, size, offset + 16, &unsupported) &&
+                ReadValue(data, size, offset + 20, &domeCount) &&
+                lightCount <= OPENUSD_SILK_MAX_FRAME_LIGHTS &&
+                domeCount <= OPENUSD_SILK_MAX_DOME_LIGHTS &&
+                entryCount <= OPENUSD_SILK_MAX_LINK_ENTRIES;
+            size_t cursor = 24;
+            for (uint32_t entry = 0; valid && entry < entryCount; ++entry)
+            {
+                uint32_t lightMask = 0;
+                uint32_t shadowMask = 0;
+                uint32_t domeMask = 0;
+                int32_t instanceIndex = 0;
+                uint32_t pathSize = 0;
+                valid = ReadValue(data, size, offset + cursor, &lightMask) &&
+                    ReadValue(data, size, offset + cursor + 4, &shadowMask) &&
+                    ReadValue(data, size, offset + cursor + 8, &domeMask) &&
+                    ReadValue(data, size, offset + cursor + 12, &instanceIndex) &&
+                    ReadValue(data, size, offset + cursor + 16, &pathSize) &&
+                    pathSize > 0 &&
+                    instanceIndex >= OPENUSD_SILK_LINK_ALL_INSTANCES &&
+                    // Bits at or above the published counts must be zero, which
+                    // is what keeps a mask from naming a light or a dome the
+                    // frame never published.
+                    (lightCount >= 32 || lightMask < (1u << lightCount)) &&
+                    (lightCount >= 32 || shadowMask < (1u << lightCount)) &&
+                    (domeCount >= 32 || domeMask < (1u << domeCount)) &&
+                    AddSize(&cursor, 20) &&
+                    cursor <= byteSize &&
+                    static_cast<size_t>(pathSize) <= byteSize - cursor;
+                if (!valid)
+                {
+                    break;
+                }
+                std::string path(
+                    reinterpret_cast<const char*>(data + offset + cursor),
+                    pathSize);
+                // The masks are deliberately not intersected: UsdLux resolves
+                // collection:lightLink and collection:shadowLink separately, so a
+                // prim that casts a light's shadow without being lit by it is a
+                // valid combination rather than a malformed one.
+                valid = !path.empty() && path.front() == '/' &&
+                    AddSize(&cursor, pathSize);
+                result.light_links.emplace_back(
+                    std::move(path),
+                    instanceIndex,
+                    lightMask,
+                    shadowMask,
+                    domeMask);
+            }
+            valid = valid && cursor == byteSize;
+            result.light_link_valid = result.light_link_valid && valid;
+            result.light_link_light_count = lightCount;
+            result.light_link_unsupported = unsupported;
+            result.light_link_dome_count = domeCount;
+        }
+        else if (type == OPENUSD_SILK_COMMAND_SHADOW)
+        {
+            ++result.shadow_count;
+            uint32_t descriptorCount = 0;
+            uint32_t lightCount = 0;
+            uint32_t unsupported = 0;
+            uint32_t headerReserved = 1;
+            bool valid = ReadValue(data, size, offset + 8, &descriptorCount) &&
+                ReadValue(data, size, offset + 12, &lightCount) &&
+                ReadValue(data, size, offset + 16, &unsupported) &&
+                ReadValue(data, size, offset + 20, &headerReserved) &&
+                headerReserved == 0u &&
+                lightCount <= OPENUSD_SILK_MAX_FRAME_LIGHTS &&
+                descriptorCount <= OPENUSD_SILK_MAX_SHADOW_MAPS &&
+                byteSize == 24 + (static_cast<size_t>(descriptorCount) * 288);
+            for (uint32_t entry = 0; valid && entry < descriptorCount; ++entry)
+            {
+                const size_t cursor = 24 + (static_cast<size_t>(entry) * 288);
+                uint32_t lightIndex = 0;
+                uint32_t mapIndex = 0;
+                uint32_t resolution = 0;
+                uint32_t flags = 0;
+                uint32_t reserved = 1;
+                float depthBias = -1.0f;
+                float normalBias = -1.0f;
+                float pcfRadius = -1.0f;
+                valid = ReadValue(data, size, offset + cursor, &lightIndex) &&
+                    ReadValue(data, size, offset + cursor + 4, &mapIndex) &&
+                    ReadValue(data, size, offset + cursor + 8, &resolution) &&
+                    ReadValue(data, size, offset + cursor + 12, &flags) &&
+                    ReadValue(data, size, offset + cursor + 272, &depthBias) &&
+                    ReadValue(data, size, offset + cursor + 276, &normalBias) &&
+                    ReadValue(data, size, offset + cursor + 280, &pcfRadius) &&
+                    ReadValue(data, size, offset + cursor + 284, &reserved) &&
+                    lightIndex < lightCount &&
+                    mapIndex == entry &&
+                    resolution >= OPENUSD_SILK_MIN_SHADOW_MAP_RESOLUTION &&
+                    resolution <= OPENUSD_SILK_MAX_SHADOW_MAP_RESOLUTION &&
+                    (resolution & (resolution - 1u)) == 0u &&
+                    (flags & ~(OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC |
+                        OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED)) == 0u &&
+                    depthBias >= 0.0f && normalBias >= 0.0f && pcfRadius >= 0.0f &&
+                    reserved == 0u;
+
+                // Every matrix element must be finite: a light-space projection
+                // with a non-finite element produces a shadow map of nothing and
+                // is exactly the value a consumer cannot diagnose from pixels.
+                for (int element = 0; valid && element < 32; ++element)
+                {
+                    double value = 0.0;
+                    valid = ReadValue(
+                        data,
+                        size,
+                        offset + cursor + 16 + (static_cast<size_t>(element) * 8),
+                        &value) &&
+                        std::isfinite(value);
+                }
+                if (!valid)
+                {
+                    break;
+                }
+                result.shadows.emplace_back(lightIndex, mapIndex, resolution, flags);
+            }
+            result.shadow_valid = result.shadow_valid && valid;
+            result.shadow_descriptor_count = descriptorCount;
+            result.shadow_light_count = lightCount;
+            result.shadow_unsupported = unsupported;
         }
         else
         {
@@ -867,7 +1785,9 @@ bool VerifyInstancedSceneStateSerialization()
     {
         HdSilkMeshRecord record = MakeSceneStateRecord(InstancedPath, 7);
         record.instanceId = 42;
+        record.instancerPath = "/Instancer";
         record.instanceIndex = index;
+        record.instancerContext = {{"/Instancer", index}};
         record.transform[3] = static_cast<double>(index);
         if (index != 0)
         {
@@ -914,7 +1834,9 @@ bool VerifyInstancedSceneStateSerialization()
     std::vector<HdSilkMeshRecord> shrunk;
     HdSilkMeshRecord survivor = MakeSceneStateRecord(InstancedPath, 7);
     survivor.instanceId = 42;
+    survivor.instancerPath = "/Instancer";
     survivor.instanceIndex = 0;
+    survivor.instancerContext = {{"/Instancer", 0}};
     shrunk.push_back(std::move(survivor));
     state.ReplaceMeshInstances(InstancedPath, std::move(shrunk));
 
@@ -942,6 +1864,176 @@ bool VerifyInstancedSceneStateSerialization()
         removedPage.mesh_remove_count == 1;
 }
 
+/// The ABI v23 ordered instancer context survives a page round trip, and a
+/// record that contradicts its own chain is refused.
+///
+/// A composed mixed-radix ordinal cannot be decoded back to a scene instance
+/// once more than one level is involved: the record's instancer path names the
+/// innermost level and the ordinal counts in a composed space, so the pair
+/// describes an instance that does not exist. Only the chain does, which is
+/// exactly why the chain has to survive the wire intact and in order.
+bool VerifyNestedInstancerContextSerialization()
+{
+    constexpr char LeafPath[] = "/Nested/Leaf";
+
+    // Two levels. The record keeps the composite ordinal it always carried, and
+    // the chain carries each level's own index beside it.
+    {
+        HdSilkSceneState state;
+        HdSilkMeshRecord record = MakeSceneStateRecord(LeafPath, 31);
+        record.instanceId = 91;
+        record.instancerPath = "/World/Outer/Inner";
+        record.instanceIndex = 17;
+        record.instancerContext = {
+            {"/World/Outer", 2},
+            {"/World/Outer/Inner", 5}};
+        ReplaceSingleMesh(state, LeafPath, std::move(record));
+
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (!page.mesh_identity_valid ||
+            page.mesh_identities.size() != 1 ||
+            page.mesh_identities[0].instance_index != 17 ||
+            page.mesh_identities[0].instancer_context.size() != 2 ||
+            page.mesh_identities[0].instancer_context[0] !=
+                std::make_pair(std::string("/World/Outer"), 2) ||
+            page.mesh_identities[0].instancer_context[1] !=
+                std::make_pair(std::string("/World/Outer/Inner"), 5))
+        {
+            std::cerr << "hdSilk two-level instancer context did not round "
+                         "trip.\n";
+            return false;
+        }
+    }
+
+    // Three levels, outermost first. Depth is not special-cased anywhere, so a
+    // third level must arrive in the same order with nothing collapsed.
+    {
+        HdSilkSceneState state;
+        HdSilkMeshRecord record = MakeSceneStateRecord(LeafPath, 32);
+        record.instanceId = 92;
+        record.instancerPath = "/A/B/C";
+        record.instanceIndex = 41;
+        record.instancerContext = {{"/A", 1}, {"/A/B", 0}, {"/A/B/C", 3}};
+        ReplaceSingleMesh(state, LeafPath, std::move(record));
+
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (!page.mesh_identity_valid ||
+            page.mesh_identities.size() != 1 ||
+            page.mesh_identities[0].instancer_context.size() != 3 ||
+            page.mesh_identities[0].instancer_context[0].first != "/A" ||
+            page.mesh_identities[0].instancer_context[1].first != "/A/B" ||
+            page.mesh_identities[0].instancer_context[2].first != "/A/B/C" ||
+            page.mesh_identities[0].instancer_context[2].second != 3)
+        {
+            std::cerr << "hdSilk three-level instancer context did not round "
+                         "trip in order.\n";
+            return false;
+        }
+    }
+
+    // A non-instanced record publishes no chain at all, so the pre-v23 shape is
+    // byte-for-byte what it was for the overwhelming majority of scenes.
+    {
+        HdSilkSceneState state;
+        ReplaceSingleMesh(state, LeafPath, MakeSceneStateRecord(LeafPath, 33));
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (!page.mesh_identity_valid ||
+            page.mesh_identities.size() != 1 ||
+            !page.mesh_identities[0].instancer_context.empty())
+        {
+            std::cerr << "hdSilk non-instanced record published a chain.\n";
+            return false;
+        }
+    }
+
+    // Malformed and over-budget chains are refused before anything is
+    // serialized, and the whole prim is skipped rather than published with an
+    // identity no consumer can decode.
+    const auto refuses = [](HdSilkMeshRecord record) {
+        HdSilkSceneState state;
+        ReplaceSingleMesh(state, LeafPath, std::move(record));
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        return page.mesh_upsert_count == 0;
+    };
+
+    HdSilkMeshRecord chainWithoutInstancer = MakeSceneStateRecord(LeafPath, 34);
+    chainWithoutInstancer.instancerContext = {{"/Instancer", 0}};
+
+    HdSilkMeshRecord instancerWithoutChain = MakeSceneStateRecord(LeafPath, 35);
+    instancerWithoutChain.instanceId = 93;
+    instancerWithoutChain.instancerPath = "/Instancer";
+
+    HdSilkMeshRecord disagreeingChain = MakeSceneStateRecord(LeafPath, 36);
+    disagreeingChain.instanceId = 94;
+    disagreeingChain.instancerPath = "/Instancer";
+    disagreeingChain.instancerContext = {{"/Somewhere/Else", 0}};
+
+    HdSilkMeshRecord negativeIndex = MakeSceneStateRecord(LeafPath, 37);
+    negativeIndex.instanceId = 95;
+    negativeIndex.instancerPath = "/Instancer";
+    negativeIndex.instancerContext = {{"/Instancer", -1}};
+
+    HdSilkMeshRecord relativePath = MakeSceneStateRecord(LeafPath, 38);
+    relativePath.instanceId = 96;
+    relativePath.instancerPath = "/Instancer";
+    relativePath.instancerContext = {
+        {"Relative", 0},
+        {"/Instancer", 0}};
+
+    HdSilkMeshRecord overBudget = MakeSceneStateRecord(LeafPath, 39);
+    overBudget.instanceId = 97;
+    overBudget.instancerPath = "/Instancer";
+    overBudget.instancerContext.assign(
+        OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES + 1,
+        HdSilkInstancerContextEntry{"/Instancer", 0});
+
+    if (!refuses(std::move(chainWithoutInstancer)) ||
+        !refuses(std::move(instancerWithoutChain)) ||
+        !refuses(std::move(disagreeingChain)) ||
+        !refuses(std::move(negativeIndex)) ||
+        !refuses(std::move(relativePath)) ||
+        !refuses(std::move(overBudget)))
+    {
+        std::cerr << "hdSilk published a malformed or over-budget instancer "
+                     "context.\n";
+        return false;
+    }
+
+    // Exactly at the level budget is admissible, so the ceiling refuses one
+    // level past it rather than the last legal one.
+    HdSilkMeshRecord atBudget = MakeSceneStateRecord(LeafPath, 40);
+    atBudget.instanceId = 98;
+    atBudget.instancerPath = "/Instancer";
+    atBudget.instancerContext.assign(
+        OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES,
+        HdSilkInstancerContextEntry{"/Instancer", 0});
+    {
+        HdSilkSceneState state;
+        ReplaceSingleMesh(state, LeafPath, std::move(atBudget));
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (page.mesh_upsert_count != 1 ||
+            !page.mesh_identity_valid ||
+            page.mesh_identities[0].instancer_context.size() !=
+                OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES)
+        {
+            std::cerr << "hdSilk refused an instancer context at the level "
+                         "budget.\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 /// A prototype that owns only part of an instancer publishes a sparse index
 /// set, so its ABI v8 payload record is the lowest index it owns and not
 /// necessarily index zero. Nothing about the wire may depend on a zero-indexed
@@ -959,7 +2051,9 @@ bool VerifySparsePrototypeInstanceSerialization()
     {
         HdSilkMeshRecord record = MakeSceneStateRecord(SparsePath, 9);
         record.instanceId = 77;
+        record.instancerPath = "/Instancer";
         record.instanceIndex = owned[position];
+        record.instancerContext = {{"/Instancer", owned[position]}};
         record.transform[3] = static_cast<double>(owned[position]);
         if (position != 0)
         {
@@ -1001,7 +2095,9 @@ bool VerifyRejectedPayloadDropsWholePath()
     {
         HdSilkMeshRecord record = MakeSceneStateRecord(BrokenPath, 11);
         record.instanceId = 21;
+        record.instancerPath = "/Instancer";
         record.instanceIndex = index;
+        record.instancerContext = {{"/Instancer", index}};
         if (index == 0)
         {
             // The payload record alone is malformed: one subprim index short.
@@ -1042,7 +2138,9 @@ bool VerifyRejectedPayloadDropsWholePath()
     {
         HdSilkMeshRecord record = MakeSceneStateRecord(BrokenPath, 11);
         record.instanceId = 21;
+        record.instancerPath = "/Instancer";
         record.instanceIndex = index;
+        record.instancerContext = {{"/Instancer", index}};
         if (index != 0)
         {
             record.points.clear();
@@ -1079,6 +2177,253 @@ bool VerifyRejectedPayloadDropsWholePath()
 /// must produce a page with no MESH_UPSERT and no crash. It runs under the
 /// address sanitiser in the fuzz job, where an out-of-bounds read is fatal
 /// rather than merely wrong.
+/// The subprim-identity budget is decided from the counts a record WOULD
+/// publish, before either table is reserved, and a refusal releases the
+/// capacity rather than only the size.
+///
+/// Capacity is the allocation. A record refused for exceeding the 64 MiB budget
+/// that kept its vectors' capacity would still be holding exactly the memory the
+/// budget exists to refuse, for as long as the record lived. Asserting on
+/// capacity is therefore an allocation assertion, not a size one, and the
+/// hostile counts below are checked without ever allocating a single entry.
+/// An authored point no face references is emitted but never rasterized, so it
+/// is not a pick target and must publish the "no authored counterpart"
+/// sentinel.
+///
+/// Naming it as its own authored index would advertise a pick target the user
+/// can never hit: no primitive covers the pixel, so the point pass draws
+/// nothing there and the readback answers token zero. Worse, it would inflate
+/// authored_point_count past the last point any primitive actually references,
+/// handing a consumer an authored space larger than the geometry has.
+bool VerifyStrayPointsAreNotPickTargets(const ParsedPage& page)
+{
+    const ParsedCurves& mesh = page.stray_point_mesh;
+    const std::vector<uint32_t> expected{
+        0, 1, 2, 3, OPENUSD_SILK_SUBPRIM_NONE};
+    if (!mesh.found ||
+        mesh.points.size() != 15 ||
+        mesh.point_origins != expected)
+    {
+        std::cerr << "hdSilk stray-point mesh did not sentinel its unreferenced "
+                     "point. found=" << mesh.found
+                  << " pointFloats=" << mesh.points.size()
+                  << " origins=";
+        for (uint32_t origin : mesh.point_origins)
+        {
+            std::cerr << origin << ' ';
+        }
+        std::cerr << "\n";
+        return false;
+    }
+    return true;
+}
+bool VerifySubprimIdentityBudgetIsPreflighted()
+{
+    constexpr size_t maximumEntries =
+        OPENUSD_SILK_MAX_SUBPRIM_IDENTITY_BYTES / sizeof(uint32_t);
+
+    // Exactly at the budget is admissible; one entry past it is not.
+    if (HdSilkSubprimIdentityExceedsBudget(maximumEntries, 0) ||
+        HdSilkSubprimIdentityExceedsBudget(maximumEntries / 2, maximumEntries / 2) ||
+        !HdSilkSubprimIdentityExceedsBudget(maximumEntries + 1, 0) ||
+        !HdSilkSubprimIdentityExceedsBudget(maximumEntries, 1))
+    {
+        std::cerr << "hdSilk subprim budget preflight is not exact.\n";
+        return false;
+    }
+
+    // A hostile count must be refused without overflowing the byte product that
+    // a naive multiply would wrap.
+    if (!HdSilkSubprimIdentityExceedsBudget(
+            std::numeric_limits<size_t>::max() / 2,
+            std::numeric_limits<size_t>::max() / 2))
+    {
+        std::cerr << "hdSilk subprim budget preflight overflowed.\n";
+        return false;
+    }
+
+    HdSilkMeshRecord record = MakeSceneStateRecord("/Budget", 97);
+    record.pointOrigins.assign(4096, 0);
+    record.cornerEdges.assign(4096, 0);
+    record.authoredPointCount = 4096;
+    record.authoredEdgeCount = 4096;
+    record.subprimIdentity =
+        OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+    if (record.pointOrigins.capacity() == 0 ||
+        record.cornerEdges.capacity() == 0)
+    {
+        std::cerr << "hdSilk budget probe did not allocate its fixture.\n";
+        return false;
+    }
+
+    record.RejectSubprimIdentity(OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET);
+    if (record.pointOrigins.capacity() != 0 ||
+        record.cornerEdges.capacity() != 0 ||
+        record.authoredPointCount != 0 ||
+        record.authoredEdgeCount != 0 ||
+        (record.subprimIdentity & OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE) != 0 ||
+        (record.subprimIdentity & OPENUSD_SILK_SUBPRIM_IDENTITY_POINT) != 0 ||
+        (record.subprimIdentity & OPENUSD_SILK_SUBPRIM_IDENTITY_FACE) == 0 ||
+        (record.subprimUnsupported &
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET) == 0)
+    {
+        std::cerr << "hdSilk subprim refusal kept its allocation. pointCapacity="
+                  << record.pointOrigins.capacity()
+                  << " edgeCapacity=" << record.cornerEdges.capacity() << "\n";
+        return false;
+    }
+    return true;
+}
+
+/// A lightweight ABI v8 instance-reference record is BUILT without the
+/// prototype's geometry and identity, rather than copying and then emptying it.
+///
+/// The reference used to be a full copy of the prototype record whose vectors
+/// were cleared afterwards, which cost one deep copy of the prototype's points,
+/// indices, subprims, identity tables and attributes per instance -- O(points x
+/// instances) -- for data no instance publishes a byte of, and `clear()` kept
+/// the capacity so every one of those allocations stayed resident. Capacity is
+/// the allocation, so every assertion here is on capacity and not on size, and
+/// the reference must hold none at all.
+bool VerifyInstanceReferenceReleasesIdentityCapacity()
+{
+    HdSilkMeshRecord prototype = MakeSceneStateRecord("/Prototype", 98);
+    prototype.points.assign(3 * 65536, 0.0f);
+    prototype.indices.assign(65536, 0);
+    prototype.triangleSubprims.assign(65536, 0);
+    prototype.pointOrigins.assign(65536, 0);
+    prototype.cornerEdges.assign(65536, 0);
+    prototype.attributes.emplace_back();
+    prototype.materialPath = "/Materials/Surface";
+    prototype.authoredPointCount = 65536;
+    prototype.authoredEdgeCount = 65536;
+    prototype.subprimIdentity =
+        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+    prototype.deformation.published = true;
+    prototype.displayColor[0] = 0.25f;
+    prototype.transform[3] = 4.0;
+
+    const HdSilkMeshRecord reference = HdSilkMakeInstanceReference(prototype);
+    if (reference.points.capacity() != 0 ||
+        reference.indices.capacity() != 0 ||
+        reference.triangleSubprims.capacity() != 0 ||
+        reference.pointOrigins.capacity() != 0 ||
+        reference.cornerEdges.capacity() != 0 ||
+        reference.attributes.capacity() != 0 ||
+        !reference.materialPath.empty() ||
+        reference.deformation.published ||
+        reference.authoredPointCount != 0 ||
+        reference.authoredEdgeCount != 0 ||
+        reference.subprimIdentity != OPENUSD_SILK_SUBPRIM_IDENTITY_NONE ||
+        reference.subprimUnsupported != OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE)
+    {
+        std::cerr << "hdSilk instance reference allocated prototype payload. "
+                     "pointCapacity="
+                  << reference.points.capacity()
+                  << " indexCapacity=" << reference.indices.capacity()
+                  << " originCapacity=" << reference.pointOrigins.capacity()
+                  << " edgeCapacity=" << reference.cornerEdges.capacity()
+                  << "\n";
+        return false;
+    }
+
+    // Identity and per-instance scalars still travel: the reference is the same
+    // prim, drawn with the same topology and the same resolved colour.
+    if (reference.path != prototype.path ||
+        reference.primId != prototype.primId ||
+        reference.topologyKind != prototype.topologyKind ||
+        reference.topologyRevision != prototype.topologyRevision ||
+        reference.doubleSided != prototype.doubleSided ||
+        reference.cullStyle != prototype.cullStyle ||
+        reference.displayColor[0] != prototype.displayColor[0] ||
+        reference.transform[3] != prototype.transform[3])
+    {
+        std::cerr << "hdSilk instance reference lost prototype identity.\n";
+        return false;
+    }
+
+    // The prototype it was derived from is untouched: building a reference must
+    // not disturb the record that actually publishes the table.
+    if (prototype.pointOrigins.size() != 65536 ||
+        prototype.cornerEdges.size() != 65536 ||
+        prototype.points.size() != 3 * 65536 ||
+        prototype.authoredPointCount != 65536)
+    {
+        std::cerr << "hdSilk instance reference disturbed its prototype.\n";
+        return false;
+    }
+
+    // The explicit release path stays exercised, because a transform that
+    // rebuilds the emitted arrays of an existing record still uses it.
+    HdSilkMeshRecord cleared = prototype;
+    cleared.ClearSubprimIdentity();
+    if (cleared.pointOrigins.capacity() != 0 ||
+        cleared.cornerEdges.capacity() != 0 ||
+        cleared.subprimIdentity != OPENUSD_SILK_SUBPRIM_IDENTITY_NONE)
+    {
+        std::cerr << "hdSilk ClearSubprimIdentity kept its allocation.\n";
+        return false;
+    }
+    return true;
+}
+
+/// The UsdGeomPoints producer decides the identity budget from the count the
+/// table WOULD have, before reserving or filling it.
+///
+/// A point cloud publishes exactly one point origin per authored point, so the
+/// planned table size is the authored point count and nothing else. The budget
+/// therefore has a single exact boundary, and the hostile side of it must be
+/// refused without the producer ever reserving the entries it refuses.
+bool VerifyPointsIdentityBudgetBoundaryIsExact()
+{
+    constexpr size_t maximumEntries =
+        OPENUSD_SILK_MAX_SUBPRIM_IDENTITY_BYTES / sizeof(uint32_t);
+
+    if (HdSilkSubprimIdentityExceedsBudget(maximumEntries, 0) ||
+        !HdSilkSubprimIdentityExceedsBudget(maximumEntries + 1, 0))
+    {
+        std::cerr << "hdSilk points identity budget boundary is not exact.\n";
+        return false;
+    }
+
+    // A hostile authored point count -- one no machine could allocate -- is
+    // answered by the predicate rather than by a bad_alloc, and without
+    // overflowing the byte product a naive multiply would wrap.
+    if (!HdSilkSubprimIdentityExceedsBudget(
+            std::numeric_limits<size_t>::max(), 0) ||
+        !HdSilkSubprimIdentityExceedsBudget(
+            (std::numeric_limits<size_t>::max() / sizeof(uint32_t)) + 1, 0))
+    {
+        std::cerr << "hdSilk points identity budget overflowed on a hostile "
+                     "count.\n";
+        return false;
+    }
+
+    // A refused point cloud still publishes geometry: only the exact point
+    // identity is omitted, and the budget is named beside the topology reason
+    // the emitted points always carry.
+    HdSilkMeshRecord refused = MakeSceneStateRecord("/OverBudgetPoints", 99);
+    refused.topologyKind = OPENUSD_SILK_TOPOLOGY_POINT_LIST;
+    refused.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_NONE;
+    refused.subprimUnsupported =
+        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE |
+        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET;
+    refused.authoredPointCount = 0;
+    if (!refused.pointOrigins.empty() ||
+        refused.points.empty() ||
+        (refused.subprimUnsupported &
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET) == 0)
+    {
+        std::cerr << "hdSilk over-budget point record did not keep its "
+                     "geometry.\n";
+        return false;
+    }
+    return true;
+}
+
 bool VerifyMalformedRecordIsRejectedBeforeTransforms()
 {
     const uint32_t drawModes[] = {
@@ -1220,6 +2565,2477 @@ bool RejectsInvalidSceneStateRecord(HdSilkMeshRecord record)
         HdSilkSceneState::GetRejectedMeshCount() > rejectedBefore;
 }
 
+/// A quad triangulated from one authored face, carrying every ABI v22 subprim
+/// table a coarse mesh publishes. The authored face is deliberately not zero
+/// and not the triangle index, so a record that answers a face pick with the
+/// entry it actually published is distinguishable from one that answers with
+/// the zero a rebuilt table happens to hold.
+HdSilkMeshRecord MakeSubprimIdentityQuad(const std::string& path, int32_t primId)
+{
+    HdSilkMeshRecord record;
+    record.path = path;
+    record.primId = primId;
+    record.topologyRevision = 1;
+    record.points = {
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F,
+        1.0F, 1.0F, 0.0F,
+        0.0F, 1.0F, 0.0F};
+    record.indices = {0, 1, 2, 0, 2, 3};
+    record.triangleSubprims = {2, 2};
+    record.pointOrigins = {0, 1, 2, 3};
+    record.cornerEdges = {
+        0, 1, OPENUSD_SILK_SUBPRIM_NONE,
+        OPENUSD_SILK_SUBPRIM_NONE, 2, 3};
+    record.authoredPointCount = 4;
+    record.authoredEdgeCount = 4;
+    record.subprimIdentity =
+        OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+    return record;
+}
+
+/// A mesh drawn as points refuses the face target instead of answering it with
+/// a fabricated index.
+///
+/// The points draw mode replaces the emitted primitives with one point per
+/// vertex and rebuilds `triangle_subprims` as one zero per point, because a
+/// point belongs to no triangulated face. The record used to keep its FACE
+/// claim across that rebuild, so every face pick over a mesh drawn as points
+/// was answered with authored face zero -- not even the face the mesh actually
+/// published, and an index no round trip could resolve back to what was
+/// picked. Points are the one target this mode can still answer exactly: the
+/// emitted vertex array is untouched, so the point-origin table still names the
+/// authored point behind every drawn point.
+bool VerifyPointDrawModeRefusesFaceIdentity()
+{
+    HdSilkSceneState state;
+    ReplaceSingleMesh(state, "/Quad", MakeSubprimIdentityQuad("/Quad", 51));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> shadedBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage shaded =
+        ParseCommands(shadedBytes.data(), shadedBytes.size());
+    if (!shaded.subprim_identity_valid ||
+        shaded.mesh_upsert_count != 1 ||
+        shaded.mesh_subprim_identities.size() != 1 ||
+        shaded.mesh_subprim_identities[0] !=
+            (OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
+                OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
+                OPENUSD_SILK_SUBPRIM_IDENTITY_POINT) ||
+        shaded.mesh_subprim_unsupported[0] !=
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE ||
+        shaded.mesh_primitive_subprims[0] != std::vector<uint32_t>({2, 2}) ||
+        shaded.mesh_point_origins[0] != std::vector<uint32_t>({0, 1, 2, 3}))
+    {
+        std::cerr << "hdSilk shaded quad did not publish its authored subprim "
+                     "identity.\n";
+        return false;
+    }
+
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_POINTS);
+    const std::vector<uint8_t> pointBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage points =
+        ParseCommands(pointBytes.data(), pointBytes.size());
+    if (!points.subprim_identity_valid ||
+        points.mesh_upsert_count != 1 ||
+        points.mesh_topology_kinds[0] != OPENUSD_SILK_TOPOLOGY_POINT_LIST ||
+        points.mesh_triangle_counts[0] != 4)
+    {
+        std::cerr << "hdSilk points draw mode did not publish a point list.\n";
+        return false;
+    }
+    if (points.mesh_subprim_identities[0] != OPENUSD_SILK_SUBPRIM_IDENTITY_POINT)
+    {
+        std::cerr << "hdSilk points draw mode claimed a subprim target it "
+                     "cannot answer. identity="
+                  << points.mesh_subprim_identities[0] << "\n";
+        return false;
+    }
+    if ((points.mesh_subprim_unsupported[0] &
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE) == 0)
+    {
+        std::cerr << "hdSilk points draw mode refused a target without naming "
+                     "the topology reason.\n";
+        return false;
+    }
+
+    // The evidence that the refusal matters: the rebuilt per-primitive table is
+    // all zeros, so a retained FACE claim would have answered every face pick
+    // over this mesh with authored face zero rather than the face 2 the mesh
+    // published while shaded.
+    if (points.mesh_primitive_subprims[0] !=
+            std::vector<uint32_t>({0, 0, 0, 0}) ||
+        points.mesh_point_origins[0] != std::vector<uint32_t>({0, 1, 2, 3}))
+    {
+        std::cerr << "hdSilk points draw mode lost exact point identity.\n";
+        return false;
+    }
+
+    // Wireframe is the mode that keeps face identity: a line list emits one
+    // line per triangle corner and every line still names the authored face its
+    // triangle was triangulated from, so the refusal is scoped to points.
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_WIREFRAME);
+    const std::vector<uint8_t> wireBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage wire = ParseCommands(wireBytes.data(), wireBytes.size());
+    if (!wire.subprim_identity_valid ||
+        wire.mesh_upsert_count != 1 ||
+        wire.mesh_topology_kinds[0] != OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+        (wire.mesh_subprim_identities[0] &
+            OPENUSD_SILK_SUBPRIM_IDENTITY_FACE) == 0 ||
+        wire.mesh_primitive_subprims[0] !=
+            std::vector<uint32_t>({2, 2, 2, 2, 2, 2}))
+    {
+        std::cerr << "hdSilk wireframe draw mode lost authored face identity.\n";
+        return false;
+    }
+
+    // And the claim cannot be reintroduced by a producer either: a point list
+    // that declares authored face identity is refused by validation, because
+    // an emitted point is not a face of the authored mesh.
+    HdSilkMeshRecord faceClaimingPoints;
+    faceClaimingPoints.path = "/FaceClaimingPoints";
+    faceClaimingPoints.primId = 52;
+    faceClaimingPoints.topologyRevision = 1;
+    faceClaimingPoints.topologyKind = OPENUSD_SILK_TOPOLOGY_POINT_LIST;
+    faceClaimingPoints.points = {
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F,
+        0.0F, 1.0F, 0.0F};
+    faceClaimingPoints.indices = {0, 1, 2};
+    faceClaimingPoints.triangleSubprims = {0, 1, 2};
+
+    // The same record without the claim is publishable, so the refusal is the
+    // face claim and nothing else about the record.
+    HdSilkMeshRecord admissiblePoints = faceClaimingPoints;
+    admissiblePoints.path = "/AdmissiblePoints";
+    HdSilkSceneState admissibleState;
+    ReplaceSingleMesh(
+        admissibleState,
+        "/AdmissiblePoints",
+        std::move(admissiblePoints));
+    const std::vector<uint8_t> admissibleBytes =
+        admissibleState.BuildPage(nullptr, &commandCount);
+    const ParsedPage admissible =
+        ParseCommands(admissibleBytes.data(), admissibleBytes.size());
+    if (admissible.mesh_upsert_count != 1 ||
+        admissible.mesh_subprim_identities[0] !=
+            OPENUSD_SILK_SUBPRIM_IDENTITY_NONE)
+    {
+        std::cerr << "hdSilk point list without a face claim was not "
+                     "published.\n";
+        return false;
+    }
+
+    faceClaimingPoints.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_FACE;
+    if (!RejectsInvalidSceneStateRecord(std::move(faceClaimingPoints)))
+    {
+        std::cerr << "hdSilk published a point list claiming authored face "
+                     "identity.\n";
+        return false;
+    }
+    return true;
+}
+
+/// The record a UsdGeomPoints prim publishes: one emitted vertex per authored
+/// point, in authored order, with the exact point-origin table that identity
+/// implies and the edge target refused by topology.
+HdSilkMeshRecord MakePointCloudRecord(
+    const std::string& path,
+    int32_t primId,
+    size_t authoredPointCount,
+    size_t drawnPointCount)
+{
+    HdSilkMeshRecord record;
+    record.path = path;
+    record.primId = primId;
+    record.topologyRevision = 1;
+    record.topologyKind = OPENUSD_SILK_TOPOLOGY_POINT_LIST;
+    for (size_t point = 0; point < authoredPointCount; ++point)
+    {
+        record.points.push_back(static_cast<float>(point));
+        record.points.push_back(0.0F);
+        record.points.push_back(0.0F);
+        record.pointOrigins.push_back(static_cast<uint32_t>(point));
+    }
+    for (size_t point = 0; point < drawnPointCount; ++point)
+    {
+        record.indices.push_back(static_cast<uint32_t>(point));
+        record.triangleSubprims.push_back(static_cast<uint32_t>(point));
+    }
+    record.authoredPointCount = static_cast<uint32_t>(authoredPointCount);
+    record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+    record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE;
+    return record;
+}
+
+/// A point cloud keeps exact point identity at every complexity.
+///
+/// Complexity duplicates a point list rather than resubdividing it: every copy
+/// of authored point p is still authored point p, at the same position, so the
+/// mapping from emitted vertex to authored point stays exact. The transform
+/// used to refuse all subprim identity here on the grounds that it rebuilds the
+/// emitted arrays, which is true of a resubdivided line and false of a
+/// duplicated point: a point cloud viewed at anything above Low answered no
+/// point pick at all, and published authoredPointCount zero, so a consumer
+/// could not even tell how large the authored point space had been. The
+/// evidence is per density, because the duplication factor is what the emitted
+/// table has to follow.
+bool VerifyComplexityKeepsPointIdentity()
+{
+    struct DensityCase
+    {
+        uint32_t complexity;
+        uint32_t density;
+    };
+    const DensityCase densities[] = {
+        {OPENUSD_SILK_COMPLEXITY_LOW, 1},
+        {OPENUSD_SILK_COMPLEXITY_MEDIUM, 2},
+        {OPENUSD_SILK_COMPLEXITY_HIGH, 4},
+        {OPENUSD_SILK_COMPLEXITY_VERY_HIGH, 8}};
+    for (const DensityCase& density : densities)
+    {
+        HdSilkSceneState state;
+        ReplaceSingleMesh(
+            state,
+            "/Points",
+            MakePointCloudRecord("/Points", 61, 3, 3));
+        state.SetComplexity(density.complexity);
+
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        std::vector<uint32_t> expectedOrigins;
+        for (uint32_t point = 0; point < 3; ++point)
+        {
+            for (uint32_t copy = 0; copy < density.density; ++copy)
+            {
+                expectedOrigins.push_back(point);
+            }
+        }
+        if (!page.subprim_identity_valid ||
+            page.mesh_upsert_count != 1 ||
+            page.mesh_topology_kinds[0] != OPENUSD_SILK_TOPOLOGY_POINT_LIST ||
+            page.mesh_point_counts[0] != 3 * density.density ||
+            page.mesh_triangle_counts[0] != 3 * density.density)
+        {
+            std::cerr << "hdSilk complexity did not duplicate the point list. "
+                         "density="
+                      << density.density << "\n";
+            return false;
+        }
+        if (page.mesh_subprim_identities[0] !=
+                OPENUSD_SILK_SUBPRIM_IDENTITY_POINT ||
+            page.mesh_subprim_unsupported[0] !=
+                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE)
+        {
+            std::cerr << "hdSilk complexity dropped exact point identity. "
+                         "density="
+                      << density.density
+                      << " identity=" << page.mesh_subprim_identities[0]
+                      << " unsupported=" << page.mesh_subprim_unsupported[0]
+                      << "\n";
+            return false;
+        }
+        // One origin per emitted vertex, each duplicate naming the authored
+        // point its copy came from, and the authored space retained exactly.
+        if (page.mesh_point_origins[0] != expectedOrigins ||
+            page.mesh_authored_point_counts[0] != 3)
+        {
+            std::cerr << "hdSilk complexity published a point-origin table that "
+                         "does not follow the duplicated vertices. density="
+                      << density.density << "\n";
+            return false;
+        }
+    }
+
+    // A resubdivided line is the case the refusal exists for, and it stays
+    // refused: the interior vertices it emits are not authored points and its
+    // segments are fractions of an authored edge, so neither table survives.
+    HdSilkSceneState lineState;
+    HdSilkMeshRecord line;
+    line.path = "/Curve";
+    line.primId = 62;
+    line.topologyRevision = 1;
+    line.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
+    line.points = {
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F,
+        2.0F, 0.0F, 0.0F};
+    line.indices = {0, 1, 1, 2};
+    line.triangleSubprims = {0, 0};
+    line.pointOrigins = {0, 1, 2};
+    line.cornerEdges = {0, 1};
+    line.authoredPointCount = 3;
+    line.authoredEdgeCount = 2;
+    line.subprimIdentity =
+        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE | OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+    ReplaceSingleMesh(lineState, "/Curve", std::move(line));
+    lineState.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+
+    uint32_t lineCommandCount = 0;
+    const std::vector<uint8_t> lineBytes =
+        lineState.BuildPage(nullptr, &lineCommandCount);
+    const ParsedPage subdivided =
+        ParseCommands(lineBytes.data(), lineBytes.size());
+    if (!subdivided.subprim_identity_valid ||
+        subdivided.mesh_upsert_count != 1 ||
+        subdivided.mesh_subprim_identities[0] !=
+            OPENUSD_SILK_SUBPRIM_IDENTITY_NONE ||
+        (subdivided.mesh_subprim_unsupported[0] &
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE) == 0 ||
+        !subdivided.mesh_point_origins[0].empty() ||
+        subdivided.mesh_authored_point_counts[0] != 0)
+    {
+        std::cerr << "hdSilk complexity kept subprim identity across a "
+                     "resubdivided line.\n";
+        return false;
+    }
+
+    // And a point list whose emitted vertices do not cover the authored space
+    // the record declares is refused by name rather than renumbered. Authored
+    // point 3 is drawn by no primitive here, so the duplicated table would name
+    // an authored space of three against a declared count of four -- a count
+    // the ABI defines as one past the largest index the table names. The
+    // geometry is still published, exactly as it is for an over-budget cloud.
+    HdSilkSceneState strayState;
+    ReplaceSingleMesh(
+        strayState,
+        "/StrayPoint",
+        MakePointCloudRecord("/StrayPoint", 63, 4, 3));
+    strayState.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+
+    uint32_t strayCommandCount = 0;
+    const std::vector<uint8_t> strayBytes =
+        strayState.BuildPage(nullptr, &strayCommandCount);
+    const ParsedPage stray = ParseCommands(strayBytes.data(), strayBytes.size());
+    if (!stray.subprim_identity_valid ||
+        stray.mesh_upsert_count != 1 ||
+        stray.mesh_point_counts[0] != 6 ||
+        stray.mesh_subprim_identities[0] != OPENUSD_SILK_SUBPRIM_IDENTITY_NONE ||
+        (stray.mesh_subprim_unsupported[0] &
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY) == 0 ||
+        !stray.mesh_point_origins[0].empty() ||
+        stray.mesh_authored_point_counts[0] != 0)
+    {
+        std::cerr << "hdSilk complexity did not name why it refused an "
+                     "incomplete point-origin table.\n";
+        return false;
+    }
+    return true;
+}
+
+/// The emitted point-origin table follows the record's INDEX count, which is
+/// what the preflight, the budget and the reservation are all sized from.
+///
+/// A point list may index a source vertex more than once, or not at all, so its
+/// index count and its source vertex count are independent. The duplication
+/// emits `density` copies per emitted primitive, so the table it builds has
+/// indices.size() * density entries -- never pointOrigins.size() * density,
+/// which is what every one of those three decisions used to be taken from. On a
+/// record whose two counts differ, that number described a table this transform
+/// never emits: the budget was decided for the wrong size, and the reservation
+/// was made for the wrong size beside it.
+bool VerifyComplexityOriginsFollowEmittedIndices()
+{
+    // The exact boundary the mis-sized count crosses. A source table of four
+    // origins is trivially inside the budget at any density, while the emitted
+    // table of a record that draws maximumEntries/2 + 1 primitives at density
+    // two is one entry outside it. Deciding the budget from the source table
+    // therefore admitted a table the bound exists to refuse.
+    constexpr size_t maximumEntries =
+        OPENUSD_SILK_MAX_SUBPRIM_IDENTITY_BYTES / sizeof(uint32_t);
+    constexpr size_t density = 2;
+    constexpr size_t sourceOriginCount = 4;
+    constexpr size_t emittedPrimitiveCount = (maximumEntries / density) + 1;
+    if (HdSilkSubprimIdentityExceedsBudget(sourceOriginCount * density, 0) ||
+        !HdSilkSubprimIdentityExceedsBudget(
+            emittedPrimitiveCount * density, 0))
+    {
+        std::cerr << "hdSilk complexity origin budget does not separate the "
+                     "source table from the emitted one.\n";
+        return false;
+    }
+
+    // And the published table on a record whose counts differ: three source
+    // vertices, four drawn primitives because the last vertex is drawn twice.
+    HdSilkMeshRecord record;
+    record.path = "/RedrawnPoints";
+    record.primId = 64;
+    record.topologyRevision = 1;
+    record.topologyKind = OPENUSD_SILK_TOPOLOGY_POINT_LIST;
+    record.points = {
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F,
+        2.0F, 0.0F, 0.0F};
+    record.indices = {0, 1, 2, 2};
+    record.triangleSubprims = {0, 1, 2, 3};
+    record.pointOrigins = {0, 1, 2};
+    record.authoredPointCount = 3;
+    record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+    record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE;
+
+    HdSilkSceneState state;
+    ReplaceSingleMesh(state, "/RedrawnPoints", std::move(record));
+    state.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    const std::vector<uint32_t> expectedOrigins = {0, 0, 1, 1, 2, 2, 2, 2};
+    // Eight entries, which is indices.size() * density. The source table's own
+    // length would have sized this at six, and the branch refuses a table that
+    // does not close on the count its preflight sized the budget and the
+    // reservation from -- so a record that keeps exact point identity here is
+    // direct evidence that all three used the emitted count.
+    if (!page.subprim_identity_valid ||
+        page.mesh_upsert_count != 1 ||
+        page.mesh_point_counts[0] != 8 ||
+        page.mesh_triangle_counts[0] != 8 ||
+        page.mesh_subprim_identities[0] != OPENUSD_SILK_SUBPRIM_IDENTITY_POINT ||
+        page.mesh_point_origins[0] != expectedOrigins ||
+        page.mesh_authored_point_counts[0] != 3)
+    {
+        std::cerr << "hdSilk complexity sized its point-origin table from the "
+                     "source table rather than the emitted primitives. entries="
+                  << page.mesh_point_origins[0].size() << "\n";
+        return false;
+    }
+    return true;
+}
+
+/// A mesh drawn as points names every authored point it has just made visible.
+///
+/// USD lets a mesh carry an authored point no face references. While the mesh
+/// is shaded nothing rasterizes that point, so the producer publishes the "no
+/// authored counterpart" sentinel for it and keeps it out of the authored point
+/// space -- which the ABI defines as one past the largest index the table
+/// names. The points draw mode draws every emitted vertex, so those points are
+/// suddenly on screen and pickable, and the sentinel then answered a pick on a
+/// plainly visible point with "this is not an authored component" while the
+/// declared authored space stopped short of it.
+bool VerifyPointDrawModeNamesStrayAuthoredPoints()
+{
+    HdSilkMeshRecord record;
+    record.path = "/StrayMesh";
+    record.primId = 71;
+    record.topologyRevision = 1;
+    record.points = {
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F,
+        0.0F, 1.0F, 0.0F,
+        // Authored point 3 is carried by the mesh and referenced by no face.
+        5.0F, 5.0F, 0.0F};
+    record.indices = {0, 1, 2};
+    record.triangleSubprims = {7};
+    record.pointOrigins = {0, 1, 2, OPENUSD_SILK_SUBPRIM_NONE};
+    record.cornerEdges = {0, 1, 2};
+    record.authoredPointCount = 3;
+    record.authoredEdgeCount = 3;
+    record.subprimIdentity =
+        OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+
+    HdSilkSceneState state;
+    ReplaceSingleMesh(state, "/StrayMesh", record);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> shadedBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage shaded =
+        ParseCommands(shadedBytes.data(), shadedBytes.size());
+    const std::vector<uint32_t> shadedOrigins = {
+        0, 1, 2, OPENUSD_SILK_SUBPRIM_NONE};
+    if (!shaded.subprim_identity_valid ||
+        shaded.mesh_upsert_count != 1 ||
+        shaded.mesh_point_origins[0] != shadedOrigins ||
+        shaded.mesh_authored_point_counts[0] != 3)
+    {
+        std::cerr << "hdSilk shaded mesh did not keep its stray point out of "
+                     "the authored point space.\n";
+        return false;
+    }
+
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_POINTS);
+    const std::vector<uint8_t> pointBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage points =
+        ParseCommands(pointBytes.data(), pointBytes.size());
+    const std::vector<uint32_t> pointOrigins = {0, 1, 2, 3};
+    if (!points.subprim_identity_valid ||
+        points.mesh_upsert_count != 1 ||
+        points.mesh_topology_kinds[0] != OPENUSD_SILK_TOPOLOGY_POINT_LIST ||
+        points.mesh_triangle_counts[0] != 4 ||
+        points.mesh_subprim_identities[0] !=
+            OPENUSD_SILK_SUBPRIM_IDENTITY_POINT ||
+        (points.mesh_subprim_unsupported[0] &
+            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE) == 0 ||
+        points.mesh_point_origins[0] != pointOrigins ||
+        points.mesh_authored_point_counts[0] != 4)
+    {
+        std::cerr << "hdSilk points draw mode did not name the authored point "
+                     "it made visible. authoredPoints="
+                  << points.mesh_authored_point_counts[0] << "\n";
+        return false;
+    }
+
+    // Complexity duplicates that table without losing the point it just named,
+    // so the stray point stays pickable at every density.
+    state.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+    const std::vector<uint8_t> denseBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage dense = ParseCommands(denseBytes.data(), denseBytes.size());
+    const std::vector<uint32_t> denseOrigins = {0, 0, 1, 1, 2, 2, 3, 3};
+    if (!dense.subprim_identity_valid ||
+        dense.mesh_upsert_count != 1 ||
+        dense.mesh_point_origins[0] != denseOrigins ||
+        dense.mesh_authored_point_counts[0] != 4)
+    {
+        std::cerr << "hdSilk complexity lost the authored point the points "
+                     "draw mode named.\n";
+        return false;
+    }
+
+    // The sentinel survives exactly where it means what it says. An expanded
+    // face-varying record emits one vertex per corner, so its table is not the
+    // identity and a sentinel in it marks a vertex the mesh generated rather
+    // than an authored point that went undrawn. Naming such a vertex after its
+    // own emitted index would invent an authored point the stage does not have.
+    HdSilkMeshRecord expanded;
+    expanded.path = "/ExpandedMesh";
+    expanded.primId = 72;
+    expanded.topologyRevision = 1;
+    expanded.points = {
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F,
+        1.0F, 1.0F, 0.0F,
+        0.0F, 0.0F, 0.0F,
+        1.0F, 1.0F, 0.0F,
+        0.0F, 1.0F, 0.0F};
+    expanded.indices = {0, 1, 2, 3, 4, 5};
+    expanded.triangleSubprims = {0, 0};
+    expanded.pointOrigins = {0, 1, 2, 0, 2, OPENUSD_SILK_SUBPRIM_NONE};
+    expanded.authoredPointCount = 3;
+    expanded.subprimIdentity =
+        OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
+        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+
+    HdSilkSceneState expandedState;
+    ReplaceSingleMesh(expandedState, "/ExpandedMesh", std::move(expanded));
+    expandedState.SetDrawMode(OPENUSD_SILK_DRAW_MODE_POINTS);
+    const std::vector<uint8_t> expandedBytes =
+        expandedState.BuildPage(nullptr, &commandCount);
+    const ParsedPage expandedPage =
+        ParseCommands(expandedBytes.data(), expandedBytes.size());
+    const std::vector<uint32_t> expandedOrigins = {
+        0, 1, 2, 0, 2, OPENUSD_SILK_SUBPRIM_NONE};
+    if (!expandedPage.subprim_identity_valid ||
+        expandedPage.mesh_upsert_count != 1 ||
+        expandedPage.mesh_point_origins[0] != expandedOrigins ||
+        expandedPage.mesh_authored_point_counts[0] != 3)
+    {
+        std::cerr << "hdSilk points draw mode invented an authored point for a "
+                     "generated vertex.\n";
+        return false;
+    }
+    return true;
+}
+
+/// Sequential presentation changes publish distinct, stable topology revisions.
+///
+/// topology_revision is what a consumer keys its retained topology by: a record
+/// carrying the revision it already holds is taken to have the topology it
+/// already holds, and one that contradicts that is refused outright. Draw mode
+/// and complexity rebuild the emitted arrays -- the topology kind, the indices
+/// and the point-origin table all change -- while the authored topology behind
+/// them does not, so publishing the authored revision for every presentation
+/// handed the consumer two topologies under one revision. Applying a shaded
+/// page and then a points page, or a Low page and then a Medium page, to one
+/// retained scene was rejected for exactly that.
+bool VerifyPresentationTopologyRevisionFollowsPresentation()
+{
+    HdSilkSceneState state;
+    ReplaceSingleMesh(state, "/Quad", MakeSubprimIdentityQuad("/Quad", 73));
+
+    struct Published
+    {
+        uint64_t revision;
+        uint32_t topologyKind;
+        uint32_t pointCount;
+        std::vector<uint32_t> origins;
+    };
+    const auto publish = [&state](Published* out) -> bool
+    {
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes =
+            state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (!page.mesh_identity_valid ||
+            page.mesh_upsert_count != 1 ||
+            page.mesh_topology_revisions.size() != 1)
+        {
+            return false;
+        }
+        out->revision = page.mesh_topology_revisions[0];
+        out->topologyKind = page.mesh_topology_kinds[0];
+        out->pointCount = page.mesh_point_counts[0];
+        out->origins = page.mesh_point_origins[0];
+        return true;
+    };
+
+    // A presentation that rebuilds nothing publishes the authored revision
+    // unchanged, so a session that never leaves smooth-shaded Low sees exactly
+    // the revisions it always did.
+    Published shaded{};
+    if (!publish(&shaded) ||
+        shaded.revision != 1 ||
+        shaded.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
+    {
+        std::cerr << "hdSilk shaded page did not publish the authored topology "
+                     "revision. revision=" << shaded.revision << "\n";
+        return false;
+    }
+
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_POINTS);
+    Published drawnAsPoints{};
+    if (!publish(&drawnAsPoints) ||
+        drawnAsPoints.topologyKind != OPENUSD_SILK_TOPOLOGY_POINT_LIST ||
+        drawnAsPoints.revision == shaded.revision)
+    {
+        std::cerr << "hdSilk points page reused the shaded topology revision. "
+                     "revision=" << drawnAsPoints.revision << "\n";
+        return false;
+    }
+
+    // Republishing the same presentation republishes the same revision, so a
+    // consumer keeps its retained topology instead of rotating identity for a
+    // page that changed nothing.
+    ReplaceSingleMesh(state, "/Quad", MakeSubprimIdentityQuad("/Quad", 73));
+    Published republished{};
+    if (!publish(&republished) ||
+        republished.revision != drawnAsPoints.revision ||
+        republished.origins != drawnAsPoints.origins)
+    {
+        std::cerr << "hdSilk republished one presentation under two revisions.\n";
+        return false;
+    }
+
+    state.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+    Published dense{};
+    if (!publish(&dense) ||
+        dense.pointCount != drawnAsPoints.pointCount * 2 ||
+        dense.revision == drawnAsPoints.revision ||
+        dense.revision == shaded.revision)
+    {
+        std::cerr << "hdSilk complexity page reused a revision of a different "
+                     "topology. revision=" << dense.revision << "\n";
+        return false;
+    }
+
+    // The revision is a pure function of the authored revision and the
+    // presentation, so returning to a presentation returns to its revision.
+    state.SetComplexity(OPENUSD_SILK_COMPLEXITY_LOW);
+    Published restored{};
+    if (!publish(&restored) || restored.revision != drawnAsPoints.revision)
+    {
+        std::cerr << "hdSilk did not restore the revision of a restored "
+                     "presentation.\n";
+        return false;
+    }
+
+    // Two draw modes that emit the same topology are one presentation: the
+    // wireframe and hidden-surface wireframe modes both publish the same line
+    // list, so they share a revision rather than churning identity between
+    // them.
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_WIREFRAME);
+    Published wireframe{};
+    if (!publish(&wireframe) ||
+        wireframe.topologyKind != OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+        wireframe.revision == shaded.revision ||
+        wireframe.revision == drawnAsPoints.revision)
+    {
+        std::cerr << "hdSilk wireframe page reused another presentation's "
+                     "revision.\n";
+        return false;
+    }
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME);
+    Published hiddenWireframe{};
+    if (!publish(&hiddenWireframe) ||
+        hiddenWireframe.revision != wireframe.revision)
+    {
+        std::cerr << "hdSilk published one line list under two revisions.\n";
+        return false;
+    }
+
+    // And back to shaded, which is the authored topology itself.
+    state.SetDrawMode(OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED);
+    Published reshaded{};
+    if (!publish(&reshaded) ||
+        reshaded.revision != shaded.revision ||
+        reshaded.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
+    {
+        std::cerr << "hdSilk did not restore the authored revision when the "
+                     "presentation stopped rebuilding the topology.\n";
+        return false;
+    }
+
+    // A point cloud is presented by complexity alone, with no draw mode
+    // involved: the same rule has to hold for it, or a Low page and a Medium
+    // page of one cloud arrive under one revision carrying different vertices.
+    HdSilkSceneState cloudState;
+    ReplaceSingleMesh(
+        cloudState,
+        "/Points",
+        MakePointCloudRecord("/Points", 74, 3, 3));
+    uint32_t cloudCommandCount = 0;
+    const std::vector<uint8_t> lowBytes =
+        cloudState.BuildPage(nullptr, &cloudCommandCount);
+    const ParsedPage low = ParseCommands(lowBytes.data(), lowBytes.size());
+    cloudState.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+    const std::vector<uint8_t> mediumBytes =
+        cloudState.BuildPage(nullptr, &cloudCommandCount);
+    const ParsedPage medium =
+        ParseCommands(mediumBytes.data(), mediumBytes.size());
+    if (low.mesh_upsert_count != 1 ||
+        medium.mesh_upsert_count != 1 ||
+        low.mesh_topology_revisions[0] != 1 ||
+        medium.mesh_topology_revisions[0] == low.mesh_topology_revisions[0] ||
+        medium.mesh_point_counts[0] != low.mesh_point_counts[0] * 2)
+    {
+        std::cerr << "hdSilk point cloud published two densities under one "
+                     "topology revision.\n";
+        return false;
+    }
+
+    // An ABI v8 instance reference carries no arrays at all: it reuses the
+    // prototype payload's geometry, and a consumer refuses a reference whose
+    // topology does not match the prototype it points at. The revision is
+    // therefore derived from the presentation and not from the emitted arrays,
+    // so a presented prototype and its references still agree.
+    HdSilkSceneState instancedState;
+    std::vector<HdSilkMeshRecord> instances;
+    for (int32_t index = 0; index < 2; ++index)
+    {
+        HdSilkMeshRecord instance = MakeSubprimIdentityQuad("/Instanced", 75);
+        instance.instanceId = 42;
+        instance.instancerPath = "/Instancer";
+        instance.instanceIndex = index;
+        instance.instancerContext = {{"/Instancer", index}};
+        if (index != 0)
+        {
+            instance = HdSilkMakeInstanceReference(instance);
+            instance.instanceId = 42;
+            instance.instancerPath = "/Instancer";
+            instance.instanceIndex = index;
+            instance.instancerContext = {{"/Instancer", index}};
+        }
+        instances.push_back(std::move(instance));
+    }
+    instancedState.ReplaceMeshInstances("/Instanced", std::move(instances));
+    instancedState.SetDrawMode(OPENUSD_SILK_DRAW_MODE_POINTS);
+    instancedState.SetComplexity(OPENUSD_SILK_COMPLEXITY_MEDIUM);
+
+    uint32_t instancedCommandCount = 0;
+    const std::vector<uint8_t> instancedBytes =
+        instancedState.BuildPage(nullptr, &instancedCommandCount);
+    const ParsedPage instanced =
+        ParseCommands(instancedBytes.data(), instancedBytes.size());
+    if (instanced.mesh_upsert_count != 2 ||
+        instanced.mesh_topology_revisions.size() != 2 ||
+        instanced.mesh_topology_revisions[0] !=
+            instanced.mesh_topology_revisions[1] ||
+        instanced.mesh_topology_kinds[0] != instanced.mesh_topology_kinds[1] ||
+        instanced.mesh_topology_revisions[0] == 1)
+    {
+        std::cerr << "hdSilk presented an instance reference under a different "
+                     "revision from its prototype.\n";
+        return false;
+    }
+    return true;
+}
+
+/// A direct light with a non-default light-link collection resolves into a
+/// sparse per-prim mask table.
+///
+/// The table is default-free by contract, so the evidence that linking worked is
+/// exactly which prims appear: a prim inside every light's collection resolves to
+/// the default and must be absent, and a prim outside one collection must be
+/// present with that light's bit clear. It also proves the mask indexes the
+/// frame light ordering: with two direct lights sorted by path, /Lights/A owns
+/// bit 0 and /Lights/B owns bit 1.
+bool VerifyLightLinkTableResolvesCategories()
+{
+    HdSilkSceneState state;
+
+    HdSilkLightRecord keyLight;
+    keyLight.path = "/Lights/A";
+    keyLight.type = OPENUSD_SILK_LIGHT_DISTANT;
+    keyLight.lightLinkCategory = "lit";
+    state.ReplaceLight(keyLight);
+
+    HdSilkLightRecord fillLight;
+    fillLight.path = "/Lights/B";
+    fillLight.type = OPENUSD_SILK_LIGHT_SPHERE;
+    // No collection: this light links to everything, exactly as UsdImaging's
+    // empty category identity means.
+    state.ReplaceLight(fillLight);
+
+    if (!state.HasLightLinks())
+    {
+        return false;
+    }
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership lit;
+    lit.path = "/Geom/Lit";
+    lit.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    lit.categories = {"lit"};
+    memberships.push_back(std::move(lit));
+    HdSilkCategoryMembership unlit;
+    unlit.path = "/Geom/Unlit";
+    unlit.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(unlit));
+    HdSilkCategoryMembership unlitInstance;
+    unlitInstance.path = "/Geom/Unlit";
+    unlitInstance.instanceIndex = 3;
+    unlitInstance.categories = {"lit"};
+    memberships.push_back(std::move(unlitInstance));
+    state.SetCategoryMemberships(std::move(memberships), false);
+
+    ReplaceSingleMesh(state, "/Geom/Lit", MakeSceneStateRecord("/Geom/Lit", 41));
+    ReplaceSingleMesh(state, "/Geom/Unlit", MakeSceneStateRecord("/Geom/Unlit", 42));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.light_link_light_count != 2 ||
+        page.light_link_light_count != page.frame_light_count ||
+        page.light_link_unsupported != OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE ||
+        page.light_links.size() != 2)
+    {
+        return false;
+    }
+
+    // Sorted by path, then instance index. /Geom/Lit is in the key light's
+    // collection and in the unlinked fill light's, so it resolves to the default
+    // and is omitted; /Geom/Unlit is absent from the key light's collection, so
+    // its light bit 0 is clear. Neither light declares a shadow collection, so
+    // both shadow bits stay set: the two collections are resolved independently,
+    // and an unlit prim still casts.
+    if (std::get<0>(page.light_links[0]) != "/Geom/Unlit" ||
+        std::get<1>(page.light_links[0]) != OPENUSD_SILK_LINK_ALL_INSTANCES ||
+        std::get<2>(page.light_links[0]) != 0x2u ||
+        std::get<3>(page.light_links[0]) != 0x3u)
+    {
+        return false;
+    }
+    if (std::get<0>(page.light_links[1]) != "/Geom/Unlit" ||
+        std::get<1>(page.light_links[1]) != 3 ||
+        std::get<2>(page.light_links[1]) != 0x3u ||
+        std::get<3>(page.light_links[1]) != 0x3u)
+    {
+        return false;
+    }
+
+    // An unchanged table publishes nothing at all, and retiring the collection
+    // publishes an empty table exactly once so a consumer stops masking.
+    const std::vector<uint8_t> unchanged = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage unchangedPage =
+        ParseCommands(unchanged.data(), unchanged.size());
+    if (unchangedPage.light_link_count != 0)
+    {
+        return false;
+    }
+
+    keyLight.lightLinkCategory.clear();
+    state.ReplaceLight(keyLight);
+    if (state.HasLightLinks())
+    {
+        return false;
+    }
+    const std::vector<uint8_t> retired = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage retiredPage = ParseCommands(retired.data(), retired.size());
+    if (!retiredPage.light_link_valid ||
+        retiredPage.light_link_count != 1 ||
+        !retiredPage.light_links.empty())
+    {
+        return false;
+    }
+
+    const std::vector<uint8_t> stillRetired =
+        state.BuildPage(nullptr, &commandCount);
+    return ParseCommands(stillRetired.data(), stillRetired.size())
+        .light_link_count == 0;
+}
+
+/// A shadow link narrows the shadow mask without narrowing the light mask, and a
+/// shadow link is resolved independently of the light link: a prim the light does
+/// not illuminate still casts its shadow when the caster collection includes it.
+bool VerifyShadowLinkNarrowsOnlyTheShadowMask()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.shadowLinkCategory = "casters";
+    state.ReplaceLight(light);
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership receiver;
+    receiver.path = "/Geom/Receiver";
+    receiver.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(receiver));
+    state.SetCategoryMemberships(std::move(memberships), false);
+    ReplaceSingleMesh(
+        state,
+        "/Geom/Receiver",
+        MakeSceneStateRecord("/Geom/Receiver", 43));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.light_link_valid &&
+        page.light_link_count == 1 &&
+        page.light_links.size() == 1 &&
+        std::get<0>(page.light_links[0]) == "/Geom/Receiver" &&
+        std::get<2>(page.light_links[0]) == 0x1u &&
+        std::get<3>(page.light_links[0]) == 0x0u;
+}
+
+/// The two link collections are resolved independently. A prim excluded from a
+/// light's lightLink collection but included in its shadowLink collection is an
+/// unlit blocker, and it must still publish the shadow bit: intersecting the two
+/// masks would silently delete its shadow.
+bool VerifyUnlitBlockerStillPublishesItsShadowBit()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.lightLinkCategory = "lit";
+    state.ReplaceLight(light);
+
+    // The blocker belongs to no category at all, so it is outside the "lit"
+    // collection while the shadow collection -- which the light leaves empty --
+    // includes everything.
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership blocker;
+    blocker.path = "/Geom/Blocker";
+    blocker.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(blocker));
+    state.SetCategoryMemberships(std::move(memberships), false);
+    ReplaceSingleMesh(
+        state,
+        "/Geom/Blocker",
+        MakeSceneStateRecord("/Geom/Blocker", 64));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.light_link_valid &&
+        page.light_link_count == 1 &&
+        page.light_links.size() == 1 &&
+        std::get<0>(page.light_links[0]) == "/Geom/Blocker" &&
+        std::get<2>(page.light_links[0]) == 0x0u &&
+        std::get<3>(page.light_links[0]) == 0x1u;
+}
+
+/// A table larger than the page budget reports the omission rather than
+/// publishing a partial table that would silently darken the prims it dropped.
+bool VerifyOversizedLightLinkTableIsDiagnosed()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.lightLinkCategory = "lit";
+    state.ReplaceLight(light);
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    memberships.reserve(OPENUSD_SILK_MAX_LINK_ENTRIES + 8u);
+    for (uint32_t index = 0; index < OPENUSD_SILK_MAX_LINK_ENTRIES + 8u; ++index)
+    {
+        HdSilkCategoryMembership membership;
+        membership.path = "/Geom/Prim" + std::to_string(index);
+        membership.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+        memberships.push_back(std::move(membership));
+    }
+    state.SetCategoryMemberships(std::move(memberships), false);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.light_link_valid &&
+        page.light_link_count == 1 &&
+        page.light_links.size() == OPENUSD_SILK_MAX_LINK_ENTRIES &&
+        page.light_link_unsupported ==
+            OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_TRUNCATED;
+}
+
+/// A prim that links to every light costs the bounded table nothing, however
+/// many of them a scene has.
+///
+/// The bound belongs to the resolved, sparsified table and not to the
+/// memberships the collector gathers. Charging a membership before its masks
+/// are known is the same as charging a prim for linking to everything: a scene
+/// of 4096 such prims filled the budget with rows that resolve to nothing, and
+/// the one prim a collection really excluded was dropped and reported as
+/// truncated. The measurement is the whole table: exactly one entry, naming the
+/// excluded prim, and no truncation at all.
+bool VerifyDefaultPrimsDoNotConsumeTheLinkBudget()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.lightLinkCategory = "lit";
+    state.ReplaceLight(light);
+
+    // Built through the collector's own entry point, so the rule under test is
+    // the one the render pass runs rather than a restatement of it.
+    std::vector<HdSilkCategoryMembership> memberships;
+    for (uint32_t index = 0; index < OPENUSD_SILK_MAX_LINK_ENTRIES; ++index)
+    {
+        if (!HdSilkAppendPathMemberships(
+                "/Geom/Linked" + std::to_string(index),
+                {"lit"},
+                {},
+                {},
+                HdSilkMaxCollectedInstanceRows,
+                &memberships,
+                nullptr))
+        {
+            return false;
+        }
+    }
+    if (!HdSilkAppendPathMemberships(
+            "/Geom/Excluded",
+            {},
+            {},
+            {},
+            HdSilkMaxCollectedInstanceRows,
+            &memberships,
+            nullptr) ||
+        memberships.size() != OPENUSD_SILK_MAX_LINK_ENTRIES + 1u)
+    {
+        return false;
+    }
+    state.SetCategoryMemberships(std::move(memberships), false);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.light_link_valid &&
+        page.light_link_count == 1 &&
+        page.light_links.size() == 1 &&
+        std::get<0>(page.light_links[0]) == "/Geom/Excluded" &&
+        std::get<1>(page.light_links[0]) == OPENUSD_SILK_LINK_ALL_INSTANCES &&
+        std::get<2>(page.light_links[0]) == 0x0u &&
+        std::get<3>(page.light_links[0]) == 0x1u &&
+        page.light_link_unsupported == OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE;
+}
+
+/// Instances whose categories differ but whose masks do not cost the bounded
+/// table nothing either, however many of them a prototype has.
+///
+/// A category set that differs from the prototype's is not a mask that differs
+/// from it. The collector cannot tell them apart -- the page's light and dome
+/// orderings do not exist yet -- so it emits a row for every instance whose
+/// categories differ, and the resolution discards the ones that resolve to
+/// their path. Charging those rows against the ABI budget while they are still
+/// unresolved refused a prototype whose instances all carry a collection no
+/// light names, and the path's one genuine override went with it.
+///
+/// Here 5000 instances carry a category the scene's only light ignores, and one
+/// instance carries the light's caster collection. The published table must be
+/// exactly the prototype's row and that single override, with no truncation at
+/// all.
+bool VerifyCategoryDifferingInstancesResolvingToTheirPathCostNothing()
+{
+    constexpr size_t instances = 5000;
+    constexpr int overrideIndex = 4321;
+
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.lightLinkCategory = "lit";
+    light.shadowLinkCategory = "casters";
+    state.ReplaceLight(light);
+
+    HdSilkInstancerLevel level;
+    level.path = "/World/Instancer";
+    level.instanceCount = static_cast<int64_t>(instances);
+    level.publishedIndices.reserve(instances);
+    level.instanceCategories.reserve(instances);
+    for (size_t index = 0; index < instances; ++index)
+    {
+        level.publishedIndices.push_back(static_cast<int>(index));
+
+        // Every instance differs from the prototype's empty category set, so
+        // the collector emits a row for every one of them. Only the categories
+        // a light actually names can move a mask, and "ignoredN" names none:
+        // the light links "lit" and casts for "casters" and nothing else.
+        level.instanceCategories.push_back(
+            static_cast<int>(index) == overrideIndex
+                ? std::vector<std::string>{"casters"}
+                : std::vector<std::string>{"ignored" + std::to_string(index)});
+    }
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    if (!HdSilkAppendPathMemberships(
+            "/Geom/Scattered",
+            {},
+            {},
+            {level},
+            HdSilkMaxCollectedInstanceRows,
+            &memberships,
+            nullptr))
+    {
+        std::cerr << "hdSilk refused to collect " << instances
+                  << " category-differing instance rows.\n";
+        return false;
+    }
+
+    // The rows really were collected: the path row plus one per instance. A
+    // collector that refused them at the ABI budget would have rolled the whole
+    // group back and left nothing at all.
+    if (memberships.size() != instances + 1)
+    {
+        std::cerr << "hdSilk collected " << memberships.size()
+                  << " membership rows, expected " << (instances + 1) << "\n";
+        return false;
+    }
+    state.SetCategoryMemberships(std::move(memberships), false);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.light_links.size() != 2 ||
+        page.light_link_unsupported != OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE)
+    {
+        std::cerr << "hdSilk published " << page.light_links.size()
+                  << " entries for 5000 category-differing instances, "
+                  << "unsupported " << page.light_link_unsupported << "\n";
+        return false;
+    }
+
+    // The prototype's own row: outside the light's collection and outside its
+    // caster collection. Then exactly one instance row, for the one instance
+    // whose categories move a mask, and it moves only the shadow mask.
+    return std::get<0>(page.light_links[0]) == "/Geom/Scattered" &&
+        std::get<1>(page.light_links[0]) == OPENUSD_SILK_LINK_ALL_INSTANCES &&
+        std::get<2>(page.light_links[0]) == 0x0u &&
+        std::get<3>(page.light_links[0]) == 0x0u &&
+        std::get<0>(page.light_links[1]) == "/Geom/Scattered" &&
+        std::get<1>(page.light_links[1]) == overrideIndex &&
+        std::get<2>(page.light_links[1]) == 0x0u &&
+        std::get<3>(page.light_links[1]) == 0x1u;
+}
+
+/// A path whose resolved entries do not fit is omitted whole, so it fails open
+/// to every light rather than keeping a path row its own instances contradict.
+///
+/// A path-wide row is what a consumer falls back to for every instance it has
+/// no row for. Publishing a restrictive path row and dropping the overrides
+/// that widen it therefore applies the author's narrow mask to exactly the
+/// instances the author opted back in -- a darker image than either the
+/// authored scene or the unlinked default. Truncation has to fail open, which
+/// means the whole group goes or none of it does.
+bool VerifyOversizedPathOverridesFailOpenAsAWholeGroup()
+{
+    // A prototype whose every instance opts back into the light its path is
+    // excluded from, more times than the table can ever carry. Unlike the
+    // category-differing case, every one of these rows really does resolve to a
+    // different mask, so they are genuine entries and the table cannot hold
+    // them.
+    const size_t oversized = OPENUSD_SILK_MAX_LINK_ENTRIES + 32u;
+    HdSilkInstancerLevel level;
+    level.path = "/World/Instancer";
+    level.instanceCount = static_cast<int64_t>(oversized);
+    level.publishedIndices.reserve(oversized);
+    level.instanceCategories.assign(oversized, std::vector<std::string>{"lit"});
+    for (size_t index = 0; index < oversized; ++index)
+    {
+        level.publishedIndices.push_back(static_cast<int>(index));
+    }
+
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.lightLinkCategory = "lit";
+    state.ReplaceLight(light);
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    if (!HdSilkAppendPathMemberships(
+            "/Geom/Oversized",
+            {},
+            {},
+            {level},
+            HdSilkMaxCollectedInstanceRows,
+            &memberships,
+            nullptr))
+    {
+        return false;
+    }
+    state.SetCategoryMemberships(std::move(memberships), false);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> oversizedBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage oversizedPage =
+        ParseCommands(oversizedBytes.data(), oversizedBytes.size());
+    if (!oversizedPage.light_link_valid ||
+        oversizedPage.light_link_count != 1 ||
+        !oversizedPage.light_links.empty() ||
+        oversizedPage.light_link_unsupported !=
+            OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_TRUNCATED)
+    {
+        // Not one row of the group may survive: the path row alone would apply
+        // the author's narrow mask to the instances that were dropped.
+        std::cerr << "hdSilk published " << oversizedPage.light_links.size()
+                  << " entries for an over-budget path, unsupported "
+                  << oversizedPage.light_link_unsupported << "\n";
+        return false;
+    }
+
+    // The collector's own limit is a memory policy, and it is atomic too: a
+    // prototype that would materialize more unresolved rows than it admits
+    // leaves nothing behind, not even its path row.
+    std::vector<HdSilkCategoryMembership> refused;
+    if (HdSilkAppendPathMemberships(
+            "/Geom/Refused",
+            {},
+            {},
+            {level},
+            oversized - 1,
+            &refused,
+            nullptr) ||
+        !refused.empty())
+    {
+        return false;
+    }
+
+    // The same rule between paths. Two paths each need 3001 entries, so the
+    // second cannot fit beside the first. It must vanish entirely -- no path
+    // row, no overrides -- and the omission must be reported.
+    constexpr size_t perPath = 3000;
+    HdSilkSceneState pairState;
+    pairState.ReplaceLight(light);
+
+    HdSilkInstancerLevel fittingLevel;
+    fittingLevel.path = "/World/Instancer";
+    fittingLevel.instanceCount = static_cast<int64_t>(perPath);
+    fittingLevel.publishedIndices.reserve(perPath);
+    fittingLevel.instanceCategories.assign(
+        perPath,
+        std::vector<std::string>{"lit"});
+    for (size_t index = 0; index < perPath; ++index)
+    {
+        fittingLevel.publishedIndices.push_back(static_cast<int>(index));
+    }
+
+    std::vector<HdSilkCategoryMembership> pair;
+    if (!HdSilkAppendPathMemberships(
+            "/Geom/First",
+            {},
+            {},
+            {fittingLevel},
+            HdSilkMaxCollectedInstanceRows,
+            &pair,
+            nullptr) ||
+        !HdSilkAppendPathMemberships(
+            "/Geom/Second",
+            {},
+            {},
+            {fittingLevel},
+            HdSilkMaxCollectedInstanceRows,
+            &pair,
+            nullptr))
+    {
+        return false;
+    }
+    pairState.SetCategoryMemberships(std::move(pair), false);
+
+    const std::vector<uint8_t> bytes =
+        pairState.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.light_links.size() != perPath + 1 ||
+        page.light_link_unsupported !=
+            OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_TRUNCATED)
+    {
+        std::cerr << "hdSilk atomic link group published "
+                  << page.light_links.size() << " entries, unsupported "
+                  << page.light_link_unsupported << "\n";
+        return false;
+    }
+    for (const auto& entry : page.light_links)
+    {
+        if (std::get<0>(entry) != "/Geom/First")
+        {
+            std::cerr << "hdSilk published an entry for the omitted group: "
+                      << std::get<0>(entry) << " instance "
+                      << std::get<1>(entry) << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+/// An instancer that scatters several prototypes emits membership rows only for
+/// the instances each prototype actually draws.
+///
+/// Hydra reports one category array per instance of the *instancer*, so every
+/// prototype sees every instance. Walking that array directly emitted a row for
+/// (this prototype, that index) even where the index draws a different
+/// prototype: identities no record is ever published under, which no mask can
+/// ever match and which consume the same bounded table the real rows need. With
+/// a large instancer and a handful of prototypes the phantoms alone fill the
+/// budget and truncate the rows that address something.
+bool VerifyInstanceMembershipsFollowPublishedPrototypeIndices()
+{
+    // 8192 instances, alternating between two prototypes, so the phantom rows
+    // would be double the budget on their own.
+    constexpr size_t instanceCount = 8192;
+    const std::vector<std::string> primCategories{"proto"};
+    std::vector<std::vector<std::string>> instanceCategories;
+    instanceCategories.reserve(instanceCount);
+    std::vector<int> even;
+    std::vector<int> odd;
+    for (size_t index = 0; index < instanceCount; ++index)
+    {
+        // Every instance's categories differ from the prototype's, so nothing is
+        // skipped for being redundant and the intersection is the only thing
+        // keeping the table small.
+        instanceCategories.push_back({"instance" + std::to_string(index)});
+        if (index % 2 == 0)
+        {
+            even.push_back(static_cast<int>(index));
+        }
+        else
+        {
+            odd.push_back(static_cast<int>(index));
+        }
+    }
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    const bool fitted = HdSilkAppendInstanceMemberships(
+        "/Geom/Even",
+        primCategories,
+        instanceCategories,
+        even,
+        OPENUSD_SILK_MAX_LINK_ENTRIES,
+        &memberships);
+
+    // Exactly the prototype's own instances, and every one of them even.
+    if (!fitted ||
+        memberships.size() != even.size() ||
+        even.size() > OPENUSD_SILK_MAX_LINK_ENTRIES)
+    {
+        return false;
+    }
+    for (size_t row = 0; row < memberships.size(); ++row)
+    {
+        if (memberships[row].path != "/Geom/Even" ||
+            memberships[row].instanceIndex != even[row] ||
+            memberships[row].instanceIndex % 2 != 0)
+        {
+            return false;
+        }
+    }
+
+    // The second prototype's rows are the complement, and neither prototype's
+    // table contains an identity the other publishes.
+    std::vector<HdSilkCategoryMembership> odds;
+    if (!HdSilkAppendInstanceMemberships(
+            "/Geom/Odd",
+            primCategories,
+            instanceCategories,
+            odd,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &odds) ||
+        odds.size() != odd.size())
+    {
+        return false;
+    }
+    for (const HdSilkCategoryMembership& membership : odds)
+    {
+        if (membership.instanceIndex % 2 != 1)
+        {
+            return false;
+        }
+    }
+
+    // A hidden or proto instance addresses no instance primvar element, so it
+    // draws nothing and must contribute no row at all -- and neither must an
+    // index past the reported categories.
+    std::vector<HdSilkCategoryMembership> hidden;
+    if (!HdSilkAppendInstanceMemberships(
+            "/Geom/Hidden",
+            primCategories,
+            instanceCategories,
+            {-1, -7, static_cast<int>(instanceCount), static_cast<int>(instanceCount) + 5},
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &hidden) ||
+        !hidden.empty())
+    {
+        return false;
+    }
+
+    // An instance that resolves to the prototype's own categories is already
+    // described by the prototype's row, so it is not repeated.
+    std::vector<std::vector<std::string>> matching(4, primCategories);
+    std::vector<HdSilkCategoryMembership> redundant;
+    if (!HdSilkAppendInstanceMemberships(
+            "/Geom/Redundant",
+            primCategories,
+            matching,
+            {0, 1, 2, 3},
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &redundant) ||
+        !redundant.empty())
+    {
+        return false;
+    }
+
+    // The budget still bounds a prototype that really does draw more instances
+    // than the table admits, and reports that it did.
+    std::vector<int> all;
+    all.reserve(instanceCount);
+    for (size_t index = 0; index < instanceCount; ++index)
+    {
+        all.push_back(static_cast<int>(index));
+    }
+    std::vector<HdSilkCategoryMembership> bounded;
+    return !HdSilkAppendInstanceMemberships(
+            "/Geom/All",
+            primCategories,
+            instanceCategories,
+            all,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &bounded) &&
+        bounded.size() == OPENUSD_SILK_MAX_LINK_ENTRIES;
+}
+
+/// The rows one nested prototype is expected to publish: a composed instance
+/// index and the categories it resolves to.
+struct ExpectedMembership
+{
+    int32_t instanceIndex = 0;
+    std::vector<std::string> categories;
+};
+
+bool MatchesMemberships(
+    const std::vector<HdSilkCategoryMembership>& actual,
+    const std::string& path,
+    const std::vector<ExpectedMembership>& expected)
+{
+    if (actual.size() != expected.size())
+    {
+        std::cerr << "hdSilk nested linking published " << actual.size()
+                  << " rows for '" << path << "', expected "
+                  << expected.size() << "\n";
+        for (const HdSilkCategoryMembership& row : actual)
+        {
+            std::cerr << "  row " << row.path << " instance "
+                      << row.instanceIndex << "\n";
+        }
+        return false;
+    }
+    for (size_t row = 0; row < expected.size(); ++row)
+    {
+        std::vector<std::string> wanted = expected[row].categories;
+        std::sort(wanted.begin(), wanted.end());
+        if (actual[row].path != path ||
+            actual[row].instanceIndex != expected[row].instanceIndex ||
+            actual[row].categories != wanted)
+        {
+            std::cerr << "hdSilk nested linking row " << row << " of '" << path
+                      << "' published instance " << actual[row].instanceIndex
+                      << " with " << actual[row].categories.size()
+                      << " categories, expected instance "
+                      << expected[row].instanceIndex << " with "
+                      << wanted.size() << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Builds one level of a chain: its authoritative instance count, the indices
+/// it publishes for the child it scatters, and Hydra's per-instance categories.
+HdSilkInstancerLevel MakeLevel(
+    const char* path,
+    int64_t instanceCount,
+    std::vector<int> publishedIndices,
+    std::vector<std::vector<std::string>> instanceCategories)
+{
+    HdSilkInstancerLevel level;
+    level.path = path;
+    level.instanceCount = instanceCount;
+    level.publishedIndices = std::move(publishedIndices);
+    level.instanceCategories = std::move(instanceCategories);
+    return level;
+}
+
+/// Under nested instancing a membership row must name the composed identity
+/// hdSilk publishes -- outerIndex * innerInstanceCount + innerIndex -- and must
+/// combine what every level of the chain contributes to it.
+///
+/// The two failures this closes are opposite and both silent. Resolving the
+/// inner instancer's own category array against the published index would apply
+/// instance 2's collection to composed index 2, which under an outer instancer
+/// of four is a different scene instance every time. Emitting a row per
+/// (outer, inner) pair without intersecting each level against the indices it
+/// actually draws would emit rows for identities the other prototype publishes,
+/// which no record ever matches and which consume the bounded table.
+bool VerifyNestedInstanceMembershipsResolveComposedIdentities()
+{
+    // Outer: three instances, all three drawing the inner instancer, and only
+    // outer instance 1 in a collection. Inner: four instances shared by two
+    // prototypes -- TwigA owns 0 and 2, TwigB owns 1 and 3 -- with only inner
+    // instance 2 in a collection of its own.
+    const std::vector<std::vector<std::string>> outerCategories{
+        {}, {"rimlit"}, {}};
+    const std::vector<std::vector<std::string>> innerCategories{
+        {}, {}, {"keyoff"}, {}};
+
+    std::vector<HdSilkInstancerLevel> twigA{
+        MakeLevel("/World/Outer", 3, {0, 1, 2}, outerCategories),
+        MakeLevel("/World/Outer/Inner", 4, {0, 2}, innerCategories)};
+    std::vector<HdSilkCategoryMembership> rows;
+    HdSilkNestedLinkDiagnostics diagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/TwigA",
+            {},
+            {},
+            twigA,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &rows,
+            &diagnostics) ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+
+    // TwigA draws composed 0, 2, 4, 6, 8 and 10. Only the identities a level
+    // actually moves are published: inner 2 under each outer, and every inner
+    // under outer 1. Composed 0 and 8 resolve to the prototype's own row and
+    // are absent, which is what keeps the table sparse.
+    if (!MatchesMemberships(
+            rows,
+            "/World/Outer/Inner/TwigA",
+            {{2, {"keyoff"}},
+             {4, {"rimlit"}},
+             {6, {"keyoff", "rimlit"}},
+             {10, {"keyoff"}}}))
+    {
+        return false;
+    }
+
+    // The second prototype of the same inner instancer shares the index space
+    // and publishes only its own identities: 5 and 7 are the odd inner indices
+    // under outer 1, and nothing TwigA published is repeated.
+    std::vector<HdSilkInstancerLevel> twigB{
+        MakeLevel("/World/Outer", 3, {0, 1, 2}, outerCategories),
+        MakeLevel("/World/Outer/Inner", 4, {1, 3}, innerCategories)};
+    std::vector<HdSilkCategoryMembership> other;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/TwigB",
+            {},
+            {},
+            twigB,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &other,
+            &diagnostics) ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+    return MatchesMemberships(
+        other,
+        "/World/Outer/Inner/TwigB",
+        {{5, {"rimlit"}}, {7, {"rimlit"}}});
+}
+
+/// Hidden instances and sparse proto indices consume no rows at any level, and
+/// a three-level chain composes against each level's own radix.
+bool VerifyNestedInstanceMembershipsSkipHiddenAndDeepIdentities()
+{
+    // Outer instance 1 is hidden, so Hydra publishes -1 for it. Nothing under
+    // it is drawn, so nothing under it may be linked either.
+    std::vector<HdSilkInstancerLevel> sparse{
+        MakeLevel("/World/Outer", 3, {0, -1, 2}, {{}, {"rimlit"}, {}}),
+        MakeLevel("/World/Outer/Inner", 4, {2, 3}, {{}, {}, {}, {"tag"}})};
+    std::vector<HdSilkCategoryMembership> rows;
+    HdSilkNestedLinkDiagnostics diagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {},
+            {},
+            sparse,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &rows,
+            &diagnostics) ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+    // Composed 3 and 11 are inner 3 under outer 0 and outer 2. The hidden
+    // outer instance would have contributed composed 5, 6 and 7, and the
+    // "rimlit" collection it belongs to must not reach anything.
+    if (!MatchesMemberships(
+            rows,
+            "/World/Outer/Inner/Leaf",
+            {{3, {"tag"}}, {11, {"tag"}}}))
+    {
+        return false;
+    }
+
+    // Three levels: 2 outer, 3 middle, 2 inner. The composed index is
+    // ((outer * 3) + middle) * 2 + inner, and a middle-level collection reaches
+    // exactly the inner instances beneath that middle instance.
+    std::vector<HdSilkInstancerLevel> deep{
+        MakeLevel("/World/A", 2, {0, 1}, {}),
+        MakeLevel("/World/A/B", 3, {0, 1, 2}, {{}, {"midlit"}, {}}),
+        MakeLevel("/World/A/B/C", 2, {0, 1}, {{}, {"innerlit"}})};
+    std::vector<HdSilkCategoryMembership> deepRows;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/A/B/C/Leaf",
+            {},
+            {},
+            deep,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &deepRows,
+            &diagnostics) ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+    // Middle 1 covers composed ((0*3)+1)*2 + {0,1} = 2, 3 and
+    // ((1*3)+1)*2 + {0,1} = 8, 9. Inner 1 covers every odd composed index.
+    return MatchesMemberships(
+        deepRows,
+        "/World/A/B/C/Leaf",
+        {{1, {"innerlit"}},
+         {2, {"midlit"}},
+         {3, {"innerlit", "midlit"}},
+         {5, {"innerlit"}},
+         {7, {"innerlit"}},
+         {8, {"midlit"}},
+         {9, {"innerlit", "midlit"}},
+         {11, {"innerlit"}}});
+}
+
+/// The path-wide row still describes every instance that shares it, and the
+/// categories an ancestor instancer applies to all of its instances belong on
+/// that row rather than on a row per composed identity.
+bool VerifyNestedPrototypeWideMembershipsStaySparse()
+{
+    // Every inner instance carries exactly the prototype's own categories, and
+    // no ancestor instance carries anything, so every composed identity
+    // resolves to the prototype's row and the table stays empty.
+    std::vector<HdSilkInstancerLevel> uniform{
+        MakeLevel("/World/Outer", 64, {}, {}),
+        MakeLevel("/World/Outer/Inner", 64, {}, {})};
+    uniform[0].publishedIndices.reserve(64);
+    uniform[0].instanceCategories.assign(64, {"proto"});
+    uniform[1].publishedIndices.reserve(64);
+    uniform[1].instanceCategories.assign(64, {"proto"});
+    for (int index = 0; index < 64; ++index)
+    {
+        uniform[0].publishedIndices.push_back(index);
+        uniform[1].publishedIndices.push_back(index);
+    }
+    std::vector<HdSilkCategoryMembership> rows;
+    HdSilkNestedLinkDiagnostics diagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {"proto"},
+            {},
+            uniform,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &rows,
+            &diagnostics) ||
+        !rows.empty() ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+
+    // The same 4096 identities with an ancestor collection that covers all of
+    // them: it is path-wide by construction, so it belongs to the prototype's
+    // own row and still publishes nothing per instance. A resolution that
+    // folded it in per identity instead would fill the whole budget with rows
+    // that all say the same thing.
+    std::vector<HdSilkInstancerLevel> shared{
+        MakeLevel("/World/Outer", 64, uniform[0].publishedIndices, {}),
+        MakeLevel(
+            "/World/Outer/Inner",
+            64,
+            uniform[1].publishedIndices,
+            {})};
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {},
+            {"ancestorlit"},
+            shared,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &rows,
+            &diagnostics) ||
+        !rows.empty() ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+
+    // An instance that opts back into nothing under a prototype that is in a
+    // collection is still a difference and is still published, because the
+    // consumer would otherwise fall back to the prototype's narrower mask.
+    std::vector<HdSilkInstancerLevel> optOut{
+        MakeLevel("/World/Outer", 2, {0, 1}, {}),
+        MakeLevel("/World/Outer/Inner", 2, {0, 1}, {{"proto"}, {}})};
+    std::vector<HdSilkCategoryMembership> optOutRows;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {"proto"},
+            {},
+            optOut,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &optOutRows,
+            &diagnostics) ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+    return MatchesMemberships(
+        optOutRows,
+        "/World/Outer/Inner/Leaf",
+        {{1, {}}, {3, {}}});
+}
+
+/// Malformed levels are reported rather than resolved against a wrong index,
+/// and the bounded table is enforced before a row is appended.
+bool VerifyNestedInstanceMembershipsAreBoundedAndDiagnosed()
+{
+    // An inner index the inner instancer's own count cannot explain has no
+    // unique nested encoding, which is exactly the sample HdSilkInstancer
+    // drops, so it must publish no row either.
+    std::vector<HdSilkInstancerLevel> uncomposable{
+        MakeLevel("/World/Outer", 2, {0, 1}, {}),
+        MakeLevel("/World/Outer/Inner", 2, {0, 5}, {{}, {"a"}, {}, {}, {}, {"b"}})};
+    std::vector<HdSilkCategoryMembership> rows;
+    HdSilkNestedLinkDiagnostics diagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {},
+            {},
+            uncomposable,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &rows,
+            &diagnostics) ||
+        !rows.empty() ||
+        diagnostics.uncomposableIndices != 1 ||
+        diagnostics.unresolvedIndices != 0)
+    {
+        return false;
+    }
+
+    // A level that reports per-instance categories but not for an instance it
+    // publishes leaves that instance's membership unknown. It keeps the
+    // prototype's row and is counted; nothing beneath it is published under a
+    // mask resolved from another instance.
+    std::vector<HdSilkInstancerLevel> unresolved{
+        MakeLevel("/World/Outer", 3, {0, 1, 2}, {{}}),
+        MakeLevel("/World/Outer/Inner", 2, {0, 1}, {{}, {"innerlit"}})};
+    std::vector<HdSilkCategoryMembership> unresolvedRows;
+    HdSilkNestedLinkDiagnostics unresolvedDiagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {},
+            {},
+            unresolved,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &unresolvedRows,
+            &unresolvedDiagnostics) ||
+        unresolvedDiagnostics.unresolvedIndices != 2 ||
+        unresolvedDiagnostics.uncomposableIndices != 0)
+    {
+        return false;
+    }
+    // Only outer 0 survives, so only composed 0 and 1 exist and only inner 1
+    // moves off the prototype's row.
+    if (!MatchesMemberships(
+            unresolvedRows,
+            "/World/Outer/Inner/Leaf",
+            {{1, {"innerlit"}}}))
+    {
+        return false;
+    }
+
+    // A composed identity past the signed 32-bit instance index the ABI carries
+    // is pruned with a diagnostic rather than truncated into another instance's
+    // slot.
+    std::vector<HdSilkInstancerLevel> huge{
+        MakeLevel("/World/Outer", 4, {0, 3}, {{}, {}, {}, {}}),
+        MakeLevel(
+            "/World/Outer/Inner",
+            1073741824,
+            {0, 1},
+            {{"deep"}, {"deep"}})};
+    std::vector<HdSilkCategoryMembership> hugeRows;
+    HdSilkNestedLinkDiagnostics hugeDiagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {},
+            {},
+            huge,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &hugeRows,
+            &hugeDiagnostics) ||
+        hugeDiagnostics.unrepresentableIndices != 2)
+    {
+        return false;
+    }
+    if (!MatchesMemberships(
+            hugeRows,
+            "/World/Outer/Inner/Leaf",
+            {{0, {"deep"}}, {1, {"deep"}}}))
+    {
+        return false;
+    }
+
+    // The budget is checked before the row is appended, so a chain that would
+    // resolve more identities than the table admits fills it exactly and says
+    // it did. The rows that fit are the lowest composed identities, which is
+    // what makes a truncated table reproducible.
+    std::vector<int> everyIndex;
+    everyIndex.reserve(128);
+    std::vector<std::vector<std::string>> everyCategory(128);
+    for (int index = 0; index < 128; ++index)
+    {
+        everyIndex.push_back(index);
+        everyCategory[static_cast<size_t>(index)] = {"i" + std::to_string(index)};
+    }
+    std::vector<HdSilkInstancerLevel> oversized{
+        MakeLevel("/World/Outer", 128, everyIndex, {}),
+        MakeLevel("/World/Outer/Inner", 128, everyIndex, everyCategory)};
+    std::vector<HdSilkCategoryMembership> boundedRows;
+    HdSilkNestedLinkDiagnostics boundedDiagnostics;
+    if (HdSilkAppendNestedInstanceMemberships(
+            "/World/Outer/Inner/Leaf",
+            {},
+            {},
+            oversized,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &boundedRows,
+            &boundedDiagnostics) ||
+        boundedRows.size() != OPENUSD_SILK_MAX_LINK_ENTRIES)
+    {
+        return false;
+    }
+    for (size_t row = 0; row < boundedRows.size(); ++row)
+    {
+        if (boundedRows[row].instanceIndex != static_cast<int32_t>(row))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// The composed rows reach the wire as one sparse ABI v21 entry per published
+/// identity, with the direct, shadow and dome masks each resolved from the
+/// collection the identity belongs to, and they retire the way any other table
+/// does.
+bool VerifyNestedInstanceLinksReachTheWire()
+{
+    constexpr char LeafPath[] = "/World/Outer/Inner/Leaf";
+    HdSilkSceneState state;
+
+    HdSilkLightRecord keyLight;
+    keyLight.path = "/Lights/Key";
+    keyLight.type = OPENUSD_SILK_LIGHT_DISTANT;
+    keyLight.lightLinkCategory = "keyoff";
+    keyLight.shadowLinkCategory = "casters";
+    state.ReplaceLight(keyLight);
+
+    HdSilkLightRecord dome;
+    dome.path = "/Lights/Dome";
+    dome.ambientOnly = true;
+    dome.lightLinkCategory = "rimlit";
+    state.ReplaceLight(dome);
+
+    // The chain from the render pass: three outer instances of a four-instance
+    // inner instancer, with outer 1 in the dome's collection, inner 2 in the
+    // key light's collection and inner 3 in the key light's caster collection.
+    std::vector<HdSilkInstancerLevel> levels{
+        MakeLevel("/World/Outer", 3, {0, 1, 2}, {{}, {"rimlit"}, {}}),
+        MakeLevel(
+            "/World/Outer/Inner",
+            4,
+            {0, 1, 2, 3},
+            {{}, {}, {"keyoff"}, {"casters"}})};
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership prototype;
+    prototype.path = LeafPath;
+    prototype.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(prototype));
+    HdSilkNestedLinkDiagnostics diagnostics;
+    if (!HdSilkAppendNestedInstanceMemberships(
+            LeafPath,
+            {},
+            {},
+            levels,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &memberships,
+            &diagnostics) ||
+        diagnostics.Any())
+    {
+        return false;
+    }
+    state.SetCategoryMemberships(memberships, false);
+
+    std::vector<HdSilkMeshRecord> instances;
+    for (int32_t index = 0; index < 12; ++index)
+    {
+        HdSilkMeshRecord record = MakeSceneStateRecord(LeafPath, 71);
+        record.instanceId = 5;
+        record.instancerPath = "/Instancer";
+        record.instanceIndex = index;
+        record.instancerContext = {{"/Instancer", index}};
+        if (index != 0)
+        {
+            record.points.clear();
+            record.indices.clear();
+            record.triangleSubprims.clear();
+            record.attributes.clear();
+        }
+        instances.push_back(std::move(record));
+    }
+    state.ReplaceMeshInstances(LeafPath, std::move(instances));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.light_link_light_count != 1 ||
+        page.light_link_dome_count != 1 ||
+        page.light_link_unsupported != OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE)
+    {
+        return false;
+    }
+
+    // The prototype row itself: outside every collection, so no direct light,
+    // no shadow and no dome. Then exactly one row per composed identity whose
+    // masks differ from it, sorted by instance index. Composed 2, 6 and 10 are
+    // inner 2 under each outer; 3, 7 and 11 are inner 3; 4, 5, 6 and 7 are
+    // every inner index under outer 1.
+    const std::vector<std::tuple<int32_t, uint32_t, uint32_t, uint32_t>> expected{
+        {OPENUSD_SILK_LINK_ALL_INSTANCES, 0x0u, 0x0u, 0x0u},
+        {2, 0x1u, 0x0u, 0x0u},
+        {3, 0x0u, 0x1u, 0x0u},
+        {4, 0x0u, 0x0u, 0x1u},
+        {5, 0x0u, 0x0u, 0x1u},
+        {6, 0x1u, 0x0u, 0x1u},
+        {7, 0x0u, 0x1u, 0x1u},
+        {10, 0x1u, 0x0u, 0x0u},
+        {11, 0x0u, 0x1u, 0x0u}};
+    if (page.light_links.size() != expected.size())
+    {
+        std::cerr << "hdSilk nested link table published "
+                  << page.light_links.size() << " entries, expected "
+                  << expected.size() << "\n";
+        return false;
+    }
+    for (size_t entry = 0; entry < expected.size(); ++entry)
+    {
+        if (std::get<0>(page.light_links[entry]) != LeafPath ||
+            std::get<1>(page.light_links[entry]) !=
+                std::get<0>(expected[entry]) ||
+            std::get<2>(page.light_links[entry]) !=
+                std::get<1>(expected[entry]) ||
+            std::get<3>(page.light_links[entry]) !=
+                std::get<2>(expected[entry]) ||
+            std::get<4>(page.light_links[entry]) !=
+                std::get<3>(expected[entry]))
+        {
+            std::cerr << "hdSilk nested link entry " << entry
+                      << " published instance "
+                      << std::get<1>(page.light_links[entry]) << " masks "
+                      << std::get<2>(page.light_links[entry]) << "/"
+                      << std::get<3>(page.light_links[entry]) << "/"
+                      << std::get<4>(page.light_links[entry]) << "\n";
+            return false;
+        }
+    }
+
+    // An unchanged chain republishes nothing at all.
+    const std::vector<uint8_t> unchanged = state.BuildPage(nullptr, &commandCount);
+    if (ParseCommands(unchanged.data(), unchanged.size()).light_link_count != 0)
+    {
+        return false;
+    }
+
+    // Moving the ancestor collection to a different outer instance moves the
+    // dome bit to a different composed range rather than leaving the previous
+    // one behind.
+    levels[0].instanceCategories = {{"rimlit"}, {}, {}};
+    std::vector<HdSilkCategoryMembership> updated;
+    HdSilkCategoryMembership updatedPrototype;
+    updatedPrototype.path = LeafPath;
+    updatedPrototype.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    updated.push_back(std::move(updatedPrototype));
+    if (!HdSilkAppendNestedInstanceMemberships(
+            LeafPath,
+            {},
+            {},
+            levels,
+            OPENUSD_SILK_MAX_LINK_ENTRIES,
+            &updated,
+            &diagnostics))
+    {
+        return false;
+    }
+    state.SetCategoryMemberships(std::move(updated), false);
+    const std::vector<uint8_t> movedBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage moved = ParseCommands(movedBytes.data(), movedBytes.size());
+    if (moved.light_link_count != 1)
+    {
+        return false;
+    }
+    for (const auto& entry : moved.light_links)
+    {
+        const int32_t instanceIndex = std::get<1>(entry);
+        const bool domeLit = (std::get<4>(entry) & 0x1u) != 0;
+        if (domeLit != (instanceIndex >= 0 && instanceIndex < 4))
+        {
+            return false;
+        }
+    }
+
+    // Retiring both collections publishes the canonical empty table exactly
+    // once, so the composed rows stop being applied without a consumer having
+    // to guess which of them still hold.
+    keyLight.lightLinkCategory.clear();
+    keyLight.shadowLinkCategory.clear();
+    state.ReplaceLight(keyLight);
+    dome.lightLinkCategory.clear();
+    state.ReplaceLight(dome);
+    state.SetCategoryMemberships({}, false);
+    const std::vector<uint8_t> retired = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage retiredPage = ParseCommands(retired.data(), retired.size());
+    if (!retiredPage.light_link_valid ||
+        retiredPage.light_link_count != 1 ||
+        !retiredPage.light_links.empty())
+    {
+        return false;
+    }
+    const std::vector<uint8_t> stillRetired =
+        state.BuildPage(nullptr, &commandCount);
+    return ParseCommands(stillRetired.data(), stillRetired.size())
+        .light_link_count == 0;
+}
+
+/// A scene that authors no linking publishes no table at all, so the feature
+/// costs an unlinked scene neither a command nor a page byte.
+bool VerifyUnlinkedSceneryPublishesNoLinkTable()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    state.ReplaceLight(light);
+    ReplaceSingleMesh(state, "/Geom/Prim", MakeSceneStateRecord("/Geom/Prim", 44));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return !state.HasLightLinks() &&
+        page.light_link_count == 0 &&
+        page.mesh_upsert_count == 1;
+}
+
+/// A DomeLight that authors collection:lightLink resolves into the bounded dome
+/// mask, for a textured dome and an untextured one alike.
+///
+/// The two domes carry complementary collections, so each prim keeps exactly one
+/// dome bit. The evidence that the ordering is the one the wire promises is
+/// positional: sorted by path, /Lights/DomeA owns dome bit 0 and /Lights/DomeB
+/// owns dome bit 1, the ENVIRONMENT record of the textured dome claims that same
+/// index, and the untextured dome's frame ambient summand reproduces the
+/// scene-wide ambient term it is the only contributor to.
+bool VerifyDomeLightLinkResolvesIntoDomeMask()
+{
+    HdSilkSceneState state;
+
+    HdSilkLightRecord textured;
+    textured.path = "/Lights/DomeA";
+    textured.ambientOnly = true;
+    textured.textureAsset = "/assets/sky.hdr";
+    textured.lightLinkCategory = "skyA";
+    state.ReplaceLight(textured);
+
+    HdSilkLightRecord untextured;
+    untextured.path = "/Lights/DomeB";
+    untextured.ambientOnly = true;
+    untextured.lightLinkCategory = "skyB";
+    state.ReplaceLight(untextured);
+
+    // A dome collection is a reason to collect prim categories, exactly as a
+    // direct light's is. Before ABI v21 it was not, and the collection resolved
+    // to nothing at all.
+    if (!state.HasLightLinks())
+    {
+        return false;
+    }
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership underA;
+    underA.path = "/Geom/UnderA";
+    underA.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    underA.categories = {"skyA"};
+    memberships.push_back(std::move(underA));
+    HdSilkCategoryMembership underB;
+    underB.path = "/Geom/UnderB";
+    underB.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    underB.categories = {"skyB"};
+    memberships.push_back(std::move(underB));
+    state.SetCategoryMemberships(std::move(memberships), false);
+
+    ReplaceSingleMesh(state, "/Geom/UnderA", MakeSceneStateRecord("/Geom/UnderA", 71));
+    ReplaceSingleMesh(state, "/Geom/UnderB", MakeSceneStateRecord("/Geom/UnderB", 72));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.light_link_dome_count != 2 ||
+        page.light_link_unsupported != OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE ||
+        page.light_links.size() != 2 ||
+        page.frame_dome_count != 2 ||
+        page.frame_domes.size() != 2)
+    {
+        return false;
+    }
+
+    // A published, non-canonical table indexes the frame's own light and dome
+    // orderings. A consumer resolves the masks against those counts, so a table
+    // that disagrees with the frame it travels with names a different set of
+    // lights or domes than the producer resolved -- and the consumer refuses the
+    // whole page rather than masking against the wrong ordering.
+    if (page.light_link_light_count != page.frame_light_count ||
+        page.light_link_dome_count != page.frame_dome_count)
+    {
+        return false;
+    }
+
+    // Dome bit 0 is the textured dome and bit 1 the untextured one, by path
+    // order. Neither prim is in the other's collection, so each keeps one bit.
+    if (std::get<0>(page.light_links[0]) != "/Geom/UnderA" ||
+        std::get<4>(page.light_links[0]) != 0x1u ||
+        std::get<0>(page.light_links[1]) != "/Geom/UnderB" ||
+        std::get<4>(page.light_links[1]) != 0x2u)
+    {
+        return false;
+    }
+
+    // The textured dome contributes an image and no ambient colour; the
+    // untextured one contributes the whole of the frame ambient term, which is
+    // what makes a masked sum reproduce an unmasked one exactly.
+    if ((std::get<3>(page.frame_domes[0]) &
+            (OPENUSD_SILK_DOME_FLAG_PRESENT | OPENUSD_SILK_DOME_FLAG_TEXTURED)) !=
+            (OPENUSD_SILK_DOME_FLAG_PRESENT | OPENUSD_SILK_DOME_FLAG_TEXTURED) ||
+        std::get<0>(page.frame_domes[0]) != 0.0f ||
+        (std::get<3>(page.frame_domes[1]) & OPENUSD_SILK_DOME_FLAG_TEXTURED) != 0u ||
+        (std::get<3>(page.frame_domes[1]) & OPENUSD_SILK_DOME_FLAG_PRESENT) == 0u)
+    {
+        return false;
+    }
+    if (std::get<0>(page.frame_domes[1]) != page.frame_ambient[0] ||
+        std::get<1>(page.frame_domes[1]) != page.frame_ambient[1] ||
+        std::get<2>(page.frame_domes[1]) != page.frame_ambient[2])
+    {
+        return false;
+    }
+
+    // The ENVIRONMENT record names the same bit the dome table published, which
+    // is what lets a consumer keep one prefiltered response per dome.
+    if (page.environment_dome_indices.size() != 1 ||
+        std::get<0>(page.environment_dome_indices[0]) != "/Lights/DomeA" ||
+        std::get<1>(page.environment_dome_indices[0]) != 0u ||
+        (std::get<2>(page.environment_dome_indices[0]) &
+            OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_LINK_COLLECTION) != 0u)
+    {
+        return false;
+    }
+
+    // Retiring the dome collection retires the table exactly once, so a consumer
+    // stops masking domes rather than keeping the last mask it saw.
+    textured.lightLinkCategory.clear();
+    state.ReplaceLight(textured);
+    untextured.lightLinkCategory.clear();
+    state.ReplaceLight(untextured);
+    if (state.HasLightLinks())
+    {
+        return false;
+    }
+    const std::vector<uint8_t> retired = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage retiredPage = ParseCommands(retired.data(), retired.size());
+    return retiredPage.light_link_valid &&
+        retiredPage.light_link_count == 1 &&
+        retiredPage.light_links.empty() &&
+        retiredPage.light_link_dome_count == 0;
+}
+
+/// collection:shadowLink on a DomeLight is named, and never applied.
+///
+/// hdSilk renders no dome shadow map, so a dome caster collection has nothing to
+/// restrict. Folding it into the dome's receiver mask would turn "these prims
+/// cast my shadow" into "only these prims are lit by me" and darken exactly the
+/// prims the author asked to keep lit, so the collection has to leave the dome
+/// mask alone and reach the consumer as a diagnostic instead.
+bool VerifyDomeShadowLinkIsDiagnosedNotApplied()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord dome;
+    dome.path = "/Lights/Dome";
+    dome.ambientOnly = true;
+    dome.textureAsset = "/assets/sky.hdr";
+    dome.shadowLinkCategory = "casters";
+    dome.unsupportedFeatures =
+        OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION;
+    state.ReplaceLight(dome);
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership receiver;
+    receiver.path = "/Geom/Receiver";
+    receiver.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(receiver));
+    state.SetCategoryMemberships(std::move(memberships), false);
+    ReplaceSingleMesh(
+        state,
+        "/Geom/Receiver",
+        MakeSceneStateRecord("/Geom/Receiver", 73));
+
+    // A dome shadow collection alone is not a reason to collect categories:
+    // there is no dome shadow mask for it to resolve into.
+    if (state.HasLightLinks())
+    {
+        return false;
+    }
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.light_link_count == 0 &&
+        page.frame_dome_count == 1 &&
+        page.environment_dome_indices.size() == 1 &&
+        std::get<1>(page.environment_dome_indices[0]) == 0u &&
+        (std::get<2>(page.environment_dome_indices[0]) &
+            OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION) != 0u;
+}
+
+/// More domes than the bounded table admits publishes no dome table at all and
+/// names the loss, rather than making some domes maskable and the rest not.
+bool VerifyOverBudgetDomeTableIsDiagnosed()
+{
+    HdSilkSceneState state;
+    for (uint32_t index = 0; index < OPENUSD_SILK_MAX_DOME_LIGHTS + 1u; ++index)
+    {
+        HdSilkLightRecord dome;
+        dome.path = "/Lights/Dome" + std::to_string(index);
+        dome.ambientOnly = true;
+        dome.textureAsset = "/assets/sky" + std::to_string(index) + ".hdr";
+        dome.lightLinkCategory = "sky";
+        state.ReplaceLight(dome);
+    }
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership outside;
+    outside.path = "/Geom/Outside";
+    outside.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(outside));
+    state.SetCategoryMemberships(std::move(memberships), false);
+    ReplaceSingleMesh(
+        state,
+        "/Geom/Outside",
+        MakeSceneStateRecord("/Geom/Outside", 74));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.frame_dome_count != 0 ||
+        page.light_link_dome_count != 0 ||
+        (page.light_link_unsupported &
+            OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_DOME_BUDGET) == 0u)
+    {
+        return false;
+    }
+
+    // Every dome keeps lighting every prim, and every ENVIRONMENT record says so
+    // rather than claiming a bit that does not exist.
+    if (page.environment_dome_indices.size() != OPENUSD_SILK_MAX_DOME_LIGHTS + 1u)
+    {
+        return false;
+    }
+    for (const auto& record : page.environment_dome_indices)
+    {
+        if (std::get<1>(record) != OPENUSD_SILK_DOME_INDEX_NONE ||
+            (std::get<2>(record) &
+                OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_LINK_COLLECTION) == 0u)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// A distant light that authors shadow-enable publishes exactly one bounded
+/// descriptor, derived from the caster bounds, and republishes nothing while the
+/// scene stands still.
+bool VerifyDistantShadowDescriptorIsPublishedAndStable()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.shadowEnabled = 1u;
+    state.ReplaceLight(light);
+    ReplaceSingleMesh(state, "/Geom/Caster", MakeSceneStateRecord("/Geom/Caster", 60));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    const bool published = page.shadow_valid &&
+        page.shadow_count == 1 &&
+        page.shadow_descriptor_count == 1 &&
+        page.shadow_light_count == 1 &&
+        page.shadow_unsupported == OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE &&
+        page.shadows.size() == 1 &&
+        std::get<0>(page.shadows[0]) == 0u &&
+        std::get<1>(page.shadows[0]) == 0u &&
+        std::get<2>(page.shadows[0]) ==
+            OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION &&
+        std::get<3>(page.shadows[0]) == OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
+
+    // An unchanged scene must publish nothing: that silence is exactly how a
+    // consumer knows its retained shadow map is still the one these lights and
+    // these caster bounds produced.
+    const std::vector<uint8_t> unchanged = state.BuildPage(nullptr, &commandCount);
+    return published &&
+        ParseCommands(unchanged.data(), unchanged.size()).shadow_count == 0;
+}
+
+/// A light type with no exact light-space projection is named rather than given
+/// an approximate map that would shadow the wrong geometry.
+bool VerifyUnsupportedShadowLightTypeIsDiagnosed()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Bulb";
+    light.type = OPENUSD_SILK_LIGHT_SPHERE;
+    light.shadowEnabled = 1u;
+    state.ReplaceLight(light);
+    ReplaceSingleMesh(state, "/Geom/Caster", MakeSceneStateRecord("/Geom/Caster", 61));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.shadow_valid &&
+        page.shadow_count == 1 &&
+        page.shadow_descriptor_count == 0 &&
+        page.shadow_unsupported == OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+}
+
+/// A shadow-enabled light with no published geometry has no world extent to
+/// derive a projection from, and says so instead of publishing an arbitrary one.
+bool VerifyShadowWithoutCastersIsDiagnosed()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.shadowEnabled = 1u;
+    state.ReplaceLight(light);
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.shadow_valid &&
+        page.shadow_count == 1 &&
+        page.shadow_descriptor_count == 0 &&
+        page.shadow_unsupported == OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS;
+}
+
+/// A shadow-linked caster set marks the descriptor, so a consumer that ignores
+/// the ABI 18 shadow mask knows it is rendering a different image.
+bool VerifyCasterLinkedShadowDescriptorIsFlagged()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    light.shadowEnabled = 1u;
+    light.shadowLinkCategory = "casters";
+    state.ReplaceLight(light);
+
+    std::vector<HdSilkCategoryMembership> memberships;
+    HdSilkCategoryMembership receiver;
+    receiver.path = "/Geom/Receiver";
+    receiver.instanceIndex = OPENUSD_SILK_LINK_ALL_INSTANCES;
+    memberships.push_back(std::move(receiver));
+    state.SetCategoryMemberships(std::move(memberships), false);
+    ReplaceSingleMesh(
+        state,
+        "/Geom/Receiver",
+        MakeSceneStateRecord("/Geom/Receiver", 62));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.shadow_valid &&
+        page.shadow_descriptor_count == 1 &&
+        std::get<3>(page.shadows[0]) ==
+            (OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC |
+                OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED);
+}
+
+/// A scene that authors no shadow publishes no shadow command at all, so the
+/// feature costs an unshadowed scene neither a command nor a page byte.
+bool VerifyUnshadowedScenePublishesNoShadowTable()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Key";
+    light.type = OPENUSD_SILK_LIGHT_DISTANT;
+    state.ReplaceLight(light);
+    ReplaceSingleMesh(state, "/Geom/Prim", MakeSceneStateRecord("/Geom/Prim", 63));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return page.shadow_count == 0 && page.mesh_upsert_count == 1;
+}
+
 bool VerifySceneStateSerialization()
 {
     HdSilkSceneState state;
@@ -1287,10 +5103,41 @@ bool VerifySceneStateSerialization()
         RejectsInvalidSceneStateRecord(std::move(invalidMapping)) &&
         RejectsInvalidSceneStateRecord(std::move(invalidInstance)) &&
         VerifyInstancedSceneStateSerialization() &&
+        VerifyNestedInstancerContextSerialization() &&
         VerifySparsePrototypeInstanceSerialization() &&
         VerifyRejectedPayloadDropsWholePath() &&
         VerifyMalformedRecordIsRejectedBeforeTransforms() &&
-        VerifyComplexityDirtiesConvertedTriangles();
+        VerifySubprimIdentityBudgetIsPreflighted() &&
+        VerifyInstanceReferenceReleasesIdentityCapacity() &&
+        VerifyPointsIdentityBudgetBoundaryIsExact() &&
+        VerifyPointDrawModeRefusesFaceIdentity() &&
+        VerifyComplexityKeepsPointIdentity() &&
+        VerifyComplexityOriginsFollowEmittedIndices() &&
+        VerifyPointDrawModeNamesStrayAuthoredPoints() &&
+        VerifyPresentationTopologyRevisionFollowsPresentation() &&
+        VerifyComplexityDirtiesConvertedTriangles() &&
+        VerifyLightLinkTableResolvesCategories() &&
+        VerifyShadowLinkNarrowsOnlyTheShadowMask() &&
+        VerifyUnlitBlockerStillPublishesItsShadowBit() &&
+        VerifyOversizedLightLinkTableIsDiagnosed() &&
+        VerifyDefaultPrimsDoNotConsumeTheLinkBudget() &&
+        VerifyCategoryDifferingInstancesResolvingToTheirPathCostNothing() &&
+        VerifyOversizedPathOverridesFailOpenAsAWholeGroup() &&
+        VerifyUnlinkedSceneryPublishesNoLinkTable() &&
+        VerifyInstanceMembershipsFollowPublishedPrototypeIndices() &&
+        VerifyNestedInstanceMembershipsResolveComposedIdentities() &&
+        VerifyNestedInstanceMembershipsSkipHiddenAndDeepIdentities() &&
+        VerifyNestedPrototypeWideMembershipsStaySparse() &&
+        VerifyNestedInstanceMembershipsAreBoundedAndDiagnosed() &&
+        VerifyNestedInstanceLinksReachTheWire() &&
+        VerifyDomeLightLinkResolvesIntoDomeMask() &&
+        VerifyDomeShadowLinkIsDiagnosedNotApplied() &&
+        VerifyOverBudgetDomeTableIsDiagnosed() &&
+        VerifyDistantShadowDescriptorIsPublishedAndStable() &&
+        VerifyUnsupportedShadowLightTypeIsDiagnosed() &&
+        VerifyShadowWithoutCastersIsDiagnosed() &&
+        VerifyCasterLinkedShadowDescriptorIsFlagged() &&
+        VerifyUnshadowedScenePublishesNoShadowTable();
 }
 
 openusd_status Sync(
@@ -1561,6 +5408,108 @@ bool AuthorSharedMesh(
 /// UsdUVTexture, then binds it to the shared mesh. This exercises the real
 /// Hydra path end to end rather than the serializer alone: the resolution
 /// depends on Hydra building the network map from these authored opinions.
+/// Authors two meshes and one distant light whose UsdLux light-link collection
+/// keeps its schema-default includeRoot and excludes one of them.
+///
+/// This is the only place the collection itself is authored on a real stage and
+/// read back through UsdImaging, Hydra categories and hdSilk together. Every
+/// other light-linking case builds the resolved category memberships directly,
+/// which proves the wire and the masking but not that a UsdLux collection ever
+/// becomes those memberships. The excludes-with-includeRoot shape is the one an
+/// Omniverse-authored stage uses most: the light lights the world, minus a set.
+bool AuthorLinkedLighting(openusd_stage* stage, openusd_error_buffer* error)
+{
+    const std::array<openusd_vec3f, 3> points{
+        openusd_vec3f{0.0F, 0.0F, 0.0F},
+        openusd_vec3f{1.0F, 0.0F, 0.0F},
+        openusd_vec3f{0.0F, 1.0F, 0.0F}};
+    const std::array<int32_t, 1> counts{3};
+    const std::array<int32_t, 3> indices{0, 1, 2};
+    for (const char* path : {LinkedLitMeshPath, LinkedUnlitMeshPath})
+    {
+        if (openusd_geom_define_mesh(stage, path, error) != OPENUSD_STATUS_OK ||
+            openusd_geom_mesh_set_points(
+                stage, path, points.data(), points.size(), 0, 0.0, error) !=
+                OPENUSD_STATUS_OK ||
+            openusd_geom_mesh_set_topology(
+                stage,
+                path,
+                counts.data(),
+                counts.size(),
+                indices.data(),
+                indices.size(),
+                error) != OPENUSD_STATUS_OK)
+        {
+            return false;
+        }
+    }
+
+    if (openusd_lux_define(
+            stage,
+            LinkedLightPath,
+            OPENUSD_LUX_SCHEMA_DISTANT_LIGHT,
+            error) != OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+
+    // UsdLuxLightAPI declares collection:lightLink as a built-in collection whose
+    // includeRoot fallback is true, so authoring only the exclusion is what
+    // "everything but this prim" looks like on a real stage.
+    // The list view is a NUL-terminated packed buffer with a byte-sized offset
+    // table, so data_size counts the terminator and offsets_size is measured in
+    // bytes rather than entries.
+    const std::string excluded(LinkedUnlitMeshPath);
+    const std::array<size_t, 1> offsets{0};
+    openusd_string_list_view targets{};
+    targets.struct_size = sizeof(openusd_string_list_view);
+    targets.data = excluded.c_str();
+    targets.data_size = excluded.size() + 1;
+    targets.offsets = offsets.data();
+    targets.offsets_size = offsets.size() * sizeof(size_t);
+    targets.count = 1;
+    if (openusd_stage_create_relationship(
+            stage,
+            LinkedLightPath,
+            "collection:lightLink:excludes",
+            error) != OPENUSD_STATUS_OK ||
+        openusd_stage_set_relationship_targets(
+            stage,
+            LinkedLightPath,
+            "collection:lightLink:excludes",
+            &targets,
+            error) != OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+
+    // The same collection shape on a DomeLight. UsdLuxLightAPI declares
+    // collection:lightLink on every light, dome included, and since ABI v21
+    // hdSilk resolves a dome's into the bounded dome mask -- so this is the end
+    // to end evidence that a real dome collection travels through UsdImaging's
+    // collection cache and Hydra's prim categories into a per-prim dome bit,
+    // includeRoot fallback and all.
+    if (openusd_lux_define(
+            stage,
+            LinkedDomePath,
+            OPENUSD_LUX_SCHEMA_DOME_LIGHT,
+            error) != OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+    return openusd_stage_create_relationship(
+            stage,
+            LinkedDomePath,
+            "collection:lightLink:excludes",
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_relationship_targets(
+            stage,
+            LinkedDomePath,
+            "collection:lightLink:excludes",
+            &targets,
+            error) == OPENUSD_STATUS_OK;
+}
+
 bool AuthorSharedMaterial(openusd_stage* stage, openusd_error_buffer* error)
 {
     return openusd_shade_define_material(stage, MaterialPath, error) ==
@@ -3197,6 +7146,10 @@ MakeTwoImageCompositeNetwork(
     HdMaterialNode surface;
     surface.path = SdfPath("/World/Composite/Surface");
     surface.identifier = TfToken("ND_standard_surface_surfaceshader");
+    // standard_surface defaults its emission weight to zero, so a network that
+    // composites into emission_color must state the weight or the projection
+    // correctly reports an unlit emission rather than the composite under test.
+    surface.parameters[TfToken("emission")] = VtValue(1.0F);
 
     HdMaterialNetwork network;
     network.nodes = {primvar, first, second, scaleSecond, combine, surface};
@@ -3878,6 +7831,801 @@ bool ScalarMatches(
     return true;
 }
 
+/// Finds the one scalar a parameter carries, or nullptr when the projection
+/// left the parameter at its renderer default.
+const HdSilkMaterialScalar*
+FindMaterialScalar(const HdSilkMaterialRecord& record, uint32_t parameter)
+{
+    for (const HdSilkMaterialScalar& scalar : record.scalars)
+    {
+        if (scalar.parameter == parameter)
+        {
+            return &scalar;
+        }
+    }
+    return nullptr;
+}
+
+const HdSilkMaterialTexture*
+FindMaterialTexture(const HdSilkMaterialRecord& record, uint32_t parameter)
+{
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.parameter == parameter)
+        {
+            return &texture;
+        }
+    }
+    return nullptr;
+}
+
+bool ScalarIs(
+    const HdSilkMaterialRecord& record,
+    uint32_t parameter,
+    float expected,
+    const char* what)
+{
+    const HdSilkMaterialScalar* scalar = FindMaterialScalar(record, parameter);
+    if (scalar == nullptr)
+    {
+        std::cerr << what << " was not projected onto parameter " << parameter
+                  << ".\n";
+        return false;
+    }
+    if (std::fabs(scalar->value[0] - expected) > 1e-5F)
+    {
+        std::cerr << what << " projected " << scalar->value[0] << " rather than "
+                  << expected << ".\n";
+        return false;
+    }
+    return true;
+}
+
+bool ParameterIsAbsent(
+    const HdSilkMaterialRecord& record,
+    uint32_t parameter,
+    const char* what)
+{
+    if (FindMaterialScalar(record, parameter) != nullptr ||
+        FindMaterialTexture(record, parameter) != nullptr)
+    {
+        std::cerr << what << " reached parameter " << parameter
+                  << " even though the projection cannot carry it.\n";
+        return false;
+    }
+    return true;
+}
+
+/// Builds a UsdPreviewSurface material, optionally publishing a `displacement`
+/// terminal network and optionally driving `inputs:displacement` from a node.
+///
+/// The surface and displacement terminals are separate networks in USD, and both
+/// are built here from the same node set so a probe can vary exactly one thing:
+/// whether the displacement output is connected at all, and what drives the
+/// shader's displacement input.
+///
+/// `driver` selects what feeds `inputs:displacement` in the displacement
+/// network: nothing, a `UsdUVTexture`, a primvar reader (a node that is a legal
+/// float source in USD but is not a height field this renderer can sample per
+/// vertex), or a dangling connection to a node the network omits.
+enum class DisplacementDriver
+{
+    None,
+    Texture,
+    PrimvarReader,
+    Dangling,
+    // A UsdUVTexture with no authored `file`, which resolves no asset at all.
+    EmptyFileTexture,
+    // A UsdUVTexture whose `scale` the author replaced with a connection, which
+    // is a graph this delegate cannot evaluate rather than a missing file.
+    UnsupportedChainTexture
+};
+
+HdMaterialNetworkMap
+MakeDisplacementNetwork(
+    bool publishDisplacementTerminal,
+    DisplacementDriver driver,
+    float authoredDisplacement = 0.5F,
+    const TfToken& terminalIdentifier = TfToken("UsdPreviewSurface"),
+    const TfToken& outputName = TfToken("r"))
+{
+    HdMaterialNode surface;
+    surface.path = SdfPath("/World/Displaced/Surface");
+    surface.identifier = terminalIdentifier;
+    surface.parameters[TfToken("diffuseColor")] =
+        VtValue(GfVec3f(0.4F, 0.4F, 0.4F));
+    surface.parameters[TfToken("displacement")] = VtValue(authoredDisplacement);
+
+    HdMaterialNode reader;
+    reader.path = SdfPath("/World/Displaced/Reader");
+    reader.identifier = TfToken("UsdPrimvarReader_float2");
+    reader.parameters[TfToken("varname")] = VtValue(TfToken("st"));
+
+    HdMaterialNode texture;
+    texture.path = SdfPath("/World/Displaced/Height");
+    texture.identifier = TfToken("UsdUVTexture");
+    texture.parameters[TfToken("file")] =
+        VtValue(SdfAssetPath("textures/height.png"));
+    texture.parameters[TfToken("wrapS")] = VtValue(TfToken("clamp"));
+    texture.parameters[TfToken("wrapT")] = VtValue(TfToken("clamp"));
+    texture.parameters[TfToken("sourceColorSpace")] = VtValue(TfToken("raw"));
+
+    HdMaterialNode floatReader;
+    floatReader.path = SdfPath("/World/Displaced/FloatReader");
+    floatReader.identifier = TfToken("UsdPrimvarReader_float");
+    floatReader.parameters[TfToken("varname")] = VtValue(TfToken("height"));
+
+    // Same node, no `file` at all: UsdUVTexture states what the reader produces
+    // then, and the authored fallback is (0.5 * 3) + (-0.25) = 1.25 on r, while
+    // the unauthored alpha keeps the schema default of one, giving (1 * 3) +
+    // (-0.25) = 2.75 on a.
+    HdMaterialNode emptyFile;
+    emptyFile.path = SdfPath("/World/Displaced/EmptyHeight");
+    emptyFile.identifier = TfToken("UsdUVTexture");
+    emptyFile.parameters[TfToken("fallback")] = VtValue(GfVec4f(0.5F, 0.5F, 0.5F, 1.0F));
+    emptyFile.parameters[TfToken("scale")] = VtValue(GfVec4f(3.0F, 3.0F, 3.0F, 3.0F));
+    emptyFile.parameters[TfToken("bias")] =
+        VtValue(GfVec4f(-0.25F, -0.25F, -0.25F, -0.25F));
+
+    // A file *and* a connected `scale`: the file is readable, the graph is not.
+    HdMaterialNode unsupportedChain;
+    unsupportedChain.path = SdfPath("/World/Displaced/ChainHeight");
+    unsupportedChain.identifier = TfToken("UsdUVTexture");
+    unsupportedChain.parameters[TfToken("file")] =
+        VtValue(SdfAssetPath("textures/height.png"));
+    unsupportedChain.parameters[TfToken("fallback")] =
+        VtValue(GfVec4f(0.5F, 0.5F, 0.5F, 1.0F));
+
+    HdMaterialNode scaleDriver;
+    scaleDriver.path = SdfPath("/World/Displaced/ScaleDriver");
+    scaleDriver.identifier = TfToken("UsdPrimvarReader_float4");
+    scaleDriver.parameters[TfToken("varname")] = VtValue(TfToken("scale"));
+
+    HdMaterialNetwork surfaceNetwork;
+    surfaceNetwork.nodes = {surface};
+    surfaceNetwork.primvars = {TfToken("st")};
+
+    HdMaterialNetworkMap map;
+    map.map[HdMaterialTerminalTokens->surface] = surfaceNetwork;
+    if (!publishDisplacementTerminal)
+    {
+        return map;
+    }
+
+    HdMaterialNetwork displacementNetwork;
+    displacementNetwork.primvars = {TfToken("st")};
+    switch (driver)
+    {
+        case DisplacementDriver::None:
+            displacementNetwork.nodes = {surface};
+            break;
+        case DisplacementDriver::Texture:
+            displacementNetwork.nodes = {reader, texture, surface};
+            displacementNetwork.relationships.push_back(
+                {reader.path, TfToken("result"), texture.path, TfToken("st")});
+            displacementNetwork.relationships.push_back(
+                {texture.path, TfToken("r"), surface.path,
+                    TfToken("displacement")});
+            break;
+        case DisplacementDriver::PrimvarReader:
+            displacementNetwork.nodes = {floatReader, surface};
+            displacementNetwork.relationships.push_back(
+                {floatReader.path, TfToken("result"), surface.path,
+                    TfToken("displacement")});
+            break;
+        case DisplacementDriver::Dangling:
+            displacementNetwork.nodes = {surface};
+            displacementNetwork.relationships.push_back(
+                {SdfPath("/World/Displaced/Absent"), TfToken("result"),
+                    surface.path, TfToken("displacement")});
+            break;
+        case DisplacementDriver::EmptyFileTexture:
+            displacementNetwork.nodes = {reader, emptyFile, surface};
+            displacementNetwork.relationships.push_back(
+                {reader.path, TfToken("result"), emptyFile.path, TfToken("st")});
+            displacementNetwork.relationships.push_back(
+                {emptyFile.path, outputName, surface.path, TfToken("displacement")});
+            break;
+        case DisplacementDriver::UnsupportedChainTexture:
+            displacementNetwork.nodes = {reader, scaleDriver, unsupportedChain, surface};
+            displacementNetwork.relationships.push_back(
+                {reader.path, TfToken("result"), unsupportedChain.path, TfToken("st")});
+            displacementNetwork.relationships.push_back(
+                {scaleDriver.path, TfToken("result"), unsupportedChain.path,
+                    TfToken("scale")});
+            displacementNetwork.relationships.push_back(
+                {unsupportedChain.path, TfToken("r"), surface.path,
+                    TfToken("displacement")});
+            break;
+    }
+    map.map[HdMaterialTerminalTokens->displacement] = displacementNetwork;
+    return map;
+}
+
+/// Proves hdSilk resolves displacement from the authored `displacement` material
+/// terminal and from nothing else.
+///
+/// The producer, not the consumer, is what these cases exercise: every managed
+/// displacement gate builds a wire page directly, so without this the claim that
+/// hdSilk *publishes* displacement only for a material that authored a
+/// displacement terminal would be untested. Each case varies exactly one thing
+/// against the same surface shader, whose `inputs:displacement` is authored
+/// non-zero throughout -- so a delegate that read the surface input, or the value
+/// Hydra leaves behind a connection, publishes displacement in cases that must
+/// publish none.
+bool VerifyDisplacementTerminal()
+{
+    const SdfPath materialPath("/World/Displaced");
+
+    // A material that authors no displacement terminal publishes no
+    // displacement, even though its surface shader carries a non-zero
+    // inputs:displacement. This is the non-vacuity partner of every case below.
+    HdSilkMaterialRecord noTerminal = HdSilkMaterial::Resolve(
+        materialPath, MakeDisplacementNetwork(false, DisplacementDriver::None));
+    if (noTerminal.surfaceKind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE ||
+        !ParameterIsAbsent(
+            noTerminal,
+            OPENUSD_SILK_MATERIAL_DISPLACEMENT,
+            "A material with no displacement terminal"))
+    {
+        std::cerr << "Displacement was published without a displacement terminal.\n";
+        return false;
+    }
+
+    // The same shader, with the terminal connected, publishes the authored
+    // constant.
+    HdSilkMaterialRecord constant = HdSilkMaterial::Resolve(
+        materialPath, MakeDisplacementNetwork(true, DisplacementDriver::None));
+    const HdSilkMaterialScalar* amount =
+        FindMaterialScalar(constant, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+    if (amount == nullptr || amount->componentCount != 1 ||
+        std::fabs(amount->value[0] - 0.5F) > 1e-6F)
+    {
+        std::cerr << "An authored displacement terminal did not publish its "
+                  << "constant.\n";
+        return false;
+    }
+
+    // A connected UsdUVTexture publishes the height field, and the authored
+    // constant behind that connection must not also appear as a scalar.
+    HdSilkMaterialRecord textured = HdSilkMaterial::Resolve(
+        materialPath, MakeDisplacementNetwork(true, DisplacementDriver::Texture));
+    const HdSilkMaterialTexture* height =
+        FindMaterialTexture(textured, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+    if (height == nullptr ||
+        height->asset.find("height.png") == std::string::npos ||
+        height->outputChannel != OPENUSD_SILK_TEXTURE_CHANNEL_R ||
+        height->uvPrimvar != "st" ||
+        FindMaterialScalar(textured, OPENUSD_SILK_MATERIAL_DISPLACEMENT) !=
+            nullptr)
+    {
+        std::cerr << "A connected displacement texture was not published as the "
+                  << "only displacement source.\n";
+        return false;
+    }
+
+    // A float source this renderer cannot sample per vertex is reported and
+    // refused rather than collapsed to the constant the author replaced.
+    HdSilkMaterialRecord reader = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeDisplacementNetwork(true, DisplacementDriver::PrimvarReader));
+    if (!ParameterIsAbsent(
+            reader,
+            OPENUSD_SILK_MATERIAL_DISPLACEMENT,
+            "A displacement driven by a primvar reader"))
+    {
+        return false;
+    }
+
+    // A connection to a node the network omits is still a connection.
+    HdSilkMaterialRecord dangling = HdSilkMaterial::Resolve(
+        materialPath, MakeDisplacementNetwork(true, DisplacementDriver::Dangling));
+    if (!ParameterIsAbsent(
+            dangling,
+            OPENUSD_SILK_MATERIAL_DISPLACEMENT,
+            "A dangling displacement connection"))
+    {
+        return false;
+    }
+
+    // A terminal that is not a UsdPreviewSurface is reported by name rather than
+    // read as if it were one.
+    HdSilkMaterialRecord foreign = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeDisplacementNetwork(
+            true,
+            DisplacementDriver::None,
+            0.5F,
+            TfToken("ND_displacement_float")));
+    if (!ParameterIsAbsent(
+            foreign,
+            OPENUSD_SILK_MATERIAL_DISPLACEMENT,
+            "A non-UsdPreviewSurface displacement terminal"))
+    {
+        return false;
+    }
+
+    // A UsdUVTexture with no resolvable file is not a refusal: UsdUVTexture
+    // states what the reader produces then, so the authored fallback is
+    // published through the node's own scale and bias.
+    HdSilkMaterialRecord emptyFile = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeDisplacementNetwork(true, DisplacementDriver::EmptyFileTexture));
+    const HdSilkMaterialScalar* emptyAmount =
+        FindMaterialScalar(emptyFile, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+    if (emptyAmount == nullptr || std::fabs(emptyAmount->value[0] - 1.25F) > 1e-5F)
+    {
+        std::cerr << "An empty-file displacement did not publish its authored "
+                  << "fallback.\n";
+        return false;
+    }
+
+    // The same node read through `outputs:a`, whose fallback component nobody
+    // authored: the UsdUVTexture schema default is one, not zero, so the amount
+    // is (1 * 3) - 0.25 rather than -0.25.
+    HdSilkMaterialRecord emptyAlpha = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeDisplacementNetwork(
+            true,
+            DisplacementDriver::EmptyFileTexture,
+            0.5F,
+            TfToken("UsdPreviewSurface"),
+            TfToken("a")));
+    const HdSilkMaterialScalar* alphaAmount =
+        FindMaterialScalar(emptyAlpha, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+    if (alphaAmount == nullptr || std::fabs(alphaAmount->value[0] - 2.75F) > 1e-5F)
+    {
+        std::cerr << "An unauthored fallback alpha was not the schema default one; "
+                  << "published "
+                  << (alphaAmount == nullptr ? 0.0F : alphaAmount->value[0]) << ".\n";
+        return false;
+    }
+
+    // A readable file behind a graph this delegate cannot evaluate is a refusal,
+    // not a fallback: UsdUVTexture says nothing about what a reader produces for
+    // a connection it cannot resolve, and publishing the fallback there would
+    // displace the surface by a value nobody authored for that condition.
+    HdSilkMaterialRecord unsupportedChain = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeDisplacementNetwork(true, DisplacementDriver::UnsupportedChainTexture));
+    if (!ParameterIsAbsent(
+            unsupportedChain,
+            OPENUSD_SILK_MATERIAL_DISPLACEMENT,
+            "A displacement behind an unsupported graph"))
+    {
+        return false;
+    }
+
+    // An authored zero still publishes, because zero and unauthored are
+    // different statements and the consumer distinguishes them.
+    HdSilkMaterialRecord zero = HdSilkMaterial::Resolve(
+        materialPath, MakeDisplacementNetwork(true, DisplacementDriver::None, 0.0F));
+    const HdSilkMaterialScalar* zeroAmount =
+        FindMaterialScalar(zero, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+    if (zeroAmount == nullptr || std::fabs(zeroAmount->value[0]) > 1e-6F)
+    {
+        std::cerr << "An authored zero displacement was not published.\n";
+        return false;
+    }
+    return true;
+}
+
+/// Builds a MaterialX surface-shader network with the supplied nodedef and
+/// constant inputs, and optionally one image driving one input.
+///
+/// The nodedef identifier is a parameter so the same shape can be resolved as
+/// standard_surface and as OpenPBR, which is what proves the two projections
+/// read their own input names rather than sharing one hard-coded table.
+HdMaterialNetworkMap
+MakeSurfaceModelNetwork(
+    const TfToken& surfaceIdentifier,
+    const std::map<TfToken, VtValue>& inputs,
+    const TfToken& imageInput = TfToken(),
+    const TfToken& connectedWeight = TfToken())
+{
+    HdMaterialNode surface;
+    surface.path = SdfPath("/World/Model/Surface");
+    surface.identifier = surfaceIdentifier;
+    for (const auto& input : inputs)
+    {
+        surface.parameters[input.first] = input.second;
+    }
+
+    HdMaterialNetwork network;
+    network.nodes = {surface};
+
+    if (!imageInput.IsEmpty())
+    {
+        HdMaterialNode primvar;
+        primvar.path = SdfPath("/World/Model/Primvar");
+        primvar.identifier = TfToken("ND_geompropvalue_vector2");
+        primvar.parameters[TfToken("geomprop")] = VtValue(std::string("uvSet0"));
+
+        HdMaterialNode image;
+        image.path = SdfPath("/World/Model/Image");
+        image.identifier = TfToken("ND_image_color3");
+        image.parameters[TfToken("file")] =
+            VtValue(SdfAssetPath("textures/materialx-basecolor.png"));
+
+        network.nodes.insert(network.nodes.begin(), image);
+        network.nodes.insert(network.nodes.begin(), primvar);
+        network.relationships.push_back(
+            {primvar.path, TfToken("out"), image.path, TfToken("texcoord")});
+        network.relationships.push_back(
+            {image.path, TfToken("out"), surface.path, imageInput});
+        network.primvars = {TfToken("uvSet0")};
+    }
+
+    if (!connectedWeight.IsEmpty())
+    {
+        HdMaterialNode constant;
+        constant.path = SdfPath("/World/Model/Weight");
+        constant.identifier = TfToken("ND_constant_float");
+        constant.parameters[TfToken("value")] = VtValue(0.5F);
+        network.nodes.insert(network.nodes.begin(), constant);
+        network.relationships.push_back(
+            {constant.path, TfToken("out"), surface.path, connectedWeight});
+    }
+
+    HdMaterialNetworkMap map;
+    map.map[HdMaterialTerminalTokens->surface] = network;
+    map.config["mtlxVersion"] = VtValue(std::string("1.39"));
+    return map;
+}
+
+/// Proves the projection of the two MaterialX surface models this delegate
+/// carries: OpenPBR 1.1 (`ND_open_pbr_surface_surfaceshader`, the identifier the
+/// pinned MaterialX 1.39.4 standard libraries declare) and the broadened
+/// standard_surface table.
+///
+/// Only inputs that are the same quantity as a wire parameter are projected. The
+/// weights the nodedefs state as multiplies inside their own implementation
+/// graphs are applied, because leaving them out would render a material whose
+/// emission is switched off as fully emissive. Everything else is reported and
+/// left at the renderer default rather than folded into an unrelated parameter.
+bool VerifyGeneratedUnlitSurvivesGenerationFailure()
+{
+    // ND_surface_unlit is unlit because its author said so, not because a
+    // fragment was produced for it. A generation failure used to publish
+    // OPENUSD_SILK_SURFACE_UNSUPPORTED, which handed the prim to the shaded
+    // fallback and lit a surface whose whole definition is that it is not lit --
+    // and it did so silently, because the page carries no record of a generation
+    // that failed.
+    //
+    // Driven through HdSilkMaterial::Resolve rather than through a hand-built
+    // record, because the rule under test is what the delegate publishes. The
+    // failure is forced by a test hook: in a build whose MaterialX generation
+    // works this path is otherwise unreachable, and a probe that only saw success
+    // would be gating the branch it cannot enter.
+    const SdfPath materialPath("/World/UnlitFailure");
+    HdMaterialNode surface;
+    surface.path = SdfPath("/World/UnlitFailure/Surface");
+    surface.identifier = TfToken("ND_surface_unlit");
+    surface.parameters[TfToken("emission_color")] =
+        VtValue(GfVec3f(0.25F, 0.5F, 0.75F));
+
+    HdMaterialNetwork network;
+    network.nodes = {surface};
+    HdMaterialNetworkMap map;
+    map.map[HdMaterialTerminalTokens->surface] = network;
+    map.terminals = {surface.path};
+    map.config[TfToken("mtlxVersion")] = VtValue(std::string("1.39"));
+
+    const uint64_t before =
+        HdSilkMaterial::GetGeneratedSurfaceFailureCountForTesting();
+    HdSilkMaterial::SetGeneratedSurfaceFailureForTesting(true);
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(materialPath, map);
+    HdSilkMaterial::SetGeneratedSurfaceFailureForTesting(false);
+    const uint64_t after =
+        HdSilkMaterial::GetGeneratedSurfaceFailureCountForTesting();
+
+    if (record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_GENERATED)
+    {
+        std::cerr << "A failed ND_surface_unlit generation did not keep the "
+                     "generated surface kind: kind="
+                  << record.surfaceKind << "\n";
+        return false;
+    }
+    if (!record.generatedFragmentSpirv.empty() ||
+        !record.generatedFragmentMslSource.empty())
+    {
+        std::cerr << "A failed ND_surface_unlit generation published a "
+                     "non-empty fragment payload.\n";
+        return false;
+    }
+    if (after != before + 1)
+    {
+        std::cerr << "A failed ND_surface_unlit generation was not reported "
+                     "separately: before="
+                  << before << " after=" << after << "\n";
+        return false;
+    }
+
+    // And the surface kind does not depend on whether generation succeeded, so a
+    // consumer cannot tell "unlit" from "unlit and pending" by the kind alone --
+    // which is the point: both draw the unlit placeholder. This build may have no
+    // MaterialX shader generators at all, in which case the unforced resolve
+    // fails too; what must hold either way is the kind and the payload rule.
+    const uint64_t beforeUnforced =
+        HdSilkMaterial::GetGeneratedSurfaceFailureCountForTesting();
+    const HdSilkMaterialRecord unforced =
+        HdSilkMaterial::Resolve(materialPath, map);
+    const uint64_t afterUnforced =
+        HdSilkMaterial::GetGeneratedSurfaceFailureCountForTesting();
+    if (unforced.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_GENERATED)
+    {
+        std::cerr << "An unforced ND_surface_unlit resolution did not publish "
+                     "the generated surface kind: kind="
+                  << unforced.surfaceKind << "\n";
+        return false;
+    }
+    const bool generatorsAvailable = afterUnforced == beforeUnforced;
+    if (generatorsAvailable && unforced.generatedFragmentSpirv.empty() &&
+        unforced.generatedFragmentMslSource.empty())
+    {
+        std::cerr << "An ND_surface_unlit resolution reported no generation "
+                     "failure but published no fragment payload.\n";
+        return false;
+    }
+    if (!generatorsAvailable && (!unforced.generatedFragmentSpirv.empty() ||
+                                    !unforced.generatedFragmentMslSource.empty()))
+    {
+        std::cerr << "A failed ND_surface_unlit generation published a "
+                     "fragment payload.\n";
+        return false;
+    }
+    return true;
+}
+
+bool VerifySurfaceModelProjection()
+{
+    const SdfPath materialPath("/World/Model");
+    const TfToken openPbr("ND_open_pbr_surface_surfaceshader");
+    const TfToken standardSurface("ND_standard_surface_surfaceshader");
+
+    // OpenPBR constants that are the same quantity as a wire parameter.
+    HdSilkMaterialRecord openPbrRecord = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("base_color"), VtValue(GfVec3f(0.2F, 0.4F, 0.6F))},
+                {TfToken("base_metalness"), VtValue(0.75F)},
+                {TfToken("specular_roughness"), VtValue(0.25F)},
+                {TfToken("specular_ior"), VtValue(1.45F)},
+                {TfToken("coat_weight"), VtValue(0.5F)},
+                {TfToken("coat_roughness"), VtValue(0.125F)},
+                {TfToken("geometry_opacity"), VtValue(0.375F)}}));
+    if (openPbrRecord.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED)
+    {
+        std::cerr << "The OpenPBR nodedef was not recognised as a projected "
+                     "MaterialX surface: kind="
+                  << openPbrRecord.surfaceKind << "\n";
+        return false;
+    }
+    const HdSilkMaterialScalar* openPbrBase =
+        FindMaterialScalar(openPbrRecord, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+    if (openPbrBase == nullptr ||
+        !ScalarMatches(*openPbrBase, {0.2F, 0.4F, 0.6F}))
+    {
+        std::cerr << "OpenPBR base_color did not project onto the diffuse "
+                     "colour.\n";
+        return false;
+    }
+    if (!ScalarIs(
+            openPbrRecord, OPENUSD_SILK_MATERIAL_METALLIC, 0.75F,
+            "OpenPBR base_metalness") ||
+        !ScalarIs(
+            openPbrRecord, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F,
+            "OpenPBR specular_roughness") ||
+        !ScalarIs(
+            openPbrRecord, OPENUSD_SILK_MATERIAL_IOR, 1.45F,
+            "OpenPBR specular_ior") ||
+        !ScalarIs(
+            openPbrRecord, OPENUSD_SILK_MATERIAL_CLEARCOAT, 0.5F,
+            "OpenPBR coat_weight") ||
+        !ScalarIs(
+            openPbrRecord, OPENUSD_SILK_MATERIAL_CLEARCOAT_ROUGHNESS, 0.125F,
+            "OpenPBR coat_roughness") ||
+        !ScalarIs(
+            openPbrRecord, OPENUSD_SILK_MATERIAL_OPACITY, 0.375F,
+            "OpenPBR geometry_opacity"))
+    {
+        return false;
+    }
+
+    // emission_luminance defaults to zero, and the nodedef multiplies the
+    // emission colour by it. Publishing the colour on its own would light up a
+    // material the author left unlit.
+    HdSilkMaterialRecord unlit = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("emission_color"), VtValue(GfVec3f(1.0F, 0.5F, 0.25F))}}));
+    const HdSilkMaterialScalar* unlitEmission =
+        FindMaterialScalar(unlit, OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR);
+    if (unlitEmission == nullptr ||
+        !ScalarMatches(*unlitEmission, {0.0F, 0.0F, 0.0F}))
+    {
+        std::cerr << "An OpenPBR emission colour with no luminance did not "
+                     "project as unlit.\n";
+        return false;
+    }
+
+    HdSilkMaterialRecord emissive = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("emission_color"), VtValue(GfVec3f(0.5F, 0.25F, 0.125F))},
+                {TfToken("emission_luminance"), VtValue(2.0F)}}));
+    const HdSilkMaterialScalar* emission =
+        FindMaterialScalar(emissive, OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR);
+    if (emission == nullptr || !ScalarMatches(*emission, {1.0F, 0.5F, 0.25F}))
+    {
+        std::cerr << "The OpenPBR emission luminance did not scale the emission "
+                     "colour.\n";
+        return false;
+    }
+
+    // base_weight scales the base reflection, and the same multiply folds into
+    // a direct image's scale and bias rather than needing a shader path.
+    HdSilkMaterialRecord weightedImage = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("base_weight"), VtValue(0.5F)}},
+            TfToken("base_color")));
+    const HdSilkMaterialTexture* weighted =
+        FindMaterialTexture(weightedImage, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+    if (weighted == nullptr || std::fabs(weighted->scale[0] - 0.5F) > 1e-5F ||
+        std::fabs(weighted->bias[0]) > 1e-5F)
+    {
+        std::cerr << "The OpenPBR base weight did not fold into the image "
+                     "scale.\n";
+        return false;
+    }
+
+    // A connected weight is a per-pixel multiply this projection cannot carry,
+    // so the input it scales is left at the renderer default rather than being
+    // published at an intensity nobody authored.
+    HdSilkMaterialRecord connectedWeight = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("base_color"), VtValue(GfVec3f(0.4F, 0.4F, 0.4F))}},
+            TfToken(),
+            TfToken("base_weight")));
+    if (!ParameterIsAbsent(
+            connectedWeight,
+            OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR,
+            "A base colour behind a connected weight"))
+    {
+        return false;
+    }
+
+    // Lobes OpenPBR carries and this projection does not must not land in an
+    // unrelated parameter: transmission is not opacity and subsurface is not
+    // diffuse, however similar the ranges look.
+    HdSilkMaterialRecord unsupportedLobes = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("transmission_weight"), VtValue(1.0F)},
+                {TfToken("subsurface_weight"), VtValue(1.0F)},
+                {TfToken("fuzz_weight"), VtValue(1.0F)},
+                {TfToken("thin_film_weight"), VtValue(1.0F)},
+                {TfToken("specular_color"), VtValue(GfVec3f(0.9F, 0.1F, 0.1F))},
+                {TfToken("coat_color"), VtValue(GfVec3f(0.1F, 0.9F, 0.1F))}}));
+    if (!unsupportedLobes.scalars.empty() || !unsupportedLobes.textures.empty())
+    {
+        std::cerr << "An unsupported OpenPBR lobe was projected onto a wire "
+                     "parameter: scalars="
+                  << unsupportedLobes.scalars.size()
+                  << " textures=" << unsupportedLobes.textures.size() << "\n";
+        return false;
+    }
+    if (unsupportedLobes.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED)
+    {
+        std::cerr << "A material whose unsupported lobes were reported stopped "
+                     "being a projected MaterialX surface.\n";
+        return false;
+    }
+
+    // The broadened standard_surface table reads the names that nodedef states,
+    // which are not the OpenPBR names.
+    HdSilkMaterialRecord standard = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            standardSurface,
+            {{TfToken("specular_IOR"), VtValue(1.6F)},
+                {TfToken("coat"), VtValue(0.25F)},
+                {TfToken("coat_roughness"), VtValue(0.2F)},
+                {TfToken("opacity"), VtValue(GfVec3f(0.4F, 0.4F, 0.4F))},
+                {TfToken("base"), VtValue(0.5F)},
+                {TfToken("base_color"), VtValue(GfVec3f(0.8F, 0.6F, 0.4F))}}));
+    if (!ScalarIs(
+            standard, OPENUSD_SILK_MATERIAL_IOR, 1.6F,
+            "standard_surface specular_IOR") ||
+        !ScalarIs(
+            standard, OPENUSD_SILK_MATERIAL_CLEARCOAT, 0.25F,
+            "standard_surface coat") ||
+        !ScalarIs(
+            standard, OPENUSD_SILK_MATERIAL_CLEARCOAT_ROUGHNESS, 0.2F,
+            "standard_surface coat_roughness") ||
+        !ScalarIs(
+            standard, OPENUSD_SILK_MATERIAL_OPACITY, 0.4F,
+            "standard_surface opacity"))
+    {
+        return false;
+    }
+    const HdSilkMaterialScalar* weightedBase =
+        FindMaterialScalar(standard, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+    if (weightedBase == nullptr ||
+        !ScalarMatches(*weightedBase, {0.4F, 0.3F, 0.2F}))
+    {
+        std::cerr << "The standard_surface base weight did not scale the base "
+                     "colour.\n";
+        return false;
+    }
+
+    // standard_surface types opacity as a colour while the wire binds one
+    // channel, so a per-channel opacity has no single value to publish.
+    HdSilkMaterialRecord perChannel = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            standardSurface,
+            {{TfToken("opacity"), VtValue(GfVec3f(0.4F, 0.5F, 0.4F))}}));
+    if (!ParameterIsAbsent(
+            perChannel,
+            OPENUSD_SILK_MATERIAL_OPACITY,
+            "A per-channel standard_surface opacity"))
+    {
+        return false;
+    }
+
+    // A connected colour-typed opacity has no single channel either, and the
+    // image behind it must not be bound as if it did.
+    HdSilkMaterialRecord connectedOpacity = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            standardSurface, {}, TfToken("opacity")));
+    if (!ParameterIsAbsent(
+            connectedOpacity,
+            OPENUSD_SILK_MATERIAL_OPACITY,
+            "A connected standard_surface opacity"))
+    {
+        return false;
+    }
+
+    // OpenPBR types its opacity as a float, so the same connection is a single
+    // channel there and is bound rather than refused. That difference is the
+    // nodedef's, not this projection's.
+    HdSilkMaterialRecord openPbrOpacity = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeSurfaceModelNetwork(
+            openPbr,
+            {{TfToken("geometry_opacity"), VtValue(0.9F)}}));
+    if (!ScalarIs(
+            openPbrOpacity, OPENUSD_SILK_MATERIAL_OPACITY, 0.9F,
+            "OpenPBR geometry_opacity"))
+    {
+        return false;
+    }
+
+    // The single-coordinate-stream invariant is unchanged by the broader table:
+    // an OpenPBR image still publishes exactly one texture with the material's
+    // one primvar, and no second stream appears.
+    if (weightedImage.textures.size() != 1 ||
+        weightedImage.textures[0].uvPrimvar != "uvSet0")
+    {
+        std::cerr << "The OpenPBR image projection did not keep one texture on "
+                     "the material's single coordinate stream: textures="
+                  << weightedImage.textures.size() << "\n";
+        return false;
+    }
+    return true;
+}
+
 /// Proves that a value hdSilk folds to a constant is the value the MaterialX
 /// nodedef states, and that an input the author replaced with a connection is
 /// never read from the authored fallback Hydra leaves behind it.
@@ -4547,6 +9295,429 @@ bool VerifyMaterialXBridge()
         document.primvarNodeCount == 1;
 }
 
+/// Builds the surface network UsdImaging produces for a material that authors
+/// only `outputs:mdl:surface`, after HdSilk_MdlMaterialSceneIndexPlugin has
+/// folded the MDL source asset and subIdentifier into the node identifier. The
+/// network deliberately carries no UsdPreviewSurface and no MaterialX node:
+/// that absence is the condition the MDL branch exists for.
+HdMaterialNetworkMap
+MakeMdlNetwork(
+    const std::string& moduleUri,
+    const std::string& materialName,
+    const std::map<TfToken, VtValue>& inputs)
+{
+    HdMaterialNode surface;
+    surface.path = SdfPath("/World/Looks/MdlMat/Shader");
+    surface.identifier = TfToken("mdl:" + moduleUri + ":" + materialName);
+    surface.parameters = inputs;
+
+    HdMaterialNetwork network;
+    network.nodes = {surface};
+
+    HdMaterialNetworkMap map;
+    map.map[HdMaterialTerminalTokens->surface] = network;
+    map.terminals.push_back(surface.path);
+    return map;
+}
+
+std::map<TfToken, VtValue>
+MakeOmniPbrInputs()
+{
+    std::map<TfToken, VtValue> inputs;
+    inputs[TfToken("diffuse_color_constant")] =
+        VtValue(GfVec3f(0.72f, 0.28f, 0.12f));
+    inputs[TfToken("reflection_roughness_constant")] = VtValue(0.35f);
+    inputs[TfToken("metallic_constant")] = VtValue(0.25f);
+    inputs[TfToken("enable_opacity")] = VtValue(true);
+    inputs[TfToken("opacity_constant")] = VtValue(0.5f);
+    inputs[TfToken("enable_emission")] = VtValue(true);
+    inputs[TfToken("emissive_color")] = VtValue(GfVec3f(0.1f, 0.2f, 0.4f));
+    inputs[TfToken("normalmap_texture")] =
+        VtValue(SdfAssetPath("textures/mdl-normal.png"));
+    // Outside the accepted subset: must be reported, never folded into another
+    // parameter.
+    inputs[TfToken("subsurface_weight")] = VtValue(0.4f);
+    return inputs;
+}
+
+const HdSilkMaterialScalar*
+FindScalar(const HdSilkMaterialRecord& record, uint32_t parameter)
+{
+    for (const HdSilkMaterialScalar& scalar : record.scalars)
+    {
+        if (scalar.parameter == parameter)
+        {
+            return &scalar;
+        }
+    }
+    return nullptr;
+}
+
+const HdSilkMaterialTexture*
+FindTexture(const HdSilkMaterialRecord& record, uint32_t parameter)
+{
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.parameter == parameter)
+        {
+            return &texture;
+        }
+    }
+    return nullptr;
+}
+
+void SetMdlAdapterPath(const char* path)
+{
+    ArchSetEnv("OPENUSD_MDL_ADAPTER_PATH", path, true);
+    HdSilkMdlAdapter::ResetForTesting();
+}
+
+void ClearMdlAdapterPath()
+{
+    ArchRemoveEnv("OPENUSD_MDL_ADAPTER_PATH");
+    HdSilkMdlAdapter::ResetForTesting();
+}
+
+/// The absolute path the loader treats as the adapter's default location: the
+/// sibling of the module hosting the loader. Asking the loader for it, rather
+/// than deriving it from argv[0], is deliberate -- a second derivation in the
+/// probe would test the probe's own path arithmetic instead of the loader's.
+std::string ResolveMdlAdapterDefaultPath()
+{
+    ClearMdlAdapterPath();
+    return HdSilkMdlAdapter::GetResolvedPath();
+}
+
+std::string JoinProbePath(const std::string& directory, const std::string& name)
+{
+#if defined(_WIN32)
+    const char separator = '\\';
+#else
+    const char separator = '/';
+#endif
+    std::string path(directory);
+    if (!path.empty() && path.back() != '/' && path.back() != '\\')
+    {
+        path.push_back(separator);
+    }
+    path.append(name);
+    return path;
+}
+
+bool ProbeFileExists(const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    return file.good();
+}
+
+bool CopyProbeFile(const std::string& source, const std::string& destination)
+{
+    std::ifstream input(source, std::ios::binary);
+    if (!input)
+    {
+        return false;
+    }
+    std::ofstream output(destination, std::ios::binary | std::ios::trunc);
+    if (!output)
+    {
+        return false;
+    }
+    output << input.rdbuf();
+    return output.good();
+}
+
+/// An adapter path that is not absolute must be refused outright. Resolving one
+/// against the process working directory is exactly the search this loader
+/// exists to avoid, so the refusal is the behaviour under test rather than an
+/// incidental validation.
+bool VerifyMdlAdapterRejectsRelativePath()
+{
+    SetMdlAdapterPath(HDSILK_PROBE_MDL_LIBRARY_NAME);
+    if (HdSilkMdlAdapter::GetState() != HdSilkMdlAdapterState::PathNotAbsolute)
+    {
+        return false;
+    }
+    const HdMaterialNetworkMap map =
+        MakeMdlNetwork("OmniPBR.mdl", "OmniPBR", MakeOmniPbrInputs());
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(SdfPath("/World/Looks/MdlMat"), map);
+    return record.surfaceKind == OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE &&
+        record.scalars.empty() && record.textures.empty();
+}
+
+/// An absolute path naming a library that is not there is LoadFailed, not
+/// NotInstalled: the operator asked for a specific library and did not get it,
+/// and that is a different thing to report than a default install.
+bool VerifyMdlAdapterMissingExplicitPath(const std::string& defaultPath)
+{
+    const std::string missing = defaultPath + ".absent-on-purpose";
+    SetMdlAdapterPath(missing.c_str());
+    return HdSilkMdlAdapter::GetState() == HdSilkMdlAdapterState::LoadFailed;
+}
+
+/// The default location is the absolute sibling of the module hosting the
+/// loader, and nothing else. A library sitting in the process working directory
+/// under the adapter's own name must not be found: the loader must report
+/// NotInstalled without attempting any load at all. A loader that passed a bare
+/// library name to the platform would load that file instead, which is the
+/// hazard this check pins.
+///
+/// The working directory is changed for the duration of the check because CTest
+/// runs the probe from its own binary directory, which is also the directory
+/// the probe's copy of the loader treats as the default location. With the two
+/// the same, planting a decoy would land in the default slot and prove nothing.
+bool VerifyMdlAdapterIgnoresWorkingDirectory(const std::string& defaultPath)
+{
+    if (ProbeFileExists(defaultPath))
+    {
+        // The default slot must be empty for this check to mean anything.
+        return false;
+    }
+
+    std::array<char, 4096> previous{};
+#if defined(_WIN32)
+    if (_getcwd(previous.data(), static_cast<int>(previous.size())) == nullptr ||
+        _chdir(HDSILK_PROBE_MDL_DECOY_DIR) != 0)
+#else
+    if (getcwd(previous.data(), previous.size()) == nullptr ||
+        chdir(HDSILK_PROBE_MDL_DECOY_DIR) != 0)
+#endif
+    {
+        return false;
+    }
+
+    const std::string decoy = HDSILK_PROBE_MDL_LIBRARY_NAME;
+    bool planted = false;
+    {
+        std::ofstream file(decoy, std::ios::binary | std::ios::trunc);
+        planted = static_cast<bool>(file);
+        if (planted)
+        {
+            file << "not a library";
+        }
+    }
+
+    HdSilkMdlAdapterState state = HdSilkMdlAdapterState::Loaded;
+    std::string resolved;
+    if (planted)
+    {
+        ClearMdlAdapterPath();
+        state = HdSilkMdlAdapter::GetState();
+        resolved = HdSilkMdlAdapter::GetResolvedPath();
+        std::remove(decoy.c_str());
+    }
+
+#if defined(_WIN32)
+    const bool restored = _chdir(previous.data()) == 0;
+#else
+    const bool restored = chdir(previous.data()) == 0;
+#endif
+
+    return planted && restored &&
+        state == HdSilkMdlAdapterState::NotInstalled &&
+        resolved == defaultPath;
+}
+
+/// The loader refuses a library that does not implement this build's ABI, and
+/// reaching that refusal at all proves the dependency rule. The stub lives in a
+/// private directory that is on no search path and links a support library
+/// staged beside it; if the loader did not resolve the stub's dependency from
+/// the directory the stub was loaded from, the stub would not load and the
+/// state would be LoadFailed instead.
+bool VerifyMdlAdapterAbiMismatchAndSiblingDependency()
+{
+    SetMdlAdapterPath(HDSILK_PROBE_MDL_ABI_STUB);
+    if (HdSilkMdlAdapter::GetState() != HdSilkMdlAdapterState::AbiMismatch)
+    {
+        return false;
+    }
+    const std::string description = HdSilkMdlAdapter::GetDescription();
+    return description.find("ABI version") != std::string::npos;
+}
+
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
+/// With no configured path, an adapter placed beside the module hosting the
+/// loader is found and used. This is the deployment the documentation
+/// describes, and it is the only default location the loader will accept.
+bool VerifyMdlAdapterLoadsFromModuleSibling(const std::string& defaultPath)
+{
+    if (defaultPath.empty() || !CopyProbeFile(HDSILK_PROBE_MDL_ADAPTER, defaultPath))
+    {
+        return false;
+    }
+    ClearMdlAdapterPath();
+    const bool loaded =
+        HdSilkMdlAdapter::GetState() == HdSilkMdlAdapterState::Loaded &&
+        HdSilkMdlAdapter::GetResolvedPath() == defaultPath;
+    bool distilled = false;
+    if (loaded)
+    {
+        const HdMaterialNetworkMap map =
+            MakeMdlNetwork("OmniPBR.mdl", "OmniPBR", MakeOmniPbrInputs());
+        const HdSilkMaterialRecord record =
+            HdSilkMaterial::Resolve(SdfPath("/World/Looks/MdlMat"), map);
+        distilled = record.surfaceKind == OPENUSD_SILK_SURFACE_MDL_DISTILLED;
+    }
+
+    // The sibling is removed again so the working-directory check that follows
+    // sees an empty default slot. The loader is reset while pointing nowhere so
+    // it releases its handle on the copy before the copy is deleted.
+    SetMdlAdapterPath((defaultPath + ".absent-on-purpose").c_str());
+    std::remove(defaultPath.c_str());
+    return loaded && distilled;
+}
+#endif
+
+/// With no adapter installed -- the state of every base package -- an MDL-only
+/// material must still be published, marked MDL-unavailable and carrying no
+/// shading data. Publishing a supported-but-empty record instead is exactly the
+/// silent default grey this branch removes.
+bool VerifyMdlAdapterUnavailable(const std::string& defaultPath)
+{
+    const std::string missing = defaultPath + ".absent-on-purpose";
+    SetMdlAdapterPath(missing.c_str());
+    if (HdSilkMdlAdapter::GetState() == HdSilkMdlAdapterState::Loaded)
+    {
+        return false;
+    }
+    const HdMaterialNetworkMap map =
+        MakeMdlNetwork("OmniPBR.mdl", "OmniPBR", MakeOmniPbrInputs());
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(SdfPath("/World/Looks/MdlMat"), map);
+    return record.surfaceKind == OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE &&
+        record.scalars.empty() &&
+        record.textures.empty() &&
+        record.path == "/World/Looks/MdlMat";
+}
+
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
+/// With the optional adapter installed, the accepted OmniPBR subset distils
+/// into the same scalar and texture tables a UsdPreviewSurface fills, and the
+/// record is marked with the MDL provenance kind rather than pretending to be
+/// an authored preview surface.
+bool VerifyMdlDistillation()
+{
+    SetMdlAdapterPath(HDSILK_PROBE_MDL_ADAPTER);
+    if (HdSilkMdlAdapter::GetState() != HdSilkMdlAdapterState::Loaded)
+    {
+        return false;
+    }
+    const HdMaterialNetworkMap map =
+        MakeMdlNetwork("OmniPBR.mdl", "OmniPBR", MakeOmniPbrInputs());
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(SdfPath("/World/Looks/MdlMat"), map);
+    if (record.surfaceKind != OPENUSD_SILK_SURFACE_MDL_DISTILLED)
+    {
+        return false;
+    }
+
+    const HdSilkMaterialScalar* diffuse =
+        FindScalar(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+    const HdSilkMaterialScalar* roughness =
+        FindScalar(record, OPENUSD_SILK_MATERIAL_ROUGHNESS);
+    const HdSilkMaterialScalar* metallic =
+        FindScalar(record, OPENUSD_SILK_MATERIAL_METALLIC);
+    const HdSilkMaterialScalar* opacity =
+        FindScalar(record, OPENUSD_SILK_MATERIAL_OPACITY);
+    const HdSilkMaterialScalar* emissive =
+        FindScalar(record, OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR);
+    const HdSilkMaterialTexture* normal =
+        FindTexture(record, OPENUSD_SILK_MATERIAL_NORMAL);
+    if (diffuse == nullptr || roughness == nullptr || metallic == nullptr ||
+        opacity == nullptr || emissive == nullptr || normal == nullptr)
+    {
+        return false;
+    }
+    return diffuse->componentCount == 3 &&
+        std::fabs(diffuse->value[0] - 0.72f) < 1e-5f &&
+        std::fabs(diffuse->value[1] - 0.28f) < 1e-5f &&
+        std::fabs(diffuse->value[2] - 0.12f) < 1e-5f &&
+        std::fabs(roughness->value[0] - 0.35f) < 1e-5f &&
+        std::fabs(metallic->value[0] - 0.25f) < 1e-5f &&
+        std::fabs(opacity->value[0] - 0.5f) < 1e-5f &&
+        std::fabs(emissive->value[2] - 0.4f) < 1e-5f &&
+        normal->outputChannel == OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
+        normal->sourceColorSpace == OPENUSD_SILK_COLOR_SPACE_RAW &&
+        normal->uvPrimvar == "st" &&
+        normal->asset.find("mdl-normal.png") != std::string::npos;
+}
+
+/// An MDL module outside the accepted set is refused by name. It must not fall
+/// back to the accepted mapping of a different module, and it must not publish
+/// a shadeable record.
+bool VerifyMdlUnsupportedModule()
+{
+    SetMdlAdapterPath(HDSILK_PROBE_MDL_ADAPTER);
+    const HdMaterialNetworkMap map = MakeMdlNetwork(
+        "VendorSpecific.mdl", "VendorSurface", MakeOmniPbrInputs());
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(SdfPath("/World/Looks/MdlMat"), map);
+    return record.surfaceKind == OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE &&
+        record.scalars.empty() && record.textures.empty();
+}
+
+/// An accepted module whose every accepted input is driven by a connection
+/// rather than authored as a constant distils to nothing, and nothing is not a
+/// success: the record must stay MDL-unavailable.
+bool VerifyMdlConnectedInputsRefused()
+{
+    SetMdlAdapterPath(HDSILK_PROBE_MDL_ADAPTER);
+    std::map<TfToken, VtValue> inputs;
+    inputs[TfToken("diffuse_color_constant")] = VtValue(GfVec3f(1.0f, 1.0f, 1.0f));
+
+    HdMaterialNode driver;
+    driver.path = SdfPath("/World/Looks/MdlMat/Driver");
+    driver.identifier = TfToken("ND_constant_color3");
+
+    HdMaterialNetworkMap map = MakeMdlNetwork("OmniPBR.mdl", "OmniPBR", inputs);
+    HdMaterialNetwork& network = map.map[HdMaterialTerminalTokens->surface];
+    network.nodes.insert(network.nodes.begin(), driver);
+    network.relationships.push_back(
+        {driver.path,
+         TfToken("out"),
+         SdfPath("/World/Looks/MdlMat/Shader"),
+         TfToken("diffuse_color_constant")});
+
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(SdfPath("/World/Looks/MdlMat"), map);
+    return record.surfaceKind == OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE &&
+        record.scalars.empty();
+}
+#endif
+
+/// An authored universal UsdPreviewSurface context still wins over an MDL one.
+/// The dual-context material is the shape Omniverse's own asset guidance asks
+/// for, and adding MDL to the delegate's render contexts must not change how it
+/// resolves.
+bool VerifyMdlDoesNotDisplacePreviewSurface()
+{
+    HdMaterialNode preview;
+    preview.path = SdfPath("/World/Looks/Dual/Preview");
+    preview.identifier = TfToken("UsdPreviewSurface");
+    preview.parameters[TfToken("diffuseColor")] =
+        VtValue(GfVec3f(0.1f, 0.9f, 0.3f));
+
+    HdMaterialNode mdl;
+    mdl.path = SdfPath("/World/Looks/Dual/Mdl");
+    mdl.identifier = TfToken("mdl:OmniPBR.mdl:OmniPBR");
+    mdl.parameters[TfToken("diffuse_color_constant")] =
+        VtValue(GfVec3f(0.9f, 0.1f, 0.1f));
+
+    HdMaterialNetwork network;
+    network.nodes = {mdl, preview};
+
+    HdMaterialNetworkMap map;
+    map.map[HdMaterialTerminalTokens->surface] = network;
+    map.terminals.push_back(preview.path);
+
+    const HdSilkMaterialRecord record =
+        HdSilkMaterial::Resolve(SdfPath("/World/Looks/Dual"), map);
+    const HdSilkMaterialScalar* diffuse =
+        FindScalar(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+    return record.surfaceKind == OPENUSD_SILK_SURFACE_PREVIEW_SURFACE &&
+        diffuse != nullptr && std::fabs(diffuse->value[1] - 0.9f) < 1e-5f;
+}
+
 std::string BlendShapeProbeStagePath(const char* probeStagePath)
 {
     std::string path(probeStagePath);
@@ -4846,6 +10017,309 @@ bool VerifyPointInstancerProbe(
     return passed;
 }
 
+/// Gates per-instance UsdLux linking under nested instancing and per-instancer
+/// linking under point instancing, end to end, from authored collections on a
+/// stage to sparse ABI v21 LIGHT_LINK entries on the identities hdSilk
+/// publishes.
+///
+/// The nested half nests two instanceable prims inside a prototype that two more
+/// instanceable prims reference, so UsdImaging builds an inner instancer whose
+/// parent is an outer one and hdSilk publishes four composed identities:
+/// outerIndex * innerInstanceCount + innerIndex. The collections partition those
+/// identities three different ways -- one light excludes one outer instance, its
+/// caster collection excludes the other, and the two domes split them again --
+/// so a resolution that dropped the ancestor level, applied the inner index
+/// directly, or intersected the collections produces a different table in each
+/// case.
+///
+/// The point-instancer half scatters two prototypes that live outside the
+/// instancer's namespace, with a hidden instance. Every collection reaching them
+/// names the instancer and excludes the prototype scope, so all three of their
+/// masks can only arrive through the instancer prim's own path-wide categories,
+/// which is exactly how HdsiLightLinkingSceneIndex reports a linked point
+/// instancer.
+///
+/// The evidence is the identity each entry names. Every entry a prototype owns
+/// must be one of the identities the page's own MESH_UPSERT records publish, so
+/// a phantom row is a failure rather than a harmless extra.
+bool VerifyNestedInstanceLinkingProbe(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error)
+{
+    const std::string stagePath = SiblingProbeStagePath(
+        probeStagePath,
+        "hdsilk-nested-linking-probe.usda");
+    openusd_silk_session* session = nullptr;
+    if (openusd_silk_session_create(pluginPath, stagePath.c_str(), &session, error) !=
+        OPENUSD_STATUS_OK)
+    {
+        std::cerr << "hdSilk nested-linking session create failed.\n";
+        return false;
+    }
+
+    ParsedPage page;
+    if (Sync(session, &page, error, nullptr, 0.0) != OPENUSD_STATUS_OK)
+    {
+        openusd_silk_session_release(session);
+        return false;
+    }
+    openusd_silk_session_release(session);
+
+    // Exactly four composed identities are published, and their indices are the
+    // mixed-radix composition rather than a per-level index.
+    std::vector<int32_t> published;
+    std::string leafPath;
+    std::map<int32_t, double> translations;
+    for (const ParsedMeshIdentity& identity : page.mesh_identities)
+    {
+        if (identity.path.find("Leaf") == std::string::npos)
+        {
+            continue;
+        }
+        published.push_back(identity.instance_index);
+        translations[identity.instance_index] = identity.transform[12];
+        leafPath = identity.path;
+    }
+    std::sort(published.begin(), published.end());
+    if (published != std::vector<int32_t>({0, 1, 2, 3}))
+    {
+        std::cerr << "hdSilk nested-linking stage published "
+                  << published.size() << " leaf instances:";
+        for (int32_t index : published)
+        {
+            std::cerr << ' ' << index;
+        }
+        std::cerr << "\n";
+        return false;
+    }
+
+    // Splitting the identities across two collections must not move any of
+    // them: the outer instances translate by 0 and 100 and the inner ones by 0
+    // and 2, so the composed identity that loses a light must still be drawn at
+    // its own composed transform.
+    const std::vector<std::pair<int32_t, double>> expectedTranslations{
+        {0, 0.0}, {1, 2.0}, {2, 100.0}, {3, 102.0}};
+    for (const auto& expectedTranslation : expectedTranslations)
+    {
+        const double actual = translations[expectedTranslation.first];
+        if (std::fabs(actual - expectedTranslation.second) > 1e-6)
+        {
+            std::cerr << "hdSilk nested-linking identity "
+                      << expectedTranslation.first << " was drawn at x="
+                      << actual << ", expected "
+                      << expectedTranslation.second << "\n";
+            return false;
+        }
+    }
+
+    if (!page.light_link_valid ||
+        page.light_link_count != 1 ||
+        page.light_link_light_count != 2 ||
+        page.light_link_dome_count != 2 ||
+        page.light_link_unsupported != OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE)
+    {
+        std::cerr << "hdSilk nested-linking page published "
+                  << page.light_link_count << " link commands with "
+                  << page.light_link_light_count << " lights and "
+                  << page.light_link_dome_count << " domes, unsupported "
+                  << page.light_link_unsupported << "\n";
+        return false;
+    }
+
+    // Every entry the prototype owns has to name a published identity: the
+    // prototype path itself, or one of the four composed indices. A row for
+    // anything else addresses no record and consumes the bounded table for
+    // nothing. The prototype's own rows are exactly the path row plus one per
+    // composed identity, so a level that emitted a row per (outer, inner) pair
+    // without intersecting against the indices each level draws would be caught
+    // by the count alone.
+    size_t leafEntries = 0;
+    for (const auto& entry : page.light_links)
+    {
+        if (std::get<0>(entry) != leafPath)
+        {
+            continue;
+        }
+        ++leafEntries;
+        const int32_t instanceIndex = std::get<1>(entry);
+        if (instanceIndex != OPENUSD_SILK_LINK_ALL_INSTANCES &&
+            !std::binary_search(
+                published.begin(),
+                published.end(),
+                instanceIndex))
+        {
+            std::cerr << "hdSilk nested-linking table named an unpublished "
+                      << "identity " << std::get<0>(entry) << " instance "
+                      << instanceIndex << "\n";
+            return false;
+        }
+    }
+    if (leafEntries != published.size() + 1)
+    {
+        std::cerr << "hdSilk nested-linking prototype published "
+                  << leafEntries << " entries, expected "
+                  << (published.size() + 1) << "\n";
+        return false;
+    }
+
+    // The masks each composed identity resolves to. Outer instance 0 owns
+    // composed 0 and 1, outer instance 1 owns composed 2 and 3.
+    auto resolve = [&page](const std::string& path, int32_t instanceIndex)
+    {
+        std::tuple<uint32_t, uint32_t, uint32_t> masks{3u, 3u, 3u};
+        for (const auto& entry : page.light_links)
+        {
+            if (std::get<0>(entry) == path &&
+                std::get<1>(entry) == OPENUSD_SILK_LINK_ALL_INSTANCES)
+            {
+                masks = {
+                    std::get<2>(entry),
+                    std::get<3>(entry),
+                    std::get<4>(entry)};
+            }
+        }
+        for (const auto& entry : page.light_links)
+        {
+            if (std::get<0>(entry) == path &&
+                std::get<1>(entry) == instanceIndex)
+            {
+                masks = {
+                    std::get<2>(entry),
+                    std::get<3>(entry),
+                    std::get<4>(entry)};
+            }
+        }
+        return masks;
+    };
+
+    bool matched = true;
+    auto require = [&matched, &resolve](
+        const std::string& path,
+        int32_t instanceIndex,
+        uint32_t light,
+        uint32_t shadow,
+        uint32_t dome,
+        const char* what)
+    {
+        const auto masks = resolve(path, instanceIndex);
+        if (std::get<0>(masks) != light ||
+            std::get<1>(masks) != shadow ||
+            std::get<2>(masks) != dome)
+        {
+            std::cerr << "hdSilk nested-linking " << what << " instance "
+                      << instanceIndex << " resolved to light="
+                      << std::get<0>(masks) << " shadow=" << std::get<1>(masks)
+                      << " dome=" << std::get<2>(masks) << ", expected light="
+                      << light << " shadow=" << shadow << " dome=" << dome
+                      << "\n";
+            matched = false;
+        }
+    };
+
+    // Direct light 0 is /World/Key and 1 is /World/Spot; dome 0 is /World/Sky
+    // and 1 is /World/SkyScatter, both orderings sorted by path.
+    //
+    // The prototype path itself is in no collection, because a native-instance
+    // prototype lives outside /World and every collection is authored there.
+    // Composed 0 and 1 descend from /World/GroupA, which Key lights, Key's
+    // caster collection excludes and SkyScatter alone lights. Composed 2 and 3
+    // descend from /World/GroupB, which is the complement in all three. Nothing
+    // but the outer instancer's per-instance categories can tell them apart.
+    require(leafPath, OPENUSD_SILK_LINK_ALL_INSTANCES, 0u, 0u, 0u, "nested prototype");
+    require(leafPath, 0, 1u, 0u, 2u, "nested");
+    require(leafPath, 1, 1u, 0u, 2u, "nested");
+    require(leafPath, 2, 0u, 1u, 1u, "nested");
+    require(leafPath, 3, 0u, 1u, 1u, "nested");
+
+    // The point-instancer half. Every collection that reaches these prototypes
+    // names /World/Scatter and excludes /World/ScatterProtos, so the prototype
+    // path carries no category of its own: light bit 1, shadow bit 1 and dome
+    // bit 0 can only have arrived through the instancer prim's own path-wide
+    // categories. Dropping the leaf level's contribution resolves all three
+    // masks to zero instead.
+    std::map<std::string, std::vector<int32_t>> scattered;
+    std::map<std::string, double> scatterOrigin;
+    for (const ParsedMeshIdentity& identity : page.mesh_identities)
+    {
+        if (identity.path.find("ScatterProtos") == std::string::npos)
+        {
+            continue;
+        }
+        scattered[identity.path].push_back(identity.instance_index);
+        if (identity.instance_index == 0 ||
+            scatterOrigin.find(identity.path) == scatterOrigin.end())
+        {
+            scatterOrigin[identity.path] = identity.transform[12];
+        }
+    }
+    if (scattered.size() != 2)
+    {
+        std::cerr << "hdSilk nested-linking stage published "
+                  << scattered.size() << " scattered prototypes, expected 2\n";
+        for (const auto& entry : scattered)
+        {
+            std::cerr << "  " << entry.first << "\n";
+        }
+        return false;
+    }
+    for (auto& prototype : scattered)
+    {
+        std::sort(prototype.second.begin(), prototype.second.end());
+        const bool isRed = prototype.first.find("Red") != std::string::npos;
+
+        // Proto indices [0, 1, 0, 1] give Red instances 0 and 2 and Blue 1 and
+        // 3, and invisibleIds hides instance 2. A hidden instance and the
+        // instances a prototype does not own must both consume no row at all.
+        const std::vector<int32_t> expectedInstances = isRed
+            ? std::vector<int32_t>{0}
+            : std::vector<int32_t>{1, 3};
+        if (prototype.second != expectedInstances)
+        {
+            std::cerr << "hdSilk scattered prototype " << prototype.first
+                      << " published " << prototype.second.size()
+                      << " instances:";
+            for (int32_t index : prototype.second)
+            {
+                std::cerr << ' ' << index;
+            }
+            std::cerr << "\n";
+            matched = false;
+            continue;
+        }
+        require(prototype.first, OPENUSD_SILK_LINK_ALL_INSTANCES, 2u, 2u, 1u,
+            "scattered prototype");
+        size_t rows = 0;
+        for (const auto& entry : page.light_links)
+        {
+            if (std::get<0>(entry) == prototype.first)
+            {
+                ++rows;
+            }
+        }
+        if (rows != 1)
+        {
+            std::cerr << "hdSilk scattered prototype " << prototype.first
+                      << " published " << rows
+                      << " link entries, expected exactly the path row\n";
+            matched = false;
+        }
+    }
+
+    if (!matched)
+    {
+        for (const auto& entry : page.light_links)
+        {
+            std::cerr << "  " << std::get<0>(entry)
+                      << " instance=" << std::get<1>(entry)
+                      << " light=" << std::get<2>(entry)
+                      << " shadow=" << std::get<3>(entry)
+                      << " dome=" << std::get<4>(entry) << "\n";
+        }
+    }
+    return matched;
+}
+
 bool VerifyBlendShapeProbe(
     const char* pluginPath,
     const char* probeStagePath,
@@ -4865,6 +10339,609 @@ bool VerifyBlendShapeProbe(
         page.found_blend_shape_mesh &&
         page.blend_shape_first_x > 0.49F &&
         page.blend_shape_first_x < 0.51F;
+}
+
+/// Drives the MDL-only fixture through the whole product path: UsdImaging, the
+/// hdSilk scene index plugin that gives the MDL node an identifier, the render
+/// delegate's material render contexts, and the page wire format.
+///
+/// The assertion that matters at every build configuration is that the material
+/// is published at all with an MDL surface kind. Before this slice the material
+/// arrived with no surface terminal, was published as plain unsupported, and a
+/// consumer could not tell MDL from an unrecognised graph.
+#if defined(HDSILK_PROBE_MDL_SDK_ADAPTER)
+/// Drives a material bound to a repository-authored MDL module through the whole
+/// product path with the SDK-backed adapter installed.
+///
+/// The fixture authors exactly one input and leaves the rest of the accepted
+/// subset unauthored, so a published value for any of the others can only have
+/// come out of the compiled module. That is what makes this end-to-end evidence
+/// of module evaluation rather than of authored values being echoed back.
+bool VerifyMdlModuleDefaultsStageProbe(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error)
+{
+    ArchSetEnv("OPENUSD_MDL_ADAPTER_PATH", HDSILK_PROBE_MDL_SDK_ADAPTER, true);
+    ArchSetEnv("OPENUSD_MDL_MODULE_PATH", HDSILK_PROBE_MDL_MODULE_DIR, true);
+#if defined(HDSILK_PROBE_MDL_SDK_RUNTIME_DIR)
+    ArchSetEnv("OPENUSD_MDL_SDK_RUNTIME", HDSILK_PROBE_MDL_SDK_RUNTIME_DIR, true);
+#endif
+    // The delegate caches its adapter once per process, deliberately: an adapter
+    // that could be swapped mid-frame would let two materials in one page
+    // disagree about what they were shaded from. This probe proves several
+    // configurations, so it drops that cache explicitly.
+    openusd_hdsilk_test_reset_mdl_adapter();
+    const std::string stagePath =
+        SiblingProbeStagePath(probeStagePath, "mdl/mdl-module-defaults.usda");
+    openusd_silk_session* session = nullptr;
+    if (openusd_silk_session_create(pluginPath, stagePath.c_str(), &session, error) !=
+        OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+    ParsedPage page;
+    const openusd_status status = Sync(session, &page, error, nullptr, 2.0);
+    openusd_silk_session_release(session);
+    if (status != OPENUSD_STATUS_OK || !page.found_material_upsert ||
+        !page.material_valid || page.material_path != "/World/Looks/ProbeMat" ||
+        page.material_surface_kind != OPENUSD_SILK_SURFACE_MDL_DISTILLED)
+    {
+        return false;
+    }
+
+    // The authored roughness must win, and the unauthored metallic must have come
+    // from the module. Both together are the claim; either alone is not.
+    bool authoredRoughness = false;
+    bool moduleMetallic = false;
+    bool moduleDiffuse = false;
+    for (const auto& scalar : page.material_scalars)
+    {
+        const uint32_t parameter = std::get<0>(scalar);
+        const float value = std::get<1>(scalar);
+        if (parameter == OPENUSD_SILK_MATERIAL_ROUGHNESS)
+        {
+            authoredRoughness = std::fabs(value - 0.9F) < 1e-5F;
+        }
+        else if (parameter == OPENUSD_SILK_MATERIAL_METALLIC)
+        {
+            moduleMetallic = std::fabs(value - 0.125F) < 1e-5F;
+        }
+        else if (parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR)
+        {
+            moduleDiffuse = std::fabs(value - 0.25F) < 1e-5F;
+        }
+    }
+    return authoredRoughness && moduleMetallic && moduleDiffuse;
+}
+#endif
+
+/// Finds one published material by path, or null.
+const ParsedMaterialRecord* FindParsedMaterial(const ParsedPage& page, const char* path)
+{
+    for (const ParsedMaterialRecord& material : page.materials)
+    {
+        if (material.path == path)
+        {
+            return &material;
+        }
+    }
+    return nullptr;
+}
+
+/// Reads one published scalar of a material, or false when it published none.
+bool TryReadParsedScalar(
+    const ParsedMaterialRecord& material,
+    uint32_t parameter,
+    float* value)
+{
+    for (const auto& scalar : material.scalars)
+    {
+        if (std::get<0>(scalar) == parameter)
+        {
+            *value = std::get<1>(scalar);
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Proves the displacement terminal rules against a real stage, resolved through
+/// the delegate's own GetMaterialResource path.
+///
+/// The hand-built network maps elsewhere in this probe exercise the resolution
+/// logic; they cannot exercise the composition that produces those maps. This
+/// case opens a stage, lets UsdImaging compose it, and checks four claims a
+/// hand-built map cannot make: that a connected displacement output publishes,
+/// that an *unconnected* one publishes nothing even though the same shader
+/// authors the same non-zero input, that a displacement survives a surface this
+/// renderer cannot shade, and that an image with no authored file publishes the
+/// node's authored fallback rather than dropping the height.
+bool VerifyDisplacementStageProbe(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error)
+{
+    const std::string stagePath =
+        SiblingProbeStagePath(probeStagePath, "displacement-terminal-stage.usda");
+    openusd_silk_session* session = nullptr;
+    if (openusd_silk_session_create(pluginPath, stagePath.c_str(), &session, error) !=
+        OPENUSD_STATUS_OK)
+    {
+        std::cerr << "Could not open the displacement terminal stage.\n";
+        return false;
+    }
+    ParsedPage page;
+    const openusd_status status = Sync(session, &page, error, nullptr, 0.0);
+    openusd_silk_session_release(session);
+    if (status != OPENUSD_STATUS_OK || !page.material_valid)
+    {
+        std::cerr << "The displacement terminal stage did not publish valid materials.\n";
+        return false;
+    }
+
+    const ParsedMaterialRecord* constant =
+        FindParsedMaterial(page, "/World/Looks/ConstantDisplaced");
+    float amount = 0.0F;
+    if (constant == nullptr ||
+        !TryReadParsedScalar(*constant, OPENUSD_SILK_MATERIAL_DISPLACEMENT, &amount) ||
+        std::fabs(amount - 0.5F) > 1e-6F)
+    {
+        std::cerr << "A connected displacement terminal did not publish its constant "
+                  << "from a composed stage.\n";
+        return false;
+    }
+
+    // The same shader, the same authored inputs:displacement, no connected
+    // outputs:displacement. This is the claim a hand-built map cannot make on
+    // its own, because the map is where the connection would have been.
+    const ParsedMaterialRecord* surfaceOnly =
+        FindParsedMaterial(page, "/World/Looks/SurfaceOnly");
+    float unexpected = 0.0F;
+    if (surfaceOnly == nullptr ||
+        TryReadParsedScalar(*surfaceOnly, OPENUSD_SILK_MATERIAL_DISPLACEMENT, &unexpected))
+    {
+        std::cerr << "A material with no displacement terminal published displacement "
+                  << "from a composed stage.\n";
+        return false;
+    }
+
+    // A surface this renderer cannot shade does not silence a valid displacement
+    // terminal: the prim is drawn with the default surface and still moves.
+    const ParsedMaterialRecord* unshaded =
+        FindParsedMaterial(page, "/World/Looks/UnshadedDisplaced");
+    float unshadedAmount = 0.0F;
+    if (unshaded == nullptr ||
+        unshaded->surface_kind == OPENUSD_SILK_SURFACE_PREVIEW_SURFACE ||
+        !TryReadParsedScalar(
+            *unshaded, OPENUSD_SILK_MATERIAL_DISPLACEMENT, &unshadedAmount) ||
+        std::fabs(unshadedAmount - 0.75F) > 1e-6F)
+    {
+        std::cerr << "An unshadeable surface suppressed a valid displacement terminal.\n";
+        return false;
+    }
+
+    // fallback 0.5 through scale 3 and bias -0.25 is 1.25.
+    const ParsedMaterialRecord* emptyFile =
+        FindParsedMaterial(page, "/World/Looks/EmptyFileDisplaced");
+    float fallbackAmount = 0.0F;
+    if (emptyFile == nullptr ||
+        !TryReadParsedScalar(
+            *emptyFile, OPENUSD_SILK_MATERIAL_DISPLACEMENT, &fallbackAmount) ||
+        std::fabs(fallbackAmount - 1.25F) > 1e-5F)
+    {
+        std::cerr << "A displacement image with no authored file did not publish the "
+                  << "authored fallback; published " << fallbackAmount << ".\n";
+        return false;
+    }
+
+    // A height field reading `st2` while the surface colour reads `st` is exactly
+    // representable: the wire carries a primvar per texture entry, and a
+    // displacement is sampled per vertex through its own. Reconciling the two
+    // into one stream would drop one of them for no reason.
+    const ParsedMaterialRecord* independent =
+        FindParsedMaterial(page, "/World/Looks/IndependentUvDisplaced");
+    if (independent == nullptr)
+    {
+        std::cerr << "The independent-UV displacement material was not published.\n";
+        return false;
+    }
+    std::string surfacePrimvar;
+    std::string displacementPrimvar;
+    for (const auto& texture : independent->textures)
+    {
+        if (std::get<0>(texture) == OPENUSD_SILK_MATERIAL_DISPLACEMENT)
+        {
+            displacementPrimvar = std::get<3>(texture);
+        }
+        else if (std::get<0>(texture) == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR)
+        {
+            surfacePrimvar = std::get<3>(texture);
+        }
+    }
+    if (surfacePrimvar != "st" || displacementPrimvar != "st2")
+    {
+        std::cerr << "A displacement sampling its own coordinate set was reconciled "
+                  << "into the surface stream: surface='" << surfacePrimvar
+                  << "' displacement='" << displacementPrimvar << "'.\n";
+        return false;
+    }
+    return true;
+}
+
+bool VerifyMdlOnlyStageProbe(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error)
+{
+    // The delegate inside the plugin has its own adapter cache, so the search
+    // path is stated here rather than inherited from whatever the in-process
+    // resolution checks above left behind. Both branches use an absolute path,
+    // because this loader refuses a relative one outright.
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
+    ArchSetEnv("OPENUSD_MDL_ADAPTER_PATH", HDSILK_PROBE_MDL_ADAPTER, true);
+#else
+    ArchRemoveEnv("OPENUSD_MDL_ADAPTER_PATH");
+#endif
+    const std::string stagePath =
+        SiblingProbeStagePath(probeStagePath, "omniverse/mdl-only-omnipbr.usda");
+    openusd_silk_session* session = nullptr;
+    if (openusd_silk_session_create(pluginPath, stagePath.c_str(), &session, error) !=
+        OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+    ParsedPage page;
+    const openusd_status status = Sync(session, &page, error, nullptr, 2.0);
+    openusd_silk_session_release(session);
+    if (status != OPENUSD_STATUS_OK || !page.found_material_upsert ||
+        !page.material_valid ||
+        page.material_path != "/World/Looks/OmniPbrMat")
+    {
+        return false;
+    }
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
+    return page.material_surface_kind == OPENUSD_SILK_SURFACE_MDL_DISTILLED &&
+        page.material_scalar_count > 0;
+#else
+    return page.material_surface_kind == OPENUSD_SILK_SURFACE_MDL_UNAVAILABLE &&
+        page.material_scalar_count == 0 &&
+        page.material_texture_count == 0;
+#endif
+}
+
+const ParsedAttribute* FindParsedAttribute(
+    const ParsedCurves& mesh,
+    const char* name)
+{
+    for (const ParsedAttribute& attribute : mesh.attributes)
+    {
+        if (attribute.name == name)
+        {
+            return &attribute;
+        }
+    }
+    return nullptr;
+}
+
+bool NearlyEqual(float value, float expected, float tolerance = 1e-4F)
+{
+    return std::fabs(value - expected) <= tolerance;
+}
+
+/// Compares one three-component element of a parsed attribute or point array.
+bool MatchesVec3(
+    const std::vector<float>& values,
+    size_t element,
+    float x,
+    float y,
+    float z,
+    float tolerance = 1e-4F)
+{
+    const size_t offset = element * 3;
+    return values.size() >= offset + 3 &&
+        NearlyEqual(values[offset], x, tolerance) &&
+        NearlyEqual(values[offset + 1], y, tolerance) &&
+        NearlyEqual(values[offset + 2], z, tolerance);
+}
+
+/// Verifies the analytic expectations of hdsilk-deformation-probe.usda at one
+/// time code. Every value is computed from the authored stage rather than
+/// captured, so a regression in the CPU deformation subset fails arithmetic
+/// rather than a pixel comparison.
+bool VerifyDeformationProbeAtTime(
+    openusd_silk_session* session,
+    double timeCode,
+    openusd_error_buffer* error,
+    std::string* failure)
+{
+    ParsedPage page;
+    const openusd_status status = Sync(session, &page, error, nullptr, timeCode);
+    if (status != OPENUSD_STATUS_OK)
+    {
+        *failure = "sync failed";
+        return false;
+    }
+    if (!page.inbetween_mesh.found || !page.skinned_normal_mesh.found ||
+        !page.face_varying_normal_mesh.found)
+    {
+        *failure = "a deformation probe mesh was not published";
+        return false;
+    }
+
+    // The ABI v20 rig is gated analytically rather than structurally: every
+    // record that published one was re-evaluated from its own bytes while the
+    // page was parsed, and the result has to be the deformed points the same
+    // record carries. A rig that decodes but describes another surface is
+    // exactly the failure a consumer could not detect for itself.
+    if (!page.deformation_valid)
+    {
+        *failure = "a published deformation block did not decode";
+        return false;
+    }
+    // The ABI v22 subprim-identity tables are gated the same way: a record that
+    // claims an exact edge or point target must publish the table behind it,
+    // every entry must name an authored component the record declares, and a
+    // triangulation diagonal must be the explicit sentinel rather than an
+    // invented index.
+    if (!page.subprim_identity_valid)
+    {
+        *failure =
+            "a published subprim identity table did not match the record's claim";
+        return false;
+    }
+    if (!page.deformation_reproduces_points)
+    {
+        *failure =
+            "a published deformation block did not reproduce the CPU points "
+            "(worst relative error " +
+            std::to_string(page.deformation_worst_point_error) + ")";
+        return false;
+    }
+    if (page.deformation_published_count < 2)
+    {
+        *failure =
+            "the deformation probe published " +
+            std::to_string(page.deformation_published_count) +
+            " bounded rigs, expected the blend-shape and skinned meshes";
+        return false;
+    }
+
+    const ParsedAttribute* inbetweenNormals =
+        FindParsedAttribute(page.inbetween_mesh, "normals");
+    const ParsedAttribute* skinnedNormals =
+        FindParsedAttribute(page.skinned_normal_mesh, "normals");
+    if (inbetweenNormals == nullptr || inbetweenNormals->componentCount != 3)
+    {
+        // The published attribute table is named in the failure, because "no
+        // normals" and "normals of the wrong shape" fail here for different
+        // reasons and the table is the only thing that tells them apart.
+        *failure = "the in-between mesh published no per-point normals (";
+        for (const ParsedAttribute& attribute : page.inbetween_mesh.attributes)
+        {
+            *failure += attribute.name + ":" +
+                std::to_string(attribute.componentCount) + ":" +
+                std::to_string(attribute.elementCount) + " ";
+        }
+        *failure += ")";
+        return false;
+    }
+    if (skinnedNormals == nullptr || skinnedNormals->componentCount != 3)
+    {
+        *failure = "the skinned mesh published no per-point normals";
+        return false;
+    }
+
+    // Face-varying normals cannot be addressed by the point-indexed offsets and
+    // influences UsdSkel resolves, so a deformed mesh publishes none rather
+    // than publishing the bind pose of a surface that moved.
+    if (FindParsedAttribute(page.face_varying_normal_mesh, "normals") != nullptr)
+    {
+        *failure =
+            "face-varying normals were published for a deformed mesh";
+        return false;
+    }
+
+    if (timeCode < 1.5)
+    {
+        // Weight 0 and identity joints: the bind pose travels unchanged.
+        const bool ok =
+            MatchesVec3(page.inbetween_mesh.points, 0, 0.0F, 0.0F, 0.0F) &&
+            MatchesVec3(inbetweenNormals->values, 0, 0.0F, 0.0F, 1.0F) &&
+            MatchesVec3(page.skinned_normal_mesh.points, 2, 0.0F, 1.0F, 0.0F) &&
+            MatchesVec3(skinnedNormals->values, 0, 0.0F, 0.0F, 1.0F);
+        if (!ok)
+        {
+            *failure = "the undeformed bind pose did not travel unchanged";
+        }
+        return ok;
+    }
+    if (timeCode < 2.5)
+    {
+        // Weight 0.5 lands exactly on the authored in-between shape, whose
+        // offsets are deliberately not the linear midpoint of the primary
+        // shape: linear interpolation would publish x=1, not x=0.25.
+        const bool ok =
+            MatchesVec3(page.inbetween_mesh.points, 0, 0.25F, 0.0F, 0.0F) &&
+            MatchesVec3(
+                inbetweenNormals->values,
+                0,
+                0.0F,
+                0.242536F,
+                0.970143F) &&
+            MatchesVec3(inbetweenNormals->values, 1, 0.0F, 0.0F, 1.0F);
+        if (!ok)
+        {
+            *failure = "the in-between shape was not resolved at weight 0.5";
+        }
+        return ok;
+    }
+
+    // Weight 1 selects the primary shape, and the second joint rotates 90
+    // degrees about X, so the skinned points and normals both change axis.
+    const bool ok =
+        MatchesVec3(page.inbetween_mesh.points, 0, 2.0F, 0.0F, 0.0F) &&
+        MatchesVec3(
+            inbetweenNormals->values,
+            0,
+            0.0F,
+            0.894427F,
+            0.447214F) &&
+        MatchesVec3(page.skinned_normal_mesh.points, 1, 1.0F, 0.0F, 0.0F) &&
+        MatchesVec3(page.skinned_normal_mesh.points, 2, 0.0F, 0.0F, 1.0F) &&
+        MatchesVec3(skinnedNormals->values, 0, 0.0F, -1.0F, 0.0F) &&
+        MatchesVec3(skinnedNormals->values, 2, 0.0F, -1.0F, 0.0F);
+    if (!ok)
+    {
+        *failure =
+            "the primary shape or the skinned normal rotation did not resolve";
+    }
+    return ok;
+}
+
+/// The published-rig self-verification treats a degenerate normal as ignorable
+/// only when both sides are degenerate. A one-sided degeneracy is a
+/// disagreement about the surface: the rig either collapsed a direction the CPU
+/// deformation kept, or kept one the CPU deformation collapsed, and publishing
+/// it as verified would hand a consumer a normal hdSilk never resolved.
+///
+/// This case cannot be reached from a stage fixture, so the four combinations
+/// are constructed through a test hook. The two one-sided cases are the
+/// load-bearing ones: an implementation that skipped whenever either side was
+/// degenerate would pass all four and prove nothing.
+bool VerifyDeformationDegenerateNormalRule(std::string* failure)
+{
+    struct Case
+    {
+        int32_t resolvedDegenerate;
+        int32_t evaluatedDegenerate;
+        int32_t expected;
+        const char* name;
+    };
+    static const Case cases[] = {
+        {0, 0, 1, "neither side degenerate must verify"},
+        {1, 1, 1, "both sides degenerate must verify"},
+        {1, 0, 0, "a degenerate CPU normal against a resolved rig normal "
+                  "must be refused"},
+        {0, 1, 0, "a resolved CPU normal against a degenerate rig normal "
+                  "must be refused"}};
+    for (const Case& entry : cases)
+    {
+        const int32_t verified =
+            openusd_hdsilk_test_verify_degenerate_normal_rule(
+                entry.resolvedDegenerate,
+                entry.evaluatedDegenerate);
+        if (verified != entry.expected)
+        {
+            *failure = entry.name;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool VerifyDeformationProbe(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error,
+    std::string* failure)
+{    const std::string stagePath =
+        SiblingProbeStagePath(probeStagePath, "hdsilk-deformation-probe.usda");
+    for (double timeCode : {1.0, 2.0, 3.0})
+    {
+        openusd_silk_session* session = nullptr;
+        if (openusd_silk_session_create(
+                pluginPath,
+                stagePath.c_str(),
+                &session,
+                error) != OPENUSD_STATUS_OK)
+        {
+            *failure = "session create failed";
+            return false;
+        }
+        const bool ok = VerifyDeformationProbeAtTime(
+            session,
+            timeCode,
+            error,
+            failure);
+        openusd_silk_session_release(session);
+        if (!ok)
+        {
+            *failure += " at timeCode " + std::to_string(timeCode);
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Time-varying invalidation, measured inside one session rather than across
+/// fresh ones: the deformed points and normals must both follow the evaluation
+/// time forward and back, so a cached bind pose cannot survive a scrub and a
+/// cached deformed pose cannot survive a scrub back to the bind pose.
+bool VerifyDeformationInvalidation(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error,
+    std::string* failure)
+{
+    const std::string stagePath =
+        SiblingProbeStagePath(probeStagePath, "hdsilk-deformation-probe.usda");
+    openusd_silk_session* session = nullptr;
+    if (openusd_silk_session_create(
+            pluginPath,
+            stagePath.c_str(),
+            &session,
+            error) != OPENUSD_STATUS_OK)
+    {
+        *failure = "session create failed";
+        return false;
+    }
+
+    bool passed = true;
+    for (double timeCode : {1.0, 3.0, 1.0})
+    {
+        ParsedPage page;
+        if (Sync(session, &page, error, nullptr, timeCode) !=
+            OPENUSD_STATUS_OK)
+        {
+            *failure = "sync failed";
+            passed = false;
+            break;
+        }
+        if (!page.inbetween_mesh.found || !page.skinned_normal_mesh.found)
+        {
+            *failure = "a deformed mesh was not republished after a time change";
+            passed = false;
+            break;
+        }
+        const ParsedAttribute* skinnedNormals =
+            FindParsedAttribute(page.skinned_normal_mesh, "normals");
+        if (skinnedNormals == nullptr)
+        {
+            *failure = "the skinned mesh published no normals after a scrub";
+            passed = false;
+            break;
+        }
+        const bool deformed = timeCode > 2.0;
+        const float expectedX = deformed ? 2.0F : 0.0F;
+        const float expectedNormalY = deformed ? -1.0F : 0.0F;
+        const float expectedNormalZ = deformed ? 0.0F : 1.0F;
+        if (!MatchesVec3(page.inbetween_mesh.points, 0, expectedX, 0.0F, 0.0F) ||
+            !MatchesVec3(
+                skinnedNormals->values,
+                0,
+                0.0F,
+                expectedNormalY,
+                expectedNormalZ))
+        {
+            *failure = "a deformed value did not follow the evaluation time";
+            passed = false;
+            break;
+        }
+    }
+
+    openusd_silk_session_release(session);
+    return passed;
 }
 }
 
@@ -4893,6 +10970,11 @@ int main(int argc, char** argv)
         std::cerr << "hdSilk MaterialX bridge check failed.\n";
         return 4;
     }
+    if (!VerifyDisplacementTerminal())
+    {
+        std::cerr << "hdSilk displacement terminal resolution check failed.\n";
+        return 4;
+    }
     if (!VerifyMaterialXUvChainProjection())
     {
         std::cerr << "hdSilk MaterialX UV chain projection check failed.\n";
@@ -4908,11 +10990,123 @@ int main(int argc, char** argv)
         std::cerr << "hdSilk MaterialX constant fold projection check failed.\n";
         return 4;
     }
+    if (!VerifySurfaceModelProjection())
+    {
+        std::cerr << "hdSilk MaterialX surface model projection check failed.\n";
+        return 4;
+    }
+    if (!VerifyGeneratedUnlitSurvivesGenerationFailure())
+    {
+        std::cerr << "hdSilk ND_surface_unlit generation failure check failed.\n";
+        return 4;
+    }
     if (!VerifyMaterialXImageSamplingProjection())
     {
         std::cerr << "hdSilk MaterialX image sampling projection check failed.\n";
         return 4;
     }
+    if (!VerifyMdlDoesNotDisplacePreviewSurface())
+    {
+        std::cerr
+            << "hdSilk resolved an MDL node over an authored UsdPreviewSurface "
+            << "terminal.\n";
+        return 4;
+    }
+    const std::string mdlAdapterDefaultPath = ResolveMdlAdapterDefaultPath();
+    if (mdlAdapterDefaultPath.empty())
+    {
+        std::cerr
+            << "hdSilk MDL adapter loader could not form its default adapter "
+            << "path from the module hosting it.\n";
+        return 4;
+    }
+    if (!VerifyMdlAdapterRejectsRelativePath())
+    {
+        std::cerr
+            << "hdSilk MDL adapter loader accepted a relative "
+            << "OPENUSD_MDL_ADAPTER_PATH.\n";
+        return 4;
+    }
+    if (!VerifyMdlAdapterMissingExplicitPath(mdlAdapterDefaultPath))
+    {
+        std::cerr
+            << "hdSilk MDL adapter loader did not report a missing explicit "
+            << "adapter path as a load failure.\n";
+        return 4;
+    }
+    if (!VerifyMdlAdapterAbiMismatchAndSiblingDependency())
+    {
+        std::cerr
+            << "hdSilk MDL adapter loader did not refuse a wrong-ABI adapter, "
+            << "or did not resolve that adapter's sibling dependency.\n";
+        return 4;
+    }
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
+    if (!VerifyMdlAdapterLoadsFromModuleSibling(mdlAdapterDefaultPath))
+    {
+        std::cerr
+            << "hdSilk MDL adapter loader did not load an adapter placed beside "
+            << "the module hosting it.\n";
+        return 4;
+    }
+#endif
+    if (!VerifyMdlAdapterIgnoresWorkingDirectory(mdlAdapterDefaultPath))
+    {
+        std::cerr
+            << "hdSilk MDL adapter loader consulted the process working "
+            << "directory instead of the module sibling.\n";
+        return 4;
+    }
+    if (!VerifyMdlAdapterUnavailable(mdlAdapterDefaultPath))
+    {
+        std::cerr
+            << "hdSilk did not publish an MDL-only material as MDL-unavailable "
+            << "when no adapter is installed.\n";
+        return 4;
+    }
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
+    if (!VerifyMdlDistillation())
+    {
+        std::cerr << "hdSilk MDL distillation check failed.\n";
+        return 4;
+    }
+    if (!VerifyMdlUnsupportedModule())
+    {
+        std::cerr
+            << "hdSilk distilled an MDL module outside the accepted set.\n";
+        return 4;
+    }
+    if (!VerifyMdlConnectedInputsRefused())
+    {
+        std::cerr
+            << "hdSilk distilled an MDL material whose inputs are all "
+            << "connected rather than authored.\n";
+        return 4;
+    }
+#endif
+    if (!VerifyMdlOnlyStageProbe(argv[1], argv[2], &error))
+    {
+        std::cerr
+            << "hdSilk MDL-only stage probe did not publish the expected "
+            << "material: " << errorText.data() << "\n";
+        return 4;
+    }
+    if (!VerifyDisplacementStageProbe(argv[1], argv[2], &error))
+    {
+        std::cerr
+            << "hdSilk displacement terminal stage probe failed: "
+            << errorText.data() << "\n";
+        return 4;
+    }
+#if defined(HDSILK_PROBE_MDL_SDK_ADAPTER)
+    if (!VerifyMdlModuleDefaultsStageProbe(argv[1], argv[2], &error))
+    {
+        std::cerr
+            << "hdSilk MDL module-default stage probe did not distil the "
+            << "synthetic module: " << errorText.data() << "\n";
+        return 4;
+    }
+#endif
     if (!VerifyBlendShapeProbe(argv[1], argv[2], &error))
     {
         std::cerr
@@ -4920,11 +11114,44 @@ int main(int argc, char** argv)
             << "deformed point: " << errorText.data() << "\n";
         return 4;
     }
+    std::string deformationFailure;
+    if (!VerifyDeformationDegenerateNormalRule(&deformationFailure))
+    {
+        std::cerr
+            << "hdSilk deformation self-verification rule failed: "
+            << deformationFailure << "\n";
+        return 4;
+    }
+    if (!VerifyDeformationProbe(argv[1], argv[2], &error, &deformationFailure))
+    {
+        std::cerr
+            << "hdSilk deformation probe failed: " << deformationFailure
+            << ": " << errorText.data() << "\n";
+        return 4;
+    }
+    if (!VerifyDeformationInvalidation(
+            argv[1],
+            argv[2],
+            &error,
+            &deformationFailure))
+    {
+        std::cerr
+            << "hdSilk deformation invalidation probe failed: "
+            << deformationFailure << ": " << errorText.data() << "\n";
+        return 4;
+    }
     if (!VerifyPointInstancerProbe(argv[1], argv[2], &error))
     {
         std::cerr
             << "hdSilk point-instancer probe did not publish the expected "
             << "instance identities: " << errorText.data() << "\n";
+        return 4;
+    }
+    if (!VerifyNestedInstanceLinkingProbe(argv[1], argv[2], &error))
+    {
+        std::cerr
+            << "hdSilk nested-instance light linking probe did not publish the "
+            << "expected composed link table: " << errorText.data() << "\n";
         return 4;
     }
 
@@ -4936,6 +11163,7 @@ int main(int argc, char** argv)
         !AuthorSharedMesh(stage, 0.0F, &error) ||
         !AuthorTopologyMesh(stage, &error) ||
         !AuthorBasisCurves(stage, &error) ||
+        !AuthorLinkedLighting(stage, &error) ||
         !AuthorSharedMaterial(stage, &error))
     {
         openusd_stage_release(stage);
@@ -5001,6 +11229,7 @@ int main(int argc, char** argv)
         !VerifyVaryingWidthCurves(initial) ||
         !VerifyUniformWidthCurves(initial) ||
         !VerifyOrientationWinding(initial) ||
+        !VerifyStrayPointsAreNotPickTargets(initial) ||
         !VerifyCurveWidthResolution() ||
         !std::is_sorted(
             initial.upsert_paths.begin(),
@@ -5023,10 +11252,76 @@ int main(int argc, char** argv)
             << " projection[0]=" << initial.frame_projection[0] << "\n";
         return 5;
     }
+
+    // The authored collection:lightLink:excludes must have travelled all the way
+    // from the stage, through UsdImaging's collection cache and Hydra's prim
+    // categories, into a sparse LIGHT_LINK table naming exactly the excluded
+    // prim. The table is default-free, so the included mesh must be absent. The
+    // stage authors no shadow collection, so the excluded prim keeps its shadow
+    // bit: the two collections are resolved independently and an unlit prim still
+    // casts. The stage authors the same exclusion on a DomeLight, so the excluded
+    // prim must also lose its dome bit -- which is the end to end evidence that a
+    // dome collection resolves through the same path a direct light's does.
+    {
+        const bool hasExcludedEntry = std::any_of(
+            initial.light_links.begin(),
+            initial.light_links.end(),
+            [](const std::tuple<std::string, int32_t, uint32_t, uint32_t, uint32_t>& entry)
+            {
+                return std::get<0>(entry) == LinkedUnlitMeshPath &&
+                    std::get<1>(entry) == OPENUSD_SILK_LINK_ALL_INSTANCES &&
+                    std::get<2>(entry) == 0u &&
+                    std::get<3>(entry) == 1u &&
+                    std::get<4>(entry) == 0u;
+            });
+        const bool hasIncludedEntry = std::any_of(
+            initial.light_links.begin(),
+            initial.light_links.end(),
+            [](const std::tuple<std::string, int32_t, uint32_t, uint32_t, uint32_t>& entry)
+            {
+                return std::get<0>(entry) == LinkedLitMeshPath;
+            });
+        if (!initial.light_link_valid ||
+            initial.light_link_count != 1 ||
+            initial.light_link_light_count != 1 ||
+            initial.light_link_dome_count != 1 ||
+            initial.frame_dome_count != 1 ||
+            initial.light_link_unsupported !=
+                OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE ||
+            !hasExcludedEntry ||
+            hasIncludedEntry)
+        {
+            openusd_silk_session_release(session);
+            openusd_stage_release(stage);
+            std::cerr
+                << "Authored UsdLux light linking did not reach the page: commands="
+                << initial.light_link_count
+                << " frameLights=" << initial.frame_light_count
+                << " lights=" << initial.light_link_light_count
+                << " entries=" << initial.light_links.size() << "\n";
+            for (const auto& entry : initial.light_links)
+            {
+                std::cerr << "  " << std::get<0>(entry)
+                    << " instance=" << std::get<1>(entry)
+                    << " light=" << std::get<2>(entry)
+                    << " shadow=" << std::get<3>(entry)
+                    << " dome=" << std::get<4>(entry) << "\n";
+            }
+            return 5;
+        }
+    }
     // Medium complexity halves every emitted line segment. The subdivided
     // vertices must carry attributes interpolated at the same parameter as the
     // position, so the authored width ramp stays a ramp instead of collapsing
     // into a step function at the original endpoints.
+    //
+    // Complexity also selects a mesh refinement level, which changes the
+    // emitted triangle topology of every subdivision surface and therefore its
+    // published topology revision. The revision the restored Low sync leaves
+    // behind is captured here so the live-edit check below can compare across
+    // the points edit it is actually asserting about rather than across this
+    // round trip.
+    uint64_t restoredComplexityRevision = 0;
     {
         const uint32_t mediumComplexity = OPENUSD_SILK_COMPLEXITY_MEDIUM;
         const uint32_t lowComplexity = OPENUSD_SILK_COMPLEXITY_LOW;
@@ -5041,6 +11336,7 @@ int main(int argc, char** argv)
                 OPENUSD_STATUS_OK &&
             VerifyVaryingWidthCurves(low) &&
             VerifyUniformWidthCurves(low);
+        restoredComplexityRevision = low.shared_topology_revision;
         if (!mediumObserved || !lowRestored)
         {
             openusd_silk_session_release(session);
@@ -5261,7 +11557,7 @@ int main(int argc, char** argv)
     if (Sync(session, &edited, &error) != OPENUSD_STATUS_OK ||
         !edited.found_shared_upsert ||
         edited.shared_first_x != 2.0F ||
-        edited.shared_topology_revision != initial.shared_topology_revision ||
+        edited.shared_topology_revision != restoredComplexityRevision ||
         edited.shared_subprims != initial.shared_subprims ||
         !edited.instance_fields_zero)
     {
@@ -5292,6 +11588,73 @@ int main(int argc, char** argv)
         std::cerr << "Live mesh topology identity was not updated: "
                   << errorText.data() << "\n";
         return 9;
+    }
+
+    // Expanding the topology so a uniform primvar can be resolved onto corners
+    // -- and collapsing it again when that primvar stops resolving -- rewrites
+    // the emitted points, the indices and every subprim-identity table with
+    // them, even though Hydra reports only a primvar change. The published
+    // topology revision has to advance in BOTH directions, or a consumer that
+    // keys retained geometry on it keeps a vertex buffer the toggle
+    // invalidated. The toggle mesh time samples its only uniform primvar so
+    // that it resolves at time 0 and cannot resolve at time 1, which moves the
+    // expansion without touching the topology.
+    {
+        ParsedPage collapsedPage;
+        if (Sync(session, &collapsedPage, &error, nullptr, 1.0) != OPENUSD_STATUS_OK ||
+            !collapsedPage.expanded_topology_toggle_mesh.found ||
+            collapsedPage.expanded_topology_toggle_mesh.points.size() != 12)
+        {
+            openusd_silk_session_release(session);
+            openusd_stage_release(stage);
+            std::cerr << "Collapsing the expanded topology did not publish the "
+                         "unexpanded points. pointFloats="
+                      << collapsedPage.expanded_topology_toggle_mesh.points.size()
+                      << " found="
+                      << collapsedPage.expanded_topology_toggle_mesh.found
+                      << "\n";
+            return 9;
+        }
+
+        ParsedPage reexpandedPage;
+        if (Sync(session, &reexpandedPage, &error, nullptr, 0.0) != OPENUSD_STATUS_OK ||
+            !reexpandedPage.expanded_topology_toggle_mesh.found ||
+            reexpandedPage.expanded_topology_toggle_mesh.points.size() != 18 ||
+            reexpandedPage.expanded_topology_toggle_mesh.topology_revision <=
+                collapsedPage.expanded_topology_toggle_mesh.topology_revision)
+        {
+            openusd_silk_session_release(session);
+            openusd_stage_release(stage);
+            std::cerr << "Re-expanding the topology did not advance the "
+                         "published topology revision. pointFloats="
+                      << reexpandedPage.expanded_topology_toggle_mesh.points.size()
+                      << " revision="
+                      << reexpandedPage.expanded_topology_toggle_mesh.topology_revision
+                      << " previous="
+                      << collapsedPage.expanded_topology_toggle_mesh.topology_revision
+                      << "\n";
+            return 9;
+        }
+
+        ParsedPage recollapsedPage;
+        if (Sync(session, &recollapsedPage, &error, nullptr, 1.0) != OPENUSD_STATUS_OK ||
+            !recollapsedPage.expanded_topology_toggle_mesh.found ||
+            recollapsedPage.expanded_topology_toggle_mesh.points.size() != 12 ||
+            recollapsedPage.expanded_topology_toggle_mesh.topology_revision <=
+                reexpandedPage.expanded_topology_toggle_mesh.topology_revision)
+        {
+            openusd_silk_session_release(session);
+            openusd_stage_release(stage);
+            std::cerr << "Collapsing the topology again did not advance the "
+                         "published topology revision. pointFloats="
+                      << recollapsedPage.expanded_topology_toggle_mesh.points.size()
+                      << " revision="
+                      << recollapsedPage.expanded_topology_toggle_mesh.topology_revision
+                      << " previous="
+                      << reexpandedPage.expanded_topology_toggle_mesh.topology_revision
+                      << "\n";
+            return 9;
+        }
     }
 
     if (openusd_stage_remove_prim(stage, SharedMeshPath, &error) != OPENUSD_STATUS_OK)

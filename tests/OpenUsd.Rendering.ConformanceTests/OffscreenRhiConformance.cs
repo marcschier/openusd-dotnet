@@ -528,6 +528,200 @@ internal static class OffscreenRhiConformance
         await Assert.That(baseline.Any(static value => value != 0)).IsTrue();
     }
 
+    /// <summary>
+    /// Renders into a shader-readable depth target, binds that same depth texture
+    /// for sampling in a later pass of the same submission, and then renders into
+    /// it as a depth attachment again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the resource and barrier path a shadow map needs, isolated from any
+    /// shadow shading. A depth-only pass writes a depth image; a later pass in the
+    /// same command list reads it as a sampled texture; and the next frame renders
+    /// into it again. Every one of those steps is a layout or resource-state
+    /// transition that the two backends express differently, and the middle one is
+    /// the one that was actually wrong: the Vulkan <c>SetTexture</c> barrier named
+    /// the colour aspect unconditionally, which is invalid for a depth image and is
+    /// exactly what a shadow map would have hit first.
+    /// </para>
+    /// <para>
+    /// The assertions are about the resource, not about shading: the checked mesh
+    /// fragment shader does not sample a shadow map, so binding the depth texture
+    /// proves the binding path is accepted end to end and leaves the draw
+    /// untouched. What the depth readback proves is stronger and is the part a
+    /// shadow map depends on -- that the first pass actually wrote scene depth into
+    /// a <see cref="SilkTextureDescriptor.SampledDepthTarget"/>, that sampling it
+    /// did not destroy it, and that it is still a usable depth attachment
+    /// afterwards.
+    /// </para>
+    /// </remarks>
+    internal static async Task SampledDepthTargetSurvivesRenderReadAndReuse(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        const uint size = 32;
+
+        // Slot 1 is where the depth texture is bound. Declaring it as a sampled
+        // texture is what a mesh pipeline would do for a shadow map.
+        SilkBindingLayoutDescriptor material = SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 2, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+        ]);
+
+        using ISilkGraphicsTexture firstColor = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(size, size));
+        using ISilkGraphicsTexture secondColor = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(size, size));
+        using ISilkGraphicsTexture sampledDepth = device.CreateTexture2D(
+            SilkTextureDescriptor.SampledDepthTarget(size, size));
+        using ISilkGraphicsTexture plainDepth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(size, size));
+        using ISilkGraphicsSampler sampler = device.CreateSampler(
+            SilkSamplerDescriptor.LinearClamp);
+        using ISilkGraphicsShaderModule vertexShader = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadMeshVertex(shaderFormat));
+        using ISilkGraphicsShaderModule fragmentShader = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadMeshFragment(shaderFormat));
+        using ISilkGraphicsBindingLayout bindingLayout =
+            device.CreateBindingLayout(material);
+        using ISilkGraphicsShaderProgram program = device.CreateShaderProgram(
+            new SilkShaderProgramDescriptor(vertexShader, fragmentShader, bindingLayout));
+        using ISilkGraphicsPipeline pipeline = device.CreateGraphicsPipeline(
+            new SilkGraphicsPipelineDescriptor(
+                program,
+                SilkVertexLayoutDescriptor.PositionNormal,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureFormat.D32Float));
+        using ISilkGraphicsBuffer vertices = device.CreateBuffer(
+            72,
+            SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
+        using ISilkGraphicsBuffer indices = device.CreateBuffer(
+            12,
+            SilkBufferUsage.Index | SilkBufferUsage.Upload);
+        using ISilkGraphicsBuffer uniforms = device.CreateBuffer(
+            80,
+            SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        using ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
+        using ISilkGraphicsBuffer frameConstants = CreateFrameConstants(device);
+
+        // A triangle at a known constant depth, so the depth readback has an exact
+        // expected value rather than only "something changed".
+        const float occluderDepth = 0.25f;
+        vertices.Write(MemoryMarshal.AsBytes<float>(
+        [
+            -0.9f, -0.9f, occluderDepth, 0, 0, 1,
+             0.0f,  0.9f, occluderDepth, 0, 0, 1,
+             0.9f, -0.9f, occluderDepth, 0, 0, 1
+        ]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 2, 1]));
+        uniforms.Write(MemoryMarshal.AsBytes<float>(
+        [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+            1, 1, 1, 1
+        ]));
+
+        float[] afterWrite = new float[size * size];
+        float[] afterReuse = new float[size * size];
+        byte[] secondPass = new byte[size * size * 4];
+        {
+            using ISilkGraphicsCommandList commands = device.CreateCommandList();
+
+            // Pass one: write scene depth into the shader-readable depth target.
+            commands.ClearColor(firstColor, new SilkColor(0, 0, 0, 1));
+            commands.ClearDepth(sampledDepth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(firstColor, sampledDepth));
+            commands.SetGraphicsPipeline(pipeline);
+            commands.SetTexture(0, 1, sampledDepth);
+            commands.SetSampler(0, 2, sampler);
+            commands.SetViewport(new SilkViewport(0, 0, size, size));
+            commands.SetScissor(new SilkScissor(0, 0, size, size));
+            commands.SetVertexBuffer(vertices);
+            commands.SetIndexBuffer(indices);
+            commands.SetUniformBuffer(0, 0, uniforms);
+            BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+            using ISilkGraphicsSubmission first = device.Submit(commands);
+            first.Wait();
+            sampledDepth.ReadbackForTesting(afterWrite);
+        }
+
+        {
+            // Pass two, a separate submission: the depth written above is now bound
+            // for sampling while an unrelated depth target owns the depth
+            // attachment. This is the shadow-map read, with the sampled image
+            // transitioning out of a depth-attachment state.
+            using ISilkGraphicsCommandList commands = device.CreateCommandList();
+            commands.ClearColor(secondColor, new SilkColor(0, 0, 0, 1));
+            commands.ClearDepth(plainDepth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(secondColor, plainDepth));
+            commands.SetGraphicsPipeline(pipeline);
+            commands.SetTexture(0, 1, sampledDepth);
+            commands.SetSampler(0, 2, sampler);
+            commands.SetViewport(new SilkViewport(0, 0, size, size));
+            commands.SetScissor(new SilkScissor(0, 0, size, size));
+            commands.SetVertexBuffer(vertices);
+            commands.SetIndexBuffer(indices);
+            commands.SetUniformBuffer(0, 0, uniforms);
+            BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+            using ISilkGraphicsSubmission second = device.Submit(commands);
+            second.Wait();
+            secondColor.ReadbackForTesting(secondPass);
+        }
+
+        {
+            // Pass three: the same image is a depth attachment again, which is what
+            // reusing one cached shadow map across frames requires.
+            using ISilkGraphicsCommandList commands = device.CreateCommandList();
+            commands.ClearColor(firstColor, new SilkColor(0, 0, 0, 1));
+            commands.ClearDepth(sampledDepth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(firstColor, sampledDepth));
+            commands.SetGraphicsPipeline(pipeline);
+            commands.SetTexture(0, 1, sampledDepth);
+            commands.SetSampler(0, 2, sampler);
+            commands.SetViewport(new SilkViewport(0, 0, size, size));
+            commands.SetScissor(new SilkScissor(0, 0, size, size));
+            commands.SetVertexBuffer(vertices);
+            commands.SetIndexBuffer(indices);
+            commands.SetUniformBuffer(0, 0, uniforms);
+            BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+            using ISilkGraphicsSubmission third = device.Submit(commands);
+            third.Wait();
+            sampledDepth.ReadbackForTesting(afterReuse);
+        }
+
+        int centre = (int)((size / 2 * size) + (size / 2));
+        await Assert.That(afterWrite[centre])
+            .IsEqualTo(occluderDepth)
+            .Within(1e-5f)
+            .Because("The first pass must write the occluder depth into the sampled depth target.");
+        await Assert.That(afterWrite[0])
+            .IsEqualTo(1f)
+            .Within(1e-5f)
+            .Because("A corner the triangle does not cover must keep the cleared far depth.");
+
+        // The draw that sampled the depth image still produced its image, so the
+        // binding neither failed nor perturbed the pass that performed it.
+        await Assert.That(secondPass.Any(static value => value != 0)).IsTrue();
+
+        // And the image is unchanged by being sampled and re-rendered, which is the
+        // invariant a cached shadow map depends on across frames.
+        await Assert.That(afterReuse.AsSpan().SequenceEqual(afterWrite))
+            .IsTrue()
+            .Because("Re-rendering the sampled depth target must reproduce it exactly.");
+    }
+
     internal static async Task MaterialBindingRejectsResourcesTheLayoutDoesNotDeclare(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat)
@@ -1215,7 +1409,10 @@ internal static class OffscreenRhiConformance
     /// are not optional padding: the buffer is allocated at
     /// <see cref="SilkSurfaceUniformWriter.ByteSize"/>, so leaving them unwritten
     /// hands the shader an all-zero affine that collapses every texture
-    /// coordinate onto one texel.
+    /// coordinate onto one texel. The ABI 18 light-link mask in the fifth row and
+    /// the shadow-link mask in the ninth are written with every bit set for the
+    /// same reason: a zero mask means "linked to no light", which would render
+    /// black the moment a probe bound a frame light table.
     /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
@@ -1228,14 +1425,15 @@ internal static class OffscreenRhiConformance
             0, 0, 0, 1,
             0, 0, 0, 1.5f,
             0, 0.5f, 0, 0,
-            0, 0.01f, 0, 0,
+            0, 0.01f, 0, 255,
             0, 0, 1, 1,
             1, 1, 1, 1,
             0, 0, 0, 0,
-            0, 0, 0, 0,
+            0, 0, 0, 255,
             1, 0, 0, 0,
             0, 1, 0, 0,
-            0, 0, 0, 0
+            0, 0, 0, 0,
+            255, 0, 0, 0
         ]));
         return buffer;
     }
@@ -1247,12 +1445,13 @@ internal static class OffscreenRhiConformance
     /// <remarks>
     /// This was 208 bytes until page ABI 9 added per-frame lighting, then grew
     /// again when area-light basis vectors moved <c>eyeToWorld</c>, most
-    /// recently to offset 992 for page ABI 12's eight-light table.
+    /// recently to offset 992 for page ABI 12's eight-light table, then again
+    /// for the raster shadow block and the prefiltered environment controls.
     /// bounds. D3D12 and Vulkan on Windows returned values that happened to
     /// render correctly; SwiftShader on Linux returned zeros, so the triangle
     /// came back unlit and only the Linux leg of CI failed.
     /// </remarks>
-    private const int FrameConstantsByteSize = 1056;
+    private const int FrameConstantsByteSize = 1856;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {

@@ -89,6 +89,114 @@ public sealed class VulkanSelectionOutlineTests
         await Assert.That(CountOutlinePixels(outlinePixels)).IsGreaterThan(0);
     }
 
+    /// <summary>
+    /// Two mask passes that each load the mask accumulate: the second pass does
+    /// not lose what the first one stored, and the composite outlines both.
+    /// </summary>
+    /// <remarks>
+    /// A selection of several meshes is drawn as one mask pass per mesh, every
+    /// pass after the first loading the attachment the previous one stored. The
+    /// load is a colour-attachment read of a colour-attachment write, so without
+    /// the render pass's colour-attachment dependency the passes are unordered
+    /// and the mask can keep only the last one -- an outline around one mesh of
+    /// a multi-mesh selection. Two disjoint triangles make that visible as
+    /// pixels: both halves of the mask must be marked, and both must produce
+    /// outline pixels in the composite.
+    /// </remarks>
+    [Test]
+    public async Task SwiftShaderAccumulatesMaskAcrossSeparateLoadPasses()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        const uint size = 64;
+        using VulkanSilkGraphicsDevice device = CreateSwiftShader();
+        if (!IsSwiftShader(device))
+        {
+            return;
+        }
+        using ISilkSelectionMaskGraphicsPipeline maskPipeline =
+            device.CreateSelectionMaskGraphicsPipeline(
+                SilkSelectionMaskPipelineDescriptor.CreateChecked(
+                    SilkShaderBinaryFormat.SpirV));
+        using ISilkSelectionOutlineGraphicsPipeline outlinePipeline =
+            device.CreateSelectionOutlineGraphicsPipeline(
+                SilkSelectionOutlinePipelineDescriptor.CreateChecked(
+                    SilkShaderBinaryFormat.SpirV));
+        using ISilkGraphicsTexture color = CreateColorTarget(device, size, size);
+        using ISilkGraphicsTexture depth = CreateDepthTarget(device, size, size);
+        using ISilkGraphicsTexture mask = device.CreateTexture2D(
+            SilkTextureDescriptor.SelectionMask(size, size));
+        using ISilkGraphicsSampler sampler =
+            device.CreateSampler(SilkSamplerDescriptor.NearestClamp);
+        using ISilkGraphicsBuffer parameters = device.CreateBuffer(
+            SilkSelectionOutlineUniformWriter.ByteSize,
+            SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+        Span<byte> parameterBytes =
+            stackalloc byte[SilkSelectionOutlineUniformWriter.ByteSize];
+        SilkSelectionOutlineUniformWriter.Write(
+            SilkSelectionOutlineSettings.Default,
+            size,
+            size,
+            parameterBytes);
+        parameters.Write(parameterBytes);
+        using ISilkSelectionOutlineBinding binding =
+            device.CreateSelectionOutlineBinding(new(
+                mask,
+                depth,
+                sampler,
+                parameters));
+        using ISilkGraphicsBuffer leftVertices =
+            CreateOffsetTriangleVertices(device, -0.45f);
+        using ISilkGraphicsBuffer rightVertices =
+            CreateOffsetTriangleVertices(device, 0.45f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer scene = CreateIdentitySceneParameters(device);
+        using ISilkGraphicsCommandList commands = device.CreateCommandList();
+        var selection = (ISilkSelectionOutlineGraphicsCommandList)commands;
+        commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
+        commands.ClearDepth(depth, 1);
+        commands.ClearColor(mask, new SilkColor(0, 0, 0, 0));
+        foreach (ISilkGraphicsBuffer vertices in new[] { leftVertices, rightVertices })
+        {
+            selection.BeginSelectionMaskRendering(new(mask, depth));
+            selection.SetSelectionMaskGraphicsPipeline(maskPipeline);
+            commands.SetViewport(new SilkViewport(0, 0, size, size));
+            commands.SetScissor(new SilkScissor(0, 0, size, size));
+            commands.SetVertexBuffer(vertices);
+            commands.SetIndexBuffer(indices);
+            commands.SetUniformBuffer(0, 0, scene);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+        }
+        selection.BeginSelectionOutlineRendering(new(color));
+        selection.SetSelectionOutlineGraphicsPipeline(outlinePipeline);
+        selection.SetSelectionOutlineBinding(binding);
+        commands.SetViewport(new SilkViewport(0, 0, size, size));
+        commands.SetScissor(new SilkScissor(0, 0, size, size));
+        selection.DrawSelectionOutlineFullscreenTriangle();
+        commands.EndRendering();
+        using ISilkGraphicsSubmission submission = device.Submit(commands);
+        submission.Wait();
+
+        byte[] maskPixels = ReadPixels(mask);
+        byte[] outlinePixels = ReadPixels(color);
+
+        // Both halves must survive: the first pass's stores are what the second
+        // pass loads, so a lost half is exactly the missing dependency.
+        await Assert.That(CountWhitePixelsInHalf(maskPixels, size, left: true))
+            .IsGreaterThan(0);
+        await Assert.That(CountWhitePixelsInHalf(maskPixels, size, left: false))
+            .IsGreaterThan(0);
+        await Assert.That(CountOutlinePixelsInHalf(outlinePixels, size, left: true))
+            .IsGreaterThan(0);
+        await Assert.That(CountOutlinePixelsInHalf(outlinePixels, size, left: false))
+            .IsGreaterThan(0);
+    }
+
     [Test]
     public async Task SwiftShaderRendersOutlineAndRestoresExactBaseline()
     {
@@ -388,6 +496,74 @@ public sealed class VulkanSelectionOutlineTests
             -0.6f, -0.6f, 0.25f, 0, 0, 1,
              0.0f,  0.6f, 0.25f, 0, 0, 1,
              0.6f, -0.6f, 0.25f, 0, 0, 1
+        ]));
+        return buffer;
+    }
+
+    private static int CountWhitePixelsInHalf(
+        ReadOnlySpan<byte> pixels,
+        uint size,
+        bool left)
+    {
+        int count = 0;
+        for (int row = 0; row < size; row++)
+        {
+            for (int column = 0; column < size; column++)
+            {
+                if (left != column < size / 2)
+                {
+                    continue;
+                }
+                int offset = ((row * (int)size) + column) * 4;
+                if (pixels[offset] > 200 &&
+                    pixels[offset + 1] > 200 &&
+                    pixels[offset + 2] > 200)
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int CountOutlinePixelsInHalf(
+        ReadOnlySpan<byte> pixels,
+        uint size,
+        bool left)
+    {
+        int count = 0;
+        for (int row = 0; row < size; row++)
+        {
+            for (int column = 0; column < size; column++)
+            {
+                if (left != column < size / 2)
+                {
+                    continue;
+                }
+                int offset = ((row * (int)size) + column) * 4;
+                if (pixels[offset] > 150 &&
+                    pixels[offset] > pixels[offset + 1] + 25 &&
+                    pixels[offset + 1] > pixels[offset + 2])
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static ISilkGraphicsBuffer CreateOffsetTriangleVertices(
+        VulkanSilkGraphicsDevice device,
+        float offsetX)
+    {
+        ISilkGraphicsBuffer buffer = device.CreateBuffer(
+            72,
+            SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
+        buffer.Write(MemoryMarshal.AsBytes<float>(
+        [
+            offsetX - 0.3f, -0.6f, 0.25f, 0, 0, 1,
+            offsetX,         0.6f, 0.25f, 0, 0, 1,
+            offsetX + 0.3f, -0.6f, 0.25f, 0, 0, 1
         ]));
         return buffer;
     }

@@ -220,6 +220,54 @@ internal sealed class ViewerStormPickInputTracker
 internal static class ViewerPickingPolicy
 {
     internal static Vector4 StormSelectionColor { get; } = new(1, 1, 0, 1);
+
+    /// <summary>
+    /// Projects a selection onto the whole-prim identity Storm's packed
+    /// selection ABI can carry.
+    /// </summary>
+    /// <remarks>
+    /// Storm refuses an instance-specific or component selection outright,
+    /// because its packed update names one flattened instance ordinal with no
+    /// instancer context and cannot address a nested or multi-prototype
+    /// instance. The shell still has to show the user something for a pick it
+    /// just answered, and highlighting the whole prim is what scene-index Storm
+    /// does for an instance anyway. Repeated prim paths -- two instances of one
+    /// prototype -- collapse to one item, because an exact duplicate is
+    /// rejected rather than deduplicated by <see cref="SelectionState"/>.
+    /// The Viewer's own <see cref="SelectionState"/> keeps the complete
+    /// identity; only what travels to Storm is narrowed.
+    /// </remarks>
+    internal static SelectionState ProjectForStorm(SelectionState selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        IReadOnlyList<SelectionItem> items = selection.Items;
+        bool narrowingRequired = false;
+        for (int index = 0; index < items.Count; index++)
+        {
+            SelectionItem item = items[index];
+            if (item.InstancerContext.Count != 0 || item.ElementIndex.HasValue)
+            {
+                narrowingRequired = true;
+                break;
+            }
+        }
+        if (!narrowingRequired)
+        {
+            return selection;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var projected = new List<SelectionItem>(items.Count);
+        for (int index = 0; index < items.Count; index++)
+        {
+            string path = items[index].PrimPath;
+            if (seen.Add(path))
+            {
+                projected.Add(new SelectionItem(path));
+            }
+        }
+        return new SelectionState(projected);
+    }
 }
 
 internal sealed record ViewerRenderedPickState(

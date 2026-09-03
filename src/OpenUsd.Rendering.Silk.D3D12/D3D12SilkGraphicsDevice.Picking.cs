@@ -242,6 +242,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
 
     internal void ObserveNativeDeviceRemoval()
     {
+        // The general signal is per-observation and the pick invalidation is
+        // one-time, so the unlatched notification comes first.
+        NotifyDeviceLost();
         if (Interlocked.Exchange(ref _pickNativeDeviceRemovalObserved, 1) == 0)
         {
             AdvancePickDeviceGeneration();
@@ -250,6 +253,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
 
     private void ThrowInjectedPickDeviceLoss(int reason)
     {
+        NotifyDeviceLost();
         AdvancePickDeviceGeneration();
         throw new D3D12PickDeviceLostException(reason);
     }
@@ -312,6 +316,40 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
         }
     }
 
+    /// <summary>
+    /// Builds the pick pass blend state, which never blends and only ever
+    /// chooses whether the pass writes colour at all.
+    /// </summary>
+    /// <remarks>
+    /// A pass with the mask cleared is a pure occluder: it rasterizes and writes
+    /// depth exactly as it always did, so what it covers stays hidden, but it
+    /// leaves the pick target's background token in place. That is how a face
+    /// request treats a basis-curve or point resource, which has no authored
+    /// face to answer with.
+    /// </remarks>
+    private static BlendDesc CreatePickBlendState(bool colorWriteEnabled)
+    {
+        var blend = new BlendDesc
+        {
+            AlphaToCoverageEnable = false,
+            IndependentBlendEnable = false
+        };
+        blend.RenderTarget[0] = new RenderTargetBlendDesc
+        {
+            BlendEnable = false,
+            LogicOpEnable = false,
+            SrcBlend = Blend.SrcAlpha,
+            DestBlend = Blend.InvSrcAlpha,
+            BlendOp = BlendOp.Add,
+            SrcBlendAlpha = Blend.One,
+            DestBlendAlpha = Blend.InvSrcAlpha,
+            BlendOpAlpha = BlendOp.Add,
+            RenderTargetWriteMask =
+                (byte)(colorWriteEnabled ? ColorWriteEnable.All : 0)
+        };
+        return blend;
+    }
+
     private void CreatePickPipelineState(
         SilkPickPipelineDescriptor descriptor,
         ID3D12RootSignature* rootSignature,
@@ -349,13 +387,22 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
                 PRootSignature = rootSignature,
                 VS = new ShaderBytecode(vertexPointer, (nuint)vertexCode.Length),
                 PS = new ShaderBytecode(fragmentPointer, (nuint)fragmentCode.Length),
-                BlendState = CreateBlendState(),
+                BlendState = CreatePickBlendState(descriptor.ColorWriteEnabled),
                 SampleMask = uint.MaxValue,
                 RasterizerState = new RasterizerDesc
                 {
                     FillMode = FillMode.Solid,
                     CullMode = CullMode.None,
-                    DepthClipEnable = true
+                    DepthClipEnable = true,
+                    // No rasterizer depth bias at all. D3D12 applies polygon
+                    // offset to filled primitives only, so a bias set here is
+                    // silently ignored for the line and point passes that
+                    // actually need the separation. The checked subprim vertex
+                    // stage offsets clip-space depth instead, which every
+                    // backend applies identically.
+                    DepthBias = 0,
+                    SlopeScaledDepthBias = 0.0f,
+                    DepthBiasClamp = 0.0f
                 },
                 DepthStencilState = new DepthStencilDesc
                 {
@@ -365,7 +412,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
                     StencilEnable = false
                 },
                 InputLayout = new InputLayoutDesc(elements, 2),
-                PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
+                PrimitiveTopologyType = descriptor.PrimitiveTopology switch
+                {
+                    SilkPickPrimitiveTopology.LineList => PrimitiveTopologyType.Line,
+                    SilkPickPrimitiveTopology.PointList => PrimitiveTopologyType.Point,
+                    _ => PrimitiveTopologyType.Triangle
+                },
                 NumRenderTargets = 1,
                 DSVFormat = Format.FormatD32Float,
                 SampleDesc = new SampleDesc(1, 0)
@@ -741,7 +793,19 @@ internal sealed unsafe class D3D12SilkPickSubmission(
             {
                 return;
             }
-            readback.WaitForSubmission(fenceValue);
+            try
+            {
+                readback.WaitForSubmission(fenceValue);
+            }
+            catch
+            {
+                // The work will not complete, so the readback slot and the
+                // leases it held are abandoned rather than kept: holding them
+                // makes the device undisposable and starves the pick ring of the
+                // slot forever, on top of the failure the caller already sees.
+                Abandon();
+                throw;
+            }
             Complete();
         }
     }
@@ -761,8 +825,11 @@ internal sealed unsafe class D3D12SilkPickSubmission(
                     readback.WaitForSubmission(fenceValue);
                     Complete();
                 }
-                catch when (device.IsDeviceRemoved())
+                catch (Exception)
                 {
+                    // Disposal runs while whatever the failed wait threw is still
+                    // unwinding, so rethrowing here would replace the reason the
+                    // caller failed with a second observation of the same one.
                     Abandon();
                 }
             }

@@ -1,0 +1,611 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+//
+// The transport-neutral Omniverse bridge wire model.
+//
+// Contract rules, enforced by tests in tests/OpenUsd.Bridge.Tests:
+//   * No google.protobuf.Any, no JSON blobs, no reflection-driven polymorphism, and no
+//     native handles or pointers. Every payload is an explicit, typed field.
+//   * Every enum reserves 0 for an unspecified value. A decoder rejects an unspecified or
+//     unknown enum value explicitly instead of defaulting it.
+//   * Every oneof case maps to exactly one OpenUsd.LiveAuthoring update or value kind.
+//     A message whose oneof is unset is rejected, never silently ignored.
+//   * Bounds mirror OpenUsd.LiveAuthoring.LiveAuthoringValidation exactly. The wire model
+//     never accepts more than the in-process authoring layer would accept.
+//
+// This file carries no service definition so the messages can be compiled into a package
+// that has no gRPC dependency. See service.proto for the gRPC surface.
+
+syntax = "proto3";
+
+package openusd.bridge.v1;
+
+option csharp_namespace = "OpenUsd.Bridge.Protocol.Wire";
+
+// ---------------------------------------------------------------------------------------
+// Version and capability negotiation
+// ---------------------------------------------------------------------------------------
+
+// A protocol version. Major versions are incompatible; a peer that advertises a different
+// major version is rejected before any mutation is attempted. Minor versions are additive.
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+// Named optional behaviours. A capability that is not advertised by both peers must not be
+// used; the client rejects the negotiation rather than attempting the call.
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+
+  // Bounded full snapshots of the bridge-owned overlay.
+  CAPABILITY_FULL_SNAPSHOT = 1;
+
+  // Ordered per-epoch deltas.
+  CAPABILITY_ORDERED_DELTA = 2;
+
+  // Client-to-server publication of already-authoritative local batches.
+  CAPABILITY_LOCAL_EDIT_EXPORT = 3;
+
+  // Session status and structured session events.
+  CAPABILITY_HEALTH_STATUS = 4;
+
+  // SetPointInstancerOrientations updates.
+  CAPABILITY_POINT_INSTANCER_ORIENTATIONS = 5;
+
+  // ApiSchema apply/remove updates.
+  CAPABILITY_API_SCHEMA = 6;
+
+  // Server-initiated resync requests on the change stream.
+  CAPABILITY_SERVER_RESYNC_REQUEST = 7;
+}
+
+// The exact numeric bounds a peer enforces. Both peers exchange their limits and the
+// effective limit for the session is the minimum of the two, so neither peer can be pushed
+// past what it will accept.
+message Limits {
+  uint32 max_updates_per_message = 1;
+  uint32 max_collection_element_count = 2;
+  uint64 max_message_payload_bytes = 3;
+  uint32 max_identifier_length = 4;
+  uint32 max_path_length = 5;
+  uint32 max_text_value_length = 6;
+  uint32 max_opaque_id_length = 7;
+  uint64 max_total_collection_element_count = 8;
+}
+
+message HandshakeRequest {
+  ProtocolVersion client_version = 1;
+  repeated Capability client_capabilities = 2;
+
+  // The opaque origin identifier naming the client process. Echoed back so the client can
+  // suppress its own edits instead of reapplying them.
+  string client_origin_id = 3;
+
+  // The absolute prim path the client reserves for the bridge-owned overlay.
+  string bridge_root_path = 4;
+
+  Limits client_limits = 5;
+
+  // An optional session identifier the client wants to rejoin after a reconnect. The
+  // server may answer with a different session identifier or a newer epoch, which forces a
+  // full resync on the client side.
+  optional string requested_session_id = 6;
+
+  // An optional opaque correlation identifier for tracing. Never a credential.
+  optional string correlation_id = 7;
+}
+
+// Identifies why a handshake or a stream message was refused before any mutation.
+enum HandshakeRejection {
+  HANDSHAKE_REJECTION_UNSPECIFIED = 0;
+  HANDSHAKE_REJECTION_NONE = 1;
+
+  // The peer's major protocol version is not supported.
+  HANDSHAKE_REJECTION_VERSION = 2;
+
+  // A capability required by this session is not advertised by both peers.
+  HANDSHAKE_REJECTION_CAPABILITY = 3;
+
+  // The peer's declared limits cannot satisfy this session.
+  HANDSHAKE_REJECTION_LIMITS = 4;
+
+  // Authentication or authorization failed. The detail never carries the credential.
+  HANDSHAKE_REJECTION_UNAUTHENTICATED = 5;
+
+  // The requested bridge root path is not the one the peer owns.
+  HANDSHAKE_REJECTION_BRIDGE_ROOT = 6;
+
+  // The peer refuses new sessions, for example while draining.
+  HANDSHAKE_REJECTION_UNAVAILABLE = 7;
+
+  // A field was missing, malformed, or out of range.
+  HANDSHAKE_REJECTION_MALFORMED = 8;
+}
+
+message HandshakeResponse {
+  bool accepted = 1;
+  ProtocolVersion server_version = 2;
+  repeated Capability server_capabilities = 3;
+
+  // The authoritative remote identity for this session. It becomes the only origin whose
+  // deltas the client applies.
+  SessionEpoch epoch = 4;
+
+  string bridge_root_path = 5;
+
+  // The negotiated effective limits: the element-wise minimum of both peers' limits.
+  Limits effective_limits = 6;
+
+  HandshakeRejection rejection = 7;
+
+  // A bounded, redacted human-readable detail. Never carries a credential or a payload.
+  optional string detail = 8;
+}
+
+// ---------------------------------------------------------------------------------------
+// Session identity
+// ---------------------------------------------------------------------------------------
+
+// The one authoritative remote origin and the exact session/epoch generation its ordered
+// sequences belong to. Maps to LiveAuthoringRemoteEpoch.
+message SessionEpoch {
+  string remote_origin_id = 1;
+  string session_id = 2;
+  int64 epoch = 3;
+}
+
+// ---------------------------------------------------------------------------------------
+// Values (maps to LiveAttributeValue and LiveMetadataValue)
+// ---------------------------------------------------------------------------------------
+
+message Vec2f {
+  float x = 1;
+  float y = 2;
+}
+
+message Vec3f {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// Maps to UsdQuatf: a real component and three imaginary components.
+message Quatf {
+  float real = 1;
+  float x = 2;
+  float y = 3;
+  float z = 4;
+}
+
+// Maps to UsdMatrix4d. Exactly sixteen values in row-major order; any other count is
+// rejected as malformed.
+message Matrix4d {
+  repeated double values = 1 [packed = true];
+}
+
+message BoolArray {
+  repeated bool values = 1 [packed = true];
+}
+
+message Int32Array {
+  repeated int32 values = 1 [packed = true];
+}
+
+message FloatArray {
+  repeated float values = 1 [packed = true];
+}
+
+message DoubleArray {
+  repeated double values = 1 [packed = true];
+}
+
+message Vec2fArray {
+  repeated Vec2f values = 1;
+}
+
+message Vec3fArray {
+  repeated Vec3f values = 1;
+}
+
+message StringArray {
+  repeated string values = 1;
+}
+
+message QuatfArray {
+  repeated Quatf values = 1;
+}
+
+// Every LiveAttributeKind case, one field each. Color3fArray keeps its own field number so
+// the authored role survives the round trip even though it shares a storage shape with
+// Vec3fArray.
+message AttributeValue {
+  oneof value {
+    bool bool_value = 1;
+    int64 int64_value = 2;
+    double double_value = 3;
+    string string_value = 4;
+    string token_value = 5;
+    Vec3f vec3f_value = 6;
+    Matrix4d matrix4d_value = 7;
+    Int32Array int32_array = 8;
+    FloatArray float_array = 9;
+    DoubleArray double_array = 10;
+    Vec2fArray vec2f_array = 11;
+    Vec3fArray vec3f_array = 12;
+    Vec3fArray color3f_array = 13;
+    BoolArray bool_array = 14;
+    StringArray token_array = 15;
+    StringArray string_array = 16;
+  }
+}
+
+// Every LiveMetadataKind case, one field each.
+message MetadataValue {
+  oneof value {
+    bool bool_value = 1;
+    int64 int64_value = 2;
+    double double_value = 3;
+    string string_value = 4;
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Updates (maps to LiveStageUpdate)
+// ---------------------------------------------------------------------------------------
+
+message DefinePrim {
+  string prim_path = 1;
+  optional string type_name = 2;
+}
+
+message RemovePrim {
+  string prim_path = 1;
+}
+
+message SetAttribute {
+  string prim_path = 1;
+  string attribute_name = 2;
+  AttributeValue value = 3;
+  optional double time_code = 4;
+}
+
+// Maps to LiveClearTargetKind.
+enum ClearTarget {
+  CLEAR_TARGET_UNSPECIFIED = 0;
+  CLEAR_TARGET_ATTRIBUTE_VALUE = 1;
+  CLEAR_TARGET_RELATIONSHIP_TARGETS = 2;
+  CLEAR_TARGET_REFERENCES = 3;
+  CLEAR_TARGET_PAYLOADS = 4;
+  CLEAR_TARGET_METADATA = 5;
+}
+
+message Clear {
+  string prim_path = 1;
+  ClearTarget target = 2;
+  optional string name = 3;
+}
+
+message SetRelationshipTargets {
+  string prim_path = 1;
+  string relationship_name = 2;
+  repeated string targets = 3;
+}
+
+message SetReference {
+  string prim_path = 1;
+  optional string asset_path = 2;
+  optional string target_prim_path = 3;
+}
+
+message SetPayload {
+  string prim_path = 1;
+  optional string asset_path = 2;
+  optional string target_prim_path = 3;
+}
+
+message SetActive {
+  string prim_path = 1;
+  bool active = 2;
+}
+
+message SetInstanceable {
+  string prim_path = 1;
+  bool instanceable = 2;
+}
+
+message SetVariantSelection {
+  string prim_path = 1;
+  string variant_set_name = 2;
+  repeated string known_variants = 3;
+
+  // Unset clears the selection.
+  optional string selection = 4;
+}
+
+message SetMetadata {
+  string prim_path = 1;
+  string key = 2;
+  MetadataValue value = 3;
+}
+
+// Maps to LiveApiSchemaOperation.
+enum ApiSchemaOperation {
+  API_SCHEMA_OPERATION_UNSPECIFIED = 0;
+  API_SCHEMA_OPERATION_APPLY = 1;
+  API_SCHEMA_OPERATION_REMOVE = 2;
+}
+
+message ApiSchema {
+  string prim_path = 1;
+  string schema_token = 2;
+  ApiSchemaOperation operation = 3;
+}
+
+message SetPointInstancerOrientations {
+  string prim_path = 1;
+  QuatfArray orientations = 2;
+}
+
+// Every LiveStageUpdate case that may travel on the wire, one field each.
+//
+// ReplaceBridgeOverlayUpdate deliberately has no wire case: a full overlay replacement is
+// expressed by StageSnapshot, which the receiving coordinator applies atomically. A peer
+// that needs to replace the overlay sends a snapshot, and a decoder rejects any attempt to
+// nest an overlay replacement inside a delta.
+message StageUpdate {
+  oneof update {
+    DefinePrim define_prim = 1;
+    RemovePrim remove_prim = 2;
+    SetAttribute set_attribute = 3;
+    Clear clear = 4;
+    SetRelationshipTargets set_relationship_targets = 5;
+    SetReference set_reference = 6;
+    SetPayload set_payload = 7;
+    SetActive set_active = 8;
+    SetInstanceable set_instanceable = 9;
+    SetVariantSelection set_variant_selection = 10;
+    SetMetadata set_metadata = 11;
+    ApiSchema api_schema = 12;
+    SetPointInstancerOrientations set_point_instancer_orientations = 13;
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Snapshots and deltas
+// ---------------------------------------------------------------------------------------
+
+// A bounded full snapshot of the bridge-owned overlay. Maps to LiveAuthoringSnapshot.
+message StageSnapshot {
+  SessionEpoch epoch = 1;
+
+  // The last remote sequence included in the snapshot; deltas resume at sequence + 1.
+  int64 sequence = 2;
+
+  string bridge_root_path = 3;
+  repeated StageUpdate updates = 4;
+  optional string correlation_id = 5;
+}
+
+// A bounded ordered incremental change. Maps to LiveAuthoringDelta.
+message StageDelta {
+  SessionEpoch epoch = 1;
+  int64 sequence = 2;
+  repeated StageUpdate updates = 3;
+  optional string coalescing_key = 4;
+  optional string correlation_id = 5;
+  optional string origin_id = 6;
+}
+
+// ---------------------------------------------------------------------------------------
+// Acknowledgements, results, and rejections
+// ---------------------------------------------------------------------------------------
+
+// Maps to LiveAuthoringSessionOutcome.
+enum SessionOutcome {
+  SESSION_OUTCOME_UNSPECIFIED = 0;
+  SESSION_OUTCOME_APPLIED = 1;
+  SESSION_OUTCOME_DUPLICATE = 2;
+  SESSION_OUTCOME_LOOP_SUPPRESSED = 3;
+  SESSION_OUTCOME_REJECTED = 4;
+}
+
+// Maps to LiveAuthoringSessionRejection, plus the protocol-only cases a transport can
+// produce before a message reaches the coordinator.
+enum SessionRejection {
+  SESSION_REJECTION_UNSPECIFIED = 0;
+  SESSION_REJECTION_NONE = 1;
+  SESSION_REJECTION_SESSION_STATE = 2;
+  SESSION_REJECTION_RESYNC_REQUIRED = 3;
+  SESSION_REJECTION_REMOTE_ORIGIN = 4;
+  SESSION_REJECTION_SESSION_IDENTITY = 5;
+  SESSION_REJECTION_EPOCH_RETIRED = 6;
+  SESSION_REJECTION_EPOCH_ADVANCED = 7;
+  SESSION_REJECTION_SEQUENCE_GAP = 8;
+  SESSION_REJECTION_BRIDGE_SCOPE = 9;
+  SESSION_REJECTION_OVERLAY_BUDGET = 10;
+  SESSION_REJECTION_DUPLICATE_CONFLICT = 11;
+  SESSION_REJECTION_REPLAY_EXPIRED = 12;
+  SESSION_REJECTION_APPLY_FAILED = 13;
+
+  // Protocol-only: the message could not be decoded, violated a bound, or carried an
+  // unknown enum or oneof case. It never reached the coordinator.
+  SESSION_REJECTION_PROTOCOL_VIOLATION = 14;
+
+  // Protocol-only: the session had not completed negotiation when the message arrived.
+  SESSION_REJECTION_NOT_NEGOTIATED = 15;
+}
+
+// Maps to LiveAuthoringSessionState.
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_DISCONNECTED = 1;
+  SESSION_STATE_CONNECTING = 2;
+  SESSION_STATE_SYNCHRONIZED = 3;
+  SESSION_STATE_RESYNC_REQUIRED = 4;
+  SESSION_STATE_STOPPING = 5;
+  SESSION_STATE_FAULTED = 6;
+}
+
+// Maps to LiveAuthoringSessionResult.
+message Acknowledgement {
+  SessionOutcome outcome = 1;
+  SessionRejection rejection = 2;
+  int64 sequence = 3;
+  SessionState state = 4;
+  int64 last_accepted_sequence = 5;
+  int64 last_applied_sequence = 6;
+  optional string correlation_id = 7;
+
+  // A bounded, redacted detail. Never carries a credential or an authored payload.
+  optional string detail = 8;
+}
+
+// ---------------------------------------------------------------------------------------
+// Health and status
+// ---------------------------------------------------------------------------------------
+
+// Maps to LiveAuthoringSessionEventKind.
+enum SessionEventKind {
+  SESSION_EVENT_KIND_UNSPECIFIED = 0;
+  SESSION_EVENT_KIND_CONNECTING = 1;
+  SESSION_EVENT_KIND_SNAPSHOT_APPLIED = 2;
+  SESSION_EVENT_KIND_SNAPSHOT_REJECTED = 3;
+  SESSION_EVENT_KIND_DELTA_APPLIED = 4;
+  SESSION_EVENT_KIND_DELTA_DUPLICATE = 5;
+  SESSION_EVENT_KIND_DELTA_REJECTED = 6;
+  SESSION_EVENT_KIND_LOOP_SUPPRESSED = 7;
+  SESSION_EVENT_KIND_RESYNC_REQUIRED = 8;
+  SESSION_EVENT_KIND_DISCONNECTED = 9;
+  SESSION_EVENT_KIND_FAULTED = 10;
+  SESSION_EVENT_KIND_DISPOSED = 11;
+}
+
+// Maps to LiveAuthoringSessionEvent. Timestamps are Unix milliseconds UTC so the wire
+// model stays self-contained and no well-known-type import is required.
+message SessionEvent {
+  SessionEventKind kind = 1;
+  SessionState previous_state = 2;
+  SessionState state = 3;
+  optional string remote_origin_id = 4;
+  optional string session_id = 5;
+  int64 epoch = 6;
+  int64 last_accepted_sequence = 7;
+  int64 last_applied_sequence = 8;
+  optional string correlation_id = 9;
+  int64 timestamp_unix_millis = 10;
+  optional string detail = 11;
+}
+
+// Maps to LiveAuthoringSessionStatus.
+message SessionStatus {
+  SessionState state = 1;
+  optional string remote_origin_id = 2;
+  optional string session_id = 3;
+  int64 epoch = 4;
+  int64 last_accepted_sequence = 5;
+  int64 last_applied_sequence = 6;
+  int64 applied_snapshot_count = 7;
+  int64 applied_delta_count = 8;
+  int64 duplicate_delta_count = 9;
+  int64 rejected_delta_count = 10;
+  int64 loop_suppressed_delta_count = 11;
+  int64 resync_required_count = 12;
+  int32 overlay_prim_count = 13;
+  int32 overlay_update_count = 14;
+  int32 replay_window_length = 15;
+  int32 replay_ledger_count = 16;
+  int64 replay_ledger_bytes = 17;
+  int64 oldest_retained_sequence = 18;
+  optional string last_failure_detail = 19;
+  int64 timestamp_unix_millis = 20;
+  int64 session_observer_failure_count = 21;
+  optional string last_session_observer_failure_detail = 22;
+}
+
+// ---------------------------------------------------------------------------------------
+// Requests carried by the unary and streaming surfaces
+// ---------------------------------------------------------------------------------------
+
+// Identifies why a full snapshot is being requested. The reason is diagnostic only; the
+// server always answers with a complete snapshot or an explicit rejection.
+enum ResyncReason {
+  RESYNC_REASON_UNSPECIFIED = 0;
+  RESYNC_REASON_INITIAL = 1;
+  RESYNC_REASON_RECONNECTED = 2;
+  RESYNC_REASON_EPOCH_CHANGED = 3;
+  RESYNC_REASON_SEQUENCE_GAP = 4;
+  RESYNC_REASON_APPLY_FAILED = 5;
+  RESYNC_REASON_SERVER_REQUESTED = 6;
+}
+
+message SnapshotRequest {
+  SessionEpoch epoch = 1;
+  ResyncReason reason = 2;
+  optional string correlation_id = 3;
+}
+
+message StatusRequest {
+  SessionEpoch epoch = 1;
+  optional string correlation_id = 2;
+}
+
+// A client-to-server publication of an already-authoritative local batch. The client never
+// captures stage mutations itself: the host hands an ordered batch it already owns to the
+// bounded outbound channel, and the adapter forwards it unchanged.
+message PublishLocalBatchRequest {
+  SessionEpoch epoch = 1;
+
+  // The client-allocated, strictly increasing per-epoch sequence for local publications.
+  int64 sequence = 2;
+
+  repeated StageUpdate updates = 3;
+  optional string coalescing_key = 4;
+  optional string correlation_id = 5;
+
+  // The opaque origin identifier of the publishing process. The server echoes it so the
+  // client can suppress its own edits when they return on the change stream.
+  string origin_id = 6;
+
+  // An idempotency key that lets the server recognize a retried publication instead of
+  // applying it twice. A mutating call is only ever retried with the same key.
+  string idempotency_key = 7;
+}
+
+// A server-initiated request that the client discard its baseline and take a new snapshot.
+message ResyncRequired {
+  SessionEpoch epoch = 1;
+  ResyncReason reason = 2;
+  optional string detail = 3;
+}
+
+// A liveness probe carried inside the change stream. It is not a substitute for transport
+// keepalive; it exists so a peer can prove application-level liveness while idle.
+message KeepAlive {
+  int64 timestamp_unix_millis = 1;
+}
+
+// Client-to-server change stream frame.
+message ChangeStreamRequest {
+  oneof request {
+    HandshakeRequest handshake = 1;
+    SnapshotRequest snapshot_request = 2;
+    Acknowledgement acknowledgement = 3;
+    PublishLocalBatchRequest local_batch = 4;
+    StatusRequest status_request = 5;
+    KeepAlive keep_alive = 6;
+  }
+}
+
+// Server-to-client change stream frame.
+message ChangeStreamMessage {
+  oneof message {
+    HandshakeResponse handshake = 1;
+    StageSnapshot snapshot = 2;
+    StageDelta delta = 3;
+    Acknowledgement acknowledgement = 4;
+    SessionEvent event = 5;
+    SessionStatus status = 6;
+    ResyncRequired resync_required = 7;
+    KeepAlive keep_alive = 8;
+  }
+}

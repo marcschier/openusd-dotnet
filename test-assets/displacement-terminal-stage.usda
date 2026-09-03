@@ -1,0 +1,224 @@
+#usda 1.0
+(
+    doc = """Stage-backed evidence for hdSilk's UsdPreviewSurface displacement terminal.
+
+    Every material here is resolved through the real Hydra material-resource path
+    -- UsdImaging composes the network map, HdSilkMaterial::Sync reads it from
+    GetMaterialResource -- rather than through a hand-built HdMaterialNetworkMap,
+    so the terminal discovery, the surface classification and the fallback rules
+    are exercised as a delegate actually sees them.
+
+    /World/Looks/ConstantDisplaced   connects outputs:displacement and authors a
+                                    constant, and must publish it.
+    /World/Looks/SurfaceOnly         authors the same non-zero inputs:displacement
+                                    but connects only outputs:surface, and must
+                                    publish no displacement at all.
+    /World/Looks/UnshadedDisplaced   has a surface terminal this renderer cannot
+                                    shade and a valid displacement terminal, and
+                                    must publish the displacement anyway.
+    /World/Looks/EmptyFileDisplaced  drives displacement from a UsdUVTexture with
+                                    no authored file, and must publish the
+                                    authored fallback through the node's own
+                                    scale and bias.
+    /World/Looks/IndependentUvDisplaced samples its surface colour through `st`
+                                    and its height field through `st2`, and must
+                                    publish both, each with its own primvar.
+    """
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "ConstantDisplaced"
+        {
+            token outputs:surface.connect = </World/Looks/ConstantDisplaced/Surface.outputs:surface>
+            token outputs:displacement.connect = </World/Looks/ConstantDisplaced/Surface.outputs:displacement>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.4, 0.4, 0.4)
+                float inputs:displacement = 0.5
+                token outputs:surface
+                token outputs:displacement
+            }
+        }
+
+        def Material "SurfaceOnly"
+        {
+            token outputs:surface.connect = </World/Looks/SurfaceOnly/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.4, 0.4, 0.4)
+                float inputs:displacement = 0.5
+                token outputs:surface
+                token outputs:displacement
+            }
+        }
+
+        def Material "UnshadedDisplaced"
+        {
+            token outputs:surface.connect = </World/Looks/UnshadedDisplaced/Unknown.outputs:surface>
+            token outputs:displacement.connect = </World/Looks/UnshadedDisplaced/Surface.outputs:displacement>
+
+            def Shader "Unknown"
+            {
+                uniform token info:id = "OpenUsdProbeUnsupportedSurface"
+                token outputs:surface
+            }
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float inputs:displacement = 0.75
+                token outputs:displacement
+            }
+        }
+
+        def Material "IndependentUvDisplaced"
+        {
+            token outputs:surface.connect = </World/Looks/IndependentUvDisplaced/Surface.outputs:surface>
+            token outputs:displacement.connect = </World/Looks/IndependentUvDisplaced/Surface.outputs:displacement>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/IndependentUvDisplaced/BaseColor.outputs:rgb>
+                float inputs:displacement.connect = </World/Looks/IndependentUvDisplaced/Height.outputs:r>
+                token outputs:surface
+                token outputs:displacement
+            }
+
+            def Shader "SurfaceReader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "HeightReader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st2"
+                float2 outputs:result
+            }
+
+            def Shader "BaseColor"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/base.png@
+                float2 inputs:st.connect = </World/Looks/IndependentUvDisplaced/SurfaceReader.outputs:result>
+                token inputs:sourceColorSpace = "raw"
+                float3 outputs:rgb
+            }
+
+            def Shader "Height"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/height.png@
+                float2 inputs:st.connect = </World/Looks/IndependentUvDisplaced/HeightReader.outputs:result>
+                token inputs:sourceColorSpace = "raw"
+                float outputs:r
+            }
+        }
+
+        def Material "EmptyFileDisplaced"
+        {
+            token outputs:surface.connect = </World/Looks/EmptyFileDisplaced/Surface.outputs:surface>
+            token outputs:displacement.connect = </World/Looks/EmptyFileDisplaced/Surface.outputs:displacement>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.4, 0.4, 0.4)
+                float inputs:displacement.connect = </World/Looks/EmptyFileDisplaced/Height.outputs:r>
+                token outputs:surface
+                token outputs:displacement
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Height"
+            {
+                uniform token info:id = "UsdUVTexture"
+                float2 inputs:st.connect = </World/Looks/EmptyFileDisplaced/Reader.outputs:result>
+                float4 inputs:fallback = (0.5, 0.5, 0.5, 1)
+                float4 inputs:scale = (3, 3, 3, 1)
+                float4 inputs:bias = (-0.25, -0.25, -0.25, 0)
+                token inputs:wrapS = "clamp"
+                token inputs:wrapT = "clamp"
+                token inputs:sourceColorSpace = "raw"
+                float outputs:r
+            }
+        }
+    }
+
+    def Mesh "ConstantPlane"
+    {
+        rel material:binding = </World/Looks/ConstantDisplaced>
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "SurfaceOnlyPlane"
+    {
+        rel material:binding = </World/Looks/SurfaceOnly>
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(2, 0, 0), (3, 0, 0), (2, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "UnshadedPlane"
+    {
+        rel material:binding = </World/Looks/UnshadedDisplaced>
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(4, 0, 0), (5, 0, 0), (4, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "IndependentUvPlane"
+    {
+        rel material:binding = </World/Looks/IndependentUvDisplaced>
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(8, 0, 0), (9, 0, 0), (8, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:st2 = [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "EmptyFilePlane"
+    {
+        rel material:binding = </World/Looks/EmptyFileDisplaced>
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(6, 0, 0), (7, 0, 0), (6, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+}

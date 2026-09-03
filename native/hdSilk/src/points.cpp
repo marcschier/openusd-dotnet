@@ -210,6 +210,38 @@ HdSilkPoints::Sync(
         record.points.reserve(_points.size() * 3);
         record.indices.reserve(_points.size());
         record.triangleSubprims.reserve(_points.size());
+
+        // A points prim emits one vertex per authored point, in authored order,
+        // so point identity is exact and needs no mapping table beyond the
+        // identity it publishes. There is no authored edge between two authored
+        // points, so the edge target is refused by topology rather than left
+        // to be inferred from the emitted point list.
+        //
+        // The ABI v22 identity budget is checked from the size the table WOULD
+        // have, before anything is reserved or filled, exactly as the mesh
+        // producer checks it. Checking after building it would make an oversized
+        // point cloud pay the whole allocation the budget exists to refuse,
+        // which is precisely the cost a hostile or merely enormous stage would
+        // impose. A refusal drops only the exact point identity and names the
+        // budget as the reason: the geometry is still published, so an
+        // over-budget point cloud is still drawn, still occludes, and still
+        // answers a prim pick.
+        const bool identityWithinBudget =
+            !HdSilkSubprimIdentityExceedsBudget(_points.size(), 0);
+        if (identityWithinBudget)
+        {
+            record.pointOrigins.reserve(_points.size());
+            record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
+            record.subprimUnsupported =
+                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE;
+        }
+        else
+        {
+            record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_NONE;
+            record.subprimUnsupported =
+                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_TOPOLOGY_MODE |
+                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET;
+        }
         for (size_t pointIndex = 0; pointIndex < _points.size(); ++pointIndex)
         {
             const GfVec3f& point = _points[pointIndex];
@@ -218,7 +250,15 @@ HdSilkPoints::Sync(
             record.points.push_back(point[2]);
             record.indices.push_back(static_cast<uint32_t>(pointIndex));
             record.triangleSubprims.push_back(static_cast<uint32_t>(pointIndex));
+            if (identityWithinBudget)
+            {
+                record.pointOrigins.push_back(
+                    static_cast<uint32_t>(pointIndex));
+            }
         }
+        record.authoredPointCount = identityWithinBudget
+            ? static_cast<uint32_t>(_points.size())
+            : 0;
         AddEyeFacingNormals(&record);
 
         const std::string path = record.path;
@@ -267,6 +307,10 @@ HdSilkPoints::_BuildInstanceRecords(
     const int32_t instanceId = HdSilkStableInstanceId(instancerId.GetString());
     std::vector<HdSilkMeshRecord> records;
     records.reserve(samples.size());
+    // Built once and copied per instance: it holds no geometry and no identity
+    // table, so an instance reference never costs a copy of the prototype's
+    // points.
+    const HdSilkMeshRecord reference = HdSilkMakeInstanceReference(record);
     for (size_t position = 0; position < samples.size(); ++position)
     {
         const HdSilkInstanceSample& sample = samples[position];
@@ -276,20 +320,15 @@ HdSilkPoints::_BuildInstanceRecords(
             throw std::overflow_error(
                 "The hdSilk points instance index exceeds the 32-bit instance index.");
         }
-        HdSilkMeshRecord instanceRecord = record;
+        HdSilkMeshRecord instanceRecord =
+            position == 0 ? std::move(record) : reference;
         instanceRecord.instanceId = instanceId;
+        instanceRecord.instancerPath = instancerId.GetString();
         instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
+        instanceRecord.instancerContext = sample.context;
         HdSilkFlattenMatrix(
             _transform * sample.transform,
             instanceRecord.transform);
-        if (position != 0)
-        {
-            instanceRecord.points.clear();
-            instanceRecord.indices.clear();
-            instanceRecord.triangleSubprims.clear();
-            instanceRecord.materialPath.clear();
-            instanceRecord.attributes.clear();
-        }
         records.push_back(std::move(instanceRecord));
     }
     return records;

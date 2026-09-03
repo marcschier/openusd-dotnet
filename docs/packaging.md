@@ -104,7 +104,37 @@ packages for each supported RID:
   `win-x64` and `linux-x64` only. Consumers opt in by referencing `OpenUsd.Physics`, which depends
   on the RID-agnostic `OpenUsd.Runtime.Physics` metapackage.
 
-The package set requires project-owned data ABI version 15 and native capabilities `0xFFFFFF`.
+There is deliberately **no** MDL package, and there will not be one for the MDL SDK runtime. Two
+optional adapters are built only on request -- `openusd_mdl` with `-DOPENUSD_WITH_MDL=ON` (presets
+`win-x64-mdl`, `linux-x64-mdl`, `osx-arm64-mdl`; only `win-x64` is gated by a workflow), and the
+SDK-backed `openusd_mdl_sdk` additionally with `-DOPENUSD_MDL_SDK_ROOT=<sdk>`. Neither is published:
+no base or optional package carries either, and no package carries an NVIDIA MDL SDK binary.
+`eng/fetch-mdl-sdk.ps1` acquires the pinned SDK for developers and CI only, verifying the archive
+against the SHA-256 already recorded in `eng/mdl.lock.json` -- release 2026.0.2, tag commit
+`1b9592c1b086b691b44d1a30eee4827d1ff55b8c`, BSD-3-Clause -- and extracting only the headers, the
+runtime and the licence and third-party notices. Redistribution is recorded as **not supported**:
+BSD-3-Clause would permit it with the notices attached, but shipping ~100 MiB of NVIDIA-built
+binaries with their own third-party notice set would put an NVIDIA binary into an OpenUsd package
+for the first time, so the adapter loads a user-supplied runtime through `OPENUSD_MDL_SDK_RUNTIME`
+instead. The SDK-backed adapter links no MDL SDK either: `neuraylib` is header-only, so the target
+compiles against the headers and opens the runtime at run time.
+
+The packaging targets name each shim library explicitly rather than globbing the shim prefix, and
+`RuntimePackageTests.WindowsBasePackagesExcludeABuiltMdlAdapter` proves that by staging a built
+adapter, its SDK-backed sibling, and an NVIDIA MDL SDK runtime with its plugins into the prefix the
+Windows Core and Imaging packages pack from, then requiring both packages to carry none of them
+while still carrying the shims they exist for. The adapter's own `install(TARGETS)` rule writes it
+to the same `bin/` directory those packages read, so this is the layout an MDL-enabled install
+actually produces rather than an invented one.
+`MdlAdapterIsolationTests` additionally requires the release SBOM to carry no MDL or NVIDIA
+component, every acquirable SDK asset to carry a digest recorded before the download, and neither
+adapter to link an MDL SDK. Deploying an adapter is therefore an explicit operator act: build it,
+then place it beside the hdSilk library or point `OPENUSD_MDL_ADAPTER_PATH` at its absolute path.
+The loader accepts no relative path and never loads by bare library name. Without an adapter, an
+MDL-only material is reported with `OPENUSD_SILK_MATERIAL_MDL_UNAVAILABLE` against its own prim path
+rather than shaded.
+
+The package set requires project-owned data ABI version 17 and native capabilities `0x3FFFFFF`.
 Package-only execution prints and verifies both values before exercising stage operations.
 The physics packages additionally require retained physics world ABI version 7 and physics
 extraction page ABI version 1, both recorded in `eng/openusd.lock.json` and embedded in each
@@ -449,8 +479,33 @@ source of truth for the published set. The script enumerates
 the packages explicitly rather than packing the solution. It asserts afterwards that the produced set
 matches exactly, so adding a project cannot silently ship it. Missing native input fails the run
 instead of publishing a partial release.
-`OpenUsd.LiveAuthoring` is intentionally outside this set because it is source-only sample code, not a
-supported package surface.
+
+`OpenUsd.LiveAuthoring` moved from `samples/` to `src/OpenUsd.LiveAuthoring` once its data-model and
+admission/observability contracts were productized (see [Live authoring](live-authoring.md)), and is
+now added to `eng/pack-packages.ps1`'s published set. It was not part of the already-shipped
+`0.12.0-alpha` release; the next release brings the published count to twenty-eight.
+
+`OpenUsd.Bridge.Protocol` and `OpenUsd.Bridge.Grpc` join the published set with the same release,
+bringing it to thirty. They are optional and additive: nothing else in the repository references
+them, `OpenUsd.LiveAuthoring` keeps no networking dependency, and a package-only test asserts that
+neither package carries an NVIDIA component. The wire model depends only on `Google.Protobuf`; the
+gRPC dependency exists solely in the adapter package. See
+[Omniverse bridge](omniverse-bridge.md).
+
+`OpenUsd.Viewer.Bridge.Grpc` joins with the same release, bringing the published set to thirty-one.
+It is the only assembly in the repository that references both `OpenUsd.Viewer` and
+`OpenUsd.Bridge.Grpc`, and the reference direction is one-way by design: the Viewer package keeps no
+gRPC, protobuf, or NVIDIA-adjacent dependency, so a host that installs `OpenUsd.Viewer` alone gets a
+shell with no bridge surface at all rather than a disabled one. `ViewerBridgePackageTests` asserts
+the Viewer project references no bridge project, that no project references the integration package
+back, that the integration package packs `net8.0`, `net9.0`, and `net10.0` with no `omni`- or
+`nvidia`-named entry, and that it carries no `IsApplicationProject` opt-out, so the production-library
+trim, NativeAOT, and public-API gates apply to it exactly as they do to the other published
+libraries. That Release pack is itself the executed multi-framework and analyzer evidence, because
+it builds all three frameworks with warnings as errors and the trim/AOT/single-file analyzers
+enabled. There is no NativeAOT consumer publish for this package, unlike the transport-only bridge
+packages: it references the Avalonia Viewer shell, which is an application assembly the product does
+not publish NativeAOT. See [Bridge connections](viewer.md#bridge-connections).
 
 `OpenUsd.Viewer` stays classified as an application project so the strict production-library gates
 are not applied to its Avalonia UI code, but it opts back into packing because hosts embed the
@@ -560,8 +615,8 @@ its working directory, and successful output contains:
 
 ```text
 PACKAGE_EXECUTION_OK
-ABI=16
-CAPABILITIES=0x1FFFFFF
+ABI=17
+CAPABILITIES=0x3FFFFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -583,8 +638,8 @@ the vendor plugin.
 The process output and generated consumer project must not contain repository source paths,
 `ProjectReference`, or `native/install`.
 A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
-nupkg and invokes the compatibility validator. Data ABI 15 with the complete
-v16 mask and Data ABI 16 with the previous `0xFFFFFF` mask must both throw the typed
+nupkg and invokes the compatibility validator. Data ABI 16 with the complete
+v17 mask and Data ABI 17 with the previous `0x1FFFFFF` mask must both throw the typed
 `OpenUsdNativeException`.
 
 ## Package-only Imaging execution gate
@@ -756,8 +811,8 @@ native source and header files. Generated `native/build`, `native/install`,
 
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
-the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 15 and
-capabilities `0xFFFFFF`, Storm ABI 8, hdSilk session/page ABI 5/15, and Storm child
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 17 and
+capabilities `0x3FFFFFF`, Storm ABI 8, hdSilk session/page ABI 5/23, and Storm child
 ABI 8. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

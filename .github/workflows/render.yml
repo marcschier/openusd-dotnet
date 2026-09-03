@@ -87,6 +87,7 @@ on:
       - 'eng/test-storm-native-child-linux.sh'
       - 'eng/test-viewer-source-identity.ps1'
       - 'eng/test-viewer-evidence-contract.ps1'
+      - 'eng/test-ocio-alias-evidence.ps1'
       - 'eng/run-parity-capture.ps1'
       - 'eng/run-platform-smoke.ps1'
       - 'eng/run-native-probe.ps1'
@@ -109,6 +110,7 @@ on:
       - 'src/OpenUsd.Viewer/**'
       - 'src/OpenUsd.Viewer.App/**'
       - 'tests/OpenUsd.Rendering.ConformanceTests/**'
+      - 'tests/OpenUsd.Rendering.Tests/**'
       - 'tests/OpenUsd.Viewer.Tests/**'
       - 'tests/OpenUsd.Package.Tests/**'
       - 'test-assets/parity/**'
@@ -319,6 +321,138 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/D3D12DeviceTests/WarpCompositesStraightAlphaOverDestination')
+      - name: Execute GPU deformation, displacement, and environment conformance
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          $warpMethods = @(
+            'WarpDeformationKernelMatchesTheCpuEvaluator',
+            'WarpDeformationKernelWritesOnlyPositionsAndNormals',
+            'WarpGpuDeformedImageMatchesTheCpuResolvedImage',
+            'WarpRepeatedFramesReuseAndChangedPosesDispatchOnce',
+            'WarpDeformationSurvivesADeviceGenerationReset',
+            'WarpAnIneligibleRigDrawsTheCpuGeometry',
+            'WarpDeformationParametersAreBoundedByTheirOwnSize',
+            'WarpAFailedDeformationSetupDrawsTheCpuGeometry',
+            'WarpAFailedDeformationDispatchDrawsTheCpuGeometry',
+            'WarpADeviceLossDuringDeformationDispatchPropagates',
+            'WarpShadowsFollowTheDeformedSurface',
+            'WarpDeformationKernelIsIdempotentForOneIdentity'
+          )
+          $warpMethods += @(
+            'WarpRendersAConstantDisplacementAsDisplacedGeometry',
+            'WarpRendersATextureDisplacementPerVertex',
+            'WarpShadowsFollowTheDisplacedSurface',
+            'WarpRendersAnUnsupportedDisplacementUndisplaced',
+            'WarpRepeatedFramesReuseTheDisplacedGeometry',
+            'WarpDisplacesTheDeformedSurfaceRatherThanTheBindPose',
+            'WarpRepairingAHeightFieldReachesSelectionAndShadows'
+          )
+          $warpMethods += @(
+            'WarpLightsAQuadByTheDirectionAndOrientationOfATexturedDome',
+            'WarpResolvesTheDomeContributionScalesAndRoughness',
+            'WarpFallsBackForAnUnsupportedDomeAndReleasesTheEnvironment',
+            'WarpLetsATexturedDomeSuppressTheDeterministicHeadlight',
+            'WarpLetsAnUnsupportedDomeSuppressTheDeterministicHeadlight',
+            'WarpReturnsTheSpecularPeakAtExactAlignment',
+            'WarpKeepsANearMirrorBoundedAtEveryRoughness',
+            'WarpFollowsRotatedAndNonUniformlyScaledPrimsWithTheEnvironment',
+            'WarpLeavesAGeneratedUnlitMaterialUnlitUnderADome'
+          )
+          $warpMethods += @(
+            'WarpAppliesUsdLuxDomeLinking',
+            'WarpSplitsTheSpecularSkyByDomeLink',
+            'WarpMasksAnUntexturedDomePerDraw',
+            'WarpKeepsEveryInstanceTransformAcrossSplitDomeMasks',
+            'WarpUploadsTheEnvironmentAgainAfterAFailedSubmission'
+          )
+          $warpMethods += 'WarpResolvesNestedInstanceLinkMasks'
+          $vulkanMethods = @(
+            'SwiftShaderDeformationKernelMatchesTheCpuEvaluator',
+            'SwiftShaderDeformationKernelWritesOnlyPositionsAndNormals',
+            'SwiftShaderGpuDeformedImageMatchesTheCpuResolvedImage',
+            'SwiftShaderRepeatedFramesReuseAndChangedPosesDispatchOnce',
+            'SwiftShaderDeformationSurvivesADeviceGenerationReset',
+            'SwiftShaderAnIneligibleRigDrawsTheCpuGeometry',
+            'SwiftShaderDeformationParametersAreBoundedByTheirOwnSize',
+            'SwiftShaderAFailedDeformationSetupDrawsTheCpuGeometry',
+            'SwiftShaderAFailedDeformationDispatchDrawsTheCpuGeometry',
+            'SwiftShaderADeviceLossDuringDeformationDispatchPropagates',
+            'SwiftShaderShadowsFollowTheDeformedSurface',
+            'SwiftShaderDeformationKernelIsIdempotentForOneIdentity'
+          )
+          $vulkanMethods += @(
+            'SwiftShaderRendersAConstantDisplacementAsDisplacedGeometry',
+            'SwiftShaderRendersATextureDisplacementPerVertex',
+            'SwiftShaderShadowsFollowTheDisplacedSurface',
+            'SwiftShaderRendersAnUnsupportedDisplacementUndisplaced',
+            'SwiftShaderRepeatedFramesReuseTheDisplacedGeometry',
+            'SwiftShaderDisplacesTheDeformedSurfaceRatherThanTheBindPose',
+            'SwiftShaderRepairingAHeightFieldReachesSelectionAndShadows'
+          )
+          $vulkanMethods += @(
+            'SwiftShaderLightsAQuadByTheDirectionAndOrientationOfATexturedDome',
+            'SwiftShaderResolvesTheDomeContributionScalesAndRoughness',
+            'SwiftShaderFallsBackForAnUnsupportedDomeAndReleasesTheEnvironment',
+            'SwiftShaderLetsATexturedDomeSuppressTheDeterministicHeadlight',
+            'SwiftShaderLetsAnUnsupportedDomeSuppressTheDeterministicHeadlight',
+            'SwiftShaderReturnsTheSpecularPeakAtExactAlignment',
+            'SwiftShaderKeepsANearMirrorBoundedAtEveryRoughness',
+            'SwiftShaderFollowsRotatedAndNonUniformlyScaledPrimsWithTheEnvironment',
+            'SwiftShaderLeavesAGeneratedUnlitMaterialUnlitUnderADome'
+          )
+          $vulkanMethods += @(
+            'SwiftShaderAppliesUsdLuxDomeLinking',
+            'SwiftShaderSplitsTheSpecularSkyByDomeLink',
+            'SwiftShaderMasksAnUntexturedDomePerDraw',
+            'SwiftShaderKeepsEveryInstanceTransformAcrossSplitDomeMasks',
+            'SwiftShaderUploadsTheEnvironmentAgainAfterAFailedSubmission'
+          )
+          $vulkanMethods += 'SwiftShaderResolvesNestedInstanceLinkMasks'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              "/*/*/D3D12DeviceTests/($($warpMethods -join '|'))")
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              "/*/*/VulkanDeviceTests/($($vulkanMethods -join '|'))")
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/D3D12DisplayTransformTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanDisplayTransformTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/D3D12SubprimPickingTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanSubprimPickingTests/*')
       - name: Execute sampled OpenVDB volume conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -1058,6 +1192,80 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VulkanDeviceTests/VulkanCompositesStraightAlphaOverDestination')
+      - name: Execute Linux deformation, displacement, and environment conformance
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-vulkan.outputs.ready == 'true')
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          $methods = @(
+            'SwiftShaderDeformationKernelMatchesTheCpuEvaluator',
+            'SwiftShaderDeformationKernelWritesOnlyPositionsAndNormals',
+            'SwiftShaderGpuDeformedImageMatchesTheCpuResolvedImage',
+            'SwiftShaderRepeatedFramesReuseAndChangedPosesDispatchOnce',
+            'SwiftShaderDeformationSurvivesADeviceGenerationReset',
+            'SwiftShaderAnIneligibleRigDrawsTheCpuGeometry',
+            'SwiftShaderDeformationParametersAreBoundedByTheirOwnSize',
+            'SwiftShaderAFailedDeformationSetupDrawsTheCpuGeometry',
+            'SwiftShaderAFailedDeformationDispatchDrawsTheCpuGeometry',
+            'SwiftShaderADeviceLossDuringDeformationDispatchPropagates',
+            'SwiftShaderShadowsFollowTheDeformedSurface',
+            'SwiftShaderDeformationKernelIsIdempotentForOneIdentity'
+          )
+          $methods += @(
+            'SwiftShaderRendersAConstantDisplacementAsDisplacedGeometry',
+            'SwiftShaderRendersATextureDisplacementPerVertex',
+            'SwiftShaderShadowsFollowTheDisplacedSurface',
+            'SwiftShaderRendersAnUnsupportedDisplacementUndisplaced',
+            'SwiftShaderRepeatedFramesReuseTheDisplacedGeometry',
+            'SwiftShaderDisplacesTheDeformedSurfaceRatherThanTheBindPose',
+            'SwiftShaderRepairingAHeightFieldReachesSelectionAndShadows'
+          )
+          $methods += @(
+            'SwiftShaderLightsAQuadByTheDirectionAndOrientationOfATexturedDome',
+            'SwiftShaderResolvesTheDomeContributionScalesAndRoughness',
+            'SwiftShaderFallsBackForAnUnsupportedDomeAndReleasesTheEnvironment',
+            'SwiftShaderLetsATexturedDomeSuppressTheDeterministicHeadlight',
+            'SwiftShaderLetsAnUnsupportedDomeSuppressTheDeterministicHeadlight',
+            'SwiftShaderReturnsTheSpecularPeakAtExactAlignment',
+            'SwiftShaderKeepsANearMirrorBoundedAtEveryRoughness',
+            'SwiftShaderFollowsRotatedAndNonUniformlyScaledPrimsWithTheEnvironment',
+            'SwiftShaderLeavesAGeneratedUnlitMaterialUnlitUnderADome'
+          )
+          $methods += @(
+            'SwiftShaderAppliesUsdLuxDomeLinking',
+            'SwiftShaderSplitsTheSpecularSkyByDomeLink',
+            'SwiftShaderMasksAnUntexturedDomePerDraw',
+            'SwiftShaderKeepsEveryInstanceTransformAcrossSplitDomeMasks',
+            'SwiftShaderUploadsTheEnvironmentAgainAfterAFailedSubmission'
+          )
+          $methods += 'SwiftShaderResolvesNestedInstanceLinkMasks'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              "/*/*/VulkanDeviceTests/($($methods -join '|'))")
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanDisplayTransformTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanSubprimPickingTests/*')
       - name: Execute Linux sampled OpenVDB volume conformance
         if: >-
           steps.native-ready.outputs.ready == 'true' &&
@@ -1100,6 +1308,22 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumeDepthSamplingConformanceTests/*')
+      - name: Execute Linux OpenColorIO alias identity evidence
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/plugin/usd
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/lib:${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/bin
+        # Required, and required to have actually executed: Linux grants unprivileged
+        # symbolic links, so the alias identity behaviour cannot be left unproven here.
+        run: ./eng/test-ocio-alias-evidence.ps1 -Configuration Release
+      - name: Upload OpenColorIO alias evidence
+        if: always() && steps.native-ready.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-ocio-alias-evidence-linux-x64-${{ github.run_id }}
+          path: tests/OpenUsd.Rendering.Tests/bin/Release/net10.0/ocio-alias-evidence.txt
+          if-no-files-found: error
       - name: Classify the Linux volume evidence
         if: >-
           steps.native-ready.outputs.ready == 'true' &&

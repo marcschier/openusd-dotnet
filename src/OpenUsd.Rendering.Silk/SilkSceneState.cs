@@ -2,8 +2,10 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace OpenUsd.Rendering.Silk;
 
@@ -27,6 +29,8 @@ public sealed class SilkSceneState
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, SilkMaterialData> _materials =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SilkEnvironmentData> _environments =
+        new(StringComparer.Ordinal);
 
     // The authored mesh of every mesh whose points are currently simulated. A deformation
     // destructively replaces the retained points, so without this the authored geometry exists
@@ -36,6 +40,30 @@ public sealed class SilkSceneState
     // table can never outgrow the driven set.
     private readonly Dictionary<ulong, SilkMeshData> _authoredMeshes = [];
     private readonly Func<string, ulong>? _pathHasher;
+
+    // The undo journal one page is applied under. A page is a transaction: it
+    // either applies completely or changes nothing, and the state-dependent
+    // checks -- a stable hash that does not match its path, a hash that collides
+    // with another prim, a replacement that changes an identity without evidence
+    // -- can only be made against the state the commands before it produced, so
+    // they cannot all be hoisted ahead of the mutation. Recording the inverse of
+    // every write instead is what lets a page whose fourth command is rejected
+    // put the first three back exactly as they were, rather than retaining a
+    // scene no producer ever published and no delta ever described.
+    private readonly List<SilkStateUndo> _undo = [];
+    private HashSet<string>? _journaledInstancePaths;
+    private SilkFrameState? _frameUndo;
+    private SilkLightLinkTable? _lightLinksUndo;
+    private SilkShadowTable? _shadowsUndo;
+    private bool _journaling;
+    private bool _frameJournaled;
+    private bool _lightLinksJournaled;
+    private bool _shadowsJournaled;
+    private ulong _undoRevision;
+    private ulong _undoGeometryRevision;
+    private ulong _undoMaterialRevision;
+    private ulong _undoEnvironmentRevision;
+    private ulong _undoDeformationRevision;
 
     /// <summary>Initializes an empty retained scene and pick identity table.</summary>
     public SilkSceneState()
@@ -75,11 +103,113 @@ public sealed class SilkSceneState
     /// </summary>
     public IReadOnlyDictionary<string, SilkMaterialData> Materials => _materials;
 
+    /// <summary>
+    /// Gets retained textured dome-light environments keyed by USD prim path.
+    /// </summary>
+    /// <remarks>
+    /// Untextured dome lights are not here: they stay part of the frame ambient
+    /// term hdSilk already resolves, and only a dome that carries an image needs
+    /// state the ambient colour cannot express.
+    /// </remarks>
+    public IReadOnlyDictionary<string, SilkEnvironmentData> Environments => _environments;
+
+    /// <summary>
+    /// Gets the retained UsdLux light and shadow link table.
+    /// </summary>
+    /// <remarks>
+    /// Sparse and default-free: a scene that authors no linking retains nothing
+    /// here and every prim resolves to <see cref="SilkLightLinkMasks.All"/>.
+    /// </remarks>
+    public SilkLightLinkTable LightLinks { get; } = new();
+
+    /// <summary>
+    /// Gets the retained bounded raster shadow-map descriptor table.
+    /// </summary>
+    /// <remarks>
+    /// Empty for a scene that authors no shadow, so nothing is allocated and no
+    /// shadow work is submitted until a page publishes a descriptor.
+    /// </remarks>
+    public SilkShadowTable Shadows { get; } = new();
+
+    /// <summary>
+    /// Gets the revision of the retained caster geometry, which changes whenever
+    /// a mesh record is published, replaced, deformed, or removed.
+    /// </summary>
+    /// <remarks>
+    /// A shadow map is a function of the caster set as well as of the light-space
+    /// camera the page publishes. The page republishes its descriptors when the
+    /// caster world bounds move, but geometry can change inside unchanged bounds
+    /// -- a deformation, an instance transform, a topology replacement -- and a
+    /// map rendered from the previous pose would then be silently stale. This
+    /// revision is what a retained map is validated against, so an unchanged
+    /// scene reuses its maps and a changed one re-renders exactly once.
+    /// </remarks>
+    public ulong GeometryRevision { get; private set; }
+
+    /// <summary>
+    /// Advances the geometry revision because a consumer rebuilt retained
+    /// geometry from unchanged scene data.
+    /// </summary>
+    /// <remarks>
+    /// A repaired texture asset changes what a displaced prim's vertices are
+    /// without changing a single published byte, so nothing in the page can move
+    /// this revision. A retained shadow map is validated against it, and a map
+    /// rendered from the pre-repair vertices would otherwise be reused forever.
+    /// </remarks>
+    internal void AdvanceGeometryRevisionForRebuild() => GeometryRevision++;
+
+    /// <summary>
+    /// Gets the revision of the retained material set, which changes whenever a
+    /// material is published, replaced, or removed.
+    /// </summary>
+    /// <remarks>
+    /// Whether a prim casts a shadow depends on its material as well as on its
+    /// geometry: an opacity-masked caster is excluded from every shadow map,
+    /// because the depth-only program binds no material and cannot discard. A
+    /// material can turn opaque or masked with no mesh command at all -- the same
+    /// prim keeps its binding while the material behind it is re-authored -- so
+    /// <see cref="GeometryRevision"/> alone would let a retained map, and the
+    /// diagnostic that named its skipped casters, survive the change that
+    /// invalidated both. A material binding change is already covered, because
+    /// re-binding a prim republishes its mesh record.
+    /// </remarks>
+    public ulong MaterialRevision { get; private set; }
+
+    /// <summary>
+    /// Gets the revision of the retained environment set, which changes whenever
+    /// an environment is published, replaced, or removed.
+    /// </summary>
+    /// <remarks>
+    /// The frame constants carry the resolved environment contribution, and the
+    /// frame's own revision does not move when only an environment changed. A
+    /// separate revision is what makes those constants re-pack when a dome's
+    /// texture or emission is re-authored.
+    /// </remarks>
+    public ulong EnvironmentRevision { get; private set; }
+
+    /// <summary>
+    /// Gets the revision of the retained bounded deformation rigs, which changes
+    /// whenever a published rig's identity changes, whenever a prim starts or
+    /// stops publishing one, and whenever a prim that carries one is removed.
+    /// </summary>
+    /// <remarks>
+    /// The caster geometry revision already moves for every mesh command, so a
+    /// consumer that deforms on the CPU needs nothing more. This revision exists
+    /// for a consumer that evaluates the published rig instead: for such a
+    /// consumer the pose lives in the rig rather than in the point array, and a
+    /// retained shadow map rendered from the previous palette would be stale
+    /// while every geometry input it was keyed on was unchanged. Keying the map
+    /// on this as well is what makes the deformation identity part of shadow
+    /// invalidation rather than an input only the colour pass sees.
+    /// </remarks>
+    public ulong DeformationRevision { get; private set; }
+
     /// <summary>Applies one dirty page and returns resource-change counts.</summary>
     public SilkSceneDelta Apply(OpenUsdSilkPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
-        return Apply(page.GetEnumerator(), page.Revision);
+        bool requiresJournal = Preflight(page.GetEnumerator());
+        return Apply(page.GetEnumerator(), page.Revision, requiresJournal);
     }
 
     /// <summary>
@@ -174,6 +304,7 @@ public sealed class SilkSceneState
         }
 
         meshId = replacement.Id;
+        GeometryRevision++;
         return SilkDeformationResult.Applied;
     }
 
@@ -226,6 +357,7 @@ public sealed class SilkSceneState
             }
         }
 
+        GeometryRevision++;
         return true;
     }
 
@@ -240,10 +372,298 @@ public sealed class SilkSceneState
         uint commandCount,
         ulong revision)
     {
-        return Apply(SilkCommandParser.Enumerate(data, commandCount), revision);
+        bool requiresJournal = Preflight(SilkCommandParser.Enumerate(data, commandCount));
+        return Apply(
+            SilkCommandParser.Enumerate(data, commandCount),
+            revision,
+            requiresJournal);
     }
 
-    private SilkSceneDelta Apply(SilkCommandEnumerator commands, ulong revision)
+    /// <summary>
+    /// Walks the whole page once, validating every command and the relationships
+    /// between them, before a single byte of retained state is touched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Constructing a command view is what validates it, and the mutating pass
+    /// constructs them one at a time as it applies them -- so a page whose fourth
+    /// command is malformed used to retain the first three and then throw, leaving
+    /// the scene in a state no producer ever published. Running the same
+    /// constructors here first makes rejection whole: a page either applies
+    /// completely or changes nothing.
+    /// </para>
+    /// <para>
+    /// It is also the only place the relationships <em>between</em> commands can
+    /// be checked. The frame's dome table is the authority: the masks a
+    /// <c>LIGHT_LINK</c> command carries index it, and the <c>dome_index</c> an
+    /// <c>ENVIRONMENT</c> record claims is an entry in it. A page whose three
+    /// commands disagree describes no scene at all, and applying two thirds of it
+    /// would light prims from domes the frame never published.
+    /// </para>
+    /// </remarks>
+    /// <param name="commands">The page to validate, which is consumed.</param>
+    /// <returns>
+    /// Whether the page carries a command whose validation depends on retained
+    /// state, and which therefore has to be applied under the undo journal.
+    /// </returns>
+    /// <exception cref="InvalidDataException">The page is malformed or inconsistent.</exception>
+    private bool Preflight(SilkCommandEnumerator commands)
+    {
+        uint domeCount = Frame.DomeCount;
+        uint lightCount = Frame.LightCount;
+        Span<bool> environmentDomes = stackalloc bool[(int)SilkFrameCommand.MaximumDomes];
+        for (int dome = 0; dome < environmentDomes.Length; dome++)
+        {
+            environmentDomes[dome] = Frame.Domes[dome].IsPresent &&
+                Frame.Domes[dome].IsTextured;
+        }
+
+        bool requiresJournal = false;
+
+        // The effective light link table: the page's, or the retained one when
+        // the page publishes none. A frame-only page changes the ordering the
+        // retained masks index, so validating only what the page carries would
+        // let a camera update silently reinterpret every retained mask.
+        bool linkIsCanonicalEmpty = LightLinks.IsCanonicalEmpty;
+        uint linkDomeCount = LightLinks.DomeCount;
+        uint linkLightCount = LightLinks.LightCount;
+
+        // The environment records this page leaves behind, keyed by path, built
+        // by replaying the page's upserts and removals in order over the retained
+        // set. Keying by path is what makes a record that a later command
+        // supersedes irrelevant -- only the final shape of each path is a state
+        // the renderer will ever resolve -- and it is what keeps a page with more
+        // environment commands than the dome budget from overrunning anything:
+        // the number of commands bounds nothing, the number of distinct paths
+        // does. Allocated only for a page that carries an environment command at
+        // all, so a frame-only page stays allocation free.
+        Dictionary<string, uint?>? effectiveEnvironments = null;
+        using (commands)
+        {
+            while (commands.MoveNext())
+            {
+                switch (commands.Current.Type)
+                {
+                    case SilkCommandType.Frame:
+                        SilkFrameCommand frame = commands.Current.AsFrame();
+                        domeCount = frame.DomeCount;
+                        lightCount = frame.LightCount;
+                        for (int dome = 0; dome < environmentDomes.Length; dome++)
+                        {
+                            SilkFrameDomeState flags = frame.GetDomeFlags(dome);
+                            environmentDomes[dome] = dome < domeCount &&
+                                (flags & SilkFrameDomeState.Present) != 0 &&
+                                (flags & SilkFrameDomeState.Textured) != 0;
+                        }
+                        break;
+                    case SilkCommandType.MeshUpsert:
+                        _ = commands.Current.AsMeshUpsert();
+                        requiresJournal = true;
+                        break;
+                    case SilkCommandType.MeshRemove:
+                        _ = commands.Current.AsMeshRemove();
+                        requiresJournal = true;
+                        break;
+                    case SilkCommandType.MaterialUpsert:
+                        _ = commands.Current.AsMaterialUpsert();
+                        requiresJournal = true;
+                        break;
+                    case SilkCommandType.MaterialRemove:
+                        _ = commands.Current.AsMaterialRemove();
+                        requiresJournal = true;
+                        break;
+                    case SilkCommandType.EnvironmentUpsert:
+                        SilkEnvironmentUpsertCommand upsert =
+                            commands.Current.AsEnvironmentUpsert();
+                        requiresJournal = true;
+                        RequireEffectiveEnvironments(ref effectiveEnvironments)[upsert.Path] =
+                            upsert.DomeIndex;
+                        break;
+                    case SilkCommandType.EnvironmentRemove:
+                        requiresJournal = true;
+                        RequireEffectiveEnvironments(ref effectiveEnvironments)[
+                            commands.Current.AsEnvironmentRemove().Path] = null;
+                        break;
+                    case SilkCommandType.LightLink:
+                        SilkLightLinkCommand links = commands.Current.AsLightLink();
+                        requiresJournal = true;
+                        linkDomeCount = links.DomeCount;
+                        linkLightCount = links.LightCount;
+                        linkIsCanonicalEmpty = links.EntryCount == 0 &&
+                            links.LightCount == 0 &&
+                            links.DomeCount == 0;
+                        break;
+                    case SilkCommandType.Shadow:
+                        _ = commands.Current.AsShadow();
+                        requiresJournal = true;
+                        break;
+                    default:
+                        throw new InvalidDataException(
+                            $"Unsupported hdSilk command {commands.Current.Type}.");
+                }
+            }
+        }
+
+        // Every record the page leaves behind is validated against the frame the
+        // page leaves behind, and the mapping between the two must be a bijection
+        // over the textured domes: each textured entry of the frame dome table is
+        // one dome's image, so exactly one record names it. A record naming an
+        // absent or untextured entry describes a dome nobody published; two
+        // records naming the same entry make one dome's mask select the other's
+        // sky; and a textured entry no record names is a dome the renderer has no
+        // image for and no prim can be excluded from.
+        Span<bool> claimed = stackalloc bool[(int)SilkFrameCommand.MaximumDomes];
+        if (effectiveEnvironments is null)
+        {
+            foreach (KeyValuePair<string, SilkEnvironmentData> retained in _environments)
+            {
+                ClaimEnvironmentDome(
+                    retained.Value.HasDomeIndex
+                        ? retained.Value.DomeIndex
+                        : SilkEnvironmentUpsertCommand.NoDomeIndex,
+                    domeCount,
+                    environmentDomes,
+                    claimed);
+            }
+        }
+        else
+        {
+            foreach (KeyValuePair<string, SilkEnvironmentData> retained in _environments)
+            {
+                if (!effectiveEnvironments.ContainsKey(retained.Key))
+                {
+                    effectiveEnvironments[retained.Key] = retained.Value.DomeIndex;
+                }
+            }
+            foreach (uint? index in effectiveEnvironments.Values)
+            {
+                // A null entry is a path this page retired, which claims nothing.
+                if (index is { } claimedIndex)
+                {
+                    ClaimEnvironmentDome(
+                        claimedIndex,
+                        domeCount,
+                        environmentDomes,
+                        claimed);
+                }
+            }
+        }
+
+        for (int dome = 0; dome < environmentDomes.Length; dome++)
+        {
+            if (environmentDomes[dome] && !claimed[dome])
+            {
+                throw new InvalidDataException(
+                    $"The frame dome table publishes textured dome {dome}, which no " +
+                    "environment record supplies an image for.");
+            }
+        }
+        // A canonical empty table is how a page says "linking was retired", and it
+        // is valid against any frame precisely because it indexes nothing. Every
+        // other table's masks are read against the frame's light and dome
+        // orderings, so a count that disagrees with the frame names a different
+        // set of lights or domes than the masks were resolved against.
+        if (!linkIsCanonicalEmpty)
+        {
+            if (linkLightCount != lightCount)
+            {
+                throw new InvalidDataException(
+                    $"The light link table indexes {linkLightCount} lights while the " +
+                    $"frame publishes {lightCount}.");
+            }
+            if (linkDomeCount != domeCount)
+            {
+                throw new InvalidDataException(
+                    $"The light link table indexes {linkDomeCount} domes while the frame " +
+                    $"publishes {domeCount}.");
+            }
+        }
+
+        return requiresJournal;
+    }
+
+    /// <summary>
+    /// Gets the effective environment map, seeded on first use so a page with no
+    /// environment command allocates nothing.
+    /// </summary>
+    private static Dictionary<string, uint?> RequireEffectiveEnvironments(
+        ref Dictionary<string, uint?>? effective) =>
+        effective ??= new Dictionary<string, uint?>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Records one effective record's claim on a dome table entry, refusing an
+    /// entry that does not exist, is not textured, or is already claimed.
+    /// </summary>
+    private static void ClaimEnvironmentDome(
+        uint index,
+        uint domeCount,
+        ReadOnlySpan<bool> environmentDomes,
+        Span<bool> claimed)
+    {
+        if (index == SilkEnvironmentUpsertCommand.NoDomeIndex)
+        {
+            // An unindexed record is only meaningful while there is no dome table
+            // to index. Once the frame publishes one, every textured dome has an
+            // entry in it by construction, so a record that declines to name one
+            // is a producer that resolved its domes and its environments against
+            // different orderings -- and the renderer would silently give that
+            // dome's sky to every prim, including the ones whose collection
+            // excludes it.
+            if (domeCount != 0)
+            {
+                throw new InvalidDataException(
+                    "An environment record carries no dome index while the frame " +
+                    $"publishes {domeCount} domes.");
+            }
+            return;
+        }
+
+        if (index >= domeCount || !environmentDomes[(int)index])
+        {
+            throw new InvalidDataException(
+                $"An environment record claims dome index {index}, which the " +
+                "frame dome table does not publish as a textured dome.");
+        }
+        if (claimed[(int)index])
+        {
+            throw new InvalidDataException(
+                $"Two environment records claim frame dome index {index}.");
+        }
+        claimed[(int)index] = true;
+    }
+
+    private SilkSceneDelta Apply(
+        SilkCommandEnumerator commands,
+        ulong revision,
+        bool requiresJournal)
+    {
+        if (!requiresJournal)
+        {
+            // Nothing in this page can be rejected against retained state, so
+            // there is nothing to put back and the journal would be pure cost.
+            // This is the frame-only page every interactive session publishes.
+            return ApplyCore(commands, revision);
+        }
+
+        BeginTransaction();
+        bool committed = false;
+        try
+        {
+            SilkSceneDelta delta = ApplyCore(commands, revision);
+            CommitTransaction();
+            committed = true;
+            return delta;
+        }
+        finally
+        {
+            if (!committed)
+            {
+                RollbackTransaction();
+            }
+        }
+    }
+
+    private SilkSceneDelta ApplyCore(SilkCommandEnumerator commands, ulong revision)
     {
         List<ulong>? upserts = null;
         List<ulong>? removals = null;
@@ -255,6 +675,7 @@ public sealed class SilkSceneState
                 switch (commands.Current.Type)
                 {
                     case SilkCommandType.Frame:
+                        JournalFrame();
                         Frame.Update(commands.Current.AsFrame());
                         break;
                     case SilkCommandType.MeshUpsert:
@@ -269,7 +690,7 @@ public sealed class SilkSceneState
                         // naming a record a validation failure rejected.
                         if (!upsert.IsInstanceReference)
                         {
-                            _prototypeInstanceByPath[mesh.Path] = mesh.InstanceIndex;
+                            SetPrototypeInstance(mesh.Path, mesh.InstanceIndex);
                         }
 
                         (upserts ??= []).Add(mesh.Id);
@@ -286,8 +707,9 @@ public sealed class SilkSceneState
                         SilkMaterialData material = SilkMaterialData.CopyFrom(
                             commands.Current.AsMaterialUpsert());
                         VerifyStableHash(material.Path, material.StableHash);
-                        _materials[material.Path] = material;
+                        SetMaterial(material.Path, material);
                         (materialChanges ??= []).Add(material.Path);
+                        MaterialRevision++;
                         break;
                     case SilkCommandType.MaterialRemove:
                         SilkMaterialRemoveCommand materialRemoval =
@@ -295,8 +717,37 @@ public sealed class SilkSceneState
                         VerifyStableHash(
                             materialRemoval.Path,
                             materialRemoval.StableHash);
-                        _ = _materials.Remove(materialRemoval.Path);
+                        if (RemoveMaterial(materialRemoval.Path))
+                        {
+                            MaterialRevision++;
+                        }
                         (materialChanges ??= []).Add(materialRemoval.Path);
+                        break;
+                    case SilkCommandType.EnvironmentUpsert:
+                        SilkEnvironmentData environment = SilkEnvironmentData.CopyFrom(
+                            commands.Current.AsEnvironmentUpsert());
+                        VerifyStableHash(environment.Path, environment.StableHash);
+                        SetEnvironment(environment.Path, environment);
+                        EnvironmentRevision++;
+                        break;
+                    case SilkCommandType.EnvironmentRemove:
+                        SilkEnvironmentRemoveCommand environmentRemoval =
+                            commands.Current.AsEnvironmentRemove();
+                        VerifyStableHash(
+                            environmentRemoval.Path,
+                            environmentRemoval.StableHash);
+                        if (RemoveEnvironment(environmentRemoval.Path))
+                        {
+                            EnvironmentRevision++;
+                        }
+                        break;
+                    case SilkCommandType.LightLink:
+                        JournalLightLinks();
+                        LightLinks.Update(commands.Current.AsLightLink());
+                        break;
+                    case SilkCommandType.Shadow:
+                        JournalShadows();
+                        Shadows.Update(commands.Current.AsShadow());
                         break;
                     default:
                         throw new InvalidDataException(
@@ -311,6 +762,417 @@ public sealed class SilkSceneState
             removals?.ToArray() ?? [],
             materialChanges?.ToArray() ?? []);
     }
+
+    /// <summary>Opens the undo journal one page is applied under.</summary>
+    private void BeginTransaction()
+    {
+        _undo.Clear();
+        _journaledInstancePaths?.Clear();
+        _frameJournaled = false;
+        _lightLinksJournaled = false;
+        _shadowsJournaled = false;
+        _undoRevision = Revision;
+        _undoGeometryRevision = GeometryRevision;
+        _undoMaterialRevision = MaterialRevision;
+        _undoEnvironmentRevision = EnvironmentRevision;
+        _undoDeformationRevision = DeformationRevision;
+        _journaling = true;
+        PickIdentities.BeginTransaction();
+    }
+
+    /// <summary>Accepts every write the page made and drops the journal.</summary>
+    private void CommitTransaction()
+    {
+        _journaling = false;
+        _undo.Clear();
+        _journaledInstancePaths?.Clear();
+        PickIdentities.CommitTransaction();
+    }
+
+    /// <summary>
+    /// Puts every write the rejected page made back, newest first.
+    /// </summary>
+    /// <remarks>
+    /// Reverse order is what makes a key that was written more than once by the
+    /// same page end up with the value it had before the page, rather than with
+    /// the value the page's first write replaced.
+    /// </remarks>
+    private void RollbackTransaction()
+    {
+        _journaling = false;
+        for (int index = _undo.Count - 1; index >= 0; index--)
+        {
+            SilkStateUndo entry = _undo[index];
+            switch (entry.Kind)
+            {
+                case SilkStateUndoKind.MeshById:
+                    if (entry.Existed)
+                    {
+                        _meshes[entry.Key] = (SilkMeshData)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _meshes.Remove(entry.Key);
+                    }
+                    break;
+                case SilkStateUndoKind.MeshByPath:
+                    if (entry.Existed)
+                    {
+                        _meshesByPath[(entry.Path!, entry.Index)] =
+                            (SilkMeshData)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _meshesByPath.Remove((entry.Path!, entry.Index));
+                    }
+                    break;
+                case SilkStateUndoKind.PathByHash:
+                    if (entry.Existed)
+                    {
+                        _pathsByHash[entry.Key] = (string)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _pathsByHash.Remove(entry.Key);
+                    }
+                    break;
+                case SilkStateUndoKind.PrototypeInstance:
+                    if (entry.Existed)
+                    {
+                        _prototypeInstanceByPath[entry.Path!] = entry.Index;
+                    }
+                    else
+                    {
+                        _ = _prototypeInstanceByPath.Remove(entry.Path!);
+                    }
+                    break;
+                case SilkStateUndoKind.AuthoredMesh:
+                    if (entry.Existed)
+                    {
+                        _authoredMeshes[entry.Key] = (SilkMeshData)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _authoredMeshes.Remove(entry.Key);
+                    }
+                    break;
+                case SilkStateUndoKind.Material:
+                    if (entry.Existed)
+                    {
+                        _materials[entry.Path!] = (SilkMaterialData)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _materials.Remove(entry.Path!);
+                    }
+                    break;
+                case SilkStateUndoKind.Environment:
+                    if (entry.Existed)
+                    {
+                        _environments[entry.Path!] = (SilkEnvironmentData)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _environments.Remove(entry.Path!);
+                    }
+                    break;
+                case SilkStateUndoKind.InstanceList:
+                    if (entry.Existed)
+                    {
+                        _instancesByPath[entry.Path!] = (List<SilkMeshData>)entry.Value!;
+                    }
+                    else
+                    {
+                        _ = _instancesByPath.Remove(entry.Path!);
+                    }
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"The Silk scene undo journal has an unknown entry {entry.Kind}.");
+            }
+        }
+
+        _undo.Clear();
+        _journaledInstancePaths?.Clear();
+        if (_frameJournaled)
+        {
+            Frame.CopyFrom(_frameUndo!);
+        }
+        if (_lightLinksJournaled)
+        {
+            LightLinks.SwapWith(_lightLinksUndo!);
+        }
+        if (_shadowsJournaled)
+        {
+            Shadows.RestoreFrom(_shadowsUndo!);
+        }
+        Revision = _undoRevision;
+        GeometryRevision = _undoGeometryRevision;
+        MaterialRevision = _undoMaterialRevision;
+        EnvironmentRevision = _undoEnvironmentRevision;
+        DeformationRevision = _undoDeformationRevision;
+        PickIdentities.RollbackTransaction();
+    }
+
+    private void JournalFrame()
+    {
+        if (!_journaling || _frameJournaled)
+        {
+            return;
+        }
+        _frameUndo ??= new SilkFrameState();
+        _frameUndo.CopyFrom(Frame);
+        _frameJournaled = true;
+    }
+
+    private void JournalLightLinks()
+    {
+        if (!_journaling || _lightLinksJournaled)
+        {
+            return;
+        }
+        _lightLinksUndo ??= new SilkLightLinkTable();
+        _lightLinksUndo.CopyFrom(LightLinks);
+        _lightLinksJournaled = true;
+    }
+
+    private void JournalShadows()
+    {
+        if (!_journaling || _shadowsJournaled)
+        {
+            return;
+        }
+        _shadowsUndo ??= new SilkShadowTable();
+        Shadows.CopyAsideInto(_shadowsUndo);
+        _shadowsJournaled = true;
+    }
+
+    private void SetMeshById(ulong id, SilkMeshData mesh)
+    {
+        if (_journaling)
+        {
+            bool existed = _meshes.TryGetValue(id, out SilkMeshData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.MeshById, id, null, 0, previous, existed));
+        }
+        _meshes[id] = mesh;
+    }
+
+    private void RemoveMeshById(ulong id)
+    {
+        if (_journaling)
+        {
+            bool existed = _meshes.TryGetValue(id, out SilkMeshData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.MeshById, id, null, 0, previous, existed));
+        }
+        _ = _meshes.Remove(id);
+    }
+
+    private void SetMeshByPath((string Path, int InstanceIndex) key, SilkMeshData mesh)
+    {
+        if (_journaling)
+        {
+            bool existed = _meshesByPath.TryGetValue(key, out SilkMeshData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.MeshByPath,
+                0,
+                key.Path,
+                key.InstanceIndex,
+                previous,
+                existed));
+        }
+        _meshesByPath[key] = mesh;
+    }
+
+    private void RemoveMeshByPath((string Path, int InstanceIndex) key)
+    {
+        if (_journaling)
+        {
+            bool existed = _meshesByPath.TryGetValue(key, out SilkMeshData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.MeshByPath,
+                0,
+                key.Path,
+                key.InstanceIndex,
+                previous,
+                existed));
+        }
+        _ = _meshesByPath.Remove(key);
+    }
+
+    private void SetPathByHash(ulong hash, string path)
+    {
+        if (_journaling)
+        {
+            bool existed = _pathsByHash.TryGetValue(hash, out string? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.PathByHash, hash, null, 0, previous, existed));
+        }
+        _pathsByHash[hash] = path;
+    }
+
+    private void RemovePathByHash(ulong hash)
+    {
+        if (_journaling)
+        {
+            bool existed = _pathsByHash.TryGetValue(hash, out string? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.PathByHash, hash, null, 0, previous, existed));
+        }
+        _ = _pathsByHash.Remove(hash);
+    }
+
+    private void SetPrototypeInstance(string path, int instanceIndex)
+    {
+        if (_journaling)
+        {
+            bool existed = _prototypeInstanceByPath.TryGetValue(path, out int previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.PrototypeInstance, 0, path, previous, null, existed));
+        }
+        _prototypeInstanceByPath[path] = instanceIndex;
+    }
+
+    private void RemovePrototypeInstance(string path)
+    {
+        if (_journaling)
+        {
+            bool existed = _prototypeInstanceByPath.TryGetValue(path, out int previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.PrototypeInstance, 0, path, previous, null, existed));
+        }
+        _ = _prototypeInstanceByPath.Remove(path);
+    }
+
+    private void RemoveAuthoredMesh(ulong id)
+    {
+        if (_journaling)
+        {
+            bool existed = _authoredMeshes.TryGetValue(id, out SilkMeshData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.AuthoredMesh, id, null, 0, previous, existed));
+        }
+        _ = _authoredMeshes.Remove(id);
+    }
+
+    private void SetMaterial(string path, SilkMaterialData material)
+    {
+        if (_journaling)
+        {
+            bool existed = _materials.TryGetValue(path, out SilkMaterialData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.Material, 0, path, 0, previous, existed));
+        }
+        _materials[path] = material;
+    }
+
+    private bool RemoveMaterial(string path)
+    {
+        if (_journaling)
+        {
+            bool existed = _materials.TryGetValue(path, out SilkMaterialData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.Material, 0, path, 0, previous, existed));
+        }
+        return _materials.Remove(path);
+    }
+
+    private void SetEnvironment(string path, SilkEnvironmentData environment)
+    {
+        if (_journaling)
+        {
+            bool existed = _environments.TryGetValue(
+                path,
+                out SilkEnvironmentData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.Environment, 0, path, 0, previous, existed));
+        }
+        _environments[path] = environment;
+    }
+
+    private bool RemoveEnvironment(string path)
+    {
+        if (_journaling)
+        {
+            bool existed = _environments.TryGetValue(
+                path,
+                out SilkEnvironmentData? previous);
+            _undo.Add(new SilkStateUndo(
+                SilkStateUndoKind.Environment, 0, path, 0, previous, existed));
+        }
+        return _environments.Remove(path);
+    }
+
+    /// <summary>
+    /// Records the instance list of one path once per page, and replaces it with
+    /// a copy so the page's edits never touch the list the journal holds.
+    /// </summary>
+    /// <remarks>
+    /// The list is mutated in place rather than replaced, so its previous
+    /// contents cannot be recovered from the dictionary entry the way every other
+    /// retained value can. Copying on the first touch of a page is what makes the
+    /// rollback exact without an undo entry per element, and the copy is taken
+    /// only once because every later edit of the same page already lands on it.
+    /// </remarks>
+    private void JournalInstanceList(string path)
+    {
+        if (!_journaling)
+        {
+            return;
+        }
+        _journaledInstancePaths ??= new HashSet<string>(StringComparer.Ordinal);
+        if (!_journaledInstancePaths.Add(path))
+        {
+            return;
+        }
+        bool existed = _instancesByPath.TryGetValue(
+            path,
+            out List<SilkMeshData>? previous);
+        _undo.Add(new SilkStateUndo(
+            SilkStateUndoKind.InstanceList,
+            0,
+            path,
+            0,
+            previous,
+            existed));
+        if (existed)
+        {
+            _instancesByPath[path] = [.. previous!];
+        }
+    }
+
+    /// <summary>Gets the retained instance list of one path, creating it once.</summary>
+    private List<SilkMeshData> RequireInstanceList(string path)
+    {
+        if (_instancesByPath.TryGetValue(path, out List<SilkMeshData>? instances))
+        {
+            return instances;
+        }
+        instances = [];
+        _instancesByPath[path] = instances;
+        return instances;
+    }
+
+    private enum SilkStateUndoKind
+    {
+        MeshById,
+        MeshByPath,
+        PathByHash,
+        PrototypeInstance,
+        AuthoredMesh,
+        Material,
+        Environment,
+        InstanceList,
+    }
+
+    private readonly record struct SilkStateUndo(
+        SilkStateUndoKind Kind,
+        ulong Key,
+        string? Path,
+        int Index,
+        object? Value,
+        bool Existed);
 
     private SilkMeshData CopyMeshFrom(SilkMeshUpsertCommand command)
     {
@@ -416,24 +1278,31 @@ public sealed class SilkSceneState
         PickIdentities.Upsert(mesh);
         if (replacedId is { } oldId)
         {
-            _meshes.Remove(oldId);
-            _ = _authoredMeshes.Remove(oldId);
+            RemoveMeshById(oldId);
+            RemoveAuthoredMesh(oldId);
         }
 
         // A page re-authors the geometry, so whatever rest pose was stashed for this mesh describes
         // a version the stage has replaced. Dropping it here is what lets a mesh that is still
         // driven capture the new authored geometry on its next replacement, and what makes a later
         // restore return the newest authored points rather than a stale copy.
-        _ = _authoredMeshes.Remove(mesh.Id);
-        _meshes[mesh.Id] = mesh;
-        _meshesByPath[pathKey] = mesh;
-        _pathsByHash[mesh.StableHash] = mesh.Path;
-
-        if (!_instancesByPath.TryGetValue(mesh.Path, out List<SilkMeshData>? instances))
+        RemoveAuthoredMesh(mesh.Id);
+        SetMeshById(mesh.Id, mesh);
+        SetMeshByPath(pathKey, mesh);
+        SetPathByHash(mesh.StableHash, mesh.Path);
+        GeometryRevision++;
+        // Only a pose that actually moved advances the deformation revision, so
+        // a page that republishes an unchanged rig -- which happens whenever a
+        // material or a transform dirties a skinned prim -- does not re-render
+        // every retained shadow map.
+        ulong previousIdentity = pathMesh?.DeformationIdentity ?? 0;
+        if (previousIdentity != mesh.DeformationIdentity)
         {
-            instances = [];
-            _instancesByPath[mesh.Path] = instances;
+            DeformationRevision++;
         }
+
+        JournalInstanceList(mesh.Path);
+        List<SilkMeshData> instances = RequireInstanceList(mesh.Path);
         int existing = instances.FindIndex(
             candidate => candidate.InstanceIndex == mesh.InstanceIndex);
         if (existing >= 0)
@@ -490,16 +1359,21 @@ public sealed class SilkSceneState
         }
 
         removedId = mesh.Id;
-        _meshesByPath.Remove(pathKey);
-        _meshes.Remove(mesh.Id);
+        RemoveMeshByPath(pathKey);
+        RemoveMeshById(mesh.Id);
+        GeometryRevision++;
+        if (mesh.DeformationIdentity != 0)
+        {
+            DeformationRevision++;
+        }
 
         // A removed mesh can never be restored, so its stashed rest pose retires with it rather
         // than keeping a copy of every mesh the simulation ever drove.
-        _ = _authoredMeshes.Remove(mesh.Id);
+        RemoveAuthoredMesh(mesh.Id);
 
         // Pick identity is per instance, so it retires with this record. The path hash index
         // is shared by every instance of a prototype, so it survives until the last one goes.
-        PickIdentities.Remove(mesh.Path, mesh.InstanceIndex);
+        _ = PickIdentities.Remove(mesh.Path, mesh.InstanceIndex);
         if (_prototypeInstanceByPath.TryGetValue(
                 removal.Path,
                 out int prototypeIndex) &&
@@ -508,18 +1382,19 @@ public sealed class SilkSceneState
             // The payload record is gone. A page always republishes the payload on the
             // prototype's new lowest index before retiring the old one, so this only clears
             // a pointer the page already replaced or the last instance of the path.
-            _prototypeInstanceByPath.Remove(removal.Path);
+            RemovePrototypeInstance(removal.Path);
         }
+        JournalInstanceList(removal.Path);
         if (_instancesByPath.TryGetValue(removal.Path, out List<SilkMeshData>? instances))
         {
             int instanceIndex = removal.InstanceIndex;
-            instances.RemoveAll(
+            _ = instances.RemoveAll(
                 candidate => candidate.InstanceIndex == instanceIndex);
             if (instances.Count == 0)
             {
-                _instancesByPath.Remove(removal.Path);
-                _prototypeInstanceByPath.Remove(removal.Path);
-                _pathsByHash.Remove(mesh.StableHash);
+                _ = _instancesByPath.Remove(removal.Path);
+                RemovePrototypeInstance(removal.Path);
+                RemovePathByHash(mesh.StableHash);
             }
         }
         return true;
@@ -532,10 +1407,12 @@ public sealed class SilkSceneState
 public sealed class SilkFrameState
 {
     internal const int MaximumLights = 8;
+    internal const int MaximumDomes = 8;
     private readonly double[] _view = new double[16];
     private readonly double[] _projection = new double[16];
     private readonly double[] _clipPlanes = new double[32];
     private readonly SilkFrameLight[] _lights = new SilkFrameLight[MaximumLights];
+    private readonly SilkFrameDome[] _domes = new SilkFrameDome[MaximumDomes];
     private Vector4 _ambientLight;
 
     /// <summary>Initializes an identity camera and viewport state.</summary>
@@ -568,12 +1445,49 @@ public sealed class SilkFrameState
 
     internal ReadOnlySpan<SilkFrameLight> Lights => _lights;
 
+    /// <summary>
+    /// Gets the bounded dome table the page published, which is the ordering a
+    /// per-prim dome link mask indexes.
+    /// </summary>
+    internal ReadOnlySpan<SilkFrameDome> Domes => _domes;
+
+    /// <summary>Gets the number of published dome table entries.</summary>
+    internal uint DomeCount { get; private set; }
+
     internal Vector4 AmbientLight => _ambientLight;
 
     internal uint LightCount { get; private set; }
 
     /// <summary>Gets the revision of the retained camera or viewport state.</summary>
     public ulong Revision { get; private set; }
+
+    /// <summary>
+    /// Replaces this state with a copy of another, in place and without
+    /// allocating.
+    /// </summary>
+    /// <remarks>
+    /// A page is applied as a transaction, and a frame command replaces the whole
+    /// retained camera rather than one field of it, so the only way to put a
+    /// rejected page's frame back is to have copied the previous one aside. The
+    /// copy is written into a state the scene keeps, so a page that is applied
+    /// and rolled back a thousand times allocates nothing.
+    /// </remarks>
+    internal void CopyFrom(SilkFrameState other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        Width = other.Width;
+        Height = other.Height;
+        ClipPlaneCount = other.ClipPlaneCount;
+        LightCount = other.LightCount;
+        DomeCount = other.DomeCount;
+        Revision = other.Revision;
+        _ambientLight = other._ambientLight;
+        other._view.CopyTo(_view.AsSpan());
+        other._projection.CopyTo(_projection.AsSpan());
+        other._clipPlanes.CopyTo(_clipPlanes.AsSpan());
+        other._lights.CopyTo(_lights.AsSpan());
+        other._domes.CopyTo(_domes.AsSpan());
+    }
 
     internal void Update(SilkFrameCommand command)
     {
@@ -612,11 +1526,45 @@ public sealed class SilkFrameState
             command.AmbientIntensity);
         changed |= _ambientLight != ambient;
         _ambientLight = ambient;
+        changed |= DomeCount != command.DomeCount;
+        DomeCount = command.DomeCount;
+        for (int domeIndex = 0; domeIndex < MaximumDomes; domeIndex++)
+        {
+            SilkFrameDome dome = SilkFrameDome.CopyFrom(command, domeIndex);
+            changed |= !_domes[domeIndex].Equals(dome);
+            _domes[domeIndex] = dome;
+        }
         if (changed)
         {
             Revision++;
         }
     }
+}
+
+/// <summary>
+/// One entry of the retained frame dome table: what a single dome light
+/// contributes on its own, and whether it contributes it as an image.
+/// </summary>
+/// <param name="AmbientColor">
+/// The dome's own summand of the scene-wide ambient term. Zero for a textured
+/// dome, whose emission arrives as an environment record instead.
+/// </param>
+/// <param name="Flags">Whether the entry is published, and whether it is textured.</param>
+internal readonly record struct SilkFrameDome(Vector3 AmbientColor, SilkFrameDomeState Flags)
+{
+    internal static SilkFrameDome CopyFrom(SilkFrameCommand command, int dome) =>
+        new(
+            new Vector3(
+                command.GetDomeAmbientColor(dome, 0),
+                command.GetDomeAmbientColor(dome, 1),
+                command.GetDomeAmbientColor(dome, 2)),
+            command.GetDomeFlags(dome));
+
+    /// <summary>Gets whether the entry names a published dome light.</summary>
+    internal bool IsPresent => (Flags & SilkFrameDomeState.Present) != 0;
+
+    /// <summary>Gets whether the dome carries an authored texture.</summary>
+    internal bool IsTextured => (Flags & SilkFrameDomeState.Textured) != 0;
 }
 
 internal readonly record struct SilkFrameLight(
@@ -674,14 +1622,26 @@ internal readonly record struct SilkFrameLight(
 
 internal static class SilkFrameUniformWriter
 {
-    internal const int ByteSize = 1056;
+    internal const int ByteSize = 1856;
+    private const int ShadowMatrixOffset = 1056;
+    private const int ShadowTileOffset = 1312;
+    private const int ShadowControlOffset = 1376;
+    private const int ShadowSlotOffset = 1440;
+    private const int EnvironmentControlOffset = 1568;
+    private const int DomeControlOffset = 1584;
+    private const int DomeAmbientOffset = 1600;
+    private const int DomeEnvironmentOffset = 1728;
 
     internal static void Write(
         SilkFrameState frame,
         Span<byte> destination,
         bool flipClipSpaceY,
         RenderOutputTransform outputTransform,
-        float exposure)
+        float exposure,
+        Vector3 environmentAmbient = default,
+        SilkShadowFrameBinding? shadows = null,
+        SilkEnvironmentFrameBinding environment = default,
+        SilkDomeAmbientTable domeAmbient = default)
     {
         if (destination.Length != ByteSize)
         {
@@ -723,12 +1683,28 @@ internal static class SilkFrameUniformWriter
         }
 
         Vector4 ambient = frame.AmbientLight;
+
+        // hdSilk keeps a textured dome out of its ambient accumulation, because
+        // the single ambient colour cannot describe an image. The resolved
+        // environment term is added back here, so the constants carry exactly one
+        // ambient contribution per dome and a textured dome is never counted both
+        // as an image and as an untextured approximation of itself.
+        //
+        // The aggregate and the per-dome table are accumulated by one function in
+        // one order, so a prim linked to every dome and a prim that sums its
+        // linked domes cannot disagree by a rounding: they are the same sum of the
+        // same summands. That matters exactly where it is least obvious -- a scene
+        // that interleaves untextured domes with textured ones that fell back --
+        // because there the producer's aggregate and the consumer's fallback sum
+        // group their terms differently, and the two groupings are not equal in
+        // float.
+        Vector3 aggregate = AccumulateDomeAmbient(frame, environmentAmbient, domeAmbient);
         WriteVector4(
             destination,
             208,
-            ambient.X,
-            ambient.Y,
-            ambient.Z,
+            Finite(aggregate.X, "ambient red"),
+            Finite(aggregate.Y, "ambient green"),
+            Finite(aggregate.Z, "ambient blue"),
             (float)Math.Min(frame.LightCount, (uint)SilkFrameState.MaximumLights));
         ReadOnlySpan<SilkFrameLight> lights = frame.Lights;
         for (int i = 0; i < SilkFrameState.MaximumLights; i++)
@@ -736,6 +1712,208 @@ internal static class SilkFrameUniformWriter
             WriteLight(destination, i, lights[i]);
         }
         WriteMatrixTranspose(destination, 992, eyeToWorld);
+        WriteShadows(destination, shadows ?? SilkShadowFrameBinding.None);
+
+        // hdSilk sets the ambient intensity to one when the scene authors an
+        // *untextured* dome, whatever colour that dome resolves to. That bit has
+        // nowhere else to go: the ambient slot's w component is repurposed here as
+        // the direct-light count, so without folding it into the environment block
+        // it would be discarded, and a black or zero-diffuse untextured dome would
+        // acquire a headlight it was never meant to have.
+        WriteEnvironment(
+            destination,
+            environment,
+            authoredAmbientDome: ambient.W > 0.5f);
+        WriteDomes(destination, frame, environment, domeAmbient);
+    }
+
+    /// <summary>
+    /// Accumulates the scene-wide ambient term from the same per-dome summands,
+    /// in the same order, that the dome table publishes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one place either quantity is produced. Summing a prim's linked domes
+    /// and reading this aggregate are then the same arithmetic on the same
+    /// values, so the two can only agree -- rather than agreeing on the scenes
+    /// that happen to make the producer's grouping and the consumer's grouping
+    /// coincide.
+    /// </para>
+    /// <para>
+    /// A page that publishes no dome table takes the pre-v21 grouping instead:
+    /// the producer's ambient colour plus the consumer's fallback sum. There is
+    /// no dome ordering to accumulate in on that page -- no dome holds a bit, and
+    /// every prim receives every dome -- and keeping that grouping is what makes
+    /// a scene whose domes are not addressable render the bytes it always did.
+    /// </para>
+    /// <para>
+    /// Where a dome table is published, the grouping is preserved wherever it is
+    /// observable. A scene of untextured domes adds exact zeros for the fallback
+    /// terms, and a scene of textured domes adds exact zeros for the producer's
+    /// terms, so both reproduce the pre-v21 value bit for bit; only a scene that
+    /// interleaves the two regroups, and that is the scene whose two groupings
+    /// were never equal in the first place.
+    /// </para>
+    /// </remarks>
+    private static Vector3 AccumulateDomeAmbient(
+        SilkFrameState frame,
+        Vector3 environmentAmbient,
+        SilkDomeAmbientTable domeAmbient)
+    {
+        uint domeCount = Math.Min(frame.DomeCount, (uint)SilkFrameState.MaximumDomes);
+        if (domeCount == 0)
+        {
+            // The pre-v21 grouping. environmentAmbient is already the whole
+            // fallback sum, unattributed terms included, so nothing is added to
+            // it here: every dome is unaddressable on this page by construction.
+            Vector4 ambient = frame.AmbientLight;
+            return new Vector3(
+                ambient.X + environmentAmbient.X,
+                ambient.Y + environmentAmbient.Y,
+                ambient.Z + environmentAmbient.Z);
+        }
+
+        Vector3 total = Vector3.Zero;
+        ReadOnlySpan<SilkFrameDome> domes = frame.Domes;
+        for (int dome = 0; dome < domeCount; dome++)
+        {
+            total += ResolveDomeAmbient(domes[dome], domeAmbient, dome);
+        }
+
+        // Zero on every page a consumer applies: an environment record whose dome
+        // index names no published dome is refused by the page preflight. Added
+        // anyway so the writer is total-preserving by construction rather than by
+        // an invariant stated somewhere else.
+        return total + domeAmbient.Unattributed;
+    }
+
+    /// <summary>Resolves what one dome bit contributes on its own.</summary>
+    private static Vector3 ResolveDomeAmbient(
+        SilkFrameDome dome,
+        SilkDomeAmbientTable fallback,
+        int index) =>
+        dome.IsPresent ? dome.AmbientColor + fallback.GetAmbient(index) : Vector3.Zero;
+
+    /// <summary>
+    /// Writes the bounded dome block: how many domes a per-prim mask addresses,
+    /// what each contributes on its own, and which environment group each reads.
+    /// </summary>
+    /// <remarks>
+    /// The per-dome ambient here and the scene-wide ambient above are two views of
+    /// one quantity, not two quantities: <see cref="AccumulateDomeAmbient"/> sums
+    /// exactly these entries in exactly this order. The shader still reads the
+    /// aggregate for a fully linked prim rather than re-summing, because a shader
+    /// compiler is free to reassociate a loop-carried sum that the CPU is not, and
+    /// the two must be equal by construction rather than by agreement.
+    /// </remarks>
+    private static void WriteDomes(
+        Span<byte> destination,
+        SilkFrameState frame,
+        SilkEnvironmentFrameBinding environment,
+        SilkDomeAmbientTable domeAmbient)
+    {
+        uint domeCount = Math.Min(frame.DomeCount, (uint)SilkFrameState.MaximumDomes);
+        WriteVector4(
+            destination,
+            DomeControlOffset,
+            domeCount,
+            environment.GroupCount,
+            environment.ComposedGroup,
+            environment.IrradianceSliceHeight);
+        ReadOnlySpan<SilkFrameDome> domes = frame.Domes;
+        for (int dome = 0; dome < SilkFrameState.MaximumDomes; dome++)
+        {
+            bool present = dome < domeCount && domes[dome].IsPresent;
+            Vector3 color = present
+                ? ResolveDomeAmbient(domes[dome], domeAmbient, dome)
+                : Vector3.Zero;
+            WriteVector4(
+                destination,
+                DomeAmbientOffset + (dome * 16),
+                Finite(color.X, "dome ambient red"),
+                Finite(color.Y, "dome ambient green"),
+                Finite(color.Z, "dome ambient blue"),
+                present ? 1 : 0);
+            WriteVector4(
+                destination,
+                DomeEnvironmentOffset + (dome * 16),
+                present ? environment.DomeGroups.GetGroup(dome) : SilkDomeGroupTable.NoGroup,
+                0,
+                0,
+                0);
+        }
+    }
+
+    /// <summary>
+    /// Writes the prefiltered environment block: whether the two environment maps
+    /// are live, and how many prefiltered specular levels they carry.
+    /// </summary>
+    /// <remarks>
+    /// A frame with no textured dome, or one whose every dome fell back to the
+    /// mean-radiance ambient term, writes zero here. The checked fragment then
+    /// never samples either map, so the block costs the same bytes for every
+    /// scene and an unsupported environment costs no shading work at all.
+    /// </remarks>
+    private static void WriteEnvironment(
+        Span<byte> destination,
+        SilkEnvironmentFrameBinding environment,
+        bool authoredAmbientDome)
+    {
+        WriteVector4(
+            destination,
+            EnvironmentControlOffset,
+            environment.Enabled ? 1f : 0f,
+            environment.SpecularSliceCount,
+            environment.SpecularSliceHeight,
+            environment.AuthoredSceneLighting || authoredAmbientDome ? 1f : 0f);
+    }
+
+    /// <summary>
+    /// Writes the resolved shadow block: one light-space clip matrix, atlas tile
+    /// and control vector per bound map, and the map slot each direct light reads.
+    /// </summary>
+    /// <remarks>
+    /// A frame that casts no shadow writes zeroed matrices, zeroed tiles, and
+    /// <c>-1</c> in every light's slot, so the checked fragment never reaches the
+    /// atlas at all and the block costs the same bytes for every scene.
+    /// </remarks>
+    private static void WriteShadows(
+        Span<byte> destination,
+        SilkShadowFrameBinding shadows)
+    {
+        for (int slot = 0; slot < SilkShadowCommand.MaximumMaps; slot++)
+        {
+            WriteMatrixTranspose(
+                destination,
+                ShadowMatrixOffset + (slot * 64),
+                slot < shadows.Count ? shadows.GetWorldToLightClip(slot) : default);
+            Vector4 tile = slot < shadows.Count ? shadows.GetTile(slot) : default;
+            WriteVector4(
+                destination,
+                ShadowTileOffset + (slot * 16),
+                Finite(tile.X, "shadow tile offset u"),
+                Finite(tile.Y, "shadow tile offset v"),
+                Finite(tile.Z, "shadow tile scale u"),
+                Finite(tile.W, "shadow tile scale v"));
+            Vector4 controls = slot < shadows.Count ? shadows.GetControls(slot) : default;
+            WriteVector4(
+                destination,
+                ShadowControlOffset + (slot * 16),
+                Finite(controls.X, "shadow depth bias"),
+                Finite(controls.Y, "shadow normal bias"),
+                Finite(controls.Z, "shadow filter radius"),
+                Finite(controls.W, "shadow texel size"));
+        }
+        for (int light = 0; light < SilkFrameState.MaximumLights; light++)
+        {
+            WriteVector4(
+                destination,
+                ShadowSlotOffset + (light * 16),
+                shadows.GetSlotForLight(light),
+                0,
+                0,
+                0);
+        }
     }
 
     private static void WriteLight(
@@ -872,6 +2050,15 @@ internal static class SilkFrameUniformWriter
         return (float)value;
     }
 
+    private static float Finite(float value, string name)
+    {
+        if (!float.IsFinite(value))
+        {
+            throw new InvalidDataException($"The frame {name} value is invalid.");
+        }
+        return value;
+    }
+
     private static void WriteSingle(Span<byte> destination, int offset, float value) =>
         BinaryPrimitives.WriteInt32LittleEndian(
             destination.Slice(offset, sizeof(float)),
@@ -909,6 +2096,10 @@ public sealed class SilkMeshData
     private readonly double[] _transform;
     private readonly float[] _authoredNormals = [];
     private readonly SilkVertexAttributeData[] _attributes = [];
+    private readonly int[] _pointOrigins = [];
+    private readonly int[] _cornerEdges = [];
+    private readonly SilkInstancerContextEntry[]? _instancerContext;
+    private readonly SilkSubprimTableCache _subprimTables = new();
 
     /// <summary>Initializes immutable retained mesh data.</summary>
     public SilkMeshData(
@@ -1111,6 +2302,144 @@ public sealed class SilkMeshData
     /// </summary>
     public ReadOnlyMemory<float> AuthoredNormals => _authoredNormals;
 
+    /// <summary>
+    /// Gets the bounded deformation rig published beside this record's points,
+    /// or <see langword="null"/> when the prim published none.
+    /// </summary>
+    /// <remarks>
+    /// The rig never replaces <see cref="Points"/> or
+    /// <see cref="AuthoredNormals"/>: hdSilk resolves the supported UsdSkel
+    /// subset itself and publishes the result, so a consumer that ignores the
+    /// rig draws exactly the same surface. It is carried so a consumer that
+    /// wants to evaluate the deformation itself has every input bounded and in
+    /// bulk, without a second page or a per-element call.
+    /// </remarks>
+    public SilkMeshDeformationData? Deformation { get; internal init; }
+
+    /// <summary>
+    /// Gets what a deformed prim did not publish a rig for. It is non-zero only
+    /// when the prim was deformed and hdSilk refused to describe the rig, which
+    /// is a diagnosis rather than a defect: the deformed points travelled
+    /// regardless.
+    /// </summary>
+    public SilkDeformationUnsupportedFeatures DeformationUnsupportedFeatures
+    {
+        get;
+        internal init;
+    }
+
+    /// <summary>
+    /// Gets the identity of the published rig, or zero when there is none. It
+    /// changes with every pose, which is what lets a retained deformation
+    /// resource and a retained shadow map be keyed on it.
+    /// </summary>
+    public ulong DeformationIdentity => Deformation?.Identity ?? 0;
+
+    /// <summary>
+    /// Gets the pick targets this record answers with the identity the scene
+    /// authored.
+    /// </summary>
+    /// <remarks>
+    /// A cleared flag is a refusal rather than missing data:
+    /// <see cref="SubprimUnsupported"/> names why the delegate could not map the
+    /// emitted components onto authored ones, and a consumer must refuse the
+    /// target rather than returning an emitted index as authored identity.
+    /// </remarks>
+    public SilkSubprimIdentity SubprimIdentity { get; internal init; }
+
+    /// <summary>Gets why this record refuses an exact subprim pick target.</summary>
+    public SilkSubprimUnsupportedReason SubprimUnsupported { get; internal init; }
+
+    /// <summary>
+    /// Gets the authored point every emitted vertex came from, or an empty span
+    /// when <see cref="SubprimIdentity"/> does not include
+    /// <see cref="SilkSubprimIdentity.Point"/>.
+    /// </summary>
+    /// <remarks>
+    /// An entry is -1 for an emitted vertex with no authored origin. The table
+    /// is what makes a point pick answer with one authored index even when a
+    /// face-varying attribute duplicated that point across every corner it
+    /// touches.
+    /// </remarks>
+    public ReadOnlyMemory<int> PointOrigins
+    {
+        get => _pointOrigins;
+        internal init => _pointOrigins = value.ToArray();
+    }
+
+    /// <summary>
+    /// Sets the authored point-origin table without copying it, for a
+    /// lightweight instance record that shares its prototype's table.
+    /// </summary>
+    internal int[] PointOriginArray
+    {
+        get => _pointOrigins;
+        private init => _pointOrigins = value;
+    }
+
+    /// <summary>
+    /// Gets the authored mesh edge every emitted primitive corner spans, or an
+    /// empty span when <see cref="SubprimIdentity"/> does not include
+    /// <see cref="SilkSubprimIdentity.Edge"/>.
+    /// </summary>
+    /// <remarks>
+    /// Entry 3t+c of a triangle list is the edge from corner c to corner
+    /// (c + 1) % 3 of triangle t, and an entry is -1 when that corner is a
+    /// triangulation diagonal the scene never authored. A diagonal is therefore
+    /// never exposed as an authored edge.
+    /// </remarks>
+    public ReadOnlyMemory<int> CornerEdges
+    {
+        get => _cornerEdges;
+        internal init => _cornerEdges = value.ToArray();
+    }
+
+    /// <summary>
+    /// Sets the authored corner-edge table without copying it, for a lightweight
+    /// instance record that shares its prototype's table.
+    /// </summary>
+    internal int[] CornerEdgeArray
+    {
+        get => _cornerEdges;
+        private init => _cornerEdges = value;
+    }
+
+    /// <summary>Gets one past the largest authored edge index this record names.</summary>
+    public int AuthoredEdgeCount { get; internal init; }
+
+    /// <summary>Gets one past the largest authored point index this record names.</summary>
+    public int AuthoredPointCount { get; internal init; }
+
+    /// <summary>
+    /// Gets the absolute path of the owning instancer, empty when the prim has
+    /// no instancer.
+    /// </summary>
+    /// <remarks>
+    /// This is the authoritative instance identity a pick reports.
+    /// <see cref="InstanceId"/> is a hash and cannot be inverted into a path.
+    /// </remarks>
+    public string InstancerPath { get; internal init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the complete ordered instancing chain, outermost level first and
+    /// innermost last. Empty when the prim has no instancer.
+    /// </summary>
+    /// <remarks>
+    /// A nested instance has one index per level, and
+    /// <see cref="InstanceIndex"/> is a composed ordinal in an hdSilk-private
+    /// space rather than any level's own index, so the pair
+    /// (<see cref="InstancerPath"/>, <see cref="InstanceIndex"/>) describes a
+    /// scene instance only when the chain has exactly one level. This chain is
+    /// the authoritative description for every depth.
+    /// </remarks>
+    public IReadOnlyList<SilkInstancerContextEntry> InstancerContext
+    {
+        get => _instancerContext ?? [];
+        internal init => _instancerContext = value is null or { Count: 0 }
+            ? null
+            : [.. value];
+    }
+
     /// <summary>Gets the bound material path, empty when the mesh has none.</summary>
     public string MaterialPath { get; } = string.Empty;
 
@@ -1242,9 +2571,22 @@ public sealed class SilkMeshData
             TopologyFingerprint,
             DoubleSided,
             CullStyle,
-            [],
+            authoredNormals: [],
             MaterialPath,
-            _attributes);
+            _attributes)
+        {
+            // Simulation replaces the point positions, not the topology, so
+            // every emitted vertex still came from the same authored point and
+            // every corner still spans the same authored edge.
+            SubprimIdentity = SubprimIdentity,
+            SubprimUnsupported = SubprimUnsupported,
+            PointOrigins = _pointOrigins,
+            CornerEdges = _cornerEdges,
+            AuthoredEdgeCount = AuthoredEdgeCount,
+            AuthoredPointCount = AuthoredPointCount,
+            InstancerPath = InstancerPath,
+            InstancerContext = InstancerContext
+        };
 
     /// <summary>Gets a defensive read-only view of triangle indices.</summary>
     public ReadOnlyMemory<uint> Indices => _indices;
@@ -1260,6 +2602,32 @@ public sealed class SilkMeshData
 
     /// <summary>Gets the emitted triangle count.</summary>
     public int TriangleCount => _triangleSubprims.Length;
+
+    /// <summary>
+    /// Gets the derivation cache one prototype shares with every lightweight
+    /// instance record of it.
+    /// </summary>
+    /// <remarks>
+    /// A lightweight instance reuses the prototype's emitted topology and its
+    /// ABI v22 identity tables verbatim, so the edge and point draw tables
+    /// derived from them are the same tables. Sharing the cache, rather than the
+    /// derived result, keeps the derivation lazy while still paying for it once
+    /// per prototype instead of once per instance.
+    /// </remarks>
+    internal SilkSubprimTableCache SubprimTableCache
+    {
+        get => _subprimTables;
+        private init => _subprimTables = value;
+    }
+
+    /// <summary>Gets the shared derived edge and point draw tables.</summary>
+    internal SilkSubprimTables SubprimTables => _subprimTables.Resolve(this);
+
+    /// <summary>Gets the retained emitted-primitive subprim table without copying it.</summary>
+    internal int[] TriangleSubprimArray => _triangleSubprims;
+
+    /// <summary>Gets the retained instancing chain without copying it.</summary>
+    internal SilkInstancerContextEntry[]? InstancerContextArray => _instancerContext;
 
     internal static SilkMeshData CopyFrom(SilkMeshUpsertCommand command)
     {
@@ -1309,6 +2677,22 @@ public sealed class SilkMeshData
         for (int i = 0; i < transform.Length; i++)
         {
             transform[i] = command.GetTransformElement(i);
+        }
+
+        int[] pointOrigins = command.PointOriginCount == 0
+            ? []
+            : new int[command.PointOriginCount];
+        for (int index = 0; index < pointOrigins.Length; index++)
+        {
+            pointOrigins[index] = command.GetPointOrigin(index);
+        }
+
+        int[] cornerEdges = command.CornerEdgeCount == 0
+            ? []
+            : new int[command.CornerEdgeCount];
+        for (int index = 0; index < cornerEdges.Length; index++)
+        {
+            cornerEdges[index] = command.GetCornerEdge(index);
         }
 
         float[] authoredNormals = [];
@@ -1373,7 +2757,19 @@ public sealed class SilkMeshData
             command.CullStyle,
             authoredNormals,
             command.MaterialPath,
-            attributes);
+            attributes)
+        {
+            Deformation = command.CopyDeformation(),
+            DeformationUnsupportedFeatures = command.DeformationUnsupportedFeatures,
+            SubprimIdentity = command.SubprimIdentity,
+            SubprimUnsupported = command.SubprimUnsupported,
+            PointOrigins = pointOrigins,
+            CornerEdges = cornerEdges,
+            AuthoredEdgeCount = command.AuthoredEdgeCount,
+            AuthoredPointCount = command.AuthoredPointCount,
+            InstancerPath = command.InstancerPath,
+            InstancerContext = [.. command.InstancerContext]
+        };
     }
 
     internal static SilkMeshData CopyInstanceFrom(
@@ -1419,17 +2815,49 @@ public sealed class SilkMeshData
             command.InstanceIndex,
             prototype.TopologyKind,
             prototype.TopologyRevision,
-            prototype.Points.ToArray(),
-            prototype.Indices.ToArray(),
-            prototype.TriangleSubprims.ToArray(),
+            // Every prototype payload array is shared, never copied. A retained
+            // mesh is immutable and only ever hands out read-only views of these
+            // arrays, so sharing is safe -- and copying them made a prototype
+            // with a million points cost a million floats per instance, which is
+            // the O(points x instances) growth an instance reference exists to
+            // avoid in the first place.
+            prototype._points,
+            prototype._indices,
+            prototype._triangleSubprims,
             color,
             transform,
             prototype.TopologyFingerprint,
             command.DoubleSided,
             command.CullStyle,
-            prototype.AuthoredNormals.ToArray(),
+            prototype._authoredNormals,
             prototype.MaterialPath,
-            [.. prototype.Attributes]);
+            prototype._attributes)
+        {
+            // The rig belongs to the prototype, so every instance of it reuses
+            // the same one exactly as it reuses the same geometry.
+            Deformation = prototype.Deformation,
+            DeformationUnsupportedFeatures = prototype.DeformationUnsupportedFeatures,
+            // Subprim identity is a property of the prototype's authored
+            // topology, so an instance composes the prototype's authored face,
+            // edge and point identity with its own instance index rather than
+            // publishing a second, possibly disagreeing table.
+            SubprimIdentity = prototype.SubprimIdentity,
+            SubprimUnsupported = prototype.SubprimUnsupported,
+            PointOriginArray = prototype._pointOrigins,
+            CornerEdgeArray = prototype._cornerEdges,
+            AuthoredEdgeCount = prototype.AuthoredEdgeCount,
+            AuthoredPointCount = prototype.AuthoredPointCount,
+            // The derived edge and point draw tables follow the shared identity
+            // tables, so the whole prototype family derives them at most once.
+            SubprimTableCache = prototype.SubprimTableCache,
+            // The instancer path and the ordered chain are this record's own
+            // instance identity rather than the prototype payload's, so they
+            // come from the command. Two instances of one prototype differ in
+            // exactly this: the prototype's geometry is shared and its place in
+            // the instancing hierarchy is not.
+            InstancerPath = command.InstancerPath,
+            InstancerContext = [.. command.InstancerContext]
+        };
     }
 }
 
@@ -1549,25 +2977,127 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     private readonly ISilkGraphicsDevice _device;
     private readonly Func<string, bool, SilkDecodedImage> _imageDecoder;
+    private readonly Func<string, SilkImageDescription> _imageDescriber;
     private readonly Func<string, IReadOnlyList<SilkUdimTile>> _udimResolver;
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
+    private ulong _deformationDeviceGeneration;
+    private ulong _deformationDispatches;
+    private ulong _deformationFallbacks;
+    private bool _deformationDisabled;
+    private Func<Exception>? _deformationSetupFailureForTesting;
+    private Func<Exception>? _deformationDispatchFailureForTesting;
     private readonly Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> _geometries =
         [];
-    private readonly Dictionary<string, SurfaceBuffer> _surfaceBuffers =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<SurfaceBufferKey, SurfaceBuffer> _surfaceBuffers = [];
+    // The packed masks the retained link table can still return, rebuilt whenever
+    // its revision moves. It is the set a cached per-mask surface block has to be
+    // in to survive: a live-edited collection walks through many masks, and
+    // nothing else ever drops the blocks it leaves behind.
+    private readonly HashSet<uint> _liveLinkMasks = [];
+    private ulong _surfaceLinkRevision = ulong.MaxValue;
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _textures = [];
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _failedTextures = [];
     private readonly Dictionary<string, TextureCacheEntry> _volumeTextures =
         new(StringComparer.Ordinal);
+    // Decoded displacement height fields, keyed by the identity that also keys the
+    // retained geometry they displaced. Bounded by MaximumDisplacementImageBytes
+    // and released with the resource.
+    private readonly Dictionary<ulong, DisplacementCacheEntry> _displacementImages = [];
+    private readonly Dictionary<DisplacedPrimKey, DisplacementVerdict> _displacementVerdicts =
+        [];
+    private ulong _displacementImageBytes;
+    private ulong _displacementUseClock;
+    private ulong _displacementResolves;
+    private ulong _displacementSampledPoints;
+    private ulong _displacementImageDecodes;
+    private ulong _geometryCacheHits;
+    private ulong _deformationDisplacementFallbacks;
+    private ulong _displacementVerdictRevision;
+    private ulong _displacementReportedRevision = ulong.MaxValue;
+    private ulong _displacementReportedShadowRevision = ulong.MaxValue;
+    private int _maximumDisplacedPoints = SilkDisplacementField.MaximumDisplacedPoints;
+    private int _maximumDisplacementTexels = SilkDisplacementField.MaximumImageTexels;
     private readonly Dictionary<SilkSamplerDescriptor, ISilkGraphicsSampler> _samplers = [];
     private readonly Dictionary<string, RenderDiagnostic> _diagnostics =
         new(StringComparer.Ordinal);
-    private ISilkGraphicsBuffer? _defaultSurfaceBuffer;
     private ISilkGraphicsBuffer? _frameBuffer;
     private readonly byte[] _frameBytes = new byte[SilkFrameUniformWriter.ByteSize];
     private ulong _frameRevision = ulong.MaxValue;
+    private ulong _frameEnvironmentRevision = ulong.MaxValue;
+    private ulong _frameEnvironmentBindingRevision = ulong.MaxValue;
+    private ulong _shadowDiagnosticRevision = ulong.MaxValue;
+    private ulong _shadowDiagnosticTableRevision = ulong.MaxValue;
+    private ulong _shadowCasterDiagnosticRevision = ulong.MaxValue;
+    private ulong _frameShadowRevision = ulong.MaxValue;
     private RenderOutputTransform _frameOutputTransform = (RenderOutputTransform)(-1);
     private float _frameExposure = float.NaN;
+    private readonly SilkEnvironmentMeanRadianceCache _environmentMeanRadiance;
+    private readonly SilkEnvironmentLightingCache _environmentLighting;
+    private readonly SilkEnvironmentPrefilterOptions _environmentPrefilterOptions;
+    private readonly Func<string, SilkEnvironmentAssetStamp> _environmentStampReader;
+    private readonly string _environmentIdentityContext;
+    private static long _environmentContextSequence;
+    private readonly bool _environmentDescriberAvailable;
+    private readonly Dictionary<
+        (string Asset, SilkEnvironmentAssetStamp Stamp),
+        SilkImageDescription?> _environmentDescriptions = [];
+    private SilkEnvironmentMaps? _environmentPayload;
+    private readonly HashSet<string> _environmentLitDomes = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The domes whose source the prefilter could not read on the last resolve.
+    /// </summary>
+    /// <remarks>
+    /// A dome lands here only after it was accepted as a candidate and then failed
+    /// inside the source stream, so it excludes the domes refused for a reason
+    /// that is a property of the scene -- an unsupported mapping, an authored
+    /// control -- which would fail identically on every retry.
+    /// </remarks>
+    private readonly HashSet<string> _environmentPrefilterSkipped =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The prefilter failures already retried once, keyed by dome and asset state.
+    /// </summary>
+    /// <remarks>
+    /// Bounds the retry. A source the prefilter refuses and the fallback reads is
+    /// a contradiction worth resolving once; a source that reproduces the
+    /// contradiction against the same bytes is a real disagreement between the two
+    /// paths, and retrying it every frame would decode the image forever.
+    /// </remarks>
+    private readonly HashSet<string> _environmentPrefilterRetried =
+        new(StringComparer.Ordinal);
+
+    private ISilkGraphicsTexture? _environmentIrradianceTexture;
+    private ISilkGraphicsTexture? _environmentSpecularTexture;
+    private ISilkGraphicsTexture? _environmentBrdfTexture;
+    private ISilkGraphicsTexture? _environmentStandIn;
+    private ISilkGraphicsSampler? _environmentSampler;
+    private ISilkGraphicsSampler? _environmentBrdfSampler;
+    private SilkEnvironmentFrameBinding _environmentBinding = SilkEnvironmentFrameBinding.None;
+    private ulong _environmentBindingRevision;
+    private string? _environmentUploadedIdentity;
+    private string _environmentAssetRevision = string.Empty;
+    private bool _environmentMapsUploaded;
+    private bool _environmentBrdfUploaded;
+    // Recorded but not yet known to have executed. A submission that fails, or a
+    // command list that is abandoned, resets these rather than the committed
+    // flags above, so the next frame records the copy again.
+    private bool _environmentMapsUploadPending;
+    private bool _environmentBrdfUploadPending;
+    private ulong _environmentPendingUploadBytes;
+    private bool _environmentAuthoredSceneLighting;
+    private ulong _environmentLightingRevision = ulong.MaxValue;
+    private ulong _environmentLightingDeviceGeneration = ulong.MaxValue;
+    private ulong _environmentUploadBytes;
+    private Vector3 _environmentAmbient;
+    private SilkDomeAmbientTable _environmentDomeAmbient;
+    private bool _environmentPerDomeGroups;
+    private ulong _environmentRevision;
+    private string _environmentFallbackRevision = string.Empty;
+    private ulong _environmentAmbientRevision;
+    private ulong _frameEnvironmentAmbientRevision = ulong.MaxValue;
+    private bool _environmentsResolved;
     private readonly SilkTextureResidencyOptions _residencyOptions;
     private ulong _textureUseClock;
     private ulong _textureEntrySequence;
@@ -1586,6 +3116,20 @@ public sealed class SilkSceneGpuResources : IDisposable
     private readonly record struct SurfaceBuffer(
         ISilkGraphicsBuffer? Buffer,
         ulong MaterialHash);
+
+    /// <summary>
+    /// Identity of one packed surface constant block.
+    /// </summary>
+    /// <remarks>
+    /// The block is a property of the material, so it is shared by every prim
+    /// bound to that material -- except for the light-link masks, which are a
+    /// property of the prim. Keying by both keeps the shared case exactly as it
+    /// was, because a scene with no authored linking resolves every prim to the
+    /// same masks and therefore to a single block per material, while a linked
+    /// scene allocates one block per distinct mask the material is drawn with.
+    /// The material path is empty for the shared default block.
+    /// </remarks>
+    private readonly record struct SurfaceBufferKey(string MaterialPath, uint Masks);
 
     /// <summary>
     /// A retained texture and its decoded-CPU/GPU-resident accounting. <see cref="Pixels"/> stays
@@ -1659,7 +3203,12 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
-        : this(device, SilkNativeImageDecoder.Decode, SilkNativeImageDecoder.ResolveUdimTiles)
+        : this(
+            device,
+            SilkNativeImageDecoder.Decode,
+            SilkNativeImageDecoder.ResolveUdimTiles,
+            residencyOptions: null,
+            imageDescriber: SilkNativeImageDecoder.Describe)
     {
     }
 
@@ -1677,7 +3226,8 @@ public sealed class SilkSceneGpuResources : IDisposable
             device,
             SilkNativeImageDecoder.Decode,
             SilkNativeImageDecoder.ResolveUdimTiles,
-            RequireResidencyOptions(residencyOptions))
+            RequireResidencyOptions(residencyOptions),
+            imageDescriber: SilkNativeImageDecoder.Describe)
     {
     }
 
@@ -1688,18 +3238,101 @@ public sealed class SilkSceneGpuResources : IDisposable
         return options;
     }
 
+    /// <summary>
+    /// Derives the prefilter's source budgets from the one decoded-image ceiling a
+    /// caller configures.
+    /// </summary>
+    /// <remarks>
+    /// The prefiltered path and the mean-radiance fallback have to accept the same
+    /// images. Two independently configured per-image ceilings would let a dome be
+    /// small enough to prefilter and too large to fall back to, or the reverse --
+    /// and both are states with no correct behaviour, because the fallback is what
+    /// the prefilter degrades to. So the per-image ceiling is the decode budget
+    /// itself.
+    /// <para>
+    /// The aggregate ceiling is <em>not</em> derived from it. Deriving it as
+    /// "per-image times the dome bound" made it a restatement of the per-image
+    /// rule rather than a second bound: it could never refuse a set whose members
+    /// each fit, which is exactly the case it exists to refuse. It is the smaller
+    /// of its own stated default and that product, so raising the per-image
+    /// ceiling cannot raise the total this renderer will decode past the total it
+    /// declares, and lowering the per-image ceiling still lowers the total.
+    /// </para>
+    /// </remarks>
+    private static SilkEnvironmentPrefilterOptions DeriveEnvironmentOptions(
+        ulong decodeByteBudget)
+    {
+        ulong product = decodeByteBudget <=
+            ulong.MaxValue / (ulong)SilkEnvironmentPrefilterOptions.DefaultMaximumDomeLights
+            ? decodeByteBudget *
+                (ulong)SilkEnvironmentPrefilterOptions.DefaultMaximumDomeLights
+            : ulong.MaxValue;
+        return SilkEnvironmentPrefilterOptions.Default with
+        {
+            MaximumSourceBytes = decodeByteBudget,
+            MaximumAggregateSourceBytes = Math.Min(
+                SilkEnvironmentPrefilterOptions.DefaultMaximumAggregateSourceBytes,
+                product),
+        };
+    }
+
     internal SilkSceneGpuResources(
         ISilkGraphicsDevice device,
         Func<string, bool, SilkDecodedImage> imageDecoder,
         Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
-        SilkTextureResidencyOptions? residencyOptions = null)
+        SilkTextureResidencyOptions? residencyOptions = null,
+        ulong environmentDecodeByteBudget =
+            SilkEnvironmentMeanRadianceCache.DefaultDecodeByteBudget,
+        Func<string, SilkImageDescription>? imageDescriber = null,
+        SilkEnvironmentPrefilterOptions? environmentPrefilterOptions = null,
+        Func<string, SilkEnvironmentAssetStamp>? environmentStampReader = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(imageDecoder);
         _device = device;
         _imageDecoder = imageDecoder;
+        // A describer reads an image's declared shape without decoding it, which
+        // is what lets the displacement budgets be enforced before an allocation.
+        // A caller that supplied its own decoder but no describer gets one backed
+        // by that decoder: it is the only honest shape for those pixels, and a
+        // case that needs the preflight measured on its own supplies both.
+        _imageDescriber = imageDescriber ?? (asset =>
+        {
+            SilkDecodedImage decoded = imageDecoder(asset, false);
+            return new SilkImageDescription(decoded.Width, decoded.Height, decoded.Format);
+        });
         _udimResolver = udimResolver ?? SilkNativeImageDecoder.ResolveUdimTiles;
         _residencyOptions = residencyOptions ?? SilkTextureResidencyOptions.Default;
+        _environmentMeanRadiance = new SilkEnvironmentMeanRadianceCache(
+            environmentDecodeByteBudget);
+        _environmentPrefilterOptions =
+            environmentPrefilterOptions ?? DeriveEnvironmentOptions(environmentDecodeByteBudget);
+        _environmentPrefilterOptions.Validate();
+        _environmentLighting = new SilkEnvironmentLightingCache();
+        // The stamp is what makes an edited HDR invalidate a prefiltered
+        // environment whose path never changed. A caller that supplies its own
+        // decoder is not necessarily reading the local file system at all, so it
+        // supplies its own stamp reader too rather than being silently measured
+        // against files that are not there.
+        _environmentStampReader = environmentStampReader ?? SilkEnvironmentAssetStamp.Read;
+        // Whether a *real* describer exists, as opposed to the decoder-backed
+        // stand-in the constructor synthesizes above. The environment path reads
+        // an image's shape to decide a mapping and a colour space, and doing that
+        // through a describer that decodes would triple the decode cost of every
+        // dome. A harness that supplies only a decoder therefore gets no
+        // observation at all -- which is the honest answer, and which makes an
+        // `automatic` mapping refuse rather than guess.
+        _environmentDescriberAvailable = imageDescriber is not null;
+        // The context half of the cache identity. It names the backend and this
+        // resource set's own instance, so a prefiltered environment can never be
+        // served to a different device or a substituted decoder: both are fixed
+        // for the lifetime of one instance, and the instance number separates two
+        // that would otherwise compose the same string. It is deliberately not
+        // derived by reflecting over the decoder delegate, which would be a
+        // trimming and NativeAOT hazard for a value that only has to be distinct.
+        _environmentIdentityContext = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{device.Backend}/{Interlocked.Increment(ref _environmentContextSequence)}");
         SilkManagedDiagnostics.GpuSceneCreated();
     }
 
@@ -1718,11 +3351,240 @@ public sealed class SilkSceneGpuResources : IDisposable
     /// <summary>
     /// Discards failed texture fallbacks so the next render retries assets that may have changed.
     /// </summary>
+    /// <remarks>
+    /// Only what this overload can put back is discarded. The decoded height
+    /// fields are dropped, because the next resolution rebuilds them from the
+    /// same authored inputs; the retained displaced geometry and its verdicts are
+    /// *not*, because rebuilding one needs the scene the mesh record and its
+    /// material came from and this overload does not have it. Discarding them
+    /// here would leave a displaced prim drawn from vertices whose verdict the
+    /// renderer had thrown away and could not restate. Use
+    /// <see cref="RetryFailedTextures(SilkSceneState)"/> to re-resolve them.
+    /// </remarks>
     public void RetryFailedTextures()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ClearFailedTextureCache();
         RemoveTextureDiagnostics();
+        DiscardDisplacementImages();
+    }
+
+    /// <summary>
+    /// Discards failed texture fallbacks and re-resolves every displaced prim, so
+    /// a repaired asset reaches the next render.
+    /// </summary>
+    /// <param name="scene">The retained scene the prims were published from.</param>
+    /// <remarks>
+    /// <para>
+    /// The parameterless overload cannot do the second half: a displaced prim's
+    /// vertices are baked into its retained geometry, so a repaired height field
+    /// only reaches the image if that geometry is rebuilt, and rebuilding one
+    /// needs the scene the mesh record and its material came from. Both the
+    /// retained height fields and the retained geometries that consumed them have
+    /// to stop satisfying the fast path, because a repair that leaves the file's
+    /// own stamp unchanged -- a permission fix, a resolver that started answering
+    /// -- would otherwise resolve to the identity that already failed.
+    /// </para>
+    /// <para>
+    /// The whole retry is one transaction. Nothing a rollback could not put back
+    /// is destroyed before every replacement exists: the failed-texture entries
+    /// are moved aside rather than disposed, and the diagnostics, decoded height
+    /// fields, verdicts and published geometry keys the rebuild displaces are
+    /// captured first. If any replacement fails to build -- a decode that throws,
+    /// an allocation the device refuses -- the partial work is disposed, every
+    /// captured value is put back exactly, and neither revision moves, so a
+    /// caller's retained selection and the shadow atlas still name live resources
+    /// and a failed retry is indistinguishable from one that never ran. Only after
+    /// every replacement exists is membership published, the two revisions
+    /// advanced, and the retired resources released.
+    /// </para>
+    /// <para>
+    /// Cumulative work counters -- geometry builds, displacement resolves, image
+    /// decodes -- are deliberately *not* rolled back. They count work this call
+    /// actually performed, and a failed attempt performed it.
+    /// </para>
+    /// </remarks>
+    public void RetryFailedTextures(SilkSceneState scene)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(scene);
+
+        RetryTransaction transaction = BeginRetryTransaction();
+        var replacements = new List<(ulong Id, SilkMeshGpuResource Resource)>();
+        try
+        {
+            foreach (ulong id in transaction.DisplacedMeshIds)
+            {
+                if (scene.Meshes.TryGetValue(id, out SilkMeshData? mesh))
+                {
+                    replacements.Add((id, CreateMesh(scene, mesh)));
+                }
+            }
+        }
+        catch
+        {
+            foreach ((ulong _, SilkMeshGpuResource resource) in replacements)
+            {
+                DisposeMesh(resource);
+            }
+            RollBackRetryTransaction(transaction);
+            throw;
+        }
+
+        // Past this point nothing can fail, so the commit is a straight line:
+        // membership first, then the revisions every retained consumer validates
+        // against, and only then the disposals.
+        var retired = new List<SilkMeshGpuResource>(replacements.Count);
+        foreach ((ulong id, SilkMeshGpuResource resource) in replacements)
+        {
+            if (_meshes.TryGetValue(id, out SilkMeshGpuResource? previous))
+            {
+                retired.Add(previous);
+            }
+            _meshes[id] = resource;
+        }
+        Revision++;
+        scene.AdvanceGeometryRevisionForRebuild();
+        foreach (SilkMeshGpuResource resource in retired)
+        {
+            DisposeMesh(resource);
+        }
+        CommitRetryTransaction(transaction);
+        RefreshDisplacementDiagnostics(scene);
+    }
+
+    /// <summary>
+    /// Everything a retry displaces, captured so a failed retry can put it back.
+    /// </summary>
+    /// <remarks>
+    /// The failed-texture entries are carried by value rather than by reference
+    /// because they own GPU resources: disposing them up front is what a rollback
+    /// could not undo, so they are moved out of the live cache and disposed only
+    /// once the retry has committed.
+    /// </remarks>
+    private readonly record struct RetryTransaction(
+        List<ulong> DisplacedMeshIds,
+        Dictionary<TextureCacheKey, TextureCacheEntry> FailedTextures,
+        Dictionary<string, RenderDiagnostic> Diagnostics,
+        Dictionary<ulong, DisplacementCacheEntry> DisplacementImages,
+        Dictionary<DisplacedPrimKey, DisplacementVerdict> Verdicts,
+        Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> Geometries,
+        ulong DisplacementImageBytes,
+        ulong DisplacementUseClock,
+        ulong VerdictRevision,
+        ulong ReportedRevision,
+        ulong ReportedShadowRevision);
+
+    private RetryTransaction BeginRetryTransaction()
+    {
+        var displaced = new List<ulong>();
+        foreach (KeyValuePair<ulong, SilkMeshGpuResource> pair in _meshes)
+        {
+            if (pair.Value.Geometry.Key.DisplacementIdentity != 0)
+            {
+                displaced.Add(pair.Key);
+            }
+        }
+
+        var transaction = new RetryTransaction(
+            displaced,
+            new Dictionary<TextureCacheKey, TextureCacheEntry>(_failedTextures),
+            new Dictionary<string, RenderDiagnostic>(_diagnostics, StringComparer.Ordinal),
+            new Dictionary<ulong, DisplacementCacheEntry>(_displacementImages),
+            new Dictionary<DisplacedPrimKey, DisplacementVerdict>(_displacementVerdicts),
+            _geometries.ToDictionary(
+                static pair => pair.Key,
+                static pair => new List<SilkMeshGpuGeometryResource>(pair.Value)),
+            _displacementImageBytes,
+            _displacementUseClock,
+            _displacementVerdictRevision,
+            _displacementReportedRevision,
+            _displacementReportedShadowRevision);
+
+        // Moved aside, not disposed: a rollback puts these back, and a commit
+        // disposes them once the replacements that made them obsolete exist.
+        _failedTextures.Clear();
+        RemoveTextureDiagnostics();
+        DiscardDisplacementResolutions();
+        return transaction;
+    }
+
+    private void RollBackRetryTransaction(RetryTransaction transaction)
+    {
+        // The partial replacements have already been disposed, which released
+        // every geometry they created or reused; what remains is to restore the
+        // published state exactly as it was found.
+        _failedTextures.Clear();
+        foreach (KeyValuePair<TextureCacheKey, TextureCacheEntry> pair in transaction.FailedTextures)
+        {
+            _failedTextures[pair.Key] = pair.Value;
+        }
+        _diagnostics.Clear();
+        foreach (KeyValuePair<string, RenderDiagnostic> pair in transaction.Diagnostics)
+        {
+            _diagnostics[pair.Key] = pair.Value;
+        }
+        _displacementImages.Clear();
+        foreach (KeyValuePair<ulong, DisplacementCacheEntry> pair in transaction.DisplacementImages)
+        {
+            _displacementImages[pair.Key] = pair.Value;
+        }
+        _displacementVerdicts.Clear();
+        foreach (KeyValuePair<DisplacedPrimKey, DisplacementVerdict> pair in transaction.Verdicts)
+        {
+            _displacementVerdicts[pair.Key] = pair.Value;
+        }
+        _geometries.Clear();
+        foreach (KeyValuePair<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> pair in
+            transaction.Geometries)
+        {
+            _geometries[pair.Key] = pair.Value;
+        }
+        _displacementImageBytes = transaction.DisplacementImageBytes;
+        _displacementUseClock = transaction.DisplacementUseClock;
+        _displacementVerdictRevision = transaction.VerdictRevision;
+        _displacementReportedRevision = transaction.ReportedRevision;
+        _displacementReportedShadowRevision = transaction.ReportedShadowRevision;
+    }
+
+    private void CommitRetryTransaction(RetryTransaction transaction)
+    {
+        foreach (TextureCacheEntry entry in transaction.FailedTextures.Values)
+        {
+            DisposeEntry(entry);
+        }
+    }
+
+    /// <summary>
+    /// Drops every retained displacement resolution: the decoded height fields,
+    /// the geometries that were built from them, and the verdicts they produced.
+    /// </summary>
+    /// <remarks>
+    /// The geometries are only unpublished from the lookup, not disposed: each is
+    /// still owned by the prim that draws it and is released by reference count
+    /// when that prim is replaced. Unpublishing is what makes the next resolution
+    /// a miss even when the authored inputs and the file stamp are unchanged.
+    /// </remarks>
+    private void DiscardDisplacementImages()
+    {
+        _displacementImages.Clear();
+        _displacementImageBytes = 0;
+    }
+
+    private void DiscardDisplacementResolutions()
+    {
+        DiscardDisplacementImages();
+        if (_displacementVerdicts.Count != 0)
+        {
+            _displacementVerdicts.Clear();
+            _displacementVerdictRevision++;
+        }
+        foreach (SilkMeshGpuGeometryKey key in _geometries.Keys
+            .Where(static candidate => candidate.DisplacementIdentity != 0)
+            .ToArray())
+        {
+            _geometries.Remove(key);
+        }
     }
 
     internal Dictionary<ulong, SilkMeshGpuResource>.ValueCollection MeshValues =>
@@ -1791,6 +3653,12 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             if (_meshes.Remove(id, out SilkMeshGpuResource? removed))
             {
+                // A removed prim keeps no displacement verdict: nothing is drawn
+                // for it, so a retained report would name a prim the consumer can
+                // no longer see. Only this instance's verdict is dropped -- a
+                // sibling instance of the same prototype is still drawn, and still
+                // earns the report its own verdict produces.
+                ForgetDisplacementVerdict(removed.Mesh);
                 DisposeMesh(removed);
             }
         }
@@ -1839,10 +3707,7 @@ public sealed class SilkSceneGpuResources : IDisposable
                 _meshes[id] = replacement;
                 DisposeMesh(previous);
             }
-            if (_surfaceBuffers.Remove(materialPath, out SurfaceBuffer surface))
-            {
-                surface.Buffer?.Dispose();
-            }
+            RemoveSurfaceBuffers(materialPath);
         }
         if (delta.MaterialChanges != 0)
         {
@@ -1858,6 +3723,18 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             Revision++;
         }
+        // The displacement verdicts depend on the published shadow table as well
+        // as on which prims are displaced, and neither is a property of the other.
+        // Recomputing here is what makes enabling shadows after a displaced prim
+        // raise the bounds verdict, and retiring them clear it.
+        RefreshDisplacementDiagnostics(scene);
+
+        // Once per page, whether or not anything is drawable. A scene whose last
+        // mesh was removed still has to drop the diagnostics and the per-mask
+        // surface blocks its retired link table left behind: the draw loop is
+        // where the observation used to happen, and an empty scene never reaches
+        // it, so an emptied stage warned forever about a table it no longer had.
+        ObserveLightLinkRevision(scene);
     }
 
     /// <summary>Updates only changed per-mesh SceneParameters constants.</summary>
@@ -1897,18 +3774,33 @@ public sealed class SilkSceneGpuResources : IDisposable
     }
 
     /// <summary>Returns the per-frame constants the mesh shader reads.</summary>
+    /// <remarks>
+    /// Takes the whole retained scene rather than just its frame state because the
+    /// ambient term the constants carry is a function of both: hdSilk publishes a
+    /// textured dome light as environment state instead of folding it into the
+    /// frame ambient colour, and the resolved environment contribution is added
+    /// here.
+    /// </remarks>
     internal ISilkGraphicsBuffer RequireFrameBuffer(
-        SilkFrameState frame,
+        SilkSceneState scene,
         RenderOutputTransform outputTransform,
-        float exposure)
+        float exposure,
+        SilkShadowFrameBinding? shadows = null,
+        ulong shadowBindingRevision = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(scene);
+        SilkFrameState frame = scene.Frame;
+        Vector3 environmentAmbient = RequireEnvironmentAmbient(scene);
         bool created = _frameBuffer is null;
         _frameBuffer ??= CreateTrackedBuffer(
             SilkFrameUniformWriter.ByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         if (_frameRevision != frame.Revision ||
+            _frameEnvironmentRevision != scene.EnvironmentRevision ||
+            _frameEnvironmentAmbientRevision != _environmentAmbientRevision ||
+            _frameEnvironmentBindingRevision != _environmentBindingRevision ||
+            _frameShadowRevision != shadowBindingRevision ||
             _frameOutputTransform != outputTransform ||
             _frameExposure != exposure)
         {
@@ -1918,17 +3810,1784 @@ public sealed class SilkSceneGpuResources : IDisposable
                 constants,
                 _device.ClipSpaceYPointsDown,
                 outputTransform,
-                exposure);
+                exposure,
+                environmentAmbient,
+                shadows,
+                _environmentBinding,
+                _environmentDomeAmbient);
             if (created || !constants.SequenceEqual(_frameBytes))
             {
                 WriteTracked(_frameBuffer, constants);
                 constants.CopyTo(_frameBytes);
             }
             _frameRevision = frame.Revision;
+            _frameEnvironmentRevision = scene.EnvironmentRevision;
+            _frameEnvironmentAmbientRevision = _environmentAmbientRevision;
+            _frameEnvironmentBindingRevision = _environmentBindingRevision;
+            _frameShadowRevision = shadowBindingRevision;
             _frameOutputTransform = outputTransform;
             _frameExposure = exposure;
         }
+        DiagnoseShadows(scene);
         return _frameBuffer;
+    }
+
+    /// <summary>
+    /// Reports every direct light whose authored <c>inputs:shadow:enable</c> did
+    /// not produce a shadow map, and why.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A light that authors shadows and got a map is silent: the image shows the
+    /// occlusion. Everything else is named against the light's own table index and
+    /// resolved type -- the frame light table carries no prim path, because lights
+    /// reach the renderer as a fixed-size table of resolved values rather than as
+    /// named records -- so an unshadowed light is never mistaken for a deliberate
+    /// one. Silent success and silent failure are indistinguishable otherwise,
+    /// which is the failure mode this profile exists to avoid.
+    /// </para>
+    /// <para>
+    /// Re-derived whenever the frame or the shadow table moves, so a light that
+    /// stops asking for shadows, or that starts getting a map, stops being
+    /// reported.
+    /// </para>
+    /// </remarks>
+    private void DiagnoseShadows(SilkSceneState scene)
+    {
+        SilkFrameState frame = scene.Frame;
+        SilkShadowTable shadows = scene.Shadows;
+        if (_shadowDiagnosticRevision == frame.Revision &&
+            _shadowDiagnosticTableRevision == shadows.Revision)
+        {
+            return;
+        }
+
+        RemoveDiagnostics(static code => code == SilkRenderDiagnosticCodes.ShadowUnsupported);
+        _shadowDiagnosticRevision = frame.Revision;
+        _shadowDiagnosticTableRevision = shadows.Revision;
+        bool deviceSupportsShadows = _device.Capabilities.SupportsRasterShadows;
+        ReadOnlySpan<SilkFrameLight> lights = frame.Lights;
+        uint count = Math.Min(frame.LightCount, (uint)SilkFrameState.MaximumLights);
+        for (int index = 0; index < count; index++)
+        {
+            SilkFrameLight light = lights[index];
+            if (light.Type == 0 || light.ShadowEnabled == 0)
+            {
+                continue;
+            }
+            if (deviceSupportsShadows && shadows.ResolveSlot(index) >= 0)
+            {
+                continue;
+            }
+
+            string reason = !deviceSupportsShadows
+                ? $"the {_device.Backend} device cannot record a depth-only pass, so no " +
+                    "shadow map is allocated or rendered"
+                : DescribeMissingShadow(light.Type, shadows.UnsupportedFeatures);
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.ShadowUnsupported,
+                $"light[{index}]",
+                RenderDiagnosticSeverity.Warning,
+                $"Direct light {index} ({DescribeLightType(light.Type)}) authors " +
+                $"inputs:shadow:enable but casts no shadow: {reason}. The light is " +
+                "rendered without occlusion.");
+        }
+    }
+
+    private static string DescribeMissingShadow(
+        uint lightType,
+        SilkShadowUnsupportedFeatures unsupported)
+    {
+        if (lightType != 1)
+        {
+            return "only a distant light has an exact light-space projection here, and " +
+                "no sphere, rect, disk or cylinder projection is derived";
+        }
+        if ((unsupported & SilkShadowUnsupportedFeatures.NoCasters) != 0)
+        {
+            return "the published geometry has no world extent to derive a light-space " +
+                "projection from";
+        }
+        if ((unsupported & SilkShadowUnsupportedFeatures.MapBudget) != 0)
+        {
+            return $"more lights asked for a shadow map than the page budget of " +
+                $"{SilkShadowCommand.MaximumMaps} allows";
+        }
+        return "the page published no shadow descriptor for it";
+    }
+
+    /// <summary>
+    /// Reports every prim that was dropped from the shadow maps because its
+    /// material is opacity-masked.
+    /// </summary>
+    /// <remarks>
+    /// Re-derived whenever the cache re-collects its casters, so a prim whose
+    /// material stops being opacity-masked stops being reported. Named by prim
+    /// path, because unlike a light a caster has one.
+    /// </remarks>
+    internal void ReportUnsupportedShadowCasters(
+        IReadOnlyList<string> paths,
+        ulong revision)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(paths);
+        if (_shadowCasterDiagnosticRevision == revision)
+        {
+            return;
+        }
+
+        _shadowCasterDiagnosticRevision = revision;
+        RemoveDiagnostics(
+            static code => code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
+        foreach (string path in paths)
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.ShadowCasterUnsupported,
+                path,
+                RenderDiagnosticSeverity.Warning,
+                $"Prim '{path}' casts no shadow because its material is opacity-masked. " +
+                "The depth-only shadow caster program binds no material and cannot " +
+                "discard a fragment, so drawing it would cast the solid shadow of its " +
+                "geometry rather than of its visible coverage. The prim is still lit " +
+                "and still receives shadows.");
+        }
+    }
+
+    private static string DescribeLightType(uint type) =>
+        type switch
+        {
+            1 => "distant",
+            2 => "sphere",
+            3 => "rect",
+            4 => "disk",
+            5 => "cylinder",
+            _ => "unknown"
+        };
+
+    /// <summary>
+    /// Resolves the mean-radiance ambient fallback of every retained textured
+    /// dome light the prefiltered environment does not carry, and diagnoses every
+    /// authored dome control this renderer did not apply.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A dome that reached the prefiltered environment contributes nothing to the
+    /// ambient term: its whole emission is in the irradiance and specular maps,
+    /// and adding an approximation of the same dome on top would count it twice.
+    /// Every other textured dome falls back to the mean-radiance term -- the
+    /// solid-angle-weighted mean radiance of its image, scaled by the authored
+    /// colour, intensity, exposure and diffuse contribution, and normalized by the
+    /// same unit-white-dome factor an untextured dome uses -- so a dome whose
+    /// image is constant 1.0 falls back to exactly the ambient the untextured dome
+    /// it replaced produced.
+    /// </para>
+    /// <para>
+    /// The <em>diagnostics</em>, unlike the ambient term, are emitted for every
+    /// dome whether or not it was prefiltered. An authored control this renderer
+    /// did not carry is unapplied either way, and reporting it only on the failure
+    /// path would mean a scene that succeeded looked clean while still silently
+    /// dropping a colour temperature.
+    /// </para>
+    /// <para>
+    /// The fallback is not image-based lighting and must not be described as one.
+    /// The image is collapsed to a single colour, so every surface normal receives
+    /// the same value and none of the sky's directionality survives. Reaching it
+    /// is always diagnosed against the dome's own prim path, so a scene that
+    /// quietly lost its directional response is not a state this renderer can be
+    /// in, and it degrades to the previous behaviour rather than to darkness.
+    /// </para>
+    /// </remarks>
+    internal Vector3 RequireEnvironmentAmbient(SilkSceneState scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+
+        // The observed state of every asset the *fallback* reads, re-read on every
+        // call. Without it the ambient term was a function of the scene revision
+        // alone, so a dome whose file was repaired or re-exported in place under a
+        // running session kept lighting from the bytes that were no longer there
+        // until some unrelated command moved the revision. It is the same rule the
+        // prefiltered path already followed, applied to the path a refused dome
+        // actually lands on.
+        string fallbackRevision = ComposeEnvironmentFallbackRevision(scene);
+        if (_environmentRevision == scene.EnvironmentRevision &&
+            _environmentsResolved &&
+            string.Equals(
+                _environmentFallbackRevision,
+                fallbackRevision,
+                StringComparison.Ordinal))
+        {
+            return _environmentAmbient;
+        }
+
+        RemoveEnvironmentDiagnostics();
+        Vector3 ambient = Vector3.Zero;
+        var domeAmbient = default(SilkDomeAmbientTable);
+        foreach (KeyValuePair<string, SilkEnvironmentData> pair in scene.Environments
+            .OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+        {
+            SilkEnvironmentData dome = pair.Value;
+            DiagnoseEnvironmentControls(dome, _environmentLitDomes.Contains(pair.Key));
+            if (_environmentLitDomes.Contains(pair.Key))
+            {
+                continue;
+            }
+            Vector3 contribution = ResolveEnvironment(dome);
+            ambient += contribution;
+
+            // Attributed to the dome's own bit so a per-draw mask can select it.
+            // A dome the page could not give a bit to is summed into the
+            // scene-wide term only, which is the same thing as saying it lights
+            // every prim -- and it is diagnosed as unmaskable by hdSilk.
+            if (dome.HasDomeIndex && dome.DomeIndex < SilkFrameCommand.MaximumDomes)
+            {
+                domeAmbient.AddAmbient((int)dome.DomeIndex, contribution);
+            }
+            else
+            {
+                domeAmbient.AddUnattributed(contribution);
+            }
+        }
+
+        _environmentAmbient = ambient;
+        _environmentDomeAmbient = domeAmbient;
+        _environmentRevision = scene.EnvironmentRevision;
+        _environmentFallbackRevision = fallbackRevision;
+        _environmentAmbientRevision++;
+        _environmentsResolved = true;
+        return ambient;
+    }
+
+    /// <summary>
+    /// Gets the mean-radiance ambient term each dome bit contributes on its own.
+    /// </summary>
+    /// <remarks>
+    /// Resolved by <see cref="RequireEnvironmentAmbient"/> and cached beside the
+    /// scene-wide sum it was accumulated into, so the two can never describe
+    /// different sets of domes.
+    /// </remarks>
+    internal SilkDomeAmbientTable EnvironmentDomeAmbient => _environmentDomeAmbient;
+
+    /// <summary>
+    /// Composes the observed state of every asset the mean-radiance fallback
+    /// would read into one comparable token.
+    /// </summary>
+    /// <remarks>
+    /// Scoped to the domes that are <em>not</em> carried by the prefiltered
+    /// environment, because those are the only ones whose file contents reach the
+    /// ambient term. A prefiltered dome's asset already moves the environment
+    /// identity, and including it here would re-resolve an ambient that does not
+    /// depend on it.
+    /// </remarks>
+    private string ComposeEnvironmentFallbackRevision(SilkSceneState scene)
+    {
+        if (scene.Environments.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(64);
+        foreach (KeyValuePair<string, SilkEnvironmentData> pair in scene.Environments
+            .OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (_environmentLitDomes.Contains(pair.Key))
+            {
+                continue;
+            }
+            SilkEnvironmentAssetStamp stamp =
+                _environmentStampReader(pair.Value.TexturePath);
+            _ = builder
+                .Append(pair.Key)
+                .Append('|')
+                .Append(pair.Value.TexturePath)
+                .Append('|')
+                .Append(stamp.Length.ToString(CultureInfo.InvariantCulture))
+                .Append('|')
+                .Append(stamp.LastWriteUtcTicks.ToString(CultureInfo.InvariantCulture))
+                .Append(';');
+        }
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Names every authored dome control this renderer did not apply, whether or
+    /// not the dome reached the prefiltered environment.
+    /// </summary>
+    private void DiagnoseEnvironmentControls(SilkEnvironmentData dome, bool prefiltered)
+    {
+        if (dome.UnsupportedFeatures != SilkEnvironmentUnsupportedFeatures.None)
+        {
+            string effect = dome.SemanticsInvalidatingFeatures !=
+                SilkEnvironmentUnsupportedFeatures.None
+                ? "it invalidates the emission or orientation the prefiltered " +
+                    "environment would claim, so this dome resolves its " +
+                    "mean-radiance ambient term instead"
+                : "the authored emission is used without it";
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentFeatureUnsupported,
+                dome.Path,
+                RenderDiagnosticSeverity.Warning,
+                $"Dome light '{dome.Path}' authors {dome.UnsupportedFeatures}, " +
+                $"which hdSilk does not carry; {effect}.");
+        }
+
+        // Only meaningful for a dome that did *not* reach the prefiltered
+        // environment: the fallback collapses the sky to one colour, so there is
+        // no directionality left to reflect. Reflecting that single value would
+        // put every mirror-like surface at the average colour of the sky, so the
+        // authored specular contribution is named instead of faked. A dome the
+        // prefiltered environment carries resolves its specular contribution and
+        // is silent.
+        if (!prefiltered && dome.Specular != 0)
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentSpecularUnsupported,
+                dome.Path,
+                RenderDiagnosticSeverity.Warning,
+                $"Dome light '{dome.Path}' authors a specular contribution " +
+                $"of {dome.Specular.ToString(CultureInfo.InvariantCulture)}, " +
+                "which this dome's mean-radiance ambient fallback cannot resolve.");
+        }
+    }
+
+    /// <summary>
+    /// Forces one more prefilter attempt when the fallback read a source the
+    /// prefilter refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two paths decode the same asset, so a refusal on one and a success on
+    /// the other in the same revision is a contradiction rather than a verdict.
+    /// Settling the directional loss there meant a momentarily unavailable file
+    /// cost the scene its directionality until some unrelated authoring moved the
+    /// environment revision -- even though the very next frame would have read it.
+    /// </para>
+    /// <para>
+    /// Retried once per dome and asset state. A source that reproduces the
+    /// contradiction against the same bytes is a real disagreement between the two
+    /// paths rather than a transient one, and retrying it every frame would decode
+    /// the image forever.
+    /// </para>
+    /// </remarks>
+    private void RetryTransientPrefilterFailure(SilkEnvironmentData environment)
+    {
+        if (!_environmentPrefilterSkipped.Contains(environment.Path))
+        {
+            return;
+        }
+
+        SilkEnvironmentAssetStamp stamp = _environmentStampReader(environment.TexturePath);
+        string key = string.Concat(
+            environment.Path,
+            "\u001f",
+            environment.TexturePath,
+            "\u001f",
+            stamp.Length.ToString(CultureInfo.InvariantCulture),
+            "\u001f",
+            stamp.LastWriteUtcTicks.ToString(CultureInfo.InvariantCulture));
+        if (!_environmentPrefilterRetried.Add(key))
+        {
+            return;
+        }
+
+        _ = _environmentPrefilterSkipped.Remove(environment.Path);
+        InvalidateEnvironmentRevision();
+    }
+
+    private Vector3 ResolveEnvironment(SilkEnvironmentData environment)
+    {
+        Vector3 emission = environment.AmbientEmissionScale;
+        SilkImageDescription? description = TryDescribeEnvironment(environment.TexturePath);
+        if (!environment.IsMappingSupported(description))
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentMappingUnsupported,
+                environment.Path,
+                RenderDiagnosticSeverity.Warning,
+                $"Dome light '{environment.Path}' declares texture:format " +
+                $"{environment.TextureFormat}, which this renderer does not " +
+                $"{DescribeMappingRefusal(environment, description)}; its " +
+                "untextured emission is used instead.");
+            return emission;
+        }
+
+        try
+        {
+            Vector3 mean = _environmentMeanRadiance.Resolve(
+                environment.TexturePath,
+                environment.SourceColorSpace,
+                _environmentStampReader(environment.TexturePath),
+                _imageDecoder,
+                TryDescribeEnvironment);
+
+            // The prefilter refused this source and the fallback has just read it.
+            // Those two verdicts cannot both be right about the same bytes, so the
+            // refusal was transient -- an asset momentarily unavailable, a decoder
+            // that failed once -- and the loss of directionality must not be
+            // settled on it. Invalidating the revision makes the next prepare
+            // retry with no scene change at all; it succeeds, the environment is
+            // enabled, this dome leaves the ambient sum, and the stale diagnostic
+            // is dropped by the prefilter layer's own clear.
+            RetryTransientPrefilterFailure(environment);
+            return emission * mean;
+        }
+        catch (SilkEnvironmentBudgetExceededException exception)
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded,
+                environment.Path,
+                RenderDiagnosticSeverity.Warning,
+                $"Dome light '{environment.Path}': {exception.Message} " +
+                "Its untextured emission is used instead.");
+        }
+        catch (FileNotFoundException exception)
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentAssetNotFound,
+                environment.Path,
+                RenderDiagnosticSeverity.Error,
+                $"Dome light '{environment.Path}' references environment texture " +
+                $"'{environment.TexturePath}', which was not found: " +
+                $"{exception.Message}");
+        }
+        catch (InvalidDataException exception)
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentDecodeFailed,
+                environment.Path,
+                RenderDiagnosticSeverity.Error,
+                $"Dome light '{environment.Path}' references environment texture " +
+                $"'{environment.TexturePath}', which could not be decoded: " +
+                $"{exception.Message}");
+        }
+        return emission;
+    }
+
+    /// <summary>
+    /// States why one declared mapping was refused, distinguishing a named
+    /// projection this renderer does not implement from an <c>automatic</c>
+    /// declaration whose image does not observably carry one.
+    /// </summary>
+    private static string DescribeMappingRefusal(
+        SilkEnvironmentData environment,
+        SilkImageDescription? description)
+    {
+        if (environment.TextureFormat != SilkDomeTextureFormat.Automatic)
+        {
+            return "implement -- each of mirroredBall, angular and " +
+                "cubeMapVerticalCross parameterizes the sphere differently, and " +
+                "integrating one as equirectangular weights the wrong parts of " +
+                "the image";
+        }
+
+        string shape = description is { } observed
+            ? $"{observed.Width.ToString(CultureInfo.InvariantCulture)}x" +
+                observed.Height.ToString(CultureInfo.InvariantCulture)
+            : "an image whose shape could not be observed";
+        return "derive from the image, because an equirectangular map is twice " +
+            $"as wide as it is tall and this one is {shape}";
+    }
+
+    /// <summary>
+    /// Reads one environment image's declared shape without decoding it, or
+    /// <see langword="null"/> when it cannot be described.
+    /// </summary>
+    /// <remarks>
+    /// The describer is what makes every budget below a preflight rather than a
+    /// post-mortem: it reports the width, height, format and observed colour space
+    /// from the file's header, so an image over a byte budget is refused before an
+    /// allocator is ever asked for it. A describer that cannot answer -- a missing
+    /// file, a format it does not recognize -- returns null, and the caller
+    /// diagnoses the same way it would for a failed decode.
+    /// </remarks>
+    private SilkImageDescription? TryDescribeEnvironment(string asset)
+    {
+        if (!_environmentDescriberAvailable)
+        {
+            return null;
+        }
+
+        var key = (asset, _environmentStampReader(asset));
+        if (_environmentDescriptions.TryGetValue(key, out SilkImageDescription? cached))
+        {
+            return cached;
+        }
+
+        SilkImageDescription? description;
+        try
+        {
+            description = _imageDescriber(asset);
+        }
+        catch (Exception exception) when (
+            exception is FileNotFoundException or DirectoryNotFoundException or
+                IOException or InvalidDataException or NotSupportedException or
+                ArgumentException)
+        {
+            description = null;
+        }
+
+        // Bounded, and keyed by the file's own stamp, so a rewritten asset is
+        // described again while a stable one is described once. The bound is small
+        // because the number of distinct dome textures a stage cycles through is.
+        if (_environmentDescriptions.Count >= MaximumEnvironmentDescriptions)
+        {
+            _environmentDescriptions.Clear();
+        }
+        _environmentDescriptions[key] = description;
+        return description;
+    }
+
+    /// <summary>
+    /// The number of environment image descriptions retained. Small on purpose:
+    /// this exists to stop one resolve pass describing the same asset several
+    /// times, not to be a texture cache.
+    /// </summary>
+    private const int MaximumEnvironmentDescriptions = 16;
+
+    private void RemoveEnvironmentDiagnostics()
+    {
+        // Scoped to the fallback layer. The prefilter layer emits the same codes
+        // against the same domes to say something different -- that the dome lost
+        // its directional response -- and it resolves earlier in the frame, so
+        // clearing by code alone erased it every time the fallback then succeeded.
+        RemoveDiagnosticsByKey(static key =>
+            !key.Contains(EnvironmentPrefilterLayer, StringComparison.Ordinal) &&
+            (key.StartsWith(SilkRenderDiagnosticCodes.EnvironmentAssetNotFound, StringComparison.Ordinal) ||
+                key.StartsWith(SilkRenderDiagnosticCodes.EnvironmentDecodeFailed, StringComparison.Ordinal) ||
+                key.StartsWith(SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded, StringComparison.Ordinal) ||
+                key.StartsWith(SilkRenderDiagnosticCodes.EnvironmentMappingUnsupported, StringComparison.Ordinal) ||
+                key.StartsWith(SilkRenderDiagnosticCodes.EnvironmentFeatureUnsupported, StringComparison.Ordinal) ||
+                key.StartsWith(SilkRenderDiagnosticCodes.EnvironmentSpecularUnsupported, StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// Marks a diagnostic as belonging to the prefilter layer rather than to the
+    /// mean-radiance fallback layer.
+    /// </summary>
+    private const string EnvironmentPrefilterLayer = "\u0001prefilter";
+
+    /// <summary>
+    /// Reports one dome's loss of its directional response, from the prefilter
+    /// layer, so the fallback that follows cannot erase it.
+    /// </summary>
+    private void AddEnvironmentPrefilterDiagnostic(
+        string code,
+        string domePath,
+        string message) =>
+        AddDiagnostic(
+            code,
+            string.Concat(domePath, EnvironmentPrefilterLayer),
+            RenderDiagnosticSeverity.Warning,
+            message);
+
+    /// <summary>Drops every diagnostic the prefilter layer emitted.</summary>
+    private void RemoveEnvironmentPrefilterDiagnostics() =>
+        RemoveDiagnosticsByKey(static key =>
+            key.Contains(EnvironmentPrefilterLayer, StringComparison.Ordinal));
+
+    /// <summary>Gets the resolved environment block the frame constants carry.</summary>
+    internal SilkEnvironmentFrameBinding EnvironmentBinding => _environmentBinding;
+
+    /// <summary>
+    /// Gets a revision that changes only when the resolved environment block or
+    /// its retained maps change, so the frame constants re-pack exactly when they
+    /// must.
+    /// </summary>
+    internal ulong EnvironmentBindingRevision => _environmentBindingRevision;
+
+    /// <summary>Gets the retained prefiltered payload, for tests.</summary>
+    internal SilkEnvironmentMaps? EnvironmentPayloadForTesting => _environmentPayload;
+
+    /// <summary>Gets the number of environment source decodes performed.</summary>
+    /// <remarks>
+    /// Exists so that the single-pass rule is gated by counting rather than by
+    /// inspection: a resolve that re-decoded a prefix after dropping a dome would
+    /// be indistinguishable from one that did not, in every observable except
+    /// this.
+    /// </remarks>
+    internal int EnvironmentDecodeCount { get; private set; }
+
+    /// <summary>Gets the decoded bytes every environment source produced.</summary>
+    internal ulong EnvironmentDecodedBytes { get; private set; }
+
+    /// <summary>Gets the dome prim paths the prefiltered environment carries.</summary>
+    internal IReadOnlyCollection<string> EnvironmentLitDomes => _environmentLitDomes;
+
+    /// <summary>Gets the number of prefiltered environments built since construction.</summary>
+    internal int EnvironmentPrefilterBuilds => _environmentLighting.BuildCount;
+
+    /// <summary>Gets the number of prefiltered environment bytes uploaded.</summary>
+    internal ulong EnvironmentUploadBytes => _environmentUploadBytes;
+
+    /// <summary>
+    /// Prefilters every accepted textured dome light into the shared world-space
+    /// environment maps and allocates the GPU resources the checked fragment
+    /// samples them through.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="RequireFrameBuffer"/>, and run before it, because
+    /// the two answer different questions and only this one allocates. A consumer
+    /// that never calls it -- a harness with no device that only wants the frame
+    /// constants -- gets the mean-radiance ambient term for every dome and an
+    /// environment block that reports itself disabled, which is exactly the
+    /// behaviour that existed before the directional response did.
+    /// </para>
+    /// <para>
+    /// The work is redone when the environment revision moves, when any dome's
+    /// asset stamp moves, or when the device generation changes, and reused byte
+    /// for byte otherwise. The stamps are re-read on every call rather than only
+    /// when a scene command arrives -- a bounded handful of file stats -- which is
+    /// what lets an HDR repaired or re-exported under a running session reach the
+    /// image without any authoring at all. A device generation change is a device
+    /// loss: every retained GPU object belongs to the dead device, so all of them
+    /// are dropped and rebuilt rather than rebound.
+    /// </para>
+    /// <para>
+    /// Nothing here caches a failure. A dome whose asset could not be described,
+    /// read or decoded is left out of the composed set and reaches the
+    /// mean-radiance fallback, which names it; the next resolve that repairs the
+    /// asset composes it back in.
+    /// </para>
+    /// </remarks>
+    internal void PrepareEnvironmentLighting(SilkSceneState scene)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(scene);
+        ulong deviceGeneration = SilkDeviceGeneration.Read(_device);
+        if (_environmentLightingDeviceGeneration != deviceGeneration)
+        {
+            // A device loss invalidates every environment-owned GPU object, not
+            // only the two maps: the sampler, the stand-in and the BRDF table
+            // belong to the dead device too.
+            ReleaseEnvironmentDeviceResources();
+            _environmentLightingDeviceGeneration = deviceGeneration;
+            _environmentLightingRevision = ulong.MaxValue;
+        }
+
+        // Ordered by prim path so that which domes are composed, and in which
+        // order they are summed, is a property of the scene rather than of
+        // dictionary iteration order. The bake is a sum, so the order does not
+        // change the result, but it does change the cache identity, and an
+        // identity that depended on hash ordering would miss at random.
+        SilkEnvironmentData[] published = [.. scene.Environments
+            .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+            .Select(static pair => pair.Value)];
+
+        // The authored fact, recorded before anything is resolved. Every dome
+        // hdSilk publishes as an environment record is a dome the author placed,
+        // so the scene is lit whatever this renderer subsequently manages to do
+        // with it -- and a dome that resolves to nothing measurable is precisely
+        // the case a headlight must not rescue.
+        SetEnvironmentAuthoredSceneLighting(published.Length > 0);
+
+        // The observed state of every published dome's asset, re-read every time.
+        // It is part of the identity, so a file rewritten in place moves it and
+        // rebuilds without any scene command at all.
+        string assetRevision = ComposeEnvironmentAssetRevision(published);
+
+        // Whether any prim excludes a dome. It is part of what the resolve
+        // produces, because it decides whether the bake carries one group per
+        // dome or a single composed group -- and a scene that stops linking domes
+        // has to go back to the single-group layout on the same frame, or it
+        // would keep rendering the grouped atlas that a byte-exact unlinked
+        // comparison must not see.
+        bool perDomeGroups = scene.LightLinks.HasDomeLinks;
+        if (_environmentLightingRevision == scene.EnvironmentRevision &&
+            _environmentPerDomeGroups == perDomeGroups &&
+            string.Equals(_environmentAssetRevision, assetRevision, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _environmentPerDomeGroups = perDomeGroups;
+
+        // Deliberately *not* committed yet. A device that refuses one of the
+        // environment's five GPU objects has not necessarily refused it forever --
+        // a transient allocation failure is the ordinary case -- and committing the
+        // revision before the allocation succeeded meant the next frame saw
+        // nothing to redo and the scene stayed on the fallback until some
+        // unrelated authoring moved the revision. The revision is committed at the
+        // end, on the paths that reached a settled state.
+        // The prefilter layer's diagnostics are dropped here, at the start of the
+        // resolve that re-emits them, rather than by the mean-radiance fallback
+        // that runs afterwards. The two layers report the same codes about the
+        // same domes to say different things -- one that the dome lost its
+        // directional response, the other that it could not even be reduced to a
+        // colour -- and clearing by code let the fallback erase the loss every time
+        // it then succeeded, which is exactly the case that must stay reported.
+        RemoveEnvironmentPrefilterDiagnostics();
+        RemoveDiagnostics(static code =>
+            code is SilkRenderDiagnosticCodes.EnvironmentLightingLimitExceeded or
+                SilkRenderDiagnosticCodes.EnvironmentLightingUnavailable or
+                SilkRenderDiagnosticCodes.EnvironmentDomeLinkUnavailable);
+
+        var candidates = new List<SilkEnvironmentData>();
+        foreach (SilkEnvironmentData dome in published)
+        {
+            // The mapping verdict reads the image's observed shape, and the
+            // control verdict reads what hdSilk could not carry. Both are refusals
+            // to *prefilter*; each dome they refuse still reaches the fallback,
+            // which names it.
+            if (!dome.IsMappingSupported(TryDescribeEnvironment(dome.TexturePath)) ||
+                dome.SemanticsInvalidatingFeatures !=
+                    SilkEnvironmentUnsupportedFeatures.None)
+            {
+                continue;
+            }
+            if (candidates.Count == _environmentPrefilterOptions.MaximumDomeLights)
+            {
+                AddDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentLightingLimitExceeded,
+                    dome.Path,
+                    RenderDiagnosticSeverity.Warning,
+                    $"Dome light '{dome.Path}' is beyond the " +
+                    $"{_environmentPrefilterOptions.MaximumDomeLights.ToString(CultureInfo.InvariantCulture)}" +
+                    " textured dome lights this renderer composes into one " +
+                    "prefiltered environment; it falls back to its mean-radiance " +
+                    "ambient term instead.");
+                continue;
+            }
+            candidates.Add(dome);
+        }
+
+        var previousLit = new HashSet<string>(_environmentLitDomes, StringComparer.Ordinal);
+        _environmentLitDomes.Clear();
+        _environmentPrefilterSkipped.Clear();
+        SilkEnvironmentMaps? maps = BuildEnvironmentMaps(
+            candidates,
+            perDomeGroups,
+            out string identity,
+            out bool settled);
+        if (maps is null)
+        {
+            // A settled state: every dome was refused for a reason that is a
+            // property of the scene, not of the device, and re-running the resolve
+            // next frame would refuse them again. The revision is committed so the
+            // refusal is paid for once.
+            ReleaseEnvironmentMaps();
+            if (settled)
+            {
+                CommitEnvironmentRevision(scene.EnvironmentRevision, assetRevision);
+            }
+            else
+            {
+                InvalidateEnvironmentRevision();
+            }
+            InvalidateEnvironmentAmbient(previousLit);
+            return;
+        }
+
+        try
+        {
+            EnsureEnvironmentTextures(maps, identity, candidates);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or NotSupportedException or
+                ArgumentException or OutOfMemoryException or OverflowException)
+        {
+            // Not a settled state. The scene is unchanged and the payload is
+            // still cached, so the only thing that failed is an allocation the
+            // device may well satisfy next frame. The revision is left where it
+            // was, which is what makes the next resolve retry -- and because the
+            // prefiltered payload is retained under its identity, that retry costs
+            // allocations and not a second convolution.
+            ReleaseEnvironmentMaps();
+            InvalidateEnvironmentRevision();
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.EnvironmentLightingUnavailable,
+                string.Empty,
+                RenderDiagnosticSeverity.Warning,
+                "The prefiltered environment could not be allocated on this device: " +
+                $"{exception.Message} Every textured dome light falls back to its " +
+                "mean-radiance ambient term.");
+            InvalidateEnvironmentAmbient(previousLit);
+            return;
+        }
+
+        foreach (SilkEnvironmentData dome in candidates)
+        {
+            _environmentLitDomes.Add(dome.Path);
+        }
+        CommitEnvironmentRevision(scene.EnvironmentRevision, assetRevision);
+        InvalidateEnvironmentAmbient(previousLit);
+    }
+
+    /// <summary>Records that one environment resolve reached a settled state.</summary>
+    private void CommitEnvironmentRevision(ulong environmentRevision, string assetRevision)
+    {
+        _environmentLightingRevision = environmentRevision;
+        _environmentAssetRevision = assetRevision;
+    }
+
+    /// <summary>
+    /// Forces the next resolve to run again, without any scene change.
+    /// </summary>
+    /// <remarks>
+    /// Used when a resolve failed for a reason that is a property of the device
+    /// rather than of the scene. Leaving the revision at its previous value would
+    /// be wrong too: the previous value may equal the current one, and the resolve
+    /// would then be skipped for exactly the reason it needs to be repeated.
+    /// </remarks>
+    private void InvalidateEnvironmentRevision()
+    {
+        _environmentLightingRevision = ulong.MaxValue;
+        _environmentAssetRevision = "\u0001retry";
+    }
+
+    /// <summary>
+    /// Composes the observed state of every published dome's asset into one
+    /// comparable token.
+    /// </summary>
+    private string ComposeEnvironmentAssetRevision(SilkEnvironmentData[] domes)
+    {
+        if (domes.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(64);
+        foreach (SilkEnvironmentData dome in domes)
+        {
+            SilkEnvironmentAssetStamp stamp = _environmentStampReader(dome.TexturePath);
+            builder.Append(dome.TexturePath).Append('\u001f');
+            builder.Append(stamp.Length.ToString(CultureInfo.InvariantCulture)).Append('\u001f');
+            builder.Append(stamp.LastWriteUtcTicks.ToString(CultureInfo.InvariantCulture));
+            builder.Append('\u001e');
+        }
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Uploads the prefiltered environment maps and the BRDF table, once per
+    /// rebuild.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="BindEnvironment"/> because an upload is a copy
+    /// and a copy cannot be recorded inside a rendering scope on any backend,
+    /// while the binding has to happen per draw inside one. This is the same
+    /// split the material textures already use.
+    /// </para>
+    /// <para>
+    /// Recording a copy is not performing one. The upload is marked
+    /// <em>pending</em> here and committed only by
+    /// <see cref="CommitPendingUploads"/>, after the submission that carries it
+    /// has been waited on. A command list that is abandoned, or a submission that
+    /// fails, leaves textures whose contents were never written -- and a flag set
+    /// at record time would have said they were, so every later frame would have
+    /// skipped the upload and sampled undefined memory as the sky.
+    /// </para>
+    /// </remarks>
+    internal void UploadEnvironment(ISilkGraphicsCommandList commands)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(commands);
+        if (_environmentMapsUploaded ||
+            _environmentMapsUploadPending ||
+            _environmentIrradianceTexture is null ||
+            _environmentSpecularTexture is null ||
+            _environmentPayload is null)
+        {
+            return;
+        }
+
+        // The BRDF table is scene independent, but it is created and uploaded
+        // here rather than eagerly: a stage with no textured dome never reads it,
+        // and allocating a table for every scene that will not use one is a cost
+        // with no image behind it.
+        if (!_environmentBrdfUploaded && !_environmentBrdfUploadPending)
+        {
+            commands.UploadTexture(RequireEnvironmentBrdfTexture(), SilkEnvironmentBrdf.Pixels);
+            _environmentBrdfUploadPending = true;
+        }
+        commands.UploadTexture(
+            _environmentIrradianceTexture,
+            _environmentPayload.IrradiancePixels);
+        commands.UploadTexture(
+            _environmentSpecularTexture,
+            _environmentPayload.SpecularPixels);
+        _environmentMapsUploadPending = true;
+        _environmentPendingUploadBytes = _environmentPayload.ByteSize;
+    }
+
+    /// <summary>
+    /// Marks every recorded upload as performed, after its submission completed.
+    /// </summary>
+    /// <remarks>
+    /// Called once the submission carrying the recorded copies has been waited
+    /// on, which is the first moment the texture contents are known to exist.
+    /// </remarks>
+    internal void CommitPendingUploads()
+    {
+        if (_environmentBrdfUploadPending)
+        {
+            _environmentBrdfUploaded = true;
+            _environmentBrdfUploadPending = false;
+            _environmentUploadBytes += SilkEnvironmentBrdf.ByteSize;
+        }
+        if (_environmentMapsUploadPending)
+        {
+            _environmentMapsUploaded = true;
+            _environmentMapsUploadPending = false;
+            _environmentUploadBytes += _environmentPendingUploadBytes;
+            _environmentPendingUploadBytes = 0;
+        }
+    }
+
+    /// <summary>
+    /// Drops every recorded-but-unperformed upload so the next frame records it
+    /// again.
+    /// </summary>
+    /// <remarks>
+    /// The recorded copies are gone with the command list that carried them, and
+    /// the textures they targeted still hold whatever they held before. Clearing
+    /// the pending marks -- and leaving the committed ones alone -- is what makes
+    /// the retry an upload rather than a bind of undefined memory.
+    /// </remarks>
+    internal void AbandonPendingUploads()
+    {
+        _environmentBrdfUploadPending = false;
+        _environmentMapsUploadPending = false;
+        _environmentPendingUploadBytes = 0;
+    }
+
+    /// <summary>
+    /// Binds the prefiltered environment resources and their samplers for one draw.
+    /// </summary>
+    /// <remarks>
+    /// Always bound, because the checked mesh fragment references every slot in
+    /// every permutation and a backend pipeline layout requires every declared
+    /// descriptor to be populated. A frame with no live environment binds the same
+    /// one-texel stand-in for the two maps and never samples them, because the
+    /// frame constants report the environment as disabled.
+    /// </remarks>
+    internal void BindEnvironment(ISilkGraphicsCommandList commands)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(commands);
+        ISilkGraphicsTexture irradiance = _environmentIrradianceTexture ??
+            RequireEnvironmentStandIn();
+        ISilkGraphicsTexture specular = _environmentSpecularTexture ??
+            RequireEnvironmentStandIn();
+        commands.SetSampler(
+            0,
+            SilkBindingLayoutDescriptor.EnvironmentSamplerBinding,
+            RequireEnvironmentSampler());
+        commands.SetTexture(
+            0,
+            SilkBindingLayoutDescriptor.EnvironmentIrradianceTextureBinding,
+            irradiance);
+        commands.SetTexture(
+            0,
+            SilkBindingLayoutDescriptor.EnvironmentSpecularTextureBinding,
+            specular);
+        commands.SetSampler(
+            0,
+            SilkBindingLayoutDescriptor.EnvironmentBrdfSamplerBinding,
+            RequireEnvironmentBrdfSampler());
+        commands.SetTexture(
+            0,
+            SilkBindingLayoutDescriptor.EnvironmentBrdfTextureBinding,
+            _environmentBrdfTexture ?? RequireEnvironmentStandIn());
+    }
+
+    /// <summary>
+    /// Preflights every candidate once, then builds or reuses the prefiltered
+    /// environment of the domes that survived.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two phases, and both are single-pass. The first describes each candidate --
+    /// which never decodes -- and refuses, with a diagnostic against the dome that
+    /// caused it, any image over the per-image ceiling and any image that would
+    /// take the composed set over the aggregate ceiling. The second streams only
+    /// the survivors, decoding each exactly once.
+    /// </para>
+    /// <para>
+    /// It used to restart the whole resolve whenever one dome failed, which
+    /// re-decoded every dome before it: three valid domes followed by a corrupt
+    /// one cost six decodes rather than four, and the cost grew quadratically in
+    /// the number of broken assets. A dome that fails during the stream is now
+    /// skipped in place and recorded, so no source is ever opened twice, and the
+    /// identity the result is retained under is recomposed from the domes that
+    /// were actually consumed rather than the ones that were offered.
+    /// </para>
+    /// </remarks>
+    private SilkEnvironmentMaps? BuildEnvironmentMaps(
+        List<SilkEnvironmentData> candidates,
+        bool perDomeGroups,
+        out string identity,
+        out bool settled)
+    {
+        identity = string.Empty;
+        settled = true;
+        PreflightEnvironmentCandidates(candidates);
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        identity = ComposeEnvironmentIdentity(candidates, perDomeGroups);
+        if (_environmentLighting.TryGet(identity) is { } cached)
+        {
+            return cached;
+        }
+
+        // The grouped bake is a multiple of the composed one, so a byte budget
+        // that admits the composed environment can still refuse the groups. The
+        // exact subset that survives is the composed sky itself: the scene keeps
+        // its directional response and loses only the per-dome *selection* of it,
+        // which is named rather than left to be inferred from a flat image. It is
+        // checked here, before the decode stream is opened, because refusing after
+        // the decode would pay for a traversal the caller then discards.
+        if (perDomeGroups)
+        {
+            try
+            {
+                _environmentPrefilterOptions.ValidateGroupBudget(candidates.Count + 1);
+            }
+            catch (SilkEnvironmentBudgetExceededException exception)
+            {
+                AddDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentDomeLinkUnavailable,
+                    string.Empty,
+                    RenderDiagnosticSeverity.Warning,
+                    "The per-dome prefiltered environment groups this scene's " +
+                    $"UsdLux dome linking needs do not fit: {exception.Message} " +
+                    "Every prim receives the composed sky of every dome, so a " +
+                    "dome's collection:lightLink no longer selects which sky it " +
+                    "reflects. Its ambient contribution is still masked.");
+                perDomeGroups = false;
+                identity = ComposeEnvironmentIdentity(candidates, perDomeGroups: false);
+                if (_environmentLighting.TryGet(identity) is { } composed)
+                {
+                    return composed;
+                }
+            }
+        }
+
+        var stream = new EnvironmentSourceStream(this, candidates);
+        SilkEnvironmentMaps maps;
+        try
+        {
+            maps = SilkEnvironmentPrefilter.Build(
+                stream,
+                _environmentPrefilterOptions,
+                perDomeGroups);
+            _environmentLighting.CountBuild();
+        }
+        catch (ArgumentException) when (stream.SkippedIndices.Count == candidates.Count)
+        {
+            // Every candidate was skipped, so the prefilter was handed an empty
+            // set and refused it. Each dome has already been diagnosed against its
+            // own prim, and all of them fall back; the refusal itself is not a
+            // second failure to report.
+            foreach (SilkEnvironmentData skipped in candidates)
+            {
+                _ = _environmentPrefilterSkipped.Add(skipped.Path);
+            }
+            EnvironmentDecodeCount += stream.DecodeCount;
+            EnvironmentDecodedBytes += stream.DecodedBytes;
+            candidates.Clear();
+            identity = string.Empty;
+            return null;
+        }
+        catch (Exception exception) when (
+            exception is FileNotFoundException or DirectoryNotFoundException or
+                IOException or InvalidDataException or OutOfMemoryException or
+                OverflowException or SilkEnvironmentBudgetExceededException)
+        {
+            // The prefilter itself refused the composed set, so no one dome is
+            // answerable for it and the whole environment falls back; the
+            // mean-radiance path names each dome in turn. An exhaustion or an
+            // overflow is a property of this attempt rather than of the scene, so
+            // it is not settled and the next resolve tries again.
+            settled = exception is not (OutOfMemoryException or OverflowException);
+            EnvironmentDecodeCount += stream.DecodeCount;
+            EnvironmentDecodedBytes += stream.DecodedBytes;
+            candidates.Clear();
+            identity = string.Empty;
+            return null;
+        }
+        EnvironmentDecodeCount += stream.DecodeCount;
+        EnvironmentDecodedBytes += stream.DecodedBytes;
+
+        // Every dome the stream could not read has already been diagnosed against
+        // its own prim. Removing them here is what keeps the retained identity a
+        // description of the payload rather than of the request.
+        if (stream.SkippedIndices.Count > 0)
+        {
+            for (int index = candidates.Count - 1; index >= 0; index--)
+            {
+                if (stream.SkippedIndices.Contains(index))
+                {
+                    // Recorded so that the mean-radiance fallback can contradict
+                    // it: a source the prefilter could not read and the fallback
+                    // then reads was unavailable transiently, not unreadable, and
+                    // the directional response must not be settled on that.
+                    _ = _environmentPrefilterSkipped.Add(candidates[index].Path);
+                    candidates.RemoveAt(index);
+                }
+            }
+            if (candidates.Count == 0)
+            {
+                identity = string.Empty;
+                return null;
+            }
+            identity = ComposeEnvironmentIdentity(candidates, perDomeGroups);
+            if (_environmentLighting.TryGet(identity) is { } reused)
+            {
+                return reused;
+            }
+        }
+
+        try
+        {
+            _environmentLighting.Add(identity, maps);
+        }
+        catch (SilkEnvironmentBudgetExceededException)
+        {
+            // Retaining it is what exceeded the budget, not producing it. The
+            // payload is still correct, so the frame uses it and simply does not
+            // keep it; the next revision rebuilds.
+        }
+        return maps;
+    }
+
+    /// <summary>Composes the cache identity of one accepted candidate set.</summary>
+    private string ComposeEnvironmentIdentity(
+        List<SilkEnvironmentData> candidates,
+        bool perDomeGroups)
+    {
+        var stamps = new SilkEnvironmentAssetStamp[candidates.Count];
+        for (int index = 0; index < candidates.Count; index++)
+        {
+            stamps[index] = _environmentStampReader(candidates[index].TexturePath);
+        }
+        return SilkEnvironmentIdentity.Compose(
+            _environmentIdentityContext,
+            candidates,
+            stamps,
+            _environmentPrefilterOptions,
+            perDomeGroups);
+    }
+
+    /// <summary>
+    /// Removes, and diagnoses, every candidate whose described size is over the
+    /// per-image ceiling or would take the set over the aggregate ceiling.
+    /// </summary>
+    /// <remarks>
+    /// Describing is not decoding, so this is the cheap phase and it runs to
+    /// completion before a single pixel is produced. A dome refused here keeps its
+    /// mean-radiance ambient term, which is named against its own prim: a set that
+    /// is collectively too large costs the scene the domes that did not fit, not
+    /// the directionality of the ones that did.
+    /// <para>
+    /// When no describer is available nothing can be preflighted, and the
+    /// post-decode checks inside the stream are the whole of the bound. That is
+    /// stated rather than worked around: a decoder-only harness has no way to
+    /// learn an image's size without decoding it.
+    /// </para>
+    /// </remarks>
+    private void PreflightEnvironmentCandidates(List<SilkEnvironmentData> candidates)
+    {
+        SilkEnvironmentPrefilterOptions options = _environmentPrefilterOptions;
+        ulong aggregate = 0;
+        for (int index = 0; index < candidates.Count; index++)
+        {
+            SilkEnvironmentData dome = candidates[index];
+            SilkImageDescription? description = TryDescribeEnvironment(dome.TexturePath);
+            if (description is not { } shape)
+            {
+                continue;
+            }
+
+            ulong preflight;
+            try
+            {
+                preflight = SilkEnvironmentPrefilter.EstimateDecodedBytes(shape);
+            }
+            catch (Exception exception) when (
+                exception is InvalidDataException or OverflowException)
+            {
+                // A shape that cannot even be multiplied out is over every budget
+                // this renderer states, so it is refused as one rather than
+                // escaping the frame as an arithmetic fault.
+                AddEnvironmentPrefilterDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded,
+                    dome.Path,
+                    $"Dome light '{dome.Path}' declares an environment texture " +
+                    $"whose decoded size cannot be represented: {exception.Message} " +
+                    "It falls back to its mean-radiance ambient term.");
+                candidates.RemoveAt(index--);
+                continue;
+            }
+
+            if (preflight > options.MaximumSourceBytes)
+            {
+                AddEnvironmentPrefilterDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded,
+                    dome.Path,
+                    $"Dome light '{dome.Path}' declares an environment texture that " +
+                    $"decodes to {preflight.ToString(CultureInfo.InvariantCulture)} bytes, " +
+                    "which exceeds the " +
+                    $"{options.MaximumSourceBytes.ToString(CultureInfo.InvariantCulture)}" +
+                    " byte per-image environment budget; it falls back to its " +
+                    "mean-radiance ambient term.");
+                candidates.RemoveAt(index--);
+                continue;
+            }
+
+            ulong projected = preflight > ulong.MaxValue - aggregate
+                ? ulong.MaxValue
+                : aggregate + preflight;
+            if (projected > options.MaximumAggregateSourceBytes)
+            {
+                AddEnvironmentPrefilterDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded,
+                    dome.Path,
+                    $"Dome light '{dome.Path}' would take the composed environment to " +
+                    $"{projected.ToString(CultureInfo.InvariantCulture)} decoded bytes, " +
+                    "which exceeds the " +
+                    $"{options.MaximumAggregateSourceBytes.ToString(CultureInfo.InvariantCulture)}" +
+                    " byte aggregate environment budget; it falls back to its " +
+                    "mean-radiance ambient term.");
+                candidates.RemoveAt(index--);
+                continue;
+            }
+            aggregate = projected;
+        }
+    }
+
+    /// <summary>
+    /// Opens each accepted dome's decoded image in turn, one at a time, and
+    /// records the ones it could not read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is an enumerable rather than an array on purpose. The prefilter
+    /// accumulates one source into the shared world lattice and then moves on, so
+    /// yielding lazily means exactly one decoded image is reachable at a time --
+    /// four 4K float environments materialized together would be a gigabyte of
+    /// transient allocation for one frame.
+    /// </para>
+    /// <para>
+    /// A dome that cannot be decoded, that is malformed, or whose decoded bytes
+    /// contradict the shape its describer reported is skipped in place and
+    /// recorded, rather than aborting the enumeration. That is what lets one
+    /// broken asset cost the scene one dome instead of a restart that re-decodes
+    /// every source before it.
+    /// </para>
+    /// </remarks>
+    private sealed class EnvironmentSourceStream(
+        SilkSceneGpuResources owner,
+        List<SilkEnvironmentData> candidates)
+        : IEnumerable<SilkEnvironmentSource>
+    {
+        /// <summary>Gets the candidate indices whose sources could not be read.</summary>
+        internal HashSet<int> SkippedIndices { get; } = [];
+
+        /// <summary>Gets the number of decodes this stream performed.</summary>
+        internal int DecodeCount { get; private set; }
+
+        /// <summary>Gets the decoded bytes this stream produced in total.</summary>
+        internal ulong DecodedBytes { get; private set; }
+
+        public IEnumerator<SilkEnvironmentSource> GetEnumerator()
+        {
+            SkippedIndices.Clear();
+            DecodeCount = 0;
+            DecodedBytes = 0;
+            for (int index = 0; index < candidates.Count; index++)
+            {
+                SilkEnvironmentSource? source = TryOpen(index);
+                if (source is { } opened)
+                {
+                    yield return opened;
+                }
+            }
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
+            GetEnumerator();
+
+        /// <summary>
+        /// Decodes and validates one candidate, or records why it could not be.
+        /// </summary>
+        /// <remarks>
+        /// Separated from the iterator because a <c>yield return</c> cannot sit
+        /// inside a <c>try</c> that has a <c>catch</c>. Returning null rather than
+        /// throwing is what keeps a broken dome from ending the enumeration and
+        /// costing every dome after it its directional response.
+        /// </remarks>
+        private SilkEnvironmentSource? TryOpen(int index)
+        {
+            SilkEnvironmentData dome = candidates[index];
+            SilkEnvironmentPrefilterOptions options = owner._environmentPrefilterOptions;
+            try
+            {
+                SilkImageDescription? description =
+                    owner.TryDescribeEnvironment(dome.TexturePath);
+                SilkColorSpace colorSpace = SilkEnvironmentMeanRadiance.ResolveColorSpace(
+                    dome.SourceColorSpace,
+                    description,
+                    description?.Format ?? SilkTextureFormat.Rgba32Float);
+                // Counted before the call, so it counts decode *attempts*. That is
+                // what proves no prefix is re-read: a decode that threw still
+                // opened and traversed the file.
+                DecodeCount++;
+                SilkDecodedImage image = owner._imageDecoder(dome.TexturePath, false);
+                ulong decodedBytes = checked((ulong)image.Pixels.LongLength);
+                DecodedBytes = checked(DecodedBytes + decodedBytes);
+
+                // Re-checked after the decode. The preflight ran against the
+                // describer's shape, and a describer and a decoder can disagree;
+                // the bytes that were actually produced are the ones the budget has
+                // to hold. It is also the whole of the bound when no describer
+                // exists to preflight against.
+                if (decodedBytes > options.MaximumSourceBytes)
+                {
+                    throw new SilkEnvironmentBudgetExceededException(
+                        dome.TexturePath,
+                        decodedBytes,
+                        options.MaximumSourceBytes);
+                }
+                if (DecodedBytes > options.MaximumAggregateSourceBytes)
+                {
+                    throw new SilkEnvironmentBudgetExceededException(
+                        dome.TexturePath,
+                        DecodedBytes,
+                        options.MaximumAggregateSourceBytes);
+                }
+
+                // Validated here, with the candidate index still in hand, so one
+                // malformed or non-finite dome can be dropped without taking the
+                // directional response away from the valid ones.
+                SilkEnvironmentPrefilter.ValidateSource(image, colorSpace);
+
+                return new SilkEnvironmentSource(
+                    image,
+                    colorSpace,
+                    dome.LightToWorld,
+                    dome.AmbientEmissionScale,
+                    dome.SpecularEmissionScale);
+            }
+            catch (SilkEnvironmentBudgetExceededException exception)
+            {
+                SkippedIndices.Add(index);
+                owner.AddEnvironmentPrefilterDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded,
+                    dome.Path,
+                    $"Dome light '{dome.Path}' exceeded an environment decode " +
+                    $"budget: {exception.Message} It falls back to its " +
+                    "mean-radiance ambient term.");
+                return null;
+            }
+            catch (Exception exception) when (
+                exception is OutOfMemoryException or OverflowException)
+            {
+                // An image the process cannot hold, or one whose byte count does
+                // not fit the accumulator, is over every budget this renderer
+                // states. Naming it as one keeps the dome on its untextured
+                // emission instead of failing the frame.
+                SkippedIndices.Add(index);
+                owner.AddEnvironmentPrefilterDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded,
+                    dome.Path,
+                    $"Dome light '{dome.Path}' could not be decoded within the " +
+                    $"environment budget: {exception.Message} It falls back to its " +
+                    "mean-radiance ambient term.");
+                return null;
+            }
+            catch (Exception exception) when (
+                exception is FileNotFoundException or DirectoryNotFoundException or
+                    IOException or InvalidDataException or NotSupportedException)
+            {
+                SkippedIndices.Add(index);
+                owner.AddEnvironmentPrefilterDiagnostic(
+                    SilkRenderDiagnosticCodes.EnvironmentDecodeFailed,
+                    dome.Path,
+                    $"Dome light '{dome.Path}' could not read its environment " +
+                    $"texture: {exception.Message} It falls back to its " +
+                    "mean-radiance ambient term.");
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Allocates every GPU object the enabled environment needs, or none of them.
+    /// </summary>
+    /// <remarks>
+    /// The two maps, the BRDF table and the two samplers are one transaction.
+    /// They used to be three: the maps here, and the table and samplers created
+    /// lazily on first upload and first bind. That let a device refuse the table
+    /// <em>after</em> the frame constants had already declared the environment
+    /// enabled, which is a state with no correct rendering -- the shader would
+    /// read a one-texel stand-in as its split-sum table and light every surface
+    /// from it -- and it surfaced the refusal from inside a render rather than
+    /// from the prepare that a caller can fall back from. Allocating all five
+    /// under one guard means an enablement either has every resource it declares
+    /// or does not happen, and the caller keeps the mean-radiance fallback.
+    /// </remarks>
+    private void EnsureEnvironmentTextures(
+        SilkEnvironmentMaps maps,
+        string identity,
+        List<SilkEnvironmentData> composed)
+    {
+        if (_environmentIrradianceTexture is not null &&
+            _environmentSpecularTexture is not null &&
+            _environmentBrdfTexture is not null &&
+            _environmentSampler is not null &&
+            _environmentBrdfSampler is not null &&
+            string.Equals(_environmentUploadedIdentity, identity, StringComparison.Ordinal))
+        {
+            // The payload is already resident, but which dome bit reads which
+            // group is a property of the scene rather than of the payload: the
+            // same composed set can be republished under different dome indices
+            // when the scene''s dome ordering moves. Re-resolving here keeps the
+            // binding truthful without a rebuild.
+            UpdateEnvironmentBinding(maps, composed);
+            return;
+        }
+
+        ISilkGraphicsTexture? irradiance = null;
+        ISilkGraphicsTexture? specular = null;
+        ISilkGraphicsTexture? brdf = null;
+        ISilkGraphicsSampler? sampler = null;
+        ISilkGraphicsSampler? brdfSampler = null;
+        try
+        {
+            irradiance = _device.CreateTexture2D(new SilkTextureDescriptor(
+                maps.IrradianceWidth,
+                maps.IrradianceAtlasHeight,
+                SilkEnvironmentMaps.Format,
+                EnvironmentTextureUsage));
+            specular = _device.CreateTexture2D(new SilkTextureDescriptor(
+                maps.SpecularWidth,
+                maps.SpecularAtlasHeight,
+                SilkEnvironmentMaps.Format,
+                EnvironmentTextureUsage));
+            if (_environmentBrdfTexture is null)
+            {
+                brdf = _device.CreateTexture2D(new SilkTextureDescriptor(
+                    SilkEnvironmentBrdf.Size,
+                    SilkEnvironmentBrdf.Size,
+                    SilkEnvironmentMaps.Format,
+                    EnvironmentTextureUsage));
+            }
+            if (_environmentSampler is null)
+            {
+                sampler = _device.CreateSampler(EnvironmentSamplerDescriptor);
+            }
+            if (_environmentBrdfSampler is null)
+            {
+                brdfSampler = _device.CreateSampler(SilkSamplerDescriptor.LinearClamp);
+            }
+        }
+        catch
+        {
+            // Only the objects this call created are disposed. A sampler that was
+            // already resident belongs to an earlier, successful transaction and
+            // is still bound by the stand-in path.
+            brdfSampler?.Dispose();
+            sampler?.Dispose();
+            brdf?.Dispose();
+            specular?.Dispose();
+            irradiance?.Dispose();
+            throw;
+        }
+
+        _environmentIrradianceTexture?.Dispose();
+        _environmentSpecularTexture?.Dispose();
+        _environmentIrradianceTexture = irradiance;
+        _environmentSpecularTexture = specular;
+        if (brdf is not null)
+        {
+            _environmentBrdfTexture = brdf;
+            _environmentBrdfUploaded = false;
+            _environmentBrdfUploadPending = false;
+        }
+        _environmentSampler ??= sampler;
+        _environmentBrdfSampler ??= brdfSampler;
+        _environmentPayload = maps;
+        _environmentUploadedIdentity = identity;
+        _environmentMapsUploaded = false;
+        // A recorded upload of the payload this call just replaced targets a
+        // texture that no longer exists, so it is dropped rather than committed.
+        _environmentMapsUploadPending = false;
+        _environmentPendingUploadBytes = 0;
+        UpdateEnvironmentBinding(maps, composed);
+    }
+
+    /// <summary>
+    /// Publishes the environment block, including which group each dome bit reads.
+    /// </summary>
+    /// <remarks>
+    /// The dome-to-group table is indexed by the dome bit hdSilk assigned, not by
+    /// the position a dome happens to occupy in the composed set: a dome the
+    /// prefilter refused holds a bit and no group, and its bit must therefore
+    /// resolve to no group rather than to whichever composed dome inherited its
+    /// index. A dome the page could not give a bit to has nothing to record here
+    /// at all and reaches every prim through the composed group.
+    /// </remarks>
+    private void UpdateEnvironmentBinding(
+        SilkEnvironmentMaps maps,
+        List<SilkEnvironmentData> composed)
+    {
+        SilkDomeGroupTable groups = SilkDomeGroupTable.Empty;
+        if (maps.GroupCount > 1)
+        {
+            for (int index = 0; index < composed.Count; index++)
+            {
+                SilkEnvironmentData dome = composed[index];
+                if (!dome.HasDomeIndex || dome.DomeIndex >= SilkFrameCommand.MaximumDomes)
+                {
+                    continue;
+                }
+                groups = groups.WithGroup((int)dome.DomeIndex, (uint)index);
+            }
+        }
+
+        var binding = new SilkEnvironmentFrameBinding(
+            true,
+            maps.SpecularSliceCount,
+            maps.SpecularSliceHeight,
+            _environmentAuthoredSceneLighting,
+            maps.GroupCount,
+            maps.ComposedGroup,
+            maps.IrradianceHeight,
+            groups);
+        if (_environmentBinding == binding)
+        {
+            return;
+        }
+        _environmentBinding = binding;
+        _environmentBindingRevision++;
+    }
+
+    private const SilkTextureUsage EnvironmentTextureUsage =
+        SilkTextureUsage.Sampled |
+        SilkTextureUsage.CopySource |
+        SilkTextureUsage.CopyDestination;
+
+    private void ReleaseEnvironmentMaps()
+    {
+        _environmentIrradianceTexture?.Dispose();
+        _environmentIrradianceTexture = null;
+        _environmentSpecularTexture?.Dispose();
+        _environmentSpecularTexture = null;
+        _environmentPayload = null;
+        _environmentUploadedIdentity = null;
+        _environmentMapsUploaded = false;
+        _environmentMapsUploadPending = false;
+        _environmentPendingUploadBytes = 0;
+
+        // The authored flag survives, because releasing the maps is this
+        // renderer's verdict on the dome and not the author's. A scene whose only
+        // light is a dome the prefilter refused is still a lit scene, and must
+        // still not acquire a headlight.
+        var released = new SilkEnvironmentFrameBinding(
+            false,
+            0,
+            0,
+            _environmentAuthoredSceneLighting);
+        if (_environmentBinding != released)
+        {
+            _environmentBinding = released;
+            _environmentBindingRevision++;
+        }
+    }
+
+    /// <summary>
+    /// Records whether the scene authors any dome light at all, independently of
+    /// whether one was resolved.
+    /// </summary>
+    private void SetEnvironmentAuthoredSceneLighting(bool authored)
+    {
+        if (_environmentAuthoredSceneLighting == authored)
+        {
+            return;
+        }
+        _environmentAuthoredSceneLighting = authored;
+        _environmentBinding = _environmentBinding with { AuthoredSceneLighting = authored };
+        _environmentBindingRevision++;
+    }
+
+    /// <summary>
+    /// Releases every GPU object the environment owns, which is what a device
+    /// loss requires.
+    /// </summary>
+    /// <remarks>
+    /// The two maps are the obvious half. The two samplers, the one-texel stand-in
+    /// and the BRDF table are the half that is easy to miss: they are created once
+    /// and reused across every scene edit, so a release that only dropped the maps
+    /// would rebind objects belonging to a device that no longer exists.
+    /// </remarks>
+    private void ReleaseEnvironmentDeviceResources()
+    {
+        ReleaseEnvironmentMaps();
+        _environmentStandIn?.Dispose();
+        _environmentStandIn = null;
+        _environmentSampler?.Dispose();
+        _environmentSampler = null;
+        _environmentBrdfSampler?.Dispose();
+        _environmentBrdfSampler = null;
+        _environmentBrdfTexture?.Dispose();
+        _environmentBrdfTexture = null;
+        _environmentBrdfUploaded = false;
+        _environmentBrdfUploadPending = false;
+    }
+
+    /// <summary>
+    /// Forces the mean-radiance fallback to be re-resolved when the set of domes
+    /// the prefiltered environment carries has changed.
+    /// </summary>
+    /// <remarks>
+    /// The fallback is cached against the environment revision alone, which is
+    /// correct while the lit set is stable and wrong the moment it is not: a dome
+    /// that stopped being prefiltered has to start contributing its ambient term
+    /// on the same frame, and one that started has to stop.
+    /// </remarks>
+    private void InvalidateEnvironmentAmbient(HashSet<string> previousLit)
+    {
+        if (previousLit.SetEquals(_environmentLitDomes))
+        {
+            return;
+        }
+        _environmentsResolved = false;
+    }
+
+    private ISilkGraphicsSampler RequireEnvironmentSampler() =>
+        _environmentSampler ??= _device.CreateSampler(EnvironmentSamplerDescriptor);
+
+    private ISilkGraphicsSampler RequireEnvironmentBrdfSampler() =>
+        _environmentBrdfSampler ??=
+            _device.CreateSampler(SilkSamplerDescriptor.LinearClamp);
+
+    private ISilkGraphicsTexture RequireEnvironmentBrdfTexture() =>
+        _environmentBrdfTexture ??= _device.CreateTexture2D(new SilkTextureDescriptor(
+            SilkEnvironmentBrdf.Size,
+            SilkEnvironmentBrdf.Size,
+            SilkEnvironmentMaps.Format,
+            EnvironmentTextureUsage));
+
+    /// <summary>
+    /// The sampler both environment maps are read through: linear filtering,
+    /// wrapping in U and clamping in V.
+    /// </summary>
+    /// <remarks>
+    /// The address modes are not interchangeable. Longitude is periodic, so a
+    /// clamped U leaves a visible seam down the back of every reflection; latitude
+    /// is not, so a wrapped V folds the north pole onto the south one and puts the
+    /// sky under the floor. The BRDF table gets its own clamped sampler instead,
+    /// because it is a function on a bounded square and a wrapped incidence of one
+    /// would read the grazing end of the table.
+    /// </remarks>
+    private static SilkSamplerDescriptor EnvironmentSamplerDescriptor => new(
+        SilkSamplerFilter.Linear,
+        SilkSamplerFilter.Linear,
+        SilkSamplerAddressMode.Repeat,
+        SilkSamplerAddressMode.ClampToEdge,
+        SilkSamplerAddressMode.ClampToEdge);
+
+    private ISilkGraphicsTexture RequireEnvironmentStandIn()
+    {
+        if (_environmentStandIn is not null)
+        {
+            return _environmentStandIn;
+        }
+
+        _environmentStandIn = _device.CreateTexture2D(new SilkTextureDescriptor(
+            1,
+            1,
+            SilkEnvironmentMaps.Format,
+            EnvironmentTextureUsage));
+        return _environmentStandIn;
+    }
+
+    /// <summary>
+    /// Gets the number of retained per-material, per-mask surface constant
+    /// blocks.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so the eviction that follows a link-table edit is gated by
+    /// counting rather than by inspection: a cache that kept every mask it ever
+    /// resolved is indistinguishable from one that keeps only the live masks in
+    /// every observable except this.
+    /// </remarks>
+    internal int SurfaceBufferCount => _surfaceBuffers.Count;
+
+    /// <summary>
+    /// Drops the state a previous link table left behind, whenever the retained
+    /// table changes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two kinds of state outlive a table that is edited, repaired or retired.
+    /// The first is the diagnostics the previous table produced: a truncated
+    /// table, a dome budget it over-ran, a prim it linked that binds a generated
+    /// MaterialX fragment. Those are re-emitted by the very next draw that still
+    /// warrants them, so clearing them here is what makes a repaired scene stop
+    /// warning instead of warning forever about a table that no longer exists.
+    /// </para>
+    /// <para>
+    /// The second is the per-mask surface constant blocks. Those are cached by
+    /// (material, packed masks), and a live-edited collection walks through many
+    /// masks: without eviction a stage whose author drags a light through a
+    /// hierarchy accumulates one retained buffer per mask it ever resolved, and
+    /// nothing ever drops them because the material never changed. Only the masks
+    /// the current table can still return survive.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// Observes the retained link table's revision, dropping the diagnostics and
+    /// the per-mask surface blocks a previous table produced.
+    /// </summary>
+    /// <remarks>
+    /// Called once per page and once per frame rather than only from the draw
+    /// loop, so that a scene with nothing drawable still retires what its last
+    /// table left behind.
+    /// </remarks>
+    internal void ObserveLightLinks(SilkSceneState scene)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(scene);
+        ObserveLightLinkRevision(scene);
+    }
+
+    private void ObserveLightLinkRevision(SilkSceneState scene)
+    {
+        if (_surfaceLinkRevision == scene.LightLinks.Revision)
+        {
+            return;
+        }
+
+        _surfaceLinkRevision = scene.LightLinks.Revision;
+        RemoveDiagnostics(static code =>
+            code is SilkRenderDiagnosticCodes.LightLinkTruncated or
+                SilkRenderDiagnosticCodes.LightLinkDomeBudget or
+                SilkRenderDiagnosticCodes.LightLinkGeneratedShaderUnsupported);
+
+        scene.LightLinks.CollectPackedMasks(_liveLinkMasks);
+        List<SurfaceBufferKey>? stale = null;
+        foreach (SurfaceBufferKey key in _surfaceBuffers.Keys)
+        {
+            if (!_liveLinkMasks.Contains(key.Masks))
+            {
+                (stale ??= []).Add(key);
+            }
+        }
+        if (stale is null)
+        {
+            return;
+        }
+        foreach (SurfaceBufferKey key in stale)
+        {
+            if (_surfaceBuffers.Remove(key, out SurfaceBuffer surface))
+            {
+                surface.Buffer?.Dispose();
+            }
+        }
     }
 
     /// <summary>
@@ -1949,6 +5608,34 @@ public sealed class SilkSceneGpuResources : IDisposable
         RenderHeadlight light)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(mesh);
+        ObserveLightLinkRevision(scene);
+        SilkLightLinkMasks masks = scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex);
+        uint packedMasks = PackLinkMasks(masks);
+        if (scene.LightLinks.UnsupportedFeatures.HasFlag(SilkLightLinkUnsupportedFeatures.Truncated))
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.LightLinkTruncated,
+                string.Empty,
+                RenderDiagnosticSeverity.Warning,
+                "The hdSilk light link table exceeded the page budget of " +
+                $"{SilkLightLinkCommand.MaximumEntries} entries. Prims that did not " +
+                "fit are lit by every light regardless of their authored collections.");
+        }
+        if (scene.LightLinks.UnsupportedFeatures.HasFlag(
+            SilkLightLinkUnsupportedFeatures.DomeBudget))
+        {
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.LightLinkDomeBudget,
+                string.Empty,
+                RenderDiagnosticSeverity.Warning,
+                "The scene authors more dome lights than the " +
+                $"{SilkFrameCommand.MaximumDomes.ToString(CultureInfo.InvariantCulture)} " +
+                "the page dome table admits, so hdSilk published no dome link " +
+                "mask. Every dome light illuminates every prim regardless of its " +
+                "authored collection:lightLink.");
+        }
         SilkMaterialData? material = null;
         string path = mesh.MaterialPath;
         if (!string.IsNullOrEmpty(path))
@@ -1968,6 +5655,17 @@ public sealed class SilkSceneGpuResources : IDisposable
                         RenderDiagnosticSeverity.Warning,
                         $"Mesh material '{path}' is not present in retained scene state; default shading was used.");
                 }
+                else if (material.IsMdlUnavailable)
+                {
+                    AddDiagnostic(
+                        SilkRenderDiagnosticCodes.MaterialMdlUnavailable,
+                        path,
+                        RenderDiagnosticSeverity.Warning,
+                        $"Material '{path}' binds an MDL-only surface this runtime " +
+                        "did not distil, so default shading was used. Install the " +
+                        "optional openusd_mdl adapter, or author a UsdPreviewSurface " +
+                        "or MaterialX context on the material.");
+                }
                 else
                 {
                     AddDiagnostic(
@@ -1978,32 +5676,99 @@ public sealed class SilkSceneGpuResources : IDisposable
                         $"{material.SurfaceKind}; default shading was used.");
                 }
             }
-            return _defaultSurfaceBuffer ??= CreateSurfaceBuffer(null, light);
+
+            var defaultKey = new SurfaceBufferKey(string.Empty, packedMasks);
+            if (_surfaceBuffers.TryGetValue(defaultKey, out SurfaceBuffer defaultSurface) &&
+                defaultSurface.Buffer is { } retainedDefault)
+            {
+                return retainedDefault;
+            }
+
+            ISilkGraphicsBuffer createdDefault = CreateSurfaceBuffer(null, light, masks);
+            _surfaceBuffers[defaultKey] = new SurfaceBuffer(createdDefault, 0);
+            return createdDefault;
         }
 
-        if (_surfaceBuffers.TryGetValue(material.Path, out SurfaceBuffer existing) &&
+        var key = new SurfaceBufferKey(material.Path, packedMasks);
+        if (masks != SilkLightLinkMasks.All &&
+            material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated)
+        {
+            // The generated fragment carries MaterialX's own lighting, not the
+            // checked permutation's frame light loop, so the mask packed into the
+            // block below is never read by it. Naming that is the only honest
+            // option: the prim is lit by every light whatever its collections say.
+            AddDiagnostic(
+                SilkRenderDiagnosticCodes.LightLinkGeneratedShaderUnsupported,
+                mesh.Path,
+                RenderDiagnosticSeverity.Warning,
+                $"Prim '{mesh.Path}' authors UsdLux light, shadow or dome linking but binds " +
+                $"material '{material.Path}', which is drawn through a " +
+                "runtime-generated MaterialX fragment. That fragment does not read " +
+                "the per-draw light or dome mask, so the prim is lit by every light.");
+        }
+        if (_surfaceBuffers.TryGetValue(key, out SurfaceBuffer existing) &&
             existing.Buffer is { } retained)
         {
             if (existing.MaterialHash != material.StableHash)
             {
                 // The material changed in place, so refresh the block rather than
                 // allocating a second buffer for the same path.
-                WriteSurface(retained, material, light);
-                _surfaceBuffers[material.Path] =
-                    new SurfaceBuffer(retained, material.StableHash);
+                WriteSurface(retained, material, light, masks);
+                _surfaceBuffers[key] = new SurfaceBuffer(retained, material.StableHash);
             }
 
             return retained;
         }
 
-        ISilkGraphicsBuffer created = CreateSurfaceBuffer(material, light);
-        _surfaceBuffers[material.Path] = new SurfaceBuffer(created, material.StableHash);
+        ISilkGraphicsBuffer created = CreateSurfaceBuffer(material, light, masks);
+        _surfaceBuffers[key] = new SurfaceBuffer(created, material.StableHash);
         return created;
+    }
+
+    /// <summary>
+    /// Folds the three link masks into the single key the surface block cache and
+    /// the per-draw batch key both compare.
+    /// </summary>
+    /// <remarks>
+    /// The dome mask is in the key, not merely in the block. Two prims that share
+    /// a material but link different domes must not share a surface buffer or a
+    /// draw: the dome mask is a per-draw constant, and batching them together
+    /// would give both of them whichever mask was written last.
+    /// </remarks>
+    internal static uint PackLinkMasks(SilkLightLinkMasks masks) => masks.Packed;
+
+    /// <summary>
+    /// Drops every packed block one material owns, across every link mask it was
+    /// drawn with, so a re-authored material cannot leave a stale block behind
+    /// for one of its masks.
+    /// </summary>
+    private void RemoveSurfaceBuffers(string materialPath)
+    {
+        List<SurfaceBufferKey>? stale = null;
+        foreach (SurfaceBufferKey key in _surfaceBuffers.Keys)
+        {
+            if (string.Equals(key.MaterialPath, materialPath, StringComparison.Ordinal))
+            {
+                (stale ??= []).Add(key);
+            }
+        }
+        if (stale is null)
+        {
+            return;
+        }
+        foreach (SurfaceBufferKey key in stale)
+        {
+            if (_surfaceBuffers.Remove(key, out SurfaceBuffer surface))
+            {
+                surface.Buffer?.Dispose();
+            }
+        }
     }
 
     private ISilkGraphicsBuffer CreateSurfaceBuffer(
         SilkMaterialData? material,
-        RenderHeadlight light)
+        RenderHeadlight light,
+        SilkLightLinkMasks masks)
     {
         ISilkGraphicsBuffer? buffer = null;
         try
@@ -2011,7 +5776,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             buffer = CreateTrackedBuffer(
                 SilkSurfaceUniformWriter.ByteSize,
                 SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-            WriteSurface(buffer, material, light);
+            WriteSurface(buffer, material, light, masks);
             return buffer;
         }
         catch
@@ -2024,14 +5789,16 @@ public sealed class SilkSceneGpuResources : IDisposable
     private void WriteSurface(
         ISilkGraphicsBuffer buffer,
         SilkMaterialData? material,
-        RenderHeadlight light)
+        RenderHeadlight light,
+        SilkLightLinkMasks masks)
     {
         Span<byte> constants = stackalloc byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(
             material,
             light,
             constants,
-            _device is ISilkVolumeTextureGraphicsDevice);
+            _device is ISilkVolumeTextureGraphicsDevice,
+            masks);
         WriteTracked(buffer, constants);
     }
 
@@ -2862,13 +6629,21 @@ public sealed class SilkSceneGpuResources : IDisposable
     /// <see cref="SilkTextureWrap.Clamp"/>, and a sample outside the unit range
     /// returns the edge texel. This is the documented approximation for
     /// UsdUVTexture's <c>black</c> wrap and MaterialX <c>constant</c> addressing.
+    /// <see cref="SilkTextureWrap.UseMetadata"/> resolves the same way for a
+    /// different reason: this renderer reads no wrap metadata out of an image
+    /// file, and USD's documented fallback when no metadata is present is
+    /// <c>black</c>. The vertex-stage displacement sampler, which owns its own
+    /// addressing, implements both exactly instead; see
+    /// <c>SilkDisplacementField</c>.
     /// </remarks>
     private static SilkSamplerAddressMode GetAddressMode(SilkTextureWrap wrap) =>
         wrap switch
         {
             SilkTextureWrap.Repeat => SilkSamplerAddressMode.Repeat,
             SilkTextureWrap.Mirror => SilkSamplerAddressMode.MirrorRepeat,
-            SilkTextureWrap.Clamp or SilkTextureWrap.Black => SilkSamplerAddressMode.ClampToEdge,
+            SilkTextureWrap.Clamp or
+                SilkTextureWrap.Black or
+                SilkTextureWrap.UseMetadata => SilkSamplerAddressMode.ClampToEdge,
             _ => throw new ArgumentOutOfRangeException(nameof(wrap))
         };
 
@@ -3286,6 +7061,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         RemoveDiagnostics(static code =>
             code is SilkRenderDiagnosticCodes.MaterialUnresolved or
                 SilkRenderDiagnosticCodes.MaterialUnsupported or
+                SilkRenderDiagnosticCodes.MaterialMdlUnavailable or
                 SilkRenderDiagnosticCodes.CapacityExceeded);
     }
 
@@ -3293,7 +7069,8 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
         RemoveDiagnostics(static code =>
             code is SilkRenderDiagnosticCodes.MaterialUnresolved or
-                SilkRenderDiagnosticCodes.MaterialUnsupported);
+                SilkRenderDiagnosticCodes.MaterialUnsupported or
+                SilkRenderDiagnosticCodes.MaterialMdlUnavailable);
     }
 
     private void RemoveTextureDiagnostics(string materialPath)
@@ -3325,6 +7102,29 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
     }
 
+    /// <summary>
+    /// Removes diagnostics by their storage key rather than by their code.
+    /// </summary>
+    /// <remarks>
+    /// The environment emits the same codes from two layers that resolve at
+    /// different times: the prefilter, which reports that a dome lost its
+    /// directional response, and the mean-radiance fallback, which reports that
+    /// the dome could not even be reduced to a colour. Clearing by code let the
+    /// second layer erase the first -- a dome refused by the aggregate budget was
+    /// diagnosed, then fell back successfully, and the successful fallback wiped
+    /// the record of the loss. Keying the two layers apart is what keeps a
+    /// silently non-directional scene from being a state this renderer can reach.
+    /// </remarks>
+    private void RemoveDiagnosticsByKey(Func<string, bool> predicate)
+    {
+        foreach (string key in _diagnostics.Keys
+            .Where(predicate)
+            .ToArray())
+        {
+            _diagnostics.Remove(key);
+        }
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
@@ -3344,13 +7144,19 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
         _surfaceBuffers.Clear();
         ClearTextureCache();
+        _displacementImages.Clear();
+        _displacementVerdicts.Clear();
+        _displacementImageBytes = 0;
         foreach (ISilkGraphicsSampler sampler in _samplers.Values)
         {
             sampler.Dispose();
         }
         _samplers.Clear();
-        _defaultSurfaceBuffer?.Dispose();
-        _defaultSurfaceBuffer = null;
+        ReleaseEnvironmentDeviceResources();
+        _environmentLighting.Clear();
+        _environmentMeanRadiance.Clear();
+        _environmentDescriptions.Clear();
+        _environmentLitDomes.Clear();
         _frameBuffer?.Dispose();
         _frameBuffer = null;
         _disposed = true;
@@ -3388,6 +7194,28 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
     }
 
+    /// <summary>
+    /// Resolves the material a prim binds for displacement, without the
+    /// shadeability filter.
+    /// </summary>
+    /// <remarks>
+    /// Displacement is a separate material terminal in USD. A material whose
+    /// surface hdSilk cannot shade -- an unsupported graph, an undistilled MDL
+    /// material, a generated MaterialX fragment -- can still author a
+    /// displacement this renderer evaluates exactly, and dropping it because the
+    /// surface was unshaded would silently flatten geometry the author asked to
+    /// move. The prim is still drawn with the default surface, and the surface is
+    /// still reported unshaded.
+    /// </remarks>
+    private static SilkMaterialData? ResolveDisplacementMaterial(
+        SilkSceneState scene,
+        SilkMeshData mesh) =>
+        string.IsNullOrEmpty(mesh.MaterialPath)
+            ? null
+            : scene.Materials.TryGetValue(mesh.MaterialPath, out SilkMaterialData? material)
+                ? material
+                : null;
+
     private static SilkMaterialData? ResolveMaterial(SilkSceneState scene, SilkMeshData mesh)
     {
         if (string.IsNullOrEmpty(mesh.MaterialPath))
@@ -3400,35 +7228,1167 @@ public sealed class SilkSceneGpuResources : IDisposable
             : null;
     }
 
+    /// <summary>
+    /// Resolves the retained geometry for one prim, consulting the cache before
+    /// doing any work that a hit would throw away, and records the prim's
+    /// displacement verdict whichever path drew it.
+    /// </summary>
+    /// <remarks>
+    /// The key is formed from inputs that are all cheap to read: the emitted
+    /// points, indices and normals, the rig identity, the bound material, the
+    /// fingerprint of the texture-coordinate data that material samples through,
+    /// and a displacement identity derived from the authored inputs and the
+    /// height field's file stamp. None of them needs an image decoded, a vertex
+    /// assembled or a point sampled, so a repeated frame, a second instance of
+    /// one prototype and a republished page all resolve to the retained resource
+    /// without touching any of that.
+    /// </remarks>
     private SilkMeshGpuGeometryResource GetOrCreateGeometry(SilkSceneState scene, SilkMeshData mesh)
     {
         SilkMaterialData? material = ResolveMaterial(scene, mesh);
+        SilkMaterialData? displacementMaterial = ResolveDisplacementMaterial(scene, mesh);
         string uvPrimvar = material?.GetPrimaryUvPrimvar() ?? string.Empty;
         bool normalMap = material?.GetTexture(SilkMaterialParameter.Normal) is not null;
-        var key = SilkMeshGpuGeometryKey.Create(mesh, uvPrimvar, normalMap);
-        if (_geometries.TryGetValue(key, out List<SilkMeshGpuGeometryResource>? matches))
+        SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
+            ? null
+            : mesh.FindTexCoord(uvPrimvar);
+        // Exactly the rule SilkMeshGeometryBuilder.Build applies, evaluated here
+        // so the key can be formed without building the geometry first.
+        bool hasTangents = uvAttribute is not null && normalMap;
+        SilkDisplacementPlan plan = PlanDisplacement(mesh, displacementMaterial);
+        string materialPath = displacementMaterial?.Path ?? material?.Path ?? string.Empty;
+        ulong uvFingerprint = SilkMeshGpuGeometryKey.HashAttribute(uvAttribute);
+        var key = SilkMeshGpuGeometryKey.Create(
+            mesh,
+            uvPrimvar,
+            hasTangents,
+            plan.Identity,
+            materialPath,
+            uvFingerprint);
+
+        SilkMeshGpuGeometryResource resource = ResolveGeometryResource(
+            scene,
+            mesh,
+            displacementMaterial,
+            plan,
+            key,
+            uvPrimvar,
+            normalMap);
+        // The verdict is recorded from the retained resource rather than from the
+        // resolution, so every instance of one prototype records its own -- and a
+        // GPU-eligible prim whose displacement was refused records the refusal it
+        // would otherwise never have reported, because the resolution that reports
+        // one runs only on the CPU path.
+        RecordDisplacementVerdict(mesh, materialPath, plan, resource);
+        RefreshDisplacementDiagnostics(scene);
+        return resource;
+    }
+
+    private SilkMeshGpuGeometryResource ResolveGeometryResource(
+        SilkSceneState scene,
+        SilkMeshData mesh,
+        SilkMaterialData? displacementMaterial,
+        SilkDisplacementPlan plan,
+        SilkMeshGpuGeometryKey key,
+        string uvPrimvar,
+        bool normalMap)
+    {
+        bool deformationEligible = !_deformationDisabled &&
+            !plan.MovesGeometry &&
+            _device.Capabilities.SupportsCompute &&
+            mesh.Deformation is not null;
+        if (!deformationEligible)
         {
-            foreach (SilkMeshGpuGeometryResource candidate in matches)
+            if (plan.MovesGeometry && mesh.Deformation is not null)
             {
-                if (candidate.HasSameGeometry(mesh))
-                {
-                    candidate.AddReference();
-                    return candidate;
-                }
+                _deformationDisplacementFallbacks++;
+            }
+            if (TryReuseGeometry(key, mesh, deformationPayload: null, out var reused))
+            {
+                _geometryCacheHits++;
+                return reused;
+            }
+            float[] amounts = ResolveDisplacementAmounts(
+                mesh,
+                displacementMaterial,
+                plan,
+                out SilkDisplacementFallback resolved);
+            SilkMeshGeometry cpuGeometry = SilkMeshGeometryBuilder.Build(
+                mesh,
+                uvPrimvar,
+                normalMap,
+                amounts);
+            // A CPU build declares no payload, so its recoverable-failure guard
+            // can never fire and the result is always present.
+            _ = TryCreateGeometry(
+                key,
+                mesh,
+                cpuGeometry,
+                uvPrimvar,
+                StrideFloats(cpuGeometry, mesh),
+                deformationPayload: null,
+                resolved,
+                plan.DisplacementUvPrimvar,
+                out SilkMeshGpuGeometryResource? built);
+            return built ?? throw new InvalidOperationException(
+                "Creating a CPU geometry reported a recoverable GPU failure.");
+        }
+
+        // A rig that reaches the kernel needs its emitted vertices either way:
+        // they are the pose-independent inputs the payload is built from and the
+        // authoritative bytes a recovered geometry uploads.
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh, uvPrimvar, normalMap);
+        uint strideFloats = StrideFloats(geometry, mesh);
+        SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
+            mesh.Deformation,
+            strideFloats,
+            mesh.Points.Length / 3,
+            geometry.HasTangents,
+            mesh.TopologyKind,
+            out SilkDeformationGpuPayload? deformationPayload,
+            ExtractTexCoords(mesh, geometry, strideFloats));
+        if (fallback == SilkDeformationGpuFallback.None)
+        {
+            var gpuKey = SilkMeshGpuGeometryKey.CreateGpuDeformed(
+                mesh,
+                mesh.Deformation!,
+                uvPrimvar,
+                geometry.HasTangents,
+                key.MaterialPath,
+                key.UvFingerprint,
+                key.DisplacementIdentity);
+            if (TryReuseGeometry(gpuKey, mesh, deformationPayload, out var reused))
+            {
+                _geometryCacheHits++;
+                return reused;
+            }
+            if (!_deformationDisabled &&
+                TryCreateGeometry(
+                    gpuKey,
+                    mesh,
+                    geometry,
+                    uvPrimvar,
+                    strideFloats,
+                    deformationPayload,
+                    plan.Fallback,
+                    plan.DisplacementUvPrimvar,
+                    out SilkMeshGpuGeometryResource? created))
+            {
+                return created;
             }
         }
 
-        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh, uvPrimvar, normalMap);
+        if (TryReuseGeometry(key, mesh, deformationPayload: null, out var cpuReused))
+        {
+            _geometryCacheHits++;
+            return cpuReused;
+        }
+        _ = TryCreateGeometry(
+            key,
+            mesh,
+            geometry,
+            uvPrimvar,
+            strideFloats,
+            deformationPayload: null,
+            plan.Fallback,
+            plan.DisplacementUvPrimvar,
+            out SilkMeshGpuGeometryResource? cpuCreated);
+        return cpuCreated ?? throw new InvalidOperationException(
+            "Creating a CPU geometry reported a recoverable GPU failure.");
+    }
+
+    private static uint StrideFloats(SilkMeshGeometry geometry, SilkMeshData mesh) =>
+        checked((uint)(
+            geometry.Vertices.Length / Math.Max(1, mesh.Points.Length / 3)));
+
+    /// <summary>
+    /// Decides everything about one material's displacement that can be decided
+    /// without reading a pixel.
+    /// </summary>
+    /// <remarks>
+    /// The plan's identity is what the retained geometry key carries, so it has
+    /// to separate every case that produces different vertices *and* every case
+    /// that produces a different verdict. A refusal therefore carries its reason
+    /// in its identity: two materials that both leave the surface undisplaced for
+    /// different reasons must not share one retained geometry, or the diagnostic
+    /// naming the first reason would survive a change to the second.
+    /// </remarks>
+    private SilkDisplacementPlan PlanDisplacement(SilkMeshData mesh, SilkMaterialData? material)
+    {
+        if (material is null)
+        {
+            return SilkDisplacementPlan.NotAuthored;
+        }
+        SilkMaterialTexture? texture = material.GetTexture(SilkMaterialParameter.Displacement);
+        ReadOnlySpan<float> scalar = material.GetScalar(SilkMaterialParameter.Displacement);
+
+        // A two-image composite operand is resolved in the fragment stage from
+        // two bound samplers, and the composite is not affine in either image, so
+        // it cannot be folded into one per-vertex amount. Checked before the
+        // authored test so an operand that reached here without its primary half
+        // is reported rather than read as an unauthored input.
+        SilkMaterialTexture? composite = material.GetCompositeTexture();
+        if (composite is not null &&
+            composite.Parameter == SilkMaterialParameter.Displacement)
+        {
+            return refuse(SilkDisplacementFallback.UnsupportedComposite);
+        }
+        if (texture is null && scalar.IsEmpty)
+        {
+            return SilkDisplacementPlan.NotAuthored;
+        }
+        if (mesh.TopologyKind != SilkTopologyKind.TriangleList)
+        {
+            return refuse(SilkDisplacementFallback.UnsupportedTopology);
+        }
+        if (mesh.Points.Length / 3 > _maximumDisplacedPoints)
+        {
+            return refuse(SilkDisplacementFallback.VertexBudget);
+        }
+
+        if (texture is null)
+        {
+            float amount = scalar[0];
+            if (!float.IsFinite(amount))
+            {
+                return refuse(SilkDisplacementFallback.NonFiniteAmount);
+            }
+            if (amount == 0)
+            {
+                // Zero and unauthored are different statements but the same
+                // vertices, so they deliberately share one retained geometry.
+                return SilkDisplacementPlan.NotAuthored with
+                {
+                    Fallback = SilkDisplacementFallback.AuthoredZero
+                };
+            }
+            ulong constantIdentity = MixDisplacementIdentity(
+                MixDisplacementIdentity(DisplacementIdentityBasis, ConstantIdentityTag),
+                BitConverter.SingleToUInt32Bits(amount));
+            return new SilkDisplacementPlan(
+                SilkDisplacementFallback.None,
+                SilkDisplacementSource.Constant,
+                constantIdentity,
+                amount,
+                null,
+                SilkColorSpace.Raw,
+                null);
+        }
+
+        if (texture.Asset.Contains("<UDIM>", StringComparison.Ordinal))
+        {
+            return refuse(SilkDisplacementFallback.UnsupportedUdim);
+        }
+        SilkVertexAttributeData? uv = string.IsNullOrEmpty(texture.UvPrimvar)
+            ? null
+            : mesh.FindTexCoord(texture.UvPrimvar);
+        if (uv is null)
+        {
+            // The name is carried through the refusal, and folded into its
+            // identity, precisely because this refusal is about an attribute that
+            // is *absent*: a mesh republished with that primvar added has to stop
+            // matching the refused geometry, and a refusal naming a different
+            // primvar is a different refusal.
+            return refuse(SilkDisplacementFallback.UnsupportedUvSet, texture.UvPrimvar);
+        }
+        // The coordinate data this height field is sampled through is part of the
+        // identity in its own right: it may be a different primvar from the one
+        // the material's surface textures use, so the key's own UV fingerprint
+        // does not cover it.
+        ulong identity = MixDisplacementIdentity(
+            ComputeDisplacementTextureIdentity(material, texture),
+            unchecked((uint)SilkMeshGpuGeometryKey.HashAttribute(uv)));
+        return new SilkDisplacementPlan(
+            SilkDisplacementFallback.None,
+            SilkDisplacementSource.Texture,
+            identity,
+            0,
+            texture,
+            texture.SourceColorSpace,
+            material.UvTransform);
+
+        static SilkDisplacementPlan refuse(
+            SilkDisplacementFallback fallback,
+            string requestedUvPrimvar = "")
+        {
+            ulong identity = MixDisplacementIdentity(
+                MixDisplacementIdentity(DisplacementIdentityBasis, RefusalIdentityTag),
+                (uint)fallback);
+            foreach (char character in requestedUvPrimvar)
+            {
+                identity = MixDisplacementIdentity(identity, character);
+            }
+            return SilkDisplacementPlan.Refused(fallback, requestedUvPrimvar) with
+            {
+                Identity = identity
+            };
+        }
+    }
+
+    /// <summary>
+    /// Resolves one prim's per-point displacement amounts, decoding and sampling
+    /// only because the retained-geometry cache already missed.
+    /// </summary>
+    private float[] ResolveDisplacementAmounts(
+        SilkMeshData mesh,
+        SilkMaterialData? material,
+        SilkDisplacementPlan plan,
+        out SilkDisplacementFallback resolved)
+    {
+        resolved = plan.Fallback;
+        if (material is null || !plan.MovesGeometry)
+        {
+            return [];
+        }
+
+        SilkDisplacementField? field;
+        if (plan.Source == SilkDisplacementSource.Constant)
+        {
+            field = SilkDisplacementField.Constant(plan.ConstantAmount, plan.Identity);
+        }
+        else
+        {
+            resolved = TryResolveDisplacementImage(plan, out field);
+        }
+        if (field is null)
+        {
+            return [];
+        }
+
+        _displacementResolves++;
+        int pointCount = mesh.Points.Length / 3;
+        SilkVertexAttributeData? uv = field.IsTextured
+            ? mesh.FindTexCoord(field.UvPrimvar)
+            : null;
+        _displacementSampledPoints += checked((ulong)pointCount);
+        return field.TryResolveAmounts(pointCount, uv, out float[] amounts) ? amounts : [];
+    }
+
+    /// <summary>
+    /// Decodes, bounds and retains one displacement height field, or names why it
+    /// could not be used.
+    /// </summary>
+    /// <remarks>
+    /// The image's declared shape is read from its header first, and both budgets
+    /// are decided from that shape in widened arithmetic that cannot overflow, so
+    /// an image whose header alone claims more than this renderer will retain is
+    /// refused before any decoder allocates it. An image that cannot be read at
+    /// all is not the same condition: UsdUVTexture defines <c>fallback</c> as
+    /// what the reader produces then, so the authored fallback becomes a constant
+    /// displacement and the substitution is reported.
+    /// </remarks>
+    private SilkDisplacementFallback TryResolveDisplacementImage(
+        SilkDisplacementPlan plan,
+        out SilkDisplacementField? field)
+    {
+        field = null;
+        SilkMaterialTexture texture = plan.Texture ??
+            throw new InvalidOperationException("A textured plan must carry its texture.");
+        _displacementUseClock++;
+        if (_displacementImages.TryGetValue(plan.Identity, out DisplacementCacheEntry? cached))
+        {
+            cached.LastUsedStamp = _displacementUseClock;
+            field = cached.Field;
+            return SilkDisplacementFallback.None;
+        }
+
+        int channel = DisplacementChannelIndex(texture.Channel);
+        float scale = texture.Scale[channel];
+        float bias = texture.Bias[channel];
+        if (!float.IsFinite(scale) || !float.IsFinite(bias))
+        {
+            return SilkDisplacementFallback.NonFiniteAmount;
+        }
+
+        SilkImageDescription description;
+        try
+        {
+            description = _imageDescriber(texture.Asset);
+        }
+        catch (Exception exception) when (IsUnreadableImage(exception))
+        {
+            field = CreateDisplacementFallbackField(texture, plan.Identity, channel);
+            return field is null
+                ? SilkDisplacementFallback.NonFiniteAmount
+                : SilkDisplacementFallback.TextureUnavailable;
+        }
+        if (!TryBoundDisplacementImage(description, out int texelCount))
+        {
+            return SilkDisplacementFallback.TextureBudget;
+        }
+
+        // Both deferred inputs are resolved from what the image library observed,
+        // and refused by name when it observed nothing.
+        SilkDisplacementFallback deferred = TryResolveDeferredInputs(
+            texture,
+            description,
+            out SilkColorSpace effectiveColorSpace,
+            out SilkTextureWrap wrapS,
+            out SilkTextureWrap wrapT);
+        if (deferred != SilkDisplacementFallback.None)
+        {
+            return deferred;
+        }
+
+        SilkDecodedImage image;
+        try
+        {
+            image = _imageDecoder(texture.Asset, effectiveColorSpace == SilkColorSpace.Srgb);
+            ValidateDecodedImage(image);
+            _displacementImageDecodes++;
+        }
+        catch (Exception exception) when (IsUnreadableImage(exception))
+        {
+            field = CreateDisplacementFallbackField(texture, plan.Identity, channel);
+            return field is null
+                ? SilkDisplacementFallback.NonFiniteAmount
+                : SilkDisplacementFallback.TextureUnavailable;
+        }
+        if (image.Width != description.Width ||
+            image.Height != description.Height ||
+            image.Format != description.Format)
+        {
+            // The header and the decode disagreed. The bound is re-applied to
+            // what was actually produced rather than trusting the preflight.
+            if (!TryBoundDisplacementImage(
+                    new SilkImageDescription(image.Width, image.Height, image.Format),
+                    out texelCount))
+            {
+                return SilkDisplacementFallback.TextureBudget;
+            }
+        }
+
+        FlipRows(image.Pixels, image.Width, image.Height, image.Format);
+        // Raw sampled values, with no affine folded in: the authored scale and
+        // bias belong after filtering, where UsdUVTexture puts them and where a
+        // transparent-black border receives the bias exactly once.
+        float[] texels = new float[texelCount];
+        if (image.Format == SilkTextureFormat.Rgba32Float)
+        {
+            ReadOnlySpan<float> values = MemoryMarshal.Cast<byte, float>(image.Pixels);
+            for (int texel = 0; texel < texels.Length; texel++)
+            {
+                float value = values[(texel * 4) + channel];
+                if (!float.IsFinite(value))
+                {
+                    return SilkDisplacementFallback.NonFiniteAmount;
+                }
+                texels[texel] = value;
+            }
+        }
+        else
+        {
+            for (int texel = 0; texel < texels.Length; texel++)
+            {
+                texels[texel] = image.Pixels[(texel * 4) + channel] / 255f;
+            }
+        }
+
+        var resolved = SilkDisplacementField.Textured(
+            texels,
+            checked((int)image.Width),
+            checked((int)image.Height),
+            wrapS,
+            wrapT,
+            plan.UvTransform ?? IdentityUvTransform,
+            scale,
+            bias,
+            texture.UvPrimvar,
+            plan.Identity);
+        RetainDisplacementImage(
+            plan.Identity,
+            resolved,
+            checked((ulong)texels.Length * sizeof(float)));
+        field = resolved;
+        return SilkDisplacementFallback.None;
+    }
+
+    /// <summary>
+    /// Resolves the two UsdUVTexture inputs that defer to the image file, or
+    /// names the one that could not be resolved.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>sourceColorSpace = auto</c> means "use the image's own colour-space
+    /// metadata". hdSilk asks the image library, which applies its own auto
+    /// resolution -- metadata first, then format and channel count -- so an
+    /// untagged one-channel height map stays raw instead of being linearized as
+    /// if it were an sRGB colour. When the library was not consulted at all, the
+    /// case is refused rather than guessed.
+    /// </para>
+    /// <para>
+    /// <c>wrap = useMetadata</c> means "use the wrap mode in the image file". An
+    /// axis the library answered for is honoured; an axis it was asked about and
+    /// reported nothing for is USD's documented "no metadata" case and resolves
+    /// to <c>black</c>; an axis nobody asked about is refused. A mode the wire
+    /// cannot carry is refused rather than rounded.
+    /// </para>
+    /// </remarks>
+    private static SilkDisplacementFallback TryResolveDeferredInputs(
+        SilkMaterialTexture texture,
+        SilkImageDescription description,
+        out SilkColorSpace colorSpace,
+        out SilkTextureWrap wrapS,
+        out SilkTextureWrap wrapT)
+    {
+        colorSpace = SilkColorSpace.Raw;
+        wrapS = texture.WrapS;
+        wrapT = texture.WrapT;
+        bool queried = description.Observed.HasFlag(SilkImageObservation.Queried);
+
+        switch (texture.SourceColorSpace)
+        {
+            case SilkColorSpace.Raw:
+                colorSpace = SilkColorSpace.Raw;
+                break;
+            case SilkColorSpace.Srgb:
+                colorSpace = SilkColorSpace.Srgb;
+                break;
+            default:
+                if (!queried || !description.Observed.HasFlag(SilkImageObservation.ColorSpace))
+                {
+                    return SilkDisplacementFallback.MetadataUnavailable;
+                }
+                colorSpace = description.ColorSpace == SilkImageColorSpaceObservation.Srgb
+                    ? SilkColorSpace.Srgb
+                    : SilkColorSpace.Raw;
+                break;
+        }
+
+        if (texture.WrapS == SilkTextureWrap.UseMetadata)
+        {
+            SilkDisplacementFallback reason = ResolveMetadataWrap(
+                queried,
+                description.Observed.HasFlag(SilkImageObservation.AddressU),
+                description.AddressU,
+                out wrapS);
+            if (reason != SilkDisplacementFallback.None)
+            {
+                return reason;
+            }
+        }
+        if (texture.WrapT == SilkTextureWrap.UseMetadata)
+        {
+            SilkDisplacementFallback reason = ResolveMetadataWrap(
+                queried,
+                description.Observed.HasFlag(SilkImageObservation.AddressV),
+                description.AddressV,
+                out wrapT);
+            if (reason != SilkDisplacementFallback.None)
+            {
+                return reason;
+            }
+        }
+        return SilkDisplacementFallback.None;
+    }
+
+    private static SilkDisplacementFallback ResolveMetadataWrap(
+        bool queried,
+        bool observed,
+        SilkImageAddressObservation address,
+        out SilkTextureWrap wrap)
+    {
+        wrap = SilkTextureWrap.Black;
+        if (!queried)
+        {
+            return SilkDisplacementFallback.MetadataUnavailable;
+        }
+        if (!observed)
+        {
+            // Asked and answered: the file carries no wrap metadata, and USD's
+            // documented fallback for useMetadata in that case is black.
+            return SilkDisplacementFallback.None;
+        }
+        switch (address)
+        {
+            case SilkImageAddressObservation.Repeat:
+                wrap = SilkTextureWrap.Repeat;
+                return SilkDisplacementFallback.None;
+            case SilkImageAddressObservation.MirrorRepeat:
+                wrap = SilkTextureWrap.Mirror;
+                return SilkDisplacementFallback.None;
+            case SilkImageAddressObservation.ClampToEdge:
+                wrap = SilkTextureWrap.Clamp;
+                return SilkDisplacementFallback.None;
+            case SilkImageAddressObservation.ClampToBorder:
+                wrap = SilkTextureWrap.Black;
+                return SilkDisplacementFallback.None;
+            default:
+                return SilkDisplacementFallback.MetadataUnsupported;
+        }
+    }
+
+    private static bool IsUnreadableImage(Exception exception) =>
+        exception is FileNotFoundException or
+            DirectoryNotFoundException or
+            InvalidDataException or
+            IOException;
+
+    /// <summary>
+    /// The output channel a displacement reads, as an index into a decoded RGBA
+    /// texel.
+    /// </summary>
+    /// <remarks>
+    /// A one-component input connected to the whole <c>rgb</c> output is refused
+    /// upstream, so <see cref="SilkTextureChannel.Rgb"/> only reaches here from a
+    /// wire this renderer did not produce; reading its first component is the
+    /// same reduction the fragment stage's channel replication performs.
+    /// </remarks>
+    private static int DisplacementChannelIndex(SilkTextureChannel channel) =>
+        channel switch
+        {
+            SilkTextureChannel.G => 1,
+            SilkTextureChannel.B => 2,
+            SilkTextureChannel.A => 3,
+            _ => 0
+        };
+
+    /// <summary>
+    /// Bounds one image's declared shape against the texel and byte budgets, in
+    /// arithmetic that cannot overflow.
+    /// </summary>
+    /// <remarks>
+    /// Both dimensions are 32-bit, so their product is computed in 64 bits and
+    /// the retained byte count in 64 bits again. Nothing is narrowed until both
+    /// bounds have passed, so a hostile header claiming four billion by four
+    /// billion is refused by comparison rather than by an allocation that would
+    /// have wrapped.
+    /// </remarks>
+    private bool TryBoundDisplacementImage(SilkImageDescription description, out int texelCount)
+    {
+        texelCount = 0;
+        if (description.Width == 0 || description.Height == 0)
+        {
+            return false;
+        }
+        ulong texels = (ulong)description.Width * description.Height;
+        if (texels > (ulong)_maximumDisplacementTexels)
+        {
+            return false;
+        }
+        ulong retainedBytes = texels * sizeof(float);
+        if (retainedBytes > MaximumDisplacementImageBytes)
+        {
+            return false;
+        }
+        ulong sourceBytes = texels *
+            SilkTextureFormats.GetBytesPerPixel(description.Format);
+        if (sourceBytes > int.MaxValue)
+        {
+            return false;
+        }
+        texelCount = (int)texels;
+        return true;
+    }
+
+    /// <summary>
+    /// Builds the constant displacement an unreadable height field resolves to.
+    /// </summary>
+    private static SilkDisplacementField? CreateDisplacementFallbackField(
+        SilkMaterialTexture texture,
+        ulong identity,
+        int channel)
+    {
+        float value = (texture.Fallback[channel] * texture.Scale[channel]) +
+            texture.Bias[channel];
+        return float.IsFinite(value)
+            ? SilkDisplacementField.Constant(value, identity)
+            : null;
+    }
+
+    private void RetainDisplacementImage(
+        ulong identity,
+        SilkDisplacementField field,
+        ulong bytes)
+    {
+        _displacementImages[identity] = new DisplacementCacheEntry(field, bytes)
+        {
+            LastUsedStamp = _displacementUseClock
+        };
+        _displacementImageBytes = checked(_displacementImageBytes + bytes);
+        while (_displacementImageBytes > MaximumDisplacementImageBytes &&
+            _displacementImages.Count > 1)
+        {
+            ulong oldestKey = 0;
+            DisplacementCacheEntry? oldest = null;
+            foreach (KeyValuePair<ulong, DisplacementCacheEntry> pair in _displacementImages)
+            {
+                if (pair.Key == identity)
+                {
+                    continue;
+                }
+                if (oldest is null || pair.Value.LastUsedStamp < oldest.LastUsedStamp)
+                {
+                    oldestKey = pair.Key;
+                    oldest = pair.Value;
+                }
+            }
+            if (oldest is null)
+            {
+                break;
+            }
+            _displacementImages.Remove(oldestKey);
+            _displacementImageBytes -= oldest.Bytes;
+        }
+    }
+
+    /// <summary>
+    /// Lowers the displacement vertex and texel budgets so a conformance case can
+    /// prove the bounded refusal without publishing millions of points or
+    /// materializing a hostile image.
+    /// </summary>
+    internal void SetDisplacementBudgetsForTesting(int maximumPoints, int maximumTexels)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumPoints);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumTexels);
+        _maximumDisplacedPoints = maximumPoints;
+        _maximumDisplacementTexels = maximumTexels;
+    }
+
+    /// <summary>Gets the decoded bytes the displacement image cache retains.</summary>
+    internal ulong DisplacementImageBytes => _displacementImageBytes;
+
+    /// <summary>Gets the number of retained decoded displacement images.</summary>
+    internal int DisplacementImageCount => _displacementImages.Count;
+
+    /// <summary>Gets how many times a displacement field was sampled onto points.</summary>
+    internal ulong DisplacementResolves => _displacementResolves;
+
+    /// <summary>Gets how many points a displacement field has been sampled onto.</summary>
+    internal ulong DisplacementSampledPoints => _displacementSampledPoints;
+
+    /// <summary>Gets how many displacement height fields were decoded.</summary>
+    internal ulong DisplacementImageDecodes => _displacementImageDecodes;
+
+    /// <summary>Gets how many times a retained geometry answered a resolution.</summary>
+    internal ulong GeometryCacheHits => _geometryCacheHits;
+
+    /// <summary>
+    /// Gets how many rigs were drawn from CPU points because their material
+    /// displaces the surface.
+    /// </summary>
+    internal ulong DeformationDisplacementFallbacks => _deformationDisplacementFallbacks;
+
+    /// <summary>Gets the retained displacement verdict count, one per drawn prim.</summary>
+    internal int DisplacementVerdictCount => _displacementVerdicts.Count;
+
+    /// <summary>
+    /// Records one prim's displacement verdict, keyed by the prim *and* its
+    /// instance so retiring one instance leaves its siblings' verdicts alone.
+    /// </summary>
+    private void RecordDisplacementVerdict(
+        SilkMeshData mesh,
+        string materialPath,
+        SilkDisplacementPlan plan,
+        SilkMeshGpuGeometryResource resource)
+    {
+        var key = new DisplacedPrimKey(mesh.Path, mesh.InstanceIndex);
+        SilkDisplacementFallback fallback = resource.DisplacementFallback;
+        if (fallback is SilkDisplacementFallback.None &&
+            !resource.Displaced &&
+            plan.Fallback is SilkDisplacementFallback.NotAuthored or
+                SilkDisplacementFallback.AuthoredZero)
+        {
+            if (_displacementVerdicts.Remove(key))
+            {
+                _displacementVerdictRevision++;
+            }
+            return;
+        }
+        var verdict = new DisplacementVerdict(
+            materialPath,
+            fallback,
+            resource.DisplacedVertexCount,
+            resource.MaximumDisplacement);
+        if (_displacementVerdicts.TryGetValue(key, out DisplacementVerdict existing) &&
+            existing == verdict)
+        {
+            return;
+        }
+        _displacementVerdicts[key] = verdict;
+        _displacementVerdictRevision++;
+    }
+
+    private void ForgetDisplacementVerdict(SilkMeshData mesh)
+    {
+        if (_displacementVerdicts.Remove(new DisplacedPrimKey(mesh.Path, mesh.InstanceIndex)))
+        {
+            _displacementVerdictRevision++;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds every displacement diagnostic from the retained per-instance
+    /// verdicts and the published shadow table.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Diagnostics are per prim path, and a prototype drawn as several instances
+    /// is one path. Aggregating rather than emitting per instance is what keeps
+    /// one instance's retirement from clearing a report its siblings still earn,
+    /// and what keeps a hundred instances of one displaced prototype from
+    /// exhausting the bounded diagnostic snapshot.
+    /// </para>
+    /// <para>
+    /// The shadow-bounds verdict is rebuilt here too, because it is not a
+    /// property of a prim alone: it exists only while some light publishes a
+    /// raster shadow map, whose light-space projection arrives already fitted to
+    /// hdSilk's undisplaced caster bounds. Enabling shadows after a prim was
+    /// displaced must raise it and retiring them must clear it, neither of which
+    /// touches the prim's geometry or material.
+    /// </para>
+    /// </remarks>
+    private void RefreshDisplacementDiagnostics(SilkSceneState scene)
+    {
+        ulong shadowRevision = scene.Shadows.Revision;
+        if (_displacementReportedRevision == _displacementVerdictRevision &&
+            _displacementReportedShadowRevision == shadowRevision)
+        {
+            return;
+        }
+        _displacementReportedRevision = _displacementVerdictRevision;
+        _displacementReportedShadowRevision = shadowRevision;
+        RemoveDiagnostics(static code =>
+            code is SilkRenderDiagnosticCodes.DisplacementApplied or
+                SilkRenderDiagnosticCodes.DisplacementUnsupported or
+                SilkRenderDiagnosticCodes.DisplacementBudgetExceeded or
+                SilkRenderDiagnosticCodes.DisplacementShadowBoundsUnverified);
+        if (_displacementVerdicts.Count == 0)
+        {
+            return;
+        }
+
+        var aggregated = new Dictionary<(string Path, string MaterialPath), DisplacementVerdict>();
+        foreach (KeyValuePair<DisplacedPrimKey, DisplacementVerdict> entry in _displacementVerdicts)
+        {
+            var group = (entry.Key.Path, entry.Value.MaterialPath);
+            if (aggregated.TryGetValue(group, out DisplacementVerdict existing))
+            {
+                aggregated[group] = new DisplacementVerdict(
+                    existing.MaterialPath,
+                    // A refusal outranks an application: an instance the renderer
+                    // could not displace is what a consumer has to act on.
+                    existing.Fallback == SilkDisplacementFallback.None
+                        ? entry.Value.Fallback
+                        : existing.Fallback,
+                    Math.Max(existing.VertexCount, entry.Value.VertexCount),
+                    Math.Max(existing.MaximumDisplacement, entry.Value.MaximumDisplacement));
+                continue;
+            }
+            aggregated[group] = entry.Value;
+        }
+
+        foreach (KeyValuePair<(string Path, string MaterialPath), DisplacementVerdict> entry in
+            aggregated.OrderBy(static pair => pair.Key.Path, StringComparer.Ordinal)
+                .ThenBy(static pair => pair.Key.MaterialPath, StringComparer.Ordinal))
+        {
+            string meshPath = entry.Key.Path;
+            DisplacementVerdict verdict = entry.Value;
+            if (verdict.Fallback != SilkDisplacementFallback.None)
+            {
+                ReportDisplacementFallback(verdict.MaterialPath, meshPath, verdict.Fallback);
+            }
+            if (verdict.VertexCount == 0)
+            {
+                continue;
+            }
+            ReportDisplacementApplied(
+                verdict.MaterialPath,
+                meshPath,
+                verdict.VertexCount,
+                verdict.MaximumDisplacement);
+            if (scene.Shadows.HasShadows && verdict.MaximumDisplacement != 0)
+            {
+                AddDiagnostic(
+                    SilkRenderDiagnosticCodes.DisplacementShadowBoundsUnverified,
+                    DisplacementDiagnosticIdentity(meshPath, verdict.MaterialPath),
+                    RenderDiagnosticSeverity.Information,
+                    $"Prim '{meshPath}' is displaced by up to " +
+                    $"{verdict.MaximumDisplacement.ToString(CultureInfo.InvariantCulture)} " +
+                    "scene units into raster shadow maps whose light-space projection " +
+                    "hdSilk derived from its undisplaced caster bounds.");
+            }
+        }
+    }
+
+    private void ReportDisplacementFallback(
+        string materialPath,
+        string meshPath,
+        SilkDisplacementFallback fallback)
+    {
+        if (fallback is SilkDisplacementFallback.None or
+            SilkDisplacementFallback.NotAuthored or
+            SilkDisplacementFallback.AuthoredZero)
+        {
+            return;
+        }
+        string code = fallback is SilkDisplacementFallback.VertexBudget or
+            SilkDisplacementFallback.TextureBudget
+            ? SilkRenderDiagnosticCodes.DisplacementBudgetExceeded
+            : SilkRenderDiagnosticCodes.DisplacementUnsupported;
+        string outcome = fallback == SilkDisplacementFallback.TextureUnavailable
+            ? "was displaced by the authored fallback instead"
+            : "was drawn without";
+        AddDiagnostic(
+            code,
+            DisplacementDiagnosticIdentity(meshPath, materialPath),
+            RenderDiagnosticSeverity.Warning,
+            $"Material '{materialPath}' authors a displacement that prim '{meshPath}' " +
+            $"{outcome}, because {DescribeDisplacementFallback(fallback)}.");
+    }
+
+    /// <summary>
+    /// The diagnostic identity of one prim's displacement verdict, keyed by the
+    /// prim first so every verdict for that prim can be dropped together.
+    /// </summary>
+    private static string DisplacementDiagnosticIdentity(string meshPath, string materialPath) =>
+        string.Concat(meshPath, "\0", materialPath);
+
+    private void ReportDisplacementApplied(
+        string materialPath,
+        string meshPath,
+        int vertexCount,
+        float maximum)
+    {
+        // The emitted point count is the tessellation density the displacement was
+        // evaluated at. hdSilk publishes the refined cage when the display style
+        // asks for one and the control cage at complexity Low, and the wire carries
+        // no refinement level, so naming the count is the only honest statement of
+        // the density the height field was sampled at.
+        //
+        // Formatted invariantly: a diagnostic is a stable, machine-readable
+        // statement of what the renderer did, and a host locale must not change
+        // the decimal separator a consumer parses.
+        AddDiagnostic(
+            SilkRenderDiagnosticCodes.DisplacementApplied,
+            DisplacementDiagnosticIdentity(meshPath, materialPath),
+            RenderDiagnosticSeverity.Information,
+            $"Prim '{meshPath}' was displaced by material '{materialPath}' at " +
+            $"{vertexCount} emitted vertices, by at most " +
+            $"{maximum.ToString(CultureInfo.InvariantCulture)} scene units along the " +
+            "shading normal.");
+    }
+
+    private string DescribeDisplacementFallback(SilkDisplacementFallback fallback) =>
+        fallback switch
+        {
+            SilkDisplacementFallback.UnsupportedTopology =>
+                "the emitted topology is not a triangle list and carries no surface normal",
+            SilkDisplacementFallback.UnsupportedComposite =>
+                "the input is driven by the material's two-image composite operand",
+            SilkDisplacementFallback.UnsupportedUdim =>
+                "the displacement texture is a UDIM tile set",
+            SilkDisplacementFallback.UnsupportedUvSet =>
+                "the displacement texture names a texture coordinate set the mesh does not carry",
+            SilkDisplacementFallback.NonFiniteAmount =>
+                "the authored amount is not finite",
+            SilkDisplacementFallback.VertexBudget =>
+                $"the prim carries more than {_maximumDisplacedPoints} points",
+            SilkDisplacementFallback.TextureBudget =>
+                $"the displacement image carries more than {_maximumDisplacementTexels} texels",
+            SilkDisplacementFallback.TextureUnavailable =>
+                "the displacement image could not be found or decoded",
+            SilkDisplacementFallback.MetadataUnavailable =>
+                "the input defers to image metadata this renderer did not observe",
+            SilkDisplacementFallback.MetadataUnsupported =>
+                "the image's own wrap metadata names an addressing mode the wire cannot carry",
+            _ => "the input could not be represented exactly"
+        };
+
+    /// <summary>
+    /// The identity of one displacement height field, covering everything that
+    /// can change the amounts it resolves to.
+    /// </summary>
+    private static ulong ComputeDisplacementTextureIdentity(
+        SilkMaterialData material,
+        SilkMaterialTexture texture)
+    {
+        ulong hash = MixDisplacementIdentity(DisplacementIdentityBasis, TextureIdentityTag);
+        foreach (char character in texture.Asset)
+        {
+            hash = MixDisplacementIdentity(hash, character);
+        }
+        foreach (char character in texture.UvPrimvar)
+        {
+            hash = MixDisplacementIdentity(hash, character);
+        }
+        hash = MixDisplacementIdentity(hash, (uint)texture.WrapS);
+        hash = MixDisplacementIdentity(hash, (uint)texture.WrapT);
+        hash = MixDisplacementIdentity(hash, (uint)texture.SourceColorSpace);
+        hash = MixDisplacementIdentity(hash, (uint)texture.Channel);
+        for (int component = 0; component < 4; component++)
+        {
+            hash = MixDisplacementIdentity(
+                hash,
+                BitConverter.SingleToUInt32Bits(texture.Scale[component]));
+            hash = MixDisplacementIdentity(
+                hash,
+                BitConverter.SingleToUInt32Bits(texture.Bias[component]));
+            // The authored fallback is part of the identity because it is what
+            // the amounts become when the file cannot be read.
+            hash = MixDisplacementIdentity(
+                hash,
+                BitConverter.SingleToUInt32Bits(texture.Fallback[component]));
+        }
+        foreach (float element in material.UvTransform)
+        {
+            hash = MixDisplacementIdentity(hash, BitConverter.SingleToUInt32Bits(element));
+        }
+        // The file's own stamp, so a rewritten displacement map produces different
+        // vertices instead of reusing the ones the previous file displaced, and so
+        // a file that appears or disappears changes the verdict.
+        try
+        {
+            var info = new FileInfo(texture.Asset);
+            if (info.Exists)
+            {
+                hash = MixDisplacementIdentity(hash, (uint)info.Length);
+                hash = MixDisplacementIdentity(hash, (uint)(info.Length >> 32));
+                long ticks = info.LastWriteTimeUtc.Ticks;
+                hash = MixDisplacementIdentity(hash, (uint)ticks);
+                hash = MixDisplacementIdentity(hash, (uint)(ticks >> 32));
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // An unreadable path is decoded and reported by the resolve path; the
+            // identity simply carries no stamp for it.
+        }
+        return hash;
+    }
+
+    private static ulong MixDisplacementIdentity(ulong hash, uint value)
+    {
+        unchecked
+        {
+            hash ^= value;
+            return hash * 1099511628211;
+        }
+    }
+
+    private const ulong DisplacementIdentityBasis = 14695981039346656037;
+
+    private const uint ConstantIdentityTag = 1;
+
+    private const uint TextureIdentityTag = 2;
+
+    private const uint RefusalIdentityTag = 3;
+
+    /// <summary>
+    /// The largest number of decoded displacement bytes retained across every
+    /// material at once.
+    /// </summary>
+    private const ulong MaximumDisplacementImageBytes = 64UL * 1024 * 1024;
+
+    /// <summary>
+    /// The affine a displacement field samples through when the material folded
+    /// none of its own.
+    /// </summary>
+    private static readonly float[] IdentityUvTransform = [1, 0, 0, 1, 0, 0];
+
+    /// <summary>One drawn prim, distinguished from its sibling instances.</summary>
+    private readonly record struct DisplacedPrimKey(string Path, int InstanceIndex);
+
+    /// <summary>What one drawn prim's displacement resolved to.</summary>
+    private readonly record struct DisplacementVerdict(
+        string MaterialPath,
+        SilkDisplacementFallback Fallback,
+        int VertexCount,
+        float MaximumDisplacement);
+
+    private sealed class DisplacementCacheEntry(SilkDisplacementField field, ulong bytes)
+    {
+        internal SilkDisplacementField Field { get; } = field;
+
+        internal ulong Bytes { get; } = bytes;
+
+        internal ulong LastUsedStamp { get; set; }
+    }
+
+    /// <summary>
+    /// Returns a retained geometry for one key, refreshing a GPU-deformed one's
+    /// pose, or false when nothing matches.
+    /// </summary>
+    private bool TryReuseGeometry(
+        SilkMeshGpuGeometryKey key,
+        SilkMeshData mesh,
+        SilkDeformationGpuPayload? deformationPayload,
+        [NotNullWhen(true)] out SilkMeshGpuGeometryResource? resource)
+    {
+        resource = null;
+        if (!_geometries.TryGetValue(key, out List<SilkMeshGpuGeometryResource>? matches))
+        {
+            return false;
+        }
+        foreach (SilkMeshGpuGeometryResource candidate in matches)
+        {
+            if (!candidate.HasSameGeometry(mesh))
+            {
+                continue;
+            }
+            // The pose is re-uploaded on a hit, so a repeated frame at one time
+            // code uploads nothing and a scrub uploads once.
+            if (deformationPayload is not null && candidate.Deformation is { } retained)
+            {
+                ulong generation = ReadDeformationDeviceGeneration();
+                try
+                {
+                    retained.UpdatePose(_device, deformationPayload);
+                }
+                catch (Exception exception)
+                    when (IsRecoverableDeformationFailure(exception, generation))
+                {
+                    // The rig's new palette could not be uploaded. Retiring the
+                    // resource drops it out of the cache and puts the
+                    // authoritative CPU vertices under the draw, and the caller
+                    // falls through to the CPU key.
+                    RetireDeformation(candidate);
+                    return false;
+                }
+            }
+            candidate.AddReference();
+            resource = candidate;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Builds one geometry, returning false when a GPU-deformed build failed
+    /// recoverably and the caller must build the CPU geometry instead.
+    /// </summary>
+    private bool TryCreateGeometry(
+        SilkMeshGpuGeometryKey key,
+        SilkMeshData mesh,
+        SilkMeshGeometry geometry,
+        string uvPrimvar,
+        uint strideFloats,
+        SilkDeformationGpuPayload? deformationPayload,
+        SilkDisplacementFallback displacementFallback,
+        string displacementUvPrimvar,
+        [NotNullWhen(true)] out SilkMeshGpuGeometryResource? resource)
+    {
+        resource = null;
+        bool gpuDeformed = deformationPayload is not null;
         ReadOnlySpan<byte> vertexBytes = MemoryMarshal.AsBytes(geometry.Vertices.AsSpan());
         ReadOnlySpan<byte> indexBytes = MemoryMarshal.AsBytes(geometry.Indices.AsSpan());
         ISilkGraphicsBuffer? vertexBuffer = null;
         ISilkGraphicsBuffer? indexBuffer = null;
+        SilkMeshGpuDeformation? deformation = null;
+        ulong generation = ReadDeformationDeviceGeneration();
         try
         {
+            // A GPU-deformed geometry writes its vertices with a kernel, so its
+            // vertex buffer lives on the device heap where an unordered-access
+            // view is legal, and is never uploaded to. Every other geometry
+            // keeps the uploadable buffer it has always had.
             vertexBuffer = CreateTrackedBuffer(
                 GetAllocationSize(vertexBytes.Length),
-                SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
-            if (!vertexBytes.IsEmpty)
+                gpuDeformed
+                    ? SilkBufferUsage.Vertex | SilkBufferUsage.Storage
+                    : SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
+            if (!vertexBytes.IsEmpty && !gpuDeformed)
             {
                 WriteTracked(vertexBuffer, vertexBytes);
                 _vertexUploads++;
@@ -3441,11 +8401,15 @@ public sealed class SilkSceneGpuResources : IDisposable
                 WriteTracked(indexBuffer, indexBytes);
                 _indexUploads++;
             }
+            if (gpuDeformed)
+            {
+                deformation = CreateDeformation(deformationPayload!, strideFloats);
+            }
 
             // The instance buffer is allocated on first instanced draw, not here.
             // Most meshes are drawn once, so allocating eagerly cost one storage
             // buffer per unique geometry for nothing.
-            var resource = new SilkMeshGpuGeometryResource(
+            resource = new SilkMeshGpuGeometryResource(
                 key,
                 mesh,
                 geometry.IndexCount,
@@ -3453,19 +8417,392 @@ public sealed class SilkSceneGpuResources : IDisposable
                 geometry.UvPrimvar,
                 geometry.HasTangents,
                 vertexBuffer,
-                indexBuffer);
-            (matches ??= []).Add(resource);
+                indexBuffer,
+                gpuDeformed ? vertexBytes.ToArray() : null,
+                displacementFallback,
+                geometry.Displaced ? mesh.Points.Length / 3 : 0,
+                geometry.MaximumDisplacement,
+                displacementUvPrimvar,
+                SilkMeshGpuGeometryKey.HashAttribute(
+                    string.IsNullOrEmpty(displacementUvPrimvar)
+                        ? null
+                        : mesh.FindTexCoord(displacementUvPrimvar)))
+            {
+                Deformation = deformation
+            };
+            if (!_geometries.TryGetValue(key, out List<SilkMeshGpuGeometryResource>? matches))
+            {
+                matches = [];
+            }
+            matches.Add(resource);
             _geometries[key] = matches;
             _geometryBuilds++;
-            return resource;
+            return true;
+        }
+        catch (Exception exception)
+            when (gpuDeformed && IsRecoverableDeformationFailure(exception, generation))
+        {
+            // Nothing GPU-deformed was published, so the only state to undo is
+            // what this call allocated. The caller builds the same geometry from
+            // the same authoritative CPU vertices instead.
+            deformation?.Dispose();
+            indexBuffer?.Dispose();
+            vertexBuffer?.Dispose();
+            _deformationDisabled = true;
+            _deformationFallbacks++;
+            return false;
         }
         catch
         {
+            deformation?.Dispose();
             indexBuffer?.Dispose();
             vertexBuffer?.Dispose();
             throw;
         }
     }
+
+    /// <summary>
+    /// Installs one-shot failure factories for the deformation setup and
+    /// dispatch paths, so a conformance case can prove the recovery without a
+    /// device that actually refuses an allocation.
+    /// </summary>
+    /// <remarks>
+    /// The factory rather than a flag is what lets a case distinguish the two
+    /// outcomes the path must tell apart: a factory that only returns an
+    /// exception is a recoverable failure, and one that also advances the
+    /// device's generation before returning is a device loss the reset path
+    /// must see, which is exactly how a real backend reports one.
+    /// </remarks>
+    internal void InjectDeformationFailuresForTesting(
+        Func<Exception>? onSetup,
+        Func<Exception>? onDispatch)
+    {
+        _deformationSetupFailureForTesting = onSetup;
+        _deformationDispatchFailureForTesting = onDispatch;
+    }
+
+    /// <summary>
+    /// The emitted texture coordinates a GPU-deformed vertex carries, empty for
+    /// a layout that has none.
+    /// </summary>
+    private static ReadOnlySpan<float> ExtractTexCoords(
+        SilkMeshData mesh,
+        SilkMeshGeometry geometry,
+        uint strideFloats)
+    {
+        if (strideFloats < 8 || string.IsNullOrEmpty(geometry.UvPrimvar))
+        {
+            return default;
+        }
+        int points = mesh.Points.Length / 3;
+        float[] coordinates = new float[points * 2];
+        ReadOnlySpan<float> vertices = geometry.Vertices;
+        for (int point = 0; point < points; point++)
+        {
+            coordinates[point * 2] = vertices[(point * (int)strideFloats) + 6];
+            coordinates[(point * 2) + 1] = vertices[(point * (int)strideFloats) + 7];
+        }
+        return coordinates;
+    }
+
+    /// <summary>
+    /// Builds the deformation kernel's pipeline and uploads its inputs. The
+    /// pipeline is per stride because the writable slot's declared element
+    /// stride is what bounds a dispatch against the vertex buffer, and there are
+    /// only two supported strides.
+    /// </summary>
+    private SilkMeshGpuDeformation CreateDeformation(
+        SilkDeformationGpuPayload payload,
+        uint strideFloats)
+    {
+        SilkDeformComputeReflection reflection = SilkCheckedShaderAssets.DeformCompute;
+        if (Interlocked.Exchange(ref _deformationSetupFailureForTesting, null)
+            is { } injected)
+        {
+            throw injected();
+        }
+        List<SilkComputeSlot> slots = [.. reflection.Layout.Slots];
+        slots[0] = slots[0] with { ElementStride = strideFloats * sizeof(float) };
+        ISilkComputeBindingLayout? layout = null;
+        ISilkGraphicsShaderModule? module = null;
+        ISilkComputeShaderProgram? program = null;
+        ISilkComputePipeline? pipeline = null;
+        List<ISilkGraphicsBuffer> buffers = [];
+        try
+        {
+            layout = _device.CreateComputeBindingLayout(
+                new SilkComputeBindingLayoutDescriptor(slots));
+            module = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadDeformCompute(DeformShaderFormat));
+            program = _device.CreateComputeShaderProgram(
+                new SilkComputeShaderProgramDescriptor(module, layout));
+            pipeline = _device.CreateComputePipeline(
+                new SilkComputePipelineDescriptor(
+                    program,
+                    reflection.ThreadGroupSizeX,
+                    reflection.ThreadGroupSizeY,
+                    reflection.ThreadGroupSizeZ));
+            ISilkGraphicsBuffer bindPose = Track(buffers, payload.BindPose);
+            ISilkGraphicsBuffer jointIndices = Track(buffers, payload.JointIndices);
+            ISilkGraphicsBuffer jointWeights = Track(buffers, payload.JointWeights);
+            ISilkGraphicsBuffer texCoords = Track(buffers, payload.TexCoords);
+            ISilkGraphicsBuffer matrices = Track(buffers, payload.Matrices);
+            ISilkGraphicsBuffer blendWeights = Track(buffers, payload.BlendWeights);
+            ISilkGraphicsBuffer blendSpans = Track(buffers, payload.BlendSpans);
+            ISilkGraphicsBuffer blendDeltas = Track(buffers, payload.BlendDeltas);
+            ISilkGraphicsBuffer parameters =
+                SilkDeformationGpuBuffers.CreateParameters(_device, payload.Parameters);
+            buffers.Add(parameters);
+            var deformation = new SilkMeshGpuDeformation(
+                pipeline,
+                payload,
+                bindPose,
+                jointIndices,
+                jointWeights,
+                texCoords,
+                matrices,
+                blendWeights,
+                blendSpans,
+                blendDeltas,
+                parameters);
+            // The pipeline owns leases on the program, module and layout, so
+            // releasing the local handles here leaves exactly one owner.
+            program.Dispose();
+            module.Dispose();
+            layout.Dispose();
+            return deformation;
+        }
+        catch
+        {
+            foreach (ISilkGraphicsBuffer buffer in buffers)
+            {
+                buffer.Dispose();
+            }
+            pipeline?.Dispose();
+            program?.Dispose();
+            module?.Dispose();
+            layout?.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>The checked binary format this device consumes.</summary>
+    private SilkShaderBinaryFormat DeformShaderFormat => _device.Backend switch
+    {
+        SilkGraphicsBackend.D3D12 => SilkShaderBinaryFormat.Dxil,
+        SilkGraphicsBackend.Vulkan => SilkShaderBinaryFormat.SpirV,
+        SilkGraphicsBackend.Metal => SilkShaderBinaryFormat.MetalLibrary,
+        _ => throw new NotSupportedException(
+            $"Unsupported Silk graphics backend '{_device.Backend}'.")
+    };
+
+    private ISilkGraphicsBuffer Track(
+        List<ISilkGraphicsBuffer> buffers,
+        ReadOnlySpan<float> values)
+    {
+        ISilkGraphicsBuffer buffer = SilkDeformationGpuBuffers.Create(_device, values);
+        buffers.Add(buffer);
+        _bufferAllocationBytes += buffer.Size;
+        return buffer;
+    }
+
+    private ISilkGraphicsBuffer Track(
+        List<ISilkGraphicsBuffer> buffers,
+        ReadOnlySpan<uint> values)
+    {
+        ISilkGraphicsBuffer buffer = SilkDeformationGpuBuffers.Create(_device, values);
+        buffers.Add(buffer);
+        _bufferAllocationBytes += buffer.Size;
+        return buffer;
+    }
+
+    /// <summary>
+    /// Records every deformation whose pose has not reached its vertex buffer,
+    /// and returns how many were dispatched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This runs on its own command list, submitted and waited before the shadow
+    /// maps are prepared, so the shadow depth pass and the colour pass both
+    /// fetch vertices the kernel already wrote. Ordering by submission rather
+    /// than by intra-list barriers alone is what makes it correct across the
+    /// shadow cache's own internal submission, which this renderer does not
+    /// control.
+    /// </para>
+    /// <para>
+    /// A device generation change drops what every resource believes reached its
+    /// vertex buffer, so the frame after a reset dispatches everything once and
+    /// then settles back to dispatching nothing.
+    /// </para>
+    /// <para>
+    /// A recoverable failure while recording or submitting -- an allocation the
+    /// device refused, a descriptor pool it could not grow -- retires every
+    /// pending deformation onto the authoritative CPU vertices rather than
+    /// aborting the frame or leaving the bind pose under the draw. A device
+    /// loss is not recoverable and propagates, because the reset path is what
+    /// rebuilds everything keyed on the generation.
+    /// </para>
+    /// </remarks>
+    internal int DispatchDeformations(ulong deviceGeneration)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_deformationDeviceGeneration != deviceGeneration)
+        {
+            _deformationDeviceGeneration = deviceGeneration;
+            foreach (List<SilkMeshGpuGeometryResource> matches in _geometries.Values)
+            {
+                foreach (SilkMeshGpuGeometryResource geometry in matches)
+                {
+                    geometry.Deformation?.InvalidateDispatch();
+                }
+            }
+        }
+
+        List<SilkMeshGpuGeometryResource> pending = [];
+        foreach (List<SilkMeshGpuGeometryResource> matches in _geometries.Values)
+        {
+            foreach (SilkMeshGpuGeometryResource geometry in matches)
+            {
+                if (geometry.Deformation is { NeedsDispatch: true })
+                {
+                    pending.Add(geometry);
+                }
+            }
+        }
+        if (pending.Count == 0)
+        {
+            return 0;
+        }
+
+        // Read the classifier's own generation rather than trusting the one the
+        // caller keys invalidation on: the two answer different questions and a
+        // caller is free to key on anything, so comparing across them would make
+        // every failure look like a reset.
+        ulong observed = ReadDeformationDeviceGeneration();
+        try
+        {
+            if (Interlocked.Exchange(ref _deformationDispatchFailureForTesting, null)
+                is { } injected)
+            {
+                throw injected();
+            }
+            using ISilkGraphicsCommandList commands = _device.CreateCommandList();
+            foreach (SilkMeshGpuGeometryResource geometry in pending)
+            {
+                geometry.Deformation!.Record(commands, geometry.VertexBuffer);
+            }
+            using ISilkGraphicsSubmission submission = _device.Submit(commands);
+            submission.Wait();
+        }
+        catch (Exception exception)
+            when (IsRecoverableDeformationFailure(exception, observed))
+        {
+            foreach (SilkMeshGpuGeometryResource geometry in pending)
+            {
+                RetireDeformation(geometry);
+            }
+            return 0;
+        }
+        foreach (SilkMeshGpuGeometryResource geometry in pending)
+        {
+            geometry.Deformation!.MarkDispatched();
+        }
+        _deformationDispatches += checked((ulong)pending.Count);
+        return pending.Count;
+    }
+
+    /// <summary>
+    /// Whether a failure from the deformation path is one the CPU geometry can
+    /// recover from, rather than a device loss the reset path must see.
+    /// </summary>
+    /// <remarks>
+    /// The backends report a lost device the same way they report every other
+    /// failure -- a Vulkan <c>Result</c> in an <see cref="InvalidOperationException"/>
+    /// message, an HRESULT from the Direct3D marshaller -- so the exception's
+    /// type cannot classify it. What can is the device generation: every backend
+    /// advances it when it notices a lost device, and that advance is what the
+    /// reset path already keys on. A generation that moved across the failure is
+    /// therefore a device loss and propagates; one that did not is a capacity or
+    /// allocation failure this prim can survive by drawing what hdSilk resolved.
+    /// A disposal is never recoverable either: nothing can be rebuilt on an
+    /// object that is going away.
+    /// </remarks>
+    private bool IsRecoverableDeformationFailure(Exception exception, ulong generation) =>
+        exception is not ObjectDisposedException &&
+        exception is not OperationCanceledException &&
+        ReadDeformationDeviceGeneration() == generation;
+
+    /// <summary>
+    /// Reads the device generation the deformation path classifies failures
+    /// against, treating a device that publishes none as never resetting.
+    /// </summary>
+    /// <remarks>
+    /// Both signals are mixed because they cover different resets and neither
+    /// covers the other. The device-loss generation advances on every detected
+    /// loss including one detected by an ordinary submission, which is the only
+    /// kind the deformation pass ever makes; the selection-outline generation
+    /// advances when that subsystem invalidates its resources, which need not be
+    /// a loss at all. Reading only the second is what let a lost device on a
+    /// plain queue submission look like a refused allocation.
+    /// </remarks>
+    private ulong ReadDeformationDeviceGeneration() =>
+        SilkDeviceGeneration.Read(_device);
+
+    /// <summary>
+    /// Drops one geometry's kernel and puts the authoritative CPU vertices under
+    /// its draw, so the current frame draws the resolved surface rather than the
+    /// bind pose the kernel never wrote.
+    /// </summary>
+    /// <remarks>
+    /// The resource also leaves the geometry cache: its key carries a bind
+    /// identity, so a later prim carrying the same rig at a different pose would
+    /// otherwise find it and draw the pose these vertices happen to hold. It
+    /// stays alive for the meshes already referencing it, and the next upsert
+    /// builds a fresh CPU geometry.
+    /// </remarks>
+    private void RetireDeformation(SilkMeshGpuGeometryResource geometry)
+    {
+        _deformationDisabled = true;
+        _deformationFallbacks++;
+        ISilkGraphicsBuffer replacement = CreateTrackedBuffer(
+            geometry.VertexBuffer.Size,
+            SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
+        try
+        {
+            ReadOnlySpan<byte> vertices = geometry.CpuVertices;
+            if (!vertices.IsEmpty)
+            {
+                WriteTracked(replacement, vertices);
+                _vertexUploads++;
+            }
+        }
+        catch
+        {
+            replacement.Dispose();
+            throw;
+        }
+        if (_geometries.TryGetValue(
+                geometry.Key,
+                out List<SilkMeshGpuGeometryResource>? matches))
+        {
+            _ = matches.Remove(geometry);
+            if (matches.Count == 0)
+            {
+                _ = _geometries.Remove(geometry.Key);
+            }
+        }
+        geometry.RetireDeformation(replacement);
+    }
+
+    /// <summary>
+    /// Gets how many times a recoverable GPU deformation failure fell back to
+    /// the authoritative CPU geometry.
+    /// </summary>
+    internal ulong DeformationFallbacks => _deformationFallbacks;
+
+    /// <summary>Gets the number of deformation dispatches recorded so far.</summary>
+    internal ulong DeformationDispatches => _deformationDispatches;
+
 
     private void DisposeMesh(SilkMeshGpuResource mesh)
     {
@@ -3558,7 +8895,27 @@ public sealed class SilkMeshGpuResource : IDisposable
         Mesh.Points.Span.SequenceEqual(mesh.Points.Span) &&
         Mesh.Indices.Span.SequenceEqual(mesh.Indices.Span) &&
         Mesh.AuthoredNormals.Span.SequenceEqual(mesh.AuthoredNormals.Span) &&
+        // A rebinding is a different resolution even when the points did not
+        // move: the retained resource carries the previous material's texture
+        // coordinate stream, tangent decision and displacement verdict.
+        string.Equals(Mesh.MaterialPath, mesh.MaterialPath, StringComparison.Ordinal) &&
+        HasSameDeformation(mesh) &&
         _geometry.HasSameMaterialGeometry(mesh);
+
+    /// <summary>
+    /// Whether the retained vertices already carry this record's pose.
+    /// </summary>
+    /// <remarks>
+    /// A GPU-deformed geometry's vertex buffer is written by the kernel from the
+    /// rig, not from the record's points, so two records whose points happen to
+    /// match are still different pictures when their rigs are at different time
+    /// codes. Comparing the pose identity here is what routes a scrub back
+    /// through the geometry cache, where the retained resource takes the new
+    /// matrices and schedules exactly one dispatch.
+    /// </remarks>
+    private bool HasSameDeformation(SilkMeshData mesh) =>
+        !_geometry.Key.IsGpuDeformed ||
+        (Mesh.Deformation?.Identity ?? 0) == (mesh.Deformation?.Identity ?? 0);
 
     internal void UpdateMesh(SilkMeshData mesh)
     {
@@ -3621,12 +8978,12 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
     private readonly float[] _authoredNormals;
     private readonly string _uvPrimvar;
     private readonly bool _hasTangents;
-    private byte[] _instanceBytes;
-    private SilkMeshData?[] _instanceMeshes = [];
-    private ulong _instanceFrameRevision = ulong.MaxValue;
-    // Starts at zero so the first instanced draw always allocates; the buffer no
-    // longer exists until then.
-    private int _instanceCapacity;
+    private byte[] _cpuVertices;
+    private bool _deformationRetired;
+    private readonly List<InstanceSlot> _instanceSlots = [];
+    private Func<Exception>? _publicationFailureForTesting;
+    private byte[] _shadowInstanceBytes = [];
+    private int _shadowInstanceCapacity;
     private int _referenceCount = 1;
     private bool _disposed;
 
@@ -3638,14 +8995,25 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         string uvPrimvar,
         bool hasTangents,
         ISilkGraphicsBuffer vertexBuffer,
-        ISilkGraphicsBuffer indexBuffer)
+        ISilkGraphicsBuffer indexBuffer,
+        byte[]? cpuVertices = null,
+        SilkDisplacementFallback displacementFallback = SilkDisplacementFallback.None,
+        int displacedVertexCount = 0,
+        float maximumDisplacement = 0,
+        string displacementUvPrimvar = "",
+        ulong displacementUvFingerprint = 0)
     {
+        DisplacementUvPrimvar = displacementUvPrimvar;
+        DisplacementUvFingerprint = displacementUvFingerprint;
+        DisplacementFallback = displacementFallback;
+        DisplacedVertexCount = displacedVertexCount;
+        MaximumDisplacement = maximumDisplacement;
         Key = key;
         IndexCount = indexCount;
         VertexLayout = vertexLayout;
         VertexBuffer = vertexBuffer;
         IndexBuffer = indexBuffer;
-        _instanceBytes = new byte[SilkSceneUniformWriter.ByteSize];
+        _cpuVertices = cpuVertices ?? [];
         _points = mesh.Points.ToArray();
         _indices = mesh.Indices.ToArray();
         _authoredNormals = mesh.AuthoredNormals.ToArray();
@@ -3655,52 +9023,276 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
 
     internal SilkMeshGpuGeometryKey Key { get; }
 
-    internal ISilkGraphicsBuffer VertexBuffer { get; }
+    /// <summary>
+    /// Gets why this geometry's material displacement was not applied, resolved
+    /// once when the geometry was built.
+    /// </summary>
+    /// <remarks>
+    /// Retained on the resource rather than recomputed per prim because a second
+    /// instance, and a repeated frame, answer from the cache without re-resolving
+    /// anything -- and a verdict they could not restate would silently disappear
+    /// for every prim but the first.
+    /// </remarks>
+    internal SilkDisplacementFallback DisplacementFallback { get; }
+
+    /// <summary>Gets the emitted vertex count a displacement moved, or zero.</summary>
+    internal int DisplacedVertexCount { get; }
+
+    /// <summary>Gets the largest amount a displacement moved a point by.</summary>
+    internal float MaximumDisplacement { get; }
+
+    /// <summary>Gets whether a material displacement moved these vertices.</summary>
+    internal bool Displaced => DisplacedVertexCount != 0;
+
+    /// <summary>
+    /// Gets the coordinate set the material's displacement is sampled through,
+    /// empty when it samples none.
+    /// </summary>
+    /// <remarks>
+    /// Kept separately from <see cref="SilkMeshGpuGeometryKey.UvPrimvar"/>, which
+    /// is the *surface* stream. A displacement may sample a different primvar
+    /// entirely, and does so even when the surface is unshadeable and names no
+    /// stream at all -- in which case the surface fingerprint is zero and would
+    /// hide every edit to the coordinates the height field actually reads.
+    /// </remarks>
+    internal string DisplacementUvPrimvar { get; }
+
+    /// <summary>Gets the fingerprint of that coordinate data.</summary>
+    internal ulong DisplacementUvFingerprint { get; }
+
+    /// <summary>
+    /// Gets the GPU deformation state, present only when the deformation kernel
+    /// produces this geometry's vertices.
+    /// </summary>
+    internal SilkMeshGpuDeformation? Deformation { get; set; }
+
+    /// <summary>
+    /// Gets the interleaved vertices the CPU geometry builder produced, retained
+    /// only while the kernel owns this geometry's vertex buffer.
+    /// </summary>
+    /// <remarks>
+    /// A GPU-deformed vertex buffer lives on the device heap and cannot be
+    /// written by the host, so recovering from a dispatch that could not be
+    /// recorded needs a second, uploadable buffer carrying these bytes. They
+    /// are the same authoritative vertices every non-deformed geometry uploads,
+    /// so the recovered geometry is the picture hdSilk resolved on the CPU
+    /// rather than a bind pose.
+    /// </remarks>
+    internal ReadOnlySpan<byte> CpuVertices => _cpuVertices;
+
+    internal ISilkGraphicsBuffer VertexBuffer { get; private set; }
+
+    /// <summary>
+    /// Whether the kernel that owned this geometry's vertices gave up and the
+    /// authoritative CPU vertices were uploaded in their place.
+    /// </summary>
+    internal bool DeformationRetired => _deformationRetired;
+
+    /// <summary>
+    /// Replaces the kernel-written vertex buffer with one carrying the retained
+    /// CPU vertices, and releases the deformation that was producing it.
+    /// </summary>
+    internal void RetireDeformation(ISilkGraphicsBuffer cpuVertexBuffer)
+    {
+        ArgumentNullException.ThrowIfNull(cpuVertexBuffer);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        Deformation?.Dispose();
+        Deformation = null;
+        ISilkGraphicsBuffer previous = VertexBuffer;
+        VertexBuffer = cpuVertexBuffer;
+        _deformationRetired = true;
+        _cpuVertices = [];
+        previous.Dispose();
+    }
 
     internal ISilkGraphicsBuffer IndexBuffer { get; }
 
     internal SilkVertexLayoutDescriptor VertexLayout { get; }
 
     /// <summary>
-    /// Gets the per-instance transform buffer, null until an instanced draw
-    /// first needs it. Most meshes are drawn once and never allocate one.
+    /// Gets the number of retained per-batch instance transform tables, which is
+    /// zero until an instanced draw first needs one.
     /// </summary>
-    internal ISilkGraphicsBuffer? InstanceBuffer { get; private set; }
+    /// <remarks>
+    /// One table per <em>batch</em> rather than one per geometry. A single
+    /// geometry is split across several batches whenever anything in the batch
+    /// key differs between its instances -- a material, a cull mode, or a UsdLux
+    /// light, shadow or dome mask -- and every batch of a frame is recorded before
+    /// any of them is submitted. A shared mutable table would therefore be
+    /// rewritten by the second batch while the first batch's draw still referenced
+    /// it, and both draws would read the last batch's transforms: some prims drawn
+    /// twice, others not at all. Each batch keeps its own table for the lifetime of
+    /// the submission instead.
+    /// </remarks>
+    internal int InstanceSlotCount => _instanceSlots.Count;
+
+    /// <summary>
+    /// Gets the per-caster light-space transform table, null until this geometry
+    /// first casts a shadow.
+    /// </summary>
+    internal ISilkGraphicsBuffer? ShadowInstanceBuffer { get; private set; }
 
     internal uint IndexCount { get; }
 
     internal bool HasSameGeometry(SilkMeshData mesh) =>
         Key.TopologyKind == mesh.TopologyKind &&
-        _points.AsSpan().SequenceEqual(mesh.Points.Span) &&
-        _indices.AsSpan().SequenceEqual(mesh.Indices.Span) &&
-        _authoredNormals.AsSpan().SequenceEqual(mesh.AuthoredNormals.Span) &&
+        (Key.IsGpuDeformed && !_deformationRetired
+            // A GPU-produced geometry holds no resolved point array to compare:
+            // its vertices are whatever the kernel last wrote. What identifies
+            // it is the emitted topology and the rig's bind pose, and the bind
+            // pose is already part of the key, so the indices are the only thing
+            // left to check. A retired one carries CPU vertices again, so it is
+            // compared as the CPU geometry it has become.
+            ? _indices.AsSpan().SequenceEqual(mesh.Indices.Span)
+            : _points.AsSpan().SequenceEqual(mesh.Points.Span) &&
+                _indices.AsSpan().SequenceEqual(mesh.Indices.Span) &&
+                _authoredNormals.AsSpan().SequenceEqual(mesh.AuthoredNormals.Span)) &&
         HasSameMaterialGeometry(mesh);
 
     internal bool HasSameMaterialGeometry(SilkMeshData mesh) =>
         (string.IsNullOrEmpty(_uvPrimvar) || mesh.FindTexCoord(_uvPrimvar) is not null) &&
-        _hasTangents == VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent);
+        _hasTangents == VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent) &&
+        HasSameUvData(mesh);
 
     /// <summary>
-    /// Returns the instance buffer, which an instanced draw must have created.
+    /// Whether the texture-coordinate data the bound material samples through is
+    /// still the data these vertices were built and displaced from.
     /// </summary>
-    internal ISilkGraphicsBuffer RequireInstanceBuffer() =>
-        InstanceBuffer ?? throw new InvalidOperationException(
-            "An instanced draw requires UpdateInstanceBuffer to have run first.");
+    /// <remarks>
+    /// The presence check above is not enough on its own. A mesh republished with
+    /// the same points but edited <c>st</c> values used to satisfy every identity
+    /// test in the retained fast path, so it kept vertices carrying the previous
+    /// coordinates -- and, once displacement sampled a height field through them,
+    /// the previous heights as well.
+    /// </remarks>
+    internal bool HasSameUvData(SilkMeshData mesh) =>
+        Key.UvFingerprint == SilkMeshGpuGeometryKey.HashAttribute(
+            string.IsNullOrEmpty(Key.UvPrimvar) ? null : mesh.FindTexCoord(Key.UvPrimvar)) &&
+        DisplacementUvFingerprint == SilkMeshGpuGeometryKey.HashAttribute(
+            string.IsNullOrEmpty(DisplacementUvPrimvar)
+                ? null
+                : mesh.FindTexCoord(DisplacementUvPrimvar));
 
+    /// <summary>
+    /// Returns the instance buffer one batch slot uses, which an instanced draw
+    /// must have created.
+    /// </summary>
+    internal ISilkGraphicsBuffer RequireInstanceBuffer(int slot)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(slot);
+        if (slot >= _instanceSlots.Count || _instanceSlots[slot].Buffer is not { } buffer)
+        {
+            throw new InvalidOperationException(
+                "An instanced draw requires UpdateInstanceBuffer to have run first.");
+        }
+        return buffer;
+    }
+
+    /// <summary>
+    /// Returns the per-caster light-space transform table for one shadow map,
+    /// uploading it first.
+    /// </summary>
+    /// <remarks>
+    /// A second buffer rather than a reuse of an instance slot: those hold the
+    /// camera's object-to-clip transforms and are bound by the colour pass of the
+    /// same frame, so writing light-space matrices into one would draw the scene
+    /// from the light. It is allocated the first time this geometry casts
+    /// and stays sized to the largest caster batch it has seen, which is bounded by
+    /// the number of instances the geometry already has.
+    /// </remarks>
+    internal ISilkGraphicsBuffer RequireShadowInstanceBuffer(
+        ISilkGraphicsDevice device,
+        IReadOnlyList<SilkShadowCaster> casters)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(casters);
+        if (casters.Count == 0)
+        {
+            throw new ArgumentException(
+                "A shadow caster batch must contain at least one draw.",
+                nameof(casters));
+        }
+
+        int required = checked(casters.Count * SilkSceneUniformWriter.ByteSize);
+        if (casters.Count > _shadowInstanceCapacity)
+        {
+            ShadowInstanceBuffer?.Dispose();
+            _shadowInstanceCapacity = Math.Max(casters.Count, _shadowInstanceCapacity * 2);
+            ShadowInstanceBuffer = device.CreateBuffer(
+                checked((nuint)(_shadowInstanceCapacity * SilkSceneUniformWriter.ByteSize)),
+                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+            _shadowInstanceBytes =
+                new byte[_shadowInstanceCapacity * SilkSceneUniformWriter.ByteSize];
+        }
+
+        for (int index = 0; index < casters.Count; index++)
+        {
+            SilkShadowInstanceWriter.Write(
+                casters[index].ObjectToLightClip,
+                _shadowInstanceBytes.AsSpan(
+                    index * SilkSceneUniformWriter.ByteSize,
+                    SilkSceneUniformWriter.ByteSize));
+        }
+        ISilkGraphicsBuffer buffer = ShadowInstanceBuffer ??
+            throw new InvalidOperationException("The shadow instance buffer was not created.");
+        buffer.Write(_shadowInstanceBytes.AsSpan(0, required));
+        return buffer;
+    }
+
+    /// <summary>
+    /// Uploads one batch's per-instance transform table into that batch's own
+    /// slot, allocating the slot on first use.
+    /// </summary>
+    /// <param name="device">The device the slot's buffer belongs to.</param>
+    /// <param name="frame">The frame the transforms are projected with.</param>
+    /// <param name="instances">The batch's meshes, in draw order.</param>
+    /// <param name="flipClipSpaceY">Whether the backend's clip space points down.</param>
+    /// <param name="slot">
+    /// The batch's ordinal among the batches of this frame that draw this
+    /// geometry. Slots are assigned in batch order, so a scene that does not
+    /// change its batching keeps writing the same slot and keeps the delta upload
+    /// below.
+    /// </param>
+    /// <remarks>
+    /// Every part of the update is staged and swapped in only once the buffer was
+    /// created and every write it needed succeeded. A device that refuses the
+    /// allocation, or a write that fails part way through the table, used to leave
+    /// the slot claiming a capacity it had no buffer for and a retained byte image
+    /// the GPU had never received -- and because the next frame compares against
+    /// that image to find its delta, the rows that failed would never be uploaded
+    /// again. Staging first is what makes a refused frame retryable: the slot is
+    /// exactly what it was, so the retry re-uploads everything it must.
+    /// </remarks>
     internal void UpdateInstanceBuffer(
         ISilkGraphicsDevice device,
         SilkFrameState frame,
         IReadOnlyList<SilkMeshGpuResource> instances,
-        bool flipClipSpaceY)
+        bool flipClipSpaceY,
+        int slot = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        bool unchanged = _instanceFrameRevision == frame.Revision &&
-            _instanceMeshes.Length == instances.Count;
-        if (unchanged)
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(instances);
+        ArgumentOutOfRangeException.ThrowIfNegative(slot);
+        if (slot > _instanceSlots.Count)
         {
+            throw new ArgumentOutOfRangeException(
+                nameof(slot),
+                slot,
+                "Instance slots are assigned in batch order and cannot be skipped.");
+        }
+
+        InstanceSlot? table = slot < _instanceSlots.Count ? _instanceSlots[slot] : null;
+        if (table is not null &&
+            table.FrameRevision == frame.Revision &&
+            table.Meshes.Length == instances.Count)
+        {
+            bool unchanged = true;
             for (int index = 0; index < instances.Count; index++)
             {
-                unchanged &= ReferenceEquals(_instanceMeshes[index], instances[index].Mesh);
+                unchanged &= ReferenceEquals(table.Meshes[index], instances[index].Mesh);
             }
             if (unchanged)
             {
@@ -3708,68 +9300,180 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
             }
         }
 
-        int required = checked(instances.Count * SilkSceneUniformWriter.ByteSize);
-        if (instances.Count > _instanceCapacity)
+        int capacity = table?.Capacity ?? 0;
+        int uploadedCount = table?.UploadedCount ?? 0;
+        ISilkGraphicsBuffer? buffer = table?.Buffer;
+        byte[] retained = table?.Bytes ?? [];
+        byte[] staging = table?.Staging ?? [];
+        SilkMeshData?[] meshes = table?.MeshesStaging ?? [];
+        ISilkGraphicsBuffer? created = null;
+        try
         {
-            InstanceBuffer?.Dispose();
-            _instanceCapacity = Math.Max(instances.Count, _instanceCapacity * 2);
-            InstanceBuffer = device.CreateBuffer(
-                checked((nuint)(_instanceCapacity * SilkSceneUniformWriter.ByteSize)),
-                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-            _instanceBytes = new byte[_instanceCapacity * SilkSceneUniformWriter.ByteSize];
-        }
-        if (_instanceMeshes.Length != instances.Count)
-        {
-            _instanceMeshes = new SilkMeshData[instances.Count];
-        }
-
-        Span<byte> encoded = stackalloc byte[SilkSceneUniformWriter.ByteSize];
-        int changedStart = -1;
-        int changedLength = 0;
-        for (int index = 0; index < instances.Count; index++)
-        {
-            SilkMeshData mesh = instances[index].Mesh;
-            _instanceMeshes[index] = mesh;
-            SilkSceneUniformWriter.Write(
-                mesh,
-                frame,
-                encoded,
-                flipClipSpaceY);
-            int offset = index * SilkSceneUniformWriter.ByteSize;
-            Span<byte> retained = _instanceBytes.AsSpan(
-                offset,
-                SilkSceneUniformWriter.ByteSize);
-            if (encoded.SequenceEqual(retained))
+            if (buffer is null || instances.Count > capacity)
             {
-                continue;
+                capacity = Math.Max(instances.Count, capacity * 2);
+                created = device.CreateBuffer(
+                    checked((nuint)(capacity * SilkSceneUniformWriter.ByteSize)),
+                    SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+                buffer = created;
+
+                // A fresh buffer holds nothing, so nothing may be skipped as
+                // already uploaded, and both byte images have to match its size.
+                retained = new byte[capacity * SilkSceneUniformWriter.ByteSize];
+                staging = new byte[capacity * SilkSceneUniformWriter.ByteSize];
+                uploadedCount = 0;
+            }
+            if (staging.Length != retained.Length)
+            {
+                staging = new byte[retained.Length];
+            }
+            if (meshes.Length != instances.Count)
+            {
+                meshes = new SilkMeshData?[instances.Count];
             }
 
-            encoded.CopyTo(retained);
-            if (changedStart < 0)
+            Span<byte> encoded = stackalloc byte[SilkSceneUniformWriter.ByteSize];
+            int changedStart = -1;
+            int changedLength = 0;
+            for (int index = 0; index < instances.Count; index++)
             {
-                changedStart = offset;
-                changedLength = SilkSceneUniformWriter.ByteSize;
+                SilkMeshData mesh = instances[index].Mesh;
+                meshes[index] = mesh;
+                SilkSceneUniformWriter.Write(mesh, frame, encoded, flipClipSpaceY);
+                int offset = index * SilkSceneUniformWriter.ByteSize;
+                encoded.CopyTo(staging.AsSpan(offset, SilkSceneUniformWriter.ByteSize));
+
+                // Only a row the device is known to already hold may be skipped.
+                // A row past the last successful upload has no known device
+                // content, whatever the retained image happens to say.
+                if (index < uploadedCount &&
+                    encoded.SequenceEqual(
+                        retained.AsSpan(offset, SilkSceneUniformWriter.ByteSize)))
+                {
+                    if (changedStart >= 0)
+                    {
+                        buffer.Write(
+                            staging.AsSpan(changedStart, changedLength),
+                            checked((nuint)changedStart));
+                        changedStart = -1;
+                        changedLength = 0;
+                    }
+                    continue;
+                }
+
+                if (changedStart < 0)
+                {
+                    changedStart = offset;
+                    changedLength = SilkSceneUniformWriter.ByteSize;
+                }
+                else
+                {
+                    changedLength += SilkSceneUniformWriter.ByteSize;
+                }
             }
-            else if (changedStart + changedLength == offset)
+            if (changedStart >= 0)
             {
-                changedLength += SilkSceneUniformWriter.ByteSize;
-            }
-            else
-            {
-                RequireInstanceBuffer().Write(
-                    _instanceBytes.AsSpan(changedStart, changedLength),
+                buffer.Write(
+                    staging.AsSpan(changedStart, changedLength),
                     checked((nuint)changedStart));
-                changedStart = offset;
-                changedLength = SilkSceneUniformWriter.ByteSize;
             }
         }
-        if (changedStart >= 0)
+        catch
         {
-            RequireInstanceBuffer().Write(
-                _instanceBytes.AsSpan(changedStart, changedLength),
-                checked((nuint)changedStart));
+            created?.Dispose();
+            throw;
         }
-        _instanceFrameRevision = frame.Revision;
+
+        // The slot object and the room for it in the list are obtained under the
+        // same guard that owns the buffer: allocating either can fail, and a
+        // failure after the buffer exists but before anything references it
+        // leaks a device allocation that nothing will ever dispose. Only the
+        // reserved insert below is outside the guard, and a List<T>.Add into
+        // reserved capacity cannot fail.
+        InstanceSlot published;
+        try
+        {
+            if (_publicationFailureForTesting is { } injected)
+            {
+                _publicationFailureForTesting = null;
+                throw injected();
+            }
+            published = table ?? new InstanceSlot();
+            if (table is null)
+            {
+                _instanceSlots.EnsureCapacity(_instanceSlots.Count + 1);
+            }
+        }
+        catch
+        {
+            created?.Dispose();
+            throw;
+        }
+
+        if (table is null)
+        {
+            _instanceSlots.Add(published);
+        }
+
+        InstanceSlot slotTable = published;
+        ISilkGraphicsBuffer? previous = slotTable.Buffer;
+        slotTable.Buffer = buffer;
+        slotTable.Capacity = capacity;
+        slotTable.Bytes = staging;
+        slotTable.Staging = retained;
+        slotTable.MeshesStaging = slotTable.Meshes;
+        slotTable.Meshes = meshes;
+        slotTable.UploadedCount = instances.Count;
+        slotTable.FrameRevision = frame.Revision;
+        if (previous is not null && !ReferenceEquals(previous, buffer))
+        {
+            previous.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Makes the next instance-slot publication throw, after the buffer exists
+    /// and before anything references it.
+    /// </summary>
+    /// <remarks>
+    /// That window is invisible from the outside: the update simply fails, and
+    /// whether the buffer it had already created was disposed or leaked is only
+    /// observable by counting the device's live allocations.
+    /// </remarks>
+    internal void FailNextInstanceSlotPublicationForTesting(Func<Exception> failure) =>
+        _publicationFailureForTesting = failure;
+
+    /// <summary>One batch's retained instance transform table.</summary>
+    private sealed class InstanceSlot
+    {
+        internal ISilkGraphicsBuffer? Buffer { get; set; }
+
+        /// <summary>The byte image the device is known to hold.</summary>
+        internal byte[] Bytes { get; set; } = [];
+
+        /// <summary>
+        /// The image the next update is encoded into, swapped with
+        /// <see cref="Bytes"/> only once every write it needed succeeded.
+        /// </summary>
+        internal byte[] Staging { get; set; } = [];
+
+        internal SilkMeshData?[] Meshes { get; set; } = [];
+
+        /// <summary>The mesh table the next update is staged into.</summary>
+        internal SilkMeshData?[] MeshesStaging { get; set; } = [];
+
+        /// <summary>
+        /// How many leading rows of <see cref="Bytes"/> the device is known to
+        /// hold. Zero after the buffer is recreated, because a fresh allocation
+        /// holds nothing whatever the retained image says.
+        /// </summary>
+        internal int UploadedCount { get; set; }
+
+        internal ulong FrameRevision { get; set; } = ulong.MaxValue;
+
+        // Starts at zero so the first instanced draw always allocates; the buffer
+        // does not exist until then.
+        internal int Capacity { get; set; }
     }
 
     internal void AddReference()
@@ -3796,7 +9500,16 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         {
             return;
         }
-        InstanceBuffer?.Dispose();
+        foreach (InstanceSlot slot in _instanceSlots)
+        {
+            slot.Buffer?.Dispose();
+        }
+        _instanceSlots.Clear();
+        ShadowInstanceBuffer?.Dispose();
+        // The deformation owns its pipeline and every input buffer, so a
+        // geometry that is retired releases the whole GPU deformation with it
+        // rather than leaving a pipeline alive behind a dropped reference.
+        Deformation?.Dispose();
         IndexBuffer.Dispose();
         VertexBuffer.Dispose();
         _disposed = true;
@@ -3809,21 +9522,120 @@ internal readonly record struct SilkMeshGpuGeometryKey(
     ulong TopologyFingerprint,
     ulong PointFingerprint,
     ulong NormalFingerprint,
+    // The identity of the bounded deformation rig this mesh published, or zero
+    // when it published none. The point fingerprint already moves whenever the
+    // CPU-resolved pose does, so this is not what makes an animated mesh rebuild
+    // its geometry; it is what keeps two poses that resolve to the same points
+    // from sharing one retained resource while carrying different rigs, which is
+    // exactly what a deformation-aware consumer would then get wrong.
+    ulong DeformationIdentity,
+    // Non-zero only for a geometry the GPU deformation kernel produces. It
+    // covers the rig's time-independent inputs, so one resource serves every
+    // pose of one rig, and it is what makes a CPU-built and a GPU-produced
+    // geometry structurally unable to share a cache entry: a CPU entry always
+    // carries point and normal fingerprints and a zero bind identity, and a GPU
+    // entry always carries the reverse.
+    ulong DeformationBindIdentity,
     string UvPrimvar,
-    bool HasTangents)
+    bool HasTangents,
+    // The identity of the material displacement that moved this geometry's
+    // points, or the reason nothing moved them. It covers the authored constant,
+    // the displacement image's asset, addressing, channel, affine, authored
+    // fallback and file stamp, and -- for a refusal -- the reason itself, so a
+    // material edit that changes only the height field, or only why the height
+    // field was refused, produces a different retained geometry rather than
+    // reusing vertices and a verdict the previous material produced.
+    ulong DisplacementIdentity = 0,
+    // The bound material. Two materials that agree on every geometry-affecting
+    // input do produce identical vertices, but a prim rebound between them is a
+    // different binding, and the retained resource carries that binding's
+    // displacement verdict as well as its vertices.
+    string MaterialPath = "",
+    // The fingerprint of the texture-coordinate data the bound material samples
+    // through. Comparing only the primvar's presence let an edit to its values
+    // reuse vertices carrying the previous coordinates -- and, once displacement
+    // sampled through them, the previous heights.
+    ulong UvFingerprint = 0)
 {
     internal static SilkMeshGpuGeometryKey Create(
         SilkMeshData mesh,
         string uvPrimvar,
-        bool hasTangents) =>
+        bool hasTangents,
+        ulong displacementIdentity = 0,
+        string materialPath = "",
+        ulong uvFingerprint = 0) =>
         new(
             mesh.Path,
             mesh.TopologyKind,
             mesh.TopologyFingerprint,
             HashFloats(mesh.Points.Span),
             HashFloats(mesh.AuthoredNormals.Span),
+            mesh.DeformationIdentity,
+            0,
             uvPrimvar,
-            hasTangents);
+            hasTangents,
+            displacementIdentity,
+            materialPath,
+            uvFingerprint);
+
+    /// <summary>
+    /// Fingerprints one bound vertex attribute, or zero when the mesh carries
+    /// none by that name.
+    /// </summary>
+    internal static ulong HashAttribute(SilkVertexAttributeData? attribute)
+    {
+        if (attribute is null)
+        {
+            return 0;
+        }
+        ulong hash = HashFloats(attribute.Data.Span);
+        unchecked
+        {
+            hash ^= (uint)attribute.ComponentCount;
+            hash *= 1099511628211;
+            hash ^= (uint)attribute.Interpolation;
+            hash *= 1099511628211;
+        }
+        // Zero is reserved for "no such attribute", so a real attribute that
+        // hashes to it is nudged rather than being indistinguishable from one
+        // the mesh does not carry.
+        return hash == 0 ? 1 : hash;
+    }
+
+    /// <summary>
+    /// The key of a geometry the deformation kernel produces, which depends on
+    /// the emitted topology and the rig's bind pose rather than on any resolved
+    /// point array.
+    /// </summary>
+    internal static SilkMeshGpuGeometryKey CreateGpuDeformed(
+        SilkMeshData mesh,
+        SilkMeshDeformationData deformation,
+        string uvPrimvar,
+        bool hasTangents,
+        string materialPath = "",
+        ulong uvFingerprint = 0,
+        ulong displacementIdentity = 0) =>
+        new(
+            mesh.Path,
+            mesh.TopologyKind,
+            mesh.TopologyFingerprint,
+            0,
+            0,
+            0,
+            deformation.BindIdentity,
+            uvPrimvar,
+            hasTangents,
+            // A GPU-deformed geometry never moves under a displacement -- a
+            // moving one is refused by the kernel -- but it still carries the
+            // *verdict*, and two prims refused for different reasons must not
+            // share one retained resource, or the first reason would survive a
+            // change to the second.
+            displacementIdentity,
+            materialPath,
+            uvFingerprint);
+
+    /// <summary>Gets whether the deformation kernel produces this geometry.</summary>
+    internal bool IsGpuDeformed => DeformationBindIdentity != 0;
 
     private static ulong HashFloats(ReadOnlySpan<float> values)
     {

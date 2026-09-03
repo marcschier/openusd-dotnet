@@ -1,0 +1,88 @@
+#usda 1.0
+(
+    doc = """Synthetic MDL-only material fixture.
+
+    Everything here is authored by this repository. No NVIDIA MDL module source
+    is copied or referenced by content: `info:mdl:sourceAsset` names
+    `OmniPBR.mdl` as a bare identifier exactly as an Omniverse-authored stage
+    does, and the file is deliberately absent, because the accepted-subset
+    distillation reads only the authored USD input values and never opens the
+    module.
+
+    The material authors *only* the MDL render context. There is no
+    `outputs:surface` and no `outputs:mtlx:surface`, so a renderer that reads
+    just the universal context sees no surface terminal at all. That is the
+    exact condition this fixture exists to pin: an MDL-only material must be
+    reported by name, not shaded silently as default grey.
+
+    The authored inputs are split on purpose:
+
+    * diffuse_color_constant, reflection_roughness_constant, metallic_constant,
+      opacity_constant, enable_opacity, emissive_color, enable_emission and
+      normalmap_texture are inside the accepted OmniPBR subset.
+    * subsurface_weight and specular_level are authored away from their module
+      defaults on purpose. They are outside the accepted subset and must be
+      reported by name rather than folded into an unrelated parameter.
+    """
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "MdlCard" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/OmniPbrMat>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.8, -0.6, 0), (0.8, -0.6, 0), (0.8, 0.6, 0), (-0.8, 0.6, 0)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.18, 0.18, 0.18)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+
+    def Scope "Looks"
+    {
+        def Material "OmniPbrMat"
+        {
+            token outputs:mdl:surface.connect = </World/Looks/OmniPbrMat/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+
+                color3f inputs:diffuse_color_constant = (0.72, 0.28, 0.12)
+                float inputs:reflection_roughness_constant = 0.35
+                float inputs:metallic_constant = 0.25
+                float inputs:opacity_constant = 0.5
+                bool inputs:enable_opacity = 1
+                color3f inputs:emissive_color = (0.1, 0.2, 0.4)
+                bool inputs:enable_emission = 1
+                float inputs:emissive_intensity = 2
+                asset inputs:normalmap_texture = @mdl-normal.png@ (
+                    colorSpace = "raw"
+                )
+
+                # Outside the accepted subset on purpose.
+                float inputs:subsurface_weight = 0.4
+                float inputs:specular_level = 0.9
+
+                token outputs:out
+            }
+        }
+    }
+}

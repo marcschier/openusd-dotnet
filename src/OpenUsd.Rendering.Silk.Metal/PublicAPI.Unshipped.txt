@@ -74,6 +74,9 @@ OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSampler(OpenUsd.Rende
 OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSelectionMaskGraphicsPipeline(OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionMaskGraphicsPipeline!
 OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSelectionOutlineBinding(OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionOutlineBinding!
 OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSelectionOutlineGraphicsPipeline(OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsPipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.DisplayTransformDeviceGeneration.get -> ulong
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateDisplayTransformGraphicsPipeline(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateDisplayTransformBinding(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding!
 OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateShaderModule(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderModule!
 OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateShaderProgram(OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderProgram!
 OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateTexture2D(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!

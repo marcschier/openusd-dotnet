@@ -5,10 +5,12 @@
   <Folder Name="/samples/">
     <Project Path="samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj" />
     <Project Path="samples/OpenUsd.LiveAuthoring.Sample/OpenUsd.LiveAuthoring.Sample.csproj" />
-    <Project Path="samples/OpenUsd.LiveAuthoring/OpenUsd.LiveAuthoring.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/OpenUsd.Bridge.Grpc/OpenUsd.Bridge.Grpc.csproj" />
+    <Project Path="src/OpenUsd.Bridge.Protocol/OpenUsd.Bridge.Protocol.csproj" />
     <Project Path="src/OpenUsd.Interop/OpenUsd.Interop.csproj" />
+    <Project Path="src/OpenUsd.LiveAuthoring/OpenUsd.LiveAuthoring.csproj" />
     <Project Path="src/OpenUsd.Mcp/OpenUsd.Mcp.csproj" />
     <Project Path="src/OpenUsd.Physics/OpenUsd.Physics.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core/OpenUsd.Runtime.Core.csproj" />
@@ -34,11 +36,13 @@
     <Project Path="src/OpenUsd.Rendering/OpenUsd.Rendering.csproj" />
     <Project Path="src/OpenUsd.Viewer/OpenUsd.Viewer.csproj" />
     <Project Path="src/OpenUsd.Viewer.App/OpenUsd.Viewer.App.csproj" />
+    <Project Path="src/OpenUsd.Viewer.Bridge.Grpc/OpenUsd.Viewer.Bridge.Grpc.csproj" />
     <Project Path="src/OpenUsd.Cesium/OpenUsd.Cesium.csproj" />
     <Project Path="src/OpenUsd/OpenUsd.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenUsd.AvaloniaVulkanSmoke/OpenUsd.AvaloniaVulkanSmoke.csproj" />
+    <Project Path="tests/OpenUsd.Bridge.Tests/OpenUsd.Bridge.Tests.csproj" />
     <Project Path="tests/OpenUsd.Cesium.Tests/OpenUsd.Cesium.Tests.csproj" />
     <Project Path="tests/OpenUsd.D3D12CompositionSmoke/OpenUsd.D3D12CompositionSmoke.csproj" />
     <Project Path="tests/OpenUsd.Interop.Tests/OpenUsd.Interop.Tests.csproj" />

@@ -541,7 +541,7 @@ public sealed class ViewerSilkDeformationUploadTests
         byte[] pathBytes = Encoding.UTF8.GetBytes(meshPath);
         uint[] indices = [0, 1, 2];
         int attributeBytes = normals is null ? 0 : 20 + (normals.Length * sizeof(float));
-        int size = 224 +
+        int size = 268 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -578,7 +578,7 @@ public sealed class ViewerSilkDeformationUploadTests
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), normals is null ? 0u : 1u);
 
-        int cursor = 224;
+        int cursor = 268;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)

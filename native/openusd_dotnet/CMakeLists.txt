@@ -18,6 +18,7 @@ set(OPENUSD_DOTNET_SOURCES
     src/renderer_stage_bridge.cpp
     src/resolver.cpp
     src/runtime.cpp
+    src/sdr.cpp
     src/session_overlay.cpp
     src/stage.cpp
     src/ts.cpp

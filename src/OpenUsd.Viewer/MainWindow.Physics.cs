@@ -49,33 +49,15 @@ public sealed partial class MainWindow
     {
         _physicsToolbarControls =
         [
-            PhysicsEnableButton,
             PhysicsPlayPauseButton,
             PhysicsStopButton,
             PhysicsStepButton,
-            PhysicsLoopCheckBox,
-            PhysicsSpeedSelector,
-            PhysicsPreviewCheckBox,
-            PhysicsBakeButton,
-            PhysicsGizmoSelector,
-            PhysicsSnapCheckBox,
-            PhysicsUndoButton,
-            PhysicsRedoButton,
         ];
         _physicsToolbarItems =
         [
-            new ViewerToolbarItem("PhysicsEnableButton", "Physics", 88),
             new ViewerToolbarItem("PhysicsPlayPauseButton", "Play", 72),
             new ViewerToolbarItem("PhysicsStopButton", "Stop", 72),
             new ViewerToolbarItem("PhysicsStepButton", "Step", 72),
-            new ViewerToolbarItem("PhysicsLoopCheckBox", "Loop", 72),
-            new ViewerToolbarItem("PhysicsSpeedSelector", "Speed", 96),
-            new ViewerToolbarItem("PhysicsPreviewCheckBox", "Apply Preview", 132),
-            new ViewerToolbarItem("PhysicsBakeButton", "Bake...", 84),
-            new ViewerToolbarItem("PhysicsGizmoSelector", "Gizmo", 104),
-            new ViewerToolbarItem("PhysicsSnapCheckBox", "Snap", 72),
-            new ViewerToolbarItem("PhysicsUndoButton", "Undo", 72),
-            new ViewerToolbarItem("PhysicsRedoButton", "Redo", 72),
         ];
         PhysicsEnableButton.Click += OnPhysicsEnableClick;
         PhysicsPlayPauseButton.Click += OnPhysicsPlayPauseClick;
@@ -871,45 +853,50 @@ public sealed partial class MainWindow
         try
         {
             PhysicsStatus.Text = ViewerPhysicsStatusFormatter.FormatStatus(in snapshot);
+            PhysicsEnableButton.Header = snapshot.IsEnabled ? "_Rebuild" : "_Physics";
+            PhysicsEnableButton.IsEnabled = _coordinator is not null && !snapshot.IsBusy;
             layoutChanged = SetPhysicsContent(
-                PhysicsEnableButton,
-                snapshot.IsEnabled ? "_Rebuild" : "_Physics");
-            layoutChanged |= SetPhysicsEnabled(
-                PhysicsEnableButton,
-                _coordinator is not null && !snapshot.IsBusy);
-            layoutChanged |= SetPhysicsContent(
                 PhysicsPlayPauseButton,
                 snapshot.IsPlaying ? "Pause" : "Play");
-            AutomationProperties.SetName(
-                PhysicsPlayPauseButton,
-                ViewerPhysicsStatusFormatter.FormatPlayPauseName(snapshot.IsPlaying));
+            PhysicsPlayPauseMenuItem.Header = snapshot.IsPlaying ? "_Pause" : "_Play";
+            string playPauseName = ViewerPhysicsStatusFormatter.FormatPlayPauseName(
+                snapshot.IsPlaying);
+            AutomationProperties.SetName(PhysicsPlayPauseButton, playPauseName);
+            AutomationProperties.SetName(PhysicsPlayPauseMenuItem, playPauseName);
             layoutChanged |= SetPhysicsCommandState(
                 PhysicsPlayPauseButton,
+                PhysicsPlayPauseMenuItem,
                 snapshot,
                 snapshot.IsPlaying ? ViewerPhysicsCommand.Pause : ViewerPhysicsCommand.Play,
                 "Play or pause the interactive simulation (K)");
             layoutChanged |= SetPhysicsCommandState(
                 PhysicsStopButton,
+                PhysicsStopMenuItem,
                 snapshot,
                 ViewerPhysicsCommand.Stop,
                 "Return the simulation to the authored start (J)");
             layoutChanged |= SetPhysicsCommandState(
                 PhysicsStepButton,
+                PhysicsStepMenuItem,
                 snapshot,
                 ViewerPhysicsCommand.StepOneFrame,
                 "Advance exactly one fixed simulation step (N)");
-            layoutChanged |= SetPhysicsCommandState(
+            SetPhysicsCommandState(
                 PhysicsBakeButton,
+                menuItem: null,
                 snapshot,
                 ViewerPhysicsCommand.Bake,
                 "Write simulated poses into a file-backed layer (B)");
-            layoutChanged |= SetPhysicsEnabled(PhysicsLoopCheckBox, snapshot.IsEnabled);
+            PhysicsLoopCheckBox.IsEnabled = snapshot.IsEnabled;
             PhysicsLoopCheckBox.IsChecked = snapshot.Loop;
-            layoutChanged |= SetPhysicsEnabled(PhysicsSpeedSelector, snapshot.IsEnabled);
-            layoutChanged |= SetPhysicsEnabled(
-                PhysicsPreviewCheckBox,
-                snapshot.IsEnabled && !snapshot.IsBusy);
+            PhysicsLoopMenuItem.IsEnabled = snapshot.IsEnabled;
+            PhysicsLoopMenuItem.IsChecked = snapshot.Loop;
+            PhysicsSpeedSelector.IsEnabled = snapshot.IsEnabled;
+            SyncPhysicsSpeedMenu();
+            PhysicsPreviewCheckBox.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
             PhysicsPreviewCheckBox.IsChecked = snapshot.PreviewEnabled;
+            PhysicsPreviewMenuItem.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
+            PhysicsPreviewMenuItem.IsChecked = snapshot.PreviewEnabled;
             PhysicsScrubber.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
             PhysicsScrubber.Minimum = snapshot.StartTimeCode;
             PhysicsScrubber.Maximum = Math.Max(snapshot.EndTimeCode, snapshot.StartTimeCode + 1e-6);
@@ -922,6 +909,12 @@ public sealed partial class MainWindow
                     PhysicsScrubber.Minimum,
                     PhysicsScrubber.Maximum);
             }
+
+            // The transport strip has nothing to show while physics is off: every remaining
+            // control in it (play/pause, stop, step, scrubber, status) is meaningless until a
+            // simulation exists, so the whole row disappears rather than showing disabled
+            // controls that build feels finished.
+            PhysicsToolbarGrid.IsVisible = snapshot.IsEnabled;
 
             RenderPhysicsInspector(snapshot);
             RenderPhysicsAuthoringState(in snapshot);
@@ -941,23 +934,50 @@ public sealed partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// Reflects <see cref="PhysicsSpeedSelector"/>'s current selection (the state existing
+    /// physics logic reads and writes) into the Physics &gt; Speed menu's radio items, so the
+    /// menu never shows a stale checked speed after the controller changes it directly.
+    /// </summary>
+    private void SyncPhysicsSpeedMenu()
+    {
+        MenuItem[] items =
+        [
+            PhysicsSpeedQuarterMenuItem,
+            PhysicsSpeedHalfMenuItem,
+            PhysicsSpeedNormalMenuItem,
+            PhysicsSpeedDoubleMenuItem,
+            PhysicsSpeedQuadrupleMenuItem,
+        ];
+        for (int index = 0; index < items.Length; index++)
+        {
+            items[index].IsEnabled = PhysicsSpeedSelector.IsEnabled;
+            items[index].IsChecked = PhysicsSpeedSelector.SelectedIndex == index;
+        }
+    }
+
     private static bool SetPhysicsContent(ContentControl control, string content) =>
         ViewerToolbarState.SetContent(control, content);
 
     private static bool SetPhysicsEnabled(Control control, bool enabled) =>
         ViewerToolbarState.SetEnabled(control, enabled);
 
-    private static bool SetPhysicsCommandState(
-        Button button,
+    internal static bool SetPhysicsCommandState(
+        Control control,
+        MenuItem? menuItem,
         in ViewerPhysicsStatusSnapshot snapshot,
         ViewerPhysicsCommand command,
         string readyTip)
     {
         bool available = snapshot.CanRun(command);
-        bool changed = SetPhysicsEnabled(button, available);
-        ToolTip.SetTip(
-            button,
-            available ? readyTip : snapshot.DescribeUnavailable(command));
+        bool changed = SetPhysicsEnabled(control, available);
+        string tip = available ? readyTip : snapshot.DescribeUnavailable(command);
+        ToolTip.SetTip(control, tip);
+        if (menuItem is not null)
+        {
+            menuItem.IsEnabled = available;
+            ToolTip.SetTip(menuItem, tip);
+        }
         return changed;
     }
 

@@ -89,7 +89,9 @@ internal sealed class StormNativeControlHost : NativeControlHost
     internal void SetSelection(SelectionState selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
-        GetSession().SetSelection(selection, ViewerPickingPolicy.StormSelectionColor);
+        GetSession().SetSelection(
+            ViewerPickingPolicy.ProjectForStorm(selection),
+            ViewerPickingPolicy.StormSelectionColor);
     }
 
     internal async ValueTask ResizeAsync(

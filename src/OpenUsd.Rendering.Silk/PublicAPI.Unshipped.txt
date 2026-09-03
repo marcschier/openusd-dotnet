@@ -5,6 +5,25 @@ OpenUsd.Rendering.Silk.ISilkComputePipeline
 OpenUsd.Rendering.Silk.ISilkComputePipeline.Descriptor.get -> OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor
 OpenUsd.Rendering.Silk.ISilkComputeShaderProgram
 OpenUsd.Rendering.Silk.ISilkComputeShaderProgram.BindingLayout.get -> OpenUsd.Rendering.Silk.ISilkComputeBindingLayout!
+OpenUsd.Rendering.Silk.ISilkDeviceLossGraphicsDevice
+OpenUsd.Rendering.Silk.ISilkDeviceLossGraphicsDevice.DeviceLossGeneration.get -> ulong
+OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding
+OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding.Descriptor.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor
+OpenUsd.Rendering.Silk.ISilkDisplayTransformConfigIdentityProvider
+OpenUsd.Rendering.Silk.ISilkDisplayTransformConfigIdentityProvider.GetIdentity(string! configPath) -> OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsCommandList
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsCommandList.BeginDisplayTransformRendering(OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor descriptor) -> void
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsCommandList.DrawDisplayTransformFullscreenTriangle() -> void
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsCommandList.SetDisplayTransformBinding(OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding! binding) -> void
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsCommandList.SetDisplayTransformGraphicsPipeline(OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline! pipeline) -> void
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsDevice
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsDevice.CreateDisplayTransformBinding(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding!
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsDevice.CreateDisplayTransformGraphicsPipeline(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline!
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsDevice.DisplayTransformDeviceGeneration.get -> ulong
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline
+OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline.Descriptor.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor
+OpenUsd.Rendering.Silk.ISilkDisplayTransformLatticeProvider
+OpenUsd.Rendering.Silk.ISilkDisplayTransformLatticeProvider.Create(OpenUsd.Rendering.RenderDisplayTransform! transform) -> OpenUsd.Rendering.Silk.SilkDisplayTransformLattice!
 OpenUsd.Rendering.Silk.ISilkGraphicsBindingLayout
 OpenUsd.Rendering.Silk.ISilkGraphicsBindingLayout.Descriptor.get -> OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
 OpenUsd.Rendering.Silk.ISilkGraphicsBuffer
@@ -118,6 +137,8 @@ OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsDevice.SelectionOutlineCapab
 OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsDevice.SelectionOutlineDeviceGeneration.get -> ulong
 OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsPipeline
 OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsPipeline.Descriptor.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor
+OpenUsd.Rendering.Silk.ISilkShadowGraphicsCommandList
+OpenUsd.Rendering.Silk.ISilkShadowGraphicsCommandList.BeginShadowRendering(OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor descriptor) -> void
 OpenUsd.Rendering.Silk.OpenUsdSilkException
 OpenUsd.Rendering.Silk.OpenUsdSilkException.Status.get -> OpenUsd.Interop.OpenUsdNativeStatus
 OpenUsd.Rendering.Silk.OpenUsdSilkPage
@@ -178,6 +199,9 @@ OpenUsd.Rendering.Silk.SilkBindingSlot.UniformByteSize.init -> void
 OpenUsd.Rendering.Silk.SilkBindingSlot.Validate() -> void
 OpenUsd.Rendering.Silk.SilkBindingSlot.Visibility.get -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
 OpenUsd.Rendering.Silk.SilkBindingSlot.Visibility.init -> void
+OpenUsd.Rendering.Silk.SilkBlendMode
+OpenUsd.Rendering.Silk.SilkBlendMode.None = 0 -> OpenUsd.Rendering.Silk.SilkBlendMode
+OpenUsd.Rendering.Silk.SilkBlendMode.StraightAlphaOver = 1 -> OpenUsd.Rendering.Silk.SilkBlendMode
 OpenUsd.Rendering.Silk.SilkBufferUsage
 OpenUsd.Rendering.Silk.SilkBufferUsage.Index = 2 -> OpenUsd.Rendering.Silk.SilkBufferUsage
 OpenUsd.Rendering.Silk.SilkBufferUsage.Storage = 8 -> OpenUsd.Rendering.Silk.SilkBufferUsage
@@ -199,22 +223,20 @@ OpenUsd.Rendering.Silk.SilkColor.Red.init -> void
 OpenUsd.Rendering.Silk.SilkColor.SilkColor() -> void
 OpenUsd.Rendering.Silk.SilkColor.SilkColor(float Red, float Green, float Blue, float Alpha) -> void
 OpenUsd.Rendering.Silk.SilkColor.Validate() -> void
-OpenUsd.Rendering.Silk.SilkCompositeOperator
-OpenUsd.Rendering.Silk.SilkCompositeOperator.Add = 2 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
-OpenUsd.Rendering.Silk.SilkCompositeOperator.Mix = 4 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
-OpenUsd.Rendering.Silk.SilkCompositeOperator.Multiply = 1 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
-OpenUsd.Rendering.Silk.SilkCompositeOperator.None = 0 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
-OpenUsd.Rendering.Silk.SilkCompositeOperator.Subtract = 3 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
 OpenUsd.Rendering.Silk.SilkColorSpace
 OpenUsd.Rendering.Silk.SilkColorSpace.Auto = 0 -> OpenUsd.Rendering.Silk.SilkColorSpace
 OpenUsd.Rendering.Silk.SilkColorSpace.Raw = 1 -> OpenUsd.Rendering.Silk.SilkColorSpace
 OpenUsd.Rendering.Silk.SilkColorSpace.Srgb = 2 -> OpenUsd.Rendering.Silk.SilkColorSpace
 OpenUsd.Rendering.Silk.SilkCommand
+OpenUsd.Rendering.Silk.SilkCommand.AsEnvironmentRemove() -> OpenUsd.Rendering.Silk.SilkEnvironmentRemoveCommand
+OpenUsd.Rendering.Silk.SilkCommand.AsEnvironmentUpsert() -> OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand
 OpenUsd.Rendering.Silk.SilkCommand.AsFrame() -> OpenUsd.Rendering.Silk.SilkFrameCommand
+OpenUsd.Rendering.Silk.SilkCommand.AsLightLink() -> OpenUsd.Rendering.Silk.SilkLightLinkCommand
 OpenUsd.Rendering.Silk.SilkCommand.AsMaterialRemove() -> OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand
 OpenUsd.Rendering.Silk.SilkCommand.AsMaterialUpsert() -> OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand
 OpenUsd.Rendering.Silk.SilkCommand.AsMeshRemove() -> OpenUsd.Rendering.Silk.SilkMeshRemoveCommand
 OpenUsd.Rendering.Silk.SilkCommand.AsMeshUpsert() -> OpenUsd.Rendering.Silk.SilkMeshUpsertCommand
+OpenUsd.Rendering.Silk.SilkCommand.AsShadow() -> OpenUsd.Rendering.Silk.SilkShadowCommand
 OpenUsd.Rendering.Silk.SilkCommand.SilkCommand() -> void
 OpenUsd.Rendering.Silk.SilkCommand.Type.get -> OpenUsd.Rendering.Silk.SilkCommandType
 OpenUsd.Rendering.Silk.SilkCommandEnumerator
@@ -224,26 +246,35 @@ OpenUsd.Rendering.Silk.SilkCommandEnumerator.MoveNext() -> bool
 OpenUsd.Rendering.Silk.SilkCommandEnumerator.SilkCommandEnumerator() -> void
 OpenUsd.Rendering.Silk.SilkCommandParser
 OpenUsd.Rendering.Silk.SilkCommandType
+OpenUsd.Rendering.Silk.SilkCommandType.EnvironmentRemove = 7 -> OpenUsd.Rendering.Silk.SilkCommandType
+OpenUsd.Rendering.Silk.SilkCommandType.EnvironmentUpsert = 6 -> OpenUsd.Rendering.Silk.SilkCommandType
 OpenUsd.Rendering.Silk.SilkCommandType.Frame = 1 -> OpenUsd.Rendering.Silk.SilkCommandType
+OpenUsd.Rendering.Silk.SilkCommandType.LightLink = 8 -> OpenUsd.Rendering.Silk.SilkCommandType
 OpenUsd.Rendering.Silk.SilkCommandType.MaterialRemove = 5 -> OpenUsd.Rendering.Silk.SilkCommandType
 OpenUsd.Rendering.Silk.SilkCommandType.MaterialUpsert = 4 -> OpenUsd.Rendering.Silk.SilkCommandType
 OpenUsd.Rendering.Silk.SilkCommandType.MeshRemove = 3 -> OpenUsd.Rendering.Silk.SilkCommandType
 OpenUsd.Rendering.Silk.SilkCommandType.MeshUpsert = 2 -> OpenUsd.Rendering.Silk.SilkCommandType
+OpenUsd.Rendering.Silk.SilkCommandType.Shadow = 9 -> OpenUsd.Rendering.Silk.SilkCommandType
+OpenUsd.Rendering.Silk.SilkCompositeOperator
+OpenUsd.Rendering.Silk.SilkCompositeOperator.Add = 2 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
+OpenUsd.Rendering.Silk.SilkCompositeOperator.Mix = 4 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
+OpenUsd.Rendering.Silk.SilkCompositeOperator.Multiply = 1 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
+OpenUsd.Rendering.Silk.SilkCompositeOperator.None = 0 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
+OpenUsd.Rendering.Silk.SilkCompositeOperator.Subtract = 3 -> OpenUsd.Rendering.Silk.SilkCompositeOperator
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Deconstruct(out uint StorageSet, out uint StorageBinding, out uint StorageElementStride, out uint UniformSet, out uint UniformBinding) -> void
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Equals(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.IndexOf(uint set, uint binding) -> int
+OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.ReadWriteSlot.get -> OpenUsd.Rendering.Silk.SilkComputeSlot
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.SilkComputeBindingLayoutDescriptor() -> void
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.SilkComputeBindingLayoutDescriptor(uint StorageSet, uint StorageBinding, uint StorageElementStride, uint UniformSet, uint UniformBinding) -> void
+OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.SilkComputeBindingLayoutDescriptor(System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkComputeSlot>! slots) -> void
+OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.SilkComputeBindingLayoutDescriptor(uint storageSet, uint storageBinding, uint storageElementStride, uint uniformSet, uint uniformBinding) -> void
+OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Slots.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkComputeSlot>!
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.StorageBinding.get -> uint
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.StorageBinding.init -> void
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.StorageElementStride.get -> uint
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.StorageElementStride.init -> void
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.StorageSet.get -> uint
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.StorageSet.init -> void
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.UniformBinding.get -> uint
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.UniformBinding.init -> void
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.UniformSet.get -> uint
-OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.UniformSet.init -> void
+OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.UniformSlot.get -> OpenUsd.Rendering.Silk.SilkComputeSlot
 OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkComputeParameters
 OpenUsd.Rendering.Silk.SilkComputeParameters.Deconstruct(out uint ElementCount, out float Scale) -> void
@@ -304,16 +335,318 @@ OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.Deconstruct(out OpenUs
 OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.Equals(OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor other) -> bool
 OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.SilkComputeShaderProgramDescriptor() -> void
 OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.SilkComputeShaderProgramDescriptor(OpenUsd.Rendering.Silk.ISilkGraphicsShaderModule! ComputeShader, OpenUsd.Rendering.Silk.ISilkComputeBindingLayout! BindingLayout) -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot
+OpenUsd.Rendering.Silk.SilkComputeSlot.Binding.get -> uint
+OpenUsd.Rendering.Silk.SilkComputeSlot.Binding.init -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot.Deconstruct(out OpenUsd.Rendering.Silk.SilkComputeSlotKind Kind, out uint Set, out uint Binding, out uint ElementStride) -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot.ElementStride.get -> uint
+OpenUsd.Rendering.Silk.SilkComputeSlot.ElementStride.init -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot.Equals(OpenUsd.Rendering.Silk.SilkComputeSlot other) -> bool
+OpenUsd.Rendering.Silk.SilkComputeSlot.Kind.get -> OpenUsd.Rendering.Silk.SilkComputeSlotKind
+OpenUsd.Rendering.Silk.SilkComputeSlot.Kind.init -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot.Set.get -> uint
+OpenUsd.Rendering.Silk.SilkComputeSlot.Set.init -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot.SilkComputeSlot() -> void
+OpenUsd.Rendering.Silk.SilkComputeSlot.SilkComputeSlot(OpenUsd.Rendering.Silk.SilkComputeSlotKind Kind, uint Set, uint Binding, uint ElementStride) -> void
+OpenUsd.Rendering.Silk.SilkComputeSlotKind
+OpenUsd.Rendering.Silk.SilkComputeSlotKind.ReadOnlyStructured = 0 -> OpenUsd.Rendering.Silk.SilkComputeSlotKind
+OpenUsd.Rendering.Silk.SilkComputeSlotKind.ReadWriteStructured = 1 -> OpenUsd.Rendering.Silk.SilkComputeSlotKind
+OpenUsd.Rendering.Silk.SilkComputeSlotKind.Uniform = 2 -> OpenUsd.Rendering.Silk.SilkComputeSlotKind
 OpenUsd.Rendering.Silk.SilkCullMode
 OpenUsd.Rendering.Silk.SilkCullMode.Back = 1 -> OpenUsd.Rendering.Silk.SilkCullMode
 OpenUsd.Rendering.Silk.SilkCullMode.Front = 2 -> OpenUsd.Rendering.Silk.SilkCullMode
 OpenUsd.Rendering.Silk.SilkCullMode.None = 0 -> OpenUsd.Rendering.Silk.SilkCullMode
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.Deconstruct(out OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor Layout, out uint ThreadGroupSizeX, out uint ThreadGroupSizeY, out uint ThreadGroupSizeZ) -> void
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.Equals(OpenUsd.Rendering.Silk.SilkDeformComputeReflection other) -> bool
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.Layout.get -> OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.Layout.init -> void
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.SilkDeformComputeReflection() -> void
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.SilkDeformComputeReflection(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor Layout, uint ThreadGroupSizeX, uint ThreadGroupSizeY, uint ThreadGroupSizeZ) -> void
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ThreadGroupSizeX.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ThreadGroupSizeX.init -> void
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ThreadGroupSizeY.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ThreadGroupSizeY.init -> void
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ThreadGroupSizeZ.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ThreadGroupSizeZ.init -> void
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.Deconstruct(out int FirstDelta, out int DeltaCount, out float Weight) -> void
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.DeltaCount.get -> int
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.DeltaCount.init -> void
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.Equals(OpenUsd.Rendering.Silk.SilkDeformationBlendRange other) -> bool
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.FirstDelta.get -> int
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.FirstDelta.init -> void
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.SilkDeformationBlendRange() -> void
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.SilkDeformationBlendRange(int FirstDelta, int DeltaCount, float Weight) -> void
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.Weight.get -> float
+OpenUsd.Rendering.Silk.SilkDeformationBlendRange.Weight.init -> void
+OpenUsd.Rendering.Silk.SilkDeformationEvaluator
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.AllocationFailed = 8 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.ByteBudget = 6 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.MaterialDisplacement = 9 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoBindNormals = 2 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoComputeCapability = 7 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoPublishedRig = 1 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.None = 0 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.PointCountMismatch = 5 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.RequiresTangents = 3 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.UnsupportedTopology = 4 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.BindPose.get -> float[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.BlendDeltaCount.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.BlendDeltas.get -> float[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.BlendSpans.get -> uint[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.BlendWeights.get -> float[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.Identity.get -> ulong
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.InfluencesPerPoint.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.JointCount.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.JointIndices.get -> uint[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.JointWeights.get -> float[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.Matrices.get -> float[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.Parameters.get -> byte[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.PointCount.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.TexCoords.get -> float[]!
+OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.VertexStrideFloats.get -> uint
+OpenUsd.Rendering.Silk.SilkDeformationLimits
+OpenUsd.Rendering.Silk.SilkDeformationOptions
+OpenUsd.Rendering.Silk.SilkDeformationOptions.BindNormals = 1 -> OpenUsd.Rendering.Silk.SilkDeformationOptions
+OpenUsd.Rendering.Silk.SilkDeformationOptions.BlendNormalOffsets = 2 -> OpenUsd.Rendering.Silk.SilkDeformationOptions
+OpenUsd.Rendering.Silk.SilkDeformationOptions.None = 0 -> OpenUsd.Rendering.Silk.SilkDeformationOptions
 OpenUsd.Rendering.Silk.SilkDeformationResult
 OpenUsd.Rendering.Silk.SilkDeformationResult.Applied = 0 -> OpenUsd.Rendering.Silk.SilkDeformationResult
 OpenUsd.Rendering.Silk.SilkDeformationResult.MeshMissing = 2 -> OpenUsd.Rendering.Silk.SilkDeformationResult
 OpenUsd.Rendering.Silk.SilkDeformationResult.NonFiniteValue = 4 -> OpenUsd.Rendering.Silk.SilkDeformationResult
 OpenUsd.Rendering.Silk.SilkDeformationResult.Unchanged = 1 -> OpenUsd.Rendering.Silk.SilkDeformationResult
 OpenUsd.Rendering.Silk.SilkDeformationResult.VertexCountMismatch = 3 -> OpenUsd.Rendering.Silk.SilkDeformationResult
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.BlendBudget = 4 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.ByteBudget = 8 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.Geometry = 32 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.InfluenceBudget = 2 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.JointBudget = 1 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.Normals = 64 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.SkinningMethod = 16 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures.Unverified = 128 -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.AuthoredZero = 2 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.MetadataUnavailable = 11 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.MetadataUnsupported = 12 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.NonFiniteAmount = 7 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.None = 0 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.NotAuthored = 1 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.TextureBudget = 9 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.TextureUnavailable = 10 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.UnsupportedComposite = 4 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.UnsupportedTopology = 3 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.UnsupportedUdim = 5 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.UnsupportedUvSet = 6 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplacementFallback.VertexBudget = 8 -> OpenUsd.Rendering.Silk.SilkDisplacementFallback
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! SceneColorTexture, out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! LatticeTexture, out OpenUsd.Rendering.Silk.ISilkGraphicsSampler! Sampler, out OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! Parameters) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.LatticeTexture.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.LatticeTexture.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Parameters.get -> OpenUsd.Rendering.Silk.ISilkGraphicsBuffer!
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Parameters.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Sampler.get -> OpenUsd.Rendering.Silk.ISilkGraphicsSampler!
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Sampler.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.SceneColorTexture.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.SceneColorTexture.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.SilkDisplayTransformBindingDescriptor() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.SilkDisplayTransformBindingDescriptor(OpenUsd.Rendering.Silk.ISilkGraphicsTexture! SceneColorTexture, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! LatticeTexture, OpenUsd.Rendering.Silk.ISilkGraphicsSampler! Sampler, OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! Parameters) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Validate() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Deconstruct(out uint Set, out uint SceneColorTextureBinding, out uint LatticeTextureBinding, out uint SamplerBinding, out uint ParametersBinding, out uint ParameterByteSize) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.LatticeTextureBinding.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.LatticeTextureBinding.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.ParameterByteSize.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.ParameterByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.ParametersBinding.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.ParametersBinding.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.SamplerBinding.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.SamplerBinding.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.SceneColorTextureBinding.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.SceneColorTextureBinding.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Set.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Set.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.SilkDisplayTransformBindingLayoutDescriptor() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.SilkDisplayTransformBindingLayoutDescriptor(uint Set, uint SceneColorTextureBinding, uint LatticeTextureBinding, uint SamplerBinding, uint ParametersBinding, uint ParameterByteSize) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Validate() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.Deconstruct(out string! Value, out bool IsExhaustive) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.IsExhaustive.get -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.IsExhaustive.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.SilkDisplayTransformConfigIdentity() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.SilkDisplayTransformConfigIdentity(string! Value, bool IsExhaustive) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.Value.get -> string!
+OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.Value.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.BindingCreations.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.BindingCreations.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Deconstruct(out OpenUsd.Rendering.Silk.SilkDisplayTransformStatus Status, out int LatticeSize, out long LatticeByteSize, out ulong Passes, out ulong LatticeBuilds, out ulong LatticeCacheHits, out ulong LatticeUploads, out ulong PipelineCreations, out ulong BindingCreations, out ulong IntermediateCreations, out ulong ParameterUploads, out ulong DeviceInvalidations, out ulong Failures, out string? RequestKey) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.DeviceInvalidations.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.DeviceInvalidations.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Failures.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Failures.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.IntermediateCreations.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.IntermediateCreations.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeBuilds.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeBuilds.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeByteSize.get -> long
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeCacheHits.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeCacheHits.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeSize.get -> int
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeSize.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeUploads.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.LatticeUploads.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.ParameterUploads.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.ParameterUploads.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Passes.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Passes.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.PipelineCreations.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.PipelineCreations.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.RequestKey.get -> string?
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.RequestKey.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.SilkDisplayTransformDiagnostics() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.SilkDisplayTransformDiagnostics(OpenUsd.Rendering.Silk.SilkDisplayTransformStatus Status, int LatticeSize, long LatticeByteSize, ulong Passes, ulong LatticeBuilds, ulong LatticeCacheHits, ulong LatticeUploads, ulong PipelineCreations, ulong BindingCreations, ulong IntermediateCreations, ulong ParameterUploads, ulong DeviceInvalidations, ulong Failures, string? RequestKey = null) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Status.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Status.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformException
+OpenUsd.Rendering.Silk.SilkDisplayTransformException.SilkDisplayTransformException(OpenUsd.Rendering.Silk.SilkDisplayTransformStatus status, string! message, System.Exception? innerException = null) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformException.Status.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.ByteCount.get -> long
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.Rgba8.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.ShaperMinimumLog2.get -> float
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.ShaperRangeLog2.get -> float
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.Size.get -> int
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.StripHeight.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformLattice.StripWidth.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.Builds.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.ByteSize.get -> long
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.Clear() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.Count.get -> int
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.Get(OpenUsd.Rendering.RenderDisplayTransform! transform) -> OpenUsd.Rendering.Silk.SilkDisplayTransformLattice!
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.Hits.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.Invalidations.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.MaximumByteSize.get -> long
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.MaximumEntries.get -> int
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.PartialIdentityRefusals.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.SilkDisplayTransformLatticeCache(OpenUsd.Rendering.Silk.ISilkDisplayTransformLatticeProvider? provider = null, int maximumEntries = 8, long maximumByteSize = 16777216, OpenUsd.Rendering.Silk.ISilkDisplayTransformConfigIdentityProvider? identityProvider = null) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.SuppressedRetries.get -> ulong
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.BindingLayout.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.BindingLayout.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.ColorFormat.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.ColorFormat.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, out OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor BindingLayout, out OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, out uint SampleCount) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.FragmentShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.FragmentShader.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.SampleCount.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.SampleCount.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.SilkDisplayTransformPipelineDescriptor() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.SilkDisplayTransformPipelineDescriptor(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor BindingLayout, OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, uint SampleCount) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.Validate() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.VertexShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.VertexShader.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection SceneColorTexture, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection LatticeTexture, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Sampler, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Parameters, out uint ExposureShaperOffset, out uint ExposureShaperByteSize, out uint LatticeGridOffset, out uint LatticeGridByteSize, out uint ParameterByteSize, out bool UsesVertexId) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformReflection other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ExposureShaperByteSize.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ExposureShaperByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ExposureShaperOffset.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ExposureShaperOffset.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.LatticeGridByteSize.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.LatticeGridByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.LatticeGridOffset.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.LatticeGridOffset.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.LatticeTexture.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.LatticeTexture.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ParameterByteSize.get -> uint
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ParameterByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Parameters.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Parameters.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Sampler.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Sampler.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.SceneColorTexture.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.SceneColorTexture.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.SilkDisplayTransformReflection() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.SilkDisplayTransformReflection(OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection SceneColorTexture, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection LatticeTexture, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Sampler, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Parameters, uint ExposureShaperOffset, uint ExposureShaperByteSize, uint LatticeGridOffset, uint LatticeGridByteSize, uint ParameterByteSize, bool UsesVertexId) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.UsesVertexId.get -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.UsesVertexId.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.ColorAttachment.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.ColorAttachment.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! ColorAttachment, out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! SceneColorTexture, out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! LatticeTexture) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.Equals(OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.LatticeTexture.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.LatticeTexture.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.SceneColorTexture.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.SceneColorTexture.init -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.SilkDisplayTransformRenderingDescriptor() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.SilkDisplayTransformRenderingDescriptor(OpenUsd.Rendering.Silk.ISilkGraphicsTexture! ColorAttachment, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! SceneColorTexture, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! LatticeTexture) -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.Validate() -> void
+OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformStatus.Applied = 4 -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformStatus.ConfigUnavailable = 2 -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformStatus.Inactive = 0 -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformStatus.TransformUnsupported = 3 -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformStatus.UnsupportedDevice = 1 -> OpenUsd.Rendering.Silk.SilkDisplayTransformStatus
+OpenUsd.Rendering.Silk.SilkDisplayTransformUniformWriter
+OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkDomeTextureFormat.Angular = 3 -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkDomeTextureFormat.Automatic = 0 -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkDomeTextureFormat.CubeMapVerticalCross = 4 -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkDomeTextureFormat.Latlong = 1 -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkDomeTextureFormat.MirroredBall = 2 -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkEnvironmentData
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Color.get -> System.Numerics.Vector3
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Diffuse.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentData.DomeIndex.get -> uint
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Exposure.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentData.HasDomeIndex.get -> bool
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Intensity.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkEnvironmentData.SourceColorSpace.get -> OpenUsd.Rendering.Silk.SilkColorSpace
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Specular.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentData.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkEnvironmentData.TextureFormat.get -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkEnvironmentData.TexturePath.get -> string!
+OpenUsd.Rendering.Silk.SilkEnvironmentData.Transform.get -> System.ReadOnlyMemory<double>
+OpenUsd.Rendering.Silk.SilkEnvironmentData.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentRemoveCommand
+OpenUsd.Rendering.Silk.SilkEnvironmentRemoveCommand.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkEnvironmentRemoveCommand.SilkEnvironmentRemoveCommand() -> void
+OpenUsd.Rendering.Silk.SilkEnvironmentRemoveCommand.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures.ColorTemperature = 1 -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures.LinkCollection = 4 -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures.PoleAxis = 2 -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures.ShadowCollection = 8 -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.Diffuse.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.DomeIndex.get -> uint
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.Exposure.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.GetColor(int component) -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.GetTransformElement(int index) -> double
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.Intensity.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.SilkEnvironmentUpsertCommand() -> void
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.SourceColorSpace.get -> OpenUsd.Rendering.Silk.SilkColorSpace
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.Specular.get -> float
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.TextureFormat.get -> OpenUsd.Rendering.Silk.SilkDomeTextureFormat
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.TexturePath.get -> string!
+OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkEnvironmentUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkFrameCapture
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.CommandCount.get -> uint
@@ -324,6 +657,7 @@ OpenUsd.Rendering.Silk.SilkFrameCaptureResult.RenderResult.get -> OpenUsd.Render
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Rgba.get -> System.ReadOnlyMemory<byte>
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Width.get -> int
 OpenUsd.Rendering.Silk.SilkFrameCapturer
+OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Dispose() -> void
@@ -372,10 +706,13 @@ OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsCompute.get -> bool
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsCompute.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables.get -> bool
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables.init -> void
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsRasterShadows.get -> bool
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsRasterShadows.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BeginRendering = 3 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BeginSelectionMaskRendering = 17 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BeginSelectionOutlineRendering = 19 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BeginShadowRendering = 27 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BufferBarrier = 16 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.ClearColor = 1 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.ClearDepth = 2 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
@@ -407,9 +744,6 @@ OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.RegisterDependentLifetime(
 OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ReleaseDependentLifetime() -> void
 OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.SilkGraphicsDeviceLifetimeBase() -> void
 OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.TryBeginLifetimeDispose(string! liveDependentsMessage) -> bool
-OpenUsd.Rendering.Silk.SilkBlendMode
-OpenUsd.Rendering.Silk.SilkBlendMode.None = 0 -> OpenUsd.Rendering.Silk.SilkBlendMode
-OpenUsd.Rendering.Silk.SilkBlendMode.StraightAlphaOver = 1 -> OpenUsd.Rendering.Silk.SilkBlendMode
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache.GetOrCreateMeshPipeline(OpenUsd.Rendering.Silk.SilkShaderPermutationId permutation, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout, OpenUsd.Rendering.Silk.SilkTextureFormat colorFormat, OpenUsd.Rendering.Silk.SilkTextureFormat depthFormat, OpenUsd.Rendering.Silk.SilkCullMode cullMode = OpenUsd.Rendering.Silk.SilkCullMode.None, OpenUsd.Rendering.Silk.SilkTopologyKind topologyKind = OpenUsd.Rendering.Silk.SilkTopologyKind.TriangleList) -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
@@ -424,6 +758,8 @@ OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.CullMode.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.ISilkGraphicsShaderProgram! Program, out OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, out OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, out OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, out OpenUsd.Rendering.Silk.SilkCullMode CullMode, out OpenUsd.Rendering.Silk.SilkTopologyKind TopologyKind) -> void
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.DepthFormat.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.DepthFormat.init -> void
+OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.DepthOnly.get -> bool
+OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.DepthOnly.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.DepthWriteEnabled.get -> bool
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.DepthWriteEnabled.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.Equals(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor other) -> bool
@@ -454,12 +790,74 @@ OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Usage.get -> OpenUsd.Rendering.Si
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ValidateDepthReadback(int destinationLength) -> int
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ValidateReadback(int destinationLength) -> int
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Width.get -> uint
+OpenUsd.Rendering.Silk.SilkInstancerContextEntry
+OpenUsd.Rendering.Silk.SilkInstancerContextEntry.Equals(OpenUsd.Rendering.Silk.SilkInstancerContextEntry other) -> bool
+OpenUsd.Rendering.Silk.SilkInstancerContextEntry.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkInstancerContextEntry.InstancerPath.get -> string!
+OpenUsd.Rendering.Silk.SilkInstancerContextEntry.SilkInstancerContextEntry() -> void
+OpenUsd.Rendering.Silk.SilkInstancerContextEntry.SilkInstancerContextEntry(string! instancerPath, int instanceIndex) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkCommand
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.DomeCount.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.EntryCount.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.Enumerator
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.Enumerator.Current.get -> OpenUsd.Rendering.Silk.SilkLightLinkEntry
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.Enumerator.Enumerator() -> void
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.Enumerator.MoveNext() -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.GetEnumerator() -> OpenUsd.Rendering.Silk.SilkLightLinkCommand.Enumerator
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.LightCount.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.SilkLightLinkCommand() -> void
+OpenUsd.Rendering.Silk.SilkLightLinkCommand.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkLightLinkEntry
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.Deconstruct(out string! Path, out int InstanceIndex, out uint LightMask, out uint ShadowMask, out uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.DomeMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.DomeMask.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.Equals(OpenUsd.Rendering.Silk.SilkLightLinkEntry other) -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.InstanceIndex.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.LightMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.LightMask.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.Path.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.ShadowMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.ShadowMask.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.SilkLightLinkEntry() -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.SilkLightLinkEntry(string! Path, int InstanceIndex, uint LightMask, uint ShadowMask, uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.CastsShadow(int index) -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.Deconstruct(out uint LightMask, out uint ShadowMask, out uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.DomeMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.DomeMask.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.Equals(OpenUsd.Rendering.Silk.SilkLightLinkMasks other) -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.IsDomeLit(int index) -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.IsLit(int index) -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.LightMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.LightMask.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.ShadowMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.ShadowMask.init -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.SilkLightLinkMasks() -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.SilkLightLinkMasks(uint LightMask, uint ShadowMask, uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkTable
+OpenUsd.Rendering.Silk.SilkLightLinkTable.AllDomesMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkTable.Count.get -> int
+OpenUsd.Rendering.Silk.SilkLightLinkTable.DomeCount.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkTable.HasDomeLinks.get -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkTable.HasLinks.get -> bool
+OpenUsd.Rendering.Silk.SilkLightLinkTable.LightCount.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkTable.Resolve(string! path, int instanceIndex) -> OpenUsd.Rendering.Silk.SilkLightLinkMasks
+OpenUsd.Rendering.Silk.SilkLightLinkTable.Revision.get -> ulong
+OpenUsd.Rendering.Silk.SilkLightLinkTable.SilkLightLinkTable() -> void
+OpenUsd.Rendering.Silk.SilkLightLinkTable.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures.DomeBudget = 2 -> OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures.Truncated = 1 -> OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkMaterialData
 OpenUsd.Rendering.Silk.SilkMaterialData.GeneratedFragmentMslSource.get -> System.ReadOnlyMemory<byte>
 OpenUsd.Rendering.Silk.SilkMaterialData.GeneratedFragmentSpirV.get -> System.ReadOnlyMemory<byte>
 OpenUsd.Rendering.Silk.SilkMaterialData.GetCompositeTexture() -> OpenUsd.Rendering.Silk.SilkMaterialTexture?
 OpenUsd.Rendering.Silk.SilkMaterialData.GetScalar(OpenUsd.Rendering.Silk.SilkMaterialParameter parameter) -> System.ReadOnlySpan<float>
 OpenUsd.Rendering.Silk.SilkMaterialData.GetTexture(OpenUsd.Rendering.Silk.SilkMaterialParameter parameter) -> OpenUsd.Rendering.Silk.SilkMaterialTexture?
+OpenUsd.Rendering.Silk.SilkMaterialData.IsMdlUnavailable.get -> bool
 OpenUsd.Rendering.Silk.SilkMaterialData.IsSupported.get -> bool
 OpenUsd.Rendering.Silk.SilkMaterialData.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialData.Scalars.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkMaterialScalar!>!
@@ -598,8 +996,14 @@ OpenUsd.Rendering.Silk.SilkMeshCullStyle.FrontUnlessDoubleSided = 5 -> OpenUsd.R
 OpenUsd.Rendering.Silk.SilkMeshCullStyle.Nothing = 1 -> OpenUsd.Rendering.Silk.SilkMeshCullStyle
 OpenUsd.Rendering.Silk.SilkMeshData
 OpenUsd.Rendering.Silk.SilkMeshData.Attributes.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkVertexAttributeData!>!
+OpenUsd.Rendering.Silk.SilkMeshData.AuthoredEdgeCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshData.AuthoredNormals.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshData.AuthoredPointCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshData.CornerEdges.get -> System.ReadOnlyMemory<int>
 OpenUsd.Rendering.Silk.SilkMeshData.CullStyle.get -> OpenUsd.Rendering.Silk.SilkMeshCullStyle
+OpenUsd.Rendering.Silk.SilkMeshData.Deformation.get -> OpenUsd.Rendering.Silk.SilkMeshDeformationData?
+OpenUsd.Rendering.Silk.SilkMeshData.DeformationIdentity.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshData.DeformationUnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkMeshData.DisplayColor.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.Silk.SilkMeshData.DoubleSided.get -> bool
 OpenUsd.Rendering.Silk.SilkMeshData.FindTexCoord(string! name) -> OpenUsd.Rendering.Silk.SilkVertexAttributeData?
@@ -607,19 +1011,43 @@ OpenUsd.Rendering.Silk.SilkMeshData.Id.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshData.Indices.get -> System.ReadOnlyMemory<uint>
 OpenUsd.Rendering.Silk.SilkMeshData.InstanceId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshData.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkMeshData.InstancerContext.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkInstancerContextEntry>!
+OpenUsd.Rendering.Silk.SilkMeshData.InstancerPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshData.MaterialPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshData.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkMeshData.PointOrigins.get -> System.ReadOnlyMemory<int>
 OpenUsd.Rendering.Silk.SilkMeshData.Points.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.Silk.SilkMeshData.PrimId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshData.SilkMeshData(int primId, string! path, ulong stableHash, int instanceId, int instanceIndex, OpenUsd.Rendering.Silk.SilkTopologyKind topologyKind, ulong topologyRevision, float[]! points, uint[]! indices, int[]! triangleSubprims, float[]! displayColor, double[]! transform, bool doubleSided = true, OpenUsd.Rendering.Silk.SilkMeshCullStyle cullStyle = OpenUsd.Rendering.Silk.SilkMeshCullStyle.BackUnlessDoubleSided) -> void
 OpenUsd.Rendering.Silk.SilkMeshData.SilkMeshData(ulong primId, string! path, float[]! points, uint[]! indices, float[]! displayColor, double[]! transform) -> void
 OpenUsd.Rendering.Silk.SilkMeshData.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshData.SubprimIdentity.get -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkMeshData.SubprimUnsupported.get -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
 OpenUsd.Rendering.Silk.SilkMeshData.TopologyFingerprint.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshData.TopologyKind.get -> OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkMeshData.TopologyRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshData.Transform.get -> System.ReadOnlyMemory<double>
 OpenUsd.Rendering.Silk.SilkMeshData.TriangleCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshData.TriangleSubprims.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BindIdentity.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BindNormals.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BindPointCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BindPoints.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BlendDeltaNormalOffsets.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BlendDeltaPoints.get -> System.ReadOnlyMemory<uint>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BlendDeltaPositionOffsets.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.BlendRanges.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkDeformationBlendRange>!
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.GeomBindTransform.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.HasBindNormals.get -> bool
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.Identity.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.InfluencesPerPoint.get -> int
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.JointCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.JointIndices.get -> System.ReadOnlyMemory<uint>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.JointMatrices.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.JointWeights.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.Options.get -> OpenUsd.Rendering.Silk.SilkDeformationOptions
+OpenUsd.Rendering.Silk.SilkMeshDeformationData.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkMeshGpuResource
 OpenUsd.Rendering.Silk.SilkMeshGpuResource.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkMeshGpuResource.IndexBuffer.get -> OpenUsd.Rendering.Silk.ISilkGraphicsBuffer!
@@ -641,6 +1069,8 @@ OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearColor.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearDepth.get -> float
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearDepth.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Deconstruct(out OpenUsd.Rendering.Silk.SilkColor ClearColor, out float ClearDepth, out bool BackfaceCulling, out bool UseSceneMaterials) -> void
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.DisplayTransform.get -> OpenUsd.Rendering.RenderDisplayTransform?
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.DisplayTransform.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Equals(OpenUsd.Rendering.Silk.SilkMeshRenderOptions? other) -> bool
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Exposure.get -> float
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Exposure.init -> void
@@ -663,6 +1093,8 @@ OpenUsd.Rendering.Silk.SilkMeshRenderResult.UniformUploads.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderer
 OpenUsd.Rendering.Silk.SilkMeshRenderer.ApplyAndRender(OpenUsd.Rendering.Silk.OpenUsdSilkPage! page, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! colorTarget, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! depthTarget, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? options = null) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
 OpenUsd.Rendering.Silk.SilkMeshRenderer.ApplyAndRender(OpenUsd.Rendering.Silk.OpenUsdSilkPage! page, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! colorTarget, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! depthTarget, OpenUsd.Rendering.Silk.SilkPickFrameBinding pickBinding, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? options = null) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
+OpenUsd.Rendering.Silk.SilkMeshRenderer.DisplayTransformDiagnostic.get -> OpenUsd.Rendering.RenderDiagnostic?
+OpenUsd.Rendering.Silk.SilkMeshRenderer.DisplayTransformDiagnostics.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics
 OpenUsd.Rendering.Silk.SilkMeshRenderer.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderer.GpuResources.get -> OpenUsd.Rendering.Silk.SilkSceneGpuResources!
 OpenUsd.Rendering.Silk.SilkMeshRenderer.PhysicsDeformations.get -> OpenUsd.Rendering.Silk.SilkPhysicsDeformations?
@@ -685,24 +1117,38 @@ OpenUsd.Rendering.Silk.SilkMeshRenderer.SyncAndRender(OpenUsd.Rendering.Silk.Ope
 OpenUsd.Rendering.Silk.SilkMeshRenderer.UpdateSelection(OpenUsd.Rendering.SelectionState! selection, OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? settings = null) -> void
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.AttributeCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.AuthoredEdgeCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.AuthoredPointCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.CopyDeformation() -> OpenUsd.Rendering.Silk.SilkMeshDeformationData?
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.CornerEdgeCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.CullStyle.get -> OpenUsd.Rendering.Silk.SilkMeshCullStyle
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.DeformationFlags.get -> OpenUsd.Rendering.Silk.SilkDeformationOptions
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.DeformationUnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkDeformationUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.DoubleSided.get -> bool
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetAttribute(int attributeIndex) -> OpenUsd.Rendering.Silk.SilkMeshAttributeEntry
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetCornerEdge(int cornerIndex) -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetDisplayColor(int index) -> float
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetIndex(int index) -> uint
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPointComponent(int pointIndex, int component) -> float
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPointOrigin(int pointIndex) -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetTransformElement(int index) -> double
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetTriangleSubprim(int triangleIndex) -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.HasDeformation.get -> bool
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.IndexCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstanceId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstancerContext.get -> System.ReadOnlySpan<OpenUsd.Rendering.Silk.SilkInstancerContextEntry>
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstancerPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.MaterialBindingHash.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.MaterialPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PointCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PointOriginCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PrimId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.SilkMeshUpsertCommand() -> void
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.SubprimIdentity.get -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.SubprimUnsupported.get -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.TopologyKind.get -> OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.TopologyRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.TriangleCount.get -> int
@@ -710,6 +1156,28 @@ OpenUsd.Rendering.Silk.SilkNativeLibraryContext
 OpenUsd.Rendering.Silk.SilkNativeLibraryContext.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkNativeLibraryContext.GetProcAddress(string! proc, int? slot = null) -> nint
 OpenUsd.Rendering.Silk.SilkNativeLibraryContext.TryGetProcAddress(string! proc, out nint addr, int? slot = null) -> bool
+OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider
+OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.GetIdentity(string! configPath) -> OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity
+OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.Reads.get -> ulong
+OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.RevalidationInterval.get -> System.TimeSpan
+OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.SilkOpenColorIoConfigIdentityProvider() -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.SilkOpenColorIoConfigIdentityProvider(System.TimeSpan revalidationInterval) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.ConfigPath.get -> string!
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.CreateProcessor() -> OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor!
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.Display.get -> string?
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.Looks.get -> string?
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.SilkOpenColorIoDisplayTransform(string! configPath, string! sourceColorSpace, string? display = null, string? view = null, string? looks = null) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.SourceColorSpace.get -> string!
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.View.get -> string?
+OpenUsd.Rendering.Silk.SilkOpenColorIoLatticeProvider
+OpenUsd.Rendering.Silk.SilkOpenColorIoLatticeProvider.Create(OpenUsd.Rendering.RenderDisplayTransform! transform) -> OpenUsd.Rendering.Silk.SilkDisplayTransformLattice!
+OpenUsd.Rendering.Silk.SilkOpenColorIoLatticeProvider.SilkOpenColorIoLatticeProvider() -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Apply(System.ReadOnlySpan<byte> sourceRgba16F, System.Span<byte> destinationRgba8, int width, int height, float exposure) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Dispose() -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.SilkOpenColorIoProcessor(OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform! transform) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Transform.get -> OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform!
 OpenUsd.Rendering.Silk.SilkPhysicsDeformations
 OpenUsd.Rendering.Silk.SilkPhysicsDeformations.Clear() -> void
 OpenUsd.Rendering.Silk.SilkPhysicsDeformations.Contains(ulong meshId) -> bool
@@ -763,6 +1231,9 @@ OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor.SilkPickBindingLayoutDesc
 OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkPickCullMode
 OpenUsd.Rendering.Silk.SilkPickCullMode.None = 0 -> OpenUsd.Rendering.Silk.SilkPickCullMode
+OpenUsd.Rendering.Silk.SilkPickDepthBias
+OpenUsd.Rendering.Silk.SilkPickDepthBias.Coincident = 1 -> OpenUsd.Rendering.Silk.SilkPickDepthBias
+OpenUsd.Rendering.Silk.SilkPickDepthBias.None = 0 -> OpenUsd.Rendering.Silk.SilkPickDepthBias
 OpenUsd.Rendering.Silk.SilkPickDepthCompare
 OpenUsd.Rendering.Silk.SilkPickDepthCompare.LessEqual = 0 -> OpenUsd.Rendering.Silk.SilkPickDepthCompare
 OpenUsd.Rendering.Silk.SilkPickFrameBinding
@@ -775,31 +1246,38 @@ OpenUsd.Rendering.Silk.SilkPickFrameBinding.SilkPickFrameBinding(ulong StateRevi
 OpenUsd.Rendering.Silk.SilkPickFrameBinding.StateRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickFrameBinding.StateRevision.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity
-OpenUsd.Rendering.Silk.SilkPickIdentity.Deconstruct(out string! Path, out int PrimId, out ulong StableHash, out int InstanceId, out int InstanceIndex, out ulong TopologyRevision, out int SubprimIndex) -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.Equals(OpenUsd.Rendering.Silk.SilkPickIdentity other) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentity.InstanceId.get -> int
 OpenUsd.Rendering.Silk.SilkPickIdentity.InstanceId.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.InstanceIndex.get -> int
 OpenUsd.Rendering.Silk.SilkPickIdentity.InstanceIndex.init -> void
+OpenUsd.Rendering.Silk.SilkPickIdentity.InstancerContext.get -> System.ReadOnlySpan<OpenUsd.Rendering.Silk.SilkInstancerContextEntry>
+OpenUsd.Rendering.Silk.SilkPickIdentity.InstancerPath.get -> string?
+OpenUsd.Rendering.Silk.SilkPickIdentity.InstancerPath.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkPickIdentity.Path.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.PrimId.get -> int
 OpenUsd.Rendering.Silk.SilkPickIdentity.PrimId.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.SilkPickIdentity() -> void
-OpenUsd.Rendering.Silk.SilkPickIdentity.SilkPickIdentity(string! Path, int PrimId, ulong StableHash, int InstanceId, int InstanceIndex, ulong TopologyRevision, int SubprimIndex) -> void
+OpenUsd.Rendering.Silk.SilkPickIdentity.SilkPickIdentity(string! path, int primId, ulong stableHash, int instanceId, int instanceIndex, ulong topologyRevision, int subprimIndex, OpenUsd.Rendering.Silk.SilkPickSubprimKind subprimKind = OpenUsd.Rendering.Silk.SilkPickSubprimKind.Face, string? instancerPath = null, System.ReadOnlySpan<OpenUsd.Rendering.Silk.SilkInstancerContextEntry> instancerContext = default(System.ReadOnlySpan<OpenUsd.Rendering.Silk.SilkInstancerContextEntry>)) -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.StableHash.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickIdentity.StableHash.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.SubprimIndex.get -> int
 OpenUsd.Rendering.Silk.SilkPickIdentity.SubprimIndex.init -> void
+OpenUsd.Rendering.Silk.SilkPickIdentity.SubprimKind.get -> OpenUsd.Rendering.Silk.SilkPickSubprimKind
+OpenUsd.Rendering.Silk.SilkPickIdentity.SubprimKind.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentity.TopologyRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickIdentity.TopologyRevision.init -> void
 OpenUsd.Rendering.Silk.SilkPickIdentityTable
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.ActiveRangeCount.get -> int
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.AllocatedRangeCount.get -> ulong
+OpenUsd.Rendering.Silk.SilkPickIdentityTable.AnswersFacePicks(string! path, int instanceIndex) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.Revision.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.SilkPickIdentityTable(uint maximumToken = 4294967295) -> void
+OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryGetRange(string! path, int instanceIndex, OpenUsd.Rendering.Silk.SilkPickSubprimKind kind, out OpenUsd.Rendering.Silk.SilkPickTokenRange range) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryGetRange(string! path, int instanceIndex, out OpenUsd.Rendering.Silk.SilkPickTokenRange range) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryGetRange(string! path, out OpenUsd.Rendering.Silk.SilkPickTokenRange range) -> bool
+OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryGetSubprimSupport(string! path, int instanceIndex, out OpenUsd.Rendering.Silk.SilkPickSubprimSupport support) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryResolve(uint token, out OpenUsd.Rendering.Silk.SilkPickIdentity identity) -> bool
 OpenUsd.Rendering.Silk.SilkPickParametersReflection
 OpenUsd.Rendering.Silk.SilkPickParametersReflection.Binding.get -> uint
@@ -825,9 +1303,13 @@ OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.BlendEnabled.get -> bool
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.BlendEnabled.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.ColorFormat.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.ColorFormat.init -> void
+OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.ColorWriteEnabled.get -> bool
+OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.ColorWriteEnabled.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CullMode.get -> OpenUsd.Rendering.Silk.SilkPickCullMode
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CullMode.init -> void
-OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, out OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, out OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor BindingLayout, out OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, out OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, out uint SampleCount, out OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology PrimitiveTopology, out OpenUsd.Rendering.Silk.SilkPickCullMode CullMode, out bool BlendEnabled, out bool DepthTestEnabled, out bool DepthWriteEnabled, out OpenUsd.Rendering.Silk.SilkPickDepthCompare DepthCompare) -> void
+OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, out OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, out OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor BindingLayout, out OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, out OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, out uint SampleCount, out OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology PrimitiveTopology, out OpenUsd.Rendering.Silk.SilkPickCullMode CullMode, out bool BlendEnabled, out bool DepthTestEnabled, out bool DepthWriteEnabled, out OpenUsd.Rendering.Silk.SilkPickDepthCompare DepthCompare, out OpenUsd.Rendering.Silk.SilkPickDepthBias DepthBias, out bool ColorWriteEnabled) -> void
+OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.DepthBias.get -> OpenUsd.Rendering.Silk.SilkPickDepthBias
+OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.DepthBias.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.DepthCompare.get -> OpenUsd.Rendering.Silk.SilkPickDepthCompare
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.DepthCompare.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.DepthFormat.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
@@ -844,13 +1326,15 @@ OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.PrimitiveTopology.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.SampleCount.get -> uint
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.SampleCount.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.SilkPickPipelineDescriptor() -> void
-OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.SilkPickPipelineDescriptor(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor BindingLayout, OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, uint SampleCount, OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology PrimitiveTopology, OpenUsd.Rendering.Silk.SilkPickCullMode CullMode, bool BlendEnabled, bool DepthTestEnabled, bool DepthWriteEnabled, OpenUsd.Rendering.Silk.SilkPickDepthCompare DepthCompare) -> void
+OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.SilkPickPipelineDescriptor(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor BindingLayout, OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, uint SampleCount, OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology PrimitiveTopology, OpenUsd.Rendering.Silk.SilkPickCullMode CullMode, bool BlendEnabled, bool DepthTestEnabled, bool DepthWriteEnabled, OpenUsd.Rendering.Silk.SilkPickDepthCompare DepthCompare, OpenUsd.Rendering.Silk.SilkPickDepthBias DepthBias = OpenUsd.Rendering.Silk.SilkPickDepthBias.None, bool ColorWriteEnabled = true) -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.VertexLayout.get -> OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.VertexLayout.init -> void
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.VertexShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.VertexShader.init -> void
 OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology
+OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology.LineList = 1 -> OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology
+OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology.PointList = 2 -> OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology
 OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology.TriangleList = 0 -> OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology
 OpenUsd.Rendering.Silk.SilkPickReadbackContext
 OpenUsd.Rendering.Silk.SilkPickReadbackContext.Deconstruct(out OpenUsd.Rendering.RenderPickRequest Request, out ulong StateRevision, out ulong? SceneRevision, out ulong IdentityRevision, out ulong DeviceGeneration, out OpenUsd.Rendering.ViewportDimensions Viewport) -> void
@@ -895,12 +1379,14 @@ OpenUsd.Rendering.Silk.SilkPickReadbackRing.TryAcquire(out OpenUsd.Rendering.Sil
 OpenUsd.Rendering.Silk.SilkPickReadbackRing.TryDiscard(out int slotIndex, out OpenUsd.Rendering.Silk.SilkPickReadbackContext context) -> bool
 OpenUsd.Rendering.Silk.SilkPickReadbackRing.TryReadCompleted(out OpenUsd.Rendering.Silk.SilkPickReadbackResult result) -> bool
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics
-OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Deconstruct(out ulong Requests, out ulong SupersededRequests, out ulong PassesRecorded, out ulong RingSaturations, out ulong Hits, out ulong Misses, out ulong StaleResults, out ulong UnsupportedResults, out ulong PipelineCreations, out ulong TargetCreations, out int QueuedRequests, out int InFlightReadbacks) -> void
+OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Deconstruct(out ulong Requests, out ulong SupersededRequests, out ulong PassesRecorded, out ulong RingSaturations, out ulong Hits, out ulong Misses, out ulong StaleResults, out ulong UnsupportedResults, out ulong PipelineCreations, out ulong TargetCreations, out int QueuedRequests, out int InFlightReadbacks, out ulong RefusedSubprimTargets, out OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason LastRefusedSubprimReason) -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Equals(OpenUsd.Rendering.Silk.SilkPickRendererStatistics other) -> bool
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Hits.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Hits.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.InFlightReadbacks.get -> int
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.InFlightReadbacks.init -> void
+OpenUsd.Rendering.Silk.SilkPickRendererStatistics.LastRefusedSubprimReason.get -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkPickRendererStatistics.LastRefusedSubprimReason.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Misses.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Misses.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.PassesRecorded.get -> ulong
@@ -909,12 +1395,14 @@ OpenUsd.Rendering.Silk.SilkPickRendererStatistics.PipelineCreations.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.PipelineCreations.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.QueuedRequests.get -> int
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.QueuedRequests.init -> void
+OpenUsd.Rendering.Silk.SilkPickRendererStatistics.RefusedSubprimTargets.get -> ulong
+OpenUsd.Rendering.Silk.SilkPickRendererStatistics.RefusedSubprimTargets.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Requests.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Requests.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.RingSaturations.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.RingSaturations.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.SilkPickRendererStatistics() -> void
-OpenUsd.Rendering.Silk.SilkPickRendererStatistics.SilkPickRendererStatistics(ulong Requests, ulong SupersededRequests, ulong PassesRecorded, ulong RingSaturations, ulong Hits, ulong Misses, ulong StaleResults, ulong UnsupportedResults, ulong PipelineCreations, ulong TargetCreations, int QueuedRequests, int InFlightReadbacks) -> void
+OpenUsd.Rendering.Silk.SilkPickRendererStatistics.SilkPickRendererStatistics(ulong Requests, ulong SupersededRequests, ulong PassesRecorded, ulong RingSaturations, ulong Hits, ulong Misses, ulong StaleResults, ulong UnsupportedResults, ulong PipelineCreations, ulong TargetCreations, int QueuedRequests, int InFlightReadbacks, ulong RefusedSubprimTargets = 0, OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason LastRefusedSubprimReason = OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason.None) -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.StaleResults.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.StaleResults.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.SupersededRequests.get -> ulong
@@ -923,6 +1411,21 @@ OpenUsd.Rendering.Silk.SilkPickRendererStatistics.TargetCreations.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.TargetCreations.init -> void
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.UnsupportedResults.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickRendererStatistics.UnsupportedResults.init -> void
+OpenUsd.Rendering.Silk.SilkPickSubprimKind
+OpenUsd.Rendering.Silk.SilkPickSubprimKind.Edge = 1 -> OpenUsd.Rendering.Silk.SilkPickSubprimKind
+OpenUsd.Rendering.Silk.SilkPickSubprimKind.Face = 0 -> OpenUsd.Rendering.Silk.SilkPickSubprimKind
+OpenUsd.Rendering.Silk.SilkPickSubprimKind.Point = 2 -> OpenUsd.Rendering.Silk.SilkPickSubprimKind
+OpenUsd.Rendering.Silk.SilkPickSubprimKind.Primitive = 3 -> OpenUsd.Rendering.Silk.SilkPickSubprimKind
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Deconstruct(out OpenUsd.Rendering.Silk.SilkSubprimIdentity Identity, out OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason Unsupported) -> void
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Equals(OpenUsd.Rendering.Silk.SilkPickSubprimSupport other) -> bool
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Identity.get -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Identity.init -> void
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.SilkPickSubprimSupport() -> void
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.SilkPickSubprimSupport(OpenUsd.Rendering.Silk.SilkSubprimIdentity Identity, OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason Unsupported) -> void
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Supports(OpenUsd.Rendering.Silk.SilkPickSubprimKind kind) -> bool
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Unsupported.get -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Unsupported.init -> void
 OpenUsd.Rendering.Silk.SilkPickTokenEncoding
 OpenUsd.Rendering.Silk.SilkPickTokenRange
 OpenUsd.Rendering.Silk.SilkPickTokenRange.Deconstruct(out uint FirstToken, out uint TokenCount, out ulong TopologyRevision) -> void
@@ -942,13 +1445,6 @@ OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.Register(OpenUsd.Ren
 OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.RegisterGenerated(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.ReadOnlyMemory<byte> fragmentCode) -> void
 OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.SilkProjectedMaterialShaderGenerator() -> void
 OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.CapacityExceeded = "OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED" -> string!
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnresolved = "OPENUSD_SILK_MATERIAL_UNRESOLVED" -> string!
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnsupported = "OPENUSD_SILK_MATERIAL_UNSUPPORTED" -> string!
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureAssetNotFound = "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND" -> string!
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureBudgetExceeded = "OPENUSD_SILK_TEXTURE_BUDGET_EXCEEDED" -> string!
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED" -> string!
-const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED" -> string!
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.ColorAttachment.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.ColorAttachment.init -> void
@@ -1000,8 +1496,9 @@ OpenUsd.Rendering.Silk.SilkSceneGpuResources.Apply(OpenUsd.Rendering.Silk.SilkSc
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Diagnostics.get -> OpenUsd.Rendering.RenderDiagnosticsState!
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Meshes.get -> System.Collections.Generic.IReadOnlyDictionary<ulong, OpenUsd.Rendering.Silk.SilkMeshGpuResource!>!
-OpenUsd.Rendering.Silk.SilkSceneGpuResources.Revision.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.RetryFailedTextures() -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuResources.RetryFailedTextures(OpenUsd.Rendering.Silk.SilkSceneState! scene) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuResources.Revision.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! residencyOptions) -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Statistics.get -> OpenUsd.Rendering.Silk.SilkSceneGpuStatistics
@@ -1064,15 +1561,22 @@ OpenUsd.Rendering.Silk.SilkSceneParametersReflection.TintOffset.init -> void
 OpenUsd.Rendering.Silk.SilkSceneState
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(OpenUsd.Rendering.Silk.OpenUsdSilkPage! page) -> OpenUsd.Rendering.Silk.SilkSceneDelta
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(System.ReadOnlySpan<byte> data, uint commandCount, ulong revision) -> OpenUsd.Rendering.Silk.SilkSceneDelta
+OpenUsd.Rendering.Silk.SilkSceneState.DeformationRevision.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneState.EnvironmentRevision.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneState.Environments.get -> System.Collections.Generic.IReadOnlyDictionary<string!, OpenUsd.Rendering.Silk.SilkEnvironmentData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.Frame.get -> OpenUsd.Rendering.Silk.SilkFrameState!
+OpenUsd.Rendering.Silk.SilkSceneState.GeometryRevision.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneState.HasAuthoredGeometry(ulong meshId) -> bool
+OpenUsd.Rendering.Silk.SilkSceneState.LightLinks.get -> OpenUsd.Rendering.Silk.SilkLightLinkTable!
+OpenUsd.Rendering.Silk.SilkSceneState.MaterialRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneState.Materials.get -> System.Collections.Generic.IReadOnlyDictionary<string!, OpenUsd.Rendering.Silk.SilkMaterialData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.Meshes.get -> System.Collections.Generic.IReadOnlyDictionary<ulong, OpenUsd.Rendering.Silk.SilkMeshData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.MeshesByPath.get -> System.Collections.Generic.IReadOnlyDictionary<(string! Path, int InstanceIndex), OpenUsd.Rendering.Silk.SilkMeshData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.PickIdentities.get -> OpenUsd.Rendering.Silk.SilkPickIdentityTable!
-OpenUsd.Rendering.Silk.SilkSceneState.HasAuthoredGeometry(ulong meshId) -> bool
 OpenUsd.Rendering.Silk.SilkSceneState.ReplacePoints(string! path, int instanceIndex, System.ReadOnlySpan<float> points, out ulong meshId) -> OpenUsd.Rendering.Silk.SilkDeformationResult
 OpenUsd.Rendering.Silk.SilkSceneState.RestoreAuthoredPoints(ulong meshId) -> bool
 OpenUsd.Rendering.Silk.SilkSceneState.Revision.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneState.Shadows.get -> OpenUsd.Rendering.Silk.SilkShadowTable!
 OpenUsd.Rendering.Silk.SilkSceneState.SilkSceneState() -> void
 OpenUsd.Rendering.Silk.SilkScissor
 OpenUsd.Rendering.Silk.SilkScissor.Deconstruct(out int X, out int Y, out uint Width, out uint Height) -> void
@@ -1115,7 +1619,7 @@ OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.ColorFormat.get -> Op
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.ColorFormat.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CullMode.get -> OpenUsd.Rendering.Silk.SilkSelectionCullMode
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CullMode.init -> void
-OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, out OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, out OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor BindingLayout, out OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, out OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, out uint SampleCount, out OpenUsd.Rendering.Silk.SilkSelectionCullMode CullMode, out bool BlendEnabled, out bool DepthTestEnabled, out bool DepthWriteEnabled, out OpenUsd.Rendering.Silk.SilkSelectionDepthCompare DepthCompare) -> void
+OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, out OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, out OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor BindingLayout, out OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, out OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, out uint SampleCount, out OpenUsd.Rendering.Silk.SilkSelectionCullMode CullMode, out bool BlendEnabled, out bool DepthTestEnabled, out bool DepthWriteEnabled, out OpenUsd.Rendering.Silk.SilkSelectionDepthCompare DepthCompare, out OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology PrimitiveTopology, out OpenUsd.Rendering.Silk.SilkSelectionMaskStage Stage) -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.DepthCompare.get -> OpenUsd.Rendering.Silk.SilkSelectionDepthCompare
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.DepthCompare.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.DepthFormat.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
@@ -1127,15 +1631,23 @@ OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.DepthWriteEnabled.ini
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Equals(OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor other) -> bool
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.FragmentShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.FragmentShader.init -> void
+OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.PrimitiveTopology.get -> OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology
+OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.PrimitiveTopology.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.SampleCount.get -> uint
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.SampleCount.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.SilkSelectionMaskPipelineDescriptor() -> void
-OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.SilkSelectionMaskPipelineDescriptor(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor BindingLayout, OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, uint SampleCount, OpenUsd.Rendering.Silk.SilkSelectionCullMode CullMode, bool BlendEnabled, bool DepthTestEnabled, bool DepthWriteEnabled, OpenUsd.Rendering.Silk.SilkSelectionDepthCompare DepthCompare) -> void
+OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.SilkSelectionMaskPipelineDescriptor(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor VertexLayout, OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor BindingLayout, OpenUsd.Rendering.Silk.SilkTextureFormat ColorFormat, OpenUsd.Rendering.Silk.SilkTextureFormat DepthFormat, uint SampleCount, OpenUsd.Rendering.Silk.SilkSelectionCullMode CullMode, bool BlendEnabled, bool DepthTestEnabled, bool DepthWriteEnabled, OpenUsd.Rendering.Silk.SilkSelectionDepthCompare DepthCompare, OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology PrimitiveTopology = OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology.TriangleList, OpenUsd.Rendering.Silk.SilkSelectionMaskStage Stage = OpenUsd.Rendering.Silk.SilkSelectionMaskStage.WholeResource) -> void
+OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Stage.get -> OpenUsd.Rendering.Silk.SilkSelectionMaskStage
+OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Stage.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.VertexLayout.get -> OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.VertexLayout.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.VertexShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.VertexShader.init -> void
+OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology
+OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology.LineList = 1 -> OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology
+OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology.PointList = 2 -> OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology
+OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology.TriangleList = 0 -> OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology
 OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! MaskAttachment, out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! VisibleDepthAttachment) -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.Equals(OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor other) -> bool
@@ -1146,6 +1658,9 @@ OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.SilkSelectionMaskRen
 OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.VisibleDepthAttachment.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
 OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.VisibleDepthAttachment.init -> void
+OpenUsd.Rendering.Silk.SilkSelectionMaskStage
+OpenUsd.Rendering.Silk.SilkSelectionMaskStage.SubprimOverlay = 1 -> OpenUsd.Rendering.Silk.SilkSelectionMaskStage
+OpenUsd.Rendering.Silk.SilkSelectionMaskStage.WholeResource = 0 -> OpenUsd.Rendering.Silk.SilkSelectionMaskStage
 OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! MaskTexture, out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! VisibleDepthTexture, out OpenUsd.Rendering.Silk.ISilkGraphicsSampler! Sampler, out OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! Parameters) -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.Equals(OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor other) -> bool
@@ -1223,6 +1738,9 @@ OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.TargetCreations.get -> ul
 OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.TargetCreations.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.UnsupportedXRayRequests.get -> ulong
 OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.UnsupportedXRayRequests.init -> void
+OpenUsd.Rendering.Silk.SilkSelectionOutlineMode
+OpenUsd.Rendering.Silk.SilkSelectionOutlineMode.VisibleOnly = 0 -> OpenUsd.Rendering.Silk.SilkSelectionOutlineMode
+OpenUsd.Rendering.Silk.SilkSelectionOutlineMode.XRay = 1 -> OpenUsd.Rendering.Silk.SilkSelectionOutlineMode
 OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor.BindingLayout.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor
 OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor.BindingLayout.init -> void
@@ -1252,7 +1770,7 @@ OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ColorByteSize.get -> uint
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ColorByteSize.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ColorOffset.get -> uint
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ColorOffset.init -> void
-OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection MaskTexture, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection VisibleDepthTexture, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Sampler, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Parameters, out uint ColorOffset, out uint ColorByteSize, out uint InverseViewportOffset, out uint InverseViewportByteSize, out uint WidthOffset, out uint WidthByteSize, out uint DepthEpsilonOffset, out uint DepthEpsilonByteSize, out uint ParameterByteSize, out bool UsesVertexId) -> void
+OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection MaskTexture, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection VisibleDepthTexture, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Sampler, out OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Parameters, out uint ColorOffset, out uint ColorByteSize, out uint InverseViewportOffset, out uint InverseViewportByteSize, out uint WidthOffset, out uint WidthByteSize, out uint DepthEpsilonOffset, out uint DepthEpsilonByteSize, out uint OccludedColorOffset, out uint OccludedColorByteSize, out uint ParameterByteSize, out bool UsesVertexId) -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.DepthEpsilonByteSize.get -> uint
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.DepthEpsilonByteSize.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.DepthEpsilonOffset.get -> uint
@@ -1264,6 +1782,10 @@ OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.InverseViewportOffset.get 
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.InverseViewportOffset.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.MaskTexture.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.MaskTexture.init -> void
+OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.OccludedColorByteSize.get -> uint
+OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.OccludedColorByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.OccludedColorOffset.get -> uint
+OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.OccludedColorOffset.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ParameterByteSize.get -> uint
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ParameterByteSize.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Parameters.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
@@ -1271,7 +1793,7 @@ OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Parameters.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Sampler.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Sampler.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.SilkSelectionOutlineReflection() -> void
-OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.SilkSelectionOutlineReflection(OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection MaskTexture, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection VisibleDepthTexture, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Sampler, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Parameters, uint ColorOffset, uint ColorByteSize, uint InverseViewportOffset, uint InverseViewportByteSize, uint WidthOffset, uint WidthByteSize, uint DepthEpsilonOffset, uint DepthEpsilonByteSize, uint ParameterByteSize, bool UsesVertexId) -> void
+OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.SilkSelectionOutlineReflection(OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection MaskTexture, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection VisibleDepthTexture, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Sampler, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection Parameters, uint ColorOffset, uint ColorByteSize, uint InverseViewportOffset, uint InverseViewportByteSize, uint WidthOffset, uint WidthByteSize, uint DepthEpsilonOffset, uint DepthEpsilonByteSize, uint OccludedColorOffset, uint OccludedColorByteSize, uint ParameterByteSize, bool UsesVertexId) -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.UsesVertexId.get -> bool
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.UsesVertexId.init -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.VisibleDepthTexture.get -> OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection
@@ -1293,6 +1815,9 @@ OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.<Clone>$() -> OpenUsd.Render
 OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.Color.get -> OpenUsd.Rendering.Silk.SilkColor
 OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.Enabled.get -> bool
 OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.Equals(OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? other) -> bool
+OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.Mode.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineMode
+OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.OccludedColor.get -> OpenUsd.Rendering.Silk.SilkColor
+OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.SilkSelectionOutlineSettings(bool enabled, OpenUsd.Rendering.Silk.SilkColor color, float width, OpenUsd.Rendering.Silk.SilkSelectionOutlineMode mode, OpenUsd.Rendering.Silk.SilkColor occludedColor) -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.SilkSelectionOutlineSettings(bool enabled, OpenUsd.Rendering.Silk.SilkColor color, float width, bool visibleOnly) -> void
 OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.VisibleOnly.get -> bool
 OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.Width.get -> float
@@ -1314,8 +1839,8 @@ OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.BaseColorMap = 2 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.ClearcoatMap = 512 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.ClearcoatRoughnessMap = 1024 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
-OpenUsd.Rendering.Silk.SilkShaderFeatures.IorMap = 2048 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.EmissiveMap = 16 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.IorMap = 2048 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.MetallicMap = 32 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.NormalMap = 4 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
@@ -1379,12 +1904,81 @@ OpenUsd.Rendering.Silk.SilkShaderStageVisibility
 OpenUsd.Rendering.Silk.SilkShaderStageVisibility.Compute = 4 -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
 OpenUsd.Rendering.Silk.SilkShaderStageVisibility.Fragment = 2 -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
 OpenUsd.Rendering.Silk.SilkShaderStageVisibility.Vertex = 1 -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
+OpenUsd.Rendering.Silk.SilkShadowCommand
+OpenUsd.Rendering.Silk.SilkShadowCommand.DescriptorCount.get -> uint
+OpenUsd.Rendering.Silk.SilkShadowCommand.GetDescriptor(uint index) -> OpenUsd.Rendering.Silk.SilkShadowDescriptor
+OpenUsd.Rendering.Silk.SilkShadowCommand.LightCount.get -> uint
+OpenUsd.Rendering.Silk.SilkShadowCommand.SilkShadowCommand() -> void
+OpenUsd.Rendering.Silk.SilkShadowCommand.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkShadowDescriptor
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Deconstruct(out uint LightIndex, out uint MapIndex, out uint Resolution, out OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions Flags, out float DepthBias, out float NormalBias, out float PcfRadius) -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.DepthBias.get -> float
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.DepthBias.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Equals(OpenUsd.Rendering.Silk.SilkShadowDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Flags.get -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Flags.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.LightIndex.get -> uint
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.LightIndex.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.MapIndex.get -> uint
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.MapIndex.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.NormalBias.get -> float
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.NormalBias.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.PcfRadius.get -> float
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.PcfRadius.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Projection.get -> double[]!
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Projection.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Resolution.get -> uint
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.Resolution.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.SilkShadowDescriptor() -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.SilkShadowDescriptor(uint LightIndex, uint MapIndex, uint Resolution, OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions Flags, float DepthBias, float NormalBias, float PcfRadius) -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.View.get -> double[]!
+OpenUsd.Rendering.Silk.SilkShadowDescriptor.View.init -> void
+OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
+OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.CasterLinked = 2 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
+OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.None = 0 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
+OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.Orthographic = 1 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.ISilkGraphicsTexture! DepthAttachment) -> void
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.DepthAttachment.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.DepthAttachment.init -> void
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.Equals(OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.SilkShadowRenderingDescriptor() -> void
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.SilkShadowRenderingDescriptor(OpenUsd.Rendering.Silk.ISilkGraphicsTexture! DepthAttachment) -> void
+OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.Validate() -> void
+OpenUsd.Rendering.Silk.SilkShadowTable
+OpenUsd.Rendering.Silk.SilkShadowTable.Count.get -> int
+OpenUsd.Rendering.Silk.SilkShadowTable.Descriptors.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkShadowDescriptor>!
+OpenUsd.Rendering.Silk.SilkShadowTable.HasShadows.get -> bool
+OpenUsd.Rendering.Silk.SilkShadowTable.LightCount.get -> uint
+OpenUsd.Rendering.Silk.SilkShadowTable.ResolveSlot(int lightIndex) -> int
+OpenUsd.Rendering.Silk.SilkShadowTable.Revision.get -> ulong
+OpenUsd.Rendering.Silk.SilkShadowTable.SilkShadowTable() -> void
+OpenUsd.Rendering.Silk.SilkShadowTable.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures.LightType = 1 -> OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures.MapBudget = 2 -> OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures.NoCasters = 4 -> OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
+OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkShadowUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator
 OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator.CompileAsync(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.Silk.SilkMaterialShaderProgram>
 OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator.SilkStubMaterialShaderGenerator() -> void
+OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkSubprimIdentity.Edge = 2 -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkSubprimIdentity.Face = 1 -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkSubprimIdentity.None = 0 -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkSubprimIdentity.Point = 4 -> OpenUsd.Rendering.Silk.SilkSubprimIdentity
+OpenUsd.Rendering.Silk.SilkSubprimPickGeometry
+OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason.Budget = 8 -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason.Geometry = 4 -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason.None = 0 -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason.RefinedSubdivision = 1 -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
+OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason.TopologyMode = 2 -> OpenUsd.Rendering.Silk.SilkSubprimUnsupportedReason
 OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.MaterialXGenerated = 3 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.MaterialXProjected = 2 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
+OpenUsd.Rendering.Silk.SilkSurfaceKind.MdlDistilled = 5 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
+OpenUsd.Rendering.Silk.SilkSurfaceKind.MdlUnavailable = 6 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.PreviewSurface = 1 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.Unsupported = 0 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.VolumeDensity = 4 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
@@ -1427,8 +2021,6 @@ OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.X.init -> void
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Y.get -> uint
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Y.init -> void
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions
-const OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes = 536870912 -> ulong
-const OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.DefaultMaxGpuBytes = 536870912 -> ulong
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.MaxDecodedCpuBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.MaxGpuBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.SilkTextureResidencyOptions(ulong maxDecodedCpuBytes = 536870912, ulong maxGpuBytes = 536870912) -> void
@@ -1443,6 +2035,7 @@ OpenUsd.Rendering.Silk.SilkTextureWrap.Black = 0 -> OpenUsd.Rendering.Silk.SilkT
 OpenUsd.Rendering.Silk.SilkTextureWrap.Clamp = 1 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.Mirror = 3 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.Repeat = 2 -> OpenUsd.Rendering.Silk.SilkTextureWrap
+OpenUsd.Rendering.Silk.SilkTextureWrap.UseMetadata = 4 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkTopologyKind.LineList = 2 -> OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkTopologyKind.PointList = 3 -> OpenUsd.Rendering.Silk.SilkTopologyKind
@@ -1513,12 +2106,78 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 15 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 23 -> uint
+const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendSpansBinding = 6 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendWeightsBinding = 5 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.JointIndicesBinding = 2 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.JointWeightsBinding = 3 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.MatricesBinding = 4 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ParameterByteSize = 32 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ParametersBinding = 9 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.TexCoordsBinding = 8 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.VerticesBinding = 0 -> uint
+const OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.MaximumByteCount = 100663296 -> long
+const OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.MaximumGatheredDeltas = 3145728 -> long
+const OpenUsd.Rendering.Silk.SilkDeformationLimits.MaximumBlendDeltas = 1048576 -> int
+const OpenUsd.Rendering.Silk.SilkDeformationLimits.MaximumBlendRanges = 64 -> int
+const OpenUsd.Rendering.Silk.SilkDeformationLimits.MaximumBytes = 67108864 -> int
+const OpenUsd.Rendering.Silk.SilkDeformationLimits.MaximumInfluences = 8 -> int
+const OpenUsd.Rendering.Silk.SilkDeformationLimits.MaximumJoints = 256 -> int
+const OpenUsd.Rendering.Silk.SilkDeformationLimits.VerifyTolerance = 0.0001 -> float
+const OpenUsd.Rendering.Silk.SilkDisplayTransformException.MaximumMessageLength = 512 -> int
+const OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.DefaultMaximumByteSize = 16777216 -> long
+const OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.DefaultMaximumEntries = 8 -> int
+const OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.MaximumFailureEntries = 16 -> int
+const OpenUsd.Rendering.Silk.SilkDisplayTransformUniformWriter.ByteSize = 32 -> int
+const OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.NoDomeIndex = 4294967295 -> uint
+const OpenUsd.Rendering.Silk.SilkFrameCommand.MaximumDomes = 8 -> uint
+const OpenUsd.Rendering.Silk.SilkFrameCommand.MaximumLights = 8 -> uint
+const OpenUsd.Rendering.Silk.SilkLightLinkCommand.AllInstances = -1 -> int
+const OpenUsd.Rendering.Silk.SilkLightLinkCommand.MaximumEntries = 4096 -> uint
+const OpenUsd.Rendering.Silk.SilkLightLinkMasks.AllBits = 255 -> uint
+const OpenUsd.Rendering.Silk.SilkLightLinkMasks.AllDomeBits = 255 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.CapacityExceeded = "OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplacementApplied = "OPENUSD_SILK_DISPLACEMENT_APPLIED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplacementBudgetExceeded = "OPENUSD_SILK_DISPLACEMENT_BUDGET_EXCEEDED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplacementShadowBoundsUnverified = "OPENUSD_SILK_DISPLACEMENT_SHADOW_BOUNDS_UNVERIFIED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplacementUnsupported = "OPENUSD_SILK_DISPLACEMENT_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplayTransformConfigUnavailable = "OPENUSD_SILK_DISPLAY_TRANSFORM_CONFIG_UNAVAILABLE" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplayTransformDeviceUnsupported = "OPENUSD_SILK_DISPLAY_TRANSFORM_DEVICE_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.DisplayTransformUnsupported = "OPENUSD_SILK_DISPLAY_TRANSFORM_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentAssetNotFound = "OPENUSD_SILK_ENVIRONMENT_ASSET_NOT_FOUND" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded = "OPENUSD_SILK_ENVIRONMENT_BUDGET_EXCEEDED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentDecodeFailed = "OPENUSD_SILK_ENVIRONMENT_DECODE_FAILED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentDomeLinkUnavailable = "OPENUSD_SILK_ENVIRONMENT_DOME_LINK_UNAVAILABLE" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentFeatureUnsupported = "OPENUSD_SILK_ENVIRONMENT_FEATURE_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentLightingLimitExceeded = "OPENUSD_SILK_ENVIRONMENT_LIGHTING_LIMIT_EXCEEDED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentLightingUnavailable = "OPENUSD_SILK_ENVIRONMENT_LIGHTING_UNAVAILABLE" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentMappingUnsupported = "OPENUSD_SILK_ENVIRONMENT_MAPPING_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.EnvironmentSpecularUnsupported = "OPENUSD_SILK_ENVIRONMENT_SPECULAR_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.LightLinkDomeBudget = "OPENUSD_SILK_LIGHT_LINK_DOME_BUDGET" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.LightLinkGeneratedShaderUnsupported = "OPENUSD_SILK_LIGHT_LINK_GENERATED_SHADER_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.LightLinkTruncated = "OPENUSD_SILK_LIGHT_LINK_TRUNCATED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialMdlUnavailable = "OPENUSD_SILK_MATERIAL_MDL_UNAVAILABLE" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnresolved = "OPENUSD_SILK_MATERIAL_UNRESOLVED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnsupported = "OPENUSD_SILK_MATERIAL_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.ShadowCasterUnsupported = "OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.ShadowUnsupported = "OPENUSD_SILK_SHADOW_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureAssetNotFound = "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureBudgetExceeded = "OPENUSD_SILK_TEXTURE_BUDGET_EXCEEDED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED" -> string!
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MaximumWidth = 16 -> float
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MinimumWidth = 1 -> float
-const OpenUsd.Rendering.Silk.SilkSelectionOutlineUniformWriter.ByteSize = 32 -> int
+const OpenUsd.Rendering.Silk.SilkSelectionOutlineUniformWriter.ByteSize = 48 -> int
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineUniformWriter.DepthEpsilon = 1E-05 -> float
+const OpenUsd.Rendering.Silk.SilkShadowCommand.MaximumMaps = 4 -> uint
+const OpenUsd.Rendering.Silk.SilkShadowCommand.MaximumResolution = 2048 -> uint
+const OpenUsd.Rendering.Silk.SilkShadowCommand.MinimumResolution = 256 -> uint
+const OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes = 536870912 -> ulong
+const OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.DefaultMaxGpuBytes = 536870912 -> ulong
 override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkBindingSlot.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkColor.GetHashCode() -> int
@@ -1527,8 +2186,21 @@ override OpenUsd.Rendering.Silk.SilkComputeParameters.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkComputeReflection.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkComputeSlot.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDeformComputeReflection.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDeformationBlendRange.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkInstancerContextEntry.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkLightLinkEntry.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkLightLinkMasks.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Equals(object? obj) -> bool
 override OpenUsd.Rendering.Silk.SilkMeshRenderOptions.GetHashCode() -> int
@@ -1542,6 +2214,7 @@ override OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkPickReadbackContext.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkPickReadbackResult.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkPickSubprimSupport.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkPickTokenRange.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkRenderingDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkSamplerDescriptor.GetHashCode() -> int
@@ -1566,6 +2239,8 @@ override OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkShaderPermutationId.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkShadowDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkTextureDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.GetHashCode() -> int
@@ -1580,19 +2255,31 @@ static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.operator ==(OpenUsd.Re
 static OpenUsd.Rendering.Silk.SilkBindingSlot.operator !=(OpenUsd.Rendering.Silk.SilkBindingSlot left, OpenUsd.Rendering.Silk.SilkBindingSlot right) -> bool
 static OpenUsd.Rendering.Silk.SilkBindingSlot.operator ==(OpenUsd.Rendering.Silk.SilkBindingSlot left, OpenUsd.Rendering.Silk.SilkBindingSlot right) -> bool
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.Compute.get -> OpenUsd.Rendering.Silk.SilkComputeReflection
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.DeformCompute.get -> OpenUsd.Rendering.Silk.SilkDeformComputeReflection
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.DisplayTransform.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformReflection
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.HasPinnedMetalLibrary.get -> bool
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadComputeFill(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadComputeScale(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadDeformCompute(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadDisplayTransformFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadDisplayTransformVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadMeshFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadMeshFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkShaderPermutationId permutation) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadMeshVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadMeshVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkShaderPermutationId permutation) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadPickFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadPickSubprimVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadPickVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadPickWholeVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionMaskOccludedFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionMaskFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionMaskSubprimVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionMaskVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionMaskWholeVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionOutlineFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadSelectionOutlineVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadShadowFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadShadowVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.PickParameters.get -> OpenUsd.Rendering.Silk.SilkPickParametersReflection
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.SceneParameters.get -> OpenUsd.Rendering.Silk.SilkSceneParametersReflection
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.SelectionMaskSceneParameters.get -> OpenUsd.Rendering.Silk.SilkSceneParametersReflection
@@ -1614,13 +2301,53 @@ static OpenUsd.Rendering.Silk.SilkComputeReflection.operator !=(OpenUsd.Renderin
 static OpenUsd.Rendering.Silk.SilkComputeReflection.operator ==(OpenUsd.Rendering.Silk.SilkComputeReflection left, OpenUsd.Rendering.Silk.SilkComputeReflection right) -> bool
 static OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor left, OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor left, OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkComputeSlot.operator !=(OpenUsd.Rendering.Silk.SilkComputeSlot left, OpenUsd.Rendering.Silk.SilkComputeSlot right) -> bool
+static OpenUsd.Rendering.Silk.SilkComputeSlot.operator ==(OpenUsd.Rendering.Silk.SilkComputeSlot left, OpenUsd.Rendering.Silk.SilkComputeSlot right) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformComputeReflection.operator !=(OpenUsd.Rendering.Silk.SilkDeformComputeReflection left, OpenUsd.Rendering.Silk.SilkDeformComputeReflection right) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformComputeReflection.operator ==(OpenUsd.Rendering.Silk.SilkDeformComputeReflection left, OpenUsd.Rendering.Silk.SilkDeformComputeReflection right) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationBlendRange.operator !=(OpenUsd.Rendering.Silk.SilkDeformationBlendRange left, OpenUsd.Rendering.Silk.SilkDeformationBlendRange right) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationBlendRange.operator ==(OpenUsd.Rendering.Silk.SilkDeformationBlendRange left, OpenUsd.Rendering.Silk.SilkDeformationBlendRange right) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.ComponentAgrees(float evaluated, float resolved) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.EvaluatePoints(OpenUsd.Rendering.Silk.SilkMeshDeformationData! deformation, System.Span<float> points) -> void
+static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.IsDegenerateNormal(float x, float y, float z) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.TryEvaluateNormals(OpenUsd.Rendering.Silk.SilkMeshDeformationData! deformation, System.Span<float> normals) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.TryEvaluateNormals(OpenUsd.Rendering.Silk.SilkMeshDeformationData! deformation, System.Span<float> normals, System.Span<bool> degenerate) -> bool
+static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.WriteInverseTranspose(System.ReadOnlySpan<float> matrix, System.Span<float> result) -> void
+static OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.TryBuild(OpenUsd.Rendering.Silk.SilkMeshDeformationData? deformation, uint vertexStrideFloats, int pointCount, bool hasTangents, OpenUsd.Rendering.Silk.SilkTopologyKind topologyKind, out OpenUsd.Rendering.Silk.SilkDeformationGpuPayload? payload, System.ReadOnlySpan<float> texCoords = default(System.ReadOnlySpan<float>)) -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Checked.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor
+static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.Unavailable.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity
+static OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity left, OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity left, OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics left, OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics left, OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformReflection left, OpenUsd.Rendering.Silk.SilkDisplayTransformReflection right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformReflection left, OpenUsd.Rendering.Silk.SilkDisplayTransformReflection right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkDisplayTransformUniformWriter.Write(float exposure, float shaperMinimumLog2, float shaperRangeLog2, int latticeSize, bool flipVertically, System.Span<byte> destination) -> void
+static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetained(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, ulong pageRevision = 0) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetained(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, ulong pageRevision = 0) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.operator !=(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities left, OpenUsd.Rendering.Silk.SilkGraphicsCapabilities right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.operator ==(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities left, OpenUsd.Rendering.Silk.SilkGraphicsCapabilities right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkInstancerContextEntry.operator !=(OpenUsd.Rendering.Silk.SilkInstancerContextEntry left, OpenUsd.Rendering.Silk.SilkInstancerContextEntry right) -> bool
+static OpenUsd.Rendering.Silk.SilkInstancerContextEntry.operator ==(OpenUsd.Rendering.Silk.SilkInstancerContextEntry left, OpenUsd.Rendering.Silk.SilkInstancerContextEntry right) -> bool
+static OpenUsd.Rendering.Silk.SilkLightLinkEntry.operator !=(OpenUsd.Rendering.Silk.SilkLightLinkEntry left, OpenUsd.Rendering.Silk.SilkLightLinkEntry right) -> bool
+static OpenUsd.Rendering.Silk.SilkLightLinkEntry.operator ==(OpenUsd.Rendering.Silk.SilkLightLinkEntry left, OpenUsd.Rendering.Silk.SilkLightLinkEntry right) -> bool
+static OpenUsd.Rendering.Silk.SilkLightLinkMasks.All.get -> OpenUsd.Rendering.Silk.SilkLightLinkMasks
+static OpenUsd.Rendering.Silk.SilkLightLinkMasks.operator !=(OpenUsd.Rendering.Silk.SilkLightLinkMasks left, OpenUsd.Rendering.Silk.SilkLightLinkMasks right) -> bool
+static OpenUsd.Rendering.Silk.SilkLightLinkMasks.operator ==(OpenUsd.Rendering.Silk.SilkLightLinkMasks left, OpenUsd.Rendering.Silk.SilkLightLinkMasks right) -> bool
 static OpenUsd.Rendering.Silk.SilkMaterialData.CopyFrom(OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand command) -> OpenUsd.Rendering.Silk.SilkMaterialData!
 static OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService.CreateCheckedPlaceholder(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! cacheHash) -> OpenUsd.Rendering.Silk.SilkMaterialShaderProgram
 static OpenUsd.Rendering.Silk.SilkMaterialShaderKey.Create(System.ReadOnlySpan<byte> materialNetwork, OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! versionSalt) -> OpenUsd.Rendering.Silk.SilkMaterialShaderKey!
@@ -1633,6 +2360,11 @@ static OpenUsd.Rendering.Silk.SilkMeshRenderOptions.operator ==(OpenUsd.Renderin
 static OpenUsd.Rendering.Silk.SilkMeshRenderResult.operator !=(OpenUsd.Rendering.Silk.SilkMeshRenderResult left, OpenUsd.Rendering.Silk.SilkMeshRenderResult right) -> bool
 static OpenUsd.Rendering.Silk.SilkMeshRenderResult.operator ==(OpenUsd.Rendering.Silk.SilkMeshRenderResult left, OpenUsd.Rendering.Silk.SilkMeshRenderResult right) -> bool
 static OpenUsd.Rendering.Silk.SilkNativeLibraryContext.Load(params string![]! libraryNames) -> OpenUsd.Rendering.Silk.SilkNativeLibraryContext!
+static OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.DefaultRevalidationInterval.get -> System.TimeSpan
+static OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.NativeDependencyWalks.get -> ulong
+static OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.NativeIdentityCalls.get -> long
+static OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider.Shared.get -> OpenUsd.Rendering.Silk.SilkOpenColorIoConfigIdentityProvider!
+static OpenUsd.Rendering.Silk.SilkOpenColorIoLatticeProvider.Shared.get -> OpenUsd.Rendering.Silk.SilkOpenColorIoLatticeProvider!
 static OpenUsd.Rendering.Silk.SilkPhysicsDeformations.IsDomainSupported(OpenUsd.Rendering.PhysicsRenderDomain domain) -> bool
 static OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.Describe(OpenUsd.Rendering.PhysicsRenderInterpolator! interpolator, OpenUsd.Rendering.PhysicsRenderDomain domain) -> OpenUsd.Rendering.PhysicsRenderDomainReport
 static OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.IsDomainSupported(OpenUsd.Rendering.PhysicsRenderDomain domain) -> bool
@@ -1647,6 +2379,10 @@ static OpenUsd.Rendering.Silk.SilkPickIdentity.operator ==(OpenUsd.Rendering.Sil
 static OpenUsd.Rendering.Silk.SilkPickParametersReflection.operator !=(OpenUsd.Rendering.Silk.SilkPickParametersReflection left, OpenUsd.Rendering.Silk.SilkPickParametersReflection right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickParametersReflection.operator ==(OpenUsd.Rendering.Silk.SilkPickParametersReflection left, OpenUsd.Rendering.Silk.SilkPickParametersReflection right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology topology) -> OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology topology, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout) -> OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology topology, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout, OpenUsd.Rendering.Silk.SilkPickDepthBias depthBias) -> OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkPickPrimitiveTopology topology, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout, OpenUsd.Rendering.Silk.SilkPickDepthBias depthBias, bool colorWriteEnabled) -> OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor
 static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickReadbackContext.operator !=(OpenUsd.Rendering.Silk.SilkPickReadbackContext left, OpenUsd.Rendering.Silk.SilkPickReadbackContext right) -> bool
@@ -1655,6 +2391,8 @@ static OpenUsd.Rendering.Silk.SilkPickReadbackResult.operator !=(OpenUsd.Renderi
 static OpenUsd.Rendering.Silk.SilkPickReadbackResult.operator ==(OpenUsd.Rendering.Silk.SilkPickReadbackResult left, OpenUsd.Rendering.Silk.SilkPickReadbackResult right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickRendererStatistics.operator !=(OpenUsd.Rendering.Silk.SilkPickRendererStatistics left, OpenUsd.Rendering.Silk.SilkPickRendererStatistics right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickRendererStatistics.operator ==(OpenUsd.Rendering.Silk.SilkPickRendererStatistics left, OpenUsd.Rendering.Silk.SilkPickRendererStatistics right) -> bool
+static OpenUsd.Rendering.Silk.SilkPickSubprimSupport.operator !=(OpenUsd.Rendering.Silk.SilkPickSubprimSupport left, OpenUsd.Rendering.Silk.SilkPickSubprimSupport right) -> bool
+static OpenUsd.Rendering.Silk.SilkPickSubprimSupport.operator ==(OpenUsd.Rendering.Silk.SilkPickSubprimSupport left, OpenUsd.Rendering.Silk.SilkPickSubprimSupport right) -> bool
 static OpenUsd.Rendering.Silk.SilkPickTokenEncoding.Decode(System.ReadOnlySpan<byte> source) -> uint
 static OpenUsd.Rendering.Silk.SilkPickTokenEncoding.Encode(uint token, System.Span<byte> destination) -> void
 static OpenUsd.Rendering.Silk.SilkPickTokenRange.operator !=(OpenUsd.Rendering.Silk.SilkPickTokenRange left, OpenUsd.Rendering.Silk.SilkPickTokenRange right) -> bool
@@ -1678,6 +2416,10 @@ static OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.Checked.g
 static OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, bool depthTested) -> OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, bool depthTested, OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology topology) -> OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, bool depthTested, OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology topology, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout) -> OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor
+static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.CreateChecked(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, bool depthTested, OpenUsd.Rendering.Silk.SilkSelectionMaskPrimitiveTopology topology, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout, OpenUsd.Rendering.Silk.SilkSelectionMaskStage stage) -> OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor
 static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor right) -> bool
@@ -1687,6 +2429,7 @@ static OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.operator ==(
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.Checked.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.Full.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.Unsupported.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.VisibleOnly.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.operator !=(OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities left, OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities right) -> bool
@@ -1701,6 +2444,7 @@ static OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.operator ==(OpenUsd
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.Default.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings!
+static OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.DefaultOccludedColor.get -> OpenUsd.Rendering.Silk.SilkColor
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.operator !=(OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? left, OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.operator ==(OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? left, OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? right) -> bool
 static OpenUsd.Rendering.Silk.SilkSelectionOutlineUniformWriter.Write(OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings! settings, uint width, uint height, System.Span<byte> destination) -> void
@@ -1713,6 +2457,12 @@ static OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.operator !=(OpenUsd.Re
 static OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor left, OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.operator !=(OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection left, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection right) -> bool
 static OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.operator ==(OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection left, OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection right) -> bool
+static OpenUsd.Rendering.Silk.SilkShadowDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkShadowDescriptor left, OpenUsd.Rendering.Silk.SilkShadowDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkShadowDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkShadowDescriptor left, OpenUsd.Rendering.Silk.SilkShadowDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor left, OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkSubprimPickGeometry.TryResolveEdges(OpenUsd.Rendering.Silk.SilkMeshData! mesh, out int[]! authoredEdges, out uint[]! lineIndices) -> bool
+static OpenUsd.Rendering.Silk.SilkSubprimPickGeometry.TryResolvePoints(OpenUsd.Rendering.Silk.SilkMeshData! mesh, out int[]! authoredPoints, out uint[]! pointIndices) -> bool
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.ColorTarget(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.DepthTarget(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.GetDefaultUsage(OpenUsd.Rendering.Silk.SilkTextureFormat format) -> OpenUsd.Rendering.Silk.SilkTextureUsage
@@ -1748,10 +2498,36 @@ static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.Si
 ~override OpenUsd.Rendering.Silk.SilkComputeReflection.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkComputeSlot.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkComputeSlot.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDeformComputeReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDeformComputeReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDeformationBlendRange.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDeformationBlendRange.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformConfigIdentity.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkDisplayTransformRenderingDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkInstancerContextEntry.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkInstancerContextEntry.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkLightLinkEntry.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkLightLinkEntry.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkLightLinkMasks.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkLightLinkMasks.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkMeshRenderResult.Equals(object obj) -> bool
@@ -1772,6 +2548,8 @@ static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.Si
 ~override OpenUsd.Rendering.Silk.SilkPickReadbackResult.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickSubprimSupport.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickSubprimSupport.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkPickTokenRange.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkPickTokenRange.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkRenderingDescriptor.Equals(object obj) -> bool
@@ -1814,6 +2592,10 @@ static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.Si
 ~override OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkShadowDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkShadowDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkTextureDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Equals(object obj) -> bool
@@ -1824,19 +2606,3 @@ static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.Si
 ~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkViewport.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkViewport.ToString() -> string
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.SilkOpenColorIoDisplayTransform(string! configPath, string! sourceColorSpace, string? display = null, string? view = null, string? looks = null) -> void
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.ConfigPath.get -> string!
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.SourceColorSpace.get -> string!
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.Display.get -> string?
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.View.get -> string?
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.Looks.get -> string?
-OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.CreateProcessor() -> OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor!
-OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor
-OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.SilkOpenColorIoProcessor(OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform! transform) -> void
-OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Transform.get -> OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform!
-OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Apply(System.ReadOnlySpan<byte> sourceRgba16F, System.Span<byte> destinationRgba8, int width, int height, float exposure) -> void
-OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Dispose() -> void
-static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
-static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetained(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, ulong pageRevision = 0) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
-OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!

@@ -43,6 +43,16 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessTextureBinding => 13,
                 SilkBindingLayoutDescriptor.IorTextureBinding => 14,
                 SilkBindingLayoutDescriptor.CompositeTextureBinding => 15,
+                // Slang derives the Metal argument index from the HLSL register,
+                // so the shadow atlas and both environment maps have to be named
+                // here too. Without the shadow entry the identity fallback bound
+                // the atlas to index 31 while the checked MSL declares
+                // [[texture(16)]], which is the same class of silent mis-binding
+                // the metallic slot hit and is fixed with it.
+                SilkBindingLayoutDescriptor.ShadowAtlasTextureBinding => 16,
+                SilkBindingLayoutDescriptor.EnvironmentIrradianceTextureBinding => 17,
+                SilkBindingLayoutDescriptor.EnvironmentSpecularTextureBinding => 18,
+                SilkBindingLayoutDescriptor.EnvironmentBrdfTextureBinding => 19,
                 _ => binding
             },
             SilkBindingKind.Sampler => binding switch
@@ -60,6 +70,9 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessSamplerBinding => 10,
                 SilkBindingLayoutDescriptor.IorSamplerBinding => 11,
                 SilkBindingLayoutDescriptor.CompositeSamplerBinding => 12,
+                SilkBindingLayoutDescriptor.ShadowSamplerBinding => 13,
+                SilkBindingLayoutDescriptor.EnvironmentSamplerBinding => 14,
+                SilkBindingLayoutDescriptor.EnvironmentBrdfSamplerBinding => 15,
                 _ => binding
             },
             _ => binding

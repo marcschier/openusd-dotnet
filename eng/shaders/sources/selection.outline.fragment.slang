@@ -22,27 +22,42 @@ cbuffer SelectionOutlineParameters : register(b0)
     float2 inverseViewportSize;
     float outlineWidthPixels;
     float depthEpsilon;
+    float4 occludedOutlineColor;
 };
 
+/// Composites the selection outline from both silhouettes in one pass.
+///
+/// The mask's red channel carries the unoccluded selected fragments and its
+/// green channel carries the whole selected silhouette, including the part
+/// behind an occluder. A pixel that the visible-only mode would outline is
+/// written with exactly the visible colour, and the occluded colour reaches only
+/// the remainder that the visible-only mode leaves untouched.
+///
+/// This has to be one pass. Compositing the whole silhouette and then the
+/// visible one over it blends the two styles wherever both cover a pixel, so an
+/// outline colour with any transparency -- which the default is -- produced a
+/// visible edge that did not match the visible-only image it is required to
+/// reproduce exactly.
+///
+/// The visible-only mode uses this same shader with an occluded colour whose
+/// alpha is zero, so its occluded branch composites nothing at all under
+/// straight-alpha-over blending and the result is identical to a shader that
+/// never had the branch.
 [shader("fragment")]
 float4 selectionOutlineFragmentMain(
     SelectionOutlineVertexOutput input) : SV_Target0
 {
-    float centerMask = selectionMask.SampleLevel(
+    float4 centerMask = selectionMask.SampleLevel(
         selectionSampler,
         input.textureCoordinate,
-        0.0).r;
-    if (centerMask >= 0.5)
-    {
-        return float4(0.0, 0.0, 0.0, 0.0);
-    }
-
+        0.0);
     float centerDepth = visibleDepth.SampleLevel(
         selectionSampler,
         input.textureCoordinate,
         0.0);
     int radius = int(ceil(outlineWidthPixels));
-    float edge = 0.0;
+    float visibleEdge = 0.0;
+    float occludedEdge = 0.0;
     for (int y = -radius; y <= radius; ++y)
     {
         for (int x = -radius; x <= radius; ++x)
@@ -56,11 +71,20 @@ float4 selectionOutlineFragmentMain(
 
             float2 sampleCoordinate =
                 input.textureCoordinate + offset * inverseViewportSize;
-            float neighborMask = selectionMask.SampleLevel(
+            float4 neighborMask = selectionMask.SampleLevel(
                 selectionSampler,
                 sampleCoordinate,
-                0.0).r;
-            if (neighborMask < 0.5)
+                0.0);
+
+            // The whole silhouette is outlined without any depth comparison:
+            // being behind an occluder is exactly what the occluded style
+            // reports, so suppressing it there would erase the very pixels it
+            // exists to draw.
+            if (neighborMask.g >= 0.5)
+            {
+                occludedEdge = 1.0;
+            }
+            if (neighborMask.r < 0.5)
             {
                 continue;
             }
@@ -71,10 +95,29 @@ float4 selectionOutlineFragmentMain(
                 0.0);
             if (centerDepth + depthEpsilon >= neighborDepth)
             {
-                edge = 1.0;
+                visibleEdge = 1.0;
             }
         }
     }
 
-    return float4(outlineColor.rgb, outlineColor.a * edge);
+    // An outline is drawn around a silhouette, never inside it, and each
+    // silhouette suppresses its own interior.
+    if (centerMask.r >= 0.5)
+    {
+        visibleEdge = 0.0;
+    }
+    if (centerMask.g >= 0.5)
+    {
+        occludedEdge = 0.0;
+    }
+
+    if (visibleEdge >= 0.5)
+    {
+        return float4(outlineColor.rgb, outlineColor.a);
+    }
+    if (occludedEdge >= 0.5)
+    {
+        return float4(occludedOutlineColor.rgb, occludedOutlineColor.a);
+    }
+    return float4(0.0, 0.0, 0.0, 0.0);
 }

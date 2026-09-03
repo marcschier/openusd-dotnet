@@ -83,6 +83,35 @@ UsdImagingGLDrawMode MapDrawMode(uint32_t drawMode)
         throw std::invalid_argument("An hdSilk draw mode is unknown.");
     }
 }
+
+/// Maps a renderer-neutral complexity level onto the UsdImagingGL complexity
+/// UsdImagingGLEngine resolves into a per-prim display style refine level.
+///
+/// The refine level, not this float, is what hdSilk's Rprim Sync reads.
+/// UsdImagingGL buckets complexity in tenths after nudging it by 0.01 to absorb
+/// float error, so 1.0, 1.1, 1.2 and 1.3 land on refine levels 0, 1, 2 and 3 --
+/// the same values usdview's complexity slider uses, and exactly the bound
+/// hdSilk evaluates (HdSilkMaxMeshRefineLevel). Low stays at 1.0, the
+/// UsdImagingGL default, so an unrefined session asks USD for exactly what it
+/// always did. hdSilk clamps whatever level comes back, so a change to that
+/// bucketing can only under-refine, never overrun the bound; the native
+/// subdivision probe pins the resulting refined component counts so a change
+/// is reported rather than absorbed.
+float MapMeshRefinementComplexity(uint32_t complexity)
+{
+    switch (complexity)
+    {
+    case OPENUSD_SILK_COMPLEXITY_MEDIUM:
+        return 1.1F;
+    case OPENUSD_SILK_COMPLEXITY_HIGH:
+        return 1.2F;
+    case OPENUSD_SILK_COMPLEXITY_VERY_HIGH:
+        return 1.3F;
+    case OPENUSD_SILK_COMPLEXITY_LOW:
+    default:
+        return 1.0F;
+    }
+}
 }
 
 struct SilkSessionState
@@ -1302,6 +1331,12 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
             parameters.drawMode = MapDrawMode(draw_mode);
+            // Complexity drives mesh subdivision through UsdImaging's display
+            // style refine level rather than through a private channel, so a
+            // refined prim reaches hdSilk's Rprim Sync exactly as it reaches
+            // Storm's. Curve and point tessellation density stays a scene-state
+            // transform applied when the page is built.
+            parameters.complexity = MapMeshRefinementComplexity(complexity);
             // UsdImagingGLRenderParams defaults cullStyle to CULL_STYLE_NOTHING,
             // which UsdImaging reports as the per-prim fallback because USD gprims
             // author doubleSided rather than a Hydra cull style. That made hdSilk
@@ -1321,17 +1356,20 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
             }
             state->sceneState->SetComplexity(complexity);
             state->sceneState->SetDrawMode(draw_mode);
-            HdSilkBeginUsdSkelEvaluation(state->stage, UsdTimeCode(time_code));
+            HdSilkBeginUsdSkelEvaluation(
+                state->sceneState.get(),
+                state->stage,
+                UsdTimeCode(time_code));
             try
             {
                 state->engine->Render(state->stage->GetPseudoRoot(), parameters);
             }
             catch (...)
             {
-                HdSilkEndUsdSkelEvaluation();
+                HdSilkEndUsdSkelEvaluation(state->sceneState.get());
                 throw;
             }
-            HdSilkEndUsdSkelEvaluation();
+            HdSilkEndUsdSkelEvaluation(state->sceneState.get());
             if (!mark.IsClean())
             {
                 WriteError(error, ConsumeErrors(mark));

@@ -1,0 +1,92 @@
+#usda 1.0
+(
+    doc = """Synthetic OpenPBR fixture for the hdSilk MaterialX projection.
+
+    Every value is authored here; the fixture references no external asset, so it
+    is redistributable on its own. The surface is
+    ND_open_pbr_surface_surfaceshader, the identifier the pinned MaterialX 1.39.4
+    standard libraries declare for OpenPBR Surface 1.1.
+
+    The inputs are split deliberately:
+
+    * base_color, base_weight, base_metalness, specular_roughness, specular_ior,
+      coat_weight, coat_roughness, geometry_opacity, emission_color and
+      emission_luminance are the inputs hdSilk projects onto its
+      PreviewSurface-compatible material record.
+    * transmission_weight, subsurface_weight, fuzz_weight, thin_film_weight,
+      specular_color and coat_color are authored away from their nodedef defaults
+      on purpose. hdSilk carries none of them and must report each one by name
+      rather than folding it into an unrelated parameter.
+
+    The mesh carries exactly one texture-coordinate primvar, because hdSilk binds
+    one coordinate stream per material and this fixture must not imply otherwise.
+    """
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "OpenPbrCard" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/OpenPbrMat>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.8, -0.6, 0), (0.8, -0.6, 0), (0.8, 0.6, 0), (-0.8, 0.6, 0)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.18, 0.18, 0.18)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+
+    def Scope "Looks"
+    {
+        def Material "OpenPbrMat" (
+            prepend apiSchemas = ["MaterialXConfigAPI"]
+        )
+        {
+            string config:mtlx:version = "1.39"
+            token outputs:surface.connect = </World/Looks/OpenPbrMat/OpenPbr.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/OpenPbrMat/OpenPbr.outputs:out>
+
+            def Shader "OpenPbr"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+
+                # Projected onto the renderer-neutral material record.
+                float inputs:base_weight = 0.8
+                color3f inputs:base_color = (0.2, 0.4, 0.6)
+                float inputs:base_metalness = 0.25
+                float inputs:specular_roughness = 0.35
+                float inputs:specular_ior = 1.45
+                float inputs:coat_weight = 0.5
+                float inputs:coat_roughness = 0.125
+                float inputs:geometry_opacity = 0.75
+                float inputs:emission_luminance = 2
+                color3f inputs:emission_color = (0.5, 0.25, 0.125)
+
+                # Not projected. Each is authored away from its nodedef default so
+                # the ingestion path reports it instead of staying silent.
+                float inputs:transmission_weight = 0.4
+                float inputs:subsurface_weight = 0.3
+                float inputs:fuzz_weight = 0.2
+                float inputs:thin_film_weight = 0.1
+                color3f inputs:specular_color = (0.9, 0.8, 0.7)
+                color3f inputs:coat_color = (0.7, 0.9, 0.8)
+
+                token outputs:out
+            }
+        }
+    }
+}

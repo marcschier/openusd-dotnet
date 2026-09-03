@@ -107,7 +107,12 @@ public sealed class SilkSelectionOutlineTests
         renderer.UpdateSelection(new SelectionState(
         [
             new SelectionItem("/A"),
-            new SelectionItem("/A", elementIndex: 0),
+            new SelectionItem(
+                "/A",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 0,
+                elementKind: SelectionElementKind.Face),
             new SelectionItem("/B")
         ]));
 
@@ -357,6 +362,280 @@ public sealed class SilkSelectionOutlineTests
         (TestTexture)device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(width, height));
 
+    /// <summary>
+    /// A face, edge, or point selection masks only the named component, in the
+    /// topology that component is drawn with, rather than the whole prim.
+    /// </summary>
+    /// <remarks>
+    /// The mask is what the outline is drawn around, so scope is the difference
+    /// between showing what the user selected and showing something that merely
+    /// contains it. A face selection that produced the prim's whole silhouette
+    /// would be indistinguishable from selecting the prim.
+    /// </remarks>
+    /// <summary>
+    /// A legacy item whose element kind was never stated still masks the
+    /// authored face its index names.
+    /// </summary>
+    /// <remarks>
+    /// The four-parameter constructor predates the kind, so a producer using it
+    /// could only ever have meant a face. The mask needs a concrete component to
+    /// scope to, so it resolves the unstated kind that way and keeps the
+    /// long-standing highlight behavior; the item's own identity still reports
+    /// <see cref="SelectionElementKind.Unspecified"/>, so nothing downstream is
+    /// told the index is a face.
+    /// </remarks>
+    [Test]
+    public async Task AnUnstatedElementKindMasksTheAuthoredFace()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1);
+
+        var legacy = new SelectionItem("/Quad", null, null, elementIndex: 1);
+        await Assert.That(legacy.ElementKind)
+            .IsEqualTo(SelectionElementKind.Unspecified);
+
+        renderer.UpdateSelection(new SelectionState([legacy]));
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.LastMaskIndexCount).IsEqualTo(3u);
+        await Assert.That(device.LastMaskTopology)
+            .IsEqualTo(SilkSelectionMaskPrimitiveTopology.TriangleList);
+    }
+
+    [Test]
+    public async Task AComponentSelectionMasksOnlyThatComponent()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1);
+
+        renderer.UpdateSelection(new SelectionState([new SelectionItem("/Quad")]));
+        _ = renderer.Render(color, depth);
+        uint wholePrim = device.LastMaskIndexCount;
+
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 1,
+                elementKind: SelectionElementKind.Face)
+        ]));
+        _ = renderer.Render(color, depth);
+
+        // The prim draws both triangles; authored face one is a single
+        // triangle, so the scoped draw is exactly three indices.
+        await Assert.That(wholePrim).IsEqualTo(6u);
+        await Assert.That(device.LastMaskIndexCount).IsEqualTo(3u);
+        await Assert.That(device.LastMaskTopology)
+            .IsEqualTo(SilkSelectionMaskPrimitiveTopology.TriangleList);
+
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 2,
+                elementKind: SelectionElementKind.Edge)
+        ]));
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.LastMaskTopology)
+            .IsEqualTo(SilkSelectionMaskPrimitiveTopology.LineList);
+        await Assert.That(device.LastMaskIndexCount).IsEqualTo(2u);
+
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 3,
+                elementKind: SelectionElementKind.Point)
+        ]));
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.LastMaskTopology)
+            .IsEqualTo(SilkSelectionMaskPrimitiveTopology.PointList);
+        await Assert.That(device.LastMaskIndexCount).IsEqualTo(1u);
+    }
+
+    /// <summary>
+    /// A component the retained mesh cannot resolve exactly produces no mask
+    /// draw at all rather than a broader one.
+    /// </summary>
+    [Test]
+    public async Task AnUnresolvableComponentMasksNothingRatherThanTheWholePrim()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1);
+
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 97,
+                elementKind: SelectionElementKind.Face)
+        ]));
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(renderer.SelectionOutlineDiagnostics.ResolvedMeshCount)
+            .IsEqualTo(0);
+        await Assert.That(device.MaskDrawCount).IsEqualTo(0);
+    }
+
+    /// <summary>
+    /// A prim selected whole already contains every component of itself, so a
+    /// component item for the same prim adds no second mask draw.
+    /// </summary>
+    [Test]
+    public async Task AWholePrimSelectionSubsumesAComponentOfTheSamePrim()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1);
+
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem("/Quad"),
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 0,
+                elementKind: SelectionElementKind.Face)
+        ]));
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.MaskDrawCount).IsEqualTo(1);
+        await Assert.That(device.LastMaskIndexCount).IsEqualTo(6u);
+    }
+
+    private static void ApplySubprimScene(
+        SilkMeshRenderer renderer,
+        uint width,
+        uint height,
+        ulong pageRevision)
+    {
+        byte[] frame = CreateFrameCommand(width, height);
+        byte[] mesh = CreateSubprimQuadCommand();
+        var page = new byte[frame.Length + mesh.Length];
+        frame.CopyTo(page, 0);
+        mesh.CopyTo(page, frame.Length);
+        SilkSceneDelta delta = renderer.Scene.Apply(page, 2, pageRevision);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+    }
+
+    /// <summary>
+    /// A quad with two authored faces, four authored points, and four authored
+    /// edges, so a component selection has a strictly smaller scope than the
+    /// prim and every subprim topology has something to mask.
+    /// </summary>
+    private static byte[] CreateSubprimQuadCommand()
+    {
+        byte[] path = Encoding.UTF8.GetBytes("/Quad");
+        float[] points =
+        [
+            -0.5f, -0.5f, 0,
+            0.5f, -0.5f, 0,
+            0.5f, 0.5f, 0,
+            -0.5f, 0.5f, 0
+        ];
+        uint[] indices = [0, 1, 2, 0, 2, 3];
+        uint[] subprims = [0, 1];
+        uint[] pointOrigins = [0, 1, 2, 3];
+        uint[] cornerEdges = [0, 1, 0xFFFFFFFFu, 0xFFFFFFFFu, 2, 3];
+        int size = 268 +
+            path.Length +
+            (points.Length * sizeof(float)) +
+            (indices.Length * sizeof(uint)) +
+            (subprims.Length * sizeof(uint)) +
+            (pointOrigins.Length * sizeof(uint)) +
+            (cornerEdges.Length * sizeof(uint));
+        var bytes = new byte[size];
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes,
+            (uint)SilkCommandType.MeshUpsert);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(8),
+            SilkWireFormat.ComputeStableHash("/Quad"));
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), 11);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(28),
+            (uint)SilkTopologyKind.TriangleList);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(48),
+            (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), 6);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), 2);
+        for (int index = 0; index < 4; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(64 + (index * sizeof(float))),
+                1);
+        }
+        for (int index = 0; index < 16; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                bytes.AsSpan(80 + (index * sizeof(double))),
+                index % 5 == 0 ? 1 : 0);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(236), 1 | 2 | 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(244), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(248), 6);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(252), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(256), 4);
+        path.CopyTo(bytes, 268);
+        int cursor = 268 + path.Length;
+        foreach (float value in points)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(cursor), value);
+            cursor += sizeof(float);
+        }
+        foreach (uint value in indices)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
+            cursor += sizeof(uint);
+        }
+        foreach (uint value in subprims)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
+            cursor += sizeof(uint);
+        }
+        foreach (uint value in pointOrigins)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
+            cursor += sizeof(uint);
+        }
+        foreach (uint value in cornerEdges)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
+            cursor += sizeof(uint);
+        }
+        return bytes;
+    }
+
     private static void ApplyScene(
         SilkMeshRenderer renderer,
         uint width,
@@ -423,7 +702,7 @@ public sealed class SilkSelectionOutlineTests
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        int size = 268 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -467,8 +746,8 @@ public sealed class SilkSelectionOutlineTests
                 bytes.AsSpan(80 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 224);
-        int pointOffset = 224 + path.Length;
+        path.CopyTo(bytes, 268);
+        int pointOffset = 268 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -518,6 +797,12 @@ public sealed class SilkSelectionOutlineTests
 
         internal int MaskDrawCount { get; set; }
 
+        /// <summary>The index count of the most recent mask draw.</summary>
+        internal uint LastMaskIndexCount { get; set; }
+
+        /// <summary>The topology the most recent mask pipeline bind selected.</summary>
+        internal SilkSelectionMaskPrimitiveTopology LastMaskTopology { get; set; }
+
         internal int OutlinePassCount { get; set; }
 
         internal int FullscreenDrawCount { get; set; }
@@ -529,7 +814,7 @@ public sealed class SilkSelectionOutlineTests
 
         public ulong SelectionOutlineDeviceGeneration { get; set; } = 1;
 
-        public SilkSelectionOutlineCapabilities SelectionOutlineCapabilities =>
+        public SilkSelectionOutlineCapabilities SelectionOutlineCapabilities { get; set; } =
             SilkSelectionOutlineCapabilities.VisibleOnly;
 
         public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage)
@@ -747,6 +1032,7 @@ public sealed class SilkSelectionOutlineTests
             if (_scope == RenderScope.Mask)
             {
                 _device.MaskDrawCount++;
+                _device.LastMaskIndexCount = indexCount;
                 if (_maskTarget is not null)
                 {
                     _maskTarget.Data[0] = byte.MaxValue;
@@ -796,9 +1082,9 @@ public sealed class SilkSelectionOutlineTests
         }
 
         public void SetSelectionMaskGraphicsPipeline(
-            ISilkSelectionMaskGraphicsPipeline pipeline)
-        {
-        }
+            ISilkSelectionMaskGraphicsPipeline pipeline) =>
+            _device.LastMaskTopology =
+                pipeline.Descriptor.PrimitiveTopology;
 
         public void BeginSelectionOutlineRendering(
             SilkSelectionOutlineRenderingDescriptor descriptor)

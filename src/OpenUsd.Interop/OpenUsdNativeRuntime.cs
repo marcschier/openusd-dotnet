@@ -5417,6 +5417,235 @@ public static unsafe partial class OpenUsdNativeRuntime
         return result;
     }
 
+    internal static OpenUsdNativeSdrNodeDefinitionPage GetSdrNodeDefinitions()
+    {
+        var view = new NativeSdrNodeDefinitionView
+        {
+            StructSize = (uint)sizeof(NativeSdrNodeDefinitionView),
+            Version = 1
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.SdrGetNodeDefinitions(out list, ref view, ref error);
+            if (status != OpenUsdNativeStatus.Ok && list != 0)
+            {
+                NativeMethods.SdrNodeDefinitionListRelease(list);
+                list = 0;
+            }
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        try
+        {
+            return DecodeSdrNodeDefinitions(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.SdrNodeDefinitionListRelease(list);
+            }
+        }
+    }
+
+    internal static bool TryGetSdrNodeDefinitionFromAsset(
+        string sourceAsset,
+        string? subIdentifier,
+        string? shadingSystem,
+        out OpenUsdNativeSdrNodeDefinition definition,
+        out bool isTruncated)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceAsset);
+        var view = new NativeSdrNodeDefinitionView
+        {
+            StructSize = (uint)sizeof(NativeSdrNodeDefinitionView),
+            Version = 1
+        };
+        nint list = 0;
+        int found = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.SdrGetNodeDefinitionFromAsset(
+                sourceAsset,
+                subIdentifier,
+                shadingSystem,
+                out list,
+                ref view,
+                out found,
+                ref error);
+            if (status != OpenUsdNativeStatus.Ok && list != 0)
+            {
+                NativeMethods.SdrNodeDefinitionListRelease(list);
+                list = 0;
+            }
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        try
+        {
+            return ResolveSdrNodeDefinitionFromAssetResult(
+                found,
+                DecodeSdrNodeDefinitions(view),
+                out definition,
+                out isTruncated);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.SdrNodeDefinitionListRelease(list);
+            }
+        }
+    }
+
+    // Known bits of openusd_sdr_node_definition_flags (native/openusd_dotnet/include/openusd_dotnet.h).
+    // Kept in sync manually; any other bit set means the native runtime and this managed decoder
+    // have drifted, and that must fail loudly rather than silently ignore an unrecognized flag.
+    private const uint SdrNodeDefinitionKnownFlags = 0x1u;
+
+    // Separated from TryGetSdrNodeDefinitionFromAsset so the found/record-count consistency
+    // contract is directly testable without a native call: a decoded page is easy to construct
+    // by hand, a real P/Invoke round trip is not.
+    internal static bool ResolveSdrNodeDefinitionFromAssetResult(
+        int found,
+        OpenUsdNativeSdrNodeDefinitionPage page,
+        out OpenUsdNativeSdrNodeDefinition definition,
+        out bool isTruncated)
+    {
+        if (found != 0 && found != 1)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime returned an invalid shader node-definition found flag.");
+        }
+
+        isTruncated = page.IsTruncated;
+        if (found == 0)
+        {
+            if (page.Definitions.Length != 0)
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native runtime reported no shader node-definition found but returned " +
+                    "at least one record.");
+            }
+            definition = default;
+            return false;
+        }
+
+        if (page.Definitions.Length != 1)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime reported a shader node-definition as found but did not " +
+                "return exactly one record.");
+        }
+        definition = page.Definitions[0];
+        return true;
+    }
+
+    internal static OpenUsdNativeSdrNodeDefinitionPage DecodeSdrNodeDefinitions(NativeSdrNodeDefinitionView view)
+    {
+        if (view.Version != 1 || view.StructSize < sizeof(NativeSdrNodeDefinitionView) ||
+            view.Reserved != 0 ||
+            (view.Flags & ~SdrNodeDefinitionKnownFlags) != 0 ||
+            view.RecordsSize != view.RecordCount * (nuint)sizeof(OpenUsdNativeSdrNodeDefinitionRecord) ||
+            view.PropertiesSize != view.PropertyCount * (nuint)sizeof(OpenUsdNativeSdrPropertyRecord) ||
+            view.OffsetsSize != view.StringCount * (nuint)sizeof(nuint) ||
+            view.RecordCount > (nuint)int.MaxValue || view.PropertyCount > (nuint)int.MaxValue ||
+            view.StringCount > (nuint)int.MaxValue || view.DataSize > (nuint)int.MaxValue)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime returned an invalid shader node-definition buffer.");
+        }
+
+        var records = new ReadOnlySpan<OpenUsdNativeSdrNodeDefinitionRecord>(view.Records, (int)view.RecordCount);
+        var propertyRecords = new ReadOnlySpan<OpenUsdNativeSdrPropertyRecord>(
+            view.Properties,
+            (int)view.PropertyCount);
+        string[] strings = NativePackedStringListDecoder.Decode(
+            new ReadOnlySpan<byte>(view.Data, (int)view.DataSize),
+            new ReadOnlySpan<nuint>(view.Offsets, (int)view.StringCount),
+            "shader node-definition buffer");
+        var stringCount = (nuint)strings.Length;
+        var propertyCount = (nuint)propertyRecords.Length;
+
+        var properties = new OpenUsdNativeSdrProperty[propertyRecords.Length];
+        for (int index = 0; index < propertyRecords.Length; index++)
+        {
+            OpenUsdNativeSdrPropertyRecord property = propertyRecords[index];
+            if (property.Reserved != 0 ||
+                (property.Direction != (int)OpenUsdNativeSdrPropertyDirection.Input &&
+                    property.Direction != (int)OpenUsdNativeSdrPropertyDirection.Output) ||
+                (property.IsArray != 0 && property.IsArray != 1) ||
+                (property.IsConnectable != 0 && property.IsConnectable != 1) ||
+                property.StringCount != 2 ||
+                !TryGetRange(property.StringOffset, property.StringCount, stringCount, out int propertyField))
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native runtime returned invalid shader property fields.");
+            }
+            properties[index] = new OpenUsdNativeSdrProperty(
+                strings[propertyField],
+                strings[propertyField + 1],
+                (OpenUsdNativeSdrPropertyDirection)property.Direction,
+                property.IsArray != 0,
+                property.IsConnectable != 0);
+        }
+
+        var result = new OpenUsdNativeSdrNodeDefinition[records.Length];
+        for (int index = 0; index < records.Length; index++)
+        {
+            OpenUsdNativeSdrNodeDefinitionRecord record = records[index];
+            if (record.Reserved != 0 ||
+                (record.IsValid != 0 && record.IsValid != 1) ||
+                record.StringCount != 8 ||
+                !TryGetRange(record.StringOffset, record.StringCount, stringCount, out int field) ||
+                !TryGetRange(record.PropertyOffset, record.PropertyCount, propertyCount, out int propertyStart))
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native runtime returned invalid shader node-definition fields.");
+            }
+
+            OpenUsdNativeSdrProperty[] nodeProperties =
+                properties[propertyStart..(propertyStart + (int)record.PropertyCount)];
+            result[index] = new OpenUsdNativeSdrNodeDefinition(
+                strings[field],
+                strings[field + 1],
+                strings[field + 2],
+                strings[field + 3],
+                strings[field + 4],
+                strings[field + 5],
+                strings[field + 6],
+                strings[field + 7],
+                nodeProperties,
+                record.IsValid != 0);
+        }
+
+        bool isTruncated = (view.Flags & SdrNodeDefinitionKnownFlags) != 0;
+        return new OpenUsdNativeSdrNodeDefinitionPage(result, isTruncated);
+    }
+
+    // Overflow-safe range check: true if and only if [offset, offset + count) lies within
+    // [0, totalLength), computed without ever forming offset + count, which could overflow for
+    // an adversarial or corrupted native page.
+    private static bool TryGetRange(nuint offset, nuint count, nuint totalLength, out int start)
+    {
+        start = 0;
+        if (count > totalLength || offset > totalLength - count)
+        {
+            return false;
+        }
+        start = (int)offset;
+        return true;
+    }
+
     private static OpenUsdNativeException CreateNativeException(
         OpenUsdNativeStatus status,
         ReadOnlySpan<byte> errorBytes,
@@ -5657,6 +5886,150 @@ public static unsafe partial class OpenUsdNativeRuntime
                 (nuint)destination.Length,
                 ref error);
             ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static void ApplyOcioProcessorRgba32FToRgba8(
+        OpenUsdNativeOcioProcessor processor,
+        ReadOnlySpan<byte> source,
+        Span<byte> destination,
+        uint width,
+        uint height,
+        float exposure)
+    {
+        ArgumentNullException.ThrowIfNull(processor);
+        using var lease = new SafeHandleLease(processor);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        fixed (byte* sourcePointer = source)
+        fixed (byte* destinationPointer = destination)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.OcioProcessorApplyRgba32fToRgba8(
+                lease.Handle,
+                sourcePointer,
+                (nuint)source.Length,
+                width,
+                height,
+                exposure,
+                destinationPointer,
+                (nuint)destination.Length,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    /// <summary>
+    /// Reads the OpenColorIO cache identity of a config, which changes when the config
+    /// is edited, when a file it references changes, or when the context that resolves
+    /// those references changes.
+    /// </summary>
+    internal static (string Identity, bool IsExhaustive) GetOcioConfigCacheId(
+        string configPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(configPath);
+
+        // One call, one dependency walk. The identity is a fixed-format digest --
+        // "ocio:" followed by sixteen hexadecimal digits -- so a small fixed buffer
+        // always fits it, and probing for a size first would run the whole transitive
+        // file walk twice for every single revalidation.
+        const int fixedIdentityBytes = 64;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        Span<byte> buffer = stackalloc byte[fixedIdentityBytes];
+        nuint required;
+        fixed (byte* errorPointer = errorBytes)
+        fixed (byte* bufferPointer = buffer)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            Interlocked.Increment(ref _ocioConfigCacheIdCalls);
+            OpenUsdNativeStatus status = NativeMethods.OcioConfigCacheId(
+                configPath,
+                bufferPointer,
+                (nuint)fixedIdentityBytes,
+                out required,
+                out int exhaustive,
+                ref error);
+            if (status != OpenUsdNativeStatus.BufferTooSmall)
+            {
+                ThrowIfFailed(status, errorBytes, error);
+                int length = required == 0 ? 0 : (int)required - 1;
+                return (Encoding.UTF8.GetString(bufferPointer, length), exhaustive != 0);
+            }
+        }
+
+        // Only reached if the digest format ever grows past the fixed buffer, which is a
+        // genuine capacity shortfall rather than a routine probe.
+        const nuint maximumIdentityBytes = 1024;
+        if (required == 0 || required > maximumIdentityBytes)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.InvalidArgument,
+                "The OpenColorIO config cache identity exceeded the supported length.");
+        }
+
+        byte[] rented = new byte[(int)required];
+        fixed (byte* errorPointer = errorBytes)
+        fixed (byte* rentedPointer = rented)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            Interlocked.Increment(ref _ocioConfigCacheIdCalls);
+            OpenUsdNativeStatus status = NativeMethods.OcioConfigCacheId(
+                configPath,
+                rentedPointer,
+                required,
+                out nuint written,
+                out int exhaustive,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            int length = written == 0 ? 0 : (int)written - 1;
+            return (Encoding.UTF8.GetString(rentedPointer, length), exhaustive != 0);
+        }
+    }
+
+    private static long _ocioConfigCacheIdCalls;
+
+    /// <summary>
+    /// Gets how many times the OpenColorIO config identity entry point has been called.
+    /// </summary>
+    internal static long OcioConfigCacheIdCalls => Interlocked.Read(ref _ocioConfigCacheIdCalls);
+
+    /// <summary>
+    /// Gets how many transitive dependency walks the native identity entry point has
+    /// completed in this process.
+    /// </summary>
+    internal static ulong GetOcioConfigDependencyWalks()
+    {
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.OcioConfigDependencyWalks(
+                out ulong walks,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return walks;
+        }
+    }
+
+    /// <summary>
+    /// Clears OpenColorIO's process-global caches so the next observation reflects the
+    /// current contents of disk.
+    /// </summary>
+    /// <remarks>
+    /// This is process-global. Callers must serialize it against their own processor
+    /// construction, because clearing while another thread is building a processor from
+    /// the same config is a race the library does not arbitrate.
+    /// </remarks>
+    internal static void ClearOcioCaches()
+    {
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            ThrowIfFailed(
+                NativeMethods.OcioClearCaches(ref error),
+                errorBytes,
+                error);
         }
     }
 

@@ -15,7 +15,7 @@ public sealed class D3D12SelectionOutlineSourceContractTests
         await Assert.That(source).Contains(": ISilkSelectionOutlineGraphicsDevice");
         await Assert.That(source).Contains(
             ": ISilkSelectionOutlineGraphicsCommandList");
-        await Assert.That(source).Contains("SilkSelectionOutlineCapabilities.VisibleOnly");
+        await Assert.That(source).Contains("SilkSelectionOutlineCapabilities.Full");
         await Assert.That(source).Contains(
             "SelectionOutlineDeviceGeneration => PickDeviceGeneration");
         await Assert.That(picking).Contains("ObserveNativeDeviceRemoval");
@@ -24,7 +24,12 @@ public sealed class D3D12SelectionOutlineSourceContractTests
         await Assert.That(source).Contains("DescriptorRangeType.Sampler");
         await Assert.That(source).Contains("new RootDescriptor(0, 0)");
         await Assert.That(source).Contains("DepthWriteMask = DepthWriteMask.Zero");
-        await Assert.That(source).Contains("DepthFunc = ComparisonFunc.LessEqual");
+        // The visible-only mask keeps the read-only less-equal depth test; the
+        // x-ray mask disables it so the whole selected silhouette reaches the
+        // mask, which is what the second composite outlines.
+        await Assert.That(source).Contains("DepthEnable = descriptor.DepthTestEnabled");
+        await Assert.That(source).Contains("? ComparisonFunc.LessEqual");
+        await Assert.That(source).Contains(": ComparisonFunc.Always");
         await Assert.That(source).Contains("BlendEnable = true");
         await Assert.That(source).Contains("SrcBlend = Blend.SrcAlpha");
         await Assert.That(source).Contains("DestBlend = Blend.InvSrcAlpha");

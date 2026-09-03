@@ -426,20 +426,223 @@ public readonly record struct StageTime(double TimeCode)
 }
 
 /// <summary>
-/// Identifies one selected prim, instance, or subprim without retaining a stage object.
+/// Names what a <see cref="SelectionItem"/>'s element index identifies.
+/// </summary>
+/// <remarks>
+/// An element index alone is ambiguous: face 3, edge 3, and point 3 of one prim
+/// are three different components, and a consumer handed only the number cannot
+/// tell them apart. The kind travels with the index so a selection round-trips
+/// through the Viewer, a bridge, or a saved session without losing which
+/// component the user actually picked.
+/// </remarks>
+public enum SelectionElementKind
+{
+    /// <summary>The item selects no element; its element index is absent.</summary>
+    None,
+
+    /// <summary>The element index is an authored face index.</summary>
+    Face,
+
+    /// <summary>The element index is an authored mesh edge index.</summary>
+    Edge,
+
+    /// <summary>The element index is an authored point index.</summary>
+    Point,
+
+    /// <summary>
+    /// The element index names a component whose kind the producer did not
+    /// state.
+    /// </summary>
+    /// <remarks>
+    /// This is what the long-standing four-parameter
+    /// <see cref="SelectionItem"/> shape produces, and it exists because the
+    /// alternative was worse: that shape predates the kind, so classifying its
+    /// index as a face turned every legacy edge and point selection into a face
+    /// selection silently. An unstated kind is target-neutral -- it preserves
+    /// the index and admits that only the consumer's own request says what the
+    /// number means. <see cref="RenderPickResult.Hit"/> resolves it against the
+    /// request's target, which is the one place the answer is known.
+    /// </remarks>
+    Unspecified
+}
+
+/// <summary>
+/// One level of an instancing chain: an absolute instancer path and the
+/// instance's own zero-based index inside that instancer.
+/// </summary>
+/// <remarks>
+/// Nested instancing has no single "the" instancer. A prototype instanced by an
+/// inner instancer that is itself instanced by an outer one has two indices, and
+/// naming only the innermost path while reporting a composed mixed-radix ordinal
+/// describes an instance that does not exist: the path says one level and the
+/// number says another. One entry per level, ordered outermost to innermost, is
+/// the only description a consumer can decode back to a scene instance.
+/// </remarks>
+public readonly record struct SelectionInstancerEntry
+{
+    /// <summary>Initializes one level of an instancing chain.</summary>
+    /// <param name="instancerPath">The absolute path of the instancer at this level.</param>
+    /// <param name="instanceIndex">The instance's own zero-based index inside it.</param>
+    public SelectionInstancerEntry(string instancerPath, int instanceIndex)
+    {
+        SelectionPathValidation.ValidateAbsolutePrimPath(
+            instancerPath,
+            nameof(instancerPath));
+        ArgumentOutOfRangeException.ThrowIfNegative(instanceIndex);
+        InstancerPath = instancerPath;
+        InstanceIndex = instanceIndex;
+    }
+
+    /// <summary>Gets the absolute path of the instancer at this level.</summary>
+    public string InstancerPath { get; }
+
+    /// <summary>Gets the instance's own zero-based index inside that instancer.</summary>
+    public int InstanceIndex { get; }
+}
+
+/// <summary>
+/// Identifies one selected prim, instance, or authored subprim.
 /// </summary>
 public readonly record struct SelectionItem
 {
+    private readonly SelectionInstancerEntry[]? _instancerContext;
+
+    /// <summary>
+    /// Creates one renderer-neutral selection item from a complete instancing
+    /// chain, selecting the prototype itself rather than a component of it.
+    /// </summary>
+    /// <param name="primPath">The selected absolute prim path.</param>
+    /// <param name="instancerContext">
+    /// The instancing chain, ordered outermost to innermost. An empty chain
+    /// selects the prim itself.
+    /// </param>
+    /// <remarks>
+    /// This is a named factory rather than a constructor on purpose. A
+    /// chain-shaped constructor and the long-standing
+    /// <c>(string, string?, int?, int?)</c> one are both applicable to a call
+    /// that passes <see langword="null"/> for the second argument, and neither
+    /// is better, so every such call became a compile error the day the chain
+    /// shape was added. A distinct name has no such interaction and says at the
+    /// call site which identity shape is being built.
+    /// </remarks>
+    public static SelectionItem FromInstancerContext(
+        string primPath,
+        IReadOnlyList<SelectionInstancerEntry> instancerContext) =>
+        new(primPath, instancerContext, elementIndex: null, SelectionElementKind.None);
+
+    /// <summary>
+    /// Creates one renderer-neutral selection item from a complete instancing
+    /// chain and an explicitly named component.
+    /// </summary>
+    /// <param name="primPath">The selected absolute prim path.</param>
+    /// <param name="instancerContext">
+    /// The instancing chain, ordered outermost to innermost. An empty chain
+    /// selects the prim itself.
+    /// </param>
+    /// <param name="elementIndex">
+    /// The zero-based face, edge, point, or other subprim index, or
+    /// <see langword="null"/> for the prototype itself.
+    /// </param>
+    /// <param name="elementKind">What <paramref name="elementIndex"/> identifies.</param>
+    /// <remarks>
+    /// Both element parameters are required. The two factory shapes therefore
+    /// differ in arity and never compete for one call, which is the property
+    /// the removed constructor overloads could not have.
+    /// </remarks>
+    public static SelectionItem FromInstancerContext(
+        string primPath,
+        IReadOnlyList<SelectionInstancerEntry> instancerContext,
+        int? elementIndex,
+        SelectionElementKind elementKind) =>
+        new(primPath, instancerContext, elementIndex, elementKind);
+
+    private SelectionItem(
+        string primPath,
+        IReadOnlyList<SelectionInstancerEntry> instancerContext,
+        int? elementIndex,
+        SelectionElementKind elementKind)
+    {
+        ArgumentNullException.ThrowIfNull(instancerContext);
+        SelectionPathValidation.ValidateAbsolutePrimPath(primPath, nameof(primPath));
+        SelectionInstancerEntry[]? chain = null;
+        if (instancerContext.Count != 0)
+        {
+            chain = new SelectionInstancerEntry[instancerContext.Count];
+            for (int index = 0; index < chain.Length; index++)
+            {
+                SelectionInstancerEntry entry = instancerContext[index];
+
+                // Re-validating each entry is what makes the copy trustworthy:
+                // a default-constructed entry carries a null path and would
+                // otherwise reach a consumer as an instancer level with no path.
+                chain[index] = new SelectionInstancerEntry(
+                    entry.InstancerPath,
+                    entry.InstanceIndex);
+            }
+        }
+        ValidateElement(elementIndex, elementKind);
+
+        PrimPath = primPath;
+        _instancerContext = chain;
+        ElementIndex = elementIndex;
+        ElementKind = elementKind;
+    }
+
     /// <summary>Initializes one renderer-neutral selection item.</summary>
     /// <param name="primPath">The selected absolute prim path.</param>
     /// <param name="instancerPath">The absolute instancer path, when the item is an instance.</param>
     /// <param name="instanceIndex">The zero-based instance index, when the item is an instance.</param>
-    /// <param name="elementIndex">The zero-based face, edge, point, or other subprim index.</param>
+    /// <param name="elementIndex">The zero-based authored face index.</param>
+    /// <remarks>
+    /// This is the long-standing four-parameter shape, kept exactly as it was so
+    /// existing sources keep compiling. It predates
+    /// <see cref="SelectionElementKind"/>, so it cannot say what its index
+    /// means and does not pretend to: the index is preserved and reported as
+    /// <see cref="SelectionElementKind.Unspecified"/>. Calling it a face would
+    /// be a guess that turns every legacy edge or point selection into a face
+    /// selection silently, which is exactly the ambiguity the kind exists to
+    /// remove. <see cref="RenderPickResult.Hit"/> resolves an unspecified kind
+    /// against the request's target; a caller that already knows the kind
+    /// states it through the five-parameter overload.
+    /// </remarks>
     public SelectionItem(
         string primPath,
         string? instancerPath = null,
         int? instanceIndex = null,
         int? elementIndex = null)
+        : this(
+            primPath,
+            instancerPath,
+            instanceIndex,
+            elementIndex,
+            elementIndex is null
+                ? SelectionElementKind.None
+                : SelectionElementKind.Unspecified)
+    {
+    }
+
+    /// <summary>Initializes one renderer-neutral selection item.</summary>
+    /// <param name="primPath">The selected absolute prim path.</param>
+    /// <param name="instancerPath">The absolute instancer path, when the item is an instance.</param>
+    /// <param name="instanceIndex">The zero-based instance index, when the item is an instance.</param>
+    /// <param name="elementIndex">The zero-based face, edge, point, or other subprim index.</param>
+    /// <param name="elementKind">
+    /// What <paramref name="elementIndex"/> identifies. It must be
+    /// <see cref="SelectionElementKind.None"/> exactly when no element index is
+    /// supplied, so a bare index can never reach a consumer.
+    /// </param>
+    /// <remarks>
+    /// Every parameter is required. That is deliberate: the four-parameter
+    /// overload is the long-standing shape and must stay reachable with exactly
+    /// its old argument lists, and two overloads that both default their tail
+    /// would make every shorter call ambiguous.
+    /// </remarks>
+    public SelectionItem(
+        string primPath,
+        string? instancerPath,
+        int? instanceIndex,
+        int? elementIndex,
+        SelectionElementKind elementKind)
     {
         SelectionPathValidation.ValidateAbsolutePrimPath(primPath, nameof(primPath));
         if (instancerPath is not null)
@@ -456,43 +659,174 @@ public readonly record struct SelectionItem
         {
             throw new ArgumentOutOfRangeException(nameof(instanceIndex));
         }
-        if (elementIndex < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(elementIndex));
-        }
+        ValidateElement(elementIndex, elementKind);
 
         PrimPath = primPath;
-        InstancerPath = instancerPath;
-        InstanceIndex = instanceIndex;
+        _instancerContext = instancerPath is null
+            ? null
+            : [new SelectionInstancerEntry(instancerPath, instanceIndex!.Value)];
         ElementIndex = elementIndex;
+        ElementKind = elementKind;
     }
 
     /// <summary>Gets the selected absolute prim path.</summary>
     public string PrimPath { get; }
 
-    /// <summary>Gets the absolute instancer path, when the item is an instance.</summary>
-    public string? InstancerPath { get; }
+    /// <summary>
+    /// Gets the instancing chain, ordered outermost to innermost. Empty when
+    /// the item selects the prim itself.
+    /// </summary>
+    public IReadOnlyList<SelectionInstancerEntry> InstancerContext =>
+        _instancerContext ?? [];
 
-    /// <summary>Gets the zero-based instance index, when the item is an instance.</summary>
-    public int? InstanceIndex { get; }
+    /// <summary>
+    /// Gets the innermost instancer path, when the item is an instance.
+    /// </summary>
+    /// <remarks>
+    /// This is a convenience view of the last <see cref="InstancerContext"/>
+    /// entry, kept because the overwhelming majority of scenes have exactly one
+    /// instancing level and reading a one-element list for them is noise. It is
+    /// the innermost level specifically, because that is the instancer that
+    /// directly instances the selected prototype; a consumer that needs the
+    /// outer levels must read the chain, which is the only place they exist.
+    /// </remarks>
+    public string? InstancerPath =>
+        _instancerContext is { Length: > 0 } chain
+            ? chain[^1].InstancerPath
+            : null;
+
+    /// <summary>
+    /// Gets the instance's own index inside <see cref="InstancerPath"/>, when
+    /// the item is an instance.
+    /// </summary>
+    /// <remarks>
+    /// This is the innermost level's own index, which is what its instancer
+    /// path names. It is deliberately not a composed mixed-radix ordinal: an
+    /// index from one level reported beside a path from another describes an
+    /// instance that does not exist.
+    /// </remarks>
+    public int? InstanceIndex =>
+        _instancerContext is { Length: > 0 } chain
+            ? chain[^1].InstanceIndex
+            : null;
 
     /// <summary>Gets the zero-based face, edge, point, or other subprim index.</summary>
     public int? ElementIndex { get; }
 
+    /// <summary>Gets what <see cref="ElementIndex"/> identifies.</summary>
+    /// <remarks>
+    /// <see cref="SelectionElementKind.Unspecified"/> is a distinct identity
+    /// from <see cref="SelectionElementKind.Face"/>, so two items that name the
+    /// same index are equal only when they agree about what the index means.
+    /// An unspecified item and a face item for index 3 describe different
+    /// knowledge about the same number, and collapsing them would let a
+    /// selection set silently drop one of the two.
+    /// </remarks>
+    public SelectionElementKind ElementKind { get; }
+
+    /// <summary>
+    /// Returns this identity with <paramref name="elementKind"/> in place of an
+    /// unstated element kind, leaving every other field untouched.
+    /// </summary>
+    internal SelectionItem WithElementKind(SelectionElementKind elementKind) =>
+        new(PrimPath, _instancerContext, ElementIndex, elementKind);
+
+    private SelectionItem(
+        string primPath,
+        SelectionInstancerEntry[]? instancerContext,
+        int? elementIndex,
+        SelectionElementKind elementKind)
+    {
+        PrimPath = primPath;
+        _instancerContext = instancerContext;
+        ElementIndex = elementIndex;
+        ElementKind = elementKind;
+    }
+
+    /// <summary>Compares complete identity, including every instancing level.</summary>
+    public bool Equals(SelectionItem other)
+    {
+        if (!string.Equals(PrimPath, other.PrimPath, StringComparison.Ordinal) ||
+            ElementIndex != other.ElementIndex ||
+            ElementKind != other.ElementKind ||
+            InstancerContext.Count != other.InstancerContext.Count)
+        {
+            return false;
+        }
+        for (int index = 0; index < InstancerContext.Count; index++)
+        {
+            if (InstancerContext[index] != other.InstancerContext[index])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = default(HashCode);
+        hash.Add(PrimPath, StringComparer.Ordinal);
+        hash.Add(ElementIndex);
+        hash.Add(ElementKind);
+        IReadOnlyList<SelectionInstancerEntry> chain = InstancerContext;
+        hash.Add(chain.Count);
+        for (int index = 0; index < chain.Count; index++)
+        {
+            hash.Add(chain[index]);
+        }
+        return hash.ToHashCode();
+    }
+
+    private static void ValidateElement(
+        int? elementIndex,
+        SelectionElementKind elementKind)
+    {
+        if (elementIndex < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(elementIndex));
+        }
+        if (!Enum.IsDefined(elementKind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(elementKind));
+        }
+
+        // An element index with no kind is exactly the ambiguity the kind
+        // exists to remove, and a kind with no index names nothing.
+        if ((elementKind == SelectionElementKind.None) != (elementIndex is null))
+        {
+            throw new ArgumentException(
+                "An element index and an element kind must either both be supplied or both be omitted.",
+                nameof(elementKind));
+        }
+    }
+
     internal void Validate(string parameterName)
     {
         SelectionPathValidation.ValidateAbsolutePrimPath(PrimPath, parameterName);
-        if (InstancerPath is not null)
+        IReadOnlyList<SelectionInstancerEntry> chain = InstancerContext;
+        for (int index = 0; index < chain.Count; index++)
         {
-            SelectionPathValidation.ValidateAbsolutePrimPath(InstancerPath, parameterName);
+            SelectionInstancerEntry entry = chain[index];
+            SelectionPathValidation.ValidateAbsolutePrimPath(
+                entry.InstancerPath,
+                parameterName);
+            if (entry.InstanceIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    parameterName,
+                    "Selection instance and element indices must be non-negative.");
+            }
         }
-        if (InstancerPath is null != InstanceIndex is null)
+        if ((ElementKind == SelectionElementKind.None) != (ElementIndex is null) ||
+            !Enum.IsDefined(ElementKind))
         {
             throw new ArgumentException(
                 "The selection item contains invalid instance or element identity.",
                 parameterName);
         }
-        if (InstanceIndex < 0 || ElementIndex < 0)
+        if (ElementIndex < 0)
         {
             throw new ArgumentOutOfRangeException(
                 parameterName,
@@ -711,22 +1045,23 @@ public enum RenderDrawMode
 /// Selects renderer-neutral geometric complexity.
 /// </summary>
 /// <remarks>
-/// hdSilk applies complexity to emitted curve and point tessellation density only.
-/// Subdivision refinement is intentionally out of scope so the default preserves the
-/// existing Storm parity baseline for subdivision scenes.
+/// hdSilk applies complexity to emitted curve and point tessellation density and to the
+/// bounded OpenSubdiv refinement level it evaluates authored subdivision surfaces at.
+/// <see cref="RenderComplexity.Low"/> refines nothing, so the existing Storm parity
+/// baseline for subdivision scenes is preserved by the default.
 /// </remarks>
 public enum RenderComplexity
 {
-    /// <summary>Use the current parity baseline density.</summary>
+    /// <summary>Use the current parity baseline density and refine no subdivision surface.</summary>
     Low,
 
-    /// <summary>Use a medium curve and point density.</summary>
+    /// <summary>Use a medium curve and point density and refine subdivision surfaces once.</summary>
     Medium,
 
-    /// <summary>Use a high curve and point density.</summary>
+    /// <summary>Use a high curve and point density and refine subdivision surfaces twice.</summary>
     High,
 
-    /// <summary>Use the highest curve and point density.</summary>
+    /// <summary>Use the highest curve and point density and refine subdivision surfaces three times.</summary>
     VeryHigh
 }
 
@@ -894,8 +1229,8 @@ public readonly record struct RenderSettings
     public bool UseSceneMaterials { get; }
 
     /// <summary>
-    /// Gets the requested curve and point tessellation density. Subdivision refinement is
-    /// intentionally not controlled by this setting.
+    /// Gets the requested curve and point tessellation density, which also selects the
+    /// bounded OpenSubdiv refinement level applied to authored subdivision surfaces.
     /// </summary>
     public RenderComplexity Complexity { get; }
 
@@ -904,6 +1239,45 @@ public readonly record struct RenderSettings
 
     /// <summary>Gets the exposure adjustment in stops before the output transform.</summary>
     public float Exposure { get; }
+
+    /// <summary>
+    /// Gets or initializes an optional colour-managed display transform, or
+    /// <see langword="null"/> to use <see cref="OutputTransform"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Additive on purpose. Every existing constructor leaves this
+    /// <see langword="null"/>, so identity and Reinhard output stay exactly what they
+    /// were: the same in-shader path, the same pixels, the same CPU export.
+    /// </para>
+    /// <para>
+    /// A display transform and a non-identity <see cref="OutputTransform"/> describe
+    /// two different display conversions of the same image, so they are mutually
+    /// exclusive. Use <see cref="ValidateDisplayTransform"/> to reject the
+    /// combination at the point a renderer is about to act on the settings.
+    /// </para>
+    /// </remarks>
+    public RenderDisplayTransform? DisplayTransform { get; init; }
+
+    /// <summary>
+    /// Throws when a display transform is combined with a non-identity output
+    /// transform, which would apply two display conversions to one image.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="DisplayTransform"/> is set and <see cref="OutputTransform"/> is not
+    /// <see cref="RenderOutputTransform.Identity"/>.
+    /// </exception>
+    public void ValidateDisplayTransform()
+    {
+        if (DisplayTransform is not null &&
+            OutputTransform != RenderOutputTransform.Identity)
+        {
+            throw new InvalidOperationException(
+                "RenderSettings.OutputTransform must be Identity when a display transform " +
+                "is set. A built-in output transform alongside a colour-managed display " +
+                "transform would convert the image twice.");
+        }
+    }
 }
 
 /// <summary>Identifies the output transform applied to linear scene color.</summary>

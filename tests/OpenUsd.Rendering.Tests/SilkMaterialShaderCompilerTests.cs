@@ -127,7 +127,8 @@ public sealed class SilkMaterialShaderCompilerTests
         await Assert.That(pending.Status).IsEqualTo(SilkMaterialShaderStatus.Placeholder);
         await Assert.That(ready.Status).IsEqualTo(SilkMaterialShaderStatus.Ready);
         await Assert.That(ready.Program.CacheHash).IsEqualTo(key.CacheHash);
-        await Assert.That(ready.Program.BindingLayout.MaterialSlots.Count).IsEqualTo(3);
+        await Assert.That(ready.Program.BindingLayout.MaterialSlots.Count)
+            .IsEqualTo(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count);
     }
 
     [Test]

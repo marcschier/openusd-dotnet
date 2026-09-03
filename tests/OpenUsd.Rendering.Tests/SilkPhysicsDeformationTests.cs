@@ -198,7 +198,7 @@ public sealed class SilkPhysicsDeformationTests
         byte[] pathBytes = Encoding.UTF8.GetBytes(MeshPath);
         float[] points = AuthoredPoints;
         uint[] indices = [0, 1, 2];
-        int size = 224 +
+        int size = 268 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -235,7 +235,7 @@ public sealed class SilkPhysicsDeformationTests
                 i % 5 == 0 ? 1 : 0);
         }
 
-        int cursor = 224;
+        int cursor = 268;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)

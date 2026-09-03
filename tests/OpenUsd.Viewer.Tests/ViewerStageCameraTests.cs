@@ -861,7 +861,7 @@ public sealed class ViewerStageCameraTests
             "private async Task RunStageCameraBackendSmokeAsync",
             "private async Task<ViewerStageCameraBackendFrameEvidence[]>");
 
-        await Assert.That(markup).Contains("x:Name=\"UseSelectedCameraButton\"");
+        await Assert.That(markup).Contains("x:Name=\"UseSelectedCameraMenuItem\"");
         await Assert.That(markup)
             .Contains("AutomationProperties.Name=\"Use selected UsdGeomCamera\"");
         await Assert.That(window).Contains("OnUseSelectedCameraClick");

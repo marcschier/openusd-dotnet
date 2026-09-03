@@ -98,4 +98,44 @@ def Xform "World"
             interpolation = "faceVarying"
         )
     }
+
+    # A quad whose only uniform primvar is time sampled so that it resolves at
+    # one time and cannot resolve at another. hdSilk expands the topology to
+    # carry a uniform primvar onto corners, so this prim's emitted point array
+    # switches between four authored points and six expanded corners on a
+    # primvar change alone -- no topology edit is involved. That is exactly the
+    # case in which the published topology revision has to advance in both
+    # directions, or a consumer keeps a vertex buffer the toggle invalidated.
+    # A quad plus one authored point no face references. USD permits stray
+    # points, and hdSilk emits them, but no primitive rasterizes them: they are
+    # not pick targets, so their point-origin entries must be the "no authored
+    # counterpart" sentinel rather than their own index.
+    def Mesh "ProbeStrayPointMesh"
+    {
+        uniform token subdivisionScheme = "none"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [
+            (6, 0, 0),
+            (7, 0, 0),
+            (7, 1, 0),
+            (6, 1, 0),
+            (9, 9, 0)
+        ]
+    }
+
+    def Mesh "ProbeExpandedTopologyToggleMesh"
+    {
+        uniform token subdivisionScheme = "none"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(3, 0, 0), (4, 0, 0), (4, 1, 0), (3, 1, 0)]
+        float[] primvars:faceTint (
+            interpolation = "uniform"
+        )
+        float[] primvars:faceTint.timeSamples = {
+            0: [0.25],
+            1: [],
+        }
+    }
 }

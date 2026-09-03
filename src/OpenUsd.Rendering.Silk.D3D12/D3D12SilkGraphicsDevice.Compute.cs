@@ -73,7 +73,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            CreateComputeRootSignature(out rootSignature);
+            CreateComputeRootSignature(
+                program.BindingLayout.Descriptor,
+                out rootSignature);
             byte[] code = program.Shader.Descriptor.Code.ToArray();
             fixed (byte* codePointer = code)
             {
@@ -109,18 +111,33 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
-    private void CreateComputeRootSignature(out ID3D12RootSignature* rootSignature)
+    private void CreateComputeRootSignature(
+        SilkComputeBindingLayoutDescriptor layout,
+        out ID3D12RootSignature* rootSignature)
     {
-        RootParameter* parameters = stackalloc RootParameter[2];
-        parameters[0] = new RootParameter(
-            RootParameterType.TypeUav,
-            shaderVisibility: ShaderVisibility.All,
-            descriptor: new RootDescriptor(0, 0));
-        parameters[1] = new RootParameter(
-            RootParameterType.TypeCbv,
-            shaderVisibility: ShaderVisibility.All,
-            descriptor: new RootDescriptor(1, 0));
-        var description = new RootSignatureDesc(2, parameters);
+        // One root descriptor per declared slot, in slot order, so root
+        // parameter i is slot i on every backend. Root descriptors rather than
+        // tables because every compute slot is a buffer, which is exactly what
+        // a root SRV, UAV or CBV can address without a descriptor heap.
+        IReadOnlyList<SilkComputeSlot> slots = layout.Slots;
+        RootParameter* parameters =
+            stackalloc RootParameter[SilkComputeBindingLayoutDescriptor.MaximumSlots];
+        for (int slot = 0; slot < slots.Count; slot++)
+        {
+            RootParameterType type = slots[slot].Kind switch
+            {
+                SilkComputeSlotKind.ReadWriteStructured => RootParameterType.TypeUav,
+                SilkComputeSlotKind.Uniform => RootParameterType.TypeCbv,
+                _ => RootParameterType.TypeSrv
+            };
+            parameters[slot] = new RootParameter(
+                type,
+                shaderVisibility: ShaderVisibility.All,
+                descriptor: new RootDescriptor(slots[slot].Binding, slots[slot].Set));
+        }
+        var description = new RootSignatureDesc(
+            checked((uint)slots.Count),
+            parameters);
         ID3D10Blob* serialized = null;
         ID3D10Blob* errors = null;
         ID3D12RootSignature* nativeRootSignature = null;

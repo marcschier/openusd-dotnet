@@ -56,13 +56,13 @@ def Xform "World"
 
     def Xform "Instance" (
         instanceable = true
-        prepend references = @C:/git/marcschier/openusd2/native/../test-assets\native-bounds-model.usda@</Model>
+        prepend references = @D:/git/marcschier/openusd2/native/../test-assets\native-bounds-model.usda@</Model>
     )
     {
     }
 
     def Xform "Payload" (
-        prepend payload = @C:/git/marcschier/openusd2/native/../test-assets\native-bounds-model.usda@</Model>
+        prepend payload = @D:/git/marcschier/openusd2/native/../test-assets\native-bounds-model.usda@</Model>
     )
     {
     }

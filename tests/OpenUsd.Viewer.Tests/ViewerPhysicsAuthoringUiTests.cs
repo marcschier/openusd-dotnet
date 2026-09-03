@@ -73,13 +73,23 @@ public sealed class ViewerPhysicsAuthoringUiTests
     [Test]
     public async Task TheAuthoringToolbarItemsMatchTheWindowsOwnList()
     {
+        // The transport strip only ever shows Play/Pause, Stop, and Step: every other authoring
+        // control (Loop, Speed, Preview, Bake, Gizmo, Snap, Undo, Redo, Enable) moved into the
+        // Physics menu, so this checks the reduced list the window actually keeps in its toolbar
+        // overflow plan rather than the wider set exercised generically above.
+        ViewerToolbarItem[] realPhysicsToolbar =
+        [
+            new("PhysicsPlayPauseButton", "Play", 72),
+            new("PhysicsStopButton", "Stop", 72),
+            new("PhysicsStepButton", "Step", 72),
+        ];
         string source = await File.ReadAllTextAsync(Path.Combine(
             FindRepositoryRoot(),
             "src",
             "OpenUsd.Viewer",
             "MainWindow.Physics.cs"));
 
-        foreach (ViewerToolbarItem item in PhysicsToolbar)
+        foreach (ViewerToolbarItem item in realPhysicsToolbar)
         {
             await Assert.That(source).Contains($"new ViewerToolbarItem(\"{item.Name}\"");
         }

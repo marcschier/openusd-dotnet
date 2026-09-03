@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
@@ -51,20 +51,41 @@
     <None Include="..\..\eng\shaders\checked\pick.vertex.metal"
           Link="Shaders\pick.vertex.metal"
           Visible="false" />
+    <None Include="..\..\eng\shaders\checked\pick.subprim.vertex.metal"
+          Link="Shaders\pick.subprim.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\pick.whole.vertex.metal"
+          Link="Shaders\pick.whole.vertex.metal"
+          Visible="false" />
     <None Include="..\..\eng\shaders\checked\pick.fragment.metal"
           Link="Shaders\pick.fragment.metal"
           Visible="false" />
     <None Include="..\..\eng\shaders\checked\selection.mask.vertex.metal"
           Link="Shaders\selection.mask.vertex.metal"
           Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.mask.subprim.vertex.metal"
+          Link="Shaders\selection.mask.subprim.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.mask.whole.vertex.metal"
+          Link="Shaders\selection.mask.whole.vertex.metal"
+          Visible="false" />
     <None Include="..\..\eng\shaders\checked\selection.mask.fragment.metal"
           Link="Shaders\selection.mask.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.mask.occluded.fragment.metal"
+          Link="Shaders\selection.mask.occluded.fragment.metal"
           Visible="false" />
     <None Include="..\..\eng\shaders\checked\selection.outline.vertex.metal"
           Link="Shaders\selection.outline.vertex.metal"
           Visible="false" />
     <None Include="..\..\eng\shaders\checked\selection.outline.fragment.metal"
           Link="Shaders\selection.outline.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\shadow.vertex.metal"
+          Link="Shaders\shadow.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\shadow.fragment.metal"
+          Link="Shaders\shadow.fragment.metal"
           Visible="false" />
     <None Include="..\..\eng\shaders\checked\compute.fill.metal"
           Link="Shaders\compute.fill.metal"

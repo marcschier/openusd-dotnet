@@ -157,8 +157,10 @@ public sealed class SilkPageAbiVersionContractTests
     /// <remarks>
     /// Documentation states the current version in several places, and those
     /// sentences drifted through two bumps: the architecture overview, the
-    /// renderer overview, the troubleshooting contract list, and the packaging
-    /// runtime-identity line each named a version the runtime no longer speaks.
+    /// renderer overview, the troubleshooting contract list, the packaging
+    /// runtime-identity line, the compatibility contract table, and the probe
+    /// description in the testing guide each named a version the runtime no
+    /// longer speaks.
     /// A reader following any of them reaches the wrong conclusion about which
     /// native library a build can load. Sentences describing what an *older*
     /// version introduced are deliberately not matched: those stay true forever.
@@ -185,6 +187,10 @@ public sealed class SilkPageAbiVersionContractTests
                 @"hdSilk command-page ABI (?<version>\d+)"),
             (Path.Combine("docs", "packaging.md"),
                 @"hdSilk session/page ABI \d+/(?<version>\d+)"),
+            (Path.Combine("docs", "versioning-compatibility.md"),
+                @"\| hdSilk command page \| ABI (?<version>\d+) \|"),
+            (Path.Combine("docs", "testing.md"),
+                @"It asserts page ABI (?<version>\d+) and the exact byte offsets"),
         ];
 
         List<string> drifted = [];
