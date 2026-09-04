@@ -50,7 +50,8 @@ public sealed class BridgePackageTests
         string[] projectReferences = [.. authoring
             .Descendants("ProjectReference")
             .Select(element => Path.GetFileNameWithoutExtension(
-                element.Attribute("Include")?.Value) ?? string.Empty)];
+                (element.Attribute("Include")?.Value ?? string.Empty)
+                    .Replace('\\', '/')) ?? string.Empty)];
         await Assert.That(projectReferences).IsEquivalentTo(["OpenUsd"]);
     }
 
@@ -76,6 +77,10 @@ public sealed class BridgePackageTests
                 entry.EndsWith("openusd/bridge/v1/wire.proto", StringComparison.Ordinal))).IsTrue();
             await Assert.That(entries.Any(entry =>
                 entry.EndsWith("openusd/bridge/v1/service.proto", StringComparison.Ordinal))).IsTrue();
+            await Assert.That(entries.Any(entry =>
+                entry.StartsWith("contentFiles/", StringComparison.Ordinal))).IsFalse()
+                .Because(
+                    "raw proto contracts must not be imported into consuming projects as source items");
             foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
             {
                 await Assert.That(entries).Contains(

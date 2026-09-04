@@ -3853,11 +3853,9 @@ bool VerifyImageDecode(
         uint32_t expectedHeight,
         openusd_image_info* observed)
     {
-        openusd_image_info info{
-            sizeof(openusd_image_info),
-            OPENUSD_IMAGE_INFO_VERSION,
-            0,
-            0};
+        openusd_image_info info{};
+        info.struct_size = sizeof(openusd_image_info);
+        info.version = OPENUSD_IMAGE_INFO_VERSION;
         const openusd_status sizingStatus = openusd_decode_image_rgba8(
             path,
             convertSrgbToLinear,
@@ -4018,11 +4016,11 @@ bool VerifyImageDecode(
     }
     writer.reset();
 
-    openusd_image_info floatInfo{
-        sizeof(openusd_image_info),
-        OPENUSD_IMAGE_INFO_VERSION,
-        17,
-        19};
+    openusd_image_info floatInfo{};
+    floatInfo.struct_size = sizeof(openusd_image_info);
+    floatInfo.version = OPENUSD_IMAGE_INFO_VERSION;
+    floatInfo.width = 17;
+    floatInfo.height = 19;
     if (openusd_decode_image_rgba32f(
             floatPath.string().c_str(),
             0,

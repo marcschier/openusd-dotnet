@@ -29,7 +29,7 @@
               ProtoRoot="protos"
               GrpcServices="None"
               Access="Internal" />
-    <None Include="protos\**\*.proto" Pack="true" PackagePath="contentFiles\any\any\protos\" />
+    <None Include="protos\**\*.proto" Pack="true" PackagePath="protos\" />
   </ItemGroup>
 
 </Project>

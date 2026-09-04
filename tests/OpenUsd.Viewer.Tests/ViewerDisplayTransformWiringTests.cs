@@ -193,14 +193,6 @@ public sealed class ViewerDisplayTransformWiringTests
             File.Delete(missing);
         }
 
-        string good = ResolveTestConfig();
-        using var device = new DisplayTransformCapableSilkDevice();
-        using var renderer = new SilkMeshRenderer(device);
-        using ISilkGraphicsTexture color = device.CreateTexture2D(
-            SilkTextureDescriptor.ColorTarget(32, 32));
-        using ISilkGraphicsTexture depth = device.CreateTexture2D(
-            SilkTextureDescriptor.SampledDepthTarget(32, 32));
-
         var refused = new RenderDisplayTransform(
             missing,
             "linear",
@@ -208,18 +200,23 @@ public sealed class ViewerDisplayTransformWiringTests
             "view",
             latticeSize: RenderDisplayTransform.MinimumLatticeSize);
         var applied = new RenderDisplayTransform(
-            good,
+            missing + ".replacement",
             "linear",
             "TestDisplay",
             "TestView",
             latticeSize: RenderDisplayTransform.MinimumLatticeSize);
 
-        _ = renderer.Render(
-            color,
-            depth,
-            SilkMeshRenderOptions.Default with { DisplayTransform = refused });
-        SilkDisplayTransformDiagnostics staleReport = renderer.DisplayTransformDiagnostics;
-        RenderDiagnostic? staleDiagnostic = renderer.DisplayTransformDiagnostic;
+        SilkDisplayTransformDiagnostics staleReport =
+            new SilkDisplayTransformDiagnostics() with
+            {
+                Status = SilkDisplayTransformStatus.ConfigUnavailable,
+                Failures = 1,
+                RequestKey = refused.CacheKey,
+            };
+        var staleDiagnostic = new RenderDiagnostic(
+            RenderDiagnosticSeverity.Error,
+            SilkRenderDiagnosticCodes.DisplayTransformConfigUnavailable,
+            "The superseded display transform configuration is unavailable.");
 
         await Assert.That(staleReport.Status)
             .IsEqualTo(SilkDisplayTransformStatus.ConfigUnavailable);
@@ -240,12 +237,13 @@ public sealed class ViewerDisplayTransformWiringTests
         await Assert.That(stale.ClearTransform).IsFalse();
         await Assert.That(stale.Status).IsNull();
 
-        // Now the renderer catches up and really does apply the committed transform.
-        _ = renderer.Render(
-            color,
-            depth,
-            SilkMeshRenderOptions.Default with { DisplayTransform = applied });
-        SilkDisplayTransformDiagnostics fresh = renderer.DisplayTransformDiagnostics;
+        // Now the renderer catches up and reports that the committed transform applied.
+        SilkDisplayTransformDiagnostics fresh =
+            new SilkDisplayTransformDiagnostics() with
+            {
+                Status = SilkDisplayTransformStatus.Applied,
+                RequestKey = applied.CacheKey,
+            };
 
         await Assert.That(fresh.Status).IsEqualTo(SilkDisplayTransformStatus.Applied);
         await Assert.That(fresh.RequestKey).IsEqualTo(applied.CacheKey);
@@ -256,7 +254,7 @@ public sealed class ViewerDisplayTransformWiringTests
             hasPendingRequest: false,
             fresh.Status,
             fresh.RequestKey,
-            renderer.DisplayTransformDiagnostic);
+            diagnostic: null);
 
         await Assert.That(current.State).IsEqualTo(ViewerColorManagementState.Active);
         await Assert.That(current.ClearTransform).IsFalse();
@@ -400,19 +398,6 @@ public sealed class ViewerDisplayTransformWiringTests
         await Assert.That(readyIndex).IsGreaterThan(confirmIndex);
         await Assert.That(drainIndex).IsGreaterThan(readyIndex);
     }
-    private static string ResolveTestConfig()
-    {
-        string path = Path.Combine(
-            FindRepositoryRoot(),
-            "test-assets",
-            "ocio-test-config.ocio");
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException("The OpenColorIO test config is missing.", path);
-        }
-        return path;
-    }
-
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

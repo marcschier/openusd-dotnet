@@ -44,7 +44,8 @@ public sealed class ViewerBridgePackageTests
         foreach (string reference in viewer
             .Descendants("ProjectReference")
             .Select(element => Path.GetFileNameWithoutExtension(
-                element.Attribute("Include")?.Value) ?? string.Empty))
+                (element.Attribute("Include")?.Value ?? string.Empty)
+                    .Replace('\\', '/')) ?? string.Empty))
         {
             await Assert.That(reference).DoesNotContain("Bridge");
         }
@@ -63,7 +64,8 @@ public sealed class ViewerBridgePackageTests
         string[] projectReferences = [.. integration
             .Descendants("ProjectReference")
             .Select(element => Path.GetFileNameWithoutExtension(
-                element.Attribute("Include")?.Value) ?? string.Empty)];
+                (element.Attribute("Include")?.Value ?? string.Empty)
+                    .Replace('\\', '/')) ?? string.Empty)];
 
         await Assert.That(projectReferences).IsEquivalentTo(
             ["OpenUsd.Viewer", "OpenUsd.Bridge.Grpc"]);

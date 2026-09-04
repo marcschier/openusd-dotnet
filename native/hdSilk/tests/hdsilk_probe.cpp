@@ -9353,6 +9353,7 @@ FindScalar(const HdSilkMaterialRecord& record, uint32_t parameter)
     return nullptr;
 }
 
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
 const HdSilkMaterialTexture*
 FindTexture(const HdSilkMaterialRecord& record, uint32_t parameter)
 {
@@ -9365,6 +9366,7 @@ FindTexture(const HdSilkMaterialRecord& record, uint32_t parameter)
     }
     return nullptr;
 }
+#endif
 
 void SetMdlAdapterPath(const char* path)
 {
@@ -9388,28 +9390,13 @@ std::string ResolveMdlAdapterDefaultPath()
     return HdSilkMdlAdapter::GetResolvedPath();
 }
 
-std::string JoinProbePath(const std::string& directory, const std::string& name)
-{
-#if defined(_WIN32)
-    const char separator = '\\';
-#else
-    const char separator = '/';
-#endif
-    std::string path(directory);
-    if (!path.empty() && path.back() != '/' && path.back() != '\\')
-    {
-        path.push_back(separator);
-    }
-    path.append(name);
-    return path;
-}
-
 bool ProbeFileExists(const std::string& path)
 {
     std::ifstream file(path, std::ios::binary);
     return file.good();
 }
 
+#if defined(HDSILK_PROBE_MDL_ADAPTER)
 bool CopyProbeFile(const std::string& source, const std::string& destination)
 {
     std::ifstream input(source, std::ios::binary);
@@ -9425,6 +9412,7 @@ bool CopyProbeFile(const std::string& source, const std::string& destination)
     output << input.rdbuf();
     return output.good();
 }
+#endif
 
 /// An adapter path that is not absolute must be refused outright. Resolving one
 /// against the process working directory is exactly the search this loader

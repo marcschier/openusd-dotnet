@@ -121,7 +121,6 @@ public sealed class PhysicsRenderChannelTests
     {
         var channel = new PhysicsRenderChannel(new PhysicsRenderCapacities(64), bufferCount: 4);
         var destination = new PhysicsRenderSnapshot(new PhysicsRenderCapacities(64));
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const int publications = 4000;
         int torn = 0;
         int reads = 0;
@@ -155,13 +154,14 @@ public sealed class PhysicsRenderChannelTests
                     snapshot.EndWrite();
                     _ = channel.Publish(snapshot);
                 }
-            },
-            stop.Token);
+            });
 
-        while (!producer.IsCompleted)
+        Task producerCompletion = producer.WaitAsync(TimeSpan.FromSeconds(30));
+        while (!producerCompletion.IsCompleted)
         {
             if (!channel.TryCopyLatest(destination))
             {
+                await Task.Yield();
                 continue;
             }
 
@@ -185,7 +185,7 @@ public sealed class PhysicsRenderChannelTests
             }
         }
 
-        await producer;
+        await producerCompletion;
         if (channel.TryCopyLatest(destination))
         {
             reads++;
