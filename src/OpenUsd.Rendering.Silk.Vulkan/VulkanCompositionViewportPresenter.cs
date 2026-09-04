@@ -1073,7 +1073,7 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
                 "Vulkan composition presentation is supported on Windows and Linux.");
         }
 
-        Vk api = new(SilkNativeLibraryContext.Load(GetVulkanLibraryNames()));
+        Vk api = new(SilkNativeLibraryContext.Load(VulkanLoaderLibrary.GetCandidateNames()));
         Instance instance = default;
         try
         {
@@ -2580,14 +2580,6 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
         throw new InvalidOperationException($"{operation} returned an invalid native handle.");
     }
 
-    private static string[] GetVulkanLibraryNames()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return ["vulkan-1.dll"];
-        }
-        return ["libvulkan.so.1", "libvulkan.so"];
-    }
 }
 
 internal sealed class VulkanExternalHandleLease : ICompositionExternalHandleLease

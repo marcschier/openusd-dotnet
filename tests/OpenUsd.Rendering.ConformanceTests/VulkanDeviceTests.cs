@@ -9,6 +9,44 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class VulkanDeviceTests
 {
     [Test]
+    public async Task ExplicitVulkanLoaderPathIsAbsoluteExistingAndAuthoritative()
+    {
+        string? previous = Environment.GetEnvironmentVariable(
+            VulkanLoaderLibrary.PathEnvironmentVariable);
+        string loader = Path.GetTempFileName();
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                VulkanLoaderLibrary.PathEnvironmentVariable,
+                loader);
+            await Assert.That(VulkanLoaderLibrary.GetCandidateNames())
+                .IsEquivalentTo([Path.GetFullPath(loader)]);
+
+            Environment.SetEnvironmentVariable(
+                VulkanLoaderLibrary.PathEnvironmentVariable,
+                "relative-vulkan-loader");
+            await Assert.That(() => VulkanLoaderLibrary.GetCandidateNames())
+                .Throws<InvalidOperationException>();
+
+            string missing = Path.Combine(
+                Path.GetTempPath(),
+                $"missing-vulkan-loader-{Guid.NewGuid():N}");
+            Environment.SetEnvironmentVariable(
+                VulkanLoaderLibrary.PathEnvironmentVariable,
+                missing);
+            await Assert.That(() => VulkanLoaderLibrary.GetCandidateNames())
+                .Throws<FileNotFoundException>();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                VulkanLoaderLibrary.PathEnvironmentVariable,
+                previous);
+            File.Delete(loader);
+        }
+    }
+
+    [Test]
     public async Task DescriptorIndexedTextureTableProbeRecordsSetupFailure()
     {
         var failure = new InvalidOperationException("injected descriptor pool failure");

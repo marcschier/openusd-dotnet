@@ -119,7 +119,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     /// <summary>Creates a headless Vulkan device and graphics queue.</summary>
     public static VulkanSilkGraphicsDevice Create()
     {
-        Vk api = new(SilkNativeLibraryContext.Load(GetVulkanLibraryNames()));
+        Vk api = new(SilkNativeLibraryContext.Load(VulkanLoaderLibrary.GetCandidateNames()));
         Instance instance = default;
         Device device = default;
         try
@@ -538,19 +538,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
         throw new PlatformNotSupportedException(
             "No Vulkan queue supports both graphics and compute.");
-    }
-
-    private static string[] GetVulkanLibraryNames()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return ["vulkan-1.dll"];
-        }
-        if (OperatingSystem.IsMacOS())
-        {
-            return ["libvulkan.1.dylib", "libvulkan.dylib"];
-        }
-        return ["libvulkan.so.1", "libvulkan.so"];
     }
 
     private uint FindMemoryType(uint typeBits, MemoryPropertyFlags desired)
