@@ -329,6 +329,10 @@ Assert-Contains `
     $renderWorkflow `
     "Join-Path `$runtimeRoot 'bin'" `
     'Windows volume conformance runtime'
+Assert-Contains `
+    $renderWorkflow `
+    "Platform: ''" `
+    'Windows volume conformance runtime'
 
 # Executed, not asserted about: the resolution itself is run against a pinned host, a
 # PATH host, and neither.

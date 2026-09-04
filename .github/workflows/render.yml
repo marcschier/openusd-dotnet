@@ -465,6 +465,7 @@ jobs:
         # hioOpenVDB plugins come from the parity runtime staged earlier in this
         # job, just as they do in the Linux volume step.
         env:
+          Platform: ''
           OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/parity-capture/win-x64/runtime/plugin/usd
         run: |
           $runtimeRoot = Join-Path $PWD 'artifacts/parity-capture/win-x64/runtime'
