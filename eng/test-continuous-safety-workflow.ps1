@@ -50,6 +50,8 @@ $directoryBuild = Get-Content (
     Join-Path $repoRoot 'Directory.Build.props') -Raw
 $performanceRunner = Get-Content (
     Join-Path $repoRoot 'eng/run-performance.ps1') -Raw
+$managedTestRunner = Get-Content (
+    Join-Path $repoRoot 'eng/run-managed-tests.ps1') -Raw
 $parityRunner = Get-Content (
     Join-Path $repoRoot 'eng/run-parity-capture.ps1') -Raw
 $solution = Get-Content (Join-Path $repoRoot 'OpenUsd.slnx') -Raw
@@ -95,6 +97,14 @@ Assert-DoesNotContain `
     $ciWorkflow `
     './eng/run-managed-tests.ps1 -Configuration Release' `
     'Managed CI workflow'
+Assert-Contains `
+    $managedTestRunner `
+    'Register-VulkanTestRuntimeDriver' `
+    'Managed test runner'
+Assert-Contains `
+    $managedTestRunner `
+    'Restore-VulkanTestRuntimeDriver' `
+    'Managed test runner'
 Assert-Contains $ciWorkflow '--managed-safety' 'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `

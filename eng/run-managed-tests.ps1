@@ -21,6 +21,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $PSScriptRoot 'vulkan-test-runtime-registry.ps1')
 
 # Resolve the repository-pinned host explicitly rather than trusting PATH.
 #
@@ -366,6 +367,7 @@ foreach ($run in $runs)
     )
     $arguments += $TestArguments
     $oldVulkanEnvironment = @{}
+    $driverRegistration = $null
     foreach ($name in $vulkanEnvironmentNames)
     {
         $oldVulkanEnvironment[$name] = [Environment]::GetEnvironmentVariable(
@@ -379,6 +381,11 @@ foreach ($run in $runs)
             $swiftShaderIcd = Prepare-PackagedSwiftShaderIcd `
                 -AssemblyName $run.AssemblyName `
                 -TestDll $run.Dll
+            if (-not [string]::IsNullOrWhiteSpace($swiftShaderIcd))
+            {
+                $driverRegistration = Register-VulkanTestRuntimeDriver `
+                    -ManifestPath $swiftShaderIcd
+            }
         }
         catch
         {
@@ -396,18 +403,25 @@ foreach ($run in $runs)
     }
     finally
     {
-        foreach ($name in $vulkanEnvironmentNames)
+        try
         {
-            if ($null -eq $oldVulkanEnvironment[$name])
+            Restore-VulkanTestRuntimeDriver -State $driverRegistration
+        }
+        finally
+        {
+            foreach ($name in $vulkanEnvironmentNames)
             {
-                Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
-            }
-            else
-            {
-                [Environment]::SetEnvironmentVariable(
-                    $name,
-                    $oldVulkanEnvironment[$name],
-                    'Process')
+                if ($null -eq $oldVulkanEnvironment[$name])
+                {
+                    Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    [Environment]::SetEnvironmentVariable(
+                        $name,
+                        $oldVulkanEnvironment[$name],
+                        'Process')
+                }
             }
         }
     }
