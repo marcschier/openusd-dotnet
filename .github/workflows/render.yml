@@ -461,8 +461,18 @@ jobs:
         # sampled-versus-uniform check on its own, so the same job also runs the
         # Vulkan gate and the cross-backend comparison that makes such a backend
         # visible. Both device paths are software here: WARP and the packaged
-        # SwiftShader ICD that run-managed-tests.ps1 selects.
+        # SwiftShader ICD that run-managed-tests.ps1 selects. The hdSilk and
+        # hioOpenVDB plugins come from the parity runtime staged earlier in this
+        # job, just as they do in the Linux volume step.
+        env:
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/parity-capture/win-x64/runtime/plugin/usd
         run: |
+          $runtimeRoot = Join-Path $PWD 'artifacts/parity-capture/win-x64/runtime'
+          $env:PATH = @(
+            (Join-Path $runtimeRoot 'bin'),
+            (Join-Path $runtimeRoot 'lib'),
+            $env:PATH
+          ) -join [System.IO.Path]::PathSeparator
           $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
           dotnet build $project -c Release -f net10.0
           ./eng/run-managed-tests.ps1 `

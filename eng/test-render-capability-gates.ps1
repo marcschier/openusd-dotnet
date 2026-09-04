@@ -321,6 +321,14 @@ Assert-DoesNotContain `
     "& (Join-Path `$repoRoot '.dotnet/dotnet')" `
     'OpenColorIO alias evidence gate'
 Assert-Contains $aliasEvidenceGate 'if ($IsLinux)' 'OpenColorIO alias evidence gate'
+Assert-Contains `
+    $renderWorkflow `
+    'artifacts/parity-capture/win-x64/runtime/plugin/usd' `
+    'Windows volume conformance runtime'
+Assert-Contains `
+    $renderWorkflow `
+    "Join-Path `$runtimeRoot 'bin'" `
+    'Windows volume conformance runtime'
 
 # Executed, not asserted about: the resolution itself is run against a pinned host, a
 # PATH host, and neither.
