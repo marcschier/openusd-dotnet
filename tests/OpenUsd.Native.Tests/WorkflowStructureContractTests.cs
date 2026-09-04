@@ -245,6 +245,19 @@ public sealed class WorkflowStructureContractTests
             Path.Combine(root, ".github", "workflows", "nuget.yml"));
 
         string promote = ReadJob(nuget, "promote");
+        string resolve = ReadStep(promote, "Resolve and download packages from the GitHub feed");
+        await Assert.That(resolve)
+            .Contains("./eng/pack-packages.ps1 -ListPublished", StringComparison.Ordinal)
+            .Because(
+                "the feed probe candidates must come from the release package source of truth, " +
+                "not a second hard-coded list that omits newly published packages");
+        await Assert.That(resolve)
+            .Contains("mapfile -t CANDIDATES", StringComparison.Ordinal)
+            .Because("every published package id must be probed on the GitHub feed");
+        await Assert.That(resolve)
+            .DoesNotContain("OpenUsd.Runtime.Physics.linux-x64", StringComparison.Ordinal)
+            .Because("individual package ids must not be restated in the promotion workflow");
+
         string completeSet = ReadStep(promote, "Require complete GitHub-feed package set");
         await Assert.That(completeSet)
             .Contains("-ListPublished", StringComparison.Ordinal)

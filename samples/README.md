@@ -89,7 +89,7 @@ To validate package consumption, first build the packages into a repository-loca
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.12.3-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.14.0-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />

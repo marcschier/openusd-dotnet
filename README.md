@@ -13,16 +13,16 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and 27 published `0.12.0-alpha` packages,
-> with pre-1.0 APIs. This set includes the five Cesium package IDs enumerated below, which
-> became public after being withheld from NuGet.org at `0.5.0-alpha`, the `OpenUsd.Mcp.Tool` .NET
-> tool, and the four physics IDs
-> that are new in `0.12.0-alpha`.
+> **Current distribution:** public source repository and 31 `0.14.0-alpha` packages with pre-1.0
+> APIs. This release adds supported live-authoring contracts, the optional Omniverse bridge
+> protocol/client, and the optional Viewer bridge integration. The five Cesium IDs became public
+> after being withheld from NuGet.org at `0.5.0-alpha`; the `OpenUsd.Mcp.Tool` .NET tool and four
+> physics IDs were introduced in `0.12.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
 ```shell
-dotnet add package OpenUsd --version 0.12.3-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.12.3-alpha
+dotnet add package OpenUsd --version 0.14.0-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.14.0-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
@@ -134,11 +134,11 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All 31 package IDs below are buildable from this repository. Twenty-seven are already published to
-NuGet.org at `0.12.0-alpha`; `OpenUsd.LiveAuthoring`, the two optional Omniverse bridge IDs, and
-`OpenUsd.Viewer.Bridge.Grpc` are new in this repository and have not yet shipped a release. The five
-Cesium IDs became public after being withheld at `0.5.0-alpha`; the
-`OpenUsd.Mcp.Tool` .NET tool and the four physics IDs are new in `0.12.0-alpha`.
+All 31 package IDs below ship together in `0.14.0-alpha`. This release adds
+`OpenUsd.LiveAuthoring`, the two optional Omniverse bridge IDs, and
+`OpenUsd.Viewer.Bridge.Grpc`. The five Cesium IDs became public after being withheld at
+`0.5.0-alpha`; the `OpenUsd.Mcp.Tool` .NET tool and four physics IDs were introduced in
+`0.12.0-alpha`.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
@@ -428,7 +428,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.12.0-alpha` baseline with 27 packages published to NuGet.org,
+OpenUsd is a substantial public `0.14.0-alpha` baseline with 31 packages published to NuGet.org,
 but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and
 performance gates exist, and this README states what they do and do not prove. Public API and package
 identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.

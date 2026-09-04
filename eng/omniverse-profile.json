@@ -1,6 +1,6 @@
 {
   "$schemaVersion": 1,
-  "runtimeVersion": "0.12.3-alpha",
+  "runtimeVersion": "0.14.0-alpha",
   "generatedDocPath": "docs/omniverse-profile.md",
   "supportManifestPath": "eng/support-manifest.json",
   "openUsdLockPath": "eng/openusd.lock.json",

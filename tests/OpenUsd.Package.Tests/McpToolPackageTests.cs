@@ -106,7 +106,8 @@ public sealed class McpToolPackageTests
         await Assert.That(pack).Contains("[ValidateSet('all', 'managed', 'metal', 'runtime', 'tool')]");
         await Assert.That(pack).Contains("$_ -ne $toolPackage");
         await Assert.That(pack).Contains("$published = @($toolPackage)");
-        await Assert.That(CountOccurrences(nuget, PackageId)).IsEqualTo(1);
+        await Assert.That(pack).Contains($"'{PackageId}'");
+        await Assert.That(nuget).Contains("./eng/pack-packages.ps1 -ListPublished");
     }
 
     [Test]

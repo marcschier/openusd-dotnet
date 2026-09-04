@@ -1,7 +1,7 @@
 # Support matrix
 
 This matrix describes the implementation and declared repository gates for the public
-`0.12.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
+`0.14.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
 workflow is currently green.
 
 ## Status terms
@@ -24,7 +24,7 @@ branch.
 
 | Item | Current state |
 | --- | --- |
-| Version | `0.12.0-alpha` |
+| Version | `0.14.0-alpha` |
 | Repository visibility | Public |
 | API compatibility | Pre-1.0; public APIs may change |
 | Package identity stability | Pre-1.0; IDs may change |
@@ -33,7 +33,7 @@ branch.
 | Source build | Supported |
 | CI/local-feed package build | Implemented |
 | Default managed build includes native OpenUSD | No |
-| Live-authoring boundary | Source-only sample; not a published package |
+| Live-authoring boundary | Supported package with a transport-neutral execution seam |
 | MCP server | `OpenUsd.Mcp.Tool` net10.0 tool; source runner and self-contained local RID bundles |
 
 See [Getting started](getting-started.md) for the supported source workflow and
@@ -42,14 +42,10 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 
 ## Packages
 
-All package projects below are packable from source. Availability here means repository production,
-not public-feed publication. All 27 IDs other than `OpenUsd.LiveAuthoring`,
-`OpenUsd.Bridge.Protocol`, `OpenUsd.Bridge.Grpc`, and `OpenUsd.Viewer.Bridge.Grpc` are published to
-NuGet.org
-at `0.12.0-alpha`; the five Cesium IDs became public after being withheld at `0.5.0-alpha`.
+All 31 package projects below are packable from source and ship together at `0.14.0-alpha`.
 `OpenUsd.LiveAuthoring`, the two optional Omniverse bridge IDs, and the optional Viewer bridge
-integration are newly added to `eng/pack-packages.ps1`'s published set and ship starting with the
-next release.
+integration are new in this release. The five Cesium IDs became public after being withheld at
+`0.5.0-alpha`.
 
 | Package | Framework project | Native requirement |
 | --- | --- | --- |

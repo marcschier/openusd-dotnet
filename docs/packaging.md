@@ -302,7 +302,7 @@ Dependencies are limited to system libraries and safe `@rpath` or
 the package under `build/`.
 
 Each Imaging package has an exact dependency on its matching Core version, for example
-`[0.12.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
+`[0.14.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
 resource staging arrive when a consumer references only Imaging.
 
 ### Third-party resolver plugin contract
@@ -467,23 +467,15 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Twenty-seven packages are published at `0.12.0-alpha`: the ten non-Cesium managed libraries
-(`OpenUsd`, `OpenUsd.Interop`, `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk
-backends, `OpenUsd.Rendering.Storm`, and `OpenUsd.Physics`), the embeddable `OpenUsd.Viewer` shell,
-the three runtime metapackages, the eight per-RID Core/Imaging/Physics runtime packages, the
-`OpenUsd.Mcp.Tool` .NET tool, and
-the five Cesium IDs
-(`OpenUsd.Cesium`, `OpenUsd.Runtime.Cesium`, and the three per-RID Cesium runtime packages) that
-became public after being withheld at `0.5.0-alpha`. `eng/pack-packages.ps1` is the single
-source of truth for the published set. The script enumerates
-the packages explicitly rather than packing the solution. It asserts afterwards that the produced set
-matches exactly, so adding a project cannot silently ship it. Missing native input fails the run
-instead of publishing a partial release.
+Thirty-one packages ship at `0.14.0-alpha`. `eng/pack-packages.ps1` is the single source of truth
+for the published set; release and promotion workflows derive their expected IDs from
+`-ListPublished` rather than restating the list. The script packs projects explicitly instead of
+packing the solution, then asserts that the produced set matches exactly. Adding a project cannot
+silently ship it, and missing native input fails the run instead of publishing a partial release.
 
 `OpenUsd.LiveAuthoring` moved from `samples/` to `src/OpenUsd.LiveAuthoring` once its data-model and
-admission/observability contracts were productized (see [Live authoring](live-authoring.md)), and is
-now added to `eng/pack-packages.ps1`'s published set. It was not part of the already-shipped
-`0.12.0-alpha` release; the next release brings the published count to twenty-eight.
+admission/observability contracts were productized (see [Live authoring](live-authoring.md)). It
+joins the published set in `0.14.0-alpha`, bringing the earlier 27-package set to twenty-eight.
 
 `OpenUsd.Bridge.Protocol` and `OpenUsd.Bridge.Grpc` join the published set with the same release,
 bringing it to thirty. They are optional and additive: nothing else in the repository references
@@ -584,10 +576,10 @@ A pushed symbol package is served from NuGet's symbol CDN at:
 https://globalcdn.nuget.org/symbol-packages/<lowercase-id>.<lowercase-version>.snupkg
 ```
 
-For example, the managed package `OpenUsd 0.12.0-alpha` should appear as
-`https://globalcdn.nuget.org/symbol-packages/openusd.0.12.0-alpha.snupkg` after a successful
-nuget.org promotion. The corrected promotion path is wired in the tree, but it has not yet been
-proven by a real tagged release promotion end to end.
+For example, the managed package `OpenUsd 0.14.0-alpha` should appear as
+`https://globalcdn.nuget.org/symbol-packages/openusd.0.14.0-alpha.snupkg` after a successful
+nuget.org promotion. The promotion workflow verifies the complete package and symbol sets before
+minting the short-lived publishing token.
 
 ## Package-only execution gate
 

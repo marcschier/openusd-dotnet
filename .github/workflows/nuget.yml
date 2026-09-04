@@ -86,37 +86,17 @@ jobs:
           # PackageBaseAddress (flat container) of the GitHub Packages NuGet feed.
           BASE="https://nuget.pkg.github.com/${OWNER}/download"
 
-          # Keep this list identical to the published set in eng/pack-packages.ps1.
-          # A candidate missing from the feed returns 404 and is skipped.
-          CANDIDATES=(
-            OpenUsd
-            OpenUsd.Interop
-            OpenUsd.Rendering
-            OpenUsd.Rendering.Silk
-            OpenUsd.Rendering.Silk.D3D12
-            OpenUsd.Rendering.Silk.Metal
-            OpenUsd.Rendering.Silk.Vulkan
-            OpenUsd.Rendering.Storm
-            OpenUsd.Cesium
-            OpenUsd.Physics
-            OpenUsd.Viewer
-            OpenUsd.Mcp.Tool
-            OpenUsd.Runtime.Core
-            OpenUsd.Runtime.Core.win-x64
-            OpenUsd.Runtime.Core.linux-x64
-            OpenUsd.Runtime.Core.osx-arm64
-            OpenUsd.Runtime.Imaging
-            OpenUsd.Runtime.Imaging.win-x64
-            OpenUsd.Runtime.Imaging.linux-x64
-            OpenUsd.Runtime.Imaging.osx-arm64
-            OpenUsd.Runtime.Cesium
-            OpenUsd.Runtime.Cesium.win-x64
-            OpenUsd.Runtime.Cesium.linux-x64
-            OpenUsd.Runtime.Cesium.osx-arm64
-            OpenUsd.Runtime.Physics
-            OpenUsd.Runtime.Physics.win-x64
-            OpenUsd.Runtime.Physics.linux-x64
-          )
+          # The pack script is the release package source of truth. Deriving the
+          # probe candidates here keeps newly published IDs in the irreversible
+          # promotion path without maintaining a second package list.
+          published_output="$(pwsh -NoLogo -NoProfile \
+            -File ./eng/pack-packages.ps1 -ListPublished)"
+          if [ -z "${published_output}" ]; then
+            echo "::error::eng/pack-packages.ps1 -ListPublished produced no package ids."
+            exit 1
+          fi
+          published_output="${published_output//$'\r'/}"
+          mapfile -t CANDIDATES <<< "${published_output}"
 
           mkdir -p artifacts versions
           ALL_VERSIONS="versions/all.txt"

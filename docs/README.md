@@ -1,10 +1,11 @@
 # OpenUsd documentation
 
-OpenUsd is a public `0.12.0-alpha` project with 27 packages published to NuGet.org, including the
-`OpenUsd.Mcp.Tool` .NET tool, the five Cesium package IDs that became public after being withheld at
-`0.5.0-alpha`, and the four physics package IDs introduced in `0.12.0-alpha`. Start
-with the route that matches what you are trying to do, then follow the
-deeper design or evidence documents only as needed.
+OpenUsd is a public `0.14.0-alpha` project with 31 packages published to NuGet.org, including
+supported live-authoring contracts and optional Omniverse bridge packages. The set also includes
+the `OpenUsd.Mcp.Tool` .NET tool, five Cesium package IDs that became public after being withheld at
+`0.5.0-alpha`, and four physics package IDs introduced in `0.12.0-alpha`. Start with the route that
+matches what you are trying to do, then follow the deeper design or evidence documents only as
+needed.
 
 ## Choose your route
 
