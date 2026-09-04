@@ -2,6 +2,7 @@
 
 using System.Buffers.Binary;
 using System.Text;
+using System.Text.Json;
 
 namespace OpenUsd.Rendering.Tests;
 
@@ -20,11 +21,11 @@ namespace OpenUsd.Rendering.Tests;
 /// compiled artifact can.
 /// </para>
 /// <para>
-/// Every value on the chain carries the <c>precise</c> qualifier, which is the
-/// HLSL and Slang contract forbidding reassociation and contraction along it.
-/// These tests check that the contract survived into each shipped artifact: as an
-/// instruction pattern in SPIR-V, and verbatim in the Metal shading language
-/// source. The DXIL half is covered by execution instead --
+/// Every affected fragment program is compiled with Slang's precise floating-point
+/// mode, which forbids reassociation and contraction without emitting HLSL's
+/// unsupported <c>precise</c> qualifier into Metal source. These tests check that
+/// the stable grouping survived into SPIR-V and Metal. The DXIL half is covered
+/// by execution instead --
 /// <c>SilkEnvironmentLightingConformance.TheSpecularLobeReturnsItsPeakAtExactAlignment</c>
 /// renders the exact-alignment case on D3D12 WARP and Vulkan SwiftShader, where a
 /// reassociated denominator saturates the frame and the correct one does not.
@@ -49,6 +50,7 @@ public sealed class SilkCheckedShaderPrecisionTests
         "mesh.fragment.uv+material",
         "mesh.fragment.uv+material+normal",
         "mesh.fragment.uv+normal",
+        "mesh.volume.fragment",
     ];
 
     [Test]
@@ -75,34 +77,15 @@ public sealed class SilkCheckedShaderPrecisionTests
 
     [Test]
     [MethodDataSource(nameof(LitFragmentPermutations))]
-    public async Task TheCompiledMetalSourceKeepsThePreciseQualifiers(string program)
+    public async Task TheCompiledMetalSourceKeepsTheStableGgxDenominatorGrouping(string program)
     {
-        // Slang emits `precise` into Metal shading language verbatim, so the
-        // contract is readable in the shipped source rather than inferred from it.
-        // Metal is otherwise gated by source and translation coverage only -- no
-        // device is created and no metallib is linked in this repository -- which
-        // makes this the whole of the evidence for that backend.
         string metal = Encoding.UTF8.GetString(ReadCheckedArtifact($"{program}.metal"));
 
-        foreach (string declaration in new[]
-        {
-            "precise float lobeCosineSquared",
-            "precise float scaledLobe",
-            "precise float lobeComplement",
-            "precise float denominator",
-            "precise float scaled",
-        })
-        {
-            await Assert.That(metal)
-                .Contains(declaration)
-                .Because(
-                    $"{program}.metal must carry the precise contract on the GGX " +
-                    $"denominator chain, and '{declaration}' was not translated.");
-        }
-
-        // And the grouping itself, which is what precise is protecting.
         await Assert.That(metal)
-            .Contains("scaledLobe_0 + lobeComplement_0")
+            .DoesNotContain("precise float")
+            .Because("Metal shading language does not support HLSL's precise qualifier.");
+        await Assert.That(metal)
+            .Contains("lobeCosineSquared_0 * alphaSquared_0 + lobeComplement_0")
             .Because(
                 $"{program}.metal must add the scaled lobe to the complement " +
                 "rather than reassociating through (alphaSquared - 1).");
@@ -114,24 +97,34 @@ public sealed class SilkCheckedShaderPrecisionTests
     }
 
     [Test]
-    public async Task TheCheckedSourceDeclaresThePreciseContract()
+    public async Task TheCheckedManifestDeclaresThePreciseContract()
     {
-        // The checked source is itself hash-verified, so this pins the intent the
-        // two artifact tests above verify the compilers honoured. Without it, a
-        // source edit that dropped `precise` would leave the artifacts unchanged
-        // on this toolchain and silently remove the contract for the next one.
+        string root = RepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
-            RepositoryRoot(),
+            root,
             "eng",
             "shaders",
             "sources",
             "mesh.slang"));
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            root,
+            "eng",
+            "shaders",
+            "shader-manifest.json")));
 
-        await Assert.That(source).Contains("precise float lobeCosineSquared");
-        await Assert.That(source).Contains("precise float scaledLobe");
-        await Assert.That(source).Contains("precise float lobeComplement");
-        await Assert.That(source).Contains("precise float denominator");
-        await Assert.That(source).Contains("precise float scaled");
+        JsonElement[] programs =
+        [
+            .. manifest.RootElement
+                .GetProperty("programs")
+                .EnumerateArray(),
+        ];
+        foreach (string name in new[] { "mesh.fragment", "mesh.volume.fragment" })
+        {
+            JsonElement program = programs.Single(element =>
+                element.GetProperty("name").GetString() == name);
+            await Assert.That(program.GetProperty("floatingPointMode").GetString())
+                .IsEqualTo("precise");
+        }
 
         // Comments are excluded: the source explains the cancelling form at length
         // so the next reader knows why the grouping is what it is, and a check that
@@ -143,6 +136,7 @@ public sealed class SilkCheckedShaderPrecisionTests
                 .Split('\n')
                 .Where(static line =>
                     !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+        await Assert.That(code).DoesNotContain("precise float");
         await Assert.That(code)
             .DoesNotContain("alphaSquared - 1")
             .Because(

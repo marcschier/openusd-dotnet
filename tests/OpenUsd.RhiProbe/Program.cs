@@ -938,6 +938,7 @@ internal static class Program
         commands.Dispatch(elementCount);
         commands.BufferBarrier(output);
         commands.SetComputePipeline(scalePipeline);
+        commands.SetStorageBuffer(0, 0, output);
         commands.SetComputeUniformBuffer(0, 1, scaleUniform);
         commands.Dispatch(elementCount);
         commands.BufferBarrier(output);

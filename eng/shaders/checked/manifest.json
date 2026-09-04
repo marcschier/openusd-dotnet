@@ -71,7 +71,7 @@
     },
     {
       "path": "eng/shaders/checked/executed-commands.json",
-      "sha256": "4d8e24baf27a5b02d1c5c36386ff8b183e600dfbfb118df3a86444da3016abe9"
+      "sha256": "5168a4d03c707b23167db89f22dd530aed901a738ab50c57e0e85e510de8c334"
     },
     {
       "path": "eng/shaders/expand-verified-archive.ps1",
@@ -107,7 +107,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "8ee419efec2f671c22ccd4728cb905b92c2b6f9d34f311100c5e01b20b64be23"
+      "sha256": "895f8533805897c1f75305fac14d7644969f7fdd8bd6da42e422b73cb2c820c2"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -123,7 +123,7 @@
     },
     {
       "path": "eng/shaders/shader-manifest.json",
-      "sha256": "53f426986051b2c7558a3f2951e0529a96fdf0437c9fb93ebdc6f9d07fa4362b"
+      "sha256": "bd0fe23c06036f25a726e7313950d994f8cdb400acec51ccce95a14976293208"
     },
     {
       "path": "eng/shaders/sources/compute.slang",
@@ -143,7 +143,7 @@
     },
     {
       "path": "eng/shaders/sources/mesh.slang",
-      "sha256": "a82d46a9a8118b9613c53a146f3cc6fd41db304f48b29f4a5740458beab7d18c"
+      "sha256": "107c28cf219c570a4c5c49c60e31899d786d254378e180f560168a0b4a8b8966"
     },
     {
       "path": "eng/shaders/sources/pick.fragment.slang",
@@ -977,6 +977,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=1",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -1008,6 +1010,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=1",
@@ -1039,6 +1043,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -1079,18 +1085,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.dxil",
-          "sha256": "0bf1cb849bd8f17a4dec231255cb7ac8945ee923a0f8e87ad50d5f816f4f1f3c",
-          "size": 18140
+          "sha256": "18b6d645bde595a41133e947ecd2040d97b9f640dfac71a1602ecdf5455048c9",
+          "size": 18648
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.spv",
-          "sha256": "09d15f8ef239c22fb816e01b3b8d1c5da44c9365c71ad1be6a8ac7e20ce257ca",
-          "size": 37928
+          "sha256": "f6e21b18b873f46e8fe8e52483e8ba024059bf0a0912779f3212da06d920a68a",
+          "size": 41536
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.metal",
-          "sha256": "a28571ffe3bedc530a7ff3d7d9303d222578c2fa95af602b109caf9fb7c90b5b",
-          "size": 44477
+          "sha256": "6b097c10e047863d2e928beedb24e79c744d2fe5718885e1beab057c0d222b02",
+          "size": 44233
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.reflection.json",
@@ -1256,6 +1262,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=1",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -1288,6 +1296,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=1",
@@ -1320,6 +1330,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -1360,18 +1372,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv.dxil",
-          "sha256": "f1997640c7d7279931acd805ae521e07902a280a1d24d946d49bd60e7a3f38f0",
-          "size": 18264
+          "sha256": "e0be033feaba9e6f1b648d45fe08811727619812dfa265cc47e230ffddd7b705",
+          "size": 18772
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv.spv",
-          "sha256": "aa3ce91323d60a52d3f73404b96e022f6c0248f6eadef745634a22bff050edc9",
-          "size": 37928
+          "sha256": "8690207e64619960979bf0a6c0a1fe495132dbceff456f8d8ccfded04e14ffb3",
+          "size": 41536
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv.metal",
-          "sha256": "7fb19e052347ca2114ef1f1a4ce1cc6d450a15c34784a166bb879090f4541bbe",
-          "size": 44522
+          "sha256": "01e1b976381ed8c41994bf44e4c19b7cd207f3e73e20e0db86d995e4107c46be",
+          "size": 44278
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv.reflection.json",
@@ -1824,6 +1836,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=1",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -1857,6 +1871,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=1",
@@ -1890,6 +1906,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -1930,18 +1948,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.dxil",
-          "sha256": "5673b6bc0a4e1dec8a94ff5edba1ada7a1bdca16a8ec0292fd0316cda7dd3de4",
-          "size": 34584
+          "sha256": "81ca538e7eb9ab7eb7ce8f8e2a14718ef4412a96b8b20943ce0b7df886642683",
+          "size": 35896
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.spv",
-          "sha256": "74dbf9c3a8ae56da5694ea81b3f9025ded227d2d48dfc002f16844ebc178fd28",
-          "size": 82896
+          "sha256": "54d940279780fc13e461c886d55a4ac83c559a5c7247aded72ff83fc15ee545f",
+          "size": 90108
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.metal",
-          "sha256": "f621c7c22bfa0362a9beabb272d55740324ba1d657dede77ce4fe4eed18f02f8",
-          "size": 98521
+          "sha256": "e92fe3ec8be45cb05a259fb19f253b3f0f7ad436f7bf576a80ebf6491fb29a87",
+          "size": 98277
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.reflection.json",
@@ -2134,6 +2152,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=1",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -2167,6 +2187,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=1",
@@ -2200,6 +2222,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -2240,18 +2264,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.dxil",
-          "sha256": "6827b1a2df126c9b71c54751f0f3ac03b11d2c1c7fc0ad0cd6c68cfcdb4c1b55",
-          "size": 20764
+          "sha256": "2b41804ea416e16c995369467c928100810b28b032a772962545b972fc636b2d",
+          "size": 21324
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.spv",
-          "sha256": "aa13b9bba925b6e6bed5166b49f307e9760b52319d1272791b61f78e5f8e8a55",
-          "size": 41320
+          "sha256": "c4aa6023e06a19d36be166a27e071b29198e6434758a3a153fbdb0ad897818c2",
+          "size": 45300
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.metal",
-          "sha256": "596801fdbbd118decb8548130dc4499d1e5fb6a394ad57145683490cda7d25f4",
-          "size": 47857
+          "sha256": "083c5cd440d71fd161125fe7c39d564cfa81c218e8096ea5ec2334d64998a22b",
+          "size": 47613
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.reflection.json",
@@ -2731,6 +2755,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=1",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -2765,6 +2791,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=1",
@@ -2799,6 +2827,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=0",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -2839,18 +2869,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.dxil",
-          "sha256": "0c0c337e4ce051c5d124dee817d357ae7a7c21677c831557c6caddc1c2ec1576",
-          "size": 36440
+          "sha256": "d9959c179ed56fea5cdd8999c2944952ffc64d08a29357f1d551dee5edbd8015",
+          "size": 37820
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.spv",
-          "sha256": "9200fc667326e5bd8dc1f78c9a09e6011f479d5d88065f01335cc1510256c1b5",
-          "size": 85680
+          "sha256": "fde512f5c97610235165bd499294656e8bac0b952c02585534ae19fd976a081a",
+          "size": 93220
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.metal",
-          "sha256": "59f6bec266ca13f63c3cb6596cfb3bf8a9512acde284ee3128ea138bbd6ada75",
-          "size": 101594
+          "sha256": "2553a551db35fd27e1e6708dcf0fc73ce795365561396605966668f269eac6af",
+          "size": 101350
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.reflection.json",
@@ -3041,6 +3071,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=1",
             "-DOPENUSD_TARGET_DXIL=1",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -3072,6 +3104,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=1",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=1",
@@ -3103,6 +3137,8 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-fp-mode",
+            "precise",
             "-DVOLUME_DENSITY_TEXTURES=1",
             "-DOPENUSD_TARGET_DXIL=0",
             "-DOPENUSD_TARGET_SPIRV=0",
@@ -3143,18 +3179,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.volume.fragment.dxil",
-          "sha256": "355fa89166bf29d37b5cb7cd4afb38cf5b56f1f34ba0b1a33ecb4ac4a724aead",
-          "size": 18940
+          "sha256": "5549d42ab5c55801813e3b945929ad6f2108a8df4015664761ec1db01b14d47b",
+          "size": 19480
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.volume.fragment.spv",
-          "sha256": "a579815721b100e38fb9c76bc112aad5db3ea06ca2646e4338ae949cc86ac0b9",
-          "size": 39236
+          "sha256": "1da6ca6c41c67271b97c7823beff6e484307c4199f619d4f0e760c047f19af76",
+          "size": 42916
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.volume.fragment.metal",
-          "sha256": "289960f6ca4a3e1997a8cbe2c39d65611023038d4533444d111926e748159849",
-          "size": 45911
+          "sha256": "6fce283fe1483a10aae7051428c49bd2bb86dcb82dbb9dfbe135741a0913d274",
+          "size": 45667
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.volume.fragment.reflection.json",

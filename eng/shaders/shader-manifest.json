@@ -99,6 +99,7 @@
       "entryPoint": "fragmentMain",
       "stage": "fragment",
       "profile": "ps_6_0",
+      "floatingPointMode": "precise",
       "permutationFamily": "mesh",
       "permutationFeatures": [
         "HAS_UV",
@@ -582,6 +583,7 @@
       "entryPoint": "volumeFragmentMain",
       "stage": "fragment",
       "profile": "ps_6_0",
+      "floatingPointMode": "precise",
       "permutationFamily": "meshVolume",
       "permutationFeatures": [],
       "defines": {

@@ -464,6 +464,12 @@ def validate_manifest(
                 f"{name} profile {program.get('profile')!r} does not match "
                 f"locked profile {locked_profile!r}"
             )
+        floating_point_mode = program.get("floatingPointMode")
+        if floating_point_mode not in {None, "precise"}:
+            raise ValueError(
+                f"{name} has unsupported floatingPointMode "
+                f"{floating_point_mode!r}"
+            )
         resources = program.get("resources")
         if not isinstance(resources, list):
             raise ValueError(f"{name} must define an explicit resource contract")
@@ -621,12 +627,18 @@ def generate_plan(
                 for feature in permutation_bits
             )
         switches = program_defines(program)
+        floating_point_options = (
+            []
+            if program.get("floatingPointMode") is None
+            else ["-fp-mode", program["floatingPointMode"]]
+        )
         common = [
             program["source"],
             "-entry",
             program["entryPoint"],
             *defines,
             *common_options,
+            *floating_point_options,
             *(
                 f"-D{name}={value}"
                 for name, value in sorted(switches.items())

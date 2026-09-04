@@ -562,10 +562,10 @@ float4 ApplyMaterialComposite(
 /// optimizer is entitled to turn one into the other: reassociating
 /// `n2 * a2 + (1 - n2)` into `1 + n2 * (a2 - 1)` is a legal transformation under
 /// fast floating-point rules and would reintroduce the cancellation the grouping
-/// exists to avoid. Every value on the chain is therefore `precise`, which is the
-/// HLSL and Slang contract that forbids reassociation and contraction along it.
-/// Slang emits it as `NoContraction` in SPIR-V and as precise metadata in DXIL,
-/// and both are gated: see `SilkCheckedShaderPrecisionTests`.
+/// exists to avoid. Every program that reaches this function is compiled with
+/// Slang's precise floating-point mode, which forbids reassociation and contraction
+/// without emitting the unsupported HLSL `precise` qualifier into Metal source.
+/// The compiled grouping is gated by `SilkCheckedShaderPrecisionTests`.
 [ForceInline]
 float NormalDistribution(float specularRoughness, float normalDotHalf)
 {
@@ -573,14 +573,14 @@ float NormalDistribution(float specularRoughness, float normalDotHalf)
     float alpha = clampedRoughness * clampedRoughness;
     float alphaSquared = alpha * alpha;
 
-    // Each step is named and precise rather than written as one expression, so
-    // that the two small quantities are materialized as separate values an
-    // optimizer cannot fold back through `a2 - 1`.
-    precise float lobeCosineSquared = saturate(normalDotHalf * normalDotHalf);
-    precise float scaledLobe = lobeCosineSquared * alphaSquared;
-    precise float lobeComplement = 1.0 - lobeCosineSquared;
-    precise float denominator = scaledLobe + lobeComplement;
-    precise float scaled = SurfacePi * denominator * denominator;
+    // Each step is named rather than written as one expression, so precise mode
+    // materializes the two small quantities separately and cannot fold them back
+    // through `a2 - 1`.
+    float lobeCosineSquared = saturate(normalDotHalf * normalDotHalf);
+    float scaledLobe = lobeCosineSquared * alphaSquared;
+    float lobeComplement = 1.0 - lobeCosineSquared;
+    float denominator = scaledLobe + lobeComplement;
+    float scaled = SurfacePi * denominator * denominator;
     return alphaSquared / max(scaled, SurfaceDenominatorEpsilon);
 }
 

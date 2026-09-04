@@ -51,8 +51,7 @@ public sealed partial class StormSilkParityCaptureDriverTests
             return;
         }
 
-        PrependHdSilkNativeSearchPath();
-        List<RigComparison> comparisons = CollectRigComparisons(stagePath, timeCode);
+        List<RigComparison> comparisons = CollectRigComparisonsOrSkip(stagePath, timeCode);
 
         // Non-vacuity: a page that published no rig at all would satisfy every
         // per-rig assertion below while proving nothing about the seam.
@@ -93,8 +92,7 @@ public sealed partial class StormSilkParityCaptureDriverTests
             return;
         }
 
-        PrependHdSilkNativeSearchPath();
-        List<RigComparison> comparisons = CollectRigComparisons(stagePath, 3.0);
+        List<RigComparison> comparisons = CollectRigComparisonsOrSkip(stagePath, 3.0);
 
         // A published rig may still name Normals: that reason is about the one
         // optional section the rig omitted, not about the rig, and it is how a
@@ -206,6 +204,23 @@ public sealed partial class StormSilkParityCaptureDriverTests
         float WorstPointError,
         float WorstNormalError,
         SilkDeformationUnsupportedFeatures Unsupported);
+
+    private static List<RigComparison> CollectRigComparisonsOrSkip(
+        string stagePath,
+        double timeCode)
+    {
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            return CollectRigComparisons(stagePath, timeCode);
+        }
+        catch (Exception exception) when (
+            exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk deformation equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
 
     private static List<RigComparison> CollectRigComparisons(
         string stagePath,

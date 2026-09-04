@@ -1955,7 +1955,7 @@ bool VerifyNestedInstancerContextSerialization()
     // Malformed and over-budget chains are refused before anything is
     // serialized, and the whole prim is skipped rather than published with an
     // identity no consumer can decode.
-    const auto refuses = [](HdSilkMeshRecord record) {
+    const auto refuses = [&LeafPath](HdSilkMeshRecord record) {
         HdSilkSceneState state;
         ReplaceSingleMesh(state, LeafPath, std::move(record));
         uint32_t commandCount = 0;

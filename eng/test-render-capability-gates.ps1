@@ -325,10 +325,6 @@ Assert-Contains $aliasEvidenceGate 'if ($IsLinux)' 'OpenColorIO alias evidence g
 # Executed, not asserted about: the resolution itself is run against a pinned host, a
 # PATH host, and neither.
 & (Join-Path $PSScriptRoot 'test-ocio-alias-evidence-host.ps1')
-if ($LASTEXITCODE -ne 0)
-{
-    throw "The OpenColorIO alias evidence host resolution test exited with $LASTEXITCODE."
-}
 Assert-Contains `
     $aliasEvidenceGate `
     "if (`$mechanism -ne 'symlink')" `

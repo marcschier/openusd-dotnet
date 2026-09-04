@@ -248,7 +248,12 @@ openusd_status openusd_sdr_get_node_definitions(
             }
         }
 
-        FillView(*result, truncated ? OPENUSD_SDR_NODE_DEFINITION_FLAG_TRUNCATED : 0u, view);
+        FillView(
+            *result,
+            truncated
+                ? static_cast<uint32_t>(OPENUSD_SDR_NODE_DEFINITION_FLAG_TRUNCATED)
+                : 0u,
+            view);
         *list = result.release();
         return OPENUSD_STATUS_OK;
     });
@@ -304,7 +309,12 @@ openusd_status openusd_sdr_get_node_definition_from_asset(
             *found = 1;
         }
 
-        FillView(*result, truncated ? OPENUSD_SDR_NODE_DEFINITION_FLAG_TRUNCATED : 0u, view);
+        FillView(
+            *result,
+            truncated
+                ? static_cast<uint32_t>(OPENUSD_SDR_NODE_DEFINITION_FLAG_TRUNCATED)
+                : 0u,
+            view);
         *list = result.release();
         return OPENUSD_STATUS_OK;
     });

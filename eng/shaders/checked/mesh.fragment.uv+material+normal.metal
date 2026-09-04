@@ -2028,27 +2028,23 @@ struct KernelContext_0
             float _S263 = max(_S213, 0.00100000004749745f);
             float alpha_0 = _S263 * _S263;
             float alphaSquared_0 = alpha_0 * alpha_0;
-            precise float lobeCosineSquared_0 = saturate(normalDotHalf_0 * normalDotHalf_0);
-            precise float scaledLobe_0 = lobeCosineSquared_0 * alphaSquared_0;
-            precise float lobeComplement_0 = 1.0f - lobeCosineSquared_0;
-            precise float denominator_0 = scaledLobe_0 + lobeComplement_0;
-            precise float scaled_0 = 3.14159274101257324f * denominator_0 * denominator_0;
+            float lobeCosineSquared_0 = saturate(normalDotHalf_0 * normalDotHalf_0);
+            float lobeComplement_0 = 1.0f - lobeCosineSquared_0;
+            float denominator_0 = lobeCosineSquared_0 * alphaSquared_0 + lobeComplement_0;
             float k_0 = alpha_0 * 0.5f;
             float _S264 = 1.0f - k_0;
             float3 _S265 = float3(max(4.0f * normalDotLight_0 * _S212, 1.00000000317107685e-30f)) ;
-            float3 _S266 = _S262 * float3((_S212 / (_S212 * _S264 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S264 + k_0))))  * float3((alphaSquared_0 / max(scaled_0, 1.00000000317107685e-30f)))  / _S265;
+            float3 _S266 = _S262 * float3((_S212 / (_S212 * _S264 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S264 + k_0))))  * float3((alphaSquared_0 / max(3.14159274101257324f * denominator_0 * denominator_0, 1.00000000317107685e-30f)))  / _S265;
             float3 directSpecular_0;
             if(clearcoatAmount_0 > 0.0f)
             {
                 float _S267 = max(_S214, 0.00100000004749745f);
                 float alpha_1 = _S267 * _S267;
                 float alphaSquared_1 = alpha_1 * alpha_1;
-                precise float scaledLobe_1 = lobeCosineSquared_0 * alphaSquared_1;
-                precise float denominator_1 = scaledLobe_1 + lobeComplement_0;
-                precise float scaled_1 = 3.14159274101257324f * denominator_1 * denominator_1;
+                float denominator_1 = lobeCosineSquared_0 * alphaSquared_1 + lobeComplement_0;
                 float k_1 = alpha_1 * 0.5f;
                 float _S268 = 1.0f - k_1;
-                directSpecular_0 = _S266 + float3(clearcoatAmount_0)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S261) * float3((_S212 / (_S212 * _S268 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S268 + k_1))))  * float3((alphaSquared_1 / max(scaled_1, 1.00000000317107685e-30f)))  / _S265);
+                directSpecular_0 = _S266 + float3(clearcoatAmount_0)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S261) * float3((_S212 / (_S212 * _S268 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S268 + k_1))))  * float3((alphaSquared_1 / max(3.14159274101257324f * denominator_1 * denominator_1, 1.00000000317107685e-30f)))  / _S265);
             }
             else
             {

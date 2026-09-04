@@ -201,6 +201,31 @@ class ShaderModelTests(unittest.TestCase):
                 "eng/shaders/out/dry-run",
             )
 
+    def test_precise_floating_point_mode_applies_to_every_target(self) -> None:
+        precise = manifest()
+        precise["programs"][0]["floatingPointMode"] = "precise"
+        commands = shader_model.generate_plan(
+            lock(),
+            precise,
+            "eng/shaders/out/dry-run",
+        )["programs"][0]["commands"]
+
+        for target in ("dxil", "spirv", "metal"):
+            with self.subTest(target=target):
+                arguments = commands[target]["arguments"]
+                mode_index = arguments.index("-fp-mode")
+                self.assertEqual("precise", arguments[mode_index + 1])
+
+    def test_rejects_unknown_floating_point_mode(self) -> None:
+        invalid = manifest()
+        invalid["programs"][0]["floatingPointMode"] = "approximately"
+        with self.assertRaisesRegex(ValueError, "unsupported floatingPointMode"):
+            shader_model.generate_plan(
+                lock(),
+                invalid,
+                "eng/shaders/out/dry-run",
+            )
+
     def test_rejects_incomplete_resource_binding_contract(self) -> None:
         invalid = manifest()
         del invalid["programs"][0]["resources"][0]["vulkan"]["set"]
