@@ -41,10 +41,8 @@ public sealed partial class StormSilkParityCaptureDriverTests
     /// </remarks>
     private const ulong TexturedPennantMipChainBytes = 349_524;
 
-    private static string OcioTestConfigPath => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory,
-        "..", "..", "..", "..", "..",
-        "test-assets", "ocio-test-config.ocio"));
+    private static string OcioTestConfigPath =>
+        ResolveTestAsset("ocio-test-config.ocio");
     private const string EmptyStage = """
 #usda 1.0
 (
