@@ -84,6 +84,20 @@ Invoke-RunnerCase `
         "-TestArguments @('--treenode-filter'," +
         "'/*/*/VulkanDeviceTests/CreatesQueueAndBufferWhenVulkanIsAvailable')")
 Invoke-RunnerCase `
+    -Name 'repeated packaged SwiftShader conformance' `
+    -ShouldPass $true `
+    -ExpectedOutput '\[managed-tests\] Using packaged SwiftShader ICD:' `
+    -Invocation (
+        "& $runnerLiteral -Project $conformanceProjectLiteral " +
+        "-Framework net10.0 -Configuration Release " +
+        "-TestArguments @('--treenode-filter'," +
+        "'/*/*/VulkanDeviceTests/CreatesQueueAndBufferWhenVulkanIsAvailable'); " +
+        "if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }; " +
+        "& $runnerLiteral -Project $conformanceProjectLiteral " +
+        "-Framework net10.0 -Configuration Release " +
+        "-TestArguments @('--treenode-filter'," +
+        "'/*/*/VulkanDeviceTests/CreatesQueueAndBufferWhenVulkanIsAvailable')")
+Invoke-RunnerCase `
     -Name 'non-test project rejection' `
     -ShouldPass $false `
     -Invocation "& $runnerLiteral -Project $productionProjectLiteral -Framework net10.0 -Configuration Release"

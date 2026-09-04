@@ -103,9 +103,11 @@ non-test projects, unsupported frameworks, zero executed tests, and non-zero tes
 application exits fail the run.
 
 On Windows and Linux, the rendering conformance project defaults to its packaged
-SwiftShader ICD so repeated device-lifecycle tests use the deterministic software
-backend they name and gate. `eng/vulkan-test-runtime.lock.json` pins the loader and
-driver bytes; `eng/prepare-vulkan-test-runtime.ps1` verifies them and writes an
+SwiftShader loader and ICD so repeated device-lifecycle tests use the deterministic
+software backend they name and gate. The runner activates and restores the complete
+runtime for every test process rather than relying on a system Vulkan loader.
+`eng/vulkan-test-runtime.lock.json` pins the loader and driver bytes;
+`eng/prepare-vulkan-test-runtime.ps1` verifies them and writes an
 absolute Vulkan 1.3 ICD manifest because the upstream package manifest advertises an
 obsolete Vulkan 1.0 API. Set either `VK_DRIVER_FILES` or `VK_ICD_FILENAMES` before
 invoking the runner to preserve an explicit system or hosted-runner ICD instead.

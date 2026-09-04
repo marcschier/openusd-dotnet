@@ -183,7 +183,8 @@ function Prepare-PackagedSwiftShaderIcd
     $rid = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier
     return & (Join-Path $PSScriptRoot 'prepare-vulkan-test-runtime.ps1') `
         -Root (Split-Path -Parent $TestDll) `
-        -Rid $rid
+        -Rid $rid `
+        -Activate
 }
 
 if ($TestArguments -contains '--minimum-expected-tests' -or
@@ -331,6 +332,20 @@ foreach ($projectPath in $projectPaths)
 }
 
 $passed = 0
+$vulkanEnvironmentNames = @(
+    'PATH',
+    'LD_LIBRARY_PATH',
+    'DYLD_LIBRARY_PATH',
+    'VK_DRIVER_FILES',
+    'VK_ICD_FILENAMES',
+    'OPENUSD_REQUIRE_SWIFTSHADER',
+    'OPENUSD_VULKAN_API_VERSION',
+    'OPENUSD_VULKAN_DRIVER_PATH',
+    'OPENUSD_VULKAN_DRIVER_SHA256',
+    'OPENUSD_VULKAN_LOADER_PATH',
+    'OPENUSD_VULKAN_LOADER_SHA256',
+    'OPENUSD_VULKAN_MANIFEST_PATH'
+)
 foreach ($run in $runs)
 {
     $label = "$($run.AssemblyName) ($($run.Framework))"
@@ -350,29 +365,30 @@ foreach ($run in $runs)
         'off'
     )
     $arguments += $TestArguments
+    $oldVulkanEnvironment = @{}
+    foreach ($name in $vulkanEnvironmentNames)
+    {
+        $oldVulkanEnvironment[$name] = [Environment]::GetEnvironmentVariable(
+            $name,
+            'Process')
+    }
     try
     {
-        $swiftShaderIcd = Prepare-PackagedSwiftShaderIcd `
-            -AssemblyName $run.AssemblyName `
-            -TestDll $run.Dll
-    }
-    catch
-    {
-        $failures.Add("$label could not configure Vulkan conformance: $($_.Exception.Message)")
-        continue
-    }
+        try
+        {
+            $swiftShaderIcd = Prepare-PackagedSwiftShaderIcd `
+                -AssemblyName $run.AssemblyName `
+                -TestDll $run.Dll
+        }
+        catch
+        {
+            $failures.Add("$label could not configure Vulkan conformance: $($_.Exception.Message)")
+            continue
+        }
 
-    $oldDriverFiles = $env:VK_DRIVER_FILES
-    $oldIcdFilenames = $env:VK_ICD_FILENAMES
-    $oldRequireSwiftShader = $env:OPENUSD_REQUIRE_SWIFTSHADER
-    try
-    {
         if (-not [string]::IsNullOrWhiteSpace($swiftShaderIcd))
         {
             Write-Host "[managed-tests] Using packaged SwiftShader ICD: $swiftShaderIcd"
-            $env:VK_DRIVER_FILES = $swiftShaderIcd
-            $env:VK_ICD_FILENAMES = $swiftShaderIcd
-            $env:OPENUSD_REQUIRE_SWIFTSHADER = '1'
         }
 
         & $script:DotnetHost @arguments
@@ -380,9 +396,20 @@ foreach ($run in $runs)
     }
     finally
     {
-        $env:VK_DRIVER_FILES = $oldDriverFiles
-        $env:VK_ICD_FILENAMES = $oldIcdFilenames
-        $env:OPENUSD_REQUIRE_SWIFTSHADER = $oldRequireSwiftShader
+        foreach ($name in $vulkanEnvironmentNames)
+        {
+            if ($null -eq $oldVulkanEnvironment[$name])
+            {
+                Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+            }
+            else
+            {
+                [Environment]::SetEnvironmentVariable(
+                    $name,
+                    $oldVulkanEnvironment[$name],
+                    'Process')
+            }
+        }
     }
 
     if ($exitCode -eq 0)
