@@ -325,28 +325,28 @@
                     x:Name="CameraOrbitLeftMenuItem"
                     AutomationProperties.Name="Orbit camera left"
                     Header="Orbit Left"
-                    InputGesture="Left Arrow"
+                    InputGesture="Left"
                     Tag="Left"
                     IsEnabled="False" />
                 <MenuItem
                     x:Name="CameraOrbitRightMenuItem"
                     AutomationProperties.Name="Orbit camera right"
                     Header="Orbit Right"
-                    InputGesture="Right Arrow"
+                    InputGesture="Right"
                     Tag="Right"
                     IsEnabled="False" />
                 <MenuItem
                     x:Name="CameraOrbitUpMenuItem"
                     AutomationProperties.Name="Orbit camera up"
                     Header="Orbit Up"
-                    InputGesture="Up Arrow"
+                    InputGesture="Up"
                     Tag="Up"
                     IsEnabled="False" />
                 <MenuItem
                     x:Name="CameraOrbitDownMenuItem"
                     AutomationProperties.Name="Orbit camera down"
                     Header="Orbit Down"
-                    InputGesture="Down Arrow"
+                    InputGesture="Down"
                     Tag="Down"
                     IsEnabled="False" />
               </MenuItem>

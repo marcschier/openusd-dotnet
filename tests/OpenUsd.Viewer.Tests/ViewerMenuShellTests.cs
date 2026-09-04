@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using System.Xml.Linq;
+using Avalonia.Input;
 
 namespace OpenUsd.Viewer.Tests;
 
@@ -13,6 +14,27 @@ namespace OpenUsd.Viewer.Tests;
 /// </summary>
 public sealed class ViewerMenuShellTests
 {
+    [Test]
+    public async Task EveryMenuInputGestureParsesWithTheRuntimeAvaloniaVersion()
+    {
+        XDocument document = await LoadMainWindowMarkupDocumentAsync();
+        string[] gestures =
+        [
+            .. document
+                .Descendants()
+                .Attributes("InputGesture")
+                .Select(static attribute => attribute.Value),
+        ];
+
+        await Assert.That(gestures).IsNotEmpty();
+        foreach (string gesture in gestures)
+        {
+            await Assert.That(() => KeyGesture.Parse(gesture))
+                .ThrowsNothing()
+                .Because($"the Viewer loads '{gesture}' while constructing MainWindow");
+        }
+    }
+
     [Test]
     public async Task TheDefaultHeaderIsOneCompactAlwaysVisibleRow()
     {

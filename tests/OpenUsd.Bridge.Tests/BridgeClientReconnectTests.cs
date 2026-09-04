@@ -349,13 +349,17 @@ public sealed class BridgeClientReconnectTests
         };
         await using var harness = await BridgeClientHarness.StartAsync(server);
         int streamsBefore = harness.Server.StreamCount;
+        int snapshotsBefore = harness.Server.SnapshotRequestCount;
 
         BridgeLocalPublicationResult result = await harness
             .PublishAndWaitAsync(harness.LocalBatch(1));
 
         await Assert.That(result.Outcome).IsEqualTo(BridgeLocalPublicationOutcome.RemoteRejected);
-        await harness.WaitForAsync(() => harness.Server.StreamCount > streamsBefore);
-        await Assert.That(harness.Server.SnapshotRequestCount).IsGreaterThan(1);
+        await harness.WaitForAsync(() =>
+            harness.Server.StreamCount > streamsBefore &&
+            harness.Server.SnapshotRequestCount > snapshotsBefore);
+        await Assert.That(harness.Server.SnapshotRequestCount)
+            .IsGreaterThan(snapshotsBefore);
     }
 
     [Test]
