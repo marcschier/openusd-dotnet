@@ -87,6 +87,14 @@ Assert-Contains `
     $ciWorkflow `
     "`$_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests'" `
     'Managed CI workflow'
+Assert-Contains `
+    $ciWorkflow `
+    '-Project $projects' `
+    'Managed CI workflow'
+Assert-DoesNotContain `
+    $ciWorkflow `
+    './eng/run-managed-tests.ps1 -Configuration Release' `
+    'Managed CI workflow'
 Assert-Contains $ciWorkflow '--managed-safety' 'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `

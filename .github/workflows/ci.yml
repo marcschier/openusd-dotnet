@@ -102,29 +102,27 @@ jobs:
         if: runner.os != 'macOS'
         shell: pwsh
         run: |
+          $projects = @(
+            Get-ChildItem tests -Recurse -Filter '*.csproj' -File |
+              Where-Object {
+                $_.BaseName.EndsWith(
+                  '.Tests',
+                  [StringComparison]::Ordinal) -and
+                $_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests' -and
+                $_.BaseName -cne 'OpenUsd.NativeCoverage.Tests' -and
+                $_.BaseName -cne 'OpenUsd.Cesium.Tests'
+              } |
+              Select-Object -ExpandProperty FullName
+          )
+          if ($projects.Count -eq 0) {
+            throw 'No non-conformance managed test projects were found.'
+          }
           if ($IsWindows) {
             ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release
-            $projects = @(
-              Get-ChildItem tests -Recurse -Filter '*.csproj' -File |
-                Where-Object {
-                  $_.BaseName.EndsWith(
-                    '.Tests',
-                    [StringComparison]::Ordinal) -and
-                  $_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests' -and
-                  $_.BaseName -cne 'OpenUsd.NativeCoverage.Tests' -and
-                  $_.BaseName -cne 'OpenUsd.Cesium.Tests'
-                } |
-                Select-Object -ExpandProperty FullName
-            )
-            if ($projects.Count -eq 0) {
-              throw 'No non-conformance managed test projects were found.'
-            }
-            ./eng/run-managed-tests.ps1 `
-              -Project $projects `
-              -Configuration Release
-          } else {
-            ./eng/run-managed-tests.ps1 -Configuration Release
           }
+          ./eng/run-managed-tests.ps1 `
+            -Project $projects `
+            -Configuration Release
       - name: Confirm macOS compile-only coverage
         if: runner.os == 'macOS'
         run: >

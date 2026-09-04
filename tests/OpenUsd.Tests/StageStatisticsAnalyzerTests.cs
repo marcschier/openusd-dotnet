@@ -266,4 +266,56 @@ public sealed class StageStatisticsAnalyzerTests
         }
         throw new DirectoryNotFoundException("Could not locate the repository root.");
     }
+
+    [Test]
+    public async Task TraversalPreflightAcceptsExactLimitsWithoutRetainingState()
+    {
+        var accumulator = new StageStatisticsAccumulator(
+            new StageStatisticsAnalysisLimits(2, 16, 4));
+
+        await Assert.That(
+                () => accumulator.EnsureTraversalCanBeMaterialized(
+                    primCount: 2,
+                    totalPathBytes: 16))
+            .ThrowsNothing();
+        await Assert.That(accumulator.PrimCount).IsEqualTo(0);
+        await Assert.That(accumulator.RetainedHierarchyPathBytes).IsEqualTo(0UL);
+        await Assert.That(accumulator.GeometryElementCount).IsEqualTo(0L);
+    }
+
+    [Test]
+    public async Task TraversalPreflightReportsPrimCountQuota()
+    {
+        var accumulator = new StageStatisticsAccumulator(
+            new StageStatisticsAnalysisLimits(2, 16, 4));
+
+        StageStatisticsQuotaExceededException exception = CaptureQuota(
+            () => accumulator.EnsureTraversalCanBeMaterialized(
+                primCount: 3,
+                totalPathBytes: 16));
+
+        await AssertQuotaAsync(
+            exception,
+            StageStatisticsLimitKind.PrimCount,
+            limit: 2,
+            observed: 3);
+    }
+
+    [Test]
+    public async Task TraversalPreflightReportsRetainedPathByteQuota()
+    {
+        var accumulator = new StageStatisticsAccumulator(
+            new StageStatisticsAnalysisLimits(2, 16, 4));
+
+        StageStatisticsQuotaExceededException exception = CaptureQuota(
+            () => accumulator.EnsureTraversalCanBeMaterialized(
+                primCount: 2,
+                totalPathBytes: 17));
+
+        await AssertQuotaAsync(
+            exception,
+            StageStatisticsLimitKind.RetainedHierarchyPathBytes,
+            limit: 16,
+            observed: 17);
+    }
 }

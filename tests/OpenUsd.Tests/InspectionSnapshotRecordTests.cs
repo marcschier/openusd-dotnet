@@ -250,4 +250,95 @@ public sealed class InspectionSnapshotRecordTests
             PathAtOriginRootIntroduction: sitePath,
             LayerStackIdentifier: "root.usda",
             LayerIdentifiers: layerIdentifiers ?? ["root.usda", "sub.usda"]);
+
+    [Test]
+    public async Task ValidationErrorComparerOrdersScalarKeysOrdinally()
+    {
+        Func<UsdValidationError, UsdValidationError, int> compare =
+            GetValidationErrorComparer();
+
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(validatorName: "A"),
+            CreateValidationError(validatorName: "B"));
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(errorName: "A"),
+            CreateValidationError(errorName: "B"));
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(message: "A"),
+            CreateValidationError(message: "B"));
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(severity: UsdValidationSeverity.Error),
+            CreateValidationError(severity: UsdValidationSeverity.Warning));
+    }
+
+    [Test]
+    public async Task ValidationErrorComparerOrdersSitesLexicographicallyAndByLength()
+    {
+        Func<UsdValidationError, UsdValidationError, int> compare =
+            GetValidationErrorComparer();
+
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(sites: ["/A", "/M", "/Z"]),
+            CreateValidationError(sites: ["/B", "/M", "/Z"]));
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(sites: ["/A", "/M", "/Z"]),
+            CreateValidationError(sites: ["/A", "/N", "/Z"]));
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(sites: ["/A", "/M", "/Y"]),
+            CreateValidationError(sites: ["/A", "/M", "/Z"]));
+        await AssertValidationErrorOrderAsync(
+            compare,
+            CreateValidationError(sites: ["/A", "/M"]),
+            CreateValidationError(sites: ["/A", "/M", "/Z"]));
+
+        UsdValidationError equalLeft =
+            CreateValidationError(sites: ["/A", "/M", "/Z"]);
+        UsdValidationError equalRight =
+            CreateValidationError(sites: ["/A", "/M", "/Z"]);
+        await Assert.That(compare(equalLeft, equalRight)).IsEqualTo(0);
+        await Assert.That(compare(equalRight, equalLeft)).IsEqualTo(0);
+    }
+
+    private static Func<UsdValidationError, UsdValidationError, int>
+        GetValidationErrorComparer()
+    {
+        System.Reflection.MethodInfo method = typeof(UsdValidation).GetMethod(
+            "CompareErrors",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
+            binder: null,
+            [typeof(UsdValidationError), typeof(UsdValidationError)],
+            modifiers: null)
+            ?? throw new InvalidOperationException(
+                "UsdValidation.CompareErrors was not found.");
+        return method.CreateDelegate<Func<UsdValidationError, UsdValidationError, int>>();
+    }
+
+    private static UsdValidationError CreateValidationError(
+        UsdValidationSeverity severity = UsdValidationSeverity.Error,
+        string validatorName = "Validator",
+        string errorName = "Error",
+        string message = "Message",
+        IReadOnlyList<string>? sites = null) =>
+        new(
+            severity,
+            validatorName,
+            errorName,
+            message,
+            sites is null ? ["/A", "/M", "/Z"] : [.. sites]);
+
+    private static async Task AssertValidationErrorOrderAsync(
+        Func<UsdValidationError, UsdValidationError, int> compare,
+        UsdValidationError earlier,
+        UsdValidationError later)
+    {
+        await Assert.That(compare(earlier, later)).IsLessThan(0);
+        await Assert.That(compare(later, earlier)).IsGreaterThan(0);
+    }
 }

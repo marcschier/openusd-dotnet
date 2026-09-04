@@ -166,4 +166,211 @@ public sealed class UsdShaderRegistryTests
             throw;
         }
     }
+
+    [Test]
+    public async Task ShaderNodeDefinitionsCompareEveryFieldAndPropertyPositionByValue()
+    {
+        UsdShaderNodeDefinition left = CreateShaderNodeDefinition();
+        UsdShaderNodeDefinition right = CreateShaderNodeDefinition();
+
+        await Assert.That(left).IsEqualTo(right);
+        await Assert.That(right).IsEqualTo(left);
+        await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
+        await Assert.That(left.Equals(null)).IsFalse();
+
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(identifier: "different.identifier"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(name: "Different Name"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(function: "differentFunction"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(shadingSystem: "differentShadingSystem"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(context: "differentContext"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(resolvedDefinitionUri: "different-definition.usda"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(resolvedImplementationUri: "different-implementation.glslfx"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(implementationName: "DifferentImplementation"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(isValid: false));
+
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(
+                properties: CreateShaderProperties(
+                    first: new UsdShaderProperty(
+                        "different.first",
+                        "color3f",
+                        UsdShaderPropertyDirection.Input,
+                        IsArray: false,
+                        IsConnectable: true))));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(
+                properties: CreateShaderProperties(
+                    middle: new UsdShaderProperty(
+                        "property.middle",
+                        "token",
+                        UsdShaderPropertyDirection.Output,
+                        IsArray: true,
+                        IsConnectable: true))));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(
+                properties: CreateShaderProperties(
+                    last: new UsdShaderProperty(
+                        "property.last",
+                        "token",
+                        UsdShaderPropertyDirection.Output,
+                        IsArray: true,
+                        IsConnectable: true))));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinition(properties: CreateShaderProperties()[..2]));
+    }
+
+    [Test]
+    public async Task ShaderNodeDefinitionSnapshotsCompareDefinitionSequencesAndTruncationByValue()
+    {
+        UsdShaderNodeDefinitionSnapshot left = CreateShaderNodeDefinitionSnapshot();
+        UsdShaderNodeDefinitionSnapshot right = CreateShaderNodeDefinitionSnapshot();
+
+        await Assert.That(left).IsEqualTo(right);
+        await Assert.That(right).IsEqualTo(left);
+        await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
+        await Assert.That(left.Equals(null)).IsFalse();
+
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinitionSnapshot(firstIdentifier: "different.first"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinitionSnapshot(middleIdentifier: "different.middle"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinitionSnapshot(lastIdentifier: "different.last"));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinitionSnapshot(includeLast: false));
+        await Assert.That(left).IsNotEqualTo(
+            CreateShaderNodeDefinitionSnapshot(isTruncated: true));
+    }
+
+    [Test]
+    public async Task ShaderNodeDefinitionsAndSnapshotsFormatNestedValues()
+    {
+        UsdShaderNodeDefinition definition = CreateShaderNodeDefinition(
+            identifier: "format.identifier",
+            function: "formatFunction",
+            implementationName: "FormatImplementation",
+            properties:
+            [
+                new UsdShaderProperty(
+                    "format.first",
+                    "color3f",
+                    UsdShaderPropertyDirection.Input,
+                    IsArray: false,
+                    IsConnectable: true),
+                new UsdShaderProperty(
+                    "format.middle",
+                    "float",
+                    UsdShaderPropertyDirection.Input,
+                    IsArray: true,
+                    IsConnectable: true),
+                new UsdShaderProperty(
+                    "format.last",
+                    "token",
+                    UsdShaderPropertyDirection.Output,
+                    IsArray: false,
+                    IsConnectable: false)
+            ]);
+
+        string definitionText = definition.ToString();
+        await Assert.That(definitionText).Contains("Identifier = format.identifier");
+        await Assert.That(definitionText).Contains("Function = formatFunction");
+        await Assert.That(definitionText).Contains("ImplementationName = FormatImplementation");
+        await Assert.That(definitionText).Contains("Name = format.first");
+        await Assert.That(definitionText).Contains("Name = format.middle");
+        await Assert.That(definitionText).Contains("Name = format.last");
+        await Assert.That(definitionText).Contains("IsValid = True");
+
+        UsdShaderNodeDefinitionSnapshot snapshot = CreateShaderNodeDefinitionSnapshot(
+            firstIdentifier: "format.snapshot.nested");
+        string snapshotText = snapshot.ToString();
+        await Assert.That(snapshotText).Contains("Identifier = format.snapshot.nested");
+        await Assert.That(snapshotText).Contains("IsTruncated = False");
+    }
+
+    private static UsdShaderNodeDefinition CreateShaderNodeDefinition(
+        string identifier = "shader.identifier",
+        string name = "Shader Name",
+        string function = "shaderFunction",
+        string shadingSystem = "usd",
+        string context = "surface",
+        string resolvedDefinitionUri = "definitions/shader.usda",
+        string resolvedImplementationUri = "implementations/shader.glslfx",
+        string implementationName = "ShaderImplementation",
+        bool isValid = true,
+        IReadOnlyList<UsdShaderProperty>? properties = null)
+    {
+        IReadOnlyList<UsdShaderProperty> copiedProperties =
+            properties is null ? CreateShaderProperties() : [.. properties];
+        return new UsdShaderNodeDefinition(
+            identifier,
+            name,
+            function,
+            shadingSystem,
+            context,
+            resolvedDefinitionUri,
+            resolvedImplementationUri,
+            implementationName,
+            copiedProperties,
+            isValid);
+    }
+
+    private static UsdShaderProperty[] CreateShaderProperties(
+        UsdShaderProperty? first = null,
+        UsdShaderProperty? middle = null,
+        UsdShaderProperty? last = null) =>
+        [
+            first ?? new UsdShaderProperty(
+                "property.first",
+                "color3f",
+                UsdShaderPropertyDirection.Input,
+                IsArray: false,
+                IsConnectable: true),
+            middle ?? new UsdShaderProperty(
+                "property.middle",
+                "float",
+                UsdShaderPropertyDirection.Input,
+                IsArray: true,
+                IsConnectable: true),
+            last ?? new UsdShaderProperty(
+                "property.last",
+                "token",
+                UsdShaderPropertyDirection.Output,
+                IsArray: false,
+                IsConnectable: false)
+        ];
+
+    private static UsdShaderNodeDefinitionSnapshot CreateShaderNodeDefinitionSnapshot(
+        string firstIdentifier = "snapshot.first",
+        string middleIdentifier = "snapshot.middle",
+        string lastIdentifier = "snapshot.last",
+        bool isTruncated = false,
+        bool includeLast = true)
+    {
+        List<UsdShaderNodeDefinition> definitions =
+        [
+            CreateShaderNodeDefinition(
+                identifier: firstIdentifier,
+                name: "Snapshot First"),
+            CreateShaderNodeDefinition(
+                identifier: middleIdentifier,
+                name: "Snapshot Middle")
+        ];
+        if (includeLast)
+        {
+            definitions.Add(
+                CreateShaderNodeDefinition(
+                    identifier: lastIdentifier,
+                    name: "Snapshot Last"));
+        }
+        return new UsdShaderNodeDefinitionSnapshot([.. definitions], isTruncated);
+    }
 }

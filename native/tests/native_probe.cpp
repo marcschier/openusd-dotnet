@@ -4279,7 +4279,8 @@ bool ResolveAssets(
 
 bool VerifyResolverContracts(const char* stagePath, openusd_error_buffer* error)
 {
-    const std::filesystem::path stage = std::filesystem::absolute(stagePath);
+    const std::filesystem::path stage =
+        std::filesystem::absolute(stagePath).lexically_normal();
     const std::string directory = stage.parent_path().string();
     const std::string fileName = stage.filename().string();
 
