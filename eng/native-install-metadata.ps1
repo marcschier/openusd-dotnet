@@ -148,7 +148,9 @@ Assert-RequiredPath $shimRoot "$Rid shim install"
 
 $dataAbiSource = Join-Path $repoRoot 'native/openusd_dotnet/src/internal/common.h'
 $dataHeader = Join-Path $repoRoot 'native/openusd_dotnet/include/openusd_dotnet.h'
+$imageExrHeader = Join-Path $repoRoot 'native/openusd_dotnet/include/openusd_image_exr.h'
 $hydraHeader = Join-Path $repoRoot 'native/openusd_hydra/include/openusd_hydra.h'
+$stormAovHeader = Join-Path $repoRoot 'native/openusd_hydra/include/openusd_storm_aov.h'
 $pageAbiSource = Join-Path $repoRoot 'native/hdSilk/include/openusd_hdsilk.h'
 $renderCameraHeader = Join-Path $repoRoot 'native/include/openusd_render_camera.h'
 $renderLightingHeader = Join-Path $repoRoot 'native/include/openusd_render_lighting.h'
@@ -162,10 +164,18 @@ $dataAbi = Get-SourceAbiVersion `
 $dataCapabilities = Get-SourceCapabilityMask `
     -SourcePath $dataAbiSource `
     -HeaderPath $dataHeader
+$imageExrVersion = Get-SourceAbiVersion `
+    -Path $imageExrHeader `
+    -Pattern 'OPENUSD_IMAGE_EXR_VERSION\s+(\d+)u?' `
+    -Name 'EXR encoding request version'
 $stormAbi = Get-SourceAbiVersion `
     -Path $hydraHeader `
     -Pattern 'OPENUSD_STORM_ABI_VERSION\s+(\d+)u?' `
     -Name 'Storm ABI version'
+$stormAovVersion = Get-SourceAbiVersion `
+    -Path $stormAovHeader `
+    -Pattern 'OPENUSD_STORM_AOV_VERSION\s+(\d+)u?' `
+    -Name 'Storm AOV view version'
 $sessionAbi = Get-SourceAbiVersion `
     -Path $pageAbiSource `
     -Pattern 'OPENUSD_SILK_SESSION_ABI_VERSION\s+(\d+)u?' `
@@ -333,7 +343,9 @@ $expected = [ordered]@{
     shimDataAbiVersion = $dataAbi
     shimDataCapabilities = $dataCapabilities
     dataCameraStateVersion = $cameraStateVersion
+    imageExrVersion = $imageExrVersion
     stormAbiVersion = $stormAbi
+    stormAovVersion = $stormAovVersion
     silkSessionAbiVersion = $sessionAbi
     shimPageAbiVersion = $pageAbi
     vulkanSdkVersion = [string]$lock.vulkanSdk.version
@@ -341,7 +353,9 @@ $expected = [ordered]@{
     stormChildNavigationInputVersion = $stormChildNavigationInputVersion
 }
 $installedDataHeader = Join-Path $shimRoot 'include/openusd_dotnet.h'
+$installedImageExrHeader = Join-Path $shimRoot 'include/openusd_image_exr.h'
 $installedHydraHeader = Join-Path $shimRoot 'include/openusd_hydra.h'
+$installedStormAovHeader = Join-Path $shimRoot 'include/openusd_storm_aov.h'
 $installedHdSilkHeader = Join-Path $shimRoot 'include/openusd_hdsilk.h'
 $installedStormChildHeader = Join-Path $shimRoot 'include/openusd_storm_child.h'
 $installedRenderCameraHeader = Join-Path $shimRoot 'include/openusd_render_camera.h'
@@ -351,10 +365,18 @@ $expected.dataHeaderSha256 = Get-VerifiedHeaderHash `
     -SourcePath $dataHeader `
     -InstalledPath $installedDataHeader `
     -Description 'data shim header'
+$expected.imageExrHeaderSha256 = Get-VerifiedHeaderHash `
+    -SourcePath $imageExrHeader `
+    -InstalledPath $installedImageExrHeader `
+    -Description 'EXR encoding header'
 $expected.hydraHeaderSha256 = Get-VerifiedHeaderHash `
     -SourcePath $hydraHeader `
     -InstalledPath $installedHydraHeader `
     -Description 'Hydra shim header'
+$expected.stormAovHeaderSha256 = Get-VerifiedHeaderHash `
+    -SourcePath $stormAovHeader `
+    -InstalledPath $installedStormAovHeader `
+    -Description 'Storm AOV header'
 $expected.hdSilkHeaderSha256 = Get-VerifiedHeaderHash `
     -SourcePath $pageAbiSource `
     -InstalledPath $installedHdSilkHeader `
@@ -395,6 +417,10 @@ $installedCameraStateVersion = Get-SourceAbiVersion `
     -Path $installedDataHeader `
     -Pattern 'OPENUSD_GEOM_CAMERA_STATE_VERSION\s+UINT32_C\((\d+)\)' `
     -Name 'installed camera state version'
+$installedImageExrVersion = Get-SourceAbiVersion `
+    -Path $installedImageExrHeader `
+    -Pattern 'OPENUSD_IMAGE_EXR_VERSION\s+(\d+)u?' `
+    -Name 'installed EXR encoding request version'
 $installedStormChildNavigationInputVersion = Get-SourceAbiVersion `
     -Path $installedStormChildHeader `
     -Pattern 'OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION\s+(\d+)u?' `
@@ -433,6 +459,12 @@ if ($installedCameraStateVersion -ne $cameraStateVersion)
     throw (
         "Installed camera state version $installedCameraStateVersion does not match " +
         "source version $cameraStateVersion. Reinstall the shim.")
+}
+if ($installedImageExrVersion -ne $imageExrVersion)
+{
+    throw (
+        "Installed EXR encoding request version $installedImageExrVersion does not match " +
+        "source version $imageExrVersion. Reinstall the shim.")
 }
 if ($installedStormChildNavigationInputVersion -ne $stormChildNavigationInputVersion)
 {
@@ -490,6 +522,7 @@ Write-Output (
     "Verified $Rid native install metadata: OpenUSD $($expected.openUsdCommit), " +
     "lock $($expected.lockSha256), data ABI $dataAbi, " +
     "capabilities 0x$($dataCapabilities.ToString('X')), camera state v$cameraStateVersion, " +
+    "EXR encoding v$imageExrVersion, " +
     "Storm ABI $stormAbi, Silk session/page ABI $sessionAbi/$pageAbi, " +
     "Storm child ABI $stormChildAbi/navigation v$stormChildNavigationInputVersion."
 )

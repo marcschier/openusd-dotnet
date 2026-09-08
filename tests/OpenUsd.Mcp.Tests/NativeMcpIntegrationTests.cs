@@ -1,9 +1,152 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Microsoft.Extensions.DependencyInjection;
+using System.Buffers.Binary;
+
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class NativeMcpIntegrationTests
 {
+    [Test]
+    [NotInParallel]
+    [Arguments(false, "raw")]
+    [Arguments(true, "raw")]
+    [Arguments(false, "exr")]
+    [Arguments(true, "exr")]
+    public async Task NativeSequenceRendersDistinctTimesAndExposesTheChosenImmutableFrame(bool includeDepth, string hdrFormat)
+    {
+        if (hdrFormat == "exr" && !OpenUsd.Rendering.ExrRgba16FloatWriter.IsSupported)
+        {
+            Skip.Test("EXR output currently requires Windows x64.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        const string scene = """
+            #usda 1.0
+            (metersPerUnit = 1)
+            def Camera "Camera" {
+                token projection = "orthographic"
+                float horizontalAperture = 20
+                float verticalAperture = 20
+                float2 clippingRange = (1, 10)
+            }
+            def Xform "Mover" {
+                double3 xformOp:translate.timeSamples = {0: (-0.5, 0, -4), 1: (0, 0, -4), 2: (0.5, 0, -4)}
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                def Mesh "Quad" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+                    uniform token subdivisionScheme = "none"
+                    uniform bool doubleSided = true
+                    point3f[] points = [(-0.2,-0.3,0), (0.2,-0.3,0), (0.2,0.3,0), (-0.2,0.3,0)]
+                    int[] faceVertexCounts = [4]
+                    int[] faceVertexIndices = [0,1,2,3]
+                    rel material:binding = </Material>
+                }
+            }
+            def Material "Material" {
+                token outputs:surface.connect = </Material/Shader.outputs:surface>
+                def Shader "Shader" {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0,0,0)
+                    color3f inputs:emissiveColor = (64,0,0)
+                    int inputs:useSpecularWorkflow = 1
+                    color3f inputs:specularColor = (0,0,0)
+                    token outputs:surface
+                }
+            }
+            """;
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        string plugins = Path.Combine(layout.ShimRoot, "plugin", "usd");
+        var options = new OpenUsdMcpApplicationOptions(
+            files.SourceRoot, files.OutputRoot, plugins, files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider services = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = services.GetRequiredService<IOpenUsdMcpService>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderSequenceAsync(new RenderSequenceRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            CameraPath = "/Camera",
+            Width = 64,
+            Height = 64,
+            StartTimeCode = 0,
+            TimeStep = 1,
+            FrameCount = 3,
+            IncludeDeviceDepth = includeDepth,
+            IncludeHdrColor = true,
+            HdrColorFormat = hdrFormat
+        }, default);
+        IArtifactResourceStore resources = services.GetRequiredService<IArtifactResourceStore>();
+        var centers = new double[3];
+        for (int index = 0; index < 3; index++)
+        {
+            McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(new ReadSequenceFrameRequest
+            {
+                JobId = job.JobId,
+                FrameIndex = index
+            }, default);
+            ArtifactResourceContent? encoded = await resources.ReadAsync(new Uri(frame.Artifact.Uri));
+            ImageRgba8 pixels = PngRgba8Decoder.Decode(encoded!.Content.Span);
+            (double center, int coverage) = RedCenter(pixels);
+            await Assert.That(coverage).IsGreaterThan(100);
+            await Assert.That(frame.TimeCode).IsEqualTo((double)index);
+            centers[index] = center;
+            if (includeDepth)
+            {
+                await Assert.That(frame.DeviceDepth).IsNotNull();
+                ArtifactResourceContent? depth = await resources.ReadAsync(new Uri(frame.DeviceDepth!.Uri));
+                await Assert.That(depth!.Content.Length).IsEqualTo(64 * 64 * sizeof(float));
+                float surfaceDepth = BinaryPrimitives.ReadSingleLittleEndian(
+                    depth.Content.Span.Slice(((32 * 64) + (int)Math.Round(center)) * sizeof(float), sizeof(float)));
+                await Assert.That(Math.Abs(surfaceDepth - (1f / 3f))).IsLessThan(0.00001f);
+                await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(depth.Content.Span)).IsEqualTo(1f);
+            }
+            else
+            {
+                await Assert.That(frame.DeviceDepth).IsNull();
+            }
+            await Assert.That(frame.HdrColor).IsNotNull();
+            ArtifactResourceContent? hdr = await resources.ReadAsync(new Uri(frame.HdrColor!.Uri));
+            byte[] half = hdrFormat == "exr"
+                ? ExrScanlineOracle.Read(hdr!.Content.ToArray(), 64, 64) : hdr!.Content.ToArray();
+            await Assert.That(half.Length).IsEqualTo(64 * 64 * 8);
+            await Assert.That(frame.HdrColorFormat).IsEqualTo(hdrFormat);
+            await Assert.That(Convert.ToHexString(
+                half.AsSpan(((32 * 64) + (int)Math.Round(center)) * 8, 8)))
+                .IsEqualTo("005400000000003C");
+        }
+        await Assert.That(centers[1] - centers[0]).IsGreaterThan(12d);
+        await Assert.That(centers[2] - centers[1]).IsGreaterThan(12d);
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+    }
+
+    private static (double Center, int Coverage) RedCenter(ImageRgba8 image)
+    {
+        long sum = 0;
+        int count = 0;
+        ReadOnlySpan<byte> pixels = image.Pixels.Span;
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset] > pixels[offset + 1] + 20 &&
+                pixels[offset] > pixels[offset + 2] + 20 && pixels[offset + 3] >= 240)
+            {
+                sum += (offset / 4) % image.Width;
+                count++;
+            }
+        }
+        return (count == 0 ? double.NaN : (double)sum / count, count);
+    }
+
     [Test]
     public async Task CallerDisposedRenderSourceIsRemovedFromBackendTracking()
     {
@@ -240,8 +383,14 @@ public sealed class NativeMcpIntegrationTests
     {
         string rid = RuntimeRid();
         string root = FindRepositoryRoot();
-        string nativeRoot = Path.Combine(root, "native", "install", rid);
-        string shimRoot = Path.Combine(root, "native", "install", "shim", rid);
+        string nativeRoot = Environment.GetEnvironmentVariable("OPENUSD_MCP_TEST_NATIVE_ROOT") ??
+            Path.Combine(root, "native", "install", rid);
+        string shimRoot = Environment.GetEnvironmentVariable("OPENUSD_MCP_TEST_SHIM_ROOT") ??
+            Path.Combine(root, "native", "install", "shim", rid);
+        if (!Path.IsPathFullyQualified(nativeRoot) || !Path.IsPathFullyQualified(shimRoot))
+        {
+            throw new ArgumentException("Native MCP test roots must be absolute paths.");
+        }
         string? missing = new[] { nativeRoot, shimRoot }
             .FirstOrDefault(path => !Directory.Exists(path));
         if (missing is not null)
@@ -313,6 +462,8 @@ public sealed class NativeMcpIntegrationTests
             string target = Path.Combine(destination, Path.GetRelativePath(source, file));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, overwrite: true);
+            // Only fixture copies are writable; frozen native inputs keep their original attributes.
+            File.SetAttributes(target, File.GetAttributes(target) & ~FileAttributes.ReadOnly);
         }
     }
 

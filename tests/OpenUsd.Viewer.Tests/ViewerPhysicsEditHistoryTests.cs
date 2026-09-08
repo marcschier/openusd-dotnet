@@ -90,6 +90,72 @@ public sealed class ViewerPhysicsEditHistoryTests
     }
 
     [Test]
+    public async Task ALongDragRetainsOnlyItsFirstBeforeAndFinalAfterOpinion()
+    {
+        var history = new ViewerPhysicsEditHistory();
+        for (int index = 0; index < 1000; index++)
+        {
+            history.Record(Step(
+                "/World/Body", "openUsdPhysics:body:sleepThreshold",
+                ViewerPhysicsValue.FromNumber(index), ViewerPhysicsValue.FromNumber(index + 1)), index * 0.001d);
+        }
+
+        await Assert.That(history.UndoDepth).IsEqualTo(1);
+        await Assert.That(history.TryTakeUndo(out ViewerPhysicsEditStep undo)).IsTrue();
+        await Assert.That(undo.Edits.Count).IsEqualTo(1);
+        await Assert.That(undo.Edits[0].Before.NumberValue).IsEqualTo(1000d);
+        await Assert.That(undo.Edits[0].After.NumberValue).IsEqualTo(0d);
+        await Assert.That(history.TryTakeRedo(out ViewerPhysicsEditStep redo)).IsTrue();
+        await Assert.That(redo.Edits[0].After.NumberValue).IsEqualTo(1000d);
+    }
+
+    [Test]
+    public async Task AChangedBeforeOpinionCannotMergeAcrossAnExternalEdit()
+    {
+        var history = new ViewerPhysicsEditHistory();
+        history.Record(Step(
+            "/World/Body", "openUsdPhysics:body:sleepThreshold",
+            ViewerPhysicsValue.FromNumber(0d), ViewerPhysicsValue.FromNumber(1d)), 0d);
+
+        bool added = history.Record(Step(
+            "/World/Body", "openUsdPhysics:body:sleepThreshold",
+            ViewerPhysicsValue.FromNumber(5d), ViewerPhysicsValue.FromNumber(6d)), 0.01d);
+
+        await Assert.That(added).IsTrue();
+        await Assert.That(history.UndoDepth).IsEqualTo(2);
+        history.TryTakeUndo(out ViewerPhysicsEditStep undo);
+        await Assert.That(undo.Edits[0].After.NumberValue).IsEqualTo(5d);
+    }
+
+    [Test]
+    public async Task RecordedHistoryDoesNotAliasTheCallersMutableEditCollection()
+    {
+        ViewerPhysicsEdit[] edits = [Edit("/World/Original", "value", 0d, 1d)];
+        var history = new ViewerPhysicsEditHistory();
+        history.Record(new ViewerPhysicsEditStep("Edit original", edits), 0d);
+        edits[0] = Edit("/World/Foreign", "value", 10d, 20d);
+
+        await Assert.That(history.TryTakeUndo(out ViewerPhysicsEditStep undo)).IsTrue();
+        await Assert.That(undo.Edits[0].PrimPath).IsEqualTo("/World/Original");
+        await Assert.That(undo.Edits[0].After.NumberValue).IsEqualTo(0d);
+    }
+
+    [Test]
+    public async Task AnOversizedOpinionCannotEnterTheHistoryOrDestroyItsRedoBranch()
+    {
+        var history = new ViewerPhysicsEditHistory(maximumRetainedBytes: 1024);
+        history.Record(Step("/Body", "value",
+            ViewerPhysicsValue.FromNumber(0d), ViewerPhysicsValue.FromNumber(1d)), 0d);
+        history.TryTakeUndo(out _);
+        ViewerPhysicsEditStep oversized = Step("/Body", "value",
+            ViewerPhysicsValue.FromText(string.Empty), ViewerPhysicsValue.FromText(new string('x', 2048)));
+
+        await Assert.That(() => history.Record(oversized, 1d)).Throws<ArgumentException>();
+        await Assert.That(history.UndoDepth).IsEqualTo(0);
+        await Assert.That(history.RedoDepth).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task AGestureThatPausesLongEnoughStartsANewStep()
     {
         var history = new ViewerPhysicsEditHistory(mergeSeconds: 0.25d);

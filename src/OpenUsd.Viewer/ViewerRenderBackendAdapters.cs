@@ -116,10 +116,22 @@ internal interface IViewerHydraSceneSnapshotSource
 
 internal interface IViewerFrameCaptureBackend
 {
-    ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+    bool SupportsFrameCapture { get; }
+
+    ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
         int width,
         int height,
         CancellationToken cancellationToken);
+}
+
+internal interface IViewerRenderSequenceCaptureBackend
+{
+    string? GetRenderSequenceUnsupportedReason(StageRenderState state, ViewerRenderSequenceOutputOptions outputs);
+
+    ValueTask<ViewerFrameCaptureResult> CaptureRenderSequenceFrameAsync(
+        StageRenderState state, ViewerRenderSequenceOutputOptions outputs, CancellationToken cancellationToken);
+
+    ValueTask RestoreRenderSequenceFrameAsync(StageRenderState state, CancellationToken cancellationToken);
 }
 
 internal sealed class ViewerBackendInitializationException : Exception
@@ -269,6 +281,14 @@ internal sealed class ViewerRenderBackendRegistry
         }
     }
 
+    internal ViewerRenderBackend? CaptureRenderSequenceBackend()
+    {
+        lock (_gate)
+        {
+            return _active;
+        }
+    }
+
     /// <summary>
     /// Captures the active backend as a physics override target and the generation that names it.
     /// </summary>
@@ -371,6 +391,37 @@ internal sealed class ViewerRenderBackend :
 
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         (_session as IViewerHydraSceneSnapshotSource)?.HydraSceneSnapshot;
+
+    public bool SupportsFrameCapture =>
+        (_session as IViewerFrameCaptureBackend)?.SupportsFrameCapture == true;
+
+    internal string? GetRenderSequenceUnsupportedReason(
+        StageRenderState state, ViewerRenderSequenceOutputOptions outputs) =>
+        Identity.Kind == RenderBackendKind.D3D12 && _session is IViewerRenderSequenceCaptureBackend sequence
+            ? sequence.GetRenderSequenceUnsupportedReason(state, outputs)
+            : "The active renderer has no exact timed RGBA sequence binding. " +
+                "Choose a supported hdSilk / Direct3D 12 renderer; still-frame capture is unchanged.";
+
+    internal async ValueTask<ViewerFrameCaptureResult> CaptureRenderSequenceFrameAsync(
+        StageRenderState state, ViewerRenderSequenceOutputOptions outputs, CancellationToken cancellationToken)
+    {
+        IViewerRenderBackendSession session = GetSession();
+        if (GetRenderSequenceUnsupportedReason(state, outputs) is { } unsupported)
+        {
+            throw new NotSupportedException(unsupported);
+        }
+        if (session is not IViewerRenderSequenceCaptureBackend sequence)
+        {
+            throw new NotSupportedException("The sequence renderer is no longer available for capture.");
+        }
+        await session.UpdateStateAsync(state, cancellationToken);
+        return await sequence.CaptureRenderSequenceFrameAsync(state, outputs, cancellationToken);
+    }
+
+    internal ValueTask RestoreRenderSequenceFrameAsync(StageRenderState state, CancellationToken cancellationToken) =>
+        GetSession() is IViewerRenderSequenceCaptureBackend sequence
+            ? sequence.RestoreRenderSequenceFrameAsync(state, cancellationToken)
+            : throw new NotSupportedException("The sequence renderer is no longer available for restoration.");
 
     public bool SupportsPhysicsTransformOverrides =>
         (_session as IViewerPhysicsOverrideTarget)?.SupportsPhysicsTransformOverrides ?? false;
@@ -497,14 +548,15 @@ internal sealed class ViewerRenderBackend :
                     binding.SceneRevision));
     }
 
-    public ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+    public ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
         int width,
         int height,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _ = ViewerFrameCaptureResult.GetByteCount(width, height);
         IViewerRenderBackendSession session = GetSession();
-        return session is IViewerFrameCaptureBackend capture
+        return session is IViewerFrameCaptureBackend { SupportsFrameCapture: true } capture
             ? capture.CaptureFrameAsync(width, height, cancellationToken)
             : throw new NotSupportedException("The active renderer cannot capture frames.");
     }

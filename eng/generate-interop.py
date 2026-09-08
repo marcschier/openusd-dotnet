@@ -4,6 +4,7 @@ import argparse
 import pathlib
 import re
 import sys
+import image_exr_interop
 
 
 FUNCTION_PATTERN = re.compile(
@@ -48,11 +49,13 @@ def map_parameter(declaration: str) -> tuple[str, str]:
 
     nullable_names = {"type_name", "target_prim_path", "variant_selection", "string_value",
                       "display", "view", "looks", "anchor_asset_path",
-                      "sub_identifier", "shading_system"}
+                      "sub_identifier", "shading_system", "settings_path"}
     if native_type == "const char*":
         nullable = "?" if native_name in nullable_names else ""
         return f"string{nullable}", managed_name
     if native_type == "char*":
+        return "byte*", managed_name
+    if native_type == "const uint8_t*":
         return "byte*", managed_name
     if native_type in {"const openusd_stage*", "openusd_stage*", "openusd_stage* const",
                        "const openusd_stage_access*", "openusd_stage_access*",
@@ -65,6 +68,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_validation_error_list*",
                        "openusd_resolved_asset_list*",
                        "openusd_sdr_node_definition_list*",
+                       "openusd_render_specification*",
+                       "openusd_hierarchy_snapshot*",
+                       "openusd_property_snapshot*",
+                       "openusd_edit_buffer*",
                        "openusd_resolver_context*", "const openusd_resolver_context*",
                        "openusd_resolver_context* const",
                        "openusd_resolver_binding*", "openusd_resolver_binding* const",
@@ -79,12 +86,24 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_validation_error_list**",
                        "openusd_resolved_asset_list**",
                        "openusd_sdr_node_definition_list**",
+                       "openusd_render_specification**",
+                       "openusd_hierarchy_snapshot**",
+                       "openusd_property_snapshot**",
+                       "openusd_edit_buffer**",
                        "openusd_resolver_context**",
                        "openusd_resolver_binding**",
                        "openusd_ocio_processor**"}:
         return "out nint", managed_name
     if native_type == "openusd_error_buffer*":
         return "ref NativeErrorBuffer", managed_name
+    if native_type == "const openusd_hierarchy_limits*":
+        return "ref OpenUsdNativeHierarchyLimits", managed_name
+    if native_type == "openusd_hierarchy_view*":
+        return "ref NativeHierarchyView", managed_name
+    if native_type == "const openusd_property_limits*":
+        return "ref OpenUsdNativePropertyLimits", managed_name
+    if native_type == "openusd_property_view*":
+        return "ref NativePropertyView", managed_name
     if native_type == "const openusd_string_list_view*":
         return "ref NativeStringListView", managed_name
     if native_type == "openusd_string_list_view*":
@@ -105,6 +124,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref NativeResolvedAssetView", managed_name
     if native_type == "openusd_sdr_node_definition_view*":
         return "ref NativeSdrNodeDefinitionView", managed_name
+    if native_type == "openusd_render_specification_view*":
+        return "ref NativeRenderSpecificationView", managed_name
+    if native_type == "openusd_edit_buffer_view*":
+        return "ref NativeEditBufferView", managed_name
     if native_type == "const openusd_vec2f*":
         return ("OpenUsdNativeVec2f*" if native_name == "values"
                 else "ref OpenUsdNativeVec2f"), managed_name
@@ -427,6 +450,13 @@ public static unsafe partial class OpenUsdNativeRuntime
     }}
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeEditBufferView
+    {{
+        internal byte* Data;
+        internal nuint Size;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeErrorBuffer
     {{
         internal NativeErrorBuffer(byte* data, nuint capacity)
@@ -457,16 +487,38 @@ def main() -> int:
     root = pathlib.Path(__file__).resolve().parents[1]
     header_path = root / "native" / "openusd_dotnet" / "include" / "openusd_dotnet.h"
     output_path = root / "src" / "OpenUsd.Interop" / "OpenUsdNativeMethods.g.cs"
-    generated = generate(header_path.read_text(encoding="utf-8")).replace("\r\n", "\n")
+    edit_header_path = header_path.with_name("openusd_layer_edit.h")
+    review_header_path = header_path.with_name("openusd_review_document.h")
+    hierarchy_header_path = header_path.with_name("openusd_hierarchy.h")
+    property_header_path = header_path.with_name("openusd_property_inspection.h")
+    headers = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (header_path, edit_header_path, review_header_path, hierarchy_header_path, property_header_path)
+    )
+    generated = generate(headers).replace("\r\n", "\n")
+    exr_header_path = header_path.with_name("openusd_image_exr.h")
+    exr_output_path = output_path.with_name("OpenUsdNativeExrEncoding.g.cs")
+    try:
+        exr_generated = image_exr_interop.generate(
+            exr_header_path.read_text(encoding="utf-8").replace("\r\n", "\n"))
+    except ValueError as error:
+        print(f"EXR interop generation failed: {error}", file=sys.stderr)
+        return 1
 
     if args.verify:
         current = output_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        ok = True
         if current != generated:
             print(f"Generated interop is out of date: {output_path}", file=sys.stderr)
-            return 1
-        return 0
+            ok = False
+        exr_current = exr_output_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        if exr_current != exr_generated:
+            print(f"Generated EXR interop is out of date: {exr_output_path}", file=sys.stderr)
+            ok = False
+        return 0 if ok else 1
 
     output_path.write_text(generated, encoding="utf-8", newline="\n")
+    exr_output_path.write_text(exr_generated, encoding="utf-8", newline="\n")
     return 0
 
 

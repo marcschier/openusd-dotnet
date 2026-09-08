@@ -1,0 +1,19 @@
+--- a/pxr/imaging/hd/renderSettings.cpp
++++ b/pxr/imaging/hd/renderSettings.cpp
+@@ -28,8 +28,6 @@
+ #include <string>
+ 
+ PXR_NAMESPACE_OPEN_SCOPE
+-
+-namespace {
+ 
+ template <class HashState>
+ void TfHashAppend(
+@@ -65,7 +63,6 @@
+             rp.namespacedSettings);
+ }
+ 
+-}
+ // -------------------------------------------------------------------------- //
+ 
+ /* static */

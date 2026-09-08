@@ -3,8 +3,23 @@ target_compile_features(openusd_native_probe PRIVATE cxx_std_17)
 target_compile_definitions(openusd_native_probe PRIVATE OPENUSD_DOTNET_BUILD)
 target_precompile_headers(openusd_native_probe PRIVATE <algorithm>)
 target_link_libraries(openusd_native_probe PRIVATE openusd_dotnet_test usd_m)
+add_executable(
+    openusd_render_specification_probe
+    ../openusd_dotnet/tests/render_specification_probe.cpp)
+target_compile_features(openusd_render_specification_probe PRIVATE cxx_std_17)
+target_link_libraries(openusd_render_specification_probe PRIVATE openusd_dotnet usd_m)
+add_executable(
+    openusd_render_admission_probe
+    ../openusd_dotnet/tests/render_admission_probe.cpp)
+target_compile_features(openusd_render_admission_probe PRIVATE cxx_std_17)
+target_link_libraries(openusd_render_admission_probe PRIVATE openusd_dotnet usd_m)
+if(WIN32)
+    target_link_libraries(openusd_render_admission_probe PRIVATE psapi)
+endif()
 if(TARGET openusd_native_sanitizers)
     target_link_libraries(openusd_native_probe PRIVATE openusd_native_sanitizers)
+    target_link_libraries(openusd_render_specification_probe PRIVATE openusd_native_sanitizers)
+    target_link_libraries(openusd_render_admission_probe PRIVATE openusd_native_sanitizers)
 endif()
 
 # The third-party resolver contract is proved with a real out-of-tree plugin tree rather than a
@@ -32,8 +47,12 @@ add_dependencies(openusd_native_probe openusd_test_resolver)
 
 if(MSVC)
     target_compile_options(openusd_native_probe PRIVATE /W4 /WX /permissive-)
+    target_compile_options(openusd_render_specification_probe PRIVATE /W4 /WX /permissive-)
+    target_compile_options(openusd_render_admission_probe PRIVATE /W4 /WX /permissive-)
 else()
     target_compile_options(openusd_native_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(openusd_render_specification_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(openusd_render_admission_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
 if(CMAKE_PREFIX_PATH)
@@ -65,6 +84,11 @@ if(NOT EXISTS "${_openusd_test_prefix}/lib/usd")
         "install prefix that owns it.")
 endif()
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/hierarchy_probe.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/property_inspection_probe.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/render_deferred_probe.cmake")
+openusd_add_render_deferred_probes("${_openusd_test_prefix}")
+
 # The normalization is gated in its own right, through "cmake -P" so the test
 # runs the same function the configure step just ran.
 add_test(
@@ -84,22 +108,45 @@ add_test(
         "${CMAKE_SOURCE_DIR}/../test-assets/native-image-gray-alpha.png"
         "${CMAKE_SOURCE_DIR}/../test-assets/ocio-test-config.ocio"
         "${OPENUSD_TEST_RESOLVER_TREE}/resources/plugInfo.json")
+add_test(
+    NAME openusd_render_specification_probe
+    COMMAND
+        $<TARGET_FILE:openusd_render_specification_probe>
+        "${_openusd_test_prefix}/lib/usd"
+        "${CMAKE_CURRENT_BINARY_DIR}/render-specification-probe.usda")
+set(_openusd_render_admission_tests)
+foreach(_case expression cstring properties property-order targets targets-deleted targets-ordered walk purpose-edit
+    source-site source-site-cached source-site-shared source-variant-set source-variant-selection dual-role)
+    set(_name "openusd_render_admission_${_case}")
+    add_test(
+        NAME "${_name}"
+        COMMAND $<TARGET_FILE:openusd_render_admission_probe>
+            "${_openusd_test_prefix}/lib/usd"
+            "${CMAKE_CURRENT_BINARY_DIR}/render-admission-${_case}.usda"
+            "${_case}")
+    list(APPEND _openusd_render_admission_tests "${_name}")
+endforeach()
+set_tests_properties(${_openusd_render_admission_tests} PROPERTIES TIMEOUT 120)
 if(WIN32)
     set_tests_properties(
-        openusd_native_probe
+        openusd_native_probe openusd_render_specification_probe ${_openusd_render_admission_tests}
         PROPERTIES
             ENVIRONMENT_MODIFICATION
-                "PATH=path_list_prepend:${_openusd_test_prefix}/lib;PATH=path_list_prepend:${_openusd_test_prefix}/bin")
+                "PATH=path_list_prepend:${_openusd_test_prefix}/lib;PATH=path_list_prepend:${_openusd_test_prefix}/bin;PATH=path_list_prepend:$<TARGET_FILE_DIR:openusd_dotnet>")
 elseif(APPLE)
     set_tests_properties(
-        openusd_native_probe
+        openusd_native_probe openusd_render_specification_probe ${_openusd_render_admission_tests}
         PROPERTIES
             ENVIRONMENT_MODIFICATION
                 "DYLD_LIBRARY_PATH=path_list_prepend:${_openusd_test_prefix}/lib")
 else()
     set_tests_properties(
-        openusd_native_probe
+        openusd_native_probe openusd_render_specification_probe ${_openusd_render_admission_tests}
         PROPERTIES
             ENVIRONMENT_MODIFICATION
                 "LD_LIBRARY_PATH=path_list_prepend:${_openusd_test_prefix}/lib")
 endif()
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/layer_edit_probe.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/review_cold_inspection_probe.cmake")
+openusd_add_cold_inspection_probe("${_openusd_test_prefix}")

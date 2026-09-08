@@ -7,6 +7,17 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerRenderBackendTests
 {
     [Test]
+    public async Task ASessionWithoutReadbackDoesNotAdvertiseFrameCapture()
+    {
+        await using var backend = new ViewerRenderBackend(RenderBackendKind.Storm, new FakeHost());
+        await Assert.That(backend.SupportsFrameCapture).IsFalse();
+        _ = await backend.InitializeAsync(StageRenderState.Create(new StageIdentity("stage.usda")));
+        await Assert.That(backend.SupportsFrameCapture).IsFalse();
+        await Assert.That(async () => await backend.CaptureFrameAsync(1, 1, CancellationToken.None))
+            .Throws<NotSupportedException>();
+    }
+
+    [Test]
     public async Task MacOSStormCglPreflightReportsInteropFailuresAsUnavailable()
     {
         bool missingFramework = AvaloniaViewerRenderBackendHost.TryGetMacOSStormCglUnavailable(

@@ -23,6 +23,17 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerShortcutCatalogTests
 {
     [Test]
+    public async Task WorkspaceDiscoveryGesturesAreIncludedInTheShortcutsDialog()
+    {
+        string[] gestures = [.. ViewerShortcutCatalog.All.Select(static shortcut => shortcut.Gesture)];
+
+        await Assert.That(gestures).Contains("Ctrl+Shift+P");
+        await Assert.That(gestures).Contains("Ctrl+F");
+        await Assert.That(gestures).Contains("Ctrl+Shift+C");
+        await Assert.That(gestures).Contains("Ctrl+Alt+4");
+    }
+
+    [Test]
     public async Task EveryKeyboardShortcutResolvesToARealCameraAction()
     {
         List<string> unbound = [];

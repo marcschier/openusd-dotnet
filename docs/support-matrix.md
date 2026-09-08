@@ -312,11 +312,12 @@ implements the same R32Float 3D texture create, blit upload, and explicit textur
 `volumeFragmentMain` entry point is part of the pinned `mesh.metallib` contract, and `UniformDensityVolumeGatesOnMetal`
 and `SampledOpenVdbDensityGatesOnMetal` run the same shared helper, stages, crops, and thresholds as the Vulkan and
 D3D12 legs from the `macos-arm64` render job. That job stages the runtime with `eng/stage-hdsilk-runtime.ps1`, uploads
-`render-volume-evidence-osx-arm64-<run>`, and classifies the result with `eng/assert-volume-evidence.ps1`. No workflow
-run has recorded `status=executed` for that backend yet, so osx-arm64 is deliberately absent from the sampled-volume
-evidence platforms and Metal sampled volumes carry no rendering support claim: the promotion step is a run whose
-`volume-evidence-metal-status.json` says `executed`, after which `-AllowCapabilitySkip` is removed from that job and
-osx-arm64 joins the gate. Multi-field volumes, non-density field
+`render-volume-evidence-osx-arm64-<run>`, and classifies the result with `eng/assert-volume-evidence.ps1`. Release
+run `33931868184`, attempt 1, recorded `status=executed` without wiring failures or capability skips. Uniform and
+sampled Metal cases are now required without `-AllowCapabilitySkip`, and osx-arm64 is included in that subset's
+evidence platforms. The separate thin-depth and impossible-material-combination gates remain D3D12/Vulkan claims;
+Metal density evidence does not promote shadows, GPU deformation, GPU OCIO or component picking. Multi-field volumes,
+non-density field
 roles such as temperature or velocity, Field3D rendering, and `UsdVolVolume` prims with several field relationships
 remain outside the rendering support claim. The field's own transform is likewise not yet honored: the grid is
 stretched to fill the proxy rather than placed by the `UsdVolOpenVDBAsset` prim transform and the VDB's own
@@ -780,6 +781,7 @@ the existing doubled-intensity sensitivity probe, so the harness must keep the e
 | Math and color values | Implemented | Vectors, matrices, quaternions, colors |
 | Bulk arrays and time samples | Implemented | Contiguous typed values |
 | Attributes and relationships | Implemented | Enumeration, typed access, target editing |
+| Selected-prim property snapshots | Implemented | Bounded values, counts, graph identity and native provenance |
 | References | Implemented | Authoring and clearing |
 | Payloads | Implemented | Authoring, arc inspection, clearing, and load state |
 | Inherits and specializes | Implemented | Authoring and clearing |
@@ -794,6 +796,10 @@ the existing doubled-intensity sensitivity probe, so the harness must keep the e
 
 The complete API examples and native ownership rules are in [Data API](data-api.md).
 
+Selected-prim property snapshots use one native query/release and detached typed prefixes.
+Deferred store, clip and array-edit domains are explicit. Execution evidence is Windows-specific;
+see [property inspection](data-api.md#bounded-selected-prim-property-inspection) for limits and provenance.
+
 ## Focused schema facades
 
 | Schema family | Current managed coverage | Scope |
@@ -807,7 +813,7 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
 | `Ar` and `Plug` | Resolver contexts, bulk resolution, plugin registration and enumeration | Read-only inspection |
 | `UsdPhysics` | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
-| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | Vulkan and D3D12 single-density OpenVDB gate |
+| `UsdVol` | Volume, OpenVDBAsset, Field3DAsset | Vulkan, D3D12 and Metal single-density OpenVDB subset |
 | `UsdRender` | SettingsBase, Settings, Product, Var, Pass | Data API; no RenderDenoisePass in pinned OpenUSD |
 | `UsdMedia` | SpatialAudio, AssetPreviewsAPI | Data API |
 | `UsdProc` | GenerativeProcedural | Data API |

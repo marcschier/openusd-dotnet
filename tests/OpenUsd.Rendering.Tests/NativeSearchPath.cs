@@ -24,18 +24,32 @@ internal static class NativeSearchPath
             return;
         }
 
-        string? root = FindRepositoryRoot();
-        if (root is null)
+        string? runtime = Environment.GetEnvironmentVariable("OPENUSD_PARITY_RUNTIME_ROOT");
+        string[] directories;
+        if (runtime is not null)
         {
-            return;
+            if (!Path.IsPathFullyQualified(runtime) ||
+                !File.Exists(Path.Combine(runtime, "bin", "openusd_dotnet.dll")))
+            {
+                throw new InvalidOperationException(
+                    "OPENUSD_PARITY_RUNTIME_ROOT must name an absolute, complete rendering runtime.");
+            }
+            directories = [Path.Combine(runtime, "bin"), Path.Combine(runtime, "lib")];
         }
-
-        string[] directories =
-        [
-            Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
-            Path.Combine(root, "native", "install", "win-x64", "bin"),
-            Path.Combine(root, "native", "install", "win-x64", "lib"),
-        ];
+        else
+        {
+            string? root = FindRepositoryRoot();
+            if (root is null)
+            {
+                return;
+            }
+            directories =
+            [
+                Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
+                Path.Combine(root, "native", "install", "win-x64", "bin"),
+                Path.Combine(root, "native", "install", "win-x64", "lib"),
+            ];
+        }
         string prefix = string.Join(
             Path.PathSeparator,
             directories.Where(Directory.Exists).Select(Path.GetFullPath));

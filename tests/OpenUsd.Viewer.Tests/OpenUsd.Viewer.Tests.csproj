@@ -12,6 +12,7 @@
     <AssemblyName>OpenUsd.Viewer.Tests</AssemblyName>
     <RootNamespace>OpenUsd.Viewer.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +23,7 @@
   <ItemGroup>
     <Compile Include="..\OpenUsd.D3D12CompositionSmoke\SmokeEvidence.cs"
              Link="D3D12CompositionSmoke\SmokeEvidence.cs" />
+    <Compile Include="..\OpenUsd.Exr.NativeProbe\ExrScanlineOracle.cs" Link="ExrScanlineOracle.cs" />
   </ItemGroup>
 
 </Project>

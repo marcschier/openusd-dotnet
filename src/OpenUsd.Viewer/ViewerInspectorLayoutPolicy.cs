@@ -2,6 +2,14 @@
 
 namespace OpenUsd.Viewer;
 
+internal enum ViewerWorkspacePreset
+{
+    Review,
+    Inspect,
+    MaterialsLighting,
+    Presentation
+}
+
 /// <summary>Whether an inspector tab is user-facing or developer-only.</summary>
 internal enum ViewerInspectorTabKind
 {
@@ -47,6 +55,51 @@ internal static class ViewerInspectorLayoutPolicy
     internal const string HydraTabId = "hydra";
     internal const string PhysicsTabId = "physics";
     internal const string TfDebugTabId = "tfdebug";
+    internal const string AppearanceTabId = "appearance";
+
+    internal static ViewerSettings ApplyPreset(ViewerSettings settings, ViewerWorkspacePreset preset)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        (bool stage, bool inspector, bool timeline, double stageWidth, double inspectorWidth, string tab) =
+            preset switch
+            {
+                ViewerWorkspacePreset.Review => (true, false, true, 240, 340, PropertiesTabId),
+                ViewerWorkspacePreset.Inspect => (true, true, true, 280, 380, PropertiesTabId),
+                ViewerWorkspacePreset.MaterialsLighting => (true, true, false, 240, 400, AppearanceTabId),
+                ViewerWorkspacePreset.Presentation => (false, false, false, 240, 340, PropertiesTabId),
+                _ => throw new ArgumentOutOfRangeException(nameof(preset))
+            };
+        return settings with
+        {
+            StagePanelVisible = stage,
+            InspectorPanelVisible = inspector,
+            TimelineVisible = timeline,
+            StagePanelWidth = stageWidth,
+            InspectorPanelWidth = inspectorWidth,
+            SelectedTabId = tab,
+            DiagnosticsVisible = false,
+            HydraVisible = false,
+            TfDebugVisible = false
+        };
+    }
+
+    internal static ViewerSettings NormalizeSavedLayout(ViewerSettings settings) => settings with
+    {
+        WindowWidth = ClampDimension(settings.WindowWidth,
+            ViewerSettings.MinimumWindowWidth, ViewerSettings.MaximumWindowWidth, ViewerSettings.Default.WindowWidth),
+        WindowHeight = ClampDimension(settings.WindowHeight,
+            ViewerSettings.MinimumWindowHeight, ViewerSettings.MaximumWindowHeight,
+            ViewerSettings.Default.WindowHeight),
+        StagePanelWidth = ClampDimension(settings.StagePanelWidth,
+            ViewerSettings.MinimumPanelWidth, ViewerSettings.MaximumPanelWidth, ViewerSettings.Default.StagePanelWidth),
+        InspectorPanelWidth = ClampDimension(settings.InspectorPanelWidth,
+            ViewerSettings.MinimumPanelWidth, ViewerSettings.MaximumPanelWidth,
+            ViewerSettings.Default.InspectorPanelWidth),
+        SelectedTabId = IsKnownTab(settings.SelectedTabId) ? settings.SelectedTabId : CleanDefaultFallbackTabId
+    };
+
+    internal static double ClampDimension(double value, double minimum, double maximum, double fallback) =>
+        double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : fallback;
 
     /// <summary>
     /// Every tab the Viewer offers today, in the order they currently appear.
@@ -63,6 +116,7 @@ internal static class ViewerInspectorLayoutPolicy
         new(HydraTabId, ViewerInspectorTabKind.Developer),
         new(PhysicsTabId, ViewerInspectorTabKind.User),
         new(TfDebugTabId, ViewerInspectorTabKind.Developer),
+        new(AppearanceTabId, ViewerInspectorTabKind.User),
     ];
 
     /// <summary>

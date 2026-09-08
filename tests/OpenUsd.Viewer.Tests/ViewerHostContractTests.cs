@@ -7,6 +7,42 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerHostContractTests
 {
     [Test]
+    public async Task HostQuiescenceWaitsForFinalWorkWithoutCancellingTheDocument()
+    {
+        using var document = new CancellationTokenSource();
+        await using var scope = new ViewerHostCallbackScope(document.Token);
+        var entered = CreateCompletion();
+        var cancelled = CreateCompletion();
+        var release = CreateCompletion();
+        Task callback = ViewerHostInteraction.RunStageReadyCallbackAsync(async token =>
+        {
+            using CancellationTokenRegistration registration = token.Register(() => cancelled.TrySetResult());
+            entered.TrySetResult();
+            await release.Task;
+        }, document.Token, scope);
+        try
+        {
+            await entered.Task.WaitAsync(TestTimeout);
+            Task quiescing = scope.QuiesceAsync(CancellationToken.None);
+            await cancelled.Task.WaitAsync(TestTimeout);
+            await Assert.That(quiescing.IsCompleted).IsFalse();
+            await Assert.That(document.IsCancellationRequested).IsFalse();
+            release.TrySetResult();
+            await quiescing.WaitAsync(TestTimeout);
+            await callback;
+
+            bool restarted = scope.TryRun(_ => Task.CompletedTask, out _);
+            await Assert.That(restarted).IsFalse();
+            await Assert.That(scope.IsQuiesced).IsTrue();
+            await Assert.That(document.IsCancellationRequested).IsFalse();
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [Test]
     public async Task StageReadyCallbackRunsWithoutCapturedSynchronizationContext()
     {
         SynchronizationContext? entryContext = null;

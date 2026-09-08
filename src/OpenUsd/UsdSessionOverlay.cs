@@ -10,10 +10,12 @@ namespace OpenUsd;
 /// </summary>
 /// <remarks>
 /// <para>
-/// When normalized, the session layer becomes a pure container with two anonymous sublayers:
+/// When normalized, the session layer contains two leading anonymous sublayers:
 /// a strong physics overlay (index 0) where simulation results are authored, and a weaker
 /// user-edit layer (index 1) where viewer/session edits are directed. This ensures physics
 /// results always compose above user edits without overwriting them.
+/// An existing owned review layer is retained when its container and topology can be adopted
+/// without moving opinions, preserving its authored history identity.
 /// </para>
 /// <para>
 /// Disposal removes only the physics overlay and releases all handles. The user-edit layer
@@ -94,15 +96,8 @@ public sealed class UsdSessionOverlay : IDisposable
                 {
                     // Best-effort rollback; original exception propagates.
                 }
-                try
-                {
-                    string userId = userLayer.Identifier;
-                    OpenUsdNativeRuntime.SessionOverlayRemove(retainedStage, userId);
-                }
-                catch (OpenUsdNativeException)
-                {
-                    // Best-effort rollback.
-                }
+                // An adopted user layer owns existing history; a new one owns migrated
+                // session opinions. Neither may be detached by facade-construction failure.
                 physicsLayer.Dispose();
                 userLayer.Dispose();
                 throw;

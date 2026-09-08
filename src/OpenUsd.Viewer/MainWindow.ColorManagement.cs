@@ -369,9 +369,10 @@ public sealed partial class MainWindow
     {
         RenderColorManagementEnabledMenuItem.IsChecked = _colorManagement.Enabled;
         RenderColorManagementClearConfigMenuItem.IsEnabled =
-            _colorManagement.ConfigPath.Length != 0;
+            !_sequenceJobRunning && _colorManagement.ConfigPath.Length != 0;
+        RenderColorManagementChooseConfigMenuItem.IsEnabled = !_sequenceJobRunning;
         string configPath = _colorManagement.ResolveConfigPath();
-        RenderColorManagementEnabledMenuItem.IsEnabled = configPath.Length != 0;
+        RenderColorManagementEnabledMenuItem.IsEnabled = !_sequenceJobRunning && configPath.Length != 0;
         ToolTip.SetTip(
             RenderColorManagementEnabledMenuItem,
             configPath.Length == 0
@@ -755,7 +756,7 @@ public sealed partial class MainWindow
     internal async Task ResetLayoutAsync()
     {
         ViewerLayoutResetOutcome outcome = await ViewerLayoutReset.RunAsync(
-            ViewerSettings.Default,
+            ViewerSettings.Default with { ThemePreference = _settings.ThemePreference },
             CurrentColorManagementView,
             ApplyColorManagementAsync,
             ApplySettings);

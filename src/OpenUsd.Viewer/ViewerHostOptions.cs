@@ -170,8 +170,16 @@ public sealed class ViewerHostOptions
     /// </summary>
     /// <remarks>
     /// The callback may remain active for the document lifetime, including while it
-    /// services subscriptions. Closing or replacing the document cancels the supplied
-    /// token. Exceptions are surfaced as a viewer error and do not tear down the shell.
+    /// services subscriptions. Retirement preparation cancels the supplied token and
+    /// drains the returned task before the final edit-state check. The task must include
+    /// the child work started by this callback. Quiescing this task does not revoke raw
+    /// scheduler references retained by other host components. The final check instead
+    /// runs behind the scheduler's producer-admission fence: new Invoke/Edit calls and
+    /// render acquisitions are refused until rejection resumes scheduling or retirement
+    /// disposes the stage.
+    /// If late edits cause retirement to be refused, the stage remains usable but the
+    /// stopped stage-ready service is not restarted implicitly. Exceptions are surfaced
+    /// as a viewer error and do not tear down the shell.
     /// </remarks>
     public Func<ViewerStageSession, CancellationToken, Task>? StageReadyAsync { get; init; }
 }

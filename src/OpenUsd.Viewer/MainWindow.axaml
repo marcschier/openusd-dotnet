@@ -3,23 +3,33 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:OpenUsd.Viewer"
+    Classes="openusd-viewer"
     AutomationProperties.Name="OpenUsd Viewer"
     Title="OpenUsd Viewer"
     Width="1440"
     Height="900"
     MinWidth="960"
     MinHeight="600">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://OpenUsd.Viewer/ViewerIcons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
   <Grid RowDefinitions="Auto,*,Auto,Auto">
     <Border
         Grid.Row="0"
-        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-        BorderThickness="0,0,0,1"
-        Padding="8">
-      <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+        Classes="viewer-chrome"
+        BorderThickness="0,0,0,1">
+      <Grid RowDefinitions="Auto,Auto">
         <Grid
             x:Name="ViewerToolbarGrid"
             Grid.Row="0"
-            ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+            ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto"
             ColumnSpacing="8">
           <Menu Grid.Column="0" VerticalAlignment="Center">
             <MenuItem Header="_File">
@@ -28,6 +38,16 @@
                   AutomationProperties.Name="Open stage"
                   Header="_Open Stage..."
                   InputGesture="Ctrl+O" />
+              <MenuItem x:Name="OpenSampleMenuItem" Header="Open Review _Sample" />
+              <MenuItem x:Name="OpenReviewMenuItem" Header="Open _Review Document..." />
+              <MenuItem x:Name="SaveReviewMenuItem" Header="_Save Review Document"
+                        InputGesture="Ctrl+S" IsEnabled="False" />
+              <MenuItem x:Name="SaveReviewAsMenuItem" Header="Save Review _As..."
+                        InputGesture="Ctrl+Shift+S" IsEnabled="False" />
+              <MenuItem x:Name="SaveSourceMenuItem" Header="Save _Source Layer..." IsEnabled="False" />
+              <MenuItem x:Name="RevertReviewMenuItem" Header="Revert Review to Saved" IsEnabled="False" />
+              <MenuItem x:Name="ExportReviewDeltaMenuItem" Header="Export Review _Delta..." IsEnabled="False" />
+              <Separator />
               <MenuItem
                   x:Name="ReloadStageMenuItem"
                   AutomationProperties.Name="Reload current stage"
@@ -38,7 +58,10 @@
                   x:Name="CaptureFrameMenuItem"
                   AutomationProperties.Name="Capture current frame"
                   Header="_Capture Frame..."
+                  InputGesture="Ctrl+Shift+C"
                   IsEnabled="False" />
+              <MenuItem x:Name="RenderImageSequenceMenuItem" Header="Render Image _Sequence..." IsEnabled="False" />
+              <MenuItem x:Name="CompareCapturesMenuItem" Header="Compare _Captures..." />
               <Separator />
               <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />
               <Separator />
@@ -47,7 +70,44 @@
                   AutomationProperties.Name="Exit OpenUsd Viewer"
                   Header="E_xit" />
             </MenuItem>
+            <MenuItem Header="_Edit">
+              <MenuItem x:Name="EditUndoMenuItem" Header="_Undo" InputGesture="Ctrl+Z" IsEnabled="False" />
+              <MenuItem x:Name="EditRedoMenuItem" Header="_Redo" InputGesture="Ctrl+Y" IsEnabled="False" />
+              <Separator />
+              <MenuItem x:Name="EditPropertyMenuItem" Header="Edit Selected _Property..."
+                        InputGesture="Ctrl+E" IsEnabled="False" />
+            </MenuItem>
             <MenuItem Header="_View">
+              <MenuItem x:Name="CommandPaletteMenuItem" Header="Search _Commands..." InputGesture="Ctrl+Shift+P" />
+              <MenuItem x:Name="FindPrimMenuItem" Header="_Find Prim..." InputGesture="Ctrl+F" IsEnabled="False" />
+              <MenuItem x:Name="InspectSelectionMenuItem" Header="Inspect _Selection" IsEnabled="False" />
+              <MenuItem x:Name="WorkspaceMenu" Header="_Workspace">
+                <MenuItem
+                    x:Name="WorkspaceReviewMenuItem"
+                    Header="_Review"
+                    ToggleType="Radio"
+                    GroupName="view.workspace"
+                    InputGesture="Ctrl+Alt+1" />
+                <MenuItem
+                    x:Name="WorkspaceInspectMenuItem"
+                    Header="_Inspect"
+                    ToggleType="Radio"
+                    GroupName="view.workspace"
+                    InputGesture="Ctrl+Alt+2" />
+                <MenuItem
+                    x:Name="WorkspaceMaterialsMenuItem"
+                    Header="_Materials / Lighting"
+                    ToggleType="Radio"
+                    GroupName="view.workspace"
+                    InputGesture="Ctrl+Alt+3" />
+                <MenuItem
+                    x:Name="WorkspacePresentationMenuItem"
+                    Header="_Presentation"
+                    ToggleType="Radio"
+                    GroupName="view.workspace"
+                    InputGesture="Ctrl+Alt+4" />
+              </MenuItem>
+              <Separator />
               <MenuItem
                   x:Name="StagePanelMenuItem"
                   AutomationProperties.Name="Show stage panel"
@@ -93,6 +153,31 @@
                   Header="Snap manual time changes to authored frames"
                   ToggleType="CheckBox"
                   IsChecked="False" />
+              <MenuItem
+                  x:Name="ThemeMenu"
+                  Header="T_heme"
+                  AutomationProperties.Name="Viewer theme"
+                  ToolTip.Tip="Change Viewer chrome only, not the rendered image">
+                <MenuItem
+                    x:Name="ThemeSystemMenuItem"
+                    Header="_Follow system"
+                    AutomationProperties.Name="Viewer theme: Follow system"
+                    ToggleType="Radio"
+                    GroupName="view.theme"
+                    IsChecked="True" />
+                <MenuItem
+                    x:Name="ThemeLightMenuItem"
+                    Header="_Light"
+                    AutomationProperties.Name="Viewer theme: Light"
+                    ToggleType="Radio"
+                    GroupName="view.theme" />
+                <MenuItem
+                    x:Name="ThemeDarkMenuItem"
+                    Header="_Dark"
+                    AutomationProperties.Name="Viewer theme: Dark"
+                    ToggleType="Radio"
+                    GroupName="view.theme" />
+              </MenuItem>
               <Separator />
               <MenuItem
                   x:Name="ResetLayoutMenuItem"
@@ -313,6 +398,10 @@
                   Header="Stage _Cameras"
                   IsEnabled="False"
                   IsVisible="False" />
+              <MenuItem x:Name="ManageSavedViewsMenuItem" Header="_Saved Views..." IsEnabled="False"
+                        AutomationProperties.Name="Manage saved views: add, rename, remove and recall" />
+              <MenuItem x:Name="SavedViewsMenu" Header="Recall Saved _View" IsEnabled="False"
+                        AutomationProperties.Name="Recall saved views" />
               <Separator />
               <MenuItem
                   x:Name="FrameSelectedMenuItem"
@@ -654,40 +743,39 @@
           <Button
               x:Name="OpenStageButton"
               Grid.Column="1"
+              Classes="accent"
               AutomationProperties.Name="Open stage"
-              Content="_Open"
-              ToolTip.Tip="Open a USD stage (Ctrl+O)" />
+              ToolTip.Tip="Open a USD stage (Ctrl+O)">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="viewer-icon" Data="{StaticResource ViewerIconOpen}" />
+              <AccessText Text="_Open" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <Button
-              x:Name="ReloadStageButton"
+              x:Name="CommandPaletteButton"
               Grid.Column="2"
-              AutomationProperties.Name="Reload current stage"
-              Content="_Reload"
-              IsEnabled="False"
-              ToolTip.Tip="Reload the current stage (Ctrl+R)" />
-          <ComboBox
-              x:Name="RendererSelector"
-              Grid.Column="3"
-              Width="180"
-              AutomationProperties.Name="Rendering backend"
-              SelectedIndex="0"
-              ToolTip.Tip="Select the rendering backend">
-            <ComboBoxItem Content="Automatic" Tag="Auto" />
-            <ComboBoxItem Content="Storm" Tag="Storm" />
-            <ComboBoxItem Content="Direct3D 12" Tag="D3D12" />
-            <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
-            <ComboBoxItem Content="Metal" Tag="Metal" />
-          </ComboBox>
+              MinWidth="104"
+              MaxWidth="216"
+              HorizontalAlignment="Stretch"
+              Content="Commands..." />
+          <Button x:Name="WorkspaceInspectButton" Grid.Column="3" Content="Inspect" />
           <Button
               x:Name="FrameSelectedButton"
-              Grid.Column="5"
+              Grid.Column="4"
               AutomationProperties.Name="Frame selected prim"
-              Content="_Frame Selected"
               IsEnabled="False"
-              ToolTip.Tip="Center and frame the selected prim at the current time (F)" />
+              ToolTip.Tip="Center and frame the selected prim at the current time (F)">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="viewer-icon" Data="{StaticResource ViewerIconFrame}" />
+              <AccessText Text="_Frame" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button x:Name="WorkspaceCaptureButton" Grid.Column="5" Content="Capture" />
         </Grid>
         <Grid
             x:Name="PhysicsToolbarGrid"
             Grid.Row="1"
+            Margin="0,8,0,0"
             ColumnDefinitions="Auto,Auto,Auto,*,Auto"
             ColumnSpacing="8"
             ClipToBounds="False"
@@ -776,6 +864,18 @@
           automation traversal, so no distinct route or focus stop is left behind for them.
         -->
         <StackPanel x:Name="LegacyStateHost" Grid.Row="0" IsVisible="False">
+          <Button
+              x:Name="ReloadStageButton"
+              AutomationProperties.Name="Reload current stage"
+              Content="Reload"
+              IsEnabled="False" />
+          <ComboBox x:Name="RendererSelector" AutomationProperties.Name="Rendering backend" SelectedIndex="0">
+            <ComboBoxItem Content="Automatic" Tag="Auto" />
+            <ComboBoxItem Content="Storm" Tag="Storm" />
+            <ComboBoxItem Content="Direct3D 12" Tag="D3D12" />
+            <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+            <ComboBoxItem Content="Metal" Tag="Metal" />
+          </ComboBox>
           <ComboBox
               x:Name="PickModeSelector"
               AutomationProperties.Name="usdview pick mode"
@@ -898,6 +998,65 @@
       </Grid>
     </Border>
 
+    <Border x:Name="WelcomePanel" Grid.Row="1" Classes="viewer-panel" IsVisible="False">
+      <ScrollViewer>
+        <Grid
+            Margin="24"
+            MaxWidth="1000"
+            VerticalAlignment="Center"
+            ColumnDefinitions="*,*"
+            ColumnSpacing="32">
+          <StackPanel Spacing="12">
+            <TextBlock Text="OpenUsd Viewer" Classes="viewer-heading" FontSize="28" />
+            <TextBlock
+                Text="Review, inspect and present your USD scenes."
+                Classes="viewer-secondary"
+                TextWrapping="Wrap" />
+            <Button x:Name="WelcomeOpenButton" Classes="accent" Content="Open stage..." />
+            <Border BorderBrush="{DynamicResource ViewerControlBorderBrush}" BorderThickness="1" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Drop a scene anywhere in this window" TextWrapping="Wrap" />
+                <TextBlock Text=".usd, .usda, .usdc or .usdz" Classes="viewer-caption" />
+              </StackPanel>
+            </Border>
+            <Button x:Name="WelcomeSampleButton" Content="Open bundled review sample" />
+            <TextBlock
+                Text="A tiny, self-contained MIT-licensed scene. No downloads or external textures."
+                Classes="viewer-caption"
+                TextWrapping="Wrap" />
+            <WrapPanel>
+              <Button x:Name="WelcomeCommandsButton" Content="Commands..." Margin="0,0,8,8" />
+              <Button x:Name="WelcomeCompareButton" Content="Compare captures..." Margin="0,0,8,8" />
+              <Button x:Name="WelcomeShortcutsButton" Content="Shortcuts" Margin="0,0,0,8" />
+            </WrapPanel>
+            <TextBlock Text="Open > Find (Ctrl+F) > Frame (F) > Inspect > Capture" TextWrapping="Wrap" />
+            <TextBlock
+                Text="View > Workspace offers Review, Inspect, Materials / Lighting and Presentation layouts."
+                Classes="viewer-secondary"
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="WelcomeRuntimeHint"
+                Classes="viewer-caption"
+                TextWrapping="Wrap" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="12">
+            <TextBlock Text="Recent scenes" Classes="viewer-heading" />
+            <TextBlock
+                x:Name="WelcomeRecentState"
+                Text="No recent scenes yet. Open a file or try the bundled sample."
+                Classes="viewer-secondary"
+                TextWrapping="Wrap" />
+            <StackPanel x:Name="WelcomeRecentItems" AutomationProperties.Name="Recent scenes" Spacing="8" />
+            <TextBlock
+                x:Name="WelcomeStatus"
+                Text="{Binding #ViewerStatus.Text}"
+                AutomationProperties.Name="Welcome status"
+                Classes="viewer-secondary"
+                TextWrapping="Wrap" />
+          </StackPanel>
+        </Grid>
+      </ScrollViewer>
+    </Border>
     <Grid x:Name="MainContentGrid" Grid.Row="1">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="280" />
@@ -906,18 +1065,20 @@
         <ColumnDefinition Width="5" />
         <ColumnDefinition Width="340" />
       </Grid.ColumnDefinitions>
-      <Border x:Name="StagePanel" Grid.Column="0" Padding="8">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
-          <TextBlock FontSize="16" FontWeight="SemiBold" Text="Stage" />
+      <Border x:Name="StagePanel" Grid.Column="0" Classes="viewer-panel">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
+          <TextBlock Classes="viewer-heading" Text="Stage" />
           <TextBlock
               x:Name="StageIdentity"
+              Classes="viewer-caption"
               Grid.Row="1"
-              Margin="0,6,0,0"
+              Margin="0,8,0,0"
               AutomationProperties.Name="Stage identity"
               Text="Identity: —"
               TextWrapping="Wrap" />
           <TextBlock
               x:Name="StageStatistics"
+              Classes="viewer-caption"
               Grid.Row="2"
               Margin="0,4,0,0"
               AutomationProperties.Name="Stage statistics"
@@ -933,11 +1094,11 @@
           <TextBox
               x:Name="HierarchyTypeFilter"
               Grid.Row="4"
-              Margin="0,6,0,0"
+              Margin="0,8,0,0"
               AutomationProperties.Name="Filter stage hierarchy by type"
               PlaceholderText="Filter by prim type"
               ToolTip.Tip="Filter by composed prim type, such as Xform, Mesh, or Scope" />
-          <StackPanel Grid.Row="5" Margin="0,6,0,0" Orientation="Horizontal" Spacing="6">
+          <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
             <TextBlock VerticalAlignment="Center" Text="Expand depth" />
             <TextBox
                 x:Name="HierarchyExpandDepthInput"
@@ -946,7 +1107,7 @@
                 Text="0"
                 ToolTip.Tip="Enter 0 for lazy roots, or a non-negative depth to expand descendants" />
           </StackPanel>
-          <WrapPanel Grid.Row="6" Margin="0,6,0,0">
+          <WrapPanel Grid.Row="6" Margin="0,8,0,0">
             <CheckBox
                 x:Name="ShowInactivePrimsCheckBox"
                 Content="Inactive"
@@ -963,24 +1124,35 @@
                 Margin="8,0,0,0"
                 Content="Abstract"
                 AutomationProperties.Name="Show abstract prims in hierarchy"
-                ToolTip.Tip="Reserved for native abstract-prim classification when available" />
+                ToolTip.Tip="Show abstract class prims in the composed hierarchy" />
             <CheckBox
                 x:Name="ShowPrototypePrimsCheckBox"
                 Margin="8,0,0,0"
                 Content="Prototypes"
                 AutomationProperties.Name="Show prototype prims in hierarchy"
-                ToolTip.Tip="Show prototype roots produced by instancing" />
+                ToolTip.Tip="Show prototype roots and their descendants produced by instancing" />
           </WrapPanel>
           <TextBlock
               x:Name="HierarchyState"
+              Classes="viewer-secondary"
               Grid.Row="7"
               Margin="0,8,0,0"
               AutomationProperties.Name="Stage hierarchy state"
               Text="Open or drop a USD stage to inspect its prims."
               TextWrapping="Wrap" />
+          <Grid x:Name="HierarchyRootPageControls" Grid.Row="8" IsVisible="False"
+                ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,8,0,0">
+            <Button x:Name="HierarchyRootPrevious" Content="Previous" IsEnabled="False"
+                    AutomationProperties.Name="Previous root prim page" />
+            <TextBlock x:Name="HierarchyRootPageState" Grid.Column="1" Classes="viewer-caption"
+                       VerticalAlignment="Center" TextWrapping="Wrap"
+                       AutomationProperties.Name="Root prim results page" />
+            <Button x:Name="HierarchyRootNext" Grid.Column="2" Content="Next" IsEnabled="False"
+                    AutomationProperties.Name="Next root prim page" />
+          </Grid>
           <TreeView
               x:Name="StageHierarchy"
-              Grid.Row="8"
+              Grid.Row="9"
               Margin="0,8,0,0"
               AutomationProperties.Name="Stage hierarchy"
               IsVisible="False" />
@@ -995,8 +1167,8 @@
 
       <Border
           Grid.Column="2"
-          Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-          BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+          Background="{DynamicResource ViewerSurfaceCanvasBrush}"
+          BorderBrush="{DynamicResource ViewerBorderBrush}"
           BorderThickness="1">
         <local:RendererSwitchingViewport
             x:Name="ViewportHost"
@@ -1009,606 +1181,734 @@
           AutomationProperties.Name="Resize inspector panel"
           ResizeDirection="Columns" />
 
-      <Border x:Name="InspectorPanel" Grid.Column="4" Padding="8">
-        <TabControl
-            x:Name="InspectorTabs"
-            AutomationProperties.Name="Stage details tabs"
-            SelectedIndex="0">
-          <TabItem x:Name="PropertiesTab" Header="_Properties">
-            <ScrollViewer Margin="0,8,0,0">
-              <StackPanel
-                  x:Name="InspectorRows"
-                  AutomationProperties.Name="Selected prim properties, variants, payloads, and session controls"
-                  Spacing="6">
-                <TextBlock
-                    x:Name="InspectorState"
-                    Text="Select a prim to inspect metadata and attributes."
-                    TextWrapping="Wrap" />
-              </StackPanel>
-            </ScrollViewer>
-          </TabItem>
-          <TabItem x:Name="ValueTab" Header="_Value">
-            <ScrollViewer Margin="0,8,0,0">
-              <StackPanel
-                  x:Name="ValueRows"
-                  AutomationProperties.Name="Selected prim attribute values and time samples"
-                  Spacing="6">
-                <TextBlock
-                    Text="Select a prim to inspect attribute values and samples."
-                    TextWrapping="Wrap" />
-              </StackPanel>
-            </ScrollViewer>
-          </TabItem>
-          <TabItem x:Name="MetadataTab" Header="_Metadata">
-            <ScrollViewer Margin="0,8,0,0">
-              <StackPanel
-                  x:Name="MetadataRows"
-                  AutomationProperties.Name="Selected prim metadata, variants, payloads, and relationships"
-                  Spacing="6">
-                <TextBlock
-                    Text="Select a prim to inspect metadata."
-                    TextWrapping="Wrap" />
-              </StackPanel>
-            </ScrollViewer>
-          </TabItem>
-          <TabItem x:Name="CompositionTab" Header="_Composition">
-            <ScrollViewer Margin="0,8,0,0">
-              <StackPanel
-                  x:Name="CompositionRows"
-                  AutomationProperties.Name="Selected prim Pcp composition"
-                  Spacing="6">
-                <TextBlock
-                    Text="Select a prim to inspect its Pcp prim index."
-                    TextWrapping="Wrap" />
-              </StackPanel>
-            </ScrollViewer>
-          </TabItem>
-          <TabItem x:Name="LayersTab" Header="_LayerStack">
-            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,Auto,Auto,*">
-              <TextBlock
-                  x:Name="LayerEditTarget"
-                  AutomationProperties.Name="Current edit target"
-                  Text="Edit target: —"
-                  TextWrapping="Wrap" />
-              <StackPanel Grid.Row="1" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
-                <Button
-                    x:Name="SetSessionEditTargetButton"
-                    AutomationProperties.Name="Use session layer for edits"
-                    Content="Edit _Session"
-                    IsEnabled="False" />
-                <Button
-                    x:Name="SetRootEditTargetButton"
-                    AutomationProperties.Name="Explicitly enable in-memory root layer edits"
-                    Content="Enable _Root Edits"
-                    IsEnabled="False" />
-              </StackPanel>
-              <TextBlock
-                  x:Name="RootEditWarning"
-                  Grid.Row="2"
-                  Margin="0,8,0,0"
-                  AutomationProperties.Name="Root edit policy"
-                  Text="Prim controls author to the session layer by default. Root edits require the explicit button above and are never saved automatically."
-                  TextWrapping="Wrap" />
-              <TextBlock
-                  x:Name="LayersState"
-                  Grid.Row="3"
-                  Margin="0,8,0,0"
-                  Text="Open a USD stage to inspect its local layer stack."
-                  TextWrapping="Wrap" />
-              <ScrollViewer Grid.Row="4" Margin="0,8,0,0">
-                <StackPanel x:Name="LayersRows" Spacing="8" />
-              </ScrollViewer>
-            </Grid>
-          </TabItem>
-          <TabItem x:Name="DiagnosticsTab" Header="_Diagnostics" IsVisible="False">
-            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button
-                    x:Name="CopyDiagnosticsButton"
-                    AutomationProperties.Name="Copy redacted diagnostics"
-                    Content="_Copy"
-                    IsEnabled="False" />
-                <Button
-                    x:Name="ExportDiagnosticsButton"
-                    AutomationProperties.Name="Export redacted diagnostics"
-                    Content="_Export..."
-                    IsEnabled="False" />
-                <CheckBox
-                    x:Name="IncludeDiagnosticPathsCheckBox"
-                    AutomationProperties.Name="Include source and user paths in diagnostics"
-                    Content="Include paths" />
-              </StackPanel>
-              <TextBlock
-                  x:Name="DiagnosticsState"
-                  Grid.Row="1"
-                  Margin="0,8,0,0"
-                  Text="Diagnostics are sampled from normal rendering at a bounded cadence."
-                  TextWrapping="Wrap" />
-              <TextBox
-                  x:Name="DiagnosticsText"
-                  Grid.Row="2"
-                  Margin="0,8,0,0"
-                  AutomationProperties.Name="Latest viewer diagnostics"
-                  AcceptsReturn="True"
-                  IsReadOnly="True"
-                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                  Text="No diagnostics have been sampled."
-                  TextWrapping="NoWrap" />
-            </Grid>
-          </TabItem>
-          <TabItem x:Name="ValidationTab" Header="_Validation">
-            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button
-                    x:Name="RefreshValidationButton"
-                    AutomationProperties.Name="Refresh UsdValidation results"
-                    Content="_Refresh"
-                    IsEnabled="False" />
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Text="Scope:" />
-                <ComboBox
-                    x:Name="ValidationScopeSelector"
-                    AutomationProperties.Name="UsdValidation scope"
-                    IsEnabled="False"
-                    MinWidth="160"
-                    SelectedIndex="0">
-                  <ComboBoxItem Content="Whole stage" Tag="Stage" />
-                  <ComboBoxItem Content="Selected prim" Tag="Prim" />
-                </ComboBox>
-              </StackPanel>
-              <TextBlock
-                  x:Name="ValidationState"
-                  Grid.Row="1"
-                  Margin="0,8,0,0"
-                  Text="Open a USD stage to run UsdValidation."
-                  TextWrapping="Wrap" />
-              <TextBox
-                  x:Name="ValidationText"
-                  Grid.Row="2"
-                  Margin="0,8,0,0"
-                  AutomationProperties.Name="UsdValidation results"
-                  AcceptsReturn="True"
-                  IsReadOnly="True"
-                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                  Text="No validation results."
-                  TextWrapping="NoWrap" />
-            </Grid>
-          </TabItem>
-          <TabItem x:Name="HydraSceneTab" Header="_Hydra" IsVisible="False">
-            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button
-                    x:Name="RefreshHydraSceneButton"
-                    AutomationProperties.Name="Refresh Hydra scene browser"
-                    Content="_Refresh"
-                    IsEnabled="False" />
-              </StackPanel>
-              <TextBlock
-                  x:Name="HydraSceneState"
-                  Grid.Row="1"
-                  Margin="0,8,0,0"
-                  Text="Render an hdSilk frame to inspect the Hydra scene command snapshot."
-                  TextWrapping="Wrap" />
-              <TextBox
-                  x:Name="HydraSceneText"
-                  Grid.Row="2"
-                  Margin="0,8,0,0"
-                  AutomationProperties.Name="Hydra scene browser"
-                  AcceptsReturn="True"
-                  IsReadOnly="True"
-                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                  Text="No Hydra scene snapshot."
-                  TextWrapping="NoWrap" />
-            </Grid>
-          </TabItem>
-          <TabItem x:Name="PhysicsTab" Header="P_hysics">
-            <ScrollViewer Margin="0,8,0,0">
-              <StackPanel Spacing="8">
-                <TextBlock
-                    x:Name="PhysicsInspectorState"
-                    AutomationProperties.Name="Physics simulation status"
-                    Text="Enable physics for this stage to inspect its simulation."
-                    TextWrapping="Wrap" />
-                <TextBlock Text="Capabilities" FontWeight="SemiBold" />
-                <ItemsControl
-                    x:Name="PhysicsCapabilityRows"
-                    AutomationProperties.Name="Physics capability matrix">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="local:ViewerPhysicsCapabilityRow">
-                      <Grid ColumnDefinitions="160,80,*" Margin="0,0,0,4">
-                        <TextBlock Grid.Column="0" Text="{Binding Name}" TextWrapping="Wrap" />
-                        <TextBlock
-                            Grid.Column="1"
-                            Text="{Binding StatusText}"
-                            FontWeight="SemiBold"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            Grid.Column="2"
-                            Text="{Binding Detail}"
-                            Opacity="0.75"
-                            TextWrapping="Wrap" />
-                      </Grid>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock Text="Diagnostics" FontWeight="SemiBold" />
-                <ItemsControl
-                    x:Name="PhysicsDiagnosticRows"
-                    AutomationProperties.Name="Physics diagnostics">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="local:ViewerPhysicsDiagnosticRow">
-                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="0,0,0,4" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock Text="Simulated objects" FontWeight="SemiBold" />
-                <ItemsControl
-                    x:Name="PhysicsObjectRows"
-                    AutomationProperties.Name="Simulated physics objects">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="local:ViewerPhysicsObjectRow">
-                      <Grid ColumnDefinitions="*,120" Margin="0,0,0,4">
-                        <TextBlock Grid.Column="0" Text="{Binding Path}" TextWrapping="Wrap" />
-                        <TextBlock
-                            Grid.Column="1"
-                            Text="{Binding StatusText}"
-                            Opacity="0.75"
-                            TextWrapping="Wrap" />
-                      </Grid>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock Text="Authoring" FontWeight="SemiBold" />
-                <TextBlock
-                    x:Name="PhysicsAuthoringState"
-                    AutomationProperties.Name="Physics authoring status"
-                    Text="Enable physics for this stage to author its simulation inputs."
-                    TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <Button
-                      x:Name="PhysicsRefreshPropertiesButton"
-                      AutomationProperties.Name="Reload physics properties"
-                      Content="Reload Properties"
-                      IsEnabled="False"
-                      ToolTip.Tip="Re-extract every physics object and its properties" />
-                  <ComboBox
-                      x:Name="PhysicsObjectSelector"
-                      Width="200"
-                      AutomationProperties.Name="Physics object to author"
-                      IsEnabled="False"
-                      ToolTip.Tip="Choose the extracted object whose properties are listed" />
-                </StackPanel>
-                <ListBox
-                    x:Name="PhysicsPropertyList"
-                    Height="180"
-                    AutomationProperties.Name="Physics properties"
-                    IsEnabled="False">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="local:ViewerPhysicsPropertyRow">
-                      <Grid ColumnDefinitions="180,*,110" Margin="0,0,0,2">
-                        <TextBlock Grid.Column="0" Text="{Binding Label}" TextWrapping="Wrap" />
-                        <TextBlock
-                            Grid.Column="1"
-                            Text="{Binding ValueText}"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            Grid.Column="2"
-                            Text="{Binding StatusText}"
-                            Opacity="0.75"
-                            TextWrapping="Wrap" />
-                      </Grid>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <TextBlock
-                    x:Name="PhysicsPropertyDetail"
-                    AutomationProperties.Name="Physics property description"
-                    Text="Select a property to author it."
-                    TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <TextBox
-                      x:Name="PhysicsPropertyValueBox"
-                      Width="200"
-                      AutomationProperties.Name="Physics property value"
-                      IsEnabled="False"
-                      ToolTip.Tip="The value authored into the session overlay's user layer" />
-                  <ComboBox
-                      x:Name="PhysicsPropertyTokenSelector"
-                      Width="160"
-                      AutomationProperties.Name="Physics property token"
-                      IsEnabled="False"
-                      IsVisible="False"
-                      ToolTip.Tip="Choose one of the tokens the schema declares" />
-                  <Button
-                      x:Name="PhysicsApplyPropertyButton"
-                      AutomationProperties.Name="Author the physics property"
-                      Content="Apply"
-                      IsEnabled="False"
-                      ToolTip.Tip="Author this value into the session overlay's user layer" />
-                  <Button
-                      x:Name="PhysicsClearPropertyButton"
-                      AutomationProperties.Name="Clear the authored physics property"
-                      Content="Clear"
-                      IsEnabled="False"
-                      ToolTip.Tip="Remove the opinion this inspector authored" />
-                </StackPanel>
-                <TextBlock Text="Interaction" FontWeight="SemiBold" />
-                <TextBlock
-                    x:Name="PhysicsInteractionState"
-                    AutomationProperties.Name="Physics interaction status"
-                    Text="Enable physics and select a simulated object to drive it."
-                    TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <TextBox
-                      x:Name="PhysicsForceDirectionBox"
-                      Width="140"
-                      AutomationProperties.Name="Force direction"
-                      Text="0 1 0"
-                      IsEnabled="False"
-                      ToolTip.Tip="Direction the force or impulse acts in, in stage space" />
-                  <TextBox
-                      x:Name="PhysicsForceMagnitudeBox"
-                      Width="90"
-                      AutomationProperties.Name="Force magnitude"
-                      Text="10"
-                      IsEnabled="False"
-                      ToolTip.Tip="Magnitude of the force or impulse" />
-                  <ComboBox
-                      x:Name="PhysicsForceModeSelector"
-                      Width="140"
-                      AutomationProperties.Name="Force mode"
-                      IsEnabled="False"
-                      SelectedIndex="0"
-                      ToolTip.Tip="How the value is integrated by the solver">
-                    <ComboBoxItem Content="Force" Tag="Default" />
-                    <ComboBoxItem Content="Acceleration" Tag="Acceleration" />
-                    <ComboBoxItem Content="Velocity Change" Tag="VelocityChange" />
-                  </ComboBox>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <Button
-                      x:Name="PhysicsApplyForceButton"
-                      AutomationProperties.Name="Apply a force to the selected body"
-                      Content="Force"
-                      IsEnabled="False"
-                      ToolTip.Tip="Apply a continuous force on the next simulation step" />
-                  <Button
-                      x:Name="PhysicsApplyImpulseButton"
-                      AutomationProperties.Name="Apply an impulse to the selected body"
-                      Content="Impulse"
-                      IsEnabled="False"
-                      ToolTip.Tip="Apply an instantaneous impulse on the next simulation step" />
-                  <Button
-                      x:Name="PhysicsApplyTorqueButton"
-                      AutomationProperties.Name="Apply a torque to the selected body"
-                      Content="Torque"
-                      IsEnabled="False"
-                      ToolTip.Tip="Apply a continuous torque on the next simulation step" />
-                  <Button
-                      x:Name="PhysicsWakeButton"
-                      AutomationProperties.Name="Wake the selected body"
-                      Content="Wake"
-                      IsEnabled="False"
-                      ToolTip.Tip="Wake the selected body on the next simulation step" />
-                  <Button
-                      x:Name="PhysicsSleepButton"
-                      AutomationProperties.Name="Put the selected body to sleep"
-                      Content="Sleep"
-                      IsEnabled="False"
-                      ToolTip.Tip="Put the selected body to sleep on the next simulation step" />
-                </StackPanel>
-                <TextBlock Text="Character controller" FontWeight="SemiBold" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <CheckBox
-                      x:Name="PhysicsControllerDriveCheckBox"
-                      AutomationProperties.Name="Drive the selected character controller"
-                      Content="Drive with WASD"
-                      IsEnabled="False"
-                      ToolTip.Tip="Move the selected controller with the movement keys" />
-                  <TextBox
-                      x:Name="PhysicsControllerSpeedBox"
-                      Width="90"
-                      AutomationProperties.Name="Character controller speed"
-                      Text="2"
-                      IsEnabled="False"
-                      ToolTip.Tip="Speed in stage linear units per second" />
-                </StackPanel>
-                <TextBlock Text="Vehicle" FontWeight="SemiBold" />
-                <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Throttle" />
-                  <Slider
-                      x:Name="PhysicsVehicleThrottleSlider"
-                      Grid.Row="0"
-                      Grid.Column="1"
-                      AutomationProperties.Name="Vehicle throttle"
-                      IsEnabled="False"
-                      Minimum="0"
-                      Maximum="1"
-                      Value="0" />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Brake" />
-                  <Slider
-                      x:Name="PhysicsVehicleBrakeSlider"
-                      Grid.Row="1"
-                      Grid.Column="1"
-                      AutomationProperties.Name="Vehicle brake"
-                      IsEnabled="False"
-                      Minimum="0"
-                      Maximum="1"
-                      Value="0" />
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Steer" />
-                  <Slider
-                      x:Name="PhysicsVehicleSteerSlider"
-                      Grid.Row="2"
-                      Grid.Column="1"
-                      AutomationProperties.Name="Vehicle steering"
-                      IsEnabled="False"
-                      Minimum="-1"
-                      Maximum="1"
-                      Value="0" />
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Hand brake" />
-                  <Slider
-                      x:Name="PhysicsVehicleHandBrakeSlider"
-                      Grid.Row="3"
-                      Grid.Column="1"
-                      AutomationProperties.Name="Vehicle hand brake"
-                      IsEnabled="False"
-                      Minimum="0"
-                      Maximum="1"
-                      Value="0" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Clutch" />
-                  <Slider
-                      x:Name="PhysicsVehicleClutchSlider"
-                      Grid.Row="4"
-                      Grid.Column="1"
-                      AutomationProperties.Name="Vehicle clutch"
-                      IsEnabled="False"
-                      Minimum="0"
-                      Maximum="1"
-                      Value="0" />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Gear" />
-                  <ComboBox
-                      x:Name="PhysicsVehicleGearSelector"
-                      Grid.Row="5"
-                      Grid.Column="1"
-                      AutomationProperties.Name="Vehicle gear"
-                      IsEnabled="False"
-                      SelectedIndex="0"
-                      ToolTip.Tip="Gear 0 leaves the choice to the drivetrain">
-                    <ComboBoxItem Content="Automatic" Tag="0" />
-                    <ComboBoxItem Content="Reverse" Tag="1" />
-                    <ComboBoxItem Content="Neutral" Tag="2" />
-                    <ComboBoxItem Content="First" Tag="3" />
-                    <ComboBoxItem Content="Second" Tag="4" />
-                    <ComboBoxItem Content="Third" Tag="5" />
-                    <ComboBoxItem Content="Fourth" Tag="6" />
-                  </ComboBox>
-                </Grid>
-                <CheckBox
-                    x:Name="PhysicsVehicleDriveCheckBox"
-                    AutomationProperties.Name="Drive the selected vehicle"
-                    Content="Send vehicle input every step"
-                    IsEnabled="False"
-                    ToolTip.Tip="Submit the throttle, brake, steering, and gear on every step" />
-              </StackPanel>
-            </ScrollViewer>
-          </TabItem>
-          <TabItem x:Name="TfDebugTab" Header="_TfDebug" IsVisible="False">
-            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button
-                    x:Name="RefreshTfDebugButton"
-                    AutomationProperties.Name="Refresh TfDebug flags"
-                    Content="_Refresh" />
-              </StackPanel>
-              <TextBlock
-                  x:Name="TfDebugState"
-                  Grid.Row="1"
-                  Margin="0,8,0,0"
-                  Text="Refresh to list OpenUSD TfDebug symbols."
-                  TextWrapping="Wrap" />
-              <ScrollViewer Grid.Row="2" Margin="0,8,0,0">
+      <Border x:Name="InspectorPanel" Grid.Column="4" Classes="viewer-panel">
+        <Grid RowDefinitions="Auto,Auto,Auto,*">
+          <TextBox
+              x:Name="InspectorPropertyQuery"
+              IsEnabled="False"
+              MaxLength="256"
+              Margin="0,0,0,6"
+              AutomationProperties.Name="Find properties by name or type"
+              PlaceholderText="Find properties by name or type"
+              ToolTip.Tip="Filter attribute and relationship lists. Prim metadata and selection are unchanged." />
+          <Grid x:Name="InspectorPropertyNavigation" Grid.Row="1"
+                ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,0,0,8">
+            <Button
+                x:Name="InspectorPropertyPrevious"
+                Content="Previous"
+                IsEnabled="False"
+                AutomationProperties.Name="Previous property page" />
+            <TextBlock
+                x:Name="InspectorPropertyPageState"
+                Grid.Column="1"
+                Classes="viewer-caption"
+                VerticalAlignment="Center"
+                TextWrapping="Wrap"
+                AutomationProperties.Name="Property results page"
+                Text="Select a prim to browse properties." />
+            <Button
+                x:Name="InspectorPropertyNext"
+                Grid.Column="2"
+                Content="Next"
+                IsEnabled="False"
+                AutomationProperties.Name="Next property page" />
+          </Grid>
+          <Grid x:Name="InspectorPropertyTimeControls" Grid.Row="2"
+                ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,8">
+            <TextBlock
+                x:Name="InspectorPropertyTimeState"
+                Classes="viewer-caption"
+                TextWrapping="Wrap"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="Property snapshot time"
+                Text="Default time (not timeline)" />
+            <Button
+                x:Name="InspectorPropertyDefaultTime"
+                Grid.Column="1"
+                Content="Default"
+                IsEnabled="False"
+                AutomationProperties.Name="Inspect USD default-time values"
+                ToolTip.Tip="Inspect USD default values, separately from the timeline." />
+            <Button
+                x:Name="InspectorPropertyCurrentTime"
+                Grid.Column="2"
+                Content="Current frame"
+                IsEnabled="False"
+                AutomationProperties.Name="Snapshot properties at the current timeline time"
+                ToolTip.Tip="Read a snapshot at the current timeline time. Values do not follow playback; click again to refresh." />
+          </Grid>
+          <TabControl
+              x:Name="InspectorTabs"
+              Grid.Row="3"
+              AutomationProperties.Name="Stage details tabs"
+              SelectedIndex="0">
+            <TabItem x:Name="PropertiesTab" Header="_Properties">
+              <ScrollViewer Margin="0,8,0,0">
                 <StackPanel
-                    x:Name="TfDebugRows"
-                    AutomationProperties.Name="TfDebug flags"
-                    Spacing="6" />
+                    x:Name="InspectorRows"
+                    AutomationProperties.Name="Selected prim properties, variants, payloads, and session controls"
+                    Spacing="8">
+                  <TextBlock
+                      x:Name="InspectorState"
+                      Classes="viewer-secondary"
+                      Text="Select a prim to inspect metadata and attributes."
+                      TextWrapping="Wrap" />
+                </StackPanel>
               </ScrollViewer>
-            </Grid>
-          </TabItem>
-        </TabControl>
+            </TabItem>
+            <TabItem x:Name="ValueTab" Header="_Value">
+              <ScrollViewer Margin="0,8,0,0">
+                <StackPanel
+                    x:Name="ValueRows"
+                    AutomationProperties.Name="Selected prim attribute values and time samples"
+                    Spacing="8">
+                  <TextBlock
+                      Text="Select a prim to inspect attribute values and samples."
+                      TextWrapping="Wrap" />
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem x:Name="MetadataTab" Header="_Metadata">
+              <ScrollViewer Margin="0,8,0,0">
+                <StackPanel
+                    x:Name="MetadataRows"
+                    AutomationProperties.Name="Selected prim metadata, variants, payloads, and relationships"
+                    Spacing="8">
+                  <TextBlock
+                      Text="Select a prim to inspect metadata."
+                      TextWrapping="Wrap" />
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem x:Name="CompositionTab" Header="_Composition">
+              <ScrollViewer Margin="0,8,0,0">
+                <StackPanel
+                    x:Name="CompositionRows"
+                    AutomationProperties.Name="Selected prim Pcp composition"
+                    Spacing="8">
+                  <TextBlock
+                      Text="Select a prim to inspect its Pcp prim index."
+                      TextWrapping="Wrap" />
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem x:Name="LayersTab" Header="_LayerStack">
+              <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,Auto,Auto,*">
+                <TextBlock
+                    x:Name="LayerEditTarget"
+                    AutomationProperties.Name="Current edit target"
+                    Text="Edit target: —"
+                    TextWrapping="Wrap" />
+                <StackPanel Grid.Row="1" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                  <Button
+                      x:Name="SetSessionEditTargetButton"
+                      AutomationProperties.Name="Use session layer for edits"
+                      Content="Edit _Session"
+                      IsEnabled="False" />
+                  <Button
+                      x:Name="SetRootEditTargetButton"
+                      AutomationProperties.Name="Explicitly enable in-memory root layer edits"
+                      Content="Enable _Root Edits"
+                      IsEnabled="False" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="RootEditWarning"
+                    Grid.Row="2"
+                    Margin="0,8,0,0"
+                    AutomationProperties.Name="Root edit policy"
+                    Text="Prim controls author to the session layer by default. Root edits require the explicit button above and are never saved automatically."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="LayersState"
+                    Grid.Row="3"
+                    Margin="0,8,0,0"
+                    Text="Open a USD stage to inspect its local layer stack."
+                    TextWrapping="Wrap" />
+                <ScrollViewer Grid.Row="4" Margin="0,8,0,0">
+                  <StackPanel x:Name="LayersRows" Spacing="8" />
+                </ScrollViewer>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="DiagnosticsTab" Header="_Diagnostics" IsVisible="False">
+              <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button
+                      x:Name="CopyDiagnosticsButton"
+                      AutomationProperties.Name="Copy redacted diagnostics"
+                      Content="_Copy"
+                      IsEnabled="False" />
+                  <Button
+                      x:Name="ExportDiagnosticsButton"
+                      AutomationProperties.Name="Export redacted diagnostics"
+                      Content="_Export..."
+                      IsEnabled="False" />
+                  <CheckBox
+                      x:Name="IncludeDiagnosticPathsCheckBox"
+                      AutomationProperties.Name="Include source and user paths in diagnostics"
+                      Content="Include paths" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="DiagnosticsState"
+                    Grid.Row="1"
+                    Margin="0,8,0,0"
+                    Text="Diagnostics are sampled from normal rendering at a bounded cadence."
+                    TextWrapping="Wrap" />
+                <TextBox
+                    x:Name="DiagnosticsText"
+                    Grid.Row="2"
+                    Margin="0,8,0,0"
+                    AutomationProperties.Name="Latest viewer diagnostics"
+                    AcceptsReturn="True"
+                    IsReadOnly="True"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    Text="No diagnostics have been sampled."
+                    TextWrapping="NoWrap" />
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="ValidationTab" Header="_Validation">
+              <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button
+                      x:Name="RefreshValidationButton"
+                      AutomationProperties.Name="Refresh UsdValidation results"
+                      Content="_Refresh"
+                      IsEnabled="False" />
+                  <TextBlock
+                      VerticalAlignment="Center"
+                      Text="Scope:" />
+                  <ComboBox
+                      x:Name="ValidationScopeSelector"
+                      AutomationProperties.Name="UsdValidation scope"
+                      IsEnabled="False"
+                      MinWidth="160"
+                      SelectedIndex="0">
+                    <ComboBoxItem Content="Whole stage" Tag="Stage" />
+                    <ComboBoxItem Content="Selected prim" Tag="Prim" />
+                  </ComboBox>
+                </StackPanel>
+                <TextBlock
+                    x:Name="ValidationState"
+                    Grid.Row="1"
+                    Margin="0,8,0,0"
+                    Text="Open a USD stage to run UsdValidation."
+                    TextWrapping="Wrap" />
+                <TextBox
+                    x:Name="ValidationText"
+                    Grid.Row="2"
+                    Margin="0,8,0,0"
+                    AutomationProperties.Name="UsdValidation results"
+                    AcceptsReturn="True"
+                    IsReadOnly="True"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    Text="No validation results."
+                    TextWrapping="NoWrap" />
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="HydraSceneTab" Header="_Hydra" IsVisible="False">
+              <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button
+                      x:Name="RefreshHydraSceneButton"
+                      AutomationProperties.Name="Refresh Hydra scene browser"
+                      Content="_Refresh"
+                      IsEnabled="False" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="HydraSceneState"
+                    Grid.Row="1"
+                    Margin="0,8,0,0"
+                    Text="Render an hdSilk frame to inspect the Hydra scene command snapshot."
+                    TextWrapping="Wrap" />
+                <TextBox
+                    x:Name="HydraSceneText"
+                    Grid.Row="2"
+                    Margin="0,8,0,0"
+                    AutomationProperties.Name="Hydra scene browser"
+                    AcceptsReturn="True"
+                    IsReadOnly="True"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    Text="No Hydra scene snapshot."
+                    TextWrapping="NoWrap" />
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="PhysicsTab" Header="P_hysics">
+              <ScrollViewer Margin="0,8,0,0">
+                <StackPanel Spacing="8">
+                  <TextBlock
+                      x:Name="PhysicsInspectorState"
+                      AutomationProperties.Name="Physics simulation status"
+                      Text="Enable physics for this stage to inspect its simulation."
+                      TextWrapping="Wrap" />
+                  <TextBlock Text="Capabilities" FontWeight="SemiBold" />
+                  <ItemsControl
+                      x:Name="PhysicsCapabilityRows"
+                      AutomationProperties.Name="Physics capability matrix">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="local:ViewerPhysicsCapabilityRow">
+                        <Grid ColumnDefinitions="160,80,*" Margin="0,0,0,4">
+                          <TextBlock Grid.Column="0" Text="{Binding Name}" TextWrapping="Wrap" />
+                          <TextBlock
+                              Grid.Column="1"
+                              Text="{Binding StatusText}"
+                              FontWeight="SemiBold"
+                              TextWrapping="Wrap" />
+                          <TextBlock
+                              Grid.Column="2"
+                              Text="{Binding Detail}"
+                              Classes="viewer-secondary"
+                              TextWrapping="Wrap" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Diagnostics" FontWeight="SemiBold" />
+                  <ItemsControl
+                      x:Name="PhysicsDiagnosticRows"
+                      AutomationProperties.Name="Physics diagnostics">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="local:ViewerPhysicsDiagnosticRow">
+                        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Simulated objects" FontWeight="SemiBold" />
+                  <ItemsControl
+                      x:Name="PhysicsObjectRows"
+                      AutomationProperties.Name="Simulated physics objects">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="local:ViewerPhysicsObjectRow">
+                        <Grid ColumnDefinitions="*,120" Margin="0,0,0,4">
+                          <TextBlock Grid.Column="0" Text="{Binding Path}" TextWrapping="Wrap" />
+                          <TextBlock
+                              Grid.Column="1"
+                              Text="{Binding StatusText}"
+                              Classes="viewer-secondary"
+                              TextWrapping="Wrap" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Authoring" FontWeight="SemiBold" />
+                  <TextBlock
+                      x:Name="PhysicsAuthoringState"
+                      AutomationProperties.Name="Physics authoring status"
+                      Text="Enable physics for this stage to author its simulation inputs."
+                      TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button
+                        x:Name="PhysicsRefreshPropertiesButton"
+                        AutomationProperties.Name="Reload physics properties"
+                        Content="Reload Properties"
+                        IsEnabled="False"
+                        ToolTip.Tip="Re-extract every physics object and its properties" />
+                    <ComboBox
+                        x:Name="PhysicsObjectSelector"
+                        Width="200"
+                        AutomationProperties.Name="Physics object to author"
+                        IsEnabled="False"
+                        ToolTip.Tip="Choose the extracted object whose properties are listed" />
+                  </StackPanel>
+                  <ListBox
+                      x:Name="PhysicsPropertyList"
+                      Height="180"
+                      AutomationProperties.Name="Physics properties"
+                      IsEnabled="False">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate x:DataType="local:ViewerPhysicsPropertyRow">
+                        <Grid ColumnDefinitions="180,*,110" Margin="0,0,0,4">
+                          <TextBlock Grid.Column="0" Text="{Binding Label}" TextWrapping="Wrap" />
+                          <TextBlock
+                              Grid.Column="1"
+                              Text="{Binding ValueText}"
+                              TextWrapping="Wrap" />
+                          <TextBlock
+                              Grid.Column="2"
+                              Text="{Binding StatusText}"
+                              Classes="viewer-secondary"
+                              TextWrapping="Wrap" />
+                        </Grid>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <TextBlock
+                      x:Name="PhysicsPropertyDetail"
+                      AutomationProperties.Name="Physics property description"
+                      Text="Select a property to author it."
+                      TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBox
+                        x:Name="PhysicsPropertyValueBox"
+                        Width="200"
+                        AutomationProperties.Name="Physics property value"
+                        IsEnabled="False"
+                        ToolTip.Tip="The value authored into the session overlay's user layer" />
+                    <ComboBox
+                        x:Name="PhysicsPropertyTokenSelector"
+                        Width="160"
+                        AutomationProperties.Name="Physics property token"
+                        IsEnabled="False"
+                        IsVisible="False"
+                        ToolTip.Tip="Choose one of the tokens the schema declares" />
+                    <Button
+                        x:Name="PhysicsApplyPropertyButton"
+                        AutomationProperties.Name="Author the physics property"
+                        Content="Apply"
+                        IsEnabled="False"
+                        ToolTip.Tip="Author this value into the session overlay's user layer" />
+                    <Button
+                        x:Name="PhysicsClearPropertyButton"
+                        AutomationProperties.Name="Clear the authored physics property"
+                        Content="Clear"
+                        IsEnabled="False"
+                        ToolTip.Tip="Remove the opinion this inspector authored" />
+                  </StackPanel>
+                  <TextBlock Text="Interaction" FontWeight="SemiBold" />
+                  <TextBlock
+                      x:Name="PhysicsInteractionState"
+                      AutomationProperties.Name="Physics interaction status"
+                      Text="Enable physics and select a simulated object to drive it."
+                      TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBox
+                        x:Name="PhysicsForceDirectionBox"
+                        Width="140"
+                        AutomationProperties.Name="Force direction"
+                        Text="0 1 0"
+                        IsEnabled="False"
+                        ToolTip.Tip="Direction the force or impulse acts in, in stage space" />
+                    <TextBox
+                        x:Name="PhysicsForceMagnitudeBox"
+                        Width="90"
+                        AutomationProperties.Name="Force magnitude"
+                        Text="10"
+                        IsEnabled="False"
+                        ToolTip.Tip="Magnitude of the force or impulse" />
+                    <ComboBox
+                        x:Name="PhysicsForceModeSelector"
+                        Width="140"
+                        AutomationProperties.Name="Force mode"
+                        IsEnabled="False"
+                        SelectedIndex="0"
+                        ToolTip.Tip="How the value is integrated by the solver">
+                      <ComboBoxItem Content="Force" Tag="Default" />
+                      <ComboBoxItem Content="Acceleration" Tag="Acceleration" />
+                      <ComboBoxItem Content="Velocity Change" Tag="VelocityChange" />
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button
+                        x:Name="PhysicsApplyForceButton"
+                        AutomationProperties.Name="Apply a force to the selected body"
+                        Content="Force"
+                        IsEnabled="False"
+                        ToolTip.Tip="Apply a continuous force on the next simulation step" />
+                    <Button
+                        x:Name="PhysicsApplyImpulseButton"
+                        AutomationProperties.Name="Apply an impulse to the selected body"
+                        Content="Impulse"
+                        IsEnabled="False"
+                        ToolTip.Tip="Apply an instantaneous impulse on the next simulation step" />
+                    <Button
+                        x:Name="PhysicsApplyTorqueButton"
+                        AutomationProperties.Name="Apply a torque to the selected body"
+                        Content="Torque"
+                        IsEnabled="False"
+                        ToolTip.Tip="Apply a continuous torque on the next simulation step" />
+                    <Button
+                        x:Name="PhysicsWakeButton"
+                        AutomationProperties.Name="Wake the selected body"
+                        Content="Wake"
+                        IsEnabled="False"
+                        ToolTip.Tip="Wake the selected body on the next simulation step" />
+                    <Button
+                        x:Name="PhysicsSleepButton"
+                        AutomationProperties.Name="Put the selected body to sleep"
+                        Content="Sleep"
+                        IsEnabled="False"
+                        ToolTip.Tip="Put the selected body to sleep on the next simulation step" />
+                  </StackPanel>
+                  <TextBlock Text="Character controller" FontWeight="SemiBold" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <CheckBox
+                        x:Name="PhysicsControllerDriveCheckBox"
+                        AutomationProperties.Name="Drive the selected character controller"
+                        Content="Drive with WASD"
+                        IsEnabled="False"
+                        ToolTip.Tip="Move the selected controller with the movement keys" />
+                    <TextBox
+                        x:Name="PhysicsControllerSpeedBox"
+                        Width="90"
+                        AutomationProperties.Name="Character controller speed"
+                        Text="2"
+                        IsEnabled="False"
+                        ToolTip.Tip="Speed in stage linear units per second" />
+                  </StackPanel>
+                  <TextBlock Text="Vehicle" FontWeight="SemiBold" />
+                  <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Throttle" />
+                    <Slider
+                        x:Name="PhysicsVehicleThrottleSlider"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Vehicle throttle"
+                        IsEnabled="False"
+                        Minimum="0"
+                        Maximum="1"
+                        Value="0" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Brake" />
+                    <Slider
+                        x:Name="PhysicsVehicleBrakeSlider"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Vehicle brake"
+                        IsEnabled="False"
+                        Minimum="0"
+                        Maximum="1"
+                        Value="0" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Steer" />
+                    <Slider
+                        x:Name="PhysicsVehicleSteerSlider"
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Vehicle steering"
+                        IsEnabled="False"
+                        Minimum="-1"
+                        Maximum="1"
+                        Value="0" />
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Hand brake" />
+                    <Slider
+                        x:Name="PhysicsVehicleHandBrakeSlider"
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Vehicle hand brake"
+                        IsEnabled="False"
+                        Minimum="0"
+                        Maximum="1"
+                        Value="0" />
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Clutch" />
+                    <Slider
+                        x:Name="PhysicsVehicleClutchSlider"
+                        Grid.Row="4"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Vehicle clutch"
+                        IsEnabled="False"
+                        Minimum="0"
+                        Maximum="1"
+                        Value="0" />
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Gear" />
+                    <ComboBox
+                        x:Name="PhysicsVehicleGearSelector"
+                        Grid.Row="5"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Vehicle gear"
+                        IsEnabled="False"
+                        SelectedIndex="0"
+                        ToolTip.Tip="Gear 0 leaves the choice to the drivetrain">
+                      <ComboBoxItem Content="Automatic" Tag="0" />
+                      <ComboBoxItem Content="Reverse" Tag="1" />
+                      <ComboBoxItem Content="Neutral" Tag="2" />
+                      <ComboBoxItem Content="First" Tag="3" />
+                      <ComboBoxItem Content="Second" Tag="4" />
+                      <ComboBoxItem Content="Third" Tag="5" />
+                      <ComboBoxItem Content="Fourth" Tag="6" />
+                    </ComboBox>
+                  </Grid>
+                  <CheckBox
+                      x:Name="PhysicsVehicleDriveCheckBox"
+                      AutomationProperties.Name="Drive the selected vehicle"
+                      Content="Send vehicle input every step"
+                      IsEnabled="False"
+                      ToolTip.Tip="Submit the throttle, brake, steering, and gear on every step" />
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem x:Name="TfDebugTab" Header="_TfDebug" IsVisible="False">
+              <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button
+                      x:Name="RefreshTfDebugButton"
+                      AutomationProperties.Name="Refresh TfDebug flags"
+                      Content="_Refresh" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="TfDebugState"
+                    Grid.Row="1"
+                    Margin="0,8,0,0"
+                    Text="Refresh to list OpenUSD TfDebug symbols."
+                    TextWrapping="Wrap" />
+                <ScrollViewer Grid.Row="2" Margin="0,8,0,0">
+                  <StackPanel
+                      x:Name="TfDebugRows"
+                      AutomationProperties.Name="TfDebug flags"
+                      Spacing="8" />
+                </ScrollViewer>
+              </Grid>
+            </TabItem>
+            <TabItem x:Name="AppearanceTab" Header="_Appearance">
+              <ScrollViewer Margin="0,8,0,0">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Materials / Lighting" Classes="viewer-heading" />
+                  <TextBlock
+                      Classes="viewer-secondary"
+                      TextWrapping="Wrap"
+                      Text="These are temporary viewport display choices, not authored USD material edits." />
+                  <ToggleButton x:Name="AppearanceMaterialsButton" Content="Use scene materials" />
+                  <ToggleButton x:Name="AppearanceLightingButton" Content="Use scene lighting" />
+                  <ToggleButton x:Name="AppearanceShadowsButton" Content="Use scene shadows" />
+                  <ToggleButton x:Name="AppearanceCullingButton" Content="Cull backfaces" />
+                  <Button x:Name="AppearanceSmoothButton" Content="Smooth shaded display" />
+                  <Separator />
+                  <TextBlock Text="Display transform" Classes="viewer-heading" />
+                  <ToggleButton x:Name="AppearanceColorButton" Content="Enable OpenColorIO" />
+                  <Button x:Name="AppearanceConfigButton" Content="Choose OpenColorIO config..." />
+                  <Button x:Name="AppearanceClearConfigButton" Content="Clear OpenColorIO config" />
+                  <Separator />
+                  <TextBlock
+                      Text="Select a material or light in the stage hierarchy to inspect its existing properties and values."
+                      Classes="viewer-secondary"
+                      TextWrapping="Wrap" />
+                  <Button x:Name="AppearanceInspectButton" Content="Inspect selection" />
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+          </TabControl>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="DocumentTimelineHost" Grid.Row="2">
+      <Border
+          x:Name="TimelinePanel"
+          Classes="viewer-chrome"
+          BorderBrush="{DynamicResource ViewerBorderBrush}"
+          BorderThickness="0,1,0,0"
+          Padding="{DynamicResource ViewerStatusPadding}">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+          <Button
+              x:Name="PlayPauseButton"
+              AutomationProperties.Name="Play timeline"
+              Content="_Play"
+              IsEnabled="False"
+              ToolTip.Tip="Play or pause the authored timeline (Space)" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <TextBlock VerticalAlignment="Center" Text="Time" />
+            <TextBox
+                x:Name="CurrentTimeInput"
+                Width="112"
+                AutomationProperties.Name="Current time code"
+                IsEnabled="False"
+                ToolTip.Tip="Enter an invariant numeric USD time code" />
+          </StackPanel>
+          <TextBlock
+              x:Name="TimelineStart"
+              Classes="viewer-caption"
+              Grid.Column="2"
+              VerticalAlignment="Center"
+              Text="Start: —" />
+          <Slider
+              x:Name="TimelineSlider"
+              Grid.Column="3"
+              AutomationProperties.Name="Timeline time code"
+              IsEnabled="False"
+              Minimum="0"
+              Maximum="1"
+              Value="0" />
+          <StackPanel Grid.Column="4" MinWidth="224" VerticalAlignment="Center">
+            <TextBlock
+                x:Name="TimelineEndAndRate"
+                Classes="viewer-caption"
+                HorizontalAlignment="Right"
+                Text="End: — · FPS: — · TCPS: —" />
+            <TextBlock
+                x:Name="TimelineDiagnostic"
+                Classes="viewer-caption viewer-warning"
+                HorizontalAlignment="Right"
+                TextWrapping="Wrap" />
+          </StackPanel>
+        </Grid>
       </Border>
     </Grid>
 
     <Border
-        x:Name="TimelinePanel"
-        Grid.Row="2"
-        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-        BorderThickness="0,1,0,0"
-        Padding="8,6">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
-        <Button
-            x:Name="PlayPauseButton"
-            AutomationProperties.Name="Play timeline"
-            Content="_Play"
-            IsEnabled="False"
-            ToolTip.Tip="Play or pause the authored timeline (Space)" />
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-          <TextBlock VerticalAlignment="Center" Text="Time" />
-          <TextBox
-              x:Name="CurrentTimeInput"
-              Width="110"
-              AutomationProperties.Name="Current time code"
-              IsEnabled="False"
-              ToolTip.Tip="Enter an invariant numeric USD time code" />
-        </StackPanel>
-        <TextBlock
-            x:Name="TimelineStart"
-            Grid.Column="2"
-            VerticalAlignment="Center"
-            Text="Start: —" />
-        <Slider
-            x:Name="TimelineSlider"
-            Grid.Column="3"
-            AutomationProperties.Name="Timeline time code"
-            IsEnabled="False"
-            Minimum="0"
-            Maximum="1"
-            Value="0" />
-        <StackPanel Grid.Column="4" MinWidth="260">
-          <TextBlock
-              x:Name="TimelineEndAndRate"
-              HorizontalAlignment="Right"
-              Text="End: — · FPS: — · TCPS: —" />
-          <TextBlock
-              x:Name="TimelineDiagnostic"
-              HorizontalAlignment="Right"
-              TextWrapping="Wrap" />
-        </StackPanel>
-      </Grid>
-    </Border>
-
-    <Border
         Grid.Row="3"
-        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+        Classes="viewer-chrome"
+        BorderBrush="{DynamicResource ViewerBorderBrush}"
         BorderThickness="0,1,0,0"
-        Padding="8,4">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="16">
-        <TextBlock x:Name="ViewerStatus" AutomationProperties.Name="Viewer status" Text="Ready" />
+        Padding="{DynamicResource ViewerStatusPadding}">
+      <Grid ColumnDefinitions="2*,*,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12">
+        <TextBlock
+            x:Name="ViewerStatus"
+            AutomationProperties.Name="Viewer status"
+            TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding #ViewerStatus.Text}"
+            Text="Ready" />
         <TextBlock
             x:Name="StageStatus"
+            Classes="viewer-caption"
             Grid.Column="1"
             MaxWidth="240"
             AutomationProperties.Name="Current stage"
             TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding #StageStatus.Text}"
             Text="No stage loaded" />
         <TextBlock
+            x:Name="DocumentEditStatus"
+            Grid.Column="7"
+            Classes="viewer-caption"
+            MaxWidth="160"
+            TextTrimming="CharacterEllipsis"
+            AutomationProperties.Name="Review dirty state and target"
+            ToolTip.Tip="{Binding #DocumentEditStatus.Text}"
+            Text="Review: no document" />
+        <TextBlock
             x:Name="CameraStatus"
+            Classes="viewer-caption"
             Grid.Column="2"
             MaxWidth="240"
             AutomationProperties.Name="Camera navigation state"
             TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding #CameraStatus.Text}"
             Text="Camera: Automatic" />
         <TextBlock
             x:Name="CompositionStatus"
+            Classes="viewer-caption"
             Grid.Column="3"
+            MaxWidth="144"
+            TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding #CompositionStatus.Text}"
             AutomationProperties.Name="Composition status"
             Text="GPU: probing" />
         <TextBlock
             x:Name="RendererStatus"
+            Classes="viewer-caption"
             Grid.Column="4"
+            MaxWidth="160"
+            TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding #RendererStatus.Text}"
             AutomationProperties.Name="Renderer status"
             Text="Renderer: unavailable" />
         <TextBlock
             x:Name="BridgeStatus"
+            Classes="viewer-caption"
             Grid.Column="5"
-            MaxWidth="320"
+            MaxWidth="180"
             AutomationProperties.Name="Omniverse Bridge status"
             TextTrimming="CharacterEllipsis"
+            ToolTip.Tip="{Binding #BridgeStatus.Text}"
             IsVisible="False"
             Text="" />
+        <ProgressBar
+            x:Name="WorkspaceProgress"
+            Grid.Column="6"
+            Width="48"
+            Height="4"
+            VerticalAlignment="Center"
+            AutomationProperties.Name="Viewer operation in progress"
+            IsIndeterminate="True"
+            IsVisible="False" />
       </Grid>
     </Border>
   </Grid>

@@ -40,6 +40,13 @@ internal static class StageCameraProjectionMath
             optics.WindowBottom,
             optics.WindowTop,
             viewport);
+        return CreateProjectionMatrix(optics, window);
+    }
+
+    internal static Matrix4x4 CreateProjectionMatrix(
+        in UsdGeomCameraState optics,
+        StageCameraApertureWindow window)
+    {
         double windowWidth = window.Width;
         double windowHeight = window.Height;
         double near = optics.ClippingNear;
@@ -129,7 +136,7 @@ internal static class StageCameraProjectionMath
         return converted;
     }
 
-    private static StageCameraApertureWindow CreateWindow(
+    internal static StageCameraApertureWindow CreateWindow(
         double left,
         double right,
         double bottom,

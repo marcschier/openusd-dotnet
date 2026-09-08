@@ -42,6 +42,8 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
     private readonly IViewerPhysicsTransportFactory _factory;
     private readonly IViewerPhysicsClock _clock;
     private readonly IViewerPhysicsAuthoringStage? _authoring;
+    private readonly ViewerAuthoredEditController? _documentEditor;
+    private readonly ViewerPhysicsEditHistory? _legacyHistory;
     private readonly ViewerPhysicsRenderBridge _bridge;
     private readonly ViewerPhysicsEditDebouncer _debouncer;
     private readonly SemaphoreSlim _commandGate = new(1, 1);
@@ -82,6 +84,7 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
     private int _clearPending;
     private int _replayPending;
     private int _disposed;
+    private int _documentSuspensionHeld;
 
     /// <summary>Initializes a controller that has not created a transport yet.</summary>
     /// <param name="factory">Creates the transport when physics is first requested.</param>
@@ -105,6 +108,17 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         _factory = factory;
         _clock = clock;
         _authoring = authoring;
+        if (authoring is IViewerPhysicsHistorySource shared)
+        {
+            _documentEditor = shared.DocumentEditor;
+            History = _documentEditor;
+            _documentEditor.Applied += OnSharedDocumentApplied;
+        }
+        else
+        {
+            _legacyHistory = new ViewerPhysicsEditHistory();
+            History = _legacyHistory;
+        }
         _bridge = new ViewerPhysicsRenderBridge(capacities);
         _debouncer = new ViewerPhysicsEditDebouncer(editDebounceSeconds);
         _maxStepsPerPump = maxStepsPerPump;
@@ -806,7 +820,10 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
     internal ulong InspectorRevision => _inspectorRevision;
 
     /// <summary>Gets the undo and redo history of the physics inspector's authoring.</summary>
-    internal ViewerPhysicsEditHistory History { get; } = new();
+    internal IViewerEditHistoryView History { get; }
+
+    private ViewerPhysicsEditHistory LegacyHistory => _legacyHistory ??
+        throw new InvalidOperationException("This controller uses the shared document history.");
 
     /// <summary>Gets the number of runtime commands the world staged.</summary>
     internal long StagedCommands => Interlocked.Read(ref _stagedCommands);
@@ -918,11 +935,18 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         bool undo,
         CancellationToken cancellationToken)
     {
+        if (_documentEditor is { } editor)
+        {
+            ViewerAuthoredEditResult result = undo
+                ? await editor.UndoAsync(cancellationToken).ConfigureAwait(false)
+                : await editor.RedoAsync(cancellationToken).ConfigureAwait(false);
+            return ViewerPhysicsDocumentAuthoringStage.ToPhysicsResult(result);
+        }
         ViewerPhysicsEditStep taken;
         ViewerPhysicsEditStep applied;
         if (undo)
         {
-            if (!History.TryTakeUndo(out taken))
+            if (!LegacyHistory.TryTakeUndo(out taken))
             {
                 return new ViewerPhysicsAuthoringResult(
                     0, 0, "There is nothing to undo.", []);
@@ -932,7 +956,7 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         }
         else
         {
-            if (!History.TryTakeRedo(out taken))
+            if (!LegacyHistory.TryTakeRedo(out taken))
             {
                 return new ViewerPhysicsAuthoringResult(
                     0, 0, "There is nothing to redo.", []);
@@ -952,12 +976,12 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
             }
 
             // Nothing reached the stage, so the history must not claim the step was reversed.
-            History.Restore(undo ? applied.Reversed() : applied, undo);
+            LegacyHistory.Restore(undo ? applied.Reversed() : applied, undo);
             return result;
         }
         catch
         {
-            History.Restore(undo ? applied.Reversed() : applied, undo);
+            LegacyHistory.Restore(undo ? applied.Reversed() : applied, undo);
             throw;
         }
     }
@@ -975,6 +999,10 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
                 step.Edits.Count,
                 "This document has no writable stage, so physics properties cannot be authored.",
                 []);
+        }
+        if (_documentEditor is null && record && !LegacyHistory.CanRecord(step, out string historyDiagnostic))
+        {
+            return new ViewerPhysicsAuthoringResult(0, step.Edits.Count, historyDiagnostic, []);
         }
 
         using CancellationTokenSource linked = LinkLifetime(cancellationToken);
@@ -1000,10 +1028,13 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         // which fields moved. Remembering the serial pair together with that classification is what
         // stops an edit to simulation metadata from rebuilding a world it cannot affect, while an
         // edit to a mass still does.
-        RememberAuthoredEdits(result.Edits, ClassifyStep(step));
-        if (record && result.Applied != 0)
+        if (_documentEditor is null)
         {
-            History.Record(step, _clock.NowSeconds);
+            RememberAuthoredEdits(result.Edits, ClassifyStep(step));
+            if (record && result.Applied != 0)
+            {
+                LegacyHistory.Record(step, _clock.NowSeconds);
+            }
         }
 
         return result;
@@ -1020,6 +1051,25 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         }
 
         return ViewerPhysicsEditKind.Visual;
+    }
+
+    private void OnSharedDocumentApplied(ViewerAuthoredEditResult result)
+    {
+        if (result.After is null || result.AfterSerial <= result.BeforeSerial)
+        {
+            return;
+        }
+        ViewerPhysicsEditKind kind = ViewerPhysicsEditKind.Visual;
+        foreach (OpenUsd.Editing.UsdLayerEditAddress address in result.After.Addresses)
+        {
+            string propertyName = address.Path[(address.Path.LastIndexOf('.') + 1)..];
+            if (!ViewerPhysicsAuthoringClassifier.IsSimulationNeutral(propertyName))
+            {
+                kind = ViewerPhysicsEditKind.Relevant;
+                break;
+            }
+        }
+        RememberAuthoredEdits([new ViewerPhysicsStageEdit(result.BeforeSerial, result.AfterSerial)], kind);
     }
 
     private UsdPhysicsCapability ResolveFeatures()
@@ -1297,12 +1347,39 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
     /// </summary>
     internal void RequestOverrideReplay() => Volatile.Write(ref _replayPending, 1);
 
+    internal async Task SuspendDocumentWritesAsync(CancellationToken cancellationToken)
+    {
+        if (!await _commandGate.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false))
+        {
+            throw new TimeoutException("Physics did not finish its document operation before retirement.");
+        }
+        Interlocked.Exchange(ref _documentSuspensionHeld, 1);
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            ResumeDocumentWrites();
+            throw new ObjectDisposedException(nameof(ViewerPhysicsController));
+        }
+    }
+
+    internal void ResumeDocumentWrites()
+    {
+        if (Interlocked.Exchange(ref _documentSuspensionHeld, 0) != 0)
+        {
+            _commandGate.Release();
+        }
+    }
+
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
+        }
+        ResumeDocumentWrites();
+        if (_documentEditor is not null)
+        {
+            _documentEditor.Applied -= OnSharedDocumentApplied;
         }
 
         _isPlaying = false;

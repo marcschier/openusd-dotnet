@@ -73,7 +73,7 @@ public sealed class StormPhysicsDeformationTests
 
         // The Storm ABI announces the capability, so the version has to move
         // with the entry points rather than after them.
-        await Assert.That(storm).IsEqualTo(8u);
+        await Assert.That(storm).IsEqualTo(9u);
     }
 
     [Test]

@@ -21,14 +21,72 @@ internal static partial class Program
             return safetyExitCode;
         }
 
-        if (args.Length != 2)
+        bool renderSpecificationOnly = args.Length == 3 && args[0] == "--render-specification";
+        bool renderDeferredOnly = args.Length == 3 && args[0] == "--render-deferred";
+        bool layerEditingOnly = args.Length == 3 && args[0] == "--layer-editing";
+        bool reviewDocumentOnly = args.Length == 3 && ReviewDocumentProbe.IsMode(args[0]);
+        bool schedulerRetirementOnly = args.Length == 3 && args[0] == "--scheduler-retirement";
+        bool hierarchyOnly = args.Length == 3 && args[0] == "--hierarchy";
+        bool propertiesOnly = args.Length == 3 && args[0] == "--properties";
+        if (args.Length != 2 && !renderSpecificationOnly && !renderDeferredOnly && !layerEditingOnly &&
+            !reviewDocumentOnly && !schedulerRetirementOnly && !hierarchyOnly && !propertiesOnly)
         {
-            Console.Error.WriteLine("Usage: OpenUsd.NativeProbe <plugin-path> <stage-path>");
+            Console.Error.WriteLine(
+                "Usage: OpenUsd.NativeProbe <plugin-path> <stage-path> or " +
+                "--render-specification <plugin-path> <work-directory> or " +
+                "--render-deferred <plugin-path> <work-directory> or " +
+                "--layer-editing <plugin-path> <work-directory> or " +
+                "--scheduler-retirement <plugin-path> <work-directory> or " +
+                "--hierarchy <plugin-path> <work-directory> or " +
+                "--properties <plugin-path> <work-directory> or " +
+                "--review-document[-source|-reader|-import] <plugin-path> <work-directory>");
             return 2;
         }
 
         try
         {
+            if (propertiesOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                await PropertyInspectionProbe.RunAsync(args[2]).ConfigureAwait(false);
+                return 0;
+            }
+            if (hierarchyOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                await HierarchyProbe.RunAsync(args[2]).ConfigureAwait(false);
+                return 0;
+            }
+            if (schedulerRetirementOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                await SchedulerRetirementProbe.RunAsync(args[2]).ConfigureAwait(false);
+                return 0;
+            }
+            if (reviewDocumentOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                ReviewDocumentProbe.Run(args[0], args[2]);
+                return 0;
+            }
+            if (layerEditingOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                await LayerEditingProbe.RunAsync(args[2]).ConfigureAwait(false);
+                return 0;
+            }
+            if (renderSpecificationOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                await RenderSpecificationProbe.RunAsync(args[2]).ConfigureAwait(false);
+                return 0;
+            }
+            if (renderDeferredOnly)
+            {
+                _ = OpenUsdNativeRuntime.RegisterPlugins(args[1]);
+                await RenderDeferredProbe.RunAsync(args[2]).ConfigureAwait(false);
+                return 0;
+            }
             ManagedSafetyProbe.Run();
             uint abiVersion = OpenUsdNativeRuntime.AbiVersion;
             Console.WriteLine($"ABI: {abiVersion}");
@@ -74,6 +132,10 @@ internal static partial class Program
             }
 
             string directory = Path.GetDirectoryName(Path.GetFullPath(args[1]))!;
+            await RenderSpecificationProbe.RunAsync(directory).ConfigureAwait(false);
+            await SchedulerRetirementProbe.RunAsync(directory).ConfigureAwait(false);
+            await HierarchyProbe.RunAsync(directory).ConfigureAwait(false);
+            await PropertyInspectionProbe.RunAsync(directory).ConfigureAwait(false);
             string udim1001 = Path.Combine(directory, "managed-udim.1001.txt");
             string udim1013 = Path.Combine(directory, "managed-udim.1013.txt");
             await File.WriteAllTextAsync(udim1001, "1001").ConfigureAwait(false);

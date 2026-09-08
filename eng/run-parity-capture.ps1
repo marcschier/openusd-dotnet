@@ -48,6 +48,20 @@ $binTarget = Join-Path $runtimeRoot 'bin'
 $libTarget = Join-Path $runtimeRoot 'lib'
 $pluginPath = Join-Path $runtimeRoot 'plugin/usd'
 $testHostRoot = Join-Path $repoRoot "tests/OpenUsd.Rendering.ConformanceTests/bin/$Configuration/net10.0"
+foreach ($report in @(
+    'parity-capture-corpus.json',
+    'parity-capture-evidence.json',
+    'parity-capture-perturbations.json',
+    'parity-capture-status.json',
+    'scale-d3d12-evidence.json',
+    'scale-vulkan-evidence.json'))
+{
+    $reportPath = Join-Path $testHostRoot "TestResults/parity-capture/$report"
+    if (Test-Path -LiteralPath $reportPath -PathType Leaf)
+    {
+        [IO.File]::Delete($reportPath)
+    }
+}
 $testHostOpenGl = Join-Path $testHostRoot 'opengl32.dll'
 $removeTestHostOpenGlInFinally = $false
 Remove-Item $runtimeRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -457,8 +471,41 @@ $oldMesaShaderCacheDisable = $env:MESA_SHADER_CACHE_DISABLE
 $oldExpectedSceneCount = $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT
 $oldExpectedExcludedScenes = $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES
 $oldWindowsBackends = $env:OPENUSD_PARITY_WINDOWS_BACKENDS
+$oldSourceCommit = $env:OPENUSD_PARITY_SOURCE_COMMIT
+$oldSourceDirty = $env:OPENUSD_PARITY_SOURCE_DIRTY
+$oldInstallMetadata = $env:OPENUSD_PARITY_INSTALL_METADATA_PATH
+$oldRuntimeRoot = $env:OPENUSD_PARITY_RUNTIME_ROOT
+
+function Get-ValidatedParityExitCode
+{
+    param([int]$TestExitCode)
+
+    if ($TestExitCode -ne 0)
+    {
+        return $TestExitCode
+    }
+    & python (Join-Path $PSScriptRoot 'verify-render-corpus.py') `
+        --root (Join-Path $testHostRoot 'TestResults/parity-capture') | Write-Host
+    return $LASTEXITCODE
+}
+
 try
 {
+    $checkoutCommit = @(& git --no-pager -C $repoRoot rev-parse --verify HEAD)
+    if ($LASTEXITCODE -ne 0 -or $checkoutCommit.Count -ne 1 -or
+        $checkoutCommit[0] -notmatch '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$')
+    {
+        throw 'Parity evidence could not identify the checked-out repository commit.'
+    }
+    $checkoutChanges = @(& git --no-pager -C $repoRoot status --porcelain=v1 --untracked-files=normal)
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'Parity evidence could not determine whether the source checkout is modified.'
+    }
+    $env:OPENUSD_PARITY_SOURCE_COMMIT = $checkoutCommit[0].ToLowerInvariant()
+    $env:OPENUSD_PARITY_SOURCE_DIRTY = if ($checkoutChanges.Count -eq 0) { 'false' } else { 'true' }
+    $env:OPENUSD_PARITY_INSTALL_METADATA_PATH = Join-Path $openUsdRoot '.openusd-install-metadata.json'
+    $env:OPENUSD_PARITY_RUNTIME_ROOT = $runtimeRoot
     $env:PATH = $binTarget + [System.IO.Path]::PathSeparator +
         $libTarget + [System.IO.Path]::PathSeparator + $oldPath
     $env:LD_LIBRARY_PATH = $libTarget + [System.IO.Path]::PathSeparator +
@@ -550,6 +597,8 @@ try
         'CullStyleFrontCullsTheOppositeFacesOfBackOnD3D12AndVulkan',
         'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
         'ChasePresentationRetainsHighlightsOnD3D12',
+        'InstancedScaleSceneRetainsOneGeometryAndRespondsToEditsOnD3D12',
+        'AuthoredRenderProductCropMatchesFullRasterOnD3D12',
         'FloatTexturePreservesHdrBeforeScaleOnD3D12',
         'MixedTextureSlotWrapModesRemainIndependentOnD3D12',
         'SparseUdimTilesAndFallbackRenderOnD3D12',
@@ -591,6 +640,8 @@ try
         'HdSilkMediumComplexityInterpolatesCurveWidthsAlongEachSegment',
         'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
         'ChasePresentationRetainsHighlightsOnVulkan',
+        'InstancedScaleSceneRetainsOneGeometryAndRespondsToEditsOnVulkan',
+        'AuthoredRenderProductCropMatchesFullRasterOnVulkan',
         'FifthDirectLightContributesOnVulkan',
         'FloatTexturePreservesHdrBeforeScaleOnVulkan',
         'MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan',
@@ -629,7 +680,7 @@ try
             -TestArguments @(
                 '--treenode-filter',
                 (New-StormParityTreeFilter -TestNames $windowsWglTestNames))
-        exit $LASTEXITCODE
+        exit (Get-ValidatedParityExitCode -TestExitCode $LASTEXITCODE)
     }
 
     if ($Rid -eq 'osx-arm64')
@@ -642,7 +693,7 @@ try
             -TestArguments @(
                 '--treenode-filter',
                 (New-StormParityTreeFilter -TestNames $macosCglTestNames))
-        exit $LASTEXITCODE
+        exit (Get-ValidatedParityExitCode -TestExitCode $LASTEXITCODE)
     }
 
     & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
@@ -653,7 +704,7 @@ try
         -TestArguments @(
             '--treenode-filter',
             (New-StormParityTreeFilter -TestNames $linuxGlxTestNames))
-    exit $LASTEXITCODE
+    exit (Get-ValidatedParityExitCode -TestExitCode $LASTEXITCODE)
 }
 finally
 {
@@ -673,6 +724,10 @@ finally
     $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = $oldExpectedSceneCount
     $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = $oldExpectedExcludedScenes
     $env:OPENUSD_PARITY_WINDOWS_BACKENDS = $oldWindowsBackends
+    $env:OPENUSD_PARITY_SOURCE_COMMIT = $oldSourceCommit
+    $env:OPENUSD_PARITY_SOURCE_DIRTY = $oldSourceDirty
+    $env:OPENUSD_PARITY_INSTALL_METADATA_PATH = $oldInstallMetadata
+    $env:OPENUSD_PARITY_RUNTIME_ROOT = $oldRuntimeRoot
     if ($removeTestHostOpenGlInFinally)
     {
         Remove-TestHostMesaOpenGl

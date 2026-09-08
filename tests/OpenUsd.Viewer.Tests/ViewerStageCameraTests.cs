@@ -698,21 +698,19 @@ public sealed class ViewerStageCameraTests
         var applications = new List<ViewerStageCameraRefreshApplication>();
         var completed = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishApply = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var failures = new List<Exception>();
         var pump = new ViewerStageCameraRefreshPump(
             source,
             mode,
-            (application, _) =>
+            async (application, cancellationToken) =>
             {
                 lock (applications)
                 {
                     applications.Add(application);
                 }
-                if (application.Request.TimeCode == 3d)
-                {
-                    completed.TrySetResult();
-                }
-                return ValueTask.CompletedTask;
+                completed.TrySetResult();
+                await finishApply.Task.WaitAsync(cancellationToken);
             },
             failures.Add,
             CancellationToken.None);
@@ -733,8 +731,17 @@ public sealed class ViewerStageCameraTests
             out ViewerStageCameraRefreshRequest third)).IsTrue();
         await Assert.That(pump.TryPost(second)).IsTrue();
         await Assert.That(pump.TryPost(third)).IsTrue();
+        await Assert.That(mode.TryCreateRefreshRequest(
+            1d, applyTime: false, out ViewerStageCameraRefreshRequest sourceRefresh)).IsTrue();
+        await Assert.That(pump.TryPost(sourceRefresh)).IsTrue();
+        Task idle = pump.WaitForIdleAsync();
+        await Assert.That(idle.IsCompleted).IsFalse();
         source.Release.TrySetResult();
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(idle.IsCompleted).IsFalse();
+        finishApply.TrySetResult();
+        await idle.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(pump.WaitForIdleAsync().IsCompletedSuccessfully).IsTrue();
         await pump.DisposeAsync();
 
         await Assert.That(source.Requests.Count).IsEqualTo(2);
@@ -754,6 +761,33 @@ public sealed class ViewerStageCameraTests
         await Assert.That(NearlyEqual(
             refreshed.Projection.M43,
             (float)(-27d / 33d))).IsTrue();
+    }
+
+    [Test]
+    public async Task DisposingTheCameraPumpCancelsAnOutstandingIdleWait()
+    {
+        var mode = new ViewerStageCameraModeState(new ViewportDimensions(800, 600));
+        ViewerStageCameraSnapshot initial = CreateSnapshot(UsdGeomCameraProjection.Perspective);
+        mode.TryActivate(mode.CaptureActivation(initial.PrimPath, initial.TimeCode), initial, out _);
+        var source = new BlockingStageCameraSource();
+        int applications = 0;
+        await using var pump = new ViewerStageCameraRefreshPump(source, mode,
+            (_, _) =>
+            {
+                applications++;
+                return ValueTask.CompletedTask;
+            },
+            static exception => throw new InvalidOperationException("Unexpected camera-pump failure.", exception),
+            CancellationToken.None);
+        mode.TryCreateRefreshRequest(1, true, out ViewerStageCameraRefreshRequest request);
+        pump.TryPost(request);
+        await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task idle = pump.WaitForIdleAsync();
+        await Assert.That(idle.IsCompleted).IsFalse();
+        await pump.DisposeAsync();
+        await Assert.That(async () => await idle).Throws<TaskCanceledException>();
+        await Assert.That(applications).IsEqualTo(0);
+        await Assert.That(pump.TryPost(request)).IsFalse();
     }
 
     [Test]
@@ -868,7 +902,12 @@ public sealed class ViewerStageCameraTests
         await Assert.That(window).Contains("inspector is not { IsCamera: true }");
         await Assert.That(window).Contains("if (IsAutomatedViewerRun())");
         await Assert.That(window).Contains("TryQueueStageCameraRefresh(");
-        await Assert.That(window).Contains("coordinator.StageChanged += OnStageChanged;");
+        await Assert.That(window).Contains("AttachSourceChanges(coordinator, documentLifetime.Token);");
+        string sourceChanges = await File.ReadAllTextAsync(Path.Combine(
+            root, "src", "OpenUsd.Viewer", "MainWindow.SourceChanges.cs"));
+        await Assert.That(sourceChanges).Contains("coordinator.StageChanged += _handler;");
+        await Assert.That(sourceChanges).Contains("ReferenceEquals(source.Coordinator, coordinator)");
+        await Assert.That(sourceChanges).Contains("ReferenceEquals(source.Scheduler, coordinator.Scheduler)");
         await Assert.That(cameraInitialization.IndexOf(
             "if (IsAutomatedViewerRun())",
             StringComparison.Ordinal)).IsLessThan(cameraInitialization.IndexOf(

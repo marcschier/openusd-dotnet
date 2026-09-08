@@ -292,7 +292,10 @@ internal sealed class ViewerTimeUpdatePump : IAsyncDisposable
     private readonly object _gate = new();
     private readonly Task _worker;
     private double _pending;
+    private TaskCompletionSource? _idle;
+    private Exception? _failure;
     private bool _hasPending;
+    private bool _applying;
     private bool _disposed;
     private bool _accepting = true;
 
@@ -331,6 +334,20 @@ internal sealed class ViewerTimeUpdatePump : IAsyncDisposable
         }
     }
 
+    internal Task WaitForIdleAsync()
+    {
+        lock (_gate)
+        {
+            if (_failure is { } failure)
+            {
+                return Task.FromException(failure);
+            }
+            return _hasPending || _applying
+                ? (_idle ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
+                : Task.CompletedTask;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         lock (_gate)
@@ -360,6 +377,15 @@ internal sealed class ViewerTimeUpdatePump : IAsyncDisposable
         {
             while (true)
             {
+                lock (_gate)
+                {
+                    _applying = false;
+                    if (!_hasPending)
+                    {
+                        _idle?.TrySetResult();
+                        _idle = null;
+                    }
+                }
                 await _signal.WaitAsync(cancellationToken).ConfigureAwait(false);
                 double timeCode;
                 lock (_gate)
@@ -370,6 +396,7 @@ internal sealed class ViewerTimeUpdatePump : IAsyncDisposable
                     }
                     timeCode = _pending;
                     _hasPending = false;
+                    _applying = true;
                 }
                 await _applyAsync(timeCode, cancellationToken).ConfigureAwait(false);
             }
@@ -379,6 +406,13 @@ internal sealed class ViewerTimeUpdatePump : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            lock (_gate)
+            {
+                _failure = exception;
+                _accepting = false;
+                _idle?.TrySetException(exception);
+                _idle = null;
+            }
             _reportFailure(exception);
         }
         finally
@@ -386,6 +420,10 @@ internal sealed class ViewerTimeUpdatePump : IAsyncDisposable
             lock (_gate)
             {
                 _accepting = false;
+                _hasPending = false;
+                _applying = false;
+                _idle?.TrySetCanceled(cancellationToken);
+                _idle = null;
             }
         }
     }

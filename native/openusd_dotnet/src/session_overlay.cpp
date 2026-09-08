@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/common.h"
+#include "internal/layer_edit.h"
+#include "pxr/usd/sdf/changeBlock.h"
 #include "pxr/usd/sdf/copyUtils.h"
 
 /*
@@ -14,7 +16,10 @@
  *   [1] user-edit layer (anonymous) — user/viewer session edits compose here
  *   (any pre-existing sublayers follow at index 2+)
  *
- * Transactional guarantee: all mutations use a backup anonymous layer that holds a
+ * An existing registered review layer is retained when its container/topology can be
+ * adopted without moving opinions. Only a new stronger physics sublayer is inserted.
+ *
+ * Initial normalization without a registered review uses a backup anonymous layer that holds a
  * complete snapshot of the original session content (including sublayer paths and all
  * pseudo-root metadata). On any failure the session layer is restored from the backup
  * and the original edit target is re-set; rollback failures are reported.
@@ -22,6 +27,19 @@
 
 namespace
 {
+
+#if defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
+thread_local int overlayFailAfter = -1;
+
+void OverlayFailpoint(int phase)
+{
+    if (overlayFailAfter == phase)
+    {
+        overlayFailAfter = -1;
+        throw std::runtime_error("Injected simulation overlay adoption failure.");
+    }
+}
+#endif
 
 // Snapshot the full session layer into a backup anonymous layer and capture the
 // current edit-target layer identifier for rollback.
@@ -206,6 +224,140 @@ void ClearDirectContent(const SdfLayerHandle& layer)
     snap.RestoreAt(layer, 0);
 }
 
+class ContainerSpecVisitor final : public SdfAbstractDataSpecVisitor
+{
+public:
+    bool onlyRoot = true;
+    bool VisitSpec(const SdfAbstractData&, const SdfPath& path) override
+    {
+        onlyRoot = path.IsAbsoluteRootPath();
+        return onlyRoot;
+    }
+    void Done(const SdfAbstractData&) override {}
+};
+
+openusd_status AdoptRegisteredReview(
+    const openusd_stage* stage, const SdfLayerHandle& session,
+    openusd_layer** physicsOut, openusd_layer** userOut)
+{
+    auto& context = EditContext(stage);
+    context.Refresh();
+    const auto user = context.user;
+    OpenUsdEdit::Check(session->PermissionToEdit(), "The session container is not editable.");
+    OpenUsdEdit::Check(user && stage->value->HasLocalLayer(user),
+        "The registered review layer is detached; explicit document preparation is required.");
+    OpenUsdEdit::Check(typeid(*OpenUsdEdit::Resident(user)) == typeid(OpenUsdEdit::CountedData),
+        "Review adoption requires the existing owned resident review store.");
+    OpenUsdEdit::Check(!context.physics || !stage->value->HasLocalLayer(context.physics),
+        "A registered simulation overlay is already active.");
+    OpenUsdEdit::Check(context.records.size() <= 62, "Editing overlay registration budget exceeded.");
+
+    const auto data = OpenUsdEdit::Resident(session);
+    const auto root = SdfPath::AbsoluteRootPath();
+    ContainerSpecVisitor specs;
+    data->VisitSpecs(&specs);
+    OpenUsdEdit::Check(specs.onlyRoot, "Direct session opinions must be resolved before adopting review history.");
+    VtValue children;
+    data->Has(root, SdfChildrenKeys->PrimChildren, &children);
+    OpenUsdEdit::Check(children.IsEmpty() ||
+        (children.IsHolding<TfTokenVector>() && children.UncheckedGet<TfTokenVector>().empty()),
+        "The session container has direct prim opinions.");
+    OpenUsdEdit::Check(!HasDirectContent(session),
+        "Direct session metadata must be resolved before adopting review history.");
+
+    VtValue pathsValue;
+    VtValue offsetsValue;
+    OpenUsdEdit::Check(data->Has(root, SdfFieldKeys->SubLayers, &pathsValue)
+        && pathsValue.IsHolding<std::vector<std::string>>(), "Unsupported session sublayer storage.");
+    const auto& paths = pathsValue.UncheckedGet<std::vector<std::string>>();
+    OpenUsdEdit::Check(!paths.empty() && paths.size() < OpenUsdEdit::MaxItems,
+        "Session sublayer budget exceeded.");
+    size_t bytes = 0;
+    for (const auto& path : paths)
+    {
+        OpenUsdEdit::Check(path.size() <= OpenUsdEdit::MaxString,
+            "Session sublayer identifier byte budget exceeded.");
+        bytes += path.size();
+        OpenUsdEdit::Check(bytes <= OpenUsdEdit::MaxBytes, "Session topology byte budget exceeded.");
+    }
+    const auto& userId = user->GetIdentifier();
+    OpenUsdEdit::Check(paths.front() == userId && std::count(paths.begin(), paths.end(), userId) == 1,
+        "Review adoption requires its unique strongest direct session sublayer; existing order is not rewritten.");
+    if (data->Has(root, SdfFieldKeys->SubLayerOffsets, &offsetsValue))
+    {
+        OpenUsdEdit::Check(offsetsValue.IsHolding<std::vector<SdfLayerOffset>>(),
+            "Unsupported session sublayer offset storage.");
+        const auto& offsets = offsetsValue.UncheckedGet<std::vector<SdfLayerOffset>>();
+        OpenUsdEdit::Check(offsets.size() == paths.size(), "Session sublayer offsets do not match their paths.");
+        for (const auto& offset : offsets)
+        {
+            OpenUsdEdit::Check(offset.IsValid(), "Invalid session sublayer offset.");
+        }
+        OpenUsdEdit::Check(offsets.front().GetOffset() == 0 && offsets.front().GetScale() == 1,
+            "Review adoption requires an exact identity layer offset.");
+    }
+
+    const auto physics = SdfLayer::CreateAnonymous("physics-overlay");
+    OpenUsdEdit::Check(static_cast<bool>(physics), "Could not create the simulation overlay.");
+    OpenUsdEdit::Check(physics->GetIdentifier().size() <= OpenUsdEdit::MaxString
+        && bytes <= OpenUsdEdit::MaxBytes - physics->GetIdentifier().size(),
+        "Adding the simulation layer would exceed the session topology byte budget.");
+    using OwnedLayer = std::unique_ptr<openusd_layer, decltype(&openusd_layer_release)>;
+    const auto retain = [&](const SdfLayerHandle& value)
+    {
+        OwnedLayer result(new openusd_layer, openusd_layer_release);
+        OpenUsdEdit::Check(RetainStageReference(const_cast<openusd_stage*>(stage)),
+            "Could not retain the overlay stage.");
+        result->stage = const_cast<openusd_stage*>(stage);
+        result->value = value;
+        return result;
+    };
+    auto physicsHandle = retain(physics);
+    auto userHandle = retain(user);
+    const auto oldPhysics = context.physics;
+    const size_t recordsBefore = context.records.size();
+    TfErrorMark mark;
+    try
+    {
+        // Do not clear, copy or detach the existing review: its native identity,
+        // backing data and ownership journal are the pre-existing history contract.
+        {
+            SdfChangeBlock block;
+            session->InsertSubLayerPath(physics->GetIdentifier(), 0);
+        }
+        OpenUsdEdit::Check(mark.IsClean(), "Could not attach the simulation overlay.");
+#if defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
+        OverlayFailpoint(1);
+#endif
+        OpenUsdEdit::RegisterOverlay(stage, physics, user);
+        OpenUsdEdit::Check(mark.IsClean(), "Could not register the simulation overlay.");
+#if defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
+        OverlayFailpoint(2);
+#endif
+    }
+    catch (...)
+    {
+        ConsumeErrors(mark);
+        {
+            SdfChangeBlock rollback;
+            session->SetField(root, SdfFieldKeys->SubLayers, pathsValue);
+            if (offsetsValue.IsEmpty()) { session->EraseField(root, SdfFieldKeys->SubLayerOffsets); }
+            else { session->SetField(root, SdfFieldKeys->SubLayerOffsets, offsetsValue); }
+        }
+        context.physics = oldPhysics;
+        context.records.resize(recordsBefore);
+        OpenUsdEdit::Check(mark.IsClean()
+            && stage->value->HasLocalLayer(user)
+            && data->Get(root, SdfFieldKeys->SubLayers) == pathsValue
+            && data->Get(root, SdfFieldKeys->SubLayerOffsets) == offsetsValue,
+            "Simulation topology rollback failed; explicit document recovery is required.");
+        throw;
+    }
+    *physicsOut = physicsHandle.release();
+    *userOut = userHandle.release();
+    return OPENUSD_STATUS_OK;
+}
+
 } // namespace
 
 openusd_status openusd_stage_session_overlay_normalize(
@@ -221,9 +373,11 @@ openusd_status openusd_stage_session_overlay_normalize(
         ResetAbiOutput(physics_layer_out);
         ResetAbiOutput(user_layer_out);
         if (stage == nullptr || !stage->value ||
-            physics_layer_out == nullptr || user_layer_out == nullptr)
+            physics_layer_out == nullptr || user_layer_out == nullptr
+            || !IsAligned(physics_layer_out) || !IsAligned(user_layer_out)
+            || physics_layer_out == user_layer_out)
         {
-            WriteError(error, "A valid stage and both layer outputs are required.");
+            WriteError(error, "A valid stage and distinct aligned layer outputs are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
 
@@ -239,6 +393,11 @@ openusd_status openusd_stage_session_overlay_normalize(
             {
                 WriteError(error, "The stage has no session layer.");
                 return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            if (stage->edit_context && stage->edit_context->user)
+            {
+                return AdoptRegisteredReview(stage, session, physics_layer_out, user_layer_out);
             }
 
             // 1. Full transactional backup before any mutation.
@@ -257,6 +416,7 @@ openusd_status openusd_stage_session_overlay_normalize(
                 WriteError(error, "Could not create anonymous overlay layers.");
                 return OPENUSD_STATUS_NATIVE_ERROR;
             }
+            OpenUsdEdit::InitializeReviewData(userAnon);
 
             // 3. Snapshot existing sublayer paths with offsets (order-preserving).
             SublayerSnapshot originalSublayers = SublayerSnapshot::Capture(session);
@@ -313,6 +473,7 @@ openusd_status openusd_stage_session_overlay_normalize(
             {
                 physicsHandle = std::make_unique<openusd_layer>();
                 userHandle = std::make_unique<openusd_layer>();
+                OpenUsdEdit::RegisterOverlay(stage, physicsAnon, userAnon);
             }
             catch (...)
             {
@@ -525,3 +686,10 @@ openusd_status openusd_stage_session_overlay_migrate_contamination(
 
     });
 }
+
+#if defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
+extern "C" OPENUSD_DOTNET_API void openusd_layer_edit_test_overlay_fail_after(int32_t phase)
+{
+    overlayFailAfter = phase;
+}
+#endif

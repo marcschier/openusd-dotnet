@@ -366,6 +366,11 @@ The runtime scope packs `OpenUsd.Runtime.Physics.<rid>` for `win-x64` and `linux
 macOS runtime job is never asked for a physics package, because none exists rather than because the
 job filters one out.
 
+Generated hdSilk plugin metadata and native-validation reports follow the selected intermediate
+directory, including absolute SDK artifact paths (`UseArtifactsOutput=true` with `ArtifactsPath`).
+Packing does not rewrite the installed plugin manifests. Package-test consumers keep their own
+build intermediates and NuGet caches rather than reusing the parent build's artifact graph.
+
 Package archives include repository documentation such as `README.md`, so their
 byte sizes and SHA-256 digests change with packaged inputs. Inspect the current
 build instead of copying a historical list into this guide:
@@ -803,18 +808,37 @@ native source and header files. Generated `native/build`, `native/install`,
 
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
-the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 17 and
-capabilities `0x3FFFFFF`, Storm ABI 8, hdSilk session/page ABI 5/23, and Storm child
-ABI 8. Metadata schema 3 records camera-state version 1, Storm-child navigation
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 24 and
+capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 5/23, and Storm child
+ABI 8. Metadata schema 3 records camera-state and EXR request version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their
-exact source-matching headers, and the shared render-camera, render-lighting, and render-pick headers. A post-build
+exact source-matching headers, the version-1 public EXR and Storm AOV headers, and the shared render-camera,
+render-lighting, and render-pick headers. A post-build
 source change therefore invalidates metadata even if an installed binary is
 still present. The Windows gate also requires the locked Vulkan loader.
 Missing or mismatched metadata fails clearly and requires rebuilding the native
 install, preventing a stale cache from reaching package tests. Linux and macOS
 execution remains CI-gated when their native installs and hardware APIs are
 unavailable on a developer machine.
+
+These current source contracts do not relabel published `0.14.0-alpha` assets, which retain
+data ABI 17 and direct Storm ABI 8. The new `OpenUsd.Rendering.Storm` AOV API requires its matching
+ABI 9 Imaging runtime. The installed `openusd_storm_aov.h` hash and view version participate in
+current install verification, so an old or changed AOV header cannot accompany a newly stamped bundle.
+
+The current Windows Core package additionally requires the existing OpenEXR, Iex, IlmThread,
+Imath and zlib codec closure for [raw half EXR output](image-exr-output.md). Missing codec
+assets fail packing explicitly; Windows NTDLL remains a system dependency, never a redistributed
+asset. `OPENUSD_EXR_EXECUTION_REQUIRED=1` requires the Core-only clean-feed NativeAOT EXR
+case, including independent half-bit decoding, byte ceilings and cancellation/ownership.
+
+On a Windows host with a working modern Storm OpenGL context, set
+`OPENUSD_STORM_AOV_EXECUTION_REQUIRED=1` and run
+`RuntimePackageTests.StormPackagesExecuteBoundedAovsFromCleanNativeAotFeed` through the managed-test
+runner. This opt-in gate packs the current six-package graph and executes an isolated NativeAOT
+consumer, including the million-pixel AOV/identity case. Other hosts report an explicit skip; that
+skip is not native rendering evidence.
 
 ## Related documentation
 

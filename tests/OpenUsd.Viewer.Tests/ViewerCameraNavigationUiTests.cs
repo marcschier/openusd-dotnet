@@ -689,7 +689,7 @@ public sealed class ViewerCameraNavigationUiTests
         await Assert.That(markup).Contains("x:Name=\"CameraStatus\"");
         await Assert.That(markup).Contains("AutomationProperties.Name=\"Frame selected prim\"");
         await Assert.That(markup).Contains("x:Name=\"ViewerToolbarGrid\"");
-        await Assert.That(markup).Contains("ColumnDefinitions=\"Auto,Auto,Auto,Auto,*,Auto\"");
+        await Assert.That(markup).Contains("ColumnDefinitions=\"Auto,Auto,*,Auto,Auto,Auto\"");
         await Assert.That(markup).Contains("Tag=\"Left\"");
         await Assert.That(markup).Contains("Tag=\"Right\"");
         await Assert.That(markup).Contains("Tag=\"Up\"");
@@ -732,7 +732,7 @@ public sealed class ViewerCameraNavigationUiTests
             "RoutingStrategies.Tunnel | RoutingStrategies.Bubble");
         await Assert.That(window).Contains("handledEventsToo: true");
         await Assert.That(window).Contains(
-            "ViewerCameraStateMutation.ApplyResize(state, cameraResize)");
+            "ViewerCameraStateMutation.ApplyResize(state.WithViewport(viewport), cameraResize)");
         await Assert.That(window).Contains("if (IsAutomatedViewerRun())");
         await Assert.That(window).Contains("ViewerFrameSelectedQuery.QueryAsync(");
         await Assert.That(integration).Contains(
@@ -757,7 +757,7 @@ public sealed class ViewerCameraNavigationUiTests
             "private async Task RunRenderLoopAsync");
 
         await Assert.That(resize).Contains(
-            "ViewerCameraStateMutation.ApplyResize(state, cameraResize)");
+            "ViewerCameraStateMutation.ApplyResize(state.WithViewport(viewport), cameraResize)");
         await Assert.That(resize).DoesNotContain("_cameraUpdates");
         await Assert.That(resize).DoesNotContain(
             "TryPost(cameraResize.Camera)");

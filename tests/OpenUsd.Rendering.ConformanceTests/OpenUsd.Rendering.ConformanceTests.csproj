@@ -22,4 +22,10 @@
     <PackageReference Include="TUnit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\test-assets\ocio-test-config.ocio"
+          Link="depth-capture\ocio-test-config.ocio"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

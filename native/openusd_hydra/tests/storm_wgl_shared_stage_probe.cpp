@@ -37,7 +37,7 @@ constexpr GLenum FramebufferComplete = 0x8CD5;
 constexpr GLenum DepthComponent24 = 0x81A6;
 constexpr GLint Rgba8 = 0x8058;
 constexpr int CapabilityUnavailableExitCode = 125;
-static_assert(OPENUSD_STORM_ABI_VERSION == 8);
+static_assert(OPENUSD_STORM_ABI_VERSION == 9);
 
 enum class FramebufferCreationResult
 {

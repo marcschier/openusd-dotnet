@@ -1,4 +1,70 @@
 #nullable enable
+OpenUsd.Rendering.RenderHdrColorFormat
+OpenUsd.Rendering.RenderHdrColorFormat.RawRgba16Float = 0 -> OpenUsd.Rendering.RenderHdrColorFormat
+OpenUsd.Rendering.RenderHdrColorFormat.Exr = 1 -> OpenUsd.Rendering.RenderHdrColorFormat
+OpenUsd.Rendering.RenderDiskJobRequest.HdrColorFormat.get -> OpenUsd.Rendering.RenderHdrColorFormat
+OpenUsd.Rendering.RenderDiskJobRequest.RenderDiskJobRequest(string! outputDirectory, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.StageRenderState!>! frames, bool includeDeviceDepth, bool includeHdrColor, OpenUsd.Rendering.RenderHdrColorFormat hdrColorFormat, OpenUsd.Rendering.RenderDiskJobLimits? limits = null) -> void
+OpenUsd.Rendering.RenderDiskFrameResult.HdrColorFormat.get -> OpenUsd.Rendering.RenderHdrColorFormat?
+OpenUsd.Rendering.RenderJobHdrColor
+OpenUsd.Rendering.RenderJobHdrColor.Height.get -> int
+OpenUsd.Rendering.RenderJobHdrColor.RenderJobHdrColor(int width, int height, System.ReadOnlyMemory<byte> rgba16Float) -> void
+OpenUsd.Rendering.RenderJobHdrColor.Rgba16Float.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Rendering.RenderJobHdrColor.Width.get -> int
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeHdrColor.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.RenderDiskJobRequest(string! outputDirectory, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.StageRenderState!>! frames, bool includeDeviceDepth, bool includeHdrColor, OpenUsd.Rendering.RenderDiskJobLimits? limits = null) -> void
+OpenUsd.Rendering.RenderJobImage.HdrColor.get -> OpenUsd.Rendering.RenderJobHdrColor?
+OpenUsd.Rendering.RenderJobImage.HdrColor.init -> void
+OpenUsd.Rendering.RenderDiskFrameResult.HdrColorBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.HdrColorFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.HdrColorSha256.get -> string?
+OpenUsd.Rendering.RenderJobDeviceDepth
+OpenUsd.Rendering.RenderJobDeviceDepth.Height.get -> int
+OpenUsd.Rendering.RenderJobDeviceDepth.RenderJobDeviceDepth(int width, int height, System.ReadOnlyMemory<float> values) -> void
+OpenUsd.Rendering.RenderJobDeviceDepth.Values.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.RenderJobDeviceDepth.Width.get -> int
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeDeviceDepth.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.RenderDiskJobRequest(string! outputDirectory, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.StageRenderState!>! frames, bool includeDeviceDepth, OpenUsd.Rendering.RenderDiskJobLimits? limits = null) -> void
+OpenUsd.Rendering.RenderJobImage.DeviceDepth.get -> OpenUsd.Rendering.RenderJobDeviceDepth?
+OpenUsd.Rendering.RenderJobImage.DeviceDepth.init -> void
+OpenUsd.Rendering.RenderDiskFrameResult.DepthBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.DepthFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.DepthSha256.get -> string?
+OpenUsd.Rendering.RenderOutputQuotaExceededException
+OpenUsd.Rendering.RenderOutputQuotaExceededException.RenderOutputQuotaExceededException(string! message) -> void
+OpenUsd.Rendering.IRenderJobFrameSource
+OpenUsd.Rendering.IRenderJobFrameSource.Render(OpenUsd.Rendering.StageRenderState! state, System.Threading.CancellationToken cancellationToken) -> OpenUsd.Rendering.RenderJobImage!
+OpenUsd.Rendering.RenderDiskJob
+OpenUsd.Rendering.RenderDiskJobLimits
+OpenUsd.Rendering.RenderDiskJobLimits.MaximumFrameBytes.get -> long
+OpenUsd.Rendering.RenderDiskJobLimits.MaximumFrames.get -> int
+OpenUsd.Rendering.RenderDiskJobLimits.MaximumTotalBytes.get -> long
+OpenUsd.Rendering.RenderDiskJobLimits.RenderDiskJobLimits(int maximumFrames = 4096, long maximumFrameBytes = 67108864, long maximumTotalBytes = 4294967296) -> void
+OpenUsd.Rendering.RenderDiskJobRequest
+OpenUsd.Rendering.RenderDiskJobRequest.Frames.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.StageRenderState!>!
+OpenUsd.Rendering.RenderDiskJobRequest.Limits.get -> OpenUsd.Rendering.RenderDiskJobLimits!
+OpenUsd.Rendering.RenderDiskJobRequest.OutputDirectory.get -> string!
+OpenUsd.Rendering.RenderDiskJobRequest.RenderDiskJobRequest(string! outputDirectory, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.StageRenderState!>! frames, OpenUsd.Rendering.RenderDiskJobLimits? limits = null) -> void
+OpenUsd.Rendering.RenderJobImage
+OpenUsd.Rendering.RenderJobImage.Height.get -> int
+OpenUsd.Rendering.RenderJobImage.Diagnostics.get -> OpenUsd.Rendering.RenderDiagnosticsState!
+OpenUsd.Rendering.RenderJobImage.Diagnostics.init -> void
+OpenUsd.Rendering.RenderJobImage.RenderJobImage(int width, int height, System.ReadOnlyMemory<byte> rgba, OpenUsd.Rendering.Rgba8RowOrder rowOrder) -> void
+OpenUsd.Rendering.RenderJobImage.Rgba.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Rendering.RenderJobImage.RowOrder.get -> OpenUsd.Rendering.Rgba8RowOrder
+OpenUsd.Rendering.RenderJobImage.Width.get -> int
+OpenUsd.Rendering.RenderDiskFrameResult
+OpenUsd.Rendering.RenderDiskFrameResult.Bytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.FileName.get -> string!
+OpenUsd.Rendering.RenderDiskFrameResult.Index.get -> int
+OpenUsd.Rendering.RenderDiskFrameResult.Sha256.get -> string!
+OpenUsd.Rendering.RenderDiskFrameResult.State.get -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.RenderDiskJobResult
+OpenUsd.Rendering.RenderDiskJobResult.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderDiagnostic!>!
+OpenUsd.Rendering.RenderDiskJobResult.Frames.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderDiskFrameResult!>!
+OpenUsd.Rendering.RenderDiskJobResult.OutputDirectory.get -> string!
+OpenUsd.Rendering.RenderDiskJobResult.TotalBytes.get -> long
+static OpenUsd.Rendering.RenderDiskJob.Execute(OpenUsd.Rendering.RenderDiskJobRequest! request, OpenUsd.Rendering.IRenderJobFrameSource! source, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.RenderDiskJobResult!
+static OpenUsd.Rendering.RenderDiskJobLimits.Default.get -> OpenUsd.Rendering.RenderDiskJobLimits!
 ~override OpenUsd.Rendering.CameraState.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.CameraState.ToString() -> string
 ~override OpenUsd.Rendering.CompositionExternalImage.Equals(object obj) -> bool
@@ -434,6 +500,19 @@ OpenUsd.Rendering.PhysicsRenderUpdateStatus
 OpenUsd.Rendering.PhysicsRenderUpdateStatus.Empty = 0 -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
 OpenUsd.Rendering.PhysicsRenderUpdateStatus.Interpolated = 2 -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
 OpenUsd.Rendering.PhysicsRenderUpdateStatus.Snapped = 1 -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
+OpenUsd.Rendering.PngRgba8Writer
+OpenUsd.Rendering.ExrRgba16FloatWriter
+OpenUsd.Rendering.ExrStoredAlphaPolicy
+OpenUsd.Rendering.ExrStoredAlphaPolicy.Associated = 1 -> OpenUsd.Rendering.ExrStoredAlphaPolicy
+OpenUsd.Rendering.ExrStoredAlphaPolicy.Unassociated = 2 -> OpenUsd.Rendering.ExrStoredAlphaPolicy
+OpenUsd.Rendering.ExrStoredAlphaPolicy.Unspecified = 0 -> OpenUsd.Rendering.ExrStoredAlphaPolicy
+OpenUsd.Rendering.Rgba16FloatRowOrder
+OpenUsd.Rendering.Rgba16FloatRowOrder.BottomUp = 1 -> OpenUsd.Rendering.Rgba16FloatRowOrder
+OpenUsd.Rendering.Rgba16FloatRowOrder.TopDown = 0 -> OpenUsd.Rendering.Rgba16FloatRowOrder
+static OpenUsd.Rendering.ExrRgba16FloatWriter.IsSupported.get -> bool
+static OpenUsd.Rendering.ExrRgba16FloatWriter.Write(System.IO.FileStream! destination, int width, int height, System.ReadOnlySpan<byte> rgba16Float, long maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> long
+static OpenUsd.Rendering.ExrRgba16FloatWriter.Write(System.IO.FileStream! destination, int width, int height, System.ReadOnlySpan<byte> rgba16Float, OpenUsd.Rendering.Rgba16FloatRowOrder rowOrder, long maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> long
+static OpenUsd.Rendering.ExrRgba16FloatWriter.Write(System.IO.FileStream! destination, int width, int height, System.ReadOnlySpan<byte> rgba16Float, OpenUsd.Rendering.Rgba16FloatRowOrder rowOrder, OpenUsd.Rendering.ExrStoredAlphaPolicy alphaPolicy, long maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> long
 OpenUsd.Rendering.RenderBackendCapabilities
 OpenUsd.Rendering.RenderBackendCapabilities.Equals(OpenUsd.Rendering.RenderBackendCapabilities other) -> bool
 OpenUsd.Rendering.RenderBackendCapabilities.Features.get -> OpenUsd.Rendering.RenderBackendCapability
@@ -731,6 +810,32 @@ OpenUsd.Rendering.RenderPurpose.Guide = 8 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.None = 0 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Proxy = 2 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Render = 4 -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderPreparedFrame
+OpenUsd.Rendering.RenderPreparedFrame.Camera.get -> OpenUsd.Rendering.CameraState
+OpenUsd.Rendering.RenderPreparedFrame.DataWindowMinX.get -> int
+OpenUsd.Rendering.RenderPreparedFrame.DataWindowMinY.get -> int
+OpenUsd.Rendering.RenderPreparedFrame.OutputDimensions.get -> OpenUsd.Rendering.ViewportDimensions
+OpenUsd.Rendering.RenderPreparedFrame.PixelAspectRatio.get -> double
+OpenUsd.Rendering.RenderPreparedFrame.Request.get -> OpenUsd.Rendering.RenderProductRequest!
+OpenUsd.Rendering.RenderPreparedFrame.SampledCamera.get -> OpenUsd.Geom.UsdGeomCameraState
+OpenUsd.Rendering.RenderPreparedFrame.TimeCode.get -> double
+OpenUsd.Rendering.RenderProductOverrides
+OpenUsd.Rendering.RenderProductOverrides.AspectRatioConformPolicy.get -> string?
+OpenUsd.Rendering.RenderProductOverrides.CameraPath.get -> string?
+OpenUsd.Rendering.RenderProductOverrides.DataWindowNdc.get -> OpenUsd.UsdVec4f?
+OpenUsd.Rendering.RenderProductOverrides.PixelAspectRatio.get -> double?
+OpenUsd.Rendering.RenderProductOverrides.RenderProductOverrides(string? cameraPath = null, OpenUsd.Rendering.ViewportDimensions? resolution = null, double? pixelAspectRatio = null, string? aspectRatioConformPolicy = null, OpenUsd.UsdVec4f? dataWindowNdc = null) -> void
+OpenUsd.Rendering.RenderProductOverrides.Resolution.get -> OpenUsd.Rendering.ViewportDimensions?
+static OpenUsd.Rendering.RenderProductOverrides.None.get -> OpenUsd.Rendering.RenderProductOverrides!
+OpenUsd.Rendering.RenderProductRequest
+OpenUsd.Rendering.RenderProductRequest.CameraPath.get -> string!
+OpenUsd.Rendering.RenderProductRequest.Overrides.get -> OpenUsd.Rendering.RenderProductOverrides!
+OpenUsd.Rendering.RenderProductRequest.Outputs.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Render.UsdRenderVariableSpecification!>!
+OpenUsd.Rendering.RenderProductRequest.PrepareFrame(OpenUsd.UsdMatrix4d worldToView, OpenUsd.Geom.UsdGeomCameraState sampledCamera, double timeCode) -> OpenUsd.Rendering.RenderPreparedFrame!
+OpenUsd.Rendering.RenderProductRequest.PrepareFrame(OpenUsd.UsdStage! stage, double timeCode) -> OpenUsd.Rendering.RenderPreparedFrame!
+OpenUsd.Rendering.RenderProductRequest.Product.get -> OpenUsd.Render.UsdRenderProductSpecification!
+OpenUsd.Rendering.RenderProductRequest.RenderProductRequest(OpenUsd.Render.UsdRenderSpecification! specification, int productIndex, OpenUsd.Rendering.RenderProductOverrides? overrides = null) -> void
+OpenUsd.Rendering.RenderProductRequest.Specification.get -> OpenUsd.Render.UsdRenderSpecification!
 OpenUsd.Rendering.RenderSettings
 OpenUsd.Rendering.RenderSettings.BackfaceCulling.get -> bool
 OpenUsd.Rendering.RenderSettings.ClearColor.get -> System.Numerics.Vector4
@@ -751,6 +856,9 @@ OpenUsd.Rendering.RenderSettings.ValidateDisplayTransform() -> void
 OpenUsd.Rendering.RenderVisibility
 OpenUsd.Rendering.RenderVisibility.IncludeInvisible = 1 -> OpenUsd.Rendering.RenderVisibility
 OpenUsd.Rendering.RenderVisibility.RespectAuthored = 0 -> OpenUsd.Rendering.RenderVisibility
+OpenUsd.Rendering.Rgba8RowOrder
+OpenUsd.Rendering.Rgba8RowOrder.BottomUp = 1 -> OpenUsd.Rendering.Rgba8RowOrder
+OpenUsd.Rendering.Rgba8RowOrder.TopDown = 0 -> OpenUsd.Rendering.Rgba8RowOrder
 OpenUsd.Rendering.SceneDisplayState
 OpenUsd.Rendering.SceneDisplayState.Deconstruct(out OpenUsd.Rendering.RenderPurpose Purposes, out OpenUsd.Rendering.RenderVisibility Visibility, out OpenUsd.Rendering.RenderDrawMode DrawMode) -> void
 OpenUsd.Rendering.SceneDisplayState.DrawMode.get -> OpenUsd.Rendering.RenderDrawMode
@@ -955,6 +1063,8 @@ static OpenUsd.Rendering.PhysicsRenderTransforms.Compose(in OpenUsd.Rendering.Ph
 static OpenUsd.Rendering.PhysicsRenderTransforms.Compose(OpenUsd.UsdVec3d position, OpenUsd.Rendering.PhysicsRenderOrientation orientation, System.ReadOnlySpan<double> authored, System.Span<double> destination) -> void
 static OpenUsd.Rendering.PhysicsRenderUpdateResult.operator !=(OpenUsd.Rendering.PhysicsRenderUpdateResult left, OpenUsd.Rendering.PhysicsRenderUpdateResult right) -> bool
 static OpenUsd.Rendering.PhysicsRenderUpdateResult.operator ==(OpenUsd.Rendering.PhysicsRenderUpdateResult left, OpenUsd.Rendering.PhysicsRenderUpdateResult right) -> bool
+static OpenUsd.Rendering.PngRgba8Writer.Write(System.IO.Stream! destination, int width, int height, System.ReadOnlySpan<byte> rgba, long maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> long
+static OpenUsd.Rendering.PngRgba8Writer.Write(System.IO.Stream! destination, int width, int height, System.ReadOnlySpan<byte> rgba, OpenUsd.Rendering.Rgba8RowOrder rowOrder, long maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> long
 static OpenUsd.Rendering.RenderBackendCapabilities.None.get -> OpenUsd.Rendering.RenderBackendCapabilities
 static OpenUsd.Rendering.RenderBackendCapabilities.operator !=(OpenUsd.Rendering.RenderBackendCapabilities left, OpenUsd.Rendering.RenderBackendCapabilities right) -> bool
 static OpenUsd.Rendering.RenderBackendCapabilities.operator ==(OpenUsd.Rendering.RenderBackendCapabilities left, OpenUsd.Rendering.RenderBackendCapabilities right) -> bool

@@ -148,6 +148,13 @@ Assert-Contains $identityStep './eng/test-viewer-evidence-contract.ps1' 'Viewer 
 # Mesa llvmpipe before it starts Avalonia/Storm.
 Assert-DoesNotContain $renderWorkflow '-AllowUnavailableCapability' 'Render workflow'
 Assert-Contains $renderWorkflow '-Platform windows-wgl' 'Render workflow'
+$metalVolumeStep = [regex]::Match(
+    $renderWorkflow,
+    '(?ms)^      - name: Classify the macOS volume evidence\r?\n(?<step>.*?)' +
+        '(?=^      - name:)').Groups['step'].Value
+Assert-Contains $metalVolumeStep '-Backend metal' 'Metal volume classifier'
+Assert-Contains $metalVolumeStep '-SkipDepthGate' 'Metal volume classifier'
+Assert-DoesNotContain $metalVolumeStep '-AllowCapabilitySkip' 'Metal volume classifier'
 Assert-Contains $parityCapture "`$env:OPENUSD_PARITY_WINDOWS_BACKENDS = 'D3D12'" 'Parity capture runner'
 Assert-Contains $stormParityTests 'OPENUSD_PARITY_WINDOWS_BACKENDS' 'Storm parity tests'
 Assert-Contains $stormParityTests 'CreateD3D12WarpBackend()' 'Storm parity tests'

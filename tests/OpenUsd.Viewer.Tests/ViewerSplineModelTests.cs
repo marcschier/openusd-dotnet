@@ -499,7 +499,8 @@ public sealed class ViewerSplineModelTests
             await Assert.That(again.Attributes.Length).IsEqualTo(inspector.Attributes.Length);
             for (int index = 0; index < again.Attributes.Length; index++)
             {
-                await Assert.That(again.Attributes[index]).IsEqualTo(inspector.Attributes[index])
+                await Assert.That(again.Attributes[index] with { Inspection = null })
+                    .IsEqualTo(inspector.Attributes[index] with { Inspection = null })
                     .Because("the truncation must be deterministic across polls");
             }
         }
@@ -563,9 +564,9 @@ public sealed class ViewerSplineModelTests
             // this asserts the equality only, not a skipped rebuild.
             ViewerPrimInspectorSnapshot again =
                 ViewerStageSnapshotBuilder.BuildInspector(stage, "/Spline");
-            await Assert.That(again.Attributes.First(
-                    candidate => candidate.Name == "splined"))
-                .IsEqualTo(splined);
+            ViewerAttributeSnapshot repeated = again.Attributes.First(candidate => candidate.Name == "splined");
+            // Native inspection DTOs have identity equality; the existing scalar/spline projection has value equality.
+            await Assert.That(repeated with { Inspection = null }).IsEqualTo(splined with { Inspection = null });
 
             ViewerAttributeSnapshot plain = inspector.Attributes.First(
                 candidate => candidate.Name == "plain");
@@ -585,6 +586,8 @@ public sealed class ViewerSplineModelTests
             Path.Combine(root, "src", "OpenUsd.Viewer", "MainWindow.axaml.cs"));
         string models = await File.ReadAllTextAsync(
             Path.Combine(root, "src", "OpenUsd.Viewer", "ViewerDocumentModels.cs"));
+        string properties = await File.ReadAllTextAsync(
+            Path.Combine(root, "src", "OpenUsd.Viewer", "ViewerStageSnapshotBuilder.Properties.cs"));
 
         // The Value tab must consume the projection, never a live TsSpline: a
         // native handle reaching the UI thread would outlive stage access.
@@ -605,10 +608,10 @@ public sealed class ViewerSplineModelTests
         await Assert.That(models).Contains("catch (OpenUsdNativeException exception)")
             .Because("one unreadable spline must not fail the whole inspector snapshot");
         await Assert.That(models).Contains("ViewerSplineSnapshot.CreateUnreadable(exception.Message)");
-        await Assert.That(models).Contains("int splineBudget = MaxReadSplinesPerInspector;")
+        await Assert.That(properties).Contains("int splineBudget = MaxReadSplinesPerInspector;")
             .Because("native spline work must be bounded per inspector snapshot");
         await Assert.That(models).Contains("ViewerSplineSnapshot.CreateNotRead(");
-        await Assert.That(models.IndexOf("BuildSpline(attribute, ref splineBudget)", StringComparison.Ordinal))
+        await Assert.That(properties.IndexOf("BuildSpline(prim, attribute.Name, ref splineBudget)", StringComparison.Ordinal))
             .IsGreaterThan(0)
             .Because("the attribute projection must carry the spline snapshot");
     }

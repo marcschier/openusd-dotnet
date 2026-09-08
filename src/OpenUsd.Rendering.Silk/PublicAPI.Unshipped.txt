@@ -650,7 +650,9 @@ OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.UnsupportedFeatures.get -> O
 OpenUsd.Rendering.Silk.SilkFrameCapture
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.CommandCount.get -> uint
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Depth.get -> OpenUsd.Rendering.Silk.SilkDepthCaptureResult?
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Diagnostics.get -> OpenUsd.Rendering.RenderDiagnosticsState!
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.HdrColor.get -> OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult?
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Height.get -> int
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.PageRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.RenderResult.get -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
@@ -660,6 +662,8 @@ OpenUsd.Rendering.Silk.SilkFrameCapturer
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithDepth(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithDepth(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkFrameCapturer.SilkFrameCapturer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
 OpenUsd.Rendering.Silk.SilkFrameCommand
@@ -2337,6 +2341,38 @@ static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.Op
 static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetained(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, ulong pageRevision = 0) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetained(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, ulong pageRevision = 0) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetainedWithDepth(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, ulong pageRevision = 0, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetainedWithDepth(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, ulong pageRevision = 0, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.MaximumPixelCount.get -> int
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.MaximumReadbackBytes.get -> long
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.SilkDepthCaptureOptions(int maximumPixelCount = 16777216, long maximumReadbackBytes = 268435456) -> void
+static OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.Default.get -> OpenUsd.Rendering.Silk.SilkDepthCaptureOptions!
+OpenUsd.Rendering.Silk.SilkDepthCaptureResult
+OpenUsd.Rendering.Silk.SilkDepthCaptureResult.ClearValue.get -> float
+OpenUsd.Rendering.Silk.SilkDepthCaptureResult.Convention.get -> OpenUsd.Rendering.Silk.SilkDepthConvention
+OpenUsd.Rendering.Silk.SilkDepthCaptureResult.Height.get -> int
+OpenUsd.Rendering.Silk.SilkDepthCaptureResult.Values.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkDepthCaptureResult.Width.get -> int
+OpenUsd.Rendering.Silk.SilkDepthConvention
+OpenUsd.Rendering.Silk.SilkDepthConvention.NormalizedDeviceDepthZeroToOne = 0 -> OpenUsd.Rendering.Silk.SilkDepthConvention
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult.Convention.get -> OpenUsd.Rendering.Silk.SilkHdrColorConvention
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult.Height.get -> int
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult.Rgba16Float.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult.Width.get -> int
+OpenUsd.Rendering.Silk.SilkHdrColorConvention
+OpenUsd.Rendering.Silk.SilkHdrColorConvention.RendererWorkingCompositedBeforeExposureAndDisplay = 0 -> OpenUsd.Rendering.Silk.SilkHdrColorConvention
+OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions? hdrColorOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions
+OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions? hdrColorOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludeDeviceDepth.get -> bool
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.MaximumPixelCount.get -> int
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.MaximumReadbackBytes.get -> long
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.SilkHdrColorCaptureOptions(bool includeDeviceDepth = false, int maximumPixelCount = 16777216, long maximumReadbackBytes = 268435456) -> void
+static OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.Default.get -> OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetainedWithHdrColor(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions? hdrColorOptions = null, ulong pageRevision = 0, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetainedWithHdrColor(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions? hdrColorOptions = null, ulong pageRevision = 0, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.operator !=(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities left, OpenUsd.Rendering.Silk.SilkGraphicsCapabilities right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.operator ==(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities left, OpenUsd.Rendering.Silk.SilkGraphicsCapabilities right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor right) -> bool

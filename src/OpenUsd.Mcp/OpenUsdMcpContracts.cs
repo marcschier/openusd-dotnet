@@ -591,7 +591,7 @@ internal sealed record McpArtifactDto(
     [property: Description("Read-only openusd://artifact/{id} URI accepted by resources/read.")]
     string Uri,
     [property: JsonPropertyName("mimeType")]
-    [property: Description("IANA media type used for inline content and resource reads.")]
+    [property: Description("Media type used for inline content and resource reads.")]
     string MimeType,
     [property: JsonPropertyName("byteLength")]
     [property: Description("Exact non-negative decoded content length in bytes.")]

@@ -1,0 +1,27 @@
+<Window
+    x:Class="OpenUsd.Viewer.DocumentActionWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
+    Title="Review document decision"
+    AutomationProperties.Name="Review document decision"
+    AutomationProperties.AutomationId="viewer.documentDecision"
+    Width="640" Height="360" MinWidth="480" MinHeight="280"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto" RowSpacing="16">
+    <TextBlock x:Name="DocumentActionHeading" TextWrapping="Wrap" />
+    <ScrollViewer Grid.Row="1">
+      <TextBlock x:Name="DocumentActionDetails" TextWrapping="Wrap" />
+    </ScrollViewer>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="AcceptDocumentActionButton" Content="Continue" />
+      <Button x:Name="AlternateDocumentActionButton" IsVisible="False" />
+      <Button x:Name="CancelDocumentActionButton" Content="Cancel" />
+    </StackPanel>
+  </Grid>
+</Window>

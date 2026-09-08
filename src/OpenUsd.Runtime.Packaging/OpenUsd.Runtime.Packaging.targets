@@ -8,9 +8,10 @@
     <OpenUsdPhysXInstallRoot Condition="'$(OpenUsdPhysXInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/physx/$(RuntimePackageRid)'))</OpenUsdPhysXInstallRoot>
     <OpenUsdVulkanRuntimeLibrary Condition="'$(OpenUsdVulkanRuntimeLibrary)' == '' and '$(RuntimePackageRid)' == 'win-x64'">$(MSBuildThisFileDirectory)../../native/install/vulkan-sdk-*/bin/vulkan-1.dll</OpenUsdVulkanRuntimeLibrary>
     <_OpenUsdRuntimePackagePath>runtimes/$(RuntimePackageRid)</_OpenUsdRuntimePackagePath>
+    <_OpenUsdRuntimePackageIntermediateRoot>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', '$(Configuration)', '$(TargetFramework)', 'runtime-package'))</_OpenUsdRuntimePackageIntermediateRoot>
     <_OpenUsdHdSilkSourcePlugInfo>$(OpenUsdShimInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json</_OpenUsdHdSilkSourcePlugInfo>
-    <_OpenUsdHdSilkPackagePlugInfo>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/hdSilk/resources/plugInfo.json'))</_OpenUsdHdSilkPackagePlugInfo>
-    <_OpenUsdHdSilkMergedPackagePlugInfo>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/hdSilk-merged/resources/plugInfo.json'))</_OpenUsdHdSilkMergedPackagePlugInfo>
+    <_OpenUsdHdSilkPackagePlugInfo>$([MSBuild]::NormalizePath('$(_OpenUsdRuntimePackageIntermediateRoot)', 'hdSilk', 'resources', 'plugInfo.json'))</_OpenUsdHdSilkPackagePlugInfo>
+    <_OpenUsdHdSilkMergedPackagePlugInfo>$([MSBuild]::NormalizePath('$(_OpenUsdRuntimePackageIntermediateRoot)', 'hdSilk-merged', 'resources', 'plugInfo.json'))</_OpenUsdHdSilkMergedPackagePlugInfo>
     <_OpenUsdHdSilkTransformScript>$(MSBuildThisFileDirectory)Set-HdSilkPackageLibraryPath.ps1</_OpenUsdHdSilkTransformScript>
     <_OpenUsdLinuxValidationScript>$(MSBuildThisFileDirectory)Validate-LinuxNativePackage.ps1</_OpenUsdLinuxValidationScript>
     <_OpenUsdLinuxPreserveLinksScript>$(MSBuildThisFileDirectory)Preserve-LinuxStormChildPackageLinks.ps1</_OpenUsdLinuxPreserveLinksScript>
@@ -29,10 +30,10 @@
     <_OpenUsdPhysicsExtractHeader>$(MSBuildThisFileDirectory)../../native/openusd_dotnet/include/openusd_physics_extract.h</_OpenUsdPhysicsExtractHeader>
     <_OpenUsdPhysicsExtractHeader
       Condition="Exists('$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physics_extract.h')">$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physics_extract.h</_OpenUsdPhysicsExtractHeader>
-    <_OpenUsdPhysicsValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/physics-native-abi.json'))</_OpenUsdPhysicsValidationEvidence>
+    <_OpenUsdPhysicsValidationEvidence>$([MSBuild]::NormalizePath('$(_OpenUsdRuntimePackageIntermediateRoot)', 'physics-native-abi.json'))</_OpenUsdPhysicsValidationEvidence>
     <_OpenUsdStormChildHeader>$(MSBuildThisFileDirectory)../../native/openusd_storm_child/include/openusd_storm_child.h</_OpenUsdStormChildHeader>
-    <_OpenUsdLinuxValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/linux-native-validation.json'))</_OpenUsdLinuxValidationEvidence>
-    <_OpenUsdMacOsValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/macos-native-validation.json'))</_OpenUsdMacOsValidationEvidence>
+    <_OpenUsdLinuxValidationEvidence>$([MSBuild]::NormalizePath('$(_OpenUsdRuntimePackageIntermediateRoot)', 'linux-native-validation.json'))</_OpenUsdLinuxValidationEvidence>
+    <_OpenUsdMacOsValidationEvidence>$([MSBuild]::NormalizePath('$(_OpenUsdRuntimePackageIntermediateRoot)', 'macos-native-validation.json'))</_OpenUsdMacOsValidationEvidence>
     <_OpenUsdCesiumNotice>$(MSBuildThisFileDirectory)../../native/install/cesium/$(RuntimePackageRid)/THIRD-PARTY-CESIUM.md</_OpenUsdCesiumNotice>
     <_OpenUsdPhysXNotice>$(OpenUsdPhysXInstallRoot)/THIRD-PARTY-PHYSX.md</_OpenUsdPhysXNotice>
     <!--
@@ -109,6 +110,7 @@
     <_OpenUsdImathRuntimeLibrary Include="$(OpenUsdInstallRoot)/bin/Imath*.dll;$(OpenUsdInstallRoot)/lib/libImath*.so;$(OpenUsdInstallRoot)/lib/libImath*.so.*;$(OpenUsdInstallRoot)/lib/libImath*.dylib" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
+    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/bin/OpenEXR-3_1.dll;$(OpenUsdInstallRoot)/bin/Iex-3_1.dll;$(OpenUsdInstallRoot)/bin/IlmThread-3_1.dll;$(OpenUsdInstallRoot)/bin/Imath-3_1.dll;$(OpenUsdInstallRoot)/bin/zlib.dll" />
     <_OpenUsdVulkanRuntimeLibrary Include="$(OpenUsdVulkanRuntimeLibrary)" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_dotnet.dll" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_hydra.dll;$(OpenUsdShimInstallRoot)/bin/openusd_hdsilk.dll;$(OpenUsdShimInstallRoot)/bin/openusd_storm_child.dll" />
@@ -126,14 +128,24 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(RuntimePackageKind)' == 'Core'">
+    <!-- Guarded image output uses this existing Core native closure; NTDLL is an OS
+         dependency and is intentionally not a redistributable package payload. -->
+    <None Include="$(OpenUsdInstallRoot)/.openusd-data-candidate.json"
+          Condition="Exists('$(OpenUsdInstallRoot)/.openusd-data-candidate.json')"
+          Pack="true" PackagePath="build/$(PackageId).native-contract.json" />
     <None Include="@(_OpenUsdInstalledLibrary);@(_OpenUsdCoreShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
     <None Include="@(_OpenUsdVulkanRuntimeLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native/vulkan-1.dll" />
     <None Include="$(OpenUsdInstallRoot)/lib/usd/**/*" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/usd" />
+    <None Include="$(OpenUsdInstallRoot)/.openusd-storage-admission.json"
+          Condition="Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"
+          Pack="true" PackagePath="build/$(PackageId).storage-admission.json" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(RuntimePackageKind)' == 'Imaging'">
     <None Include="@(_OpenUsdImagingShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
-    <None Include="$(OpenUsdInstallRoot)/plugin/usd/**/*" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/plugin/usd" />
+    <None Include="$(OpenUsdInstallRoot)/plugin/usd/**/*"
+          Exclude="$(OpenUsdInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json"
+          Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/plugin/usd" />
     <None Include="$(_OpenUsdHdSilkPackagePlugInfo)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/plugin/usd/hdSilk/resources/plugInfo.json" />
     <None Include="$(_OpenUsdHdSilkMergedPackagePlugInfo)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/usd/hdSilk/resources/plugInfo.json" />
     <None Include="$(_OpenUsdLinuxValidationEvidence)" Pack="true" PackagePath="build/OpenUsd.Runtime.Imaging.linux-x64.native-validation.json" Condition="'$(RuntimePackageRid)' == 'linux-x64' and '$(OpenUsdSkipLinuxElfValidation)' != 'true'" />
@@ -164,6 +176,12 @@
   </ItemGroup>
 
   <Target Name="ValidateOpenUsdRuntimePackageInputs" BeforeTargets="GenerateNuspec">
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and !Exists('%(_OpenUsdExrCoreDependency.Identity)')"
+           Text="The Core EXR output dependency is missing: '%(_OpenUsdExrCoreDependency.Identity)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/include/pxr/usd/sdf/storageAdmission.h') and !Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"
+           Text="The storage-admission SDK profile requires verified patch/header/binary provenance before packing." />
+    <Exec Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"
+          Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)../../eng/sdk-storage-admission-metadata.ps1&quot; -Operation Verify -SdkRoot &quot;$(OpenUsdInstallRoot)&quot; -Rid &quot;$(RuntimePackageRid)&quot;" />
     <Error Condition="'$(_OpenUsdRequiresOpenUsdInstall)' == 'true' and !Exists('$(OpenUsdInstallRoot)')" Text="The locked OpenUSD install for $(RuntimePackageRid) is missing at '$(OpenUsdInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(_OpenUsdOptionalKind)' != 'true' and !Exists('$(OpenUsdShimInstallRoot)')" Text="The OpenUsd shim install for $(RuntimePackageRid) is missing at '$(OpenUsdShimInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Cesium' and !Exists('$(OpenUsdCesiumShimInstallRoot)')" Text="The OpenUsd Cesium shim install for $(RuntimePackageRid) is missing at '$(OpenUsdCesiumShimInstallRoot)'. Run eng/build-cesium-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />

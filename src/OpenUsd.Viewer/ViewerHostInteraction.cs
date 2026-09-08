@@ -8,12 +8,18 @@ internal static class ViewerHostInteraction
 {
     internal static Task RunStageReadyCallbackAsync(
         Func<CancellationToken, Task> callback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ViewerHostCallbackScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(callback);
         if (cancellationToken.IsCancellationRequested)
         {
             return Task.FromCanceled(cancellationToken);
+        }
+        if (scope is not null)
+        {
+            return scope.TryRun(callback, out Task? task) ? task :
+                Task.FromException(new InvalidOperationException("The host callback scope is quiescing or full."));
         }
         return Task.Run(
             () => callback(cancellationToken),
@@ -41,7 +47,8 @@ internal static class ViewerHostInteraction
         Func<ViewerPhysicalPixel, RenderPickTarget, RenderPickOptions, CancellationToken,
             ValueTask<RenderPickResult>> pickAsync,
         Func<ViewerPickEventArgs, CancellationToken, Task>? callback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ViewerHostCallbackScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(pickAsync);
         RenderPickResult result = await pickAsync(
@@ -50,14 +57,15 @@ internal static class ViewerHostInteraction
             RenderPickOptions.None,
             cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        DispatchPickCallback(result, callback, cancellationToken);
+        DispatchPickCallback(result, callback, cancellationToken, scope);
         return result;
     }
 
     internal static bool DispatchPickCallback(
         RenderPickResult result,
         Func<ViewerPickEventArgs, CancellationToken, Task>? callback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ViewerHostCallbackScope? scope = null)
     {
         if (callback is null)
         {
@@ -65,23 +73,30 @@ internal static class ViewerHostInteraction
         }
 
         var args = new ViewerPickEventArgs(result);
-        _ = Task.Run(
-            async () =>
+        async Task invoke(CancellationToken token)
+        {
+            try
             {
-                try
-                {
-                    await callback(args, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                }
-                catch (Exception exception)
-                {
-                    ViewerStartupOptions.WriteStatus(
-                        $"Host pick callback failed: {exception.Message}");
-                }
-            },
-            CancellationToken.None);
+                await callback(args, token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                ViewerStartupOptions.WriteStatus($"Host pick callback failed: {exception.Message}");
+            }
+        }
+        if (scope is not null)
+        {
+            bool accepted = scope.TryRun(invoke, out _);
+            if (!accepted)
+            {
+                ViewerStartupOptions.WriteStatus("Host pick callback refused while callbacks are quiescing or full.");
+            }
+            return accepted;
+        }
+        _ = Task.Run(() => invoke(cancellationToken), CancellationToken.None);
         return true;
     }
 
@@ -89,7 +104,8 @@ internal static class ViewerHostInteraction
         SelectionState selection,
         string? subtree,
         Func<ViewerSelectionChangedEventArgs, CancellationToken, Task>? callback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ViewerHostCallbackScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(selection);
         if (callback is null || !ShouldNotifySelection(selection, subtree))
@@ -98,23 +114,31 @@ internal static class ViewerHostInteraction
         }
 
         var args = new ViewerSelectionChangedEventArgs(selection.PrimPaths.ToArray());
-        _ = Task.Run(
-            async () =>
+        async Task invoke(CancellationToken token)
+        {
+            try
             {
-                try
-                {
-                    await callback(args, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                }
-                catch (Exception exception)
-                {
-                    ViewerStartupOptions.WriteStatus(
-                        $"Host selection callback failed: {exception.Message}");
-                }
-            },
-            CancellationToken.None);
+                await callback(args, token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                ViewerStartupOptions.WriteStatus($"Host selection callback failed: {exception.Message}");
+            }
+        }
+        if (scope is not null)
+        {
+            bool accepted = scope.TryRun(invoke, out _);
+            if (!accepted)
+            {
+                ViewerStartupOptions.WriteStatus(
+                    "Host selection callback refused while callbacks are quiescing or full.");
+            }
+            return accepted;
+        }
+        _ = Task.Run(() => invoke(cancellationToken), CancellationToken.None);
         return true;
     }
 

@@ -5,6 +5,12 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
+    [string]$NativeRoot = (Join-Path $PSScriptRoot '../native'),
+    [string]$SdkBuildRoot,
+    [string]$PatchLockPath,
+    [switch]$SdkOnly,
+    [switch]$ReuseExistingDependencies,
+    [switch]$DisableSdkPrecompiledHeaders,
     [int]$Jobs = [Environment]::ProcessorCount,
     [switch]$ForceFetch,
     [switch]$PlanOnly
@@ -12,10 +18,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$cacheRoot = Join-Path $repoRoot 'native/downloads'
-$sourceRoot = Join-Path $repoRoot 'native/src'
-$buildRoot = Join-Path $repoRoot "native/build/$Rid"
-$installRoot = Join-Path $repoRoot "native/install/$Rid"
+$NativeRoot = [IO.Path]::GetFullPath($NativeRoot)
+if (-not $SdkOnly -and $NativeRoot -cne [IO.Path]::GetFullPath((Join-Path $repoRoot 'native')))
+{
+    throw 'A custom NativeRoot currently requires -SdkOnly; build project shims in their isolated CMake graph.'
+}
+$cacheRoot = Join-Path $NativeRoot 'downloads'
+$sourceRoot = Join-Path $NativeRoot 'src'
+$buildRoot = if ([string]::IsNullOrWhiteSpace($SdkBuildRoot)) { Join-Path $NativeRoot "build/$Rid" }
+    else { [IO.Path]::GetFullPath($SdkBuildRoot) }
+$installRoot = Join-Path $NativeRoot "install/$Rid"
 $lock = Get-Content (Join-Path $PSScriptRoot 'openusd.lock.json') -Raw | ConvertFrom-Json
 $openUsdSource = Join-Path $sourceRoot $lock.openUsd.extractDirectory
 $buildScript = Join-Path $openUsdSource $lock.openUsd.buildScript
@@ -52,6 +64,20 @@ $arguments = @(
     '-j', $Jobs
 )
 
+$usdBuildArguments = @()
+if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
+{
+    $usdBuildArguments += @('-DPXR_STRICT_BUILD_MODE=ON', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+}
+if ($DisableSdkPrecompiledHeaders)
+{
+    $usdBuildArguments += '-DPXR_ENABLE_PRECOMPILED_HEADERS=OFF'
+}
+if ($usdBuildArguments.Count -ne 0)
+{
+    $arguments += @('--build-args', ('USD,' + ($usdBuildArguments -join ' ')))
+}
+
 switch ($Rid)
 {
     'win-x64'
@@ -83,6 +109,8 @@ $layout = & (Join-Path $PSScriptRoot 'fetch-native.ps1') `
     -Rid $Rid `
     -CacheRoot $cacheRoot `
     -SourceRoot $sourceRoot `
+    -SourceOnly:$ReuseExistingDependencies `
+    -PatchLockPath $PatchLockPath `
     -Force:$ForceFetch
 
 if ($Rid -eq 'win-x64' -and -not $IsWindows)
@@ -123,6 +151,10 @@ if (($Rid -eq 'win-x64' -or $Rid -eq 'linux-x64') -and -not $env:VULKAN_SDK)
     if ($requiredVulkanFiles.Where({ -not (Test-Path $_) }).Count -gt 0 -or
         -not $hasRequiredShaderc)
     {
+        if ($ReuseExistingDependencies)
+        {
+            throw 'Set VULKAN_SDK to the already verified Vulkan dependency; reuse-only mode cannot download it.'
+        }
         $localVulkanSdk = & (Join-Path $PSScriptRoot 'build-vulkan-sdk.ps1') |
             Select-Object -Last 1
     }
@@ -155,13 +187,43 @@ New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
 Write-Host "Building OpenUSD $($lock.openUsd.tag) for $Rid"
 $env:CMAKE_POLICY_VERSION_MINIMUM = '3.5'
 Remove-Item Env:NoDefaultCurrentDirectoryInExePath -ErrorAction SilentlyContinue
+if ($ReuseExistingDependencies)
+{
+    $plan = & python $layout.BuildScript @arguments -n 2>&1
+    if ($LASTEXITCODE -ne 0 -or ($plan -join "`n") -notmatch '(?m)^\s*Dependencies\s+None\s*$')
+    {
+        throw "Reuse-only SDK build has missing prerequisites; no downloads started:`n$($plan -join "`n")"
+    }
+}
 & python $layout.BuildScript @arguments
 if ($LASTEXITCODE -ne 0)
 {
     exit $LASTEXITCODE
 }
 
-$shimInstallRoot = Join-Path $repoRoot "native/install/shim/$Rid"
+if ($SdkOnly)
+{
+    if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
+    {
+        & (Join-Path $PSScriptRoot 'sdk-storage-admission-metadata.ps1') -Operation Write `
+            -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource -PatchLockPath $PatchLockPath
+    }
+    [pscustomobject]@{
+        SourceRoot = $openUsdSource
+        BuildRoot = $buildRoot
+        InstallRoot = $installRoot
+        SourceCommit = $lock.openUsd.commit
+        PatchSet = $layout.PatchSet
+    }
+    return
+}
+
+if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
+{
+    & (Join-Path $PSScriptRoot 'sdk-storage-admission-metadata.ps1') -Operation Write `
+        -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource -PatchLockPath $PatchLockPath
+}
+$shimInstallRoot = Join-Path $NativeRoot "install/shim/$Rid"
 $env:OPENUSD_ROOT = $installRoot
 Push-Location (Join-Path $repoRoot 'native')
 try

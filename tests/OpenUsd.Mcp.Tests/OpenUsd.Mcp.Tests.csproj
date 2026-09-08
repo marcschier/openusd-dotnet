@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="TUnit" />
+    <Compile Include="..\OpenUsd.Exr.NativeProbe\ExrScanlineOracle.cs" Link="ExrScanlineOracle.cs" />
   </ItemGroup>
 
 </Project>

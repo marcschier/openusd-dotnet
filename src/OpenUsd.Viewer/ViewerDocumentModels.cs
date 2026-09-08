@@ -23,7 +23,11 @@ internal sealed class ViewerHierarchyEntry : IUsdDetachedResult, IEquatable<View
         bool isAbstract = false,
         bool isPrototype = false,
         bool hasPayloads = false,
-        IReadOnlyList<ViewerVariantSetSnapshot>? variantSets = null)
+        IReadOnlyList<ViewerVariantSetSnapshot>? variantSets = null,
+        UsdHierarchyVariantMetadataStatus variantMetadataStatus = UsdHierarchyVariantMetadataStatus.Complete,
+        bool isInPrototype = false,
+        bool isInstance = false,
+        string? prototypePath = null)
     {
         Path = path;
         Name = name;
@@ -37,6 +41,10 @@ internal sealed class ViewerHierarchyEntry : IUsdDetachedResult, IEquatable<View
         IsAbstract = isAbstract;
         IsPrototype = isPrototype;
         HasPayloads = hasPayloads;
+        VariantMetadataStatus = variantMetadataStatus;
+        IsInPrototype = isInPrototype;
+        IsInstance = isInstance;
+        PrototypePath = prototypePath;
         _variantSets = variantSets?.ToArray() ?? [];
         VariantSets = Array.AsReadOnly(_variantSets);
     }
@@ -65,6 +73,14 @@ internal sealed class ViewerHierarchyEntry : IUsdDetachedResult, IEquatable<View
 
     internal bool HasPayloads { get; }
 
+    internal UsdHierarchyVariantMetadataStatus VariantMetadataStatus { get; }
+
+    internal bool IsInPrototype { get; }
+
+    internal bool IsInstance { get; }
+
+    internal string? PrototypePath { get; }
+
     internal IReadOnlyList<ViewerVariantSetSnapshot> VariantSets { get; }
 
     public bool Equals(ViewerHierarchyEntry? other) =>
@@ -81,6 +97,10 @@ internal sealed class ViewerHierarchyEntry : IUsdDetachedResult, IEquatable<View
         IsAbstract == other.IsAbstract &&
         IsPrototype == other.IsPrototype &&
         HasPayloads == other.HasPayloads &&
+        VariantMetadataStatus == other.VariantMetadataStatus &&
+        IsInPrototype == other.IsInPrototype &&
+        IsInstance == other.IsInstance &&
+        string.Equals(PrototypePath, other.PrototypePath, StringComparison.Ordinal) &&
         _variantSets.SequenceEqual(other._variantSets, ViewerVariantSetSnapshot.ValueComparer);
 
     public override bool Equals(object? obj) => Equals(obj as ViewerHierarchyEntry);
@@ -100,6 +120,10 @@ internal sealed class ViewerHierarchyEntry : IUsdDetachedResult, IEquatable<View
         hash.Add(IsAbstract);
         hash.Add(IsPrototype);
         hash.Add(HasPayloads);
+        hash.Add(VariantMetadataStatus);
+        hash.Add(IsInPrototype);
+        hash.Add(IsInstance);
+        hash.Add(PrototypePath, StringComparer.Ordinal);
         foreach (ViewerVariantSetSnapshot variantSet in _variantSets)
         {
             hash.Add(variantSet, ViewerVariantSetSnapshot.ValueComparer);
@@ -121,7 +145,11 @@ internal sealed record ViewerHierarchySourceEntry(
     bool IsAbstract = false,
     bool IsPrototype = false,
     bool HasPayloads = false,
-    IReadOnlyList<ViewerVariantSetSnapshot>? VariantSets = null);
+    IReadOnlyList<ViewerVariantSetSnapshot>? VariantSets = null,
+    UsdHierarchyVariantMetadataStatus VariantMetadataStatus = UsdHierarchyVariantMetadataStatus.Complete,
+    bool IsInPrototype = false,
+    bool IsInstance = false,
+    string? PrototypePath = null);
 
 internal sealed record ViewerHierarchyFilter(
     string? NameQuery,
@@ -136,9 +164,10 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
     private readonly Dictionary<string, ViewerHierarchyEntry> _byPath;
     private readonly Dictionary<string, ViewerHierarchyEntry[]> _children;
 
-    private ViewerHierarchySnapshot(ViewerHierarchyEntry[] entries)
+    private ViewerHierarchySnapshot(ViewerHierarchyEntry[] entries, ulong? changeSerial = null)
     {
         Entries = entries;
+        ChangeSerial = changeSerial;
         _byPath = entries.ToDictionary(entry => entry.Path, StringComparer.Ordinal);
         _children = entries
             .GroupBy(entry => entry.ParentPath ?? string.Empty, StringComparer.Ordinal)
@@ -150,6 +179,8 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
 
     internal ViewerHierarchyEntry[] Entries { get; }
 
+    internal ulong? ChangeSerial { get; }
+
     internal static ViewerHierarchySnapshot Empty { get; } = new([]);
 
     internal static ViewerHierarchySnapshot Build(IEnumerable<string> traversalPaths)
@@ -158,7 +189,11 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
         return Build(traversalPaths.Select(path => new ViewerHierarchySourceEntry(path, string.Empty)));
     }
 
-    internal static ViewerHierarchySnapshot Build(IEnumerable<ViewerHierarchySourceEntry> traversalEntries)
+    internal static ViewerHierarchySnapshot Build(IEnumerable<ViewerHierarchySourceEntry> traversalEntries) =>
+        Build(traversalEntries, null);
+
+    private static ViewerHierarchySnapshot Build(
+        IEnumerable<ViewerHierarchySourceEntry> traversalEntries, ulong? changeSerial)
     {
         ArgumentNullException.ThrowIfNull(traversalEntries);
         ViewerHierarchySourceEntry[] sourceEntries = traversalEntries
@@ -193,9 +228,39 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
                 source.IsAbstract,
                 source.IsPrototype,
                 source.HasPayloads,
-                source.VariantSets);
+                source.VariantSets,
+                source.VariantMetadataStatus,
+                source.IsInPrototype,
+                source.IsInstance,
+                source.PrototypePath);
         }
-        return new ViewerHierarchySnapshot(entries);
+        return new ViewerHierarchySnapshot(entries, changeSerial);
+    }
+
+    internal static ViewerHierarchySnapshot FromNative(UsdHierarchySnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var entries = new ViewerHierarchyEntry[snapshot.Entries.Count];
+        for (int index = 0; index < entries.Length; index++)
+        {
+            UsdHierarchyEntry source = snapshot.Entries[index];
+            var variants = new ViewerVariantSetSnapshot[source.VariantSets.Count];
+            for (int variantIndex = 0; variantIndex < variants.Length; variantIndex++)
+            {
+                UsdHierarchyVariantSet variant = source.VariantSets[variantIndex];
+                variants[variantIndex] = ViewerVariantSetSnapshot.Create(
+                    variant.Name, variant.VariantNames,
+                    string.IsNullOrEmpty(variant.Selection) ? null : variant.Selection);
+            }
+            entries[index] = new ViewerHierarchyEntry(
+                source.Path, source.Name, source.TypeName,
+                source.ParentIndex < 0 ? null : snapshot.Entries[source.ParentIndex].Path,
+                source.Depth - 1, source.ChildCount, source.IsActive, source.IsLoaded,
+                source.IsDefined, source.IsAbstract, source.IsPrototype, source.HasPayload, variants,
+                source.VariantMetadataStatus, source.IsInPrototype, source.IsInstance,
+                string.IsNullOrEmpty(source.PrototypePath) ? null : source.PrototypePath);
+        }
+        return new ViewerHierarchySnapshot(entries, snapshot.ChangeSerial);
     }
 
     internal bool Contains(string path) => _byPath.ContainsKey(path);
@@ -236,7 +301,7 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
         }
         return Build(Entries
             .Where(entry => included.Contains(entry.Path))
-            .Select(ToSourceEntry));
+            .Select(ToSourceEntry), ChangeSerial);
     }
 
     private static bool Matches(ViewerHierarchyEntry entry, ViewerHierarchyFilter filter)
@@ -244,7 +309,7 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
         if ((!filter.ShowInactive && !entry.IsActive) ||
             (!filter.ShowUndefined && !entry.IsDefined) ||
             (!filter.ShowAbstract && entry.IsAbstract) ||
-            (!filter.ShowPrototypes && entry.IsPrototype))
+            (!filter.ShowPrototypes && (entry.IsPrototype || entry.IsInPrototype)))
         {
             return false;
         }
@@ -267,7 +332,11 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
             entry.IsAbstract,
             entry.IsPrototype,
             entry.HasPayloads,
-            entry.VariantSets);
+            entry.VariantSets,
+            entry.VariantMetadataStatus,
+            entry.IsInPrototype,
+            entry.IsInstance,
+            entry.PrototypePath);
 
     private static string GetName(string path)
     {
@@ -303,29 +372,30 @@ internal sealed class ViewerHierarchyTreeSource
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Snapshot = snapshot;
-        Roots = snapshot.GetChildren(null)
-            .Select(entry => new ViewerHierarchyTreeNode(snapshot, entry))
-            .ToArray();
+        Roots = GetRootPage(0).Nodes;
     }
 
     internal ViewerHierarchySnapshot Snapshot { get; }
 
     internal IReadOnlyList<ViewerHierarchyTreeNode> Roots { get; }
+
+    internal ViewerHierarchyPage GetRootPage(int pageIndex, string? revealPath = null) =>
+        ViewerHierarchyPage.Create(Snapshot, null, pageIndex, revealPath);
 }
 
 internal sealed class ViewerHierarchyTreeNode
 {
+    private readonly ViewerHierarchySnapshot _snapshot;
     private readonly Lazy<IReadOnlyList<ViewerHierarchyTreeNode>> _children;
 
     internal ViewerHierarchyTreeNode(
         ViewerHierarchySnapshot snapshot,
         ViewerHierarchyEntry entry)
     {
+        _snapshot = snapshot;
         Entry = entry;
         _children = new Lazy<IReadOnlyList<ViewerHierarchyTreeNode>>(
-            () => snapshot.GetChildren(entry.Path)
-                .Select(child => new ViewerHierarchyTreeNode(snapshot, child))
-                .ToArray());
+            () => GetChildrenPage(0).Nodes);
     }
 
     internal ViewerHierarchyEntry Entry { get; }
@@ -333,21 +403,26 @@ internal sealed class ViewerHierarchyTreeNode
     internal bool IsChildrenMaterialized => _children.IsValueCreated;
 
     internal IReadOnlyList<ViewerHierarchyTreeNode> Children => _children.Value;
+
+    internal ViewerHierarchyPage GetChildrenPage(int pageIndex, string? revealPath = null) =>
+        ViewerHierarchyPage.Create(_snapshot, Entry.Path, pageIndex, revealPath);
 }
 
 internal sealed record ViewerAttributeSnapshot(
     string Name,
     string TypeName,
-    bool HasAuthoredValue,
+    bool? HasAuthoredValue,
     bool IsBlocked,
-    int TimeSampleCount,
+    ulong? TimeSampleCount,
     string TimeSamples,
     string Value,
-    ViewerSplineSnapshot? Spline = null) : IUsdDetachedResult;
+    ViewerSplineSnapshot? Spline = null,
+    UsdAttributePropertySnapshot? Inspection = null) : IUsdDetachedResult;
 
 internal sealed record ViewerRelationshipSnapshot(
     string Name,
-    string Targets) : IUsdDetachedResult;
+    string Targets,
+    UsdRelationshipPropertySnapshot? Inspection = null) : IUsdDetachedResult;
 
 internal sealed class ViewerVariantSetSnapshot : IUsdDetachedResult
 {
@@ -540,7 +615,8 @@ internal sealed record ViewerPrimInspectorSnapshot(
     PcpPrimIndex Composition,
     ViewerAttributeSnapshot[] Attributes,
     ViewerRelationshipSnapshot[] Relationships,
-    ViewerUnsupportedFeature[] UnsupportedFeatures) : IUsdDetachedResult;
+    ViewerUnsupportedFeature[] UnsupportedFeatures,
+    UsdPrimPropertySnapshot? PropertySnapshot = null) : IUsdDetachedResult;
 
 internal static class ViewerHierarchyExpansionPolicy
 {
@@ -757,7 +833,7 @@ internal sealed record ViewerDocumentSnapshot(
     ViewerStageCameraMenuEntry[] StageCameras = null!,
     string? PrimaryCameraPath = null) : IUsdDetachedResult;
 
-internal static class ViewerStageSnapshotBuilder
+internal static partial class ViewerStageSnapshotBuilder
 {
     /// <summary>
     /// The most authored Ts splines one inspector snapshot reads and evaluates.
@@ -781,7 +857,8 @@ internal static class ViewerStageSnapshotBuilder
     internal static ViewerDocumentSnapshot BuildDocument(
         UsdStage stage,
         ViewerLayerStackSnapshot? previousLayers,
-        string? selectedPrimPath)
+        string? selectedPrimPath,
+        double? selectedPrimTimeCode = null)
     {
         ArgumentNullException.ThrowIfNull(stage);
         ViewerHierarchySnapshot hierarchy = BuildHierarchy(stage);
@@ -789,7 +866,7 @@ internal static class ViewerStageSnapshotBuilder
             !string.IsNullOrWhiteSpace(selectedPrimPath) &&
             hierarchy.Contains(selectedPrimPath) &&
             stage.HasPrim(selectedPrimPath)
-                ? BuildInspector(stage, selectedPrimPath)
+                ? BuildInspector(stage, selectedPrimPath, selectedPrimTimeCode)
                 : null;
         return new ViewerDocumentSnapshot(
             hierarchy,
@@ -808,83 +885,11 @@ internal static class ViewerStageSnapshotBuilder
     internal static ViewerHierarchySnapshot BuildHierarchy(UsdStage stage)
     {
         ArgumentNullException.ThrowIfNull(stage);
-        var entries = new List<ViewerHierarchySourceEntry>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (UsdPrim root in stage.Traverse().Where(static prim => GetPrimDepth(prim.Path) == 0))
-        {
-            AddHierarchyEntry(stage, root, entries, seen);
-        }
-        return ViewerHierarchySnapshot.Build(entries);
+        return ViewerHierarchySnapshot.FromNative(stage.GetHierarchySnapshot(UsdHierarchyLimits.Viewer));
     }
 
-    private static ViewerHierarchySnapshot BuildHierarchy(IReadOnlyList<UsdPrim> prims)
-    {
-        var entries = new ViewerHierarchySourceEntry[prims.Count];
-        for (int index = 0; index < prims.Count; index++)
-        {
-            UsdPrimClassification classification = prims[index].GetClassification();
-            entries[index] = new ViewerHierarchySourceEntry(
-                prims[index].Path,
-                prims[index].TypeName,
-                IsDefined: classification.IsDefined,
-                IsAbstract: classification.IsAbstract);
-        }
-        return ViewerHierarchySnapshot.Build(entries);
-    }
-
-    private static void AddHierarchyEntry(
-        UsdStage stage,
-        UsdPrim prim,
-        List<ViewerHierarchySourceEntry> entries,
-        HashSet<string> seen)
-    {
-        if (!seen.Add(prim.Path))
-        {
-            return;
-        }
-
-        bool isActive = prim.IsActive();
-        UsdPrimClassification classification = prim.GetClassification();
-        bool isPrototype = prim.IsPrototype();
-        ViewerVariantSetSnapshot[] variantSets = BuildVariantSets(prim);
-        entries.Add(new ViewerHierarchySourceEntry(
-            prim.Path,
-            prim.TypeName,
-            isActive,
-            prim.IsLoaded(),
-            classification.IsDefined,
-            classification.IsAbstract,
-            isPrototype,
-            prim.GetPayloadArcs().Count != 0,
-            variantSets));
-        foreach (UsdPrim child in prim.GetChildren())
-        {
-            AddHierarchyEntry(stage, child, entries, seen);
-        }
-        if (prim.IsInstance())
-        {
-            string prototypePath = prim.GetPrototypePath();
-            if (!string.IsNullOrWhiteSpace(prototypePath) && stage.HasPrim(prototypePath))
-            {
-                AddHierarchyEntry(stage, stage.GetPrim(prototypePath), entries, seen);
-            }
-        }
-    }
-
-    private static int GetPrimDepth(string path)
-    {
-        int depth = 0;
-        foreach (char character in path)
-        {
-            if (character == '/')
-            {
-                depth++;
-            }
-        }
-        return Math.Max(0, depth - 1);
-    }
-
-    internal static ViewerPrimInspectorSnapshot BuildInspector(UsdStage stage, string primPath)
+    internal static ViewerPrimInspectorSnapshot BuildInspector(
+        UsdStage stage, string primPath, double? timeCode = null)
     {
         ArgumentNullException.ThrowIfNull(stage);
         ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
@@ -894,37 +899,10 @@ internal static class ViewerStageSnapshotBuilder
         }
 
         UsdPrim prim = stage.GetPrim(primPath);
-        IReadOnlyList<UsdAttribute> attributes = prim.GetAttributes();
-        var attributeSnapshots = new ViewerAttributeSnapshot[attributes.Count];
-        int splineBudget = MaxReadSplinesPerInspector;
-        for (int index = 0; index < attributes.Count; index++)
-        {
-            UsdAttribute attribute = attributes[index];
-            string typeName = attribute.TypeName;
-            UsdAttributeValueState state = attribute.GetValueState();
-            double[] timeSamples = attribute.GetTimeSamples();
-            attributeSnapshots[index] = new ViewerAttributeSnapshot(
-                attribute.Name,
-                typeName,
-                state.HasAuthoredValueOpinion,
-                state.IsBlocked,
-                timeSamples.Length,
-                FormatTimeSamples(timeSamples),
-                GetDisplayValue(attribute, typeName, state),
-                BuildSpline(attribute, ref splineBudget));
-        }
-
-        IReadOnlyList<UsdRelationship> relationships = prim.GetRelationships();
-        var relationshipSnapshots = new ViewerRelationshipSnapshot[relationships.Count];
-        for (int index = 0; index < relationships.Count; index++)
-        {
-            UsdRelationship relationship = relationships[index];
-            relationshipSnapshots[index] = new ViewerRelationshipSnapshot(
-                relationship.Name,
-                ViewerScalarFormatter.Bound(
-                    string.Join(", ", relationship.GetTargets()),
-                    ViewerScalarFormatter.DefaultTextLimit));
-        }
+        UsdPrimPropertySnapshot properties = stage.GetPrimPropertySnapshot(
+            primPath, timeCode, UsdPropertyInspectionLimits.Viewer);
+        (ViewerAttributeSnapshot[] attributeSnapshots, ViewerRelationshipSnapshot[] relationshipSnapshots) =
+            BuildProperties(prim, properties);
 
         ViewerVariantSetSnapshot[] variantSets = BuildVariantSets(prim);
         ViewerPayloadArcSnapshot[] payloadArcs =
@@ -971,7 +949,8 @@ internal static class ViewerStageSnapshotBuilder
             composition,
             attributeSnapshots,
             relationshipSnapshots,
-            unsupported.ToArray());
+            unsupported.ToArray(),
+            properties);
     }
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)
@@ -1086,25 +1065,24 @@ internal static class ViewerStageSnapshotBuilder
     /// are projected as deliberately unread rather than dropped, so the Value
     /// tab can say which ones were skipped and why.
     /// </remarks>
-    private static ViewerSplineSnapshot? BuildSpline(UsdAttribute attribute, ref int budget)
+    private static ViewerSplineSnapshot? BuildSpline(UsdPrim prim, string attributeName, ref int budget)
     {
+        if (budget <= 0)
+        {
+            return ViewerSplineSnapshot.CreateNotRead(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"this prim's budget of {MaxReadSplinesPerInspector} read spline(s) " +
+                    $"was already spent"));
+        }
+        budget--;
         try
         {
+            UsdAttribute attribute = prim.GetAttribute(attributeName);
             if (!attribute.HasSpline())
             {
                 return null;
             }
-
-            if (budget <= 0)
-            {
-                return ViewerSplineSnapshot.CreateNotRead(
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"this prim's budget of {MaxReadSplinesPerInspector} read spline(s) " +
-                        $"was already spent"));
-            }
-
-            budget--;
             using TsSpline spline = attribute.GetSpline();
             TsSplineData data = spline.GetData();
             double[] times = ViewerSplineSnapshot.GetSampleTimes(data);
@@ -1120,38 +1098,6 @@ internal static class ViewerStageSnapshotBuilder
         catch (OpenUsdNativeException exception)
         {
             return ViewerSplineSnapshot.CreateUnreadable(exception.Message);
-        }
-    }
-
-    private static string GetDisplayValue(
-        UsdAttribute attribute,
-        string typeName,
-        UsdAttributeValueState state)
-    {
-        if (state.IsBlocked)
-        {
-            return "<blocked>";
-        }
-        if (typeName.EndsWith("[]", StringComparison.Ordinal))
-        {
-            return $"<{typeName} array>";
-        }
-        try
-        {
-            return ViewerScalarFormatter.Format(attribute.GetValue());
-        }
-        catch (OpenUsdNativeException exception)
-            when ((exception.Status == OpenUsdNativeStatus.InvalidArgument &&
-                   exception.Message.StartsWith(
-                       "The attribute type is not a supported scalar:",
-                       StringComparison.Ordinal)) ||
-                  (exception.Status == OpenUsdNativeStatus.NotFound &&
-                   string.Equals(
-                       exception.Message,
-                       "The attribute has no readable scalar value.",
-                       StringComparison.Ordinal)))
-        {
-            return "<unsupported value>";
         }
     }
 }
@@ -1186,9 +1132,16 @@ internal static class ViewerScalarFormatter
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumLength, 4);
-        return value.Length <= maximumLength
-            ? value
-            : string.Concat(value.AsSpan(0, maximumLength - 3), "...");
+        if (value.Length <= maximumLength)
+        {
+            return value;
+        }
+        int prefixLength = maximumLength - 3;
+        if (char.IsHighSurrogate(value[prefixLength - 1]) && char.IsLowSurrogate(value[prefixLength]))
+        {
+            prefixLength--;
+        }
+        return string.Concat(value.AsSpan(0, prefixLength), "...");
     }
 
     private static string FormatVector(UsdVec3f value) =>

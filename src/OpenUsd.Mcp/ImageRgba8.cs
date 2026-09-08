@@ -1,11 +1,13 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Mcp;
 
 public sealed class ImageRgba8
 {
-    public const int BytesPerPixel = 4;
-    public const int MaximumByteCount = 256 * 1024 * 1024;
+    public const int BytesPerPixel = PngRgba8Writer.BytesPerPixel;
+    public const int MaximumByteCount = PngRgba8Writer.MaximumPixelByteCount;
 
     private readonly byte[] _pixels;
 
@@ -32,16 +34,5 @@ public sealed class ImageRgba8
 
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
-    internal static int GetByteCount(int width, int height)
-    {
-        long byteCount = checked((long)width * height * BytesPerPixel);
-        if (byteCount > MaximumByteCount)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(width),
-                $"RGBA8 images may not exceed {MaximumByteCount} bytes.");
-        }
-
-        return checked((int)byteCount);
-    }
+    internal static int GetByteCount(int width, int height) => PngRgba8Writer.GetPixelByteCount(width, height);
 }

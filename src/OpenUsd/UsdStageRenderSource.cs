@@ -93,6 +93,10 @@ public sealed class UsdStageRenderSource : IDisposable, IUsdStageBound
                     scheduler.ReleaseRenderSourceRegistration();
                     throw;
                 }
+                finally
+                {
+                    scheduler.CompleteRenderSourceAcquisition();
+                }
             }
         }
 

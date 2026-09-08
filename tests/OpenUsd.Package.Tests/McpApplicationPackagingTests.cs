@@ -402,6 +402,11 @@ public sealed class McpApplicationPackagingTests
                          "metadata",
                          "bounded-capability",
                          "binary-hash",
+                         "aov-version",
+                         "aov-header",
+                         "exr-version",
+                         "exr-header",
+                         "exr-capability",
                      })
             {
                 string caseRoot = Path.Combine(testRoot, mismatch);
@@ -475,6 +480,11 @@ public sealed class McpApplicationPackagingTests
                             "metadata" => "lockSha256",
                             "bounded-capability" => "shimDataCapabilities",
                             "binary-hash" => "dataLibrarySha256",
+                            "aov-version" => "stormAovVersion",
+                            "aov-header" => "Storm AOV header",
+                            "exr-version" => "imageExrVersion",
+                            "exr-header" => "EXR encoding header",
+                            "exr-capability" => "shimDataCapabilities",
                             _ => throw new InvalidOperationException(),
                         });
                     await Assert.That(File.Exists(
@@ -674,8 +684,12 @@ public sealed class McpApplicationPackagingTests
                  {
                      ("native/openusd_dotnet/include/openusd_dotnet.h",
                          "openusd_dotnet.h"),
+                     ("native/openusd_dotnet/include/openusd_image_exr.h",
+                         "openusd_image_exr.h"),
                      ("native/openusd_hydra/include/openusd_hydra.h",
                          "openusd_hydra.h"),
+                     ("native/openusd_hydra/include/openusd_storm_aov.h",
+                         "openusd_storm_aov.h"),
                      ("native/hdSilk/include/openusd_hdsilk.h",
                          "openusd_hdsilk.h"),
                      ("native/include/openusd_render_camera.h",
@@ -740,6 +754,16 @@ public sealed class McpApplicationPackagingTests
                 "changed");
             return;
         }
+        if (mismatch == "aov-header")
+        {
+            File.AppendAllText(Path.Combine(layout.ShimRoot, "include", "openusd_storm_aov.h"), "\nchanged");
+            return;
+        }
+        if (mismatch == "exr-header")
+        {
+            File.AppendAllText(Path.Combine(layout.ShimRoot, "include", "openusd_image_exr.h"), "\nchanged");
+            return;
+        }
 
         JsonObject metadata = JsonNode
             .Parse(File.ReadAllText(metadataPath))!
@@ -760,6 +784,24 @@ public sealed class McpApplicationPackagingTests
             }
             metadata["shimDataCapabilities"] =
                 capabilities & ~boundedInspection;
+        }
+        else if (mismatch == "aov-version")
+        {
+            metadata["stormAovVersion"] = 0;
+        }
+        else if (mismatch == "exr-version")
+        {
+            metadata["imageExrVersion"] = 0;
+        }
+        else if (mismatch == "exr-capability")
+        {
+            const ulong exrOutput = 1UL << 32;
+            ulong capabilities = metadata["shimDataCapabilities"]!.GetValue<ulong>();
+            if ((capabilities & exrOutput) == 0)
+            {
+                throw new InvalidOperationException("Synthetic metadata did not include EXR output.");
+            }
+            metadata["shimDataCapabilities"] = capabilities & ~exrOutput;
         }
         else
         {

@@ -1,0 +1,47 @@
+<Window
+    x:Class="OpenUsd.Viewer.CommandPaletteWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
+    Title="Search commands"
+    AutomationProperties.Name="Search Viewer commands"
+    AutomationProperties.AutomationId="viewer.commandPalette"
+    Width="680"
+    Height="480"
+    MinWidth="400"
+    MinHeight="280"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="8">
+    <TextBox
+        x:Name="CommandSearch"
+        AutomationProperties.Name="Find a command by name, menu, shortcut or action"
+        AutomationProperties.AutomationId="viewer.commandPalette.search"
+        PlaceholderText="Search commands, themes, workspaces..."
+        MaxLength="128" />
+    <ListBox
+        x:Name="CommandResults"
+        Grid.Row="1"
+        AutomationProperties.Name="Matching Viewer commands"
+        AutomationProperties.AutomationId="viewer.commandPalette.results" />
+    <TextBlock
+        x:Name="CommandSearchStatus"
+        Grid.Row="2"
+        Classes="viewer-caption"
+        AutomationProperties.Name="Command search status"
+        TextWrapping="Wrap" />
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock
+          Text="Enter to run  /  Up, Down to select  /  Esc to close"
+          Classes="viewer-caption"
+          TextWrapping="Wrap"
+          VerticalAlignment="Center" />
+      <Button x:Name="RunCommandButton" Grid.Column="1" Content="Run" />
+      <Button x:Name="ClosePaletteButton" Grid.Column="2" Content="Close" />
+    </Grid>
+  </Grid>
+</Window>

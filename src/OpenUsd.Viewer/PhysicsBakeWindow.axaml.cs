@@ -33,6 +33,7 @@ internal sealed partial class PhysicsBakeWindow : Window
         string suggestedDestination = "")
     {
         InitializeComponent();
+        ViewerWindowTheme.Attach(this);
         BakeDestinationInput.Text = suggestedDestination;
         BakeStartInput.Text = Format(startTimeCode);
         BakeEndInput.Text = Format(endTimeCode);

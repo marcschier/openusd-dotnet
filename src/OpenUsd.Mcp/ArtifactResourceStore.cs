@@ -27,6 +27,13 @@ public sealed record ArtifactResourceWrite(
     string MediaType,
     ReadOnlyMemory<byte> Content);
 
+public sealed record ArtifactResourceFileWrite(
+    string Id,
+    string MediaType,
+    string SourcePath,
+    long ExpectedByteLength,
+    string ExpectedSha256);
+
 public sealed record ArtifactResourceContent(
     ArtifactResourceDescriptor Descriptor,
     ReadOnlyMemory<byte> Content);
@@ -67,6 +74,22 @@ public interface IArtifactResourceStore
         string sourcePath,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ArtifactResourceDescriptor> AddVerifiedFileAsync(
+        string artifactId,
+        string mediaType,
+        string sourcePath,
+        long expectedByteLength,
+        string expectedSha256,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<ArtifactResourceDescriptor>(
+            new NotSupportedException("This artifact store does not support verified file publication."));
+
+    ValueTask<IReadOnlyList<ArtifactResourceDescriptor>> AddVerifiedFilesAsync(
+        IReadOnlyList<ArtifactResourceFileWrite> artifacts,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<IReadOnlyList<ArtifactResourceDescriptor>>(
+            new NotSupportedException("This artifact store does not support atomic verified file publication."));
+
     bool TryGetDescriptor(
         Uri resourceUri,
         out ArtifactResourceDescriptor? descriptor);
@@ -76,7 +99,7 @@ public interface IArtifactResourceStore
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ArtifactResourceStore : IArtifactResourceStore
+public sealed partial class ArtifactResourceStore : IArtifactResourceStore, IDisposable
 {
     private const int FileBufferSize = 64 * 1024;
     private readonly Dictionary<Uri, Entry> _entries = [];
@@ -87,6 +110,7 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
     private readonly int _maximumResourceCount;
     private readonly long _maximumTotalBytes;
     private long _totalBytes;
+    private bool _disposed;
 
     public ArtifactResourceStore()
         : this(new ArtifactResourceStoreOptions())
@@ -122,6 +146,17 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
         }
     }
 
+    /// <summary>Releases synchronization state after the caller has drained outstanding operations.</summary>
+    /// <remarks>Persisted immutable content is not deleted by disposal.</remarks>
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _disposed = true;
+            _filePublicationGate.Dispose();
+        }
+    }
+
     public long TotalBytes
     {
         get
@@ -142,6 +177,7 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
     public IReadOnlyList<ArtifactResourceDescriptor> AddRange(
         IReadOnlyList<ArtifactResourceWrite> artifacts)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(artifacts);
         if (artifacts.Count == 0)
         {
@@ -200,121 +236,45 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
             additions.Select(static addition => addition.Descriptor).ToArray());
     }
 
-    public async ValueTask<ArtifactResourceDescriptor> AddFileAsync(
+    public ValueTask<ArtifactResourceDescriptor> AddFileAsync(
         string artifactId,
         string mediaType,
         string sourcePath,
+        CancellationToken cancellationToken = default) =>
+        AddFileCoreAsync(artifactId, mediaType, sourcePath, null, null, cancellationToken);
+
+    public ValueTask<ArtifactResourceDescriptor> AddVerifiedFileAsync(
+        string artifactId,
+        string mediaType,
+        string sourcePath,
+        long expectedByteLength,
+        string expectedSha256,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(mediaType);
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
-        cancellationToken.ThrowIfCancellationRequested();
-        string storageRoot = _fileStorageRoot ??
-            throw new InvalidOperationException(
-                "File-backed artifact storage is not configured.");
-        Uri resourceUri = ArtifactResourceUri.Create(artifactId);
-        string canonicalSourcePath = Path.GetFullPath(sourcePath);
-        var sourceInfo = new FileInfo(canonicalSourcePath);
-        if (!sourceInfo.Exists)
-        {
-            throw new FileNotFoundException(
-                "The artifact source file does not exist.",
-                canonicalSourcePath);
-        }
+        ValidateFileExpectation(expectedByteLength, expectedSha256);
+        return AddFileCoreAsync(
+            artifactId, mediaType, sourcePath, expectedByteLength, expectedSha256, cancellationToken);
+    }
 
-        long expectedLength = sourceInfo.Length;
-        lock (_gate)
-        {
-            EnsureResourceDoesNotExist(resourceUri);
-            EnsureCapacity(1, expectedLength);
-        }
-
-        WorkspacePathContainment.CreateDirectorySafely(storageRoot);
-        WorkspacePathContainment.RejectReparsePoints(storageRoot, storageRoot);
-        string temporaryPath = Path.Combine(
-            storageRoot,
-            string.Concat(".pending-", Guid.NewGuid().ToString("N")));
-        string? contentPath = null;
-        bool createdContentFile = false;
-        bool registered = false;
-        try
-        {
-            FileContentMetadata metadata = await CopyAndHashAsync(
-                    canonicalSourcePath,
-                    temporaryPath,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (metadata.ByteLength != expectedLength)
-            {
-                throw new ArtifactResourceIntegrityException(
-                    $"Artifact source '{canonicalSourcePath}' changed while it was copied.");
-            }
-
-            string contentDirectory = Path.Combine(
-                storageRoot,
-                "sha256",
-                metadata.Sha256[..2]);
-            WorkspacePathContainment.CreateContainedDirectory(
-                storageRoot,
-                contentDirectory);
-            contentPath = Path.Combine(contentDirectory, metadata.Sha256);
-            WorkspacePathContainment.RejectReparsePoints(storageRoot, contentPath);
-            if (File.Exists(contentPath))
-            {
-                await VerifyFileAsync(contentPath, metadata, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                try
-                {
-                    File.Move(temporaryPath, contentPath);
-                    createdContentFile = true;
-                }
-                catch (IOException) when (File.Exists(contentPath))
-                {
-                    await VerifyFileAsync(contentPath, metadata, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
-
-            var descriptor = new ArtifactResourceDescriptor(
-                artifactId,
-                resourceUri,
-                mediaType,
-                metadata.ByteLength,
-                metadata.Sha256);
-            cancellationToken.ThrowIfCancellationRequested();
-            lock (_gate)
-            {
-                EnsureResourceDoesNotExist(resourceUri);
-                EnsureCapacity(1, metadata.ByteLength);
-                _entries.Add(
-                    descriptor.ResourceUri,
-                    new Entry(descriptor, null, contentPath));
-                _totalBytes += metadata.ByteLength;
-                registered = true;
-            }
-
-            return descriptor;
-        }
-        finally
-        {
-            DeleteFileIfPresent(temporaryPath);
-            if (createdContentFile &&
-                !registered &&
-                contentPath is not null &&
-                !IsFileReferenced(contentPath))
-            {
-                DeleteFileIfPresent(contentPath);
-            }
-        }
+    private async ValueTask<ArtifactResourceDescriptor> AddFileCoreAsync(
+        string artifactId,
+        string mediaType,
+        string sourcePath,
+        long? requiredLength,
+        string? requiredSha256,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ArtifactResourceDescriptor> result = await AddFilesCoreAsync(
+            [new FileImportRequest(artifactId, mediaType, sourcePath, requiredLength, requiredSha256)],
+            cancellationToken).ConfigureAwait(false);
+        return result[0];
     }
 
     public bool TryGetDescriptor(
         Uri resourceUri,
         out ArtifactResourceDescriptor? descriptor)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(resourceUri);
         lock (_gate)
         {
@@ -333,6 +293,7 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
         Uri resourceUri,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(resourceUri);
         cancellationToken.ThrowIfCancellationRequested();
         Entry? entry;
@@ -374,18 +335,17 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
     }
 
     private static async ValueTask<FileContentMetadata> CopyAndHashAsync(
+        FileStream source,
         string sourcePath,
         string destinationPath,
+        long expectedLength,
         CancellationToken cancellationToken)
     {
-        await using var source = new FileStream(
-            sourcePath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            FileBufferSize,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        long expectedLength = source.Length;
+        if (source.Length != expectedLength)
+        {
+            throw new ArtifactResourceIntegrityException(
+                $"Artifact source '{sourcePath}' changed after admission.");
+        }
         try
         {
             await using var destination = new FileStream(
@@ -404,11 +364,26 @@ public sealed class ArtifactResourceStore : IArtifactResourceStore
                        CryptoStreamMode.Write,
                        leaveOpen: true))
             {
-                await source.CopyToAsync(
-                        hashingStream,
-                        FileBufferSize,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                byte[] buffer = new byte[FileBufferSize];
+                long remaining = expectedLength;
+                while (remaining != 0)
+                {
+                    int count = (int)Math.Min(buffer.Length, remaining);
+                    int read = await source.ReadAsync(buffer.AsMemory(0, count), cancellationToken)
+                        .ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        throw new ArtifactResourceIntegrityException(
+                            $"Artifact source '{sourcePath}' was truncated while being copied.");
+                    }
+                    await hashingStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    remaining -= read;
+                }
+                if (await source.ReadAsync(buffer.AsMemory(0, 1), cancellationToken).ConfigureAwait(false) != 0)
+                {
+                    throw new ArtifactResourceIntegrityException(
+                        $"Artifact source '{sourcePath}' grew beyond its admitted length.");
+                }
                 hashingStream.FlushFinalBlock();
             }
 

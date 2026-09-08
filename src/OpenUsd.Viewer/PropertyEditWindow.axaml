@@ -1,0 +1,89 @@
+<Window
+    x:Class="OpenUsd.Viewer.PropertyEditWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
+    Title="Edit review property"
+    AutomationProperties.Name="Edit a property in the user review layer"
+    AutomationProperties.AutomationId="viewer.propertyEditor"
+    Width="700"
+    Height="540"
+    MinWidth="500"
+    MinHeight="420"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"
+        RowSpacing="12">
+    <TextBlock
+        x:Name="PropertyPrimPath"
+        TextWrapping="Wrap"
+        AutomationProperties.Name="Property prim path" />
+    <ComboBox
+        x:Name="PropertySelector"
+        Grid.Row="1"
+        HorizontalAlignment="Stretch"
+        AutomationProperties.Name="Review property"
+        AutomationProperties.AutomationId="edit.propertySelector" />
+    <ComboBox
+        x:Name="PropertyFieldSelector"
+        Grid.Row="2"
+        HorizontalAlignment="Stretch"
+        AutomationProperties.Name="Default or current time sample" />
+    <TextBlock
+        x:Name="PropertyComposedValue"
+        Grid.Row="3"
+        Classes="viewer-secondary"
+        TextWrapping="Wrap"
+        AutomationProperties.Name="Read-only composed display value" />
+    <TextBlock
+        x:Name="PropertyTargetState"
+        Grid.Row="4"
+        TextWrapping="Wrap"
+        AutomationProperties.Name="Exact review-layer authored state" />
+    <Grid Grid.Row="5" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+      <TextBox
+        x:Name="PropertyValue"
+        MaxLength="4096"
+        PlaceholderText="Enter the new typed review value"
+        AutomationProperties.Name="New review property value"
+        AutomationProperties.AutomationId="edit.propertyValue" />
+      <Button
+          x:Name="ChoosePropertyAssetButton"
+          Grid.Column="1"
+          Content="Choose asset..."
+          IsVisible="False"
+          IsEnabled="False"
+          AutomationProperties.Name="Choose an asset path for this review property"
+          ToolTip.Tip="Fills in an absolute asset path. Select Set to author it; choosing alone changes no opinions." />
+      <TextBlock
+          x:Name="PropertyInputHint"
+          Grid.Row="1"
+          Grid.ColumnSpan="2"
+          Classes="viewer-secondary"
+          TextWrapping="Wrap"
+          AutomationProperties.Name="Declared property input format" />
+    </Grid>
+    <TextBlock
+        x:Name="PropertyEditStatus"
+        Grid.Row="6"
+        TextWrapping="Wrap"
+        AutomationProperties.Name="Property editing status"
+        Text="Only the review layer is edited. Source and simulation layers are never targets." />
+    <Grid Grid.Row="7" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+      <Button x:Name="SetPropertyButton" Content="Set" IsEnabled="False"
+              AutomationProperties.Name="Set the review opinion" />
+      <Button x:Name="ClearPropertyButton" Grid.Column="1" Content="Clear" IsEnabled="False"
+              AutomationProperties.Name="Clear only this review field" />
+      <Button x:Name="BlockPropertyButton" Grid.Column="2" Content="Block" IsEnabled="False"
+              AutomationProperties.Name="Block this review field" />
+      <Button x:Name="RefreshPropertyButton" Grid.Column="4" Content="Refresh"
+              AutomationProperties.Name="Refresh the exact review opinion" />
+      <Button x:Name="ClosePropertyButton" Grid.Column="5" Content="Close"
+              AutomationProperties.Name="Close the property editor" />
+    </Grid>
+  </Grid>
+</Window>

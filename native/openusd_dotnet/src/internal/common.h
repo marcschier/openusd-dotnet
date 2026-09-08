@@ -211,6 +211,8 @@ private:
     TfNotice::Key _key;
 };
 
+class OpenUsdEditContext;
+
 struct openusd_stage
 {
     explicit openusd_stage(UsdStageRefPtr stage)
@@ -225,6 +227,7 @@ struct openusd_stage
     UsdStageRefPtr value;
     std::atomic<uint64_t> change_serial{0};
     std::unique_ptr<StageNoticeListener> listener;
+    mutable std::shared_ptr<OpenUsdEditContext> edit_context;
 };
 
 struct openusd_ts_spline
@@ -267,7 +270,7 @@ struct openusd_payload_arc_list
 
 namespace
 {
-constexpr uint32_t DataAbiVersion = 17;
+constexpr uint32_t DataAbiVersion = 24;
 constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_STRING_LIST_V2 |
     OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -294,7 +297,14 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
     OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION |
     OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION |
-    OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY;
+    OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY |
+    OPENUSD_CAPABILITY_RENDER_SPECIFICATION_QUERY |
+    OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS |
+    OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT |
+    OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION |
+    OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT |
+    OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
+    OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

@@ -4,6 +4,7 @@ Use this guide to trace renderer-neutral state through Storm or the hdSilk comma
 find the backend selection, fallback, picking, presentation, and platform evidence details.
 
 **On this page:** [Backend flow](#backend-flow) ·
+[Authored product preparation](#authored-product-preparation) ·
 [Headless CI rendering](#headless-ci-rendering-on-linux) ·
 [hdSilk shader pipeline cache](#hdsilk-shader-pipeline-cache) ·
 [Picking](#renderer-neutral-picking-contract) ·
@@ -35,6 +36,214 @@ crash.
 
 Hydra/Storm is the primary viewer renderer. The fallback is a custom Hydra renderer that emits dirty
 scene updates into native-owned command pages consumed by managed Silk.NET code.
+
+## Authored product preparation
+
+These interfaces are unreleased source additions and require the current matching data ABI 24 shim.
+The published `0.14.0-alpha` Core runtime provides data ABI 17 and cannot serve this query.
+The storage-admission SDK profile admits resident USD/review values, bounded USDC/crate values,
+and bounded token-array edits before native specification evaluation. Crate admission uses the
+actual opened backing mapping and current dirty overrides, not a reopened pathname or file timestamp.
+Source visits, element/text/decode work, repeated materialization and intermediate array sizes are
+bounded; unknown stores, callback-backed assets, unsupported values and over-budget work are refused
+instead of materialized implicitly. This is not a claim of complete UsdRender input support.
+
+The storage-admission SDK and its native shim are a matched pair. Their source patch identity,
+accessor version, installed headers and SDK binary are checked by the native build; the data ABI
+alone does not make an older SDK interchangeable with that pair.
+
+`OpenUsd.Render` exposes the bounded native `UsdRenderComputeSpec` snapshot through
+`stage.GetRenderSpecification()`. It returns null only when no default settings opinion is
+authored; explicit or authored-invalid selections fail instead of silently choosing a different
+product. The source snapshot retains products, ordered/shared render variables, purpose filters,
+colour-space requests, and unevaluated custom setting names.
+
+The authored-product conformance cases exercise both USDA and actual USDC: sampled cameras retain
+their frame-time behavior, source bytes remain unchanged, and D3D12/WARP and Vulkan/SwiftShader crops
+match the corresponding full-frame pixels rather than a resized image. Those Windows software-device
+results do not establish vendor-device, Metal, or non-Windows execution.
+
+`RenderProductRequest` selects one of those products without changing the snapshot.
+`RenderProductOverrides` records explicit camera, resolution, pixel-aspect, conform-policy and
+data-window overrides separately from authored values. Null overrides preserve the authored
+choice. Frame preparation samples the effective camera at the requested time:
+
+```csharp
+using OpenUsd.Render;
+using OpenUsd.Rendering;
+
+RenderPreparedFrame frame = await scheduler.InvokeAsync(stage =>
+{
+    UsdRenderSpecification specification = stage.GetRenderSpecification()
+        ?? throw new InvalidOperationException("No default render settings are authored.");
+    var request = new RenderProductRequest(specification, productIndex: 0);
+    return request.PrepareFrame(stage, timeCode: 24);
+});
+```
+
+The specification, request and prepared frame are immutable, scheduler-detached values. Their
+collection views do not expose mutable storage through setters or `ICollection.SyncRoot`, so output
+declarations and purpose filters cannot change after admission. Prepared geometry
+includes conformed view/projection matrices, cropped/overscanned pixel dimensions, the data
+window's bottom-left raster origin, and the effective pixel aspect ratio. The five standard
+OpenUSD conform policies preserve off-axis camera offsets. Pixel-center inclusion is minimum
+inclusive and maximum exclusive, so adjacent tiles of an odd-width image do not duplicate a
+boundary pixel. Empty or unrepresentable pixel extents are explicit errors, not clamped output.
+
+Native specification aperture metadata describes default time. Preparation uses the actual
+camera sample instead, including animated aperture and parent/world transforms. A detached
+camera/transform overload is also available to hosts that already hold a camera sample.
+Stage-based preparation currently refuses authored extra `clippingPlanes` rather than silently
+dropping geometry clipping that its camera data interface cannot transfer.
+
+**Preparation is not rendering or output execution.** Variables with unknown sources, including
+LPEs, retain their original declarations; they are never relabeled as beauty. Custom setting names,
+material-binding purposes, rendering colour space, motion blur and depth-of-field requests remain
+in the request for an executing adapter to honor or explicitly refuse. This layer creates no
+output files, executes no RenderPass commands, and does not yet provide a batch job runner,
+new AOV render targets, or automatic Viewer/MCP product execution.
+
+The D3D12 and Vulkan conformance path consumes prepared camera/size/time values through the
+existing retained capturer. It compares an asymmetric 60x36 product crop with the matching
+region of a 96x96 full raster and rejects a resize using the uncropped camera as a negative
+control. This proves raster geometry integration, not EXR writing or fulfillment of other AOVs.
+
+### Bounded disk image jobs
+
+`RenderDiskJob.Execute` consumes a bounded immutable list of `StageRenderState` requests and an
+`IRenderJobFrameSource`. It executes on the calling thread so adapters can retain graphics-thread
+ownership, then writes one RGBA8 PNG at a time without retaining image buffers in its results.
+The caller owns the source; the engine does not dispose it or mutate a USD stage.
+
+The default hard limits are 4096 frames, 8192 pixels per side, 64 MiB per image and 4 GiB of total
+encoded output, including the manifest. Tighter caller limits are supported. Image dimensions must
+match the request. Filenames are generated from frame indexes, never scene-authored product paths.
+`manifest.json` retains camera matrices/clip planes, time, stage and renderer-state revision,
+display/purpose/draw settings, explicit colour/OCIO settings, bounded selection identity and SHA256.
+The state revision is not mislabeled as an independently observed native stage revision.
+
+Files are written into a private sibling directory. Only the completed job is moved to its new final
+directory; existing directories are refused, and cancellation/render/encoding/quota failures remove
+only owned staging output. Encoding and checksum operations preserve explicit RGBA row order and do
+not apply another display transform. Adapters remain responsible for honoring the requested state
+and maintaining their scene/revision authority and renderer lifetime.
+
+On Windows, publication and staging cleanup tolerate short directory-sharing conflicts with four
+bounded waits totaling 300 ms. Publication remains cancellation-aware and create-only; other errors
+and persistent conflicts still fail. Cleanup drains its bounded sharing retry even after cancellation.
+
+This sequence API is an execution foundation, not implicit support for arbitrary authored
+render variables, arbitrary HDR containers, depth of field, motion blur or scene-supplied RenderPass commands. Product
+adapters must honor or explicitly refuse additional semantics before submitting prepared states.
+
+The additive `includeDeviceDepth` request overload requires a `RenderJobDeviceDepth` plane from
+each source frame. The original request constructor remains color-only. Depth requests charge
+20 managed bytes per pixel (including HDR staging and a selection RGBA upload copy) before rendering.
+Both encoded planes count toward the frame/job byte quotas.
+Missing, mismatched, non-finite or out-of-range depth fails
+the job rather than publishing color as a substitute.
+
+Depth is stored in generated `.device-depth.f32` files as exact packed top-down float32
+little-endian data. Each plane has its own byte length and SHA256 in the manifest, with the explicit
+`normalized-device-depth-zero-to-one` convention, clear value one and no independent coverage claim.
+This is the actual visible-pass attachment, nonlinear in perspective, not camera-space distance,
+normals, stable identity or a display-color conversion.
+
+The additional `includeHdrColor` overload preserves actual pre-display HDR color in generated
+`.hdr.rgba16f` sidecars. `RenderJobHdrColor` borrows tightly packed top-down little-endian RGBA
+binary16 bytes from the source without copying or widening them. Every channel must be finite;
+negative values, signed zero and stored framebuffer alpha are preserved. The manifest explicitly
+records renderer-working composited color before exposure/display/selection, not named primaries
+or certified physical radiance. This raw format is not an EXR container.
+
+HDR requests use the same conservative 20-byte-per-pixel admission whether or not depth is requested.
+The display PNG, optional depth and optional HDR share the encoded frame and job limits. The original
+color-only and color/depth constructors remain unchanged, and every requested plane must be provided
+with matching dimensions. Results retain file descriptors and hashes, not HDR pixel arrays.
+
+The overload accepting `RenderHdrColorFormat.Exr` writes `.hdr.exr` instead of raw half bytes,
+using the matching [Data ABI 24 encoder](image-exr-output.md). Existing overloads keep raw HDR
+and PNG defaults unchanged. EXR is opt-in, requires `includeHdrColor: true` and the Windows x64
+encoder profile, and borrows the same half plane without widening or copying it. Its lossless
+ZIPS output has equal origin-zero windows and square pixels, with unspecified primaries and
+stored alpha association. It is not a conversion to an authored render-product color space.
+
+The job gives EXR only the encoded budget remaining after PNG and depth, accounts its actual
+encoded extent, durably flushes and hashes it before publishing the complete directory. Native
+codec scratch and kernel cache are outside the managed raster and encoded-file quotas. EXR quota,
+finite-sample, cancellation or I/O failures cannot publish an apparently complete PNG-only job.
+The frame descriptor and manifest explicitly identify the chosen HDR format.
+
+`SilkFrameCapturer.CaptureWithHdrColor` and `SilkFrameCapture.CaptureRetainedWithHdrColor` provide these
+actual samples alongside unchanged RGBA8, with optional depth and CPU OCIO overloads. They transfer
+the original half readback array rather than reconstructing HDR from display bytes. GPU display
+transforms capture this completed frame's actual HDR scene target after submission, never a cached
+target from an earlier frame. Failed GPU preparation refuses HDR after draining the fallback render;
+ordinary non-HDR fallback remains unchanged. Single-mesh and batched drawing share that completion
+path. Custom retained renderers and simultaneous CPU OCIO/GPU display transforms are refused.
+A finite attachment value cannot reveal an overflow already saturated before storage.
+
+Windows rendering tests honor `OPENUSD_PARITY_RUNTIME_ROOT` as an explicit complete runtime
+before the repository install. Set it when testing an isolated matching shim; an invalid explicit
+root fails rather than falling back to an older installed ABI. Set `OPENUSD_EXR_EXECUTION_REQUIRED=1`
+to require the native EXR job cases instead of their explicit unsupported-prerequisite skips.
+
+## Native Storm AOV snapshots
+
+These unreleased APIs require direct Storm ABI 9 and its matching Imaging runtime. Storm-child
+ABI 8 and hdSilk contracts are unchanged by these APIs. Published `0.14.0-alpha` Storm assets remain
+ABI 8 and cannot serve this API.
+
+`OpenUsdStormRenderer.RenderAovs` performs one completed render and returns a detached typed snapshot.
+Call it on the renderer's creation thread with its original OpenGL context current. The framebuffer
+is caller-owned; ordinary color presentation and subsequent picking remain available.
+
+```csharp
+using OpenUsd.Rendering.Storm;
+
+StormAovSnapshot snapshot = renderer.RenderAovs(new StormAovRequest(
+    512, 512, framebuffer: 0,
+    outputs: [StormAovKind.Color, StormAovKind.Depth, StormAovKind.PrimId, StormAovKind.InstanceId],
+    camera: camera,
+    timeCode: 24,
+    includeIdentities: true));
+
+StormAovOutput<float> depth = snapshot.GetOutput<float>(StormAovKind.Depth);
+float centerDepth = depth.GetPixel(256, 256);
+StormAovIdentity? identity = snapshot.GetIdentity(256, 256);
+```
+
+Output availability is per plane, not inferred from its requested name:
+
+| Output | Native representation and meaning |
+| --- | --- |
+| Color | `StormAovColor`: native RGBA binary16 render color, not a presented RGBA8 capture. |
+| Depth | Float32 OpenGL window depth in `[0,1]`; near is zero and far/clear is one. |
+| PrimId / InstanceId | Signed Int32 snapshot-local Hydra IDs; `-1` is background. |
+| ElementId | Explicitly `Absent` on the pinned task-controller route. |
+| Neye | `StormAovNeye`: raw UNorm8 RGBA bytes, not general signed float normals. |
+| Normal | Explicitly `Unsupported`; color is never substituted for it. |
+
+Rows are tightly packed and top-down. Optional identity decoding requires both ID outputs and
+returns canonical USD paths with ordered native instancer context. Flattened decode ordinals and
+local context indices are distinct; neither is a promise of authored point-instancer `ids`.
+Depth is not metric camera distance or an independent coverage mask.
+`CallerStateRevision` and `CallerSceneRevision` remain opaque caller claims. `AppliedCamera`
+separately reports the exact double-precision matrices actually used by native rendering.
+
+Admission permits at most eight output slots, 4096 pixels per dimension and 1,048,576 pixels total.
+Identity work is limited to 4096 distinct native ID pairs, 16,384 context entries and 1 MiB of UTF-8
+paths. Known native copy/readback storage and conservative managed snapshot storage each have a
+128-MiB ceiling. These are not whole-scene, GPU-memory, process-RSS, opaque SDK decoder or driver-wait
+guarantees. A native owner is released after strict validation and copying; returned snapshots retain
+no GPU/native owner and survive renderer teardown. Failed capture invalidates the managed pick binding
+rather than retaining a potentially stale frame.
+
+The Windows proof exercises actual RTX 5070 output, literal depth, distinct decoded instances,
+the million-pixel boundary, ordinary framebuffer preservation, C11 layouts and a clean package-only
+NativeAOT consumer. This does not establish Linux/CGL execution or full component-selection parity.
+The versioned public C contract is `openusd_storm_aov.h`; the protected SDK engine-extension seam used
+to keep MRT color presentation and framebuffer sample mode aligned must be revalidated on SDK upgrades.
 
 ## Headless CI rendering on Linux
 
@@ -158,6 +367,32 @@ would receive no geometry. `CaptureRetained` instead renders the existing `ISilk
 synchronizing hdSilk, using the retained scene, camera, time code, and complexity from the most recently presented
 frame. Because no command page is consumed, the result reports `CommandCount = 0` and echoes the caller-supplied page
 revision.
+
+### Bounded PNG stream output
+
+`PngRgba8Writer.Write` in `OpenUsd.Rendering` writes tightly packed, top-down RGBA8 pixels to a
+caller-owned stream without seeking or closing it. It accepts an encoded-byte budget and cancellation
+token, returns the bytes written, and rejects invalid dimensions, mismatched storage and input above
+256 MiB before writing. Compression uses 32-KiB IDAT chunks instead of image-sized filtering and
+compressed-data scratch buffers.
+
+An overload accepts `Rgba8RowOrder.TopDown` or `Rgba8RowOrder.BottomUp`. PNG output is always top-down;
+the encoder selects source rows directly rather than allocating a flipped image. Existing calls
+without the row-order argument retain their top-down behavior and deterministic bytes.
+
+The writer preserves pixel and alpha bytes; it does not apply exposure, OCIO, tone mapping or another
+display transform. Select those in the capture request first. A failed or canceled write can leave
+partial output, so file publication must use caller-owned staging and atomic replacement.
+
+The MCP PNG encoder delegates to this shared implementation. Its existing small-image deterministic
+fixture is unchanged; larger images can have different encoded bytes because their compressed data is
+split into bounded chunks, while decoding preserves the same RGBA pixels. This is PNG output only,
+not HDR/EXR, arbitrary AOV execution or an unbounded sequence-export job.
+
+MCP decoding and Viewer comparison share the bounded RGBA PNG reader. It validates dimensions and
+chunks before allocating pixels, supports the five standard scanline filters, and reconstructs rows
+in-place without concatenating IDAT payloads or retaining a full filtered image. PNG pixels and alpha
+are not transformed. The Viewer applies its stricter 64-MiB/8192-side/16-megapixel input policy.
 
 ### CPU capture with OpenColorIO
 
@@ -947,9 +1182,10 @@ allocates one R32Float 3D texture through `ISilkVolumeTextureGraphicsDevice`, up
 carries no 3D-texture concept. Vulkan and D3D12 both implement the pair, and D3D12 repacks each depth slice into the
 row pitch `GetCopyableFootprints` reports. Metal implements it as an `MTLTextureType.Type3D` `R32Float` texture filled
 by a single `MTLBlitCommandEncoder` buffer copy, and binds it at Metal texture index 9 with sampler index 4, which is
-what the checked `mesh.volume.fragment.metal` declares. The `macos-arm64` render job runs the same sampled and uniform
-gates against that path, but no run has recorded executed evidence yet, so Metal sampled volumes carry no rendering
-support claim; see [Testing](testing.md) for the evidence classification and the promotion step.
+what the checked `mesh.volume.fragment.metal` declares. The `macos-arm64` render job requires the same sampled and
+uniform gates against that path. Release run `33931868184`, attempt 1, recorded both as executed; see
+[Testing](testing.md) for their measured results and the limits of that evidence. The separate depth-integration gate
+remains a D3D12/Vulkan claim, not a consequence of the Metal sampled-density result.
 A device that does not implement `ISilkVolumeTextureGraphicsDevice` never selects the sampled-volume path at all: the
 surface constants report the volume as unsampled and the mesh keeps its authored uniform density, rather than binding
 a texture the backend cannot create.
@@ -3810,9 +4046,9 @@ through material inputs is still not OCIO and would still be a false completion 
 Serialization isolates failures per prim. A record whose points, indices, or triangle mapping do not validate is
 skipped with a warning and counted by a rejected-mesh counter instead of aborting the page, so one malformed prim in
 a production asset cannot blank an entire frame. Indices are 32-bit end to end across the wire, retained managed
-state, and the D3D12, Vulkan, and Metal backends; the previous 65,536-vertex ceiling is gone. hdSilk surface shading
-remains an absolute-normal debug visualization tinted by `displayColor` until the material and lighting parity slices
-land.
+state, and the D3D12, Vulkan, and Metal backends; the previous 65,536-vertex ceiling is gone. hdSilk shades through its
+material, texture, lighting and display-transform paths. Geometry-only comparisons remain useful, but cannot establish
+material fidelity or replace the feature-specific colour and sensitivity gates described above.
 
 Managed `SilkMeshData` owns defensive immutable copies indexed by authoritative path and explicit prim ID; hashes are
 path-derived secondary indexes and different paths with the same hash are rejected. It computes one deterministic 64-bit

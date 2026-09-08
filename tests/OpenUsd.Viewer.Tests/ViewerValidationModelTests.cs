@@ -303,7 +303,7 @@ public sealed class ViewerValidationModelTests
         // disposed, so no run can resume against a disposed scheduler.
         int stopValidation = window.IndexOf("await StopValidationAsync();", StringComparison.Ordinal);
         int disposeCoordinator = window.IndexOf(
-            "await _coordinator.DisposeAsync();",
+            "await _coordinator.DisposeAsync(_documentRetirementLease);",
             StringComparison.Ordinal);
         await Assert.That(stopValidation).IsGreaterThan(0);
         await Assert.That(disposeCoordinator).IsGreaterThan(stopValidation)

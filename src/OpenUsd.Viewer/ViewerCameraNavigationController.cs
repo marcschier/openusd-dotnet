@@ -27,6 +27,16 @@ internal sealed class ViewerCameraNavigationController
 
     internal CameraState Camera => _state.CreateCameraState();
 
+    internal void RestoreSavedViewState(ViewerCameraNavigationState state, ViewportDimensions viewport)
+    {
+        if (state.AspectRatio != ViewerCameraNavigationMath.AspectRatio(viewport))
+        {
+            throw new ArgumentException("The saved logical camera and viewport aspect differ.", nameof(state));
+        }
+        _viewport = viewport;
+        _state = state;
+    }
+
     internal bool Orbit(float yawDelta, float pitchDelta)
     {
         ThrowIfNotFinite(yawDelta, nameof(yawDelta));

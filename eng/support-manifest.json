@@ -60,6 +60,128 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "native-render-specification-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_RENDER_SPECIFICATION_QUERY",
+          "description": "One owned bounded detached UsdRenderComputeSpec snapshot at uniform/default time: native inheritance, forwarded products/vars/camera, ordered shared variables, conformance/crop, purposes and unevaluated custom names. Source/role/cache and structured selected/ancestor/layer-stack/property/target errors reject partial requests; valid targetless and stronger opinions remain valid. Resident SdfData/SdfUsdaData/exact CountedData and bounded purpose-array edits are admitted without rewriting opinions. Actual filesystem USDC payloads additionally use the isolated version-1 storage-admission SDK: exact source patches, installed headers and SDK binary are pinned at configure/every build; actual retained mapping/dirty generation, serialized lengths, decompression buffers, native list composition and repeated reads are admitted before allocation. Item/text/work/peak/total quotas and sticky refusal prevent false empty success; unknown stores/types remain unsupported. Windows native/Core/NativeAOT/package-only data execution includes real 1MiB negative controls, mapping replacement and dirty overrides. Existing review-camera/sampled-camera/D3D12/Vulkan crop evidence remains separate from the new data profile. No RenderPass, arbitrary output/AOV execution, universal plugin sandbox, Linux/macOS execution or new-profile hardware-rendering claim.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdRenderSpecificationTests.cs",
+            "tests/OpenUsd.Tests/UsdRenderSpecificationNativeTests.cs",
+            "tests/OpenUsd.Interop.Tests/RenderSpecificationDecodeTests.cs",
+            "tests/OpenUsd.NativeProbe/RenderSpecificationProbe.cs",
+            "native/openusd_dotnet/tests/render_specification_probe.cpp",
+            "native/openusd_dotnet/tests/render_admission_probe.cpp",
+            "native/openusd_dotnet/tests/render_deferred_probe.cpp",
+            "native/openusd_dotnet/tests/render_crate_admission_probe.cpp",
+            "native/openusd_dotnet/tests/render_storage_admission_probe.cpp",
+            "tests/OpenUsd.Tests/UsdRenderDeferredNativeTests.cs",
+            "tests/OpenUsd.NativeProbe/RenderDeferredProbe.cs",
+            "tests/OpenUsd.Package.Tests/RenderDeferredConsumerSource.cs",
+            "eng/test-sdk-storage-admission.ps1"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "layer-authored-edit-transactions",
+          "nativeCapability": "OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS",
+          "description": "Exact target-layer authored snapshots and affected-state compare/apply/undo with logical identity/generation checks, bounded typed packets, explicit rollback and ownership-safe cleanup. Owned counted user-review layer is distinct from session/physics; disjoint edits remain allowed. Its exact resident backing is also accepted by render admission without a general subclass bypass. Bounded checkpoint/native byte export and conditional saved-baseline acknowledgement are document operations, not full-layer per-edit undo. Generic imported layers remain capture-only. Unsupported values/backings/relative assets/pseudo-root text export and cross-process recovery rebind are not claimed. Windows native, managed and NativeAOT seams execute; other platforms retain portable code/gates without claimed local execution.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/openusd_dotnet/tests/layer_edit_probe.cpp",
+            "native/openusd_dotnet/tests/layer_edit_cases.cpp",
+            "tests/OpenUsd.Tests/UsdLayerEditingTests.cs",
+            "tests/OpenUsd.Tests/UsdLayerEditCodecTests.cs",
+            "tests/OpenUsd.Tests/UsdLayerEditingNativeTests.cs",
+            "tests/OpenUsd.Interop.Tests/LayerEditingBufferTests.cs",
+            "tests/OpenUsd.NativeProbe/LayerEditingProbe.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "portable-review-document",
+          "nativeCapability": "OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT",
+          "description": "Explicit verified OpenForReview origin binding and native URD1 review-only sidecars. Actual bounded filesystem USDA/text-USD source/dependency bytes are admitted before authoring; unknown/stale caches cannot gain retrospective proof. Exact authored metadata, references/payloads/sublayers/variants, concrete relative assets and source root metadata survive same/separate-process native and NativeAOT roundtrips without source graph/file rewriting. Import requires a pristine verified target and rolls back failed owned installation; reading/importing cannot manufacture same-session saved receipts. Windows stable-read leases are required for verified opening; encoding is platform-neutral but non-Windows verified opening is not claimed. Crate/custom/URI/package/template/UDIM/value-clip/inherit/specialize/relocate portability, unsafe anchor-changing aliases, generic source saving and dirty legacy replay remain unsupported. Host publication/physical alias/lifecycle policy stays caller-owned.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/openusd_dotnet/tests/review_probe.cpp",
+            "native/openusd_dotnet/tests/review_negative_cases.cpp",
+            "native/openusd_dotnet/tests/review_bounds_cases.cpp",
+            "tests/OpenUsd.Tests/UsdReviewDocumentNativeTests.cs",
+            "tests/OpenUsd.Tests/UsdReviewDocumentCodecTests.cs",
+            "tests/OpenUsd.Interop.Tests/ReviewDocumentBufferTests.cs",
+            "tests/OpenUsd.NativeProbe/ReviewDocumentProbe.cs",
+            "tests/OpenUsd.Package.Tests/PortableReviewConsumerSource.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "portable-review-document-inspection",
+          "nativeCapability": "OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION",
+          "description": "Metadata-only source/provenance discovery from a user-selected URD1 sidecar through the existing native bounded decoder. RDI1 and deeply detached UsdReviewDocumentInfo contain recorded claims only, no importable payload or save receipt. Inspection retains checksum/type/extent/path-depth/unsupported-opinion guards using lexical paths, pinned built-in field/type rules and synchronous temporary storage, without filesystem-backed schema/plugin discovery, source/dependency/file/stage access or implicit replay. Fresh-process native probes observe all six Windows process I/O counters through inspection/release/post-return; missing/locked source and untrusted network fixtures also cover separation. Unknown metadata stays bounded typed claims; caller path policy and explicit Read/OpenForReview/Import, including plugin-defined field validation, remain required. Does not broaden Unix verified-origin, crate or other portable input profiles.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/openusd_dotnet/tests/review_cold_inspection_probe.cpp",
+            "native/openusd_dotnet/tests/review_bounds_cases.cpp",
+            "tests/OpenUsd.Tests/UsdReviewDocumentInspectionTests.cs",
+            "tests/OpenUsd.Tests/UsdReviewDocumentNativeTests.cs",
+            "tests/OpenUsd.NativeProbe/ReviewDocumentProbe.cs",
+            "tests/OpenUsd.Package.Tests/PortableReviewConsumerSource.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "hierarchy-snapshot",
+          "nativeCapability": "OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT",
+          "description": "One owned native hierarchy query plus release, with immutable scheduler-safe Core DTOs. Native all-prim preorder includes inactive/over/class metadata and separate deduplicated shared/nested prototypes, effective payload flags and Pcp-composed inline variant selectors. Iterative depth and explicit prim/text/variant/metadata-work admission quotas refuse with cleared outputs, not partial rows. Paths are built from bounded borrowed tokens without SdfPath.GetString; source variant lists are admitted before allocating SDK enumeration. Ordinary filesystem USDA and USDC hierarchy work. Deferred crate variantSetNames or unknown stores explicitly mark affected selectors Deferred and snapshot IsComplete=false; deferred expansion is not claimed. Stage metadata/content and reviewed editing/inspection contracts are unchanged. Windows native, managed, NativeAOT and package-consumer seams execute; Linux/macOS execution is not claimed.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/openusd_dotnet/tests/hierarchy_probe.cpp",
+            "tests/OpenUsd.Tests/UsdHierarchySnapshotNativeTests.cs",
+            "tests/OpenUsd.Tests/UsdHierarchySnapshotNativeTests.Bounds.cs",
+            "tests/OpenUsd.Tests/UsdHierarchySnapshotNativeTests.Variants.cs",
+            "tests/OpenUsd.Tests/UsdHierarchyLimitsTests.cs",
+            "tests/OpenUsd.Interop.Tests/HierarchySnapshotDecodeTests.cs",
+            "tests/OpenUsd.NativeProbe/HierarchyProbe.cs",
+            "tests/OpenUsd.Package.Tests/HierarchyConsumerSource.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "prim-property-snapshot",
+          "nativeCapability": "OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT",
+          "description": "One owned bounded selected-prim query plus release, with immutable scheduler-safe Core attribute/relationship DTOs. Complete ordinal UTF-8 property rows, typed scalar/array prefixes, native composed resolve/value/block/fallback/authored distinctions, winning layer/spec provenance, exact sample/target counts when proven, direct connection identities and native anchored asset fields. Borrowed resident Sdf/Pcp admission precedes copies and source-path diagnostics; Windows query-only 1MiB memory probes cover 64MiB values/source names and large property/target/sample lists. Ordinary USDA and common USDC scalar/default/sample cases work; deferred crate arrays/path lists/sample strings, clips, splines, array edits, interpolated arrays and asset expressions are explicit, never empty complete success. Native target mapping errors and array edits outside the queried sample defer unproven domains. Inspection is not authored edit/undo authority and does not alter reviewed hierarchy, review persistence or no-I/O inspection semantics. Windows native, managed, NativeAOT and package-only seams execute; other platforms are not claimed.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/openusd_dotnet/tests/property_inspection_probe.cpp",
+            "native/openusd_dotnet/tests/property_admission_probe.cpp",
+            "native/openusd_dotnet/tests/property_composition_probe.cpp",
+            "native/openusd_dotnet/tests/property_pcp_headers_probe.cmake",
+            "tests/OpenUsd.Tests/UsdPrimPropertySnapshotNativeTests.cs",
+            "tests/OpenUsd.Tests/UsdPrimPropertySnapshotNativeTests.Values.cs",
+            "tests/OpenUsd.Tests/UsdPrimPropertySnapshotNativeTests.Bounds.cs",
+            "tests/OpenUsd.Tests/UsdPrimPropertySnapshotNativeTests.Composition.cs",
+            "tests/OpenUsd.Tests/UsdPropertyInspectionLimitsTests.cs",
+            "tests/OpenUsd.Interop.Tests/PropertySnapshotDecodeTests.cs",
+            "tests/OpenUsd.NativeProbe/PropertyInspectionProbe.cs",
+            "tests/OpenUsd.Package.Tests/PropertyInspectionConsumerSource.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "image-exr-output",
+          "nativeCapability": "OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT",
+          "description": "Data ABI24 guarded bulk RGBA16Float EXR output with version-1 112/40-byte request/result packets and a dedicated encoding-status domain. Synchronous caller-owned input and file handle, bounded logical encoded extent, finite half validation and cooperative cancellation without per-pixel interop. Windows x64 buffered writable empty regular files are implemented; the portable declaration/capability does not claim a POSIX or other-architecture encoder. Native codec heap is outside the encoded-byte ceiling. Canonical mirror/layout generation, typed mismatch rejection, complete Core codec closure and exact-bit clean-feed NativeAOT execution cover the current profile.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Interop.Tests/NativeContractTests.cs",
+            "eng/test-image-exr-interop.py",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.Exr.cs",
+            "tests/OpenUsd.Exr.NativeProbe/Program.cs",
+            "tests/OpenUsd.Exr.NativeProbe/ExrScanlineOracle.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "shared-stage-access",
           "nativeCapability": "OPENUSD_CAPABILITY_SHARED_STAGE_ACCESS",
           "description": "Shared render-source stage access token",
@@ -588,6 +710,19 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "storm-aov-snapshots",
+          "description": "Unreleased direct Storm ABI 9 owned bulk AOV snapshots with typed binary16 RGBA, normalized window depth, native prim/instance IDs and canonical-path/context decoding. Raw UNorm8 Neye is preserved; plain normal is Unsupported and elementId is Absent. Tight top-down outputs, exact native applied camera and explicit caller revision claims are bounded to 8 output slots, 4096 per dimension, 1048576 pixels, 4096 unique identities, 16384 contexts, 1 MiB UTF-8 paths and separate 128 MiB known-native/managed storage ceilings. Windows RTX 5070 native and package-only NativeAOT execution includes the million-pixel case and ordinary framebuffer preservation; this does not claim Linux/CGL execution, stable authored integer IDs or general normals.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/StormAovRequestTests.cs",
+            "tests/OpenUsd.Rendering.Tests/StormAovDecoderTests.cs",
+            "tests/OpenUsd.Rendering.Tests/StormAovOwnershipTests.cs",
+            "tests/OpenUsd.StormAov.NativeProbe/Program.cs",
+            "native/openusd_hydra/tests/storm_aov_public_abi_probe.c"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "d3d12-offscreen",
           "description": "D3D12 WARP offscreen rendering with Hydra/hdSilk pages, picking, and compute",
           "status": "workflow-gated",
@@ -805,11 +940,11 @@
         },
         {
           "id": "usdvol-density",
-          "description": "UsdVol density rendering: single OpenVDBAsset density field, R32 3D texture, and exact layer-centre integration for grids up to 512 layers deep; deeper grids are rejected explicitly rather than silently undersampled. The Vulkan legs are gated on win-x64 and linux-x64 and the D3D12 WARP leg on win-x64 only, because Direct3D 12 exists only on Windows. The gates include a 96-layer thin-feature recovery, a cross-backend image comparison, because a backend that ignores the sampled grid still passes its own sampled-versus-uniform check, and a pipeline-selection gate that requires an impossible volume/material-map combination to be reported rather than shaded flat",
+          "description": "UsdVol density rendering: single OpenVDBAsset density field, R32 3D texture, and bounded layer-centre integration for grids up to 512 layers deep; deeper grids are rejected explicitly rather than silently undersampled. Uniform and sampled-density gates execute on Vulkan for win-x64/linux-x64, D3D12 WARP for win-x64, and Metal for osx-arm64. Release run 33931868184, attempt 1, at f33ba5672b8cf854280c3562725475c5ee52664d recorded executed Metal evidence without capability skips; both Metal cases are now required. D3D12/Vulkan additionally gate 96-layer thin-feature recovery, exact depth integration, cross-backend image agreement and rejection of impossible volume/material-map combinations",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
-            "render.yml": ["windows-wgl", "linux-presentation"]
+            "render.yml": ["windows-wgl", "linux-presentation", "macos-arm64"]
           },
           "evidenceTests": [
             "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs",
@@ -820,7 +955,8 @@
             "tests/OpenUsd.Rendering.ConformanceTests/VolumePipelineSelectionConformanceTests.cs",
             "tests/OpenUsd.Rendering.ConformanceTests/BackendShaderRegisterConformanceTests.cs"
           ],
-          "evidencePlatforms": ["win-x64", "linux-x64"]
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"],
+          "exclusionReason": "Only one OpenVDB density field is supported, not general multi-field volume shading. Metal's executed uniform/sampled cases do not establish the separate thin-depth or impossible-material-combination gates, GPU OCIO, GPU deformation, raster shadows, component picking, or Storm/Metal parity."
         },
         {
           "id": "cpu-skinning",
@@ -1042,6 +1178,32 @@
             "tests/OpenUsd.Rendering.Tests/SilkOcioProcessorTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "bounded-hdr-depth-capture",
+          "description": "Retained and incremental same-frame RGBA8, finite pre-display RGBA16Float and optional normalized D32 capture through CPU conversion, CPU OCIO or a completed GPU display-transform target. HDR is never reconstructed from PNG or read from a stale cached target. Single-mesh and batched rendering share completion, readback, finite validation and failure/cancellation handling. Raw working primaries and stored framebuffer alpha remain explicit; the managed capture-pixel charge is 20 bytes per pixel, not a whole-process or native-codec heap bound. Windows WARP/SwiftShader and package-only NativeAOT execution are recorded; Metal execution is not claimed.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkHdrColorCaptureTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkHdrColorCaptureNativeTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkGpuHdrColorCaptureTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkSingleMeshGpuHdrCaptureTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "bounded-exr-output",
+          "description": "Renderer-neutral lossless RGBA16Float EXR encoding through Data ABI24 and capability bit32, with an initial Windows x64 synchronous buffered writable empty regular-file profile. One borrowed half plane and file handle cross the C ABI; finite negatives, HDR values, signed zero and stored alpha are preserved without an image-sized copy or color conversion. Public writer, shared disk jobs and MCP opt-in EXR resources preserve exact encoded-byte ceilings, cancellation/drain, generated names, per-plane hashes and atomic publication. Default PNG/raw HDR behavior is unchanged. Origin-zero equal windows and square pixels only; primaries and alpha association remain unspecified by default. Encoded and managed-raster quotas do not bound native codec heap. Independent half-bit decoding and actual clean-feed NativeAOT execution cover Windows; POSIX/macOS/ARM64 encoders and full authored-product semantics are not claimed.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/RenderDiskJobExrTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.cs",
+            "tests/OpenUsd.Mcp.Tests/OpenUsdMcpServiceTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.Exr.cs",
+            "tests/OpenUsd.Exr.NativeProbe/ExrScanlineOracle.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
         },
         {
           "id": "texture-residency-budgets",
@@ -1275,6 +1437,33 @@
             "tests/OpenUsd.Viewer.Tests/ViewerTimelineModelTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "viewer-image-sequences",
+          "description": "Owned themed image-sequence dialog with sampled authored cameras, PNG by default and optional HDR/depth sidecars. HDR format defaults to raw binary16 and offers explicit Windows x64 lossless EXR with unspecified working primaries and stored alpha association. Immutable admitted choices, bounded progress/cancellation, atomic new-directory publication and exact operator-state restoration precede publication. GPU display/view/look/exposure and selection affect PNG without changing raw HDR/depth; independent EXR decoding matches every raw half bit on CPU/GPU display paths. Failed transform preparation publishes no fallback HDR. Native evidence covers the D3D12 Viewer binding, close/reload/source-change drainage and surviving-camera-edit reconciliation. Other sequence bindings, arbitrary EXR product windows/metadata, metric depth and named working primaries are not claimed; native codec heap is not quota-certified.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Planes.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Exr.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Coordinator.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "review-camera-bookmarks",
+          "description": "Owned themed Saved Views manager and Camera-menu/palette recall. Up to32 versioned records persist in a reserved review-owned custom uniform string[] through exact property CAS, shared Undo/Redo and verified URD save/reopen without source-file changes. Explicit free perspective/orthographic and unchanged sampled authored cameras retain exact time, matrices and aspect. Recall is navigation only; backend acceptance, cancellation, rollback, pending close/reload and retired-document refusal are checked. Pause drains queued time/camera work, and source notices preserve the newest requested sample. Automatic views, changed/missing/inactive cameras, aspect/source mismatches, namespace collisions and malformed catalogs are refused instead of substituted. Persistent saved views are limited to the verified Windows text-USD review profile, not generic DCC camera editing.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerCameraBookmarkTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCameraBookmarkNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCameraBookmarkNativeTests.Recall.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCameraBookmarkNativeTests.Transitions.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerTimelineModelTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerStageCameraTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
         },
         {
           "id": "viewer-picking",

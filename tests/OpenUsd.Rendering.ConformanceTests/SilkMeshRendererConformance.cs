@@ -662,7 +662,7 @@ internal static class SilkMeshRendererConformance
         return bytes;
     }
 
-    private static byte[] CreateRemoveCommand(ulong id, string pathValue)
+    internal static byte[] CreateRemoveCommand(ulong id, string pathValue)
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         var bytes = new byte[24 + path.Length];

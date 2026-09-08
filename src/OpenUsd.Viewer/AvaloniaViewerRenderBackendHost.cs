@@ -1054,13 +1054,29 @@ internal sealed class StormNativeHostedBackendSession(
     IViewerDisplayTransformDiagnosticsSource,
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
-    IViewerPhysicsOverrideTarget
+    IViewerPhysicsOverrideTarget,
+    IViewerFrameCaptureBackend
 {
     private StageRenderState _state = initialState;
     private SelectionState? _appliedSelection;
     private ViewerRenderedPickState? _lastRenderedPickState;
     private int _disposed;
     private long _lastReportedContextGeneration;
+
+    public bool SupportsFrameCapture => Volatile.Read(ref _disposed) == 0;
+
+    public async ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
+        int width, int height, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _ = ViewerFrameCaptureResult.GetByteCount(width, height);
+        await control.RenderFrameAsync(CurrentState, cancellationToken).ConfigureAwait(false);
+        OpenUsdStormFramebufferCapture captured =
+            await control.CaptureFramebufferAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return new ViewerFrameCaptureResult(
+            captured.Width, captured.Height, captured.RgbaPixels, ViewerFrameRowOrder.BottomUp);
+    }
 
     public bool SupportsPhysicsTransformOverrides => true;
 
@@ -1276,7 +1292,7 @@ internal sealed class StormNativeHostedBackendSession(
     }
 }
 
-internal sealed class CompositionHostedBackendSession(
+internal sealed partial class CompositionHostedBackendSession(
     RendererSwitchingViewport viewportHost,
     CompositionViewportControl control,
     SilkCompositionResources resources,
@@ -1290,11 +1306,15 @@ internal sealed class CompositionHostedBackendSession(
     IViewerFrameDiagnosticsSource,
     IViewerHydraSceneSnapshotSource,
     IViewerFrameCaptureBackend,
+    IViewerRenderSequenceCaptureBackend,
     IViewerPhysicsOverrideTarget
 {
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
     private int _disposed;
+
+    public bool SupportsFrameCapture =>
+        Volatile.Read(ref _disposed) == 0 && resources.Device is ISilkGraphicsDevice;
 
     public bool SupportsPhysicsTransformOverrides => resources.Renderer.PhysicsStage is not null;
 
@@ -1468,12 +1488,14 @@ internal sealed class CompositionHostedBackendSession(
         CancellationToken cancellationToken) =>
         resources.Renderer.PickAsync(request, cancellationToken);
 
-    public ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+    public ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
         int width,
         int height,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _ = ViewerFrameCaptureResult.GetByteCount(width, height);
         if (resources.Device is not ISilkGraphicsDevice device)
         {
             throw new NotSupportedException(
@@ -1501,7 +1523,8 @@ internal sealed class CompositionHostedBackendSession(
                     CurrentState.RenderSettings,
                     CurrentState.Time.TimeCode,
                     CurrentState.Camera);
-        return ValueTask.FromResult(capture);
+        return ValueTask.FromResult(new ViewerFrameCaptureResult(
+            capture.Width, capture.Height, capture.Rgba, ViewerFrameRowOrder.TopDown, capture.Diagnostics));
     }
 
     public async ValueTask DisposeAsync()

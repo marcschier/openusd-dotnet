@@ -24,18 +24,9 @@ internal static class NativeSearchPath
             return;
         }
 
-        string? root = FindRepositoryRoot();
-        if (root is null)
-        {
-            return;
-        }
-
-        string[] directories =
-        [
-            Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
-            Path.Combine(root, "native", "install", "win-x64", "bin"),
-            Path.Combine(root, "native", "install", "win-x64", "lib"),
-        ];
+        string[] directories = ResolveDirectories(
+            FindRepositoryRoot(),
+            Environment.GetEnvironmentVariable("OPENUSD_VIEWER_TEST_NATIVE_ROOT"));
         string prefix = string.Join(
             Path.PathSeparator,
             directories.Where(Directory.Exists).Select(Path.GetFullPath));
@@ -50,6 +41,39 @@ internal static class NativeSearchPath
             return;
         }
         Environment.SetEnvironmentVariable("PATH", prefix + Path.PathSeparator + current);
+    }
+
+    internal static string[] ResolveDirectories(string? repositoryRoot, string? configuredRoot)
+    {
+        if (configuredRoot is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(configuredRoot);
+            if (!Path.IsPathFullyQualified(configuredRoot))
+            {
+                throw new ArgumentException(
+                    "The configured Viewer test runtime must be absolute.", nameof(configuredRoot));
+            }
+            string[] configured =
+            [
+                Path.Combine(configuredRoot, "bin"),
+                Path.Combine(configuredRoot, "lib")
+            ];
+            if (configured.Any(static directory => !Directory.Exists(directory)))
+            {
+                throw new DirectoryNotFoundException("The configured Viewer test runtime requires bin and lib.");
+            }
+            return configured;
+        }
+        if (repositoryRoot is null)
+        {
+            return [];
+        }
+        return
+        [
+            Path.Combine(repositoryRoot, "native", "install", "shim", "win-x64", "bin"),
+            Path.Combine(repositoryRoot, "native", "install", "win-x64", "bin"),
+            Path.Combine(repositoryRoot, "native", "install", "win-x64", "lib")
+        ];
     }
 
     private static string? FindRepositoryRoot()

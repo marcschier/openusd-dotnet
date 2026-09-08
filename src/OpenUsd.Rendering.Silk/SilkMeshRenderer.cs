@@ -765,6 +765,16 @@ public sealed class SilkMeshRenderer :
         }
     }
 
+    internal void ValidateCaptureDevice(ISilkGraphicsDevice device)
+    {
+        if (!ReferenceEquals(_device, device))
+        {
+            throw new ArgumentException(
+                "A depth capture must use the retained renderer's graphics device.",
+                nameof(device));
+        }
+    }
+
     /// <summary>Renders retained data and services at most one queued pick pass.</summary>
     public SilkMeshRenderResult Render(
         ISilkGraphicsTexture colorTarget,
@@ -787,7 +797,16 @@ public sealed class SilkMeshRenderer :
         OpenUsdSilkPage page,
         ISilkGraphicsTexture colorTarget,
         ISilkGraphicsTexture depthTarget,
-        SilkMeshRenderOptions options)
+        SilkMeshRenderOptions options) =>
+        ApplyAndRenderForDisplayCapture(page, colorTarget, depthTarget, options, null, out _);
+
+    internal SilkMeshRenderResult ApplyAndRenderForDisplayCapture(
+        OpenUsdSilkPage page,
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture depthTarget,
+        SilkMeshRenderOptions options,
+        SilkDepthCaptureRequest? captureRequest,
+        out SilkHdrColorCaptureResult? hdrColor)
     {
         ArgumentNullException.ThrowIfNull(page);
         lock (_gate)
@@ -800,6 +819,8 @@ public sealed class SilkMeshRenderer :
                 depthTarget,
                 options,
                 pickBinding: null,
+                captureRequest,
+                out hdrColor,
                 renderSelectionOutline: false);
         }
     }
@@ -807,7 +828,15 @@ public sealed class SilkMeshRenderer :
     internal SilkMeshRenderResult RenderForDisplayCapture(
         ISilkGraphicsTexture colorTarget,
         ISilkGraphicsTexture depthTarget,
-        SilkMeshRenderOptions options)
+        SilkMeshRenderOptions options) =>
+        RenderForDisplayCapture(colorTarget, depthTarget, options, null, out _);
+
+    internal SilkMeshRenderResult RenderForDisplayCapture(
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture depthTarget,
+        SilkMeshRenderOptions options,
+        SilkDepthCaptureRequest? captureRequest,
+        out SilkHdrColorCaptureResult? hdrColor)
     {
         lock (_gate)
         {
@@ -817,6 +846,8 @@ public sealed class SilkMeshRenderer :
                 depthTarget,
                 options,
                 pickBinding: null,
+                captureRequest,
+                out hdrColor,
                 renderSelectionOutline: false);
         }
     }
@@ -912,8 +943,19 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsTexture depthTarget,
         SilkMeshRenderOptions options,
         SilkPickFrameBinding? pickBinding,
+        bool renderSelectionOutline = true) =>
+        RenderCore(displayTarget, depthTarget, options, pickBinding, null, out _, renderSelectionOutline);
+
+    private SilkMeshRenderResult RenderCore(
+        ISilkGraphicsTexture displayTarget,
+        ISilkGraphicsTexture depthTarget,
+        SilkMeshRenderOptions options,
+        SilkPickFrameBinding? pickBinding,
+        SilkDepthCaptureRequest? captureRequest,
+        out SilkHdrColorCaptureResult? hdrColor,
         bool renderSelectionOutline = true)
     {
+        hdrColor = null;
         ValidateTargets(displayTarget, depthTarget);
         ValidateOptions(options);
         SyncPhysicsDeformations();
@@ -1166,45 +1208,68 @@ public sealed class SilkMeshRenderer :
             BindMaterialResources(commands, singleMesh, features);
             commands.DrawIndexed(singleMesh.IndexCount);
             drawCount++;
-            commands.EndRendering();
-            if (displayTransformCommands is not null)
-            {
-                _displayTransform.Record(
-                    commands,
-                    displayTransformCommands,
-                    displayTarget);
-            }
-            if (selectionCommands is not null)
-            {
-                RecordSelectionOutline(
-                    commands,
-                    selectionCommands,
-                    displayTarget,
-                    depthTarget);
-            }
-
-            using ISilkGraphicsSubmission singleSubmission = SubmitAndCommitUploads(commands);
-            // Safe: Wait() returning means no unsubmitted or in-flight execution referencing
-            // these textures remains, so completing this submission's lease makes disposing them
-            // safe even though `commands` itself is still alive in this `using` scope. See
-            // SilkSceneGpuResources.TrimTextureResidency.
-            GpuResources.TrimTextureResidency();
-            if (pickBinding is { } singleBinding)
-            {
-                ProcessPicking(displayTarget, singleBinding);
-            }
-            return new SilkMeshRenderResult(drawCount, uniformUploads, GpuResources.Statistics);
         }
-        foreach (BatchKey key in _batchOrder)
+        else
         {
-            List<SilkMeshGpuResource> meshes = _batches[key];
-            SilkMeshGpuResource first = meshes[0];
-            // A batch of one gains nothing from instancing and would cost an
-            // instance storage buffer per unique geometry, which for a scene of
-            // mostly distinct meshes is a pure allocation regression. The
-            // per-mesh uniform path already carries the single transform.
-            if (meshes.Count < 2)
+            foreach (BatchKey key in _batchOrder)
             {
+                List<SilkMeshGpuResource> meshes = _batches[key];
+                SilkMeshGpuResource first = meshes[0];
+                // A batch of one gains nothing from instancing and would cost an
+                // instance storage buffer per unique geometry, which for a scene of
+                // mostly distinct meshes is a pure allocation regression. The
+                // per-mesh uniform path already carries the single transform.
+                if (meshes.Count < 2)
+                {
+                    BindPipelineIfChanged(
+                        commands,
+                        first,
+                        key,
+                        colorTarget.Format,
+                        ref boundPipeline);
+                    commands.SetVertexBuffer(first.VertexBuffer);
+                    commands.SetIndexBuffer(first.IndexBuffer);
+                    foreach (SilkMeshGpuResource mesh in meshes)
+                    {
+                        commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
+                        // The vertex shader always reads its transform from the
+                        // instance table, so bind this mesh's 80-byte uniform buffer
+                        // there as a one-element table. Leaving it unbound worked on
+                        // D3D12 and Vulkan by accident and rendered nothing on Metal.
+                        commands.SetStorageBuffer(0, 6, mesh.UniformBuffer);
+                        commands.SetStorageBuffer(
+                            0,
+                            SilkBindingLayoutDescriptor.FrameParametersBinding,
+                            frameBuffer);
+                        BindSurfaceBufferIfChanged(commands, mesh, ref boundSurface);
+                        BindMaterialResources(commands, mesh, key.Features);
+                        commands.DrawIndexed(mesh.IndexCount);
+                        drawCount++;
+                    }
+                    continue;
+                }
+
+                // Every batch of this frame is recorded before any of them is
+                // submitted, so a geometry split across several batches -- which is
+                // exactly what a differing material, cull mode or UsdLux light,
+                // shadow or dome mask produces -- must not share one mutable
+                // transform table. The second batch would rewrite it while the first
+                // batch's draw still referenced it, and both draws would read the
+                // last batch's transforms: some instances drawn twice and others not
+                // at all. Each batch is given its own retained slot instead, and the
+                // slot ordinal is assigned in batch order so an unchanged scene keeps
+                // writing the same slot and keeps the delta upload.
+                if (!_instanceSlots.TryGetValue(key.Geometry, out int slot))
+                {
+                    slot = 0;
+                }
+                _instanceSlots[key.Geometry] = slot + 1;
+                key.Geometry.UpdateInstanceBuffer(
+                    _device,
+                    Scene.Frame,
+                    meshes,
+                    _device.ClipSpaceYPointsDown,
+                    slot);
                 BindPipelineIfChanged(
                     commands,
                     first,
@@ -1213,66 +1278,19 @@ public sealed class SilkMeshRenderer :
                     ref boundPipeline);
                 commands.SetVertexBuffer(first.VertexBuffer);
                 commands.SetIndexBuffer(first.IndexBuffer);
-                foreach (SilkMeshGpuResource mesh in meshes)
-                {
-                    commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
-                    // The vertex shader always reads its transform from the
-                    // instance table, so bind this mesh's 80-byte uniform buffer
-                    // there as a one-element table. Leaving it unbound worked on
-                    // D3D12 and Vulkan by accident and rendered nothing on Metal.
-                    commands.SetStorageBuffer(0, 6, mesh.UniformBuffer);
-                    commands.SetStorageBuffer(
-                        0,
-                        SilkBindingLayoutDescriptor.FrameParametersBinding,
-                        frameBuffer);
-                    BindSurfaceBufferIfChanged(commands, mesh, ref boundSurface);
-                    BindMaterialResources(commands, mesh, key.Features);
-                    commands.DrawIndexed(mesh.IndexCount);
-                    drawCount++;
-                }
-                continue;
+                commands.SetUniformBuffer(0, 0, first.UniformBuffer);
+                commands.SetStorageBuffer(0, 6, key.Geometry.RequireInstanceBuffer(slot));
+                commands.SetStorageBuffer(
+                    0,
+                    SilkBindingLayoutDescriptor.FrameParametersBinding,
+                    frameBuffer);
+                BindSurfaceBufferIfChanged(commands, first, ref boundSurface);
+                BindMaterialResources(commands, first, key.Features);
+                commands.DrawIndexedInstanced(first.IndexCount, checked((uint)meshes.Count));
+                drawCount++;
             }
-
-            // Every batch of this frame is recorded before any of them is
-            // submitted, so a geometry split across several batches -- which is
-            // exactly what a differing material, cull mode or UsdLux light,
-            // shadow or dome mask produces -- must not share one mutable
-            // transform table. The second batch would rewrite it while the first
-            // batch's draw still referenced it, and both draws would read the
-            // last batch's transforms: some instances drawn twice and others not
-            // at all. Each batch is given its own retained slot instead, and the
-            // slot ordinal is assigned in batch order so an unchanged scene keeps
-            // writing the same slot and keeps the delta upload.
-            if (!_instanceSlots.TryGetValue(key.Geometry, out int slot))
-            {
-                slot = 0;
-            }
-            _instanceSlots[key.Geometry] = slot + 1;
-            key.Geometry.UpdateInstanceBuffer(
-                _device,
-                Scene.Frame,
-                meshes,
-                _device.ClipSpaceYPointsDown,
-                slot);
-            BindPipelineIfChanged(
-                commands,
-                first,
-                key,
-                colorTarget.Format,
-                ref boundPipeline);
-            commands.SetVertexBuffer(first.VertexBuffer);
-            commands.SetIndexBuffer(first.IndexBuffer);
-            commands.SetUniformBuffer(0, 0, first.UniformBuffer);
-            commands.SetStorageBuffer(0, 6, key.Geometry.RequireInstanceBuffer(slot));
-            commands.SetStorageBuffer(
-                0,
-                SilkBindingLayoutDescriptor.FrameParametersBinding,
-                frameBuffer);
-            BindSurfaceBufferIfChanged(commands, first, ref boundSurface);
-            BindMaterialResources(commands, first, key.Features);
-            commands.DrawIndexedInstanced(first.IndexCount, checked((uint)meshes.Count));
-            drawCount++;
         }
+        // Both draw paths share display, submission, picking and capture completion.
         commands.EndRendering();
         if (displayTransformCommands is not null)
         {
@@ -1300,6 +1318,10 @@ public sealed class SilkMeshRenderer :
         {
             ProcessPicking(displayTarget, binding);
         }
+        // Only this completed render's selected target is eligible. Read it under
+        // the capture lease and hand off owned bytes, never the pass's cached handle.
+        hdrColor = captureRequest?.ReadbackDisplayTransformHdrColor(
+            displayTransformActive ? colorTarget : null);
         return new SilkMeshRenderResult(drawCount, uniformUploads, GpuResources.Statistics);
     }
 
@@ -3802,7 +3824,7 @@ public sealed class SilkMeshRenderer :
         }
     }
 
-    private static void ValidateOptions(SilkMeshRenderOptions options)
+    internal static void ValidateOptions(SilkMeshRenderOptions options)
     {
         options.ClearColor.Validate();
         if (!float.IsFinite(options.ClearDepth) ||

@@ -282,6 +282,11 @@ public sealed partial class MainWindow
 
     private async void OnPhysicsEnableClick(object? sender, RoutedEventArgs e)
     {
+        if (_documentBusy || _documentEditBusy || _shutdownStarted)
+        {
+            ViewerStatus.Text = "Finish the document operation before enabling or rebuilding physics.";
+            return;
+        }
         _ = sender;
         e.Handled = true;
         try
@@ -310,7 +315,8 @@ public sealed partial class MainWindow
                 new ViewerPhysicsTransportFactory(coordinator.Scheduler),
                 ViewerPhysicsStopwatchClock.Instance,
                 ViewerPhysicsRenderCapacities.Default,
-                authoring: new ViewerPhysicsSchedulerAuthoringStage(coordinator.Scheduler));
+                authoring: new ViewerPhysicsDocumentAuthoringStage(
+                    _documentEditor ?? throw new InvalidOperationException("The document editor is unavailable.")));
             int version = _physicsSessionVersion;
             void handler(ViewerPhysicsStatusSnapshot snapshot) =>
                 OnPhysicsStatusChanged(controller, version, snapshot);

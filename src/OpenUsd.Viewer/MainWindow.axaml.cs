@@ -10,11 +10,13 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using OpenUsd.Geom;
+using OpenUsd.Interop;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
@@ -44,6 +46,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private readonly SemaphoreSlim _documentGate = new(1, 1);
     private readonly RecentStageStore _recentStageStore;
     private readonly ViewerSettingsStore _settingsStore;
+    private readonly ViewerCommandDispatcher _commands = new();
+    private readonly ViewerWindowTheme _windowTheme;
     private readonly ViewerDiagnosticsBuffer _diagnostics = new();
     private readonly ViewerTfDebugPanelModel _tfDebugModel = new();
     private readonly ViewerDiagnosticsCadence _diagnosticsCadence =
@@ -61,6 +65,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private readonly ViewerStormPickInputTracker _stormPickInput = new();
     private readonly DispatcherTimer _stormNavigationTimer;
     private ViewerRenderCoordinator? _coordinator;
+    private ViewerAuthoredEditController? _documentEditor;
     private AvaloniaViewerRenderBackendHost? _backendHost;
     private CancellationTokenSource? _documentLifetime;
     private CancellationTokenSource? _pickLifetime;
@@ -72,7 +77,10 @@ public sealed partial class MainWindow : Window, IDisposable
     private Task? _pickTask;
     private Task? _selectionTask;
     private Task? _playbackTask;
+    private Task _playbackStopped = Task.CompletedTask;
+    private bool _playbackStopping;
     private Task? _hostStageReadyTask;
+    private ViewerHostCallbackScope? _hostCallbacks;
     private ViewerTimeUpdatePump? _timeUpdates;
     private ViewerCameraUpdatePump? _cameraUpdates;
     private ViewerStageCameraRefreshPump? _stageCameraRefreshes;
@@ -135,6 +143,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private ViewerStageSession? _hostSession;
     private ViewerCameraState _lastHostCamera;
     private bool _hasLastHostCamera;
+    private readonly IViewerFrameFilePicker _frameFilePicker;
+    private Task _frameCaptureTask = Task.CompletedTask;
 
     private ColumnDefinition StagePanelGridColumn => MainContentGrid.ColumnDefinitions[0];
 
@@ -156,12 +166,20 @@ public sealed partial class MainWindow : Window, IDisposable
 
     internal MainWindow(
         RecentStageStore recentStageStore,
-        ViewerSettingsStore settingsStore)
+        ViewerSettingsStore settingsStore,
+        IViewerDocumentFilePicker? documentFilePicker = null,
+        IViewerAssetFilePicker? assetFilePicker = null,
+        IViewerFrameFilePicker? frameFilePicker = null)
     {
         ArgumentNullException.ThrowIfNull(recentStageStore);
         ArgumentNullException.ThrowIfNull(settingsStore);
         _recentStageStore = recentStageStore;
         _settingsStore = settingsStore;
+        _documentFilePicker = documentFilePicker ?? ViewerDocumentFilePicker.Default;
+        _assetFilePicker = assetFilePicker ?? ViewerAssetFilePicker.Default;
+        _frameFilePicker = frameFilePicker ?? ViewerFrameFilePicker.Default;
+        _reviewRecoveryStore = new ViewerRecoveryStore(
+            Path.Combine(Path.GetFullPath(settingsStore.RootPath), "review-recovery"));
         _cameraNavigation = new ViewerCameraNavigationUiAdapter(
             _cameraNavigationController,
             _stageCameraMode,
@@ -172,6 +190,7 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         _stormNavigationTimer.Tick += OnStormNavigationTick;
         InitializeComponent();
+        _windowTheme = ViewerWindowTheme.Attach(this);
         _inspectorTabsById = BuildInspectorTabsById();
         _inspectorTabIdsByTab = _inspectorTabsById.ToDictionary(
             static pair => pair.Value,
@@ -210,9 +229,7 @@ public sealed partial class MainWindow : Window, IDisposable
             RendererSelector.SelectedIndex = GetRendererSelectionIndex();
             RendererSelector.SelectionChanged += OnRendererSelectionChanged;
             ViewportHost.SizeChanged += OnViewportSizeChanged;
-            OpenStageButton.Click += OnOpenStageClick;
             OpenStageMenuItem.Click += OnOpenStageClick;
-            ReloadStageButton.Click += OnReloadStageClick;
             ReloadStageMenuItem.Click += OnReloadStageClick;
             CaptureFrameMenuItem.Click += OnCaptureFrameClick;
             HierarchyFilter.TextChanged += OnHierarchyFilterChanged;
@@ -223,6 +240,14 @@ public sealed partial class MainWindow : Window, IDisposable
             ShowAbstractPrimsCheckBox.IsCheckedChanged += OnHierarchyVisibilityFilterChanged;
             ShowPrototypePrimsCheckBox.IsCheckedChanged += OnHierarchyVisibilityFilterChanged;
             StageHierarchy.SelectionChanged += OnHierarchySelectionChanged;
+            HierarchyRootPrevious.Click += OnHierarchyRootPrevious;
+            HierarchyRootNext.Click += OnHierarchyRootNext;
+            InspectorPropertyQuery.TextChanged += OnInspectorPropertyQueryChanged;
+            InspectorPropertyPrevious.Click += OnInspectorPropertyPrevious;
+            InspectorPropertyNext.Click += OnInspectorPropertyNext;
+            InspectorPropertyDefaultTime.Click += OnInspectorPropertyDefaultTime;
+            InspectorPropertyCurrentTime.Click += OnInspectorPropertyCurrentTime;
+            InspectorTabs.SelectionChanged += (_, _) => UpdateInspectorPropertyControls();
             PlayPauseButton.Click += OnPlayPauseClick;
             CurrentTimeInput.KeyDown += OnCurrentTimeInputKeyDown;
             CurrentTimeInput.LostFocus += OnCurrentTimeInputLostFocus;
@@ -256,7 +281,6 @@ public sealed partial class MainWindow : Window, IDisposable
             ResetCameraLegacyMenuItem.Click += OnResetCameraLegacyClick;
             ToggleCameraProjectionMenuItem.Click += OnToggleCameraProjectionClick;
             UseSelectedCameraMenuItem.Click += OnUseSelectedCameraClick;
-            FrameSelectedButton.Click += OnFrameSelectedClick;
             FrameSelectedMenuItem.Click += OnFrameSelectedClick;
             CameraOrbitLeftMenuItem.Click += OnCameraOrbitClick;
             CameraOrbitRightMenuItem.Click += OnCameraOrbitClick;
@@ -285,6 +309,8 @@ public sealed partial class MainWindow : Window, IDisposable
             DragDrop.AddDropHandler(this, OnDrop);
             InitializePhysicsUi();
             WireMenuCommands();
+            InitializeWorkspaceCommands();
+            InitializeWelcome();
             Opened += OnViewerOpened;
         }
         Closing += OnClosing;
@@ -322,7 +348,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
             ViewerStartupOptions.WriteStatus("Viewer startup: opening stage");
             PostStageOpenDispatcherProbe("viewer opened handler before stage open await");
-            await OpenStageCoreAsync(
+            await OpenDocumentCoreAsync(
                 ViewerStartupOptions.StagePath,
                 addToRecent: !IsAutomatedViewerRun(),
                 _viewerLifetime.Token);
@@ -341,6 +367,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async Task LoadSettingsAsync(CancellationToken cancellationToken)
     {
+        ThemeMenu.IsEnabled = false;
+        WorkspaceMenu.IsEnabled = false;
         try
         {
             ViewerSettingsLoadResult result =
@@ -351,7 +379,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 ViewerSettingsLoadStatus.Missing =>
                     "Using default settings. Settings are saved atomically when the Viewer closes.",
                 ViewerSettingsLoadStatus.Loaded =>
-                    "Settings loaded. Changes are saved atomically when the Viewer closes.",
+                    result.Diagnostic ??
+                        "Settings loaded. Changes are saved atomically when the Viewer closes.",
                 ViewerSettingsLoadStatus.Migrated =>
                     result.Diagnostic ?? "Legacy settings were migrated.",
                 ViewerSettingsLoadStatus.Malformed =>
@@ -359,6 +388,10 @@ public sealed partial class MainWindow : Window, IDisposable
                 _ => throw new InvalidOperationException("Unknown settings load status.")
             };
             ViewerStartupOptions.WriteStatus(status);
+            if (result.Diagnostic is not null)
+            {
+                ViewerStatus.Text = status;
+            }
         }
         catch (IOException exception)
         {
@@ -367,6 +400,11 @@ public sealed partial class MainWindow : Window, IDisposable
         catch (UnauthorizedAccessException exception)
         {
             ShowError($"Settings could not be read: {exception.Message}");
+        }
+        finally
+        {
+            ThemeMenu.IsEnabled = true;
+            WorkspaceMenu.IsEnabled = true;
         }
     }
 
@@ -396,10 +434,13 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
-        Width = settings.WindowWidth;
-        Height = settings.WindowHeight;
-        _stagePanelWidth = settings.StagePanelWidth;
-        _inspectorPanelWidth = settings.InspectorPanelWidth;
+        ViewerTheme.Apply(this, settings.ThemePreference);
+        SyncThemeMenu();
+        Screen? screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        Width = screen is null ? settings.WindowWidth
+            : Math.Min(settings.WindowWidth, Math.Max(MinWidth, screen.WorkingArea.Width / screen.Scaling));
+        Height = screen is null ? settings.WindowHeight
+            : Math.Min(settings.WindowHeight, Math.Max(MinHeight, screen.WorkingArea.Height / screen.Scaling));
         if (string.Equals(ViewerStartupOptions.Renderer, "Auto", StringComparison.Ordinal))
         {
             RendererSelector.SelectedIndex =
@@ -409,15 +450,6 @@ public sealed partial class MainWindow : Window, IDisposable
         _applyingLayout = true;
         try
         {
-            StagePanelMenuItem.IsChecked = settings.StagePanelVisible;
-            InspectorPanelMenuItem.IsChecked = settings.InspectorPanelVisible;
-            TimelineMenuItem.IsChecked = settings.TimelineVisible;
-            DiagnosticsMenuItem.IsChecked = settings.DiagnosticsVisible;
-            ToolsDiagnosticsTabVisibleMenuItem.IsChecked = settings.DiagnosticsVisible;
-            HydraTabVisibleMenuItem.IsChecked = settings.HydraVisible;
-            ToolsHydraTabVisibleMenuItem.IsChecked = settings.HydraVisible;
-            TfDebugTabVisibleMenuItem.IsChecked = settings.TfDebugVisible;
-            ToolsTfDebugTabVisibleMenuItem.IsChecked = settings.TfDebugVisible;
             SnapTimelineCheckBox.IsChecked = settings.SnapTimelineToFrames;
             // The persisted pick target and selection mode are the user's
             // request, not the current backend's capability. They are applied
@@ -432,14 +464,7 @@ public sealed partial class MainWindow : Window, IDisposable
             SetSelectionMode(
                 ViewerPickTargetPolicy.SelectionModeFromToken(settings.SelectionMode));
             ApplyColorManagementSettings(settings.ColorManagement);
-            ApplyPanelVisibility(
-                settings.StagePanelVisible,
-                settings.InspectorPanelVisible,
-                settings.TimelineVisible,
-                settings.DiagnosticsVisible,
-                settings.HydraVisible,
-                settings.TfDebugVisible,
-                settings.SelectedTabId);
+            ApplyLayoutSettings(settings);
         }
         finally
         {
@@ -459,27 +484,28 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         return new ViewerSettings
         {
-            WindowWidth = ClampDimension(
+            WindowWidth = ViewerInspectorLayoutPolicy.ClampDimension(
                 Bounds.Width,
                 ViewerSettings.MinimumWindowWidth,
                 ViewerSettings.MaximumWindowWidth,
                 _settings.WindowWidth),
-            WindowHeight = ClampDimension(
+            WindowHeight = ViewerInspectorLayoutPolicy.ClampDimension(
                 Bounds.Height,
                 ViewerSettings.MinimumWindowHeight,
                 ViewerSettings.MaximumWindowHeight,
                 _settings.WindowHeight),
-            StagePanelWidth = ClampDimension(
+            StagePanelWidth = ViewerInspectorLayoutPolicy.ClampDimension(
                 _stagePanelWidth,
                 ViewerSettings.MinimumPanelWidth,
                 ViewerSettings.MaximumPanelWidth,
                 ViewerSettings.Default.StagePanelWidth),
-            InspectorPanelWidth = ClampDimension(
+            InspectorPanelWidth = ViewerInspectorLayoutPolicy.ClampDimension(
                 _inspectorPanelWidth,
                 ViewerSettings.MinimumPanelWidth,
                 ViewerSettings.MaximumPanelWidth,
                 ViewerSettings.Default.InspectorPanelWidth),
-            RendererPreference = GetSelectedRendererPreference(),
+            RendererPreference = _settings.RendererPreference,
+            ThemePreference = _settings.ThemePreference,
             SelectedTabId = CurrentSelectedTabId(),
             StagePanelVisible = StagePanel.IsVisible,
             InspectorPanelVisible = InspectorPanel.IsVisible,
@@ -504,13 +530,6 @@ public sealed partial class MainWindow : Window, IDisposable
         _inspectorTabIdsByTab.TryGetValue(selectedTab, out string? tabId)
             ? tabId
             : ViewerInspectorLayoutPolicy.CleanDefaultFallbackTabId;
-
-    private static double ClampDimension(
-        double value,
-        double minimum,
-        double maximum,
-        double fallback) =>
-        double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : fallback;
 
     private void OnPanelVisibilityChanged(object? sender, RoutedEventArgs e)
     {
@@ -657,26 +676,20 @@ public sealed partial class MainWindow : Window, IDisposable
             visibleTabIds,
             ViewerInspectorLayoutPolicy.CleanDefaultFallbackTabId);
         InspectorTabs.SelectedItem = _inspectorTabsById[resolvedTabId];
+        UpdateWorkspacePanelBudget();
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        if (WorkspaceOwnsKeyboard || TryHandleWorkspaceShortcut(e))
+        {
+            e.Handled = true;
+            return;
+        }
         bool firstCameraShortcutPress = _cameraShortcutRepeat.TryPress(e.Key);
         bool firstPhysicsShortcutPress = _physicsShortcutRepeat.TryPress(e.Key);
         bool control = (e.KeyModifiers & KeyModifiers.Control) != 0;
         bool editing = IsCameraShortcutEditing();
-        if (control && e.Key == Key.O)
-        {
-            e.Handled = true;
-            OnOpenStageClick(OpenStageButton, new RoutedEventArgs());
-            return;
-        }
-        if (control && e.Key == Key.R && ReloadStageButton.IsEnabled)
-        {
-            e.Handled = true;
-            OnReloadStageClick(ReloadStageButton, new RoutedEventArgs());
-            return;
-        }
         ViewerCameraShortcut cameraShortcut = ViewerCameraShortcutPolicy.Classify(
             e.Key,
             e.KeyModifiers,
@@ -1312,7 +1325,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 ViewerStartupOptions.ResolveRequestedPickTarget(PickTarget),
                 coordinator.PickAsync,
                 ViewerStartupOptions.PrimPickedAsync,
-                cancellationToken);
+                cancellationToken,
+                _hostCallbacks);
             await _documentGate.WaitAsync(cancellationToken);
             entered = true;
             if (!ReferenceEquals(_pickLifetime, lifetime) ||
@@ -1466,6 +1480,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (callback is null ||
             _coordinator is not { } coordinator ||
+            _hostCallbacks is not { } scope ||
             !TryMapPointerToPhysicalPixel(e, out ViewerPhysicalPixel pixel))
         {
             return;
@@ -1477,10 +1492,8 @@ public sealed partial class MainWindow : Window, IDisposable
             coordinator.CurrentState.Viewport,
             GetPressedButtons(properties),
             ToHostModifiers(e.KeyModifiers));
-        CancellationToken cancellationToken =
-            _documentLifetime?.Token ?? _viewerLifetime.Token;
-        _ = Task.Run(
-            async () =>
+        bool accepted = scope.TryRun(
+            async cancellationToken =>
             {
                 try
                 {
@@ -1495,7 +1508,11 @@ public sealed partial class MainWindow : Window, IDisposable
                         $"Host viewport pointer callback failed: {exception.Message}");
                 }
             },
-            CancellationToken.None);
+            out _);
+        if (!accepted)
+        {
+            ViewerStartupOptions.WriteStatus("Host pointer callback refused while callbacks are quiescing or full.");
+        }
     }
 
     private void DispatchHostSelectionChanged(SelectionState selection)
@@ -1504,7 +1521,8 @@ public sealed partial class MainWindow : Window, IDisposable
             selection,
             ViewerStartupOptions.SelectionChangedPrimSubtree,
             ViewerStartupOptions.SelectionChangedAsync,
-            _documentLifetime?.Token ?? _viewerLifetime.Token);
+            _documentLifetime?.Token ?? _viewerLifetime.Token,
+            _hostCallbacks);
     }
 
     private static ViewerInputModifiers ToHostModifiers(KeyModifiers modifiers)
@@ -1667,6 +1685,12 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         _ = sender;
         _ = e;
+        if (WorkspaceOwnsKeyboard)
+        {
+            _stormNavigationInput.Reset();
+            _stormPickInput.Reset();
+            return;
+        }
         if (_coordinator?.ActiveBackend?.Kind != RenderBackendKind.Storm)
         {
             StopStormNavigationPolling();
@@ -1807,7 +1831,6 @@ public sealed partial class MainWindow : Window, IDisposable
                 cancellationToken),
             OnStageCameraRefreshFailed,
             documentToken);
-        coordinator.StageChanged += OnStageChanged;
         UpdateCameraAvailability();
         RefreshStormNavigationPolling();
     }
@@ -1830,32 +1853,9 @@ public sealed partial class MainWindow : Window, IDisposable
             ShowError($"Camera update failed: {exception.Message}");
         });
 
-    private void OnStageChanged(UsdStageChange change)
-    {
-        NotifyPhysicsStageChanged(change);
-        if (IsAutomatedViewerRun())
-        {
-            return;
-        }
-
-        try
-        {
-            ViewerRenderCoordinator? coordinator = _coordinator;
-            if (coordinator is not null)
-            {
-                _ = TryQueueStageCameraRefresh(
-                    coordinator.CurrentState.Time.TimeCode,
-                    applyTime: false);
-            }
-        }
-        catch (Exception exception)
-        {
-            OnStageCameraRefreshFailed(exception);
-        }
-    }
-
     private void OnRenderStateChanged(StageRenderState state)
     {
+        Dispatcher.UIThread.Post(UpdateSavedViewsContext);
         var camera = new ViewerCameraState(state.Camera, state.Viewport);
         if (_hasLastHostCamera && camera == _lastHostCamera)
         {
@@ -1872,9 +1872,15 @@ public sealed partial class MainWindow : Window, IDisposable
         CancellationToken cancellationToken)
     {
         bool cameraApplied = false;
+        double? retryAtTime = null;
         await coordinator.MutateStateAsync(
             state =>
             {
+                if (!application.Request.ApplyTime && state.Time.TimeCode != application.Request.TimeCode)
+                {
+                    retryAtTime = state.Time.TimeCode;
+                    return state;
+                }
                 StageRenderState revised = application.Request.ApplyTime
                     ? state.WithTime(new StageTime(application.Request.TimeCode))
                     : state;
@@ -1898,6 +1904,11 @@ public sealed partial class MainWindow : Window, IDisposable
             },
             cancellationToken).ConfigureAwait(false);
 
+        if (retryAtTime is { } latestTime)
+        {
+            _ = TryQueueStageCameraRefresh(latestTime, applyTime: false);
+            return;
+        }
         if (cameraApplied)
         {
             QueueCameraStatusUpdate();
@@ -1967,7 +1978,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void UpdateCameraAvailability()
     {
+        UpdateSavedViewsContext();
         bool enabled = CanNavigateCamera();
+        FindPrimMenuItem.IsEnabled = _coordinator is not null && !_documentBusy;
+        InspectSelectionMenuItem.IsEnabled = _currentInspector is not null && !_documentBusy;
         ResetCameraAutomaticMenuItem.IsEnabled = enabled;
         ResetCameraLegacyMenuItem.IsEnabled = enabled;
         ToggleCameraProjectionMenuItem.IsEnabled = enabled;
@@ -2226,6 +2240,9 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
+        // The host's initial selection is an override; only a later selection changes the saved preference.
+        _settings = _settings with { RendererPreference = GetSelectedRendererPreference() };
+
         // Reflected immediately regardless of whether the async switch below succeeds: the
         // radio state mirrors the selected preference, not the outcome of applying it.
         SyncRenderMenuFromState();
@@ -2272,6 +2289,11 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void OnViewportSizeChanged(object? sender, SizeChangedEventArgs e)
     {
+        _savedViewRecallCancellation?.Cancel();
+        if (_sequenceJobRunning)
+        {
+            _renderSequenceWindow?.Cancel();
+        }
         try
         {
             await _documentGate.WaitAsync(_viewerLifetime.Token);
@@ -2323,10 +2345,13 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
+        // Navigation survives a document reload, but its new coordinator still needs
+        // the viewport even when the navigation model reports no size change.
         await coordinator.MutateStateAsync(
-            state => ViewerCameraStateMutation.ApplyResize(state, cameraResize),
+            state => ViewerCameraStateMutation.ApplyResize(state.WithViewport(viewport), cameraResize),
             cancellationToken);
         UpdateCameraStatus();
+        UpdateViewportDisplayAvailability();
         bool stageCameraActive = _stageCameraMode.GetView().IsActive;
         if (stageCameraActive)
         {
@@ -2352,7 +2377,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 {
                     ViewerStartupOptions.WriteStatus("Renderer render loop: first tick");
                 }
-                if (Volatile.Read(ref _diagnosticOwnsRendering) != 0)
+                if (Volatile.Read(ref _diagnosticOwnsRendering) != 0 || _sequenceJobRunning)
                 {
                     if (iteration == 1)
                     {
@@ -2735,6 +2760,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RenderValidation()
     {
+        UpdateOperationChrome();
         // Rendering is a pure function of the snapshot, including the running
         // state, so no state the tab can show outlives the model that says it.
         ValidationState.Text = ViewerValidationFormatter.FormatState(_validation);
@@ -3041,7 +3067,11 @@ public sealed partial class MainWindow : Window, IDisposable
         BackfaceCullingCheckBox.IsEnabled = enabled;
         SceneMaterialsCheckBox.IsEnabled = enabled;
         BackgroundColorSelector.IsEnabled = enabled;
-        CaptureFrameMenuItem.IsEnabled = enabled;
+        CaptureFrameMenuItem.IsEnabled =
+            enabled && !_workspaceCaptureBusy && _coordinator is { CanCaptureFrame: true };
+        RenderImageSequenceMenuItem.IsEnabled = enabled && !_workspaceCaptureBusy &&
+            _coordinator is { CurrentState.Viewport: { Width: > 0, Height: > 0 } };
+        UpdateRenderSequenceContext();
         bool hydraRefreshEnabled = ViewerDeveloperTabGate.IsReachable(
             HydraSceneTab.IsVisible, _coordinator is not null && !_documentBusy);
         RefreshHydraSceneButton.IsEnabled = hydraRefreshEnabled;
@@ -3166,11 +3196,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private async Task InitializeTimelineAsync(
         ViewerRenderCoordinator coordinator,
         ViewerStageTimingSnapshot timing,
-        CancellationToken documentToken)
+        CancellationToken documentToken,
+        bool preserveTime = false)
     {
         double current = coordinator.CurrentState.Time.TimeCode;
         bool automated = IsAutomatedViewerRun();
-        if (!automated && timing.HasFiniteRange)
+        if (!preserveTime && !automated && timing.HasFiniteRange)
         {
             current = ViewerTimelineMath.Clamp(current, timing);
             await coordinator.MutateStateAsync(
@@ -3208,9 +3239,13 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         try
         {
+            if (_playbackStopping)
+            {
+                return;
+            }
             if (_playbackLifetime is not null)
             {
-                await StopPlaybackAsync();
+                await StopPlaybackAsync(drainUpdates: true);
                 return;
             }
             ViewerPlaybackPlan? plan = _timing.PlaybackPlan;
@@ -3291,27 +3326,58 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    private async Task StopPlaybackAsync()
+    private Task StopPlaybackAsync(bool drainUpdates = false)
+    {
+        if (!_playbackStopped.IsCompleted)
+        {
+            return _playbackStopped;
+        }
+        _playbackStopping = true;
+        _playbackStopped = StopPlaybackCoreAsync(drainUpdates);
+        return _playbackStopped;
+    }
+
+    private async Task StopPlaybackCoreAsync(bool drainUpdates)
     {
         CancellationTokenSource? playbackLifetime = _playbackLifetime;
         Task? playbackTask = _playbackTask;
         _playbackLifetime = null;
         _playbackTask = null;
         playbackLifetime?.Cancel();
-        if (playbackTask is not null)
-        {
-            await playbackTask;
-        }
-        playbackLifetime?.Dispose();
-        PlayPauseButton.Content = "_Play";
-        AutomationProperties.SetName(PlayPauseButton, "Play timeline");
-        double current;
-        lock (_timelineGate)
-        {
-            current = _currentTimeCode;
-        }
-        UpdateTimelineUi(current);
         UpdateTimelineAvailability();
+        try
+        {
+            if (playbackTask is not null)
+            {
+                await playbackTask;
+            }
+            if (drainUpdates)
+            {
+                // A time update can enqueue an authored-camera sample before the renderer accepts that time.
+                if (_timeUpdates is { } times)
+                {
+                    await times.WaitForIdleAsync();
+                }
+                if (_stageCameraRefreshes is { } cameras)
+                {
+                    await cameras.WaitForIdleAsync();
+                }
+            }
+        }
+        finally
+        {
+            playbackLifetime?.Dispose();
+            _playbackStopping = false;
+            PlayPauseButton.Content = "_Play";
+            AutomationProperties.SetName(PlayPauseButton, "Play timeline");
+            double current;
+            lock (_timelineGate)
+            {
+                current = _currentTimeCode;
+            }
+            UpdateTimelineUi(current);
+            UpdateTimelineAvailability();
+        }
     }
 
     private async Task StopTimelineAsync()
@@ -3418,12 +3484,13 @@ public sealed partial class MainWindow : Window, IDisposable
     private void UpdateTimelineAvailability()
     {
         bool interactiveDocument =
-            !_documentBusy && _coordinator is not null && !IsAutomatedViewerRun();
+            !_documentBusy && !_playbackStopping && _coordinator is not null && !IsAutomatedViewerRun();
         bool canEditTime =
             interactiveDocument && _playbackLifetime is null && _timing.HasFiniteRange;
         CurrentTimeInput.IsEnabled = canEditTime;
         TimelineSlider.IsEnabled = canEditTime;
         PlayPauseButton.IsEnabled = interactiveDocument && _timing.CanPlay;
+        UpdateSavedViewsContext();
     }
 
     private void QueueTimelineUiUpdate(CancellationTokenSource playbackLifetime)
@@ -3472,7 +3539,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     [
                         new FilePickerFileType("Universal Scene Description")
                         {
-                            Patterns = ["*.usd", "*.usda", "*.usdc", "*.usdz"]
+                            Patterns = ["*.usd", "*.usda", "*.usdc", "*.usdz", "*.urd"]
                         }
                     ]
                 });
@@ -3505,6 +3572,22 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void OnCaptureFrameClick(object? sender, RoutedEventArgs e)
     {
+        if (_workspaceCaptureBusy)
+        {
+            ShowError("A frame capture is already in progress.");
+            return;
+        }
+        _frameCaptureTask = CaptureCurrentFrameAsync();
+        await _frameCaptureTask;
+    }
+
+    private async Task CaptureCurrentFrameAsync()
+    {
+        if (_sequenceJobRunning)
+        {
+            ViewerStatus.Text = "Finish or cancel the image sequence before capturing a still frame.";
+            return;
+        }
         ViewerRenderCoordinator? coordinator = _coordinator;
         if (coordinator is null)
         {
@@ -3512,22 +3595,12 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
+        _workspaceCaptureBusy = true;
+        UpdateViewportDisplayAvailability();
+        UpdateOperationChrome();
         try
         {
-            IStorageFile? file = await StorageProvider.SaveFilePickerAsync(
-                new FilePickerSaveOptions
-                {
-                    Title = "Capture Frame",
-                    SuggestedFileName = "openusd-viewer-frame.bmp",
-                    FileTypeChoices =
-                    [
-                        new FilePickerFileType("Bitmap image")
-                        {
-                            Patterns = ["*.bmp"]
-                        }
-                    ]
-                });
-            string? path = file?.TryGetLocalPath();
+            string? path = await _frameFilePicker.SaveFrameAsync(this, _viewerLifetime.Token);
             if (path is null)
             {
                 return;
@@ -3540,13 +3613,19 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
-            SilkFrameCaptureResult capture = await coordinator.CaptureFrameAsync(
+            ViewerFrameCaptureResult capture = await coordinator.CaptureFrameAsync(
                 viewport.Width,
                 viewport.Height,
                 _viewerLifetime.Token);
-            ViewerFrameBitmapWriter.WriteBmp(path, capture.Width, capture.Height, capture.Rgba.Span);
-            ViewerStatus.Text =
-                $"Captured {capture.Width}×{capture.Height} frame to {Path.GetFileName(path)}.";
+            await ViewerFrameFileWriter.WriteAsync(path, capture, _viewerLifetime.Token);
+            if (!_shutdownStarted && ReferenceEquals(coordinator, _coordinator))
+            {
+                ViewerStatus.Text =
+                    $"Captured {capture.Width}×{capture.Height} frame to {Path.GetFileName(path)}.";
+            }
+        }
+        catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)
+        {
         }
         catch (NotSupportedException exception)
         {
@@ -3556,12 +3635,18 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             ShowError($"Frame capture failed: {ViewerPackageErrorFormatter.Format(exception)}");
         }
+        finally
+        {
+            _workspaceCaptureBusy = false;
+            UpdateViewportDisplayAvailability();
+            UpdateOperationChrome();
+        }
     }
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
         e.DragEffects = e.DataTransfer.TryGetFiles()?
-            .Any(item => IsUsdStagePath(item.TryGetLocalPath())) == true
+            .Any(item => IsViewerDocumentPath(item.TryGetLocalPath())) == true
             ? DragDropEffects.Copy
             : DragDropEffects.None;
         e.Handled = true;
@@ -3572,7 +3657,7 @@ public sealed partial class MainWindow : Window, IDisposable
         e.Handled = true;
         string? path = e.DataTransfer.TryGetFiles()?
             .Select(item => item.TryGetLocalPath())
-            .FirstOrDefault(IsUsdStagePath);
+            .FirstOrDefault(IsViewerDocumentPath);
         if (path is not null)
         {
             await OpenStageAndReportAsync(path);
@@ -3583,7 +3668,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         try
         {
-            await OpenStageCoreAsync(stagePath, addToRecent: true, _viewerLifetime.Token);
+            await OpenDocumentCoreAsync(stagePath, addToRecent: true, _viewerLifetime.Token);
         }
         catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)
         {
@@ -3598,7 +3683,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private async Task OpenStageCoreAsync(
         string stagePath,
         bool addToRecent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool reload = false)
     {
         string normalizedPath = Path.GetFullPath(stagePath);
         ViewerStartupOptions.WriteStatus($"Viewer stage open: resolved {normalizedPath}");
@@ -3612,28 +3698,61 @@ public sealed partial class MainWindow : Window, IDisposable
                 "Select a .usd, .usda, .usdc, or .usdz stage.");
         }
 
+        await CloseSavedViewsAsync();
+        await CloseRenderSequenceAsync();
         await _documentGate.WaitAsync(cancellationToken);
         try
         {
-            SetBusy($"Opening {Path.GetFileName(normalizedPath)}...");
+            await using ViewerPreparedDocument? prepared =
+                reload && _reviewSessionOnlyReason is { } sessionOnly
+                    ? await ViewerPreparedDocument.OpenSourceAsync(normalizedPath, sessionOnly, cancellationToken)
+                    : await PrepareSourceDocumentAsync(normalizedPath, cancellationToken);
+            if (prepared is null)
+            {
+                SetReady("Open cancelled; the current document is unchanged.");
+                return;
+            }
+            await OpenPreparedDocumentAsync(
+                prepared, normalizedPath, addToRecent,
+                reload ? ViewerDocumentTransition.Reload : ViewerDocumentTransition.Replace,
+                reload, cancellationToken);
+        }
+        finally
+        {
+            _documentGate.Release();
+        }
+    }
+
+    private async Task OpenPreparedDocumentAsync(
+        ViewerPreparedDocument prepared, string openedPath, bool addToRecent,
+        ViewerDocumentTransition transition, bool reload, CancellationToken cancellationToken,
+        bool decisionAccepted = false)
+    {
+        string normalizedPath = prepared.SourcePath;
+        try
+        {
+            if (!decisionAccepted && !await ConfirmDocumentTransitionAsync(
+                transition, cancellationToken))
+            {
+                return;
+            }
+            SetBusy($"Opening {Path.GetFileName(openedPath)}...");
             AvaloniaDispatcherShutdownDiagnostics.EnsureSubscribed(
                 "stage open before dispatcher probes");
             AvaloniaDispatcherShutdownDiagnostics.LogInterpretationOnce();
-            if (!IsAutomatedViewerRun())
+            await prepared.RevalidateSourceAsync(cancellationToken);
+            await ValidateRecoverySelectionAsync(prepared, cancellationToken);
+            if (reload && _coordinator is not null && prepared.SourceBinding is null)
             {
-                ViewerStartupOptions.WriteStatus(
-                    "Viewer stage open: validation scheduler starting");
-                await using UsdStageScheduler validationScheduler =
-                    UsdStageScheduler.Open(normalizedPath);
-                ViewerStartupOptions.WriteStatus(
-                    "Viewer stage open: validation root layer query starting");
-                _ = await validationScheduler.InvokeAsync(
-                    static stage => stage.RootLayerIdentifier,
-                    cancellationToken);
-                ViewerStartupOptions.WriteStatus(
-                    "Viewer stage open: validation root layer query completed");
+                await PrepareDocumentRetirementAsync(cancellationToken);
+                UsdStageRetirementLease retirement = _documentRetirementLease ??
+                    throw new InvalidOperationException("The reloading document has no retirement lease.");
+                await retirement.InvokeCleanupAsync(static stage => stage.Reload(), cancellationToken);
             }
-
+            else
+            {
+                await PrepareDocumentRetirementAsync(cancellationToken);
+            }
             ViewerStartupOptions.WriteStatus("Viewer stage open: stopping previous document");
             await StopCurrentDocumentAsync();
             _cameraNavigation.ResetToAutomatic();
@@ -3655,7 +3774,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 RenderSettings openingSettings = await BuildInitialRenderSettingsAsync();
                 Task<ViewerRenderCoordinator> coordinatorTask =
                     ViewerRenderCoordinator.OpenAsync(
-                    normalizedPath,
+                    prepared.Scheduler,
                     (scheduler, source) =>
                     {
                         backendHost = new AvaloniaViewerRenderBackendHost(
@@ -3690,6 +3809,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     TaskContinuationOptions.None,
                     TaskScheduler.Default);
                 coordinator = await coordinatorTask;
+                prepared.TransferOwnership();
                 ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator acquired");
                 PostStageOpenDispatcherProbe("after render coordinator await");
                 ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot starting");
@@ -3699,7 +3819,20 @@ public sealed partial class MainWindow : Window, IDisposable
                 ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot completed");
 
                 _documentLifetime = documentLifetime;
+                _hostCallbacks = new ViewerHostCallbackScope(documentLifetime.Token);
                 _coordinator = coordinator;
+                _documentEditor = new ViewerAuthoredEditController(
+                    coordinator.Scheduler, prepared.SourceBinding, documentLifetime.Token);
+                if (prepared.ImportedReview is not null)
+                {
+                    _documentEditor.InitializeImportedReview(prepared);
+                }
+                _reviewSessionOnlyReason = prepared.SessionOnlyReason;
+                _reviewRecoveryKey = RecoveryKey(openedPath);
+                _reviewRecoveryIdentity = prepared.RecoveryIdentity;
+                _reviewRecoveryDocument = prepared.RecoveryDocument;
+                _reviewRecoveryRevision = ulong.MaxValue;
+                _reviewRecoveryWrittenRevision = ulong.MaxValue;
                 _backendHost = backendHost;
                 _hierarchy = document.Hierarchy;
                 _timing = document.Timing;
@@ -3710,13 +3843,15 @@ public sealed partial class MainWindow : Window, IDisposable
                 _primaryCameraPath = document.PrimaryCameraPath;
                 _rootLayerEditsExplicitlyEnabled = false;
                 _stagePath = normalizedPath;
+                await InitializeDocumentEditingAsync(documentLifetime.Token);
                 coordinator.StatusChanged += OnRendererStatusChanged;
                 coordinator.StateChanged += OnRenderStateChanged;
+                AttachSourceChanges(coordinator, documentLifetime.Token);
                 InitializeCameraUpdates(coordinator, documentLifetime.Token);
                 coordinator = null;
                 documentLifetime = null!;
 
-                StageStatus.Text = Path.GetFileName(normalizedPath);
+                StageStatus.Text = Path.GetFileName(openedPath);
                 ShowStageSummary();
                 ReloadStageButton.IsEnabled = true;
                 ReloadStageMenuItem.IsEnabled = true;
@@ -3766,7 +3901,8 @@ public sealed partial class MainWindow : Window, IDisposable
                         _coordinator,
                         _documentLifetime.Token);
                 }
-                SetReady($"Opened {normalizedPath}");
+                SetReady($"Opened {openedPath}");
+                QueueDocumentEditingRefresh();
                 // The window is no longer busy, so a colour-management request that
                 // outlived the open can finally reach the coordinator.
                 await DrainColorManagementRequestsAsync();
@@ -3790,7 +3926,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 try
                 {
                     IReadOnlyList<string> recent = await _recentStageStore.AddAsync(
-                        normalizedPath,
+                        openedPath,
                         cancellationToken);
                     RefreshRecentMenu(recent);
                 }
@@ -3806,7 +3942,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         finally
         {
-            _documentGate.Release();
+            await EndDocumentTransitionAsync();
         }
     }
 
@@ -3918,13 +4054,16 @@ public sealed partial class MainWindow : Window, IDisposable
         if (callback is not null)
         {
             ViewerStageSession session = CreateHostSession(coordinator, stagePath);
+            ViewerHostCallbackScope scope = _hostCallbacks ??
+                throw new InvalidOperationException("The document host callback scope is unavailable.");
             Task callbackTask = ViewerHostInteraction.RunStageReadyCallbackAsync(
                 token => callback(session, token),
-                cancellationToken);
+                scope.Token,
+                scope);
             _hostStageReadyTask = ObserveHostStageReadyCallbackAsync(
                 callbackTask,
                 coordinator,
-                cancellationToken);
+                scope.Token);
         }
     }
 
@@ -4071,44 +4210,33 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async Task ReloadStageAsync(CancellationToken cancellationToken)
     {
-        await _documentGate.WaitAsync(cancellationToken);
-        try
+        if (_stagePath is not { } path)
         {
-            ViewerRenderCoordinator? coordinator = _coordinator;
-            CancellationToken documentToken =
-                _documentLifetime?.Token ?? cancellationToken;
-            if (coordinator is null)
-            {
-                return;
-            }
-
-            SetBusy($"Reloading {Path.GetFileName(_stagePath)}...");
-            await StopValidationAsync();
-            await coordinator.Scheduler.EditAsync(
-                static stage =>
-                {
-                    stage.Reload();
-                    return true;
-                },
-                UsdStageInvalidationKind.Full,
-                documentToken);
-            ViewerDocumentSnapshot document = await coordinator.Scheduler.InvokeAsync(
-                stage => ViewerStageSnapshotBuilder.BuildDocument(
-                    stage,
-                    _layers,
-                    _selectionState.PrimPath),
-                documentToken);
-            await ApplyDocumentRefreshAsync(coordinator, document, documentToken);
-            SetReady($"Reloaded {_stagePath}");
+            throw new InvalidOperationException("Open a document before reloading.");
         }
-        finally
-        {
-            _documentGate.Release();
-        }
+        await OpenStageCoreAsync(path, addToRecent: false, cancellationToken, reload: true);
     }
 
     private async Task StopCurrentDocumentAsync()
     {
+        await CloseSavedViewsAsync();
+        await CloseRenderSequenceAsync();
+        await StopReviewRecoveryAsync();
+        await RemoveRetiringRecoveryAsync();
+        if (_hostCallbacks is { } callbacks)
+        {
+            await callbacks.QuiesceAsync(CancellationToken.None);
+        }
+        if (_propertyEditor is { } property)
+        {
+            await property.CloseAsync();
+        }
+        if (_documentEditor is { } documentEditor)
+        {
+            documentEditor.Changed -= OnDocumentHistoryChanged;
+        }
+        _documentRefreshRequested = false;
+        await DetachSourceChangesAsync();
         await DetachPhysicsAsync();
         StopStormNavigationPolling();
         _cameraShortcutRepeat.Reset();
@@ -4116,7 +4244,6 @@ public sealed partial class MainWindow : Window, IDisposable
         EndCameraPointerGesture();
         if (_coordinator is { } stageChangeCoordinator)
         {
-            stageChangeCoordinator.StageChanged -= OnStageChanged;
             stageChangeCoordinator.StateChanged -= OnRenderStateChanged;
         }
         ViewerStageCameraRefreshPump? stageCameraRefreshes =
@@ -4137,6 +4264,8 @@ public sealed partial class MainWindow : Window, IDisposable
         _pickLifetime?.Cancel();
         _selectionLifetime?.Cancel();
         _documentLifetime?.Cancel();
+        await _documentRefreshTask;
+        await _savedViewsRefreshTask;
         // Invalidated before the awaits below, so a run that completes while
         // the document is being torn down cannot publish into the next one.
         await StopValidationAsync();
@@ -4162,12 +4291,20 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         if (_coordinator is not null)
         {
+            if (_documentEditor is { } editor)
+            {
+                _documentEditor = null;
+                await editor.DisposeAsync();
+            }
             _coordinator.StatusChanged -= OnRendererStatusChanged;
-            await _coordinator.DisposeAsync();
+            await _coordinator.DisposeAsync(_documentRetirementLease);
+            _documentRetirementLease = null;
         }
 
         _selectionLifetime?.Dispose();
         _documentLifetime?.Dispose();
+        _hostCallbacks?.Dispose();
+        _hostCallbacks = null;
         _selectionLifetime = null;
         _documentLifetime = null;
         _pickLifetime = null;
@@ -4177,6 +4314,14 @@ public sealed partial class MainWindow : Window, IDisposable
         _renderLoop = null;
         _diagnosticSequence = null;
         _coordinator = null;
+        _documentObservation = null;
+        _reviewSessionOnlyReason = null;
+        _savedViews = Array.Empty<ViewerCameraBookmark>();
+        _savedViewsRefreshRequested = false;
+        RenderSavedViewMenu();
+        _reviewRecoveryKey = null;
+        _reviewRecoveryIdentity = null;
+        _reviewRecoveryDocument = null;
         _backendHost = null;
         _hostSession = null;
         _hasLastHostCamera = false;
@@ -4215,18 +4360,28 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RefreshRecentMenu(IReadOnlyList<string> paths)
     {
-        RecentStagesMenu.ItemsSource = paths.Select(path =>
+        _commands.RemoveGroup(RecentCommandPrefix);
+        string[] recentPaths = [.. paths.Take(RecentStageStore.Capacity)];
+        MenuItem[] items = [.. recentPaths.Select(path =>
         {
             var item = new MenuItem
             {
-                Header = Path.GetFileName(path),
+                Header = Path.GetFileName(path).Replace("_", "__", StringComparison.Ordinal),
                 Tag = path
             };
             ToolTip.SetTip(item, path);
             item.Click += OnRecentStageClick;
             return item;
-        }).ToArray();
-        RecentStagesMenu.IsEnabled = paths.Count != 0;
+        })];
+        RecentStagesMenu.ItemsSource = items;
+        foreach (MenuItem item in items)
+        {
+            string path = (string)item.Tag!;
+            _commands.Register(new ViewerCommandDescriptor(
+                RecentCommandPrefix + path, ViewerCommandGroup.File,
+                Path.GetFileName(path), $"Open recent stage: {path}"), item);
+        }
+        RefreshWelcomeRecentItems(recentPaths);
     }
 
     private async void OnRecentStageClick(object? sender, RoutedEventArgs e)
@@ -4240,6 +4395,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RenderStageCameraMenu()
     {
+        const string cameraCommandPrefix = "camera.stage:";
+        _commands.RemoveGroup(cameraCommandPrefix);
         MenuItem[] items = _stageCameras
             .Select(entry =>
             {
@@ -4251,7 +4408,7 @@ public sealed partial class MainWindow : Window, IDisposable
                         : entry.Name;
                 var item = new MenuItem
                 {
-                    Header = header,
+                    Header = header.Replace("_", "__", StringComparison.Ordinal),
                     Tag = entry.Path
                 };
                 ToolTip.SetTip(item, entry.Path);
@@ -4260,13 +4417,23 @@ public sealed partial class MainWindow : Window, IDisposable
             })
             .ToArray();
         StageCamerasMenu.ItemsSource = items;
+        foreach (MenuItem item in items)
+        {
+            string path = (string)item.Tag!;
+            _commands.Register(new ViewerCommandDescriptor(
+                cameraCommandPrefix + path, ViewerCommandGroup.Camera,
+                item.Header?.ToString() ?? path, $"Use stage camera: {path}"), item);
+        }
         StageCamerasMenu.IsEnabled = items.Length != 0 && CanNavigateCamera();
         StageCamerasMenu.IsVisible = items.Length != 0;
         StageCameraMenuSeparator.IsVisible = items.Length != 0;
     }
 
-    private void OnHierarchyFilterChanged(object? sender, TextChangedEventArgs e) =>
+    private void OnHierarchyFilterChanged(object? sender, TextChangedEventArgs e)
+    {
+        _hierarchyPages.Clear();
         RenderHierarchy();
+    }
 
     private void OnHierarchyVisibilityFilterChanged(object? sender, RoutedEventArgs e) =>
         RenderHierarchy();
@@ -4277,6 +4444,8 @@ public sealed partial class MainWindow : Window, IDisposable
         if (string.IsNullOrWhiteSpace(text))
         {
             _hierarchyExpandDepth = 0;
+            _expandedHierarchyPaths.Clear();
+            HierarchyExpandDepthInput.Classes.Set("viewer-input-error", false);
             RenderHierarchy();
             return;
         }
@@ -4284,11 +4453,12 @@ public sealed partial class MainWindow : Window, IDisposable
             depth >= 0)
         {
             _hierarchyExpandDepth = depth;
-            HierarchyExpandDepthInput.Foreground = null;
+            _expandedHierarchyPaths.Clear();
+            HierarchyExpandDepthInput.Classes.Set("viewer-input-error", false);
             RenderHierarchy();
             return;
         }
-        HierarchyExpandDepthInput.Foreground = Brushes.OrangeRed;
+        HierarchyExpandDepthInput.Classes.Set("viewer-input-error", true);
     }
 
     private void ShowStageSummary()
@@ -4300,7 +4470,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _latestDiagnostics);
     }
 
-    private void RenderHierarchy()
+    private void RenderHierarchy(bool revealSelection = true)
     {
         ViewerHierarchySnapshot filtered = _hierarchy.Filter(new ViewerHierarchyFilter(
             HierarchyFilter.Text,
@@ -4314,16 +4484,25 @@ public sealed partial class MainWindow : Window, IDisposable
         _rebuildingHierarchy = true;
         try
         {
-            StageHierarchy.ItemsSource = CreateTreeItems(source.Roots, ref selectedItem);
-            StageHierarchy.IsVisible = source.Roots.Count != 0;
-            HierarchyState.IsVisible = source.Roots.Count == 0;
-            HierarchyState.Text = _hierarchy.Entries.Length == 0
-                ? "The stage contains no traversable prims."
-                : "No prims match the current filter.";
-            if (selectedItem is not null)
+            _hierarchyItems.Clear();
+            _hierarchyBranchPagers.Clear();
+            _automaticHierarchyItemsRemaining = AutomaticHierarchyItemBudget;
+            _revealHierarchySelection = revealSelection;
+            _automaticHierarchyLimited = false;
+            _hierarchyDisplayLimited = false;
+            _hierarchyRootPage = source.GetRootPage(_hierarchyPages.GetValueOrDefault(string.Empty),
+                revealSelection ? _selectionState.PrimPath : null);
+            _hierarchyPages[string.Empty] = _hierarchyRootPage.PageIndex;
+            StageHierarchy.ItemsSource = CreateTreeItems(_hierarchyRootPage.Nodes, ref selectedItem);
+            StageHierarchy.IsVisible = _hierarchyRootPage.TotalCount != 0;
+            StageHierarchy.SelectedItem = selectedItem;
+            _expandedHierarchyPaths.IntersectWith(_hierarchyItems.Keys);
+            foreach (string path in _hierarchyPages.Keys.Where(
+                path => path.Length != 0 && !_hierarchyItems.ContainsKey(path)).ToArray())
             {
-                StageHierarchy.SelectedItem = selectedItem;
+                _hierarchyPages.Remove(path);
             }
+            UpdateHierarchyNavigation();
         }
         finally
         {
@@ -4400,6 +4579,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         bool interactiveDocument =
             !_documentBusy &&
+            !_documentEditBusy &&
+            !_shutdownStarted &&
             !_layerCommandBusy &&
             _coordinator is not null &&
             !IsAutomatedViewerRun();
@@ -4430,6 +4611,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
             }
         }
+        UpdateInspectorPropertyControls();
     }
 
     private async void OnSetSessionEditTargetClick(object? sender, RoutedEventArgs e)
@@ -4527,6 +4709,10 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 return;
             }
+            if (_documentEditBusy || _shutdownStarted)
+            {
+                throw new InvalidOperationException("Finish the document transition before changing layers.");
+            }
             if (command is ViewerLayerCommand.Mute or ViewerLayerCommand.Unmute)
             {
                 ViewerLayerSnapshot layer = _layers.Layers.FirstOrDefault(candidate =>
@@ -4569,6 +4755,8 @@ public sealed partial class MainWindow : Window, IDisposable
             UpdateLayerAvailability();
             ViewerLayerStackSnapshot previousLayers = _layers;
             bool previousRootEditPolicy = _rootLayerEditsExplicitlyEnabled;
+            string? inspectedPrimPath = _selectionState.PrimPath;
+            double? inspectionTimeCode = _inspectorTimeCode;
             try
             {
                 UsdStageInvalidationKind invalidation =
@@ -4598,7 +4786,8 @@ public sealed partial class MainWindow : Window, IDisposable
                         return ViewerStageSnapshotBuilder.BuildDocument(
                             stage,
                             previousLayers,
-                            _selectionState.PrimPath);
+                            inspectedPrimPath,
+                            inspectionTimeCode);
                     },
                     invalidation,
                     documentToken);
@@ -4634,7 +4823,8 @@ public sealed partial class MainWindow : Window, IDisposable
                         stage => ViewerStageSnapshotBuilder.BuildDocument(
                             stage,
                             previousLayers,
-                            _selectionState.PrimPath),
+                            inspectedPrimPath,
+                            inspectionTimeCode),
                         documentToken);
                     await ApplyDocumentRefreshAsync(coordinator, document, documentToken);
                 }
@@ -4662,7 +4852,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private async Task ApplyDocumentRefreshAsync(
         ViewerRenderCoordinator coordinator,
         ViewerDocumentSnapshot document,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveTime = false)
     {
         bool timingChanged = _timing != document.Timing;
         if (timingChanged)
@@ -4700,13 +4891,13 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         if (timingChanged)
         {
-            if (!IsAutomatedViewerRun() && plan.RequiresTimeUpdate)
+            if (!preserveTime && !IsAutomatedViewerRun() && plan.RequiresTimeUpdate)
             {
                 await coordinator.MutateStateAsync(
                     state => state.WithTime(new StageTime(plan.PreservedTimeCode)),
                     cancellationToken);
             }
-            await InitializeTimelineAsync(coordinator, _timing, cancellationToken);
+            await InitializeTimelineAsync(coordinator, _timing, cancellationToken, preserveTime);
         }
         RenderHierarchy();
         RenderLayers();
@@ -4735,34 +4926,24 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         var item = new TreeViewItem
         {
-            Header = CreateHierarchyItemHeader(node.Entry),
             ContextMenu = CreateHierarchyContextMenu(node.Entry),
             Tag = node
         };
+        item.Header = CreatePagedHierarchyHeader(item, node);
+        _hierarchyItems.Add(node.Entry.Path, item);
         AutomationProperties.SetName(item, $"Prim {node.Entry.Path}");
-        ToolTip.SetTip(item, node.Entry.Path);
-        string? selectedPrimPath = _selectionState.PrimPath;
-        bool containsSelection = selectedPrimPath is not null &&
-            (selectedPrimPath == node.Entry.Path ||
-             selectedPrimPath.StartsWith(
-                 string.Concat(node.Entry.Path, "/"),
-                 StringComparison.Ordinal));
-        if (node.Entry.ChildCount != 0)
+        string tooltip = ViewerScalarFormatter.Bound(node.Entry.Path, 2048);
+        if (node.Entry.PrototypePath is { } prototypePath)
         {
-            if (ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
-                node.Entry,
-                _hierarchyExpandDepth,
-                containsSelection))
-            {
-                item.ItemsSource = CreateTreeItems(node.Children, ref selectedItem);
-                item.IsExpanded = true;
-            }
-            else
-            {
-                item.ItemsSource = new[] { new TreeViewItem { Header = "…" } };
-                item.Expanded += OnTreeItemExpanded;
-            }
+            tooltip += $"\nInstance prototype: {ViewerScalarFormatter.Bound(prototypePath, 2048)}";
         }
+        if (node.Entry.VariantMetadataStatus == UsdHierarchyVariantMetadataStatus.Deferred)
+        {
+            tooltip += "\nInline variant metadata is not available without preparing deferred backing data. " +
+                "Hierarchy prims are complete; no partial selector list is shown.";
+        }
+        ToolTip.SetTip(item, tooltip);
+        string? selectedPrimPath = _selectionState.PrimPath;
         if (selectedPrimPath == node.Entry.Path)
         {
             selectedItem = item;
@@ -4775,11 +4956,11 @@ public sealed partial class MainWindow : Window, IDisposable
         var row = new StackPanel
         {
             Orientation = Avalonia.Layout.Orientation.Horizontal,
-            Spacing = 6
+            Spacing = 8
         };
         row.Children.Add(new TextBlock
         {
-            Text = entry.Name,
+            Text = ViewerScalarFormatter.Bound(entry.Name, 256),
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
         });
         string state = FormatHierarchyEntryState(entry);
@@ -4789,7 +4970,7 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 Text = state,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Foreground = Brushes.Gray
+                Classes = { "viewer-secondary" }
             });
         }
         foreach (ViewerVariantSetSnapshot variantSet in entry.VariantSets)
@@ -4817,14 +4998,16 @@ public sealed partial class MainWindow : Window, IDisposable
             SelectedItem = options.FirstOrDefault(option =>
                 string.Equals(option.Selection, variantSet.Selection, StringComparison.Ordinal)),
             Tag = request,
-            IsEnabled = CanRunHierarchyPrimCommand(entry) &&
+            IsEnabled = _documentEditor is null && CanRunHierarchyPrimCommand(entry) &&
                 !string.IsNullOrWhiteSpace(variantSet.Name) &&
                 (variantSet.VariantNames.Count != 0 || variantSet.Selection is not null)
         };
         AutomationProperties.SetName(
             selector,
             $"Variant set {variantSet.Name} selection for prim {entry.Path}");
-        ToolTip.SetTip(selector, $"Choose a variant for {entry.Path}");
+        ToolTip.SetTip(selector, _documentEditor is not null
+            ? "Variant authoring is read-only until exact target-layer prim-field history is available."
+            : $"Choose a variant for {entry.Path}");
         selector.SelectionChanged += OnHierarchyVariantSelectionChanged;
         return selector;
     }
@@ -4857,7 +5040,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private static string FormatHierarchyEntryState(ViewerHierarchyEntry entry)
     {
-        var states = new List<string>(capacity: 6);
+        var states = new List<string>(capacity: 9);
         if (!entry.IsActive)
         {
             states.Add("inactive");
@@ -4878,9 +5061,21 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             states.Add("prototype");
         }
+        else if (entry.IsInPrototype)
+        {
+            states.Add("prototype child");
+        }
+        if (entry.IsInstance)
+        {
+            states.Add("instance");
+        }
         if (entry.HasPayloads)
         {
             states.Add("payload");
+        }
+        if (entry.VariantMetadataStatus == UsdHierarchyVariantMetadataStatus.Deferred)
+        {
+            states.Add("variants deferred");
         }
         return states.Count == 0 ? string.Empty : $"[{string.Join(", ", states)}]";
     }
@@ -4888,35 +5083,73 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool CanRunHierarchyPrimCommand(ViewerHierarchyEntry entry) =>
         _coordinator is not null &&
         !_documentBusy &&
+        !_documentEditBusy &&
         !_primCommandBusy &&
         !IsAutomatedViewerRun() &&
-        !entry.IsPrototype;
+        !entry.IsPrototype &&
+        !entry.IsInPrototype;
 
     private TreeViewItem[] CreateTreeItems(
         IReadOnlyList<ViewerHierarchyTreeNode> nodes,
         ref TreeViewItem? selectedItem)
     {
+        _automaticHierarchyItemsRemaining -= nodes.Count;
         var items = new TreeViewItem[nodes.Count];
+        int selectedBranch = -1;
         for (int index = 0; index < nodes.Count; index++)
         {
             items[index] = CreateTreeItem(nodes[index], ref selectedItem);
+            if (_revealHierarchySelection && _selectionState.PrimPath is { } selected &&
+                ViewerHierarchyPage.ContainsPath(nodes[index].Entry.Path, selected))
+            {
+                selectedBranch = index;
+            }
+        }
+        if (selectedBranch >= 0)
+        {
+            InitializeHierarchyChildren(items[selectedBranch], nodes[selectedBranch], ref selectedItem);
+        }
+        for (int index = 0; index < nodes.Count; index++)
+        {
+            if (index != selectedBranch)
+            {
+                InitializeHierarchyChildren(items[index], nodes[index], ref selectedItem);
+            }
         }
         return items;
     }
 
     private void OnTreeItemExpanded(object? sender, RoutedEventArgs e)
     {
-        if (sender is not TreeViewItem
+        if (_rebuildingHierarchy || sender is not TreeViewItem
             {
                 Tag: ViewerHierarchyTreeNode node
             } item ||
-            node.IsChildrenMaterialized)
+            !ReferenceEquals(e.Source, item) || !IsCurrentHierarchyItem(item, node) ||
+            item.Items.OfType<TreeViewItem>().Any(static child => child.Tag is ViewerHierarchyTreeNode))
         {
             return;
         }
-        TreeViewItem? selectedItem = null;
-        item.ItemsSource = CreateTreeItems(node.Children, ref selectedItem);
-        item.Expanded -= OnTreeItemExpanded;
+        _rebuildingHierarchy = true;
+        try
+        {
+            _automaticHierarchyItemsRemaining = AutomaticHierarchyItemBudget;
+            _revealHierarchySelection = true;
+            TreeViewItem? selectedItem = null;
+            if (!PopulateHierarchyChildren(item, node, ref selectedItem))
+            {
+                item.IsExpanded = false;
+            }
+            if (selectedItem is not null)
+            {
+                StageHierarchy.SelectedItem = selectedItem;
+            }
+            UpdateHierarchyNavigation();
+        }
+        finally
+        {
+            _rebuildingHierarchy = false;
+        }
     }
 
     private async void OnHierarchySelectionChanged(
@@ -5043,6 +5276,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         try
         {
+            _inspectorPropertiesLoading = true;
+            UpdateDocumentCommands();
             InspectorRows.Children.Clear();
             ValueRows.Children.Clear();
             MetadataRows.Children.Clear();
@@ -5071,8 +5306,9 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 return;
             }
+            double? inspectionTimeCode = _inspectorTimeCode;
             ViewerPrimInspectorSnapshot inspector = await coordinator.Scheduler.InvokeAsync(
-                stage => ViewerStageSnapshotBuilder.BuildInspector(stage, primPath),
+                stage => ViewerStageSnapshotBuilder.BuildInspector(stage, primPath, inspectionTimeCode),
                 cancellationToken);
             if (!ReferenceEquals(selectionLifetime, _selectionLifetime) ||
                 cancellationToken.IsCancellationRequested)
@@ -5088,6 +5324,10 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             if (ReferenceEquals(selectionLifetime, _selectionLifetime))
             {
+                _inspectorPropertiesLoading = false;
+                _inspectorPropertyPage = null;
+                _currentInspector = null;
+                UpdateDocumentCommands();
                 ShowError($"Could not inspect '{primPath}': {exception.Message}");
                 InspectorRows.Children.Clear();
                 ValueRows.Children.Clear();
@@ -5121,6 +5361,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ShowInspector(ViewerPrimInspectorSnapshot inspector)
     {
         _currentInspector = inspector;
+        ViewerPropertyPage properties = PrepareInspectorPropertyPage(inspector);
         _diagnostics.AddUnsupported(inspector.UnsupportedFeatures);
         _rebuildingInspector = true;
         _splineKnotBudget = SplineKnotRowBudget;
@@ -5197,6 +5438,12 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             AddInspectorHeading("Session controls");
+            if (_documentEditor is not null)
+            {
+                AddInspectorRow("Authored edits",
+                    "Use Edit > Edit Selected Property for exact review history. Prim metadata and variants " +
+                    "are read-only until their native authored-state seam is available. Load rules remain usable.");
+            }
             AddInspectorButtonRow(
                 "Active",
                 inspector.IsActive.ToString(),
@@ -5309,33 +5556,41 @@ public sealed partial class MainWindow : Window, IDisposable
                 AddCompositionRow("Error", error);
             }
 
-            AddInspectorHeading($"Attributes ({inspector.Attributes.Length})");
-            AddValueHeading($"Attributes ({inspector.Attributes.Length})");
-            if (inspector.Attributes.Length == 0)
+            AddInspectorHeading($"Attributes ({properties.Attributes.Count} shown of {inspector.Attributes.Length})");
+            AddValueHeading($"Attributes ({properties.Attributes.Count} shown of {inspector.Attributes.Length})");
+            if (inspector.PropertySnapshot is { IsComplete: false })
             {
-                AddValueRow("Attributes", "<none>");
+                AddValueRow("Bounded inspection",
+                    "Some values, samples or targets are truncated, deferred or unsupported. See each preview's reason.");
             }
-            foreach (ViewerAttributeSnapshot attribute in inspector.Attributes)
+            if (properties.Attributes.Count == 0)
+            {
+                AddValueRow("Attributes", inspector.Attributes.Length == 0 ? "<none>" : "<none on this page>");
+            }
+            foreach (ViewerAttributeSnapshot attribute in properties.Attributes)
             {
                 string splineSuffix = attribute.Spline is ViewerSplineSnapshot attributeSpline
                     ? $"; spline={ViewerSplineFormatter.FormatSummary(attributeSpline)}"
                     : string.Empty;
                 AddInspectorRow(
                     attribute.Name,
-                    $"{attribute.TypeName}; authored={attribute.HasAuthoredValue}; " +
-                    $"blocked={attribute.IsBlocked}; samples={attribute.TimeSampleCount}; " +
+                    $"{attribute.TypeName}; {ViewerPropertyInspectionFormatter.State(attribute)}; " +
+                    $"samples={ViewerPropertyInspectionFormatter.Count(attribute.TimeSampleCount)}; " +
                     $"value={attribute.Value}{splineSuffix}");
                 AddValueAttributeRow(attribute, inspector);
             }
-            AddInspectorHeading($"Relationships ({inspector.Relationships.Length})");
-            AddValueHeading($"Relationships ({inspector.Relationships.Length})");
-            AddMetadataHeading($"Relationships ({inspector.Relationships.Length})");
-            if (inspector.Relationships.Length == 0)
+            string relationshipHeading =
+                $"Relationships ({properties.Relationships.Count} shown of {inspector.Relationships.Length})";
+            AddInspectorHeading(relationshipHeading);
+            AddValueHeading(relationshipHeading);
+            AddMetadataHeading(relationshipHeading);
+            if (properties.Relationships.Count == 0)
             {
-                AddValueRow("Relationships", "<none>");
-                AddMetadataRow("Relationships", "<none>");
+                string empty = inspector.Relationships.Length == 0 ? "<none>" : "<none on this page>";
+                AddValueRow("Relationships", empty);
+                AddMetadataRow("Relationships", empty);
             }
-            foreach (ViewerRelationshipSnapshot relationship in inspector.Relationships)
+            foreach (ViewerRelationshipSnapshot relationship in properties.Relationships)
             {
                 string targets = string.IsNullOrEmpty(relationship.Targets)
                     ? "<no targets>"
@@ -5345,6 +5600,12 @@ public sealed partial class MainWindow : Window, IDisposable
                     targets);
                 AddValueRow(relationship.Name, targets);
                 AddMetadataRow(relationship.Name, targets);
+                if (relationship.Inspection is { } inspection)
+                {
+                    string details = ViewerPropertyInspectionFormatter.RelationshipDetails(inspection);
+                    AddValueRow("Target details", details);
+                    AddMetadataRow($"{relationship.Name} details", details);
+                }
             }
             AddInspectorHeading($"Unsupported ({inspector.UnsupportedFeatures.Length})");
             AddMetadataHeading($"Unsupported ({inspector.UnsupportedFeatures.Length})");
@@ -5360,6 +5621,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         RenderDiagnostics();
         UpdateCameraAvailability();
+        UpdateDocumentCommands();
     }
 
     private void AddInspectorHeading(string text) =>
@@ -5485,77 +5747,124 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         var row = new StackPanel
         {
-            Spacing = 3
+            Spacing = 4,
+            Classes = { "viewer-property-row" }
         };
         row.Children.Add(new TextBlock
         {
-            Text = $"{attribute.Name}: {attribute.TypeName}; authored={attribute.HasAuthoredValue}; " +
-                $"blocked={attribute.IsBlocked}",
+            Text = $"{ViewerScalarFormatter.Bound(attribute.Name, 512)} ({attribute.TypeName})",
+            FontWeight = FontWeight.SemiBold,
             TextWrapping = TextWrapping.Wrap
         });
         row.Children.Add(new TextBlock
+        {
+            Text = ViewerPropertyInspectionFormatter.State(attribute),
+            Classes = { "viewer-caption" },
+            TextWrapping = TextWrapping.Wrap
+        });
+        row.Children.Add(new SelectableTextBlock
         {
             Text = $"Value: {ViewerScalarFormatter.Bound(attribute.Value, 512)}",
             TextWrapping = TextWrapping.Wrap
         });
-        row.Children.Add(new TextBlock
+        if (ViewerPropertyInspectionFormatter.AssetWarning(attribute.Inspection?.Value) is { } assetWarning)
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = assetWarning,
+                Classes = { "viewer-warning" },
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+        var editButton = new Button
+        {
+            Content = "Edit Review...",
+            Tag = attribute,
+            IsEnabled = false
+        };
+        AutomationProperties.SetName(editButton, $"Edit review property {attribute.Name} on {inspector.Path}");
+        AutomationProperties.SetAutomationId(editButton, $"edit.property:{inspector.Path}.{attribute.Name}");
+        editButton.Click += (_, _) => ShowPropertyEditor(attribute.Name);
+        row.Children.Add(editButton);
+        var disclosure = new Expander
+        {
+            Header = "Source, samples and assets",
+            Classes = { "viewer-property-details" },
+            IsExpanded = string.Equals(_expandedPropertyName, attribute.Name, StringComparison.Ordinal)
+        };
+        AutomationProperties.SetName(disclosure, $"Inspection details for {attribute.Name} on {inspector.Path}");
+        AutomationProperties.SetAutomationId(disclosure, $"details.property:{inspector.Path}.{attribute.Name}");
+        disclosure.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == Expander.IsExpandedProperty && !_rebuildingInspector)
+            {
+                UpdatePropertyDisclosure(disclosure, attribute, inspector);
+            }
+        };
+        if (disclosure.IsExpanded)
+        {
+            disclosure.Content = CreatePropertyDetails(attribute, inspector);
+        }
+        row.Children.Add(disclosure);
+        ValueRows.Children.Add(row);
+    }
+
+    private void UpdatePropertyDisclosure(
+        Expander disclosure, ViewerAttributeSnapshot attribute, ViewerPrimInspectorSnapshot inspector)
+    {
+        if (!disclosure.IsExpanded)
+        {
+            disclosure.Content = null;
+            if (string.Equals(_expandedPropertyName, attribute.Name, StringComparison.Ordinal))
+            {
+                _expandedPropertyName = null;
+            }
+            return;
+        }
+        _expandedPropertyName = attribute.Name;
+        foreach (Expander other in ValueRows.Children.OfType<StackPanel>()
+            .SelectMany(static row => row.Children.OfType<Expander>()))
+        {
+            if (!ReferenceEquals(other, disclosure))
+            {
+                other.IsExpanded = false;
+            }
+        }
+        disclosure.Content = CreatePropertyDetails(attribute, inspector);
+    }
+
+    private StackPanel CreatePropertyDetails(
+        ViewerAttributeSnapshot attribute, ViewerPrimInspectorSnapshot inspector)
+    {
+        _splineKnotBudget = SplineKnotRowBudget;
+        var content = new StackPanel { Spacing = 4 };
+        content.Children.Add(new TextBlock
         {
             Text = $"Time samples: {attribute.TimeSamples}",
             TextWrapping = TextWrapping.Wrap
         });
+        if (attribute.Inspection is { } inspection)
+        {
+            var details = new SelectableTextBlock
+            {
+                Text = ViewerPropertyInspectionFormatter.AttributeDetails(inspection),
+                TextWrapping = TextWrapping.Wrap
+            };
+            AutomationProperties.SetName(details, $"Native inspection details for {inspector.Path}.{attribute.Name}");
+            content.Children.Add(details);
+        }
         if (attribute.Spline is ViewerSplineSnapshot spline)
         {
-            // One control per spline, and one knot-line budget for the whole
-            // inspector: a prim with many splined attributes must not be able
-            // to grow the visual tree without a bound.
+            // Only one property's details are materialized at a time.
             ViewerSplineBlock block = ViewerSplineFormatter.FormatBlock(spline, _splineKnotBudget);
             _splineKnotBudget -= block.KnotsShown;
-            row.Children.Add(new TextBlock
+            content.Children.Add(new TextBlock
             {
                 Text = block.Text,
                 TextWrapping = TextWrapping.Wrap
             });
         }
-        var actions = new StackPanel
-        {
-            Orientation = Avalonia.Layout.Orientation.Horizontal,
-            Spacing = 8
-        };
-        AddAttributeActionButton(
-            actions,
-            "Clear",
-            new ViewerPrimCommandRequest(
-                ViewerPrimCommand.ClearAttributeValue,
-                AttributeName: attribute.Name),
-            inspector);
-        AddAttributeActionButton(
-            actions,
-            "Block",
-            new ViewerPrimCommandRequest(
-                ViewerPrimCommand.BlockAttributeValue,
-                AttributeName: attribute.Name),
-            inspector);
-        row.Children.Add(actions);
-        ValueRows.Children.Add(row);
-    }
-
-    private void AddAttributeActionButton(
-        StackPanel actions,
-        string action,
-        ViewerPrimCommandRequest request,
-        ViewerPrimInspectorSnapshot inspector)
-    {
-        var button = new Button
-        {
-            Content = action,
-            Tag = request,
-            IsEnabled = CanRunPrimCommand(request.Command, inspector)
-        };
-        AutomationProperties.SetName(
-            button,
-            $"{action} attribute {request.AttributeName} on prim {inspector.Path}");
-        button.Click += OnPrimCommandClick;
-        actions.Children.Add(button);
+        return content;
     }
 
     private void AddMetadataVariantRow(ViewerVariantSetSnapshot variantSet)
@@ -5626,11 +5935,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool CanRunPrimCommand(
         ViewerPrimCommand command,
         ViewerPrimInspectorSnapshot inspector) =>
+        (command == ViewerPrimCommand.SetLoaded || _documentEditor is null) &&
         ViewerSessionCommandPolicy.CanExecute(
             command,
             new ViewerPrimCommandContext(
                 HasDocument: _coordinator is not null,
-                IsBusy: _documentBusy || _primCommandBusy,
+                IsBusy: _documentBusy || _primCommandBusy || _documentEditBusy,
                 IsAutomated: IsAutomatedViewerRun(),
                 HasSelection: string.Equals(
                     _selectionState.PrimPath,
@@ -5890,6 +6200,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _primCommandBusy = true;
             ShowInspector(inspector);
             ViewerLayerStackSnapshot previousLayers = _layers;
+            double? inspectionTimeCode = _inspectorTimeCode;
             ViewerSessionEditTarget target = ViewerSessionCommandPolicy.ResolveEditTarget(
                 _rootLayerEditsExplicitlyEnabled);
             try
@@ -5905,7 +6216,8 @@ public sealed partial class MainWindow : Window, IDisposable
                             return ViewerStageSnapshotBuilder.BuildDocument(
                                 stage,
                                 previousLayers,
-                                primPath);
+                                primPath,
+                                inspectionTimeCode);
                         }
                         catch
                         {
@@ -5937,7 +6249,8 @@ public sealed partial class MainWindow : Window, IDisposable
                         stage => ViewerStageSnapshotBuilder.BuildDocument(
                             stage,
                             previousLayers,
-                            primPath),
+                            primPath,
+                            inspectionTimeCode),
                         documentToken);
                     await ApplyDocumentRefreshAsync(coordinator, document, documentToken);
                 }
@@ -5975,6 +6288,11 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         request.Validate();
+        if (_documentEditor is not null && request.Command != ViewerPrimCommand.SetLoaded)
+        {
+            throw new NotSupportedException(
+                "Prim metadata and variants are read-only until exact native authored-state history is available.");
+        }
         string targetPrimPath = request.PrimPath ??
             throw new InvalidOperationException("Hierarchy prim commands require a target prim path.");
         await _documentGate.WaitAsync(cancellationToken);
@@ -5993,11 +6311,13 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             _primCommandBusy = true;
+            UpdateInspectorPropertyControls();
             RenderHierarchy();
             ViewerLayerStackSnapshot previousLayers = _layers;
             ViewerSessionEditTarget target = ViewerSessionCommandPolicy.ResolveEditTarget(
                 _rootLayerEditsExplicitlyEnabled);
             string? selectedPrimPath = _selectionState.PrimPath;
+            double? inspectionTimeCode = _inspectorTimeCode;
             try
             {
                 ViewerDocumentSnapshot document = await coordinator.Scheduler.EditAsync(
@@ -6011,7 +6331,8 @@ public sealed partial class MainWindow : Window, IDisposable
                             return ViewerStageSnapshotBuilder.BuildDocument(
                                 stage,
                                 previousLayers,
-                                selectedPrimPath);
+                                selectedPrimPath,
+                                inspectionTimeCode);
                         }
                         catch
                         {
@@ -6029,6 +6350,7 @@ public sealed partial class MainWindow : Window, IDisposable
             finally
             {
                 _primCommandBusy = false;
+                UpdateInspectorPropertyControls();
                 RenderHierarchy();
             }
         }
@@ -6144,6 +6466,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void SetBusy(string status)
     {
         _documentBusy = true;
+        UpdateDocumentPresentation();
         ViewerStatus.Text = status;
         ViewerStatus.Foreground = null;
         HierarchyState.Text = status;
@@ -6166,6 +6489,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void SetReady(string status)
     {
         _documentBusy = false;
+        UpdateDocumentPresentation();
         ViewerStatus.Text = status;
         ViewerStatus.Foreground = null;
         OpenStageButton.IsEnabled = true;
@@ -6188,6 +6512,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ShowError(string status)
     {
         _documentBusy = false;
+        UpdateDocumentPresentation();
         ViewerStatus.Text = $"Error: {status}";
         ViewerStatus.Foreground = null;
         OpenStageButton.IsEnabled = true;
@@ -6209,6 +6534,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ClearDocumentUi()
     {
+        UpdateDocumentPresentation();
         StageStatus.Text = "No stage loaded";
         _statistics = ViewerStageStatisticsSnapshot.Empty;
         _validation = ViewerValidationSnapshot.Empty;
@@ -6223,9 +6549,11 @@ public sealed partial class MainWindow : Window, IDisposable
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
         CaptureFrameMenuItem.IsEnabled = false;
+        RenderImageSequenceMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         RenderStageCameraMenu();
         StageHierarchy.ItemsSource = null;
+        ResetHierarchyPaging();
         StageHierarchy.IsVisible = false;
         HierarchyState.Text = "Open or drop a USD stage to inspect its prims.";
         HierarchyState.IsVisible = true;
@@ -6263,6 +6591,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ResetInspector()
     {
         _currentInspector = null;
+        ResetInspectorPropertyPaging();
+        UpdateDocumentCommands();
         UpdateCameraAvailability();
         InspectorRows.Children.Clear();
         ValueRows.Children.Clear();
@@ -6304,12 +6634,18 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             return false;
         }
+
         string extension = Path.GetExtension(path);
         return extension.Equals(".usd", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".usda", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".usdc", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".usdz", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsViewerDocumentPath(string? path) => IsUsdStagePath(path) || IsReviewDocumentPath(path);
+
+    private static bool IsReviewDocumentPath(string? path) => path is not null &&
+        Path.GetExtension(path).Equals(".urd", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsAutomatedViewerRun() =>
         ViewerStartupOptions.LiveEditSmoke ||
@@ -8259,15 +8595,58 @@ public sealed partial class MainWindow : Window, IDisposable
             _shutdownComplete = true;
             return;
         }
-        if (_shutdownComplete || _shutdownStarted)
+        if (_shutdownComplete)
         {
             return;
         }
-        _shutdownStarted = true;
         e.Cancel = true;
-        // First, before any awaited shutdown step: the colour-management poll loop is
-        // cancelled and drained, so no tick can run against the coordinator, settings
-        // store, or lifetime token that the rest of this method disposes.
+        if (_shutdownStarted || _closeDecisionPending)
+        {
+            return;
+        }
+        _closeDecisionPending = true;
+        await CloseSavedViewsAsync();
+        await CloseRenderSequenceAsync();
+        bool admitted = false;
+        await _documentGate.WaitAsync();
+        try
+        {
+            admitted = await ConfirmDocumentTransitionAsync(ViewerDocumentTransition.Close, _viewerLifetime.Token);
+            if (admitted)
+            {
+                await PrepareDocumentRetirementAsync(_viewerLifetime.Token);
+                _shutdownStarted = true;
+                IsEnabled = false;
+                ViewerStatus.Text = "Closing the document...";
+            }
+        }
+        catch (Exception exception) when (exception is OpenUsdNativeException or InvalidOperationException or
+            InvalidDataException or NotSupportedException or ArgumentException or OperationCanceledException or
+            TimeoutException or IOException or UnauthorizedAccessException)
+        {
+            admitted = false;
+            ShowError($"The document was kept: {exception.Message}");
+        }
+        finally
+        {
+            if (!admitted)
+            {
+                await EndDocumentTransitionAsync();
+            }
+            _closeDecisionPending = false;
+            _documentGate.Release();
+        }
+        if (!admitted)
+        {
+            return;
+        }
+        _commandPalette?.Close();
+        if (_captureComparison is { } comparison)
+        {
+            await comparison.CloseAsync();
+        }
+        // Irreversible shutdown starts only after supported writers are drained and the ticket
+        // is revalidated. A rejected close must leave colour management and the document alive.
         await StopColorManagementPollingAsync();
         try
         {
@@ -8276,6 +8655,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 await SaveSettingsAsync();
             }
             _viewerLifetime.Cancel();
+            await _frameCaptureTask;
             await _documentGate.WaitAsync();
             try
             {
@@ -8377,6 +8757,10 @@ public sealed partial class MainWindow : Window, IDisposable
             // is what makes disposal actually release the window.
             StopColorManagementPolling();
             StopStormNavigationPolling();
+            _commandPalette?.Close();
+            _captureComparison?.Close();
+            _commands.Dispose();
+            _windowTheme.Dispose();
             _stormNavigationTimer.Tick -= OnStormNavigationTick;
             _hostShutdown.Dispose();
             _pickLifetime?.Cancel();
@@ -8384,6 +8768,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _viewerLifetime.Dispose();
             _documentGate.Dispose();
             _settingsStore.Dispose();
+            DisposeReviewRecovery();
             _physicsBakeLifetime.Dispose();
             DisposeBridgeConnection();
         }

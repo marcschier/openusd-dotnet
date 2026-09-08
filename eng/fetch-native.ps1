@@ -6,6 +6,8 @@ param(
     [string]$Rid,
     [string]$CacheRoot = (Join-Path $PSScriptRoot '../native/downloads'),
     [string]$SourceRoot = (Join-Path $PSScriptRoot '../native/src'),
+    [switch]$SourceOnly,
+    [string]$PatchLockPath,
     [switch]$Force
 )
 
@@ -67,6 +69,7 @@ $openUsdArchive = Get-VerifiedDownload `
 
 foreach ($dependency in $lock.dependencies)
 {
+    if ($SourceOnly) { break }
     if ($dependency.platforms -notcontains $Rid)
     {
         continue
@@ -308,10 +311,18 @@ if ($buildScriptHash -ne $lock.openUsd.patchedBuildScriptSha256)
     throw "OpenUSD patched build script hash mismatch. Expected $($lock.openUsd.patchedBuildScriptSha256), got $buildScriptHash."
 }
 
+$patchSet = $null
+if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
+{
+    $patchSet = & (Join-Path $PSScriptRoot 'apply-openusd-source-patches.ps1') `
+        -SourceRoot $openUsdSource -PatchLockPath $PatchLockPath
+}
+
 [pscustomobject]@{
     Rid = $Rid
     RepositoryRoot = $repoRoot.Path
     CacheRoot = $CacheRoot
     SourceRoot = $openUsdSource
     BuildScript = $buildScript
+    PatchSet = $patchSet
 }

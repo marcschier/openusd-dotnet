@@ -47,6 +47,22 @@ internal sealed record ViewerShortcut(
 /// </remarks>
 internal static class ViewerShortcutCatalog
 {
+    internal static IReadOnlyList<ViewerShortcut> Workspace { get; } = BuildWorkspaceShortcuts();
+
+    private static ViewerShortcut[] BuildWorkspaceShortcuts()
+    {
+        List<ViewerShortcut> shortcuts = [];
+        foreach (ViewerCommandDescriptor command in ViewerCommandCatalog.All)
+        {
+            if (command.Gesture is { } gesture && gesture.StartsWith("Ctrl+", StringComparison.Ordinal))
+            {
+                shortcuts.Add(new ViewerShortcut(ViewerShortcutKind.Keyboard, gesture,
+                    ViewerCommandCatalog.DisplayLabel(command.Label), command.AccessibleName));
+            }
+        }
+        return [.. shortcuts];
+    }
+
     /// <summary>Camera bindings, in the order the dialog presents them.</summary>
     internal static IReadOnlyList<ViewerShortcut> Camera { get; } =
     [
@@ -182,7 +198,7 @@ internal static class ViewerShortcutCatalog
     ];
 
     /// <summary>Every binding the dialog lists.</summary>
-    internal static IReadOnlyList<ViewerShortcut> All { get; } = [.. Camera, .. Physics];
+    internal static IReadOnlyList<ViewerShortcut> All { get; } = [.. Workspace, .. Camera, .. Physics];
 
     /// <summary>
     /// Returns the key a keyboard entry is bound to, so tests can drive it

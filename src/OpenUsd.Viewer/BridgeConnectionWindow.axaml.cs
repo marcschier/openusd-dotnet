@@ -43,6 +43,7 @@ internal sealed partial class BridgeConnectionWindow : Window
         ArgumentNullException.ThrowIfNull(model);
         _model = model;
         InitializeComponent();
+        ViewerWindowTheme.Attach(this);
         AutomationProperties.SetName(
             BridgeConnectButton,
             ViewerCommandCatalog.Get(ViewerCommandIds.ToolsConnectionsBridgeConnect).AccessibleName);

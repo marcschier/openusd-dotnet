@@ -2,6 +2,7 @@
     x:Class="OpenUsd.Viewer.AboutWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
     AutomationProperties.Name="About OpenUsd Viewer"
     Title="About OpenUsd Viewer"
     Width="460"
@@ -10,15 +11,18 @@
     MinHeight="220"
     WindowStartupLocation="CenterOwner"
     CanResize="False">
-  <DockPanel Margin="16">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <DockPanel Margin="{DynamicResource ViewerDialogPadding}">
     <TextBlock
         DockPanel.Dock="Top"
         Text="OpenUsd Viewer"
-        FontSize="18"
-        FontWeight="SemiBold"
+        Classes="viewer-heading"
         Margin="0,0,0,4" />
     <TextBlock
         x:Name="VersionText"
+        Classes="viewer-caption"
         DockPanel.Dock="Top"
         Text="Version: —"
         Margin="0,0,0,12" />

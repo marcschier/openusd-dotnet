@@ -39,6 +39,9 @@ internal sealed record ViewerSettings
 
     internal string RendererPreference { get; init; } = "Auto";
 
+    internal ViewerThemePreference ThemePreference { get; init; } =
+        ViewerThemePreference.System;
+
     /// <summary>
     /// The stable, string <see cref="ViewerInspectorLayoutPolicy"/> tab identity that was
     /// selected, never a visual index. <see cref="ViewerInspectorLayoutPolicy.ResolveSelectedTabId"/>
@@ -109,6 +112,7 @@ internal sealed record ViewerSettings
         ColorManagement.IsValid() &&
         IsPickTargetToken(PickTarget) &&
         IsSelectionModeToken(SelectionMode) &&
+        Enum.IsDefined(ThemePreference) &&
         IsRendererPreference(RendererPreference);
 
     internal static bool IsPickTargetToken(string value) =>
@@ -127,7 +131,7 @@ internal sealed record ViewerSettings
 internal sealed class ViewerSettingsStore : IDisposable
 {
     internal const int MaximumFileBytes = 16 * 1024;
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
     private const string FileName = "viewer-settings.txt";
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _disposed;
@@ -269,7 +273,11 @@ internal sealed class ViewerSettingsStore : IDisposable
         }
 
         int version;
-        if (string.Equals(lines[0], "openusd-viewer-settings=3", StringComparison.Ordinal))
+        if (string.Equals(lines[0], "openusd-viewer-settings=4", StringComparison.Ordinal))
+        {
+            version = 4;
+        }
+        else if (string.Equals(lines[0], "openusd-viewer-settings=3", StringComparison.Ordinal))
         {
             version = 3;
         }
@@ -295,12 +303,16 @@ internal sealed class ViewerSettingsStore : IDisposable
         {
             string line = lines[index];
             int separator = line.IndexOf('=');
-            if (separator <= 0 || separator == line.Length - 1)
+            if (separator <= 0)
             {
                 return Malformed($"Settings line {index + 1} is malformed.");
             }
             string key = line[..separator];
             string value = line[(separator + 1)..];
+            if (value.Length == 0 && key != "theme")
+            {
+                return Malformed($"Settings line {index + 1} is malformed.");
+            }
             if (!values.TryAdd(key, value))
             {
                 return Malformed($"Settings key '{key}' is duplicated.");
@@ -321,23 +333,44 @@ internal sealed class ViewerSettingsStore : IDisposable
                 // the profile is rewritten with them on the next save.
                 _ => ParseCurrent(values),
             };
+            settings = settings with
+            {
+                ThemePreference = ViewerTheme.FromToken(values.GetValueOrDefault("theme"))
+            };
         }
         catch (FormatException exception)
         {
             return Malformed(exception.Message);
         }
+        ViewerSettings normalized = ViewerInspectorLayoutPolicy.NormalizeSavedLayout(settings);
+        bool layoutRepaired = normalized != settings;
+        settings = normalized;
         if (!settings.IsValid())
         {
             return Malformed("One or more settings values are outside the supported range.");
+        }
+        string? diagnostic = version == CurrentVersion
+            ? null
+            : "Legacy Viewer settings were migrated in memory and will be upgraded on save.";
+        if (layoutRepaired)
+        {
+            const string layoutDiagnostic =
+                "Unsupported saved layout dimensions or removed tabs were normalized; other preferences were kept.";
+            diagnostic = diagnostic is null ? layoutDiagnostic : $"{diagnostic} {layoutDiagnostic}";
+        }
+        if (values.TryGetValue("theme", out string? theme) &&
+            theme is not ("system" or "light" or "dark"))
+        {
+            const string themeDiagnostic =
+                "The unsupported Viewer theme preference was ignored; following the system theme.";
+            diagnostic = diagnostic is null ? themeDiagnostic : $"{diagnostic} {themeDiagnostic}";
         }
         return new ViewerSettingsLoadResult(
             settings,
             version == CurrentVersion
                 ? ViewerSettingsLoadStatus.Loaded
                 : ViewerSettingsLoadStatus.Migrated,
-            version == CurrentVersion
-                ? null
-                : "Legacy Viewer settings were migrated in memory and will be upgraded on save.");
+            diagnostic);
     }
 
     private static ViewerSettings ParseCurrent(IReadOnlyDictionary<string, string> values) =>
@@ -511,12 +544,14 @@ internal sealed class ViewerSettingsStore : IDisposable
     private static string Serialize(ViewerSettings settings)
     {
         var builder = new StringBuilder(384);
-        builder.AppendLine("openusd-viewer-settings=3");
+        builder.Append("openusd-viewer-settings=")
+            .AppendLine(CurrentVersion.ToString(CultureInfo.InvariantCulture));
         Append(builder, "windowWidth", settings.WindowWidth);
         Append(builder, "windowHeight", settings.WindowHeight);
         Append(builder, "stagePanelWidth", settings.StagePanelWidth);
         Append(builder, "inspectorPanelWidth", settings.InspectorPanelWidth);
         builder.Append("renderer=").AppendLine(settings.RendererPreference);
+        builder.Append("theme=").AppendLine(ViewerTheme.ToToken(settings.ThemePreference));
         builder.Append("selectedTabId=").AppendLine(settings.SelectedTabId);
         Append(builder, "stagePanelVisible", settings.StagePanelVisible);
         Append(builder, "inspectorPanelVisible", settings.InspectorPanelVisible);
@@ -580,7 +615,7 @@ internal sealed class ViewerSettingsStore : IDisposable
                 CultureInfo.InvariantCulture,
                 out double parsed)
                 ? parsed
-                : double.NaN;
+                : throw new FormatException($"Settings key '{key}' is not a number.");
 
     private static int GetInt32(
         IReadOnlyDictionary<string, string> values,

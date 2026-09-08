@@ -37,6 +37,8 @@ public sealed partial class MainWindow
     private ulong _physicsSectionRevision = ulong.MaxValue;
     private bool _updatingPhysicsAuthoringUi;
     private bool _physicsAuthoringBusy;
+    private int _physicsPropertyReadGeneration;
+    private bool _physicsPropertyReadBusy;
 
     /// <summary>
     /// How far along the pointer ray a body drag grabs when nothing was picked at a depth.
@@ -349,6 +351,11 @@ public sealed partial class MainWindow
     {
         _ = sender;
         e.Handled = true;
+        if (_documentEditor is not null)
+        {
+            await ReplayDocumentHistoryAsync(undo: true);
+            return;
+        }
         await RunPhysicsAuthoringAsync(
             physics => physics.UndoAsync(_documentLifetime?.Token ?? default));
     }
@@ -357,6 +364,11 @@ public sealed partial class MainWindow
     {
         _ = sender;
         e.Handled = true;
+        if (_documentEditor is not null)
+        {
+            await ReplayDocumentHistoryAsync(undo: false);
+            return;
+        }
         await RunPhysicsAuthoringAsync(
             physics => physics.RedoAsync(_documentLifetime?.Token ?? default));
     }
@@ -368,23 +380,31 @@ public sealed partial class MainWindow
         await ReloadPhysicsPropertiesAsync();
     }
 
-    private async Task ReloadPhysicsPropertiesAsync()
+    private async Task ReloadPhysicsPropertiesAsync(bool forceRefresh = false)
     {
         if (_physics is not { } physics)
         {
             return;
         }
 
-        // The selection is captured by identity before the reload. Authoring a property changes
-        // what the extractor produces, so the fingerprint moves and the list is rebuilt; restoring
-        // by position would move the operator back to the first object and silently retarget every
-        // interaction that followed the edit.
-        ViewerPhysicsSelectionAnchor anchor = CapturePhysicsSelection();
+        int sessionVersion = _physicsSessionVersion;
+        int request = ++_physicsPropertyReadGeneration;
+        CancellationToken cancellation = _documentLifetime?.Token ?? _viewerLifetime.Token;
+        _physicsPropertyReadBusy = true;
+        UpdateDocumentCommands();
+        RenderPhysicsPropertyEditor();
         try
         {
-            _physicsSections = await physics.LoadInspectorAsync(
-                _documentLifetime?.Token ?? default);
-            if (_physicsSectionRevision == physics.InspectorRevision &&
+            IReadOnlyList<ViewerPhysicsObjectSection> sections = await physics.LoadInspectorAsync(cancellation);
+            if (cancellation.IsCancellationRequested || !IsCurrentPhysicsSession(physics, sessionVersion) ||
+                request != _physicsPropertyReadGeneration)
+            {
+                return;
+            }
+            // Use the latest operator selection, not the one a slow read started with.
+            ViewerPhysicsSelectionAnchor anchor = CapturePhysicsSelection();
+            _physicsSections = sections;
+            if (!forceRefresh && _physicsSectionRevision == physics.InspectorRevision &&
                 _physicsSelectedSection is not null)
             {
                 // Nothing the list is built from moved, so the selection the operator is working
@@ -397,14 +417,26 @@ public sealed partial class MainWindow
             RebuildPhysicsObjectSelector(anchor);
             RenderPhysicsAuthoringState(physics.Snapshot);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            ShowError(
-                "The physics properties could not be read: " +
-                ViewerPackageErrorFormatter.Format(exception));
+            if (IsCurrentPhysicsSession(physics, sessionVersion) && request == _physicsPropertyReadGeneration)
+            {
+                ShowError(
+                    "The physics properties could not be read: " +
+                    ViewerPackageErrorFormatter.Format(exception));
+            }
+        }
+        finally
+        {
+            if (IsCurrentPhysicsSession(physics, sessionVersion) && request == _physicsPropertyReadGeneration)
+            {
+                _physicsPropertyReadBusy = false;
+                UpdateDocumentCommands();
+                RenderPhysicsPropertyEditor();
+            }
         }
     }
 
@@ -569,7 +601,9 @@ public sealed partial class MainWindow
 
         PhysicsPropertyValueBox.Text = row.ValueText;
         PhysicsPropertyValueBox.IsVisible = !tokens;
-        bool editable = row.IsEditable && _physics is { CanAuthor: true };
+        bool editable = row.IsEditable && _physics is { CanAuthor: true } &&
+            !_physicsAuthoringBusy && !_physicsPropertyReadBusy &&
+            !_documentEditBusy && !_documentSnapshotRefreshBusy && !_documentBusy && !_shutdownStarted;
         PhysicsPropertyValueBox.IsEnabled = editable && !tokens;
         PhysicsPropertyTokenSelector.IsEnabled = editable && tokens;
         PhysicsApplyPropertyButton.IsEnabled = editable;
@@ -642,8 +676,8 @@ public sealed partial class MainWindow
         return RunPhysicsAuthoringAsync(
             async controller =>
             {
-                // The current value is read first so undo can restore exactly what was there,
-                // including the absence of an authored opinion.
+                // The shared adapter reads target-local state and captures authoritative before/after
+                // snapshots again inside the edit path; the scalar here is not an undo proof.
                 ViewerPhysicsValue before = await controller.ReadPropertyAsync(
                     row.PrimPath,
                     row.Name,
@@ -673,31 +707,61 @@ public sealed partial class MainWindow
             return;
         }
 
-        // Apply, clear, undo, and redo all edit the same stage and all reload the inspector when
-        // they finish. Two of them in flight at once would interleave the edit with the reload and
-        // leave the selection anchored to a document neither of them produced, so the second is
-        // refused rather than queued: the operator can simply press again.
-        if (_physicsAuthoringBusy)
+        if (_physicsAuthoringBusy || _physicsPropertyReadBusy ||
+            _documentEditBusy || _documentSnapshotRefreshBusy || _documentBusy)
         {
+            ViewerStatus.Text = "Wait for the current document operation before editing a physics property.";
             return;
         }
 
-        _physicsAuthoringBusy = true;
+        int sessionVersion = _physicsSessionVersion;
+        CancellationToken cancellation = _documentLifetime?.Token ?? _viewerLifetime.Token;
+        bool entered = false;
+        bool ownsBusy = false;
         try
         {
-            ReportPhysicsAuthoringResult(await operation(physics));
-            await ReloadPhysicsPropertiesAsync();
+            await _documentGate.WaitAsync(cancellation);
+            entered = true;
+            if (!IsCurrentPhysicsSession(physics, sessionVersion) ||
+                cancellation.IsCancellationRequested || _documentEditor is { IsSuspended: true })
+            {
+                ViewerStartupOptions.WriteStatus("The physics edit was superseded by a document transition.");
+                return;
+            }
+            _physicsAuthoringBusy = true;
+            ownsBusy = true;
+            UpdateDocumentCommands();
+            RenderPhysicsPropertyEditor();
+            ViewerPhysicsAuthoringResult result = await operation(physics);
+            if (!IsCurrentPhysicsSession(physics, sessionVersion) || cancellation.IsCancellationRequested)
+            {
+                return;
+            }
+            ReportPhysicsAuthoringResult(result);
+            await ReloadPhysicsPropertiesAsync(forceRefresh: true);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            ShowError(failurePrefix + ViewerPackageErrorFormatter.Format(exception));
+            if (IsCurrentPhysicsSession(physics, sessionVersion))
+            {
+                ShowError(failurePrefix + ViewerPackageErrorFormatter.Format(exception));
+            }
         }
         finally
         {
-            _physicsAuthoringBusy = false;
+            if (ownsBusy && IsCurrentPhysicsSession(physics, sessionVersion))
+            {
+                _physicsAuthoringBusy = false;
+                UpdateDocumentCommands();
+                RenderPhysicsPropertyEditor();
+            }
+            if (entered)
+            {
+                _documentGate.Release();
+            }
         }
     }
 
@@ -845,7 +909,8 @@ public sealed partial class MainWindow
 
     private async Task SubmitPhysicsStateCommandAsync(ViewerPhysicsRuntimeCommandKind kind)
     {
-        if (_physics is not { } physics || !TryResolvePhysicsTarget(ViewerPhysicsCommandability.Body, out ulong target))
+        if (_physics is not { } physics ||
+            !TryResolvePhysicsTarget(ViewerPhysicsCommandability.Body, out ulong target))
         {
             return;
         }
@@ -931,8 +996,10 @@ public sealed partial class MainWindow
             PhysicsRefreshPropertiesButton.IsEnabled = enabled;
             PhysicsObjectSelector.IsEnabled = enabled && _physicsSections.Count != 0;
             PhysicsPropertyList.IsEnabled = enabled && _physicsSelectedSection is not null;
-            PhysicsUndoButton.IsEnabled = enabled && physics is { History.CanUndo: true };
-            PhysicsRedoButton.IsEnabled = enabled && physics is { History.CanRedo: true };
+            bool historyReady = enabled && !_physicsAuthoringBusy && !_physicsPropertyReadBusy &&
+                !_documentEditBusy && !_documentSnapshotRefreshBusy && !_documentBusy;
+            PhysicsUndoButton.IsEnabled = historyReady && physics is { History.CanUndo: true };
+            PhysicsRedoButton.IsEnabled = historyReady && physics is { History.CanRedo: true };
             ToolTip.SetTip(
                 PhysicsUndoButton,
                 physics is { History.CanUndo: true }
@@ -1162,6 +1229,9 @@ public sealed partial class MainWindow
     /// <summary>Clears every authoring surface when a document closes.</summary>
     private void ResetPhysicsAuthoringUi()
     {
+        _physicsPropertyReadGeneration++;
+        _physicsAuthoringBusy = false;
+        _physicsPropertyReadBusy = false;
         _updatingPhysicsAuthoringUi = true;
         try
         {

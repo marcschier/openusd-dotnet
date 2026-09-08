@@ -1,7 +1,5 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using Avalonia;
-using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using OpenUsd.Rendering;
@@ -11,8 +9,8 @@ namespace OpenUsd.Viewer;
 /// <summary>
 /// Builds the menu-first shell: maps stable inspector-tab identities to their <see
 /// cref="TabItem"/>, applies the accessible names <see cref="ViewerCommandCatalog"/> already
-/// declares, and wires every menu item this workstream adds. Existing toolbar/tab controls and
-/// their handlers are untouched; menu items that replace a moved control either call the same
+/// declares, and registers live command sources for the palette and contextual controls.
+/// Existing operation handlers remain canonical; menu items that replace a moved control either call the same
 /// handler directly (stateless actions) or set the state of a control that remains the source
 /// of truth for existing logic and is no longer shown directly, which raises the same
 /// SelectionChanged/Click/IsCheckedChanged event that logic already subscribes to.
@@ -37,25 +35,37 @@ public sealed partial class MainWindow
         [ViewerInspectorLayoutPolicy.HydraTabId] = HydraSceneTab,
         [ViewerInspectorLayoutPolicy.PhysicsTabId] = PhysicsTab,
         [ViewerInspectorLayoutPolicy.TfDebugTabId] = TfDebugTab,
+        [ViewerInspectorLayoutPolicy.AppearanceTabId] = AppearanceTab,
     };
 
     /// <summary>
-    /// Applies the accessible name <see cref="ViewerCommandCatalog"/> already declares for
-    /// today's menu items, buttons, and checkable controls, so the catalog is the live
-    /// source automation reads rather than a second copy of what XAML already sets.
+    /// Applies catalog accessibility and registers existing actions. Menu sources take precedence
+    /// over their equivalent buttons so discovery and contextual surfaces share their live state.
     /// </summary>
     private void ApplyCommandAccessibleNames()
     {
-        static void setAccessibleName(StyledElement element, string commandId) =>
-            AutomationProperties.SetName(element, ViewerCommandCatalog.Get(commandId).AccessibleName);
+        void setAccessibleName(Control element, string commandId) =>
+            _commands.Register(ViewerCommandCatalog.Get(commandId), element);
 
         setAccessibleName(OpenStageButton, ViewerCommandIds.FileOpenStage);
         setAccessibleName(OpenStageMenuItem, ViewerCommandIds.FileOpenStage);
+        setAccessibleName(OpenReviewMenuItem, ViewerCommandIds.FileOpenReview);
+        setAccessibleName(OpenSampleMenuItem, ViewerCommandIds.FileOpenSample);
         setAccessibleName(ReloadStageButton, ViewerCommandIds.FileReloadStage);
         setAccessibleName(ReloadStageMenuItem, ViewerCommandIds.FileReloadStage);
         setAccessibleName(CaptureFrameMenuItem, ViewerCommandIds.FileCaptureFrame);
+        setAccessibleName(RenderImageSequenceMenuItem, ViewerCommandIds.FileRenderImageSequence);
+        setAccessibleName(CompareCapturesMenuItem, ViewerCommandIds.FileCompareCaptures);
         setAccessibleName(RecentStagesMenu, ViewerCommandIds.FileRecentStages);
         setAccessibleName(FileExitMenuItem, ViewerCommandIds.FileExit);
+        setAccessibleName(SaveReviewMenuItem, ViewerCommandIds.FileSaveReview);
+        setAccessibleName(SaveReviewAsMenuItem, ViewerCommandIds.FileSaveAs);
+        setAccessibleName(SaveSourceMenuItem, ViewerCommandIds.FileSaveSource);
+        setAccessibleName(RevertReviewMenuItem, ViewerCommandIds.FileRevertReview);
+        setAccessibleName(ExportReviewDeltaMenuItem, ViewerCommandIds.FileExportReviewDelta);
+        setAccessibleName(EditPropertyMenuItem, ViewerCommandIds.EditProperty);
+        setAccessibleName(EditUndoMenuItem, ViewerCommandIds.EditUndo);
+        setAccessibleName(EditRedoMenuItem, ViewerCommandIds.EditRedo);
 
         setAccessibleName(StagePanelMenuItem, ViewerCommandIds.ViewStagePanel);
         setAccessibleName(InspectorPanelMenuItem, ViewerCommandIds.ViewInspectorPanel);
@@ -65,6 +75,16 @@ public sealed partial class MainWindow
         setAccessibleName(TfDebugTabVisibleMenuItem, ViewerCommandIds.ViewTfDebugTabVisible);
         setAccessibleName(SnapTimelineCheckBox, ViewerCommandIds.ViewSnapTimelineToFrames);
         setAccessibleName(ResetLayoutMenuItem, ViewerCommandIds.ViewResetLayout);
+        setAccessibleName(ThemeSystemMenuItem, ViewerCommandIds.ViewThemeSystem);
+        setAccessibleName(ThemeLightMenuItem, ViewerCommandIds.ViewThemeLight);
+        setAccessibleName(ThemeDarkMenuItem, ViewerCommandIds.ViewThemeDark);
+        setAccessibleName(CommandPaletteMenuItem, ViewerCommandIds.ViewCommandPalette);
+        setAccessibleName(FindPrimMenuItem, ViewerCommandIds.ViewFindPrim);
+        setAccessibleName(InspectSelectionMenuItem, ViewerCommandIds.ViewInspectSelection);
+        setAccessibleName(WorkspaceReviewMenuItem, ViewerCommandIds.ViewWorkspaceReview);
+        setAccessibleName(WorkspaceInspectMenuItem, ViewerCommandIds.ViewWorkspaceInspect);
+        setAccessibleName(WorkspaceMaterialsMenuItem, ViewerCommandIds.ViewWorkspaceMaterialsLighting);
+        setAccessibleName(WorkspacePresentationMenuItem, ViewerCommandIds.ViewWorkspacePresentation);
 
         setAccessibleName(RenderRendererAutoMenuItem, ViewerCommandIds.RenderRendererAuto);
         setAccessibleName(RenderRendererStormMenuItem, ViewerCommandIds.RenderRendererStorm);
@@ -124,6 +144,8 @@ public sealed partial class MainWindow
             ToggleCameraProjectionMenuItem, ViewerCommandIds.CameraToggleProjection);
         setAccessibleName(UseSelectedCameraMenuItem, ViewerCommandIds.CameraUseSelectedCamera);
         setAccessibleName(StageCamerasMenu, ViewerCommandIds.CameraStageCameras);
+        setAccessibleName(ManageSavedViewsMenuItem, ViewerCommandIds.CameraManageSavedViews);
+        setAccessibleName(SavedViewsMenu, ViewerCommandIds.CameraSavedViews);
         setAccessibleName(FrameSelectedButton, ViewerCommandIds.CameraFrameSelected);
         setAccessibleName(FrameSelectedMenuItem, ViewerCommandIds.CameraFrameSelected);
         setAccessibleName(CameraOrbitLeftMenuItem, ViewerCommandIds.CameraOrbitLeft);
@@ -306,6 +328,9 @@ public sealed partial class MainWindow
     {
         FileExitMenuItem.Click += (_, _) => Close();
         ResetLayoutMenuItem.Click += OnResetLayoutClick;
+        WireThemeCommands();
+        WireDocumentCommands();
+        WireSavedViewCommands();
 
         // Diagnostics/Hydra/TfDebug tab visibility is independently toggleable from both View
         // (Inspector Tabs) and Tools > Developer, since a developer looking for the Hydra scene

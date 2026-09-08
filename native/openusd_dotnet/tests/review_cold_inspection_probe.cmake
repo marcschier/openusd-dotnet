@@ -1,0 +1,33 @@
+# Copyright (c) marcschier. Licensed under the MIT License.
+function(openusd_add_cold_inspection_probe sdk_root)
+    add_executable(openusd_review_cold_inspection_probe
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/review_cold_inspection_probe.cpp")
+    target_compile_features(openusd_review_cold_inspection_probe PRIVATE cxx_std_17)
+    target_link_libraries(openusd_review_cold_inspection_probe PRIVATE openusd_dotnet)
+    if(WIN32)
+        target_link_libraries(openusd_review_cold_inspection_probe PRIVATE bcrypt)
+    endif()
+    if(MSVC)
+        target_compile_options(openusd_review_cold_inspection_probe PRIVATE /W4 /WX /permissive-)
+    else()
+        target_compile_options(openusd_review_cold_inspection_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    if(TARGET openusd_native_sanitizers)
+        target_link_libraries(openusd_review_cold_inspection_probe PRIVATE openusd_native_sanitizers)
+    endif()
+    foreach(case field empty typed declarations fps-positive fps-zero fps-negative fps-nan fps-type
+        field-spec field-type declaration-mismatch array-mismatch sample-mismatch unknown-type
+        default-scene-value clips path-depth value-depth array-budget missing-child utf8 checksum extent)
+        if(case STREQUAL "field")
+            set(name openusd_review_cold_inspection_probe)
+        else()
+            set(name "openusd_review_cold_inspection_${case}")
+        endif()
+        add_test(NAME ${name} COMMAND openusd_review_cold_inspection_probe "${case}")
+        set_tests_properties(${name} PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
+        if(WIN32)
+            set_tests_properties(${name} PROPERTIES ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${sdk_root}/bin;PATH=path_list_prepend:${sdk_root}/lib;PATH=path_list_prepend:$<TARGET_FILE_DIR:openusd_dotnet>")
+        endif()
+    endforeach()
+endfunction()

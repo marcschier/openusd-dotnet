@@ -39,7 +39,8 @@ internal sealed record SilkParityCapture(
     ParityImage Image,
     int DrawCount,
     SilkSceneGpuStatistics Statistics,
-    ulong Revision);
+    ulong Revision,
+    SilkGraphicsCapabilities Capabilities);
 
 internal sealed record StormOpenGlEvidence(
     string LoadedOpenGl32,
@@ -183,7 +184,8 @@ internal static class ParityCaptureDriver
             NormalizeCapture(new ParityImage(input.Width, input.Height, pixels), input.ClearColor),
             result.DrawCount,
             result.Statistics,
-            page.Revision);
+            page.Revision,
+            device.Capabilities);
     }
 
     private static ParityImage NormalizeCapture(ParityImage image, SilkColor clearColor)

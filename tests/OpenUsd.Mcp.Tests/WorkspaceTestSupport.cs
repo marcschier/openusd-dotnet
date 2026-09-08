@@ -20,7 +20,7 @@ internal sealed class WorkspaceTestFiles : IDisposable
         _maximumCheckpointCount = maximumCheckpointCount;
         _maximumJournalEntryCount = maximumJournalEntryCount;
         _root = Path.Combine(
-            AppContext.BaseDirectory,
+            Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ?? Path.GetTempPath(),
             "workspace-tests",
             Guid.NewGuid().ToString("N"));
         SourceRoot = Path.Combine(_root, "source");

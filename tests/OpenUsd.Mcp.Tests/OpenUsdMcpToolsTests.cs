@@ -50,11 +50,13 @@ public sealed class OpenUsdMcpToolsTests
             (new OpenUsdMcpFailureException("proposal_stale", "stale"), "proposal_stale"),
             (new WorkspacePathContainmentException("denied"), "path_denied"),
             (new WorkspaceQuotaExceededException("full"), "quota_exceeded"),
+            (new OpenUsd.Rendering.RenderOutputQuotaExceededException("full"), "quota_exceeded"),
             (new StageStatisticsQuotaExceededException(
                 StageStatisticsLimitKind.PrimCount,
                 1,
                 2), "quota_exceeded"),
             (new ArtifactResourceStoreCapacityException("full"), "quota_exceeded"),
+            (new ArtifactResourceIntegrityException("changed"), "artifact_integrity_error"),
             (new DllNotFoundException("native"), "native_failure"),
             (new OpenUsdMcpFailureException("render_failure", "render"), "render_failure"),
             (new OpenUsdMcpFailureException("launch_failure", "launch"), "launch_failure"),
@@ -295,7 +297,9 @@ public sealed class OpenUsdMcpToolsTests
             "inspect_scene",
             "open_scene",
             "present_scene",
+            "read_sequence_frame",
             "render_preview",
+            "render_sequence",
             "rollback_scene",
         ];
 
@@ -326,6 +330,8 @@ public sealed class OpenUsdMcpToolsTests
             .InputSchema
             .GetRawText();
         await Assert.That(renderSchema).Contains("\"cameraPath\"");
+        await Assert.That(tools.Single(static tool => tool.Name == "render_sequence")
+            .ProtocolTool.InputSchema.GetRawText()).Contains("\"hdrColorFormat\"");
         foreach (string propertyName in new[]
                  {
                      "boolValue",
@@ -352,6 +358,75 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(call.IsError).IsFalse();
         await Assert.That(call.StructuredContent!.Value.GetProperty("sessionId").GetString())
             .IsEqualTo("session-1");
+
+        CallToolResult sequence = await client.CallToolAsync("render_sequence",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["sessionId"] = "session-1",
+                    ["generation"] = 2,
+                    ["stageRevision"] = 3,
+                    ["frameCount"] = 20,
+                    ["width"] = 2,
+                    ["height"] = 1,
+                    ["startTimeCode"] = 2,
+                    ["timeStep"] = 0.5,
+                    ["includeHdrColor"] = true,
+                    ["hdrColorFormat"] = "exr"
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(sequence.IsError).IsFalse();
+        await Assert.That(sequence.StructuredContent!.Value.GetProperty("frameCount").GetInt32()).IsEqualTo(20);
+        await Assert.That(sequence.StructuredContent!.Value.GetProperty("outputDirectory").GetString())
+            .IsEqualTo("session-1/renders/job-1");
+        await Assert.That(sequence.Content.Count).IsEqualTo(1);
+        await Assert.That(service.LastSequenceRequest!.IncludeHdrColor).IsTrue();
+        await Assert.That(service.LastSequenceRequest.HdrColorFormat).IsEqualTo("exr");
+
+        CallToolResult sequenceFrame = await client.CallToolAsync("read_sequence_frame",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["jobId"] = "job-1",
+                    ["frameIndex"] = 0
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(sequenceFrame.IsError).IsFalse();
+        await Assert.That(sequenceFrame.StructuredContent!.Value.GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
+        await Assert.That(sequenceFrame.Content.Count).IsEqualTo(2);
+        await Assert.That(sequenceFrame.Content[1]).IsTypeOf<ResourceLinkBlock>();
+
+        CallToolResult hdrFrame = await client.CallToolAsync("read_sequence_frame",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["jobId"] = "hdr-job",
+                    ["frameIndex"] = 0
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(hdrFrame.IsError).IsFalse();
+        await Assert.That(hdrFrame.Content.Count).IsEqualTo(4);
+        await Assert.That(hdrFrame.Content.OfType<ResourceLinkBlock>().Select(static link => link.Uri))
+            .IsEquivalentTo(["openusd://artifact/frame-0", "openusd://artifact/depth-0", "openusd://artifact/hdr-0"]);
+        await Assert.That(hdrFrame.StructuredContent!.Value.GetProperty("hdrColor").GetProperty("uri").GetString())
+            .IsEqualTo("openusd://artifact/hdr-0");
+        await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("hdrColorFormat").GetString()).IsEqualTo("raw");
+
+        CallToolResult exrFrame = await client.CallToolAsync("read_sequence_frame",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?> { ["jobId"] = "exr-job", ["frameIndex"] = 0 }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(exrFrame.IsError).IsFalse();
+        await Assert.That(exrFrame.Content.Count).IsEqualTo(4);
+        await Assert.That(exrFrame.Content.OfType<ResourceLinkBlock>()
+            .Single(static link => link.MimeType == "image/x-exr").Uri).IsEqualTo("openusd://artifact/hdr-0.exr");
+        await Assert.That(exrFrame.StructuredContent!.Value.GetProperty("hdrColorFormat").GetString()).IsEqualTo("exr");
+        await Assert.That(exrFrame.StructuredContent.Value.GetProperty("hdrColor").GetProperty("mimeType").GetString())
+            .IsEqualTo("image/x-exr");
 
         ReadResourceResult resource = await client.ReadResourceAsync(
             "openusd://artifact/protocol.txt",
@@ -446,6 +521,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
     internal Exception? GetSceneException { get; init; }
 
     internal CancellationToken LastCancellationToken { get; private set; }
+    internal RenderSequenceRequest? LastSequenceRequest { get; private set; }
 
     public ValueTask<McpSessionDto> OpenSceneAsync(
         OpenSceneRequest request,
@@ -517,6 +593,52 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 [],
                 [],
                 []));
+
+    public ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
+        RenderSequenceRequest request,
+        CancellationToken cancellationToken)
+    {
+        LastCancellationToken = cancellationToken;
+        LastSequenceRequest = request;
+        return ValueTask.FromResult(new McpRenderSequenceResultDto(
+            request.SessionId, request.Generation, request.StageRevision, "job-1",
+            "session-1/renders/job-1", "session-1/renders/job-1/manifest.json", request.FrameCount, 2048, []));
+    }
+
+    public ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(
+        ReadSequenceFrameRequest request,
+        CancellationToken cancellationToken)
+    {
+        LastCancellationToken = cancellationToken;
+        var descriptor = new ArtifactResourceDescriptor(
+            "frame-0", ArtifactResourceUri.Create("frame-0"), "image/png", 128, new string('a', 64));
+        if (request.JobId is "hdr-job" or "exr-job")
+        {
+            bool exr = request.JobId == "exr-job";
+            var depth = new ArtifactResourceDescriptor("depth-0", ArtifactResourceUri.Create("depth-0"),
+                "application/octet-stream", 4, new string('b', 64));
+            string hdrId = exr ? "hdr-0.exr" : "hdr-0";
+            var hdr = new ArtifactResourceDescriptor(hdrId, ArtifactResourceUri.Create(hdrId),
+                exr ? "image/x-exr" : "application/octet-stream", exr ? 512 : 8, new string('c', 64));
+            return ValueTask.FromResult(new McpSequenceFrameResultDto("session-1", 2, 3, request.JobId,
+                request.FrameIndex, 0, 1, 1,
+                new McpArtifactDto(descriptor.Id, descriptor.ResourceUri.AbsoluteUri,
+                    descriptor.MediaType, descriptor.ByteLength, descriptor.Sha256, false),
+                Array.AsReadOnly([descriptor, depth, hdr]))
+            {
+                DeviceDepth = new McpArtifactDto(depth.Id, depth.ResourceUri.AbsoluteUri,
+                    depth.MediaType, depth.ByteLength, depth.Sha256, false),
+                HdrColor = new McpArtifactDto(hdr.Id, hdr.ResourceUri.AbsoluteUri,
+                    hdr.MediaType, hdr.ByteLength, hdr.Sha256, false),
+                HdrColorFormat = exr ? "exr" : "raw"
+            });
+        }
+        return ValueTask.FromResult(new McpSequenceFrameResultDto("session-1", 2, 3, request.JobId,
+            request.FrameIndex, 0, 1, 1,
+            new McpArtifactDto(descriptor.Id, descriptor.ResourceUri.AbsoluteUri,
+                descriptor.MediaType, descriptor.ByteLength, descriptor.Sha256, false),
+            Array.AsReadOnly([descriptor])));
+    }
 
     public ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(
         AnalyzeSceneRequest request,

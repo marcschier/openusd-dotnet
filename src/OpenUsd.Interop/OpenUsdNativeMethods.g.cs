@@ -138,6 +138,13 @@ public static unsafe partial class OpenUsdNativeRuntime
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeEditBufferView
+    {
+        internal byte* Data;
+        internal nuint Size;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeErrorBuffer
     {
         internal NativeErrorBuffer(byte* data, nuint capacity)
@@ -4511,6 +4518,26 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_render_get_specification",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus RenderGetSpecification(
+            nint stage,
+            string? settingsPath,
+            out nint specification,
+            ref NativeRenderSpecificationView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_render_specification_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void RenderSpecificationRelease(
+            nint specification);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_stage_session_overlay_normalize")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial OpenUsdNativeStatus StageSessionOverlayNormalize(
@@ -4717,5 +4744,267 @@ public static unsafe partial class OpenUsdNativeRuntime
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial void OcioProcessorRelease(
             nint processor);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_edit_buffer_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void EditBufferRelease(
+            nint buffer);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_edit_get_local_layer",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageEditGetLocalLayer(
+            nint stage,
+            string identifier,
+            nuint identifierSize,
+            out nint layer,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_edit_get_user_layer")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageEditGetUserLayer(
+            nint stage,
+            out nint layer,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_get_state")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditGetState(
+            nint layer,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_capture")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditCapture(
+            nint layer,
+            byte* addresses,
+            nuint addressesSize,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_apply")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditApply(
+            nint layer,
+            byte* expected,
+            nuint expectedSize,
+            byte* mutations,
+            nuint mutationsSize,
+            out int outcome,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_restore")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditRestore(
+            nint layer,
+            byte* expected,
+            nuint expectedSize,
+            byte* restore,
+            nuint restoreSize,
+            out int outcome,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_checkpoint")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditCheckpoint(
+            nint layer,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_checkpoint_restore")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditCheckpointRestore(
+            nint layer,
+            byte* expected,
+            nuint expectedSize,
+            byte* restore,
+            nuint restoreSize,
+            out int outcome,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_edit_acknowledge_saved")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerEditAcknowledgeSaved(
+            nint layer,
+            byte* checkpoint,
+            nuint checkpointSize,
+            out int acknowledged,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_edit_checkpoint_export",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus EditCheckpointExport(
+            byte* checkpoint,
+            nuint checkpointSize,
+            string destination,
+            nuint destinationSize,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_open_for_review",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageOpenForReview(
+            string path,
+            out nint stage,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_review_source_binding")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageReviewSourceBinding(
+            nint stage,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_review_capture",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerReviewCapture(
+            nint layer,
+            byte* binding,
+            nuint bindingSize,
+            string targetDocumentPath,
+            nuint targetDocumentPathSize,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_review_document_read",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ReviewDocumentRead(
+            byte* document,
+            nuint documentSize,
+            string expectedSourcePath,
+            nuint expectedSourcePathSize,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_review_document_inspect")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ReviewDocumentInspect(
+            byte* document,
+            nuint documentSize,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_review_import")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageReviewImport(
+            nint stage,
+            byte* document,
+            nuint documentSize,
+            byte* binding,
+            nuint bindingSize,
+            out int outcome,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_layer_review_acknowledge_saved")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus LayerReviewAcknowledgeSaved(
+            nint layer,
+            byte* receipt,
+            nuint receiptSize,
+            out int acknowledged,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_hierarchy_snapshot")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetHierarchySnapshot(
+            nint stage,
+            ref OpenUsdNativeHierarchyLimits limits,
+            out nint snapshot,
+            ref NativeHierarchyView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_hierarchy_snapshot_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void HierarchySnapshotRelease(
+            nint snapshot);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_prim_property_snapshot",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetPrimPropertySnapshot(
+            nint stage,
+            string primPath,
+            int timeSampled,
+            double timeCode,
+            ref OpenUsdNativePropertyLimits limits,
+            out nint snapshot,
+            ref NativePropertyView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_property_snapshot_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void PropertySnapshotRelease(
+            nint snapshot);
     }
 }

@@ -13,11 +13,16 @@
     <AssemblyName>OpenUsd.Rendering.Tests</AssemblyName>
     <RootNamespace>OpenUsd.Rendering.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="SharpMetal" />
     <PackageReference Include="TUnit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\OpenUsd.Exr.NativeProbe\ExrScanlineOracle.cs" Link="ExrScanlineOracle.cs" />
   </ItemGroup>
 
 </Project>

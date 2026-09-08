@@ -59,7 +59,8 @@ commit and archive hash.
 
 ## Generated data interop
 
-`native/openusd_dotnet/include/openusd_dotnet.h` is the source contract for the data C ABI.
+`native/openusd_dotnet/include/openusd_dotnet.h` and its companion headers (including
+`openusd_hierarchy.h` and `openusd_property_inspection.h`) are the source contract for the data C ABI.
 `eng/generate-interop.py` generates the checked-in
 `src/OpenUsd.Interop/OpenUsdNativeMethods.g.cs`. `eng/generate-capabilities.py` treats the
 capability macros and `OPENUSD_DATA_ABI_VERSION` in `openusd_dotnet.h` as the source of truth for
@@ -89,18 +90,114 @@ constants, package validation, and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 17, required capabilities `0x3FFFFFF` | Managed runtime validates both. |
-| Direct Storm `openusd_hydra` | ABI 8 | Managed Storm runtime requires an exact version. |
+| Data shim `openusd_dotnet` | ABI 24, required capabilities `0x1FFFFFFFF` | Managed runtime validates both. |
+| Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 8 | Managed child runtime requires an exact version. |
 | hdSilk session API | ABI 5 | Kept aligned through the matched Imaging runtime. |
 | hdSilk command page | ABI 23 | Every managed page is validated before parsing. |
 | Retained physics `openusd_physx` | ABI 7 | Negotiated exactly, including every record size. |
 | Physics extraction page | ABI 1 | Every managed page is validated before parsing. |
 
-The data capability mask is part of compatibility. A native library with ABI 17 but an older capability
+The data capability mask is part of compatibility. A native library with ABI 24 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.
 
-ABI 17 is additive over ABI 16: every v16 export and capability is preserved, and
+Direct Storm ABI 9 adds the owned bulk AOV contract in `openusd_storm_aov.h`:
+`openusd_storm_aov_capture`, `openusd_storm_aov_get_view`, and `openusd_storm_aov_release`.
+The managed `OpenUsdStormRenderer.RenderAovs` API requires the matching ABI 9 Imaging runtime.
+Storm-child ABI 8 and the hdSilk ABIs are unchanged by the AOV API. The published `0.14.0-alpha`
+Storm runtime remains ABI 8 and cannot serve these unreleased APIs. Native output formats,
+snapshot-local identity, known-copy budgets and explicit unsupported outputs are described in
+[Rendering](rendering.md#native-storm-aov-snapshots).
+
+Data ABI 24 adds `OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT` (`0x100000000`) and the bulk
+`openusd_image_encode_exr_rgba16f_v1` export. Its portable header and guarded capability do
+not imply portable file-handle support: the initial encoder accepts Windows x64 synchronous,
+buffered, writable empty regular files only. Other hosts refuse explicitly. The renderer-neutral
+`ExrRgba16FloatWriter` preserves raw binary16 values and stored alpha without color conversion
+or an image-sized copy; encoded extent is bounded, native codec heap is not. See
+[EXR output](image-exr-output.md). Existing 398 Windows export ordinals are preserved by the
+source-owned CMake definition file; the new export is appended at ordinal 399.
+
+ABI 23 was additive over ABI 22. `OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT` (`0x80000000`) adds
+the version-1 selected-prim property snapshot in `openusd_property_inspection.h` and immutable
+`UsdStage.GetPrimPropertySnapshot` DTOs. One native query and release return complete bounded
+property rows, typed value prefixes, sample/target counts and native-proven composed provenance.
+Connections remain graph identities alongside USD values; schema fallback, block, unset and
+deferred backing-store/clip/array-edit domains are distinct. This inspection snapshot does not
+replace exact authored `CaptureAuthored` state, and changes no review/checkpoint wire format.
+All managed APIs remain Unshipped. Existing ABI22 runtimes must not be paired with ABI23 references.
+
+ABI 22 is additive over ABI 21. `OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT` (`0x40000000`) adds
+the version-1 owned bulk hierarchy query in `openusd_hierarchy.h` and detached
+`UsdStage.GetHierarchySnapshot` DTOs. Complete all-prim rows, separate shared prototypes and
+bounded native variant metadata replace per-element inspection. Prim/text/depth/variant/work
+quotas refuse without partial rows. Ordinary USDA and USDC hierarchies remain supported;
+deferred crate string-list operations or unknown stores explicitly defer selectors per entry,
+making `IsComplete` false without hiding any hierarchy rows. This does not expand portable-review
+format support or change any prior editing/inspection wire format. All new managed APIs remain
+Unshipped. Windows x64 execution does not imply Linux/macOS execution evidence.
+
+ABI 21 is additive over ABI 20. `OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION`
+(`0x20000000`) adds native-decoded, metadata-only `UsdReviewDocument.Inspect(bytes)` and an
+immutable `UsdReviewDocumentInfo`. RDI1 carries recorded provenance/dependencies without a
+document payload, native identity or receipt. The native decoder applies full structural/checksum
+guards with lexical paths and no filesystem access; ordinary explicit-source Read/Import keep
+their existing physical/source validation. Inspection claims never authorize file access or replay.
+Cold inspection uses pinned built-in field/type rules and synchronous temporary storage rather than
+initializing the SDK schema/plugin registry. Plugin-defined metadata validation remains a later
+explicit Read/Import responsibility. This correction changes no ABI, capability or wire layout.
+URD1 bytes remain version 1. Unix verified-origin and crate portability are not implied.
+
+ABI 20 is additive over ABI 19. `OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT` (`0x10000000`)
+adds explicit `OpenForReview` origin binding and native URD1 review sidecars with source,
+dependency, target and asset-anchor provenance. Read never grants a save receipt; new-session
+import verifies provenance and creates new history rather than patching UED1 process identities.
+Original source graphs/files/root metadata remain unchanged. The verified-open implementation
+currently requires Windows filesystem read stability and the bounded USDA/text-USD/concrete-asset
+profile; non-Windows verified opening, crate/custom/template/package/URI portability and
+inherit/specialize/relocate/value-clip composition explicitly refuse. Normal Open/render support
+for other formats is not reduced. Source/root saving and silent legacy-session rebinding are not
+provided. See [portable review documents](data-api.md#portable-review-documents).
+
+ABI 19 is additive over ABI 18. `OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS`
+(`0x8000000`) adds the version-1 UED1 authored-layer packet contract in `openusd_layer_edit.h`.
+It covers exact target-layer capture, affected-state compare/apply/replay, counted owned review
+layers, state/permissions and conditional checkpoint/save-baseline operations. Detached packets
+carry logical identities, not handles. Generic imported layers remain capture-only, and unsupported
+values/anchors and cross-process recovery rebind are not implied. The exact project-owned counted
+review store is accepted by render admission through inherited resident reads; arbitrary subclasses
+and deferred value/backing preparation remain unsupported. This private addition changes no ABI layout.
+Checkpoint replacement verifies bit-exact canonical authored content before success. Failed
+transactions restore bounded affected parent inventories with their original presence/order
+before reinstating a saved logical baseline. These correctness fixes do not change packet version,
+capabilities or ABI layout.
+Simulation-overlay normalization also retains an existing owned review layer/history when its
+container and topology can be adopted without moving opinions. Unsafe adoption is refused instead
+of silently replacing the review target. This uses the existing overlay and authored-edit APIs;
+there is no packet identity remapping or additional ABI capability.
+See [exact authored layer editing](data-api.md#exact-authored-layer-editing).
+
+ABI 18 is additive over ABI 17: every v17 export and capability is preserved, and
+`OPENUSD_CAPABILITY_RENDER_SPECIFICATION_QUERY` (`0x4000000`) adds an owned, bounded version-1
+view of standard `UsdRenderComputeSpec` results. One stage query and one release carry the
+products, shared render variables, ordered variable indices, purposes, and packed UTF-8 names.
+The snapshot uses uniform/default-time settings, not animated camera evaluation. Invalid
+relationships, invalid numeric values, and exceeded budgets fail instead of publishing a partial
+render request. Custom property names remain explicit unevaluated metadata; this capability does
+not claim output/AOV execution or execute RenderPass commands. See the
+[render specification contract](data-api.md#detached-render-specifications).
+The version-1 render view admits inspectable resident `SdfData`/`SdfUsdaData`, the exact
+project-owned counted review store, and bounded native purpose-array edits. Actual crate payloads
+additionally require the isolated storage-admission SDK extension version 1, with exact source
+patch/header/binary provenance enforced at configure and every shim build. The extension adds no
+managed or project C ABI export, layout or capability; it was introduced under data ABI 23
+and remains required by the current matching runtime.
+Unextended SDKs and unknown backing/type domains still refuse unprovable reads before materialization.
+Stage metadata absence is admitted only over a valid root layer-stack inventory.
+The source walk is capped at 1,048,576 visits, independently of the unchanged record/string limits.
+This fail-closed eligibility rule does not alter the native view layout or public snapshot types.
+
+ABI 17 was additive over ABI 16: every v16 export and capability is preserved, and
 `OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY` (`0x2000000`) adds bulk, read-only introspection of
 the process-global Sdr shader node-definition registry, including the source-asset lookup that
 reports not-found rather than erroring when no MDL SDK parser plugin is registered.

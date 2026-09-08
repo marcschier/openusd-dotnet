@@ -59,6 +59,7 @@ public sealed class ViewerInspectorLayoutPolicyTests
             [ViewerInspectorLayoutPolicy.LayersTabId] = ViewerInspectorTabKind.User,
             [ViewerInspectorLayoutPolicy.ValidationTabId] = ViewerInspectorTabKind.User,
             [ViewerInspectorLayoutPolicy.PhysicsTabId] = ViewerInspectorTabKind.User,
+            [ViewerInspectorLayoutPolicy.AppearanceTabId] = ViewerInspectorTabKind.User,
             [ViewerInspectorLayoutPolicy.DiagnosticsTabId] = ViewerInspectorTabKind.Developer,
             [ViewerInspectorLayoutPolicy.HydraTabId] = ViewerInspectorTabKind.Developer,
             [ViewerInspectorLayoutPolicy.TfDebugTabId] = ViewerInspectorTabKind.Developer,
@@ -77,16 +78,16 @@ public sealed class ViewerInspectorLayoutPolicyTests
     }
 
     [Test]
-    public async Task ExactlyTenTabsExistAndAllAreClassified()
+    public async Task AppearanceJoinsTheUserTabsWithoutAddingDeveloperTabs()
     {
-        await Assert.That(ViewerInspectorLayoutPolicy.Tabs.Count).IsEqualTo(10);
+        await Assert.That(ViewerInspectorLayoutPolicy.Tabs.Count).IsEqualTo(11);
 
         int developerCount = ViewerInspectorLayoutPolicy.Tabs
             .Count(tab => tab.Kind == ViewerInspectorTabKind.Developer);
         int userCount = ViewerInspectorLayoutPolicy.Tabs
             .Count(tab => tab.Kind == ViewerInspectorTabKind.User);
         await Assert.That(developerCount).IsEqualTo(3);
-        await Assert.That(userCount).IsEqualTo(7);
+        await Assert.That(userCount).IsEqualTo(8);
     }
 
     [Test]

@@ -19,6 +19,7 @@ internal sealed partial class ShortcutsWindow : Window
     public ShortcutsWindow()
     {
         InitializeComponent();
+        ViewerWindowTheme.Attach(this);
         ShortcutItems.ItemsSource = ViewerShortcutCatalog.All;
         CloseButton.Click += (_, _) => Close();
     }

@@ -18,6 +18,9 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     /// <summary>Gets the root layer identifier reported by OpenUSD.</summary>
     public string RootLayerIdentifier => OpenUsdNativeRuntime.GetRootLayerIdentifier(this);
 
+    internal OpenUsdNativeRenderSpecification? GetRenderSpecification(string? settingsPath) =>
+        OpenUsdNativeRuntime.GetRenderSpecification(this, settingsPath);
+
     internal OpenUsdNativeStage Retain() => OpenUsdNativeRuntime.RetainStage(this);
 
     internal T WithAccess<T>(Func<T> action) =>

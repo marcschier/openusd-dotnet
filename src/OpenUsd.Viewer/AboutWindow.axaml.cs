@@ -18,6 +18,7 @@ internal sealed partial class AboutWindow : Window
     public AboutWindow()
     {
         InitializeComponent();
+        ViewerWindowTheme.Attach(this);
         string version = typeof(AboutWindow).Assembly.GetName().Version?.ToString() ?? "unknown";
         VersionText.Text = $"Version: {version}";
         CloseButton.Click += (_, _) => Close();

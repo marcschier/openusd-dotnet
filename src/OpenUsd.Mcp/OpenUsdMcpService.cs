@@ -34,6 +34,14 @@ internal interface IOpenUsdMcpService
         RenderPreviewRequest request,
         CancellationToken cancellationToken);
 
+    ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
+        RenderSequenceRequest request,
+        CancellationToken cancellationToken);
+
+    ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(
+        ReadSequenceFrameRequest request,
+        CancellationToken cancellationToken);
+
     ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(AnalyzeSceneRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpApplyProposalsResultDto> ApplyProposalsAsync(
@@ -49,7 +57,7 @@ internal interface IOpenUsdMcpService
         CancellationToken cancellationToken);
 }
 
-internal sealed class OpenUsdMcpService(
+internal sealed partial class OpenUsdMcpService(
     McpSessionWorkspace workspace,
     IServiceProvider services,
     OpenUsdMcpApplicationOptions options) : IOpenUsdMcpService, IDisposable

@@ -1,0 +1,5 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+
+#pragma once
+#include "@OPENUSD_PROPERTY_PCP_INCLUDE_ROOT@/pxr/base/vt/arrayEditOps.h"
+#include "@OPENUSD_PROPERTY_PCP_INCLUDE_ROOT@/pxr/base/vt/arrayEdit.h"

@@ -150,17 +150,49 @@ active/load/instanceable state, instance/prototype identity, variant sets, direc
 attributes, and relationships. Variant-set and payload order is the deterministic order returned by
 the [composition-enumeration data APIs](data-api.md#composition-enumeration).
 
-Selected-prim active, instanceable, visibility, and purpose controls are scheduler-owned and
-serialized with the document lifecycle. They author to the session layer by default. Root-layer
-editing must be enabled explicitly in the Layers tab; root edits remain in memory and are never
-saved automatically. Load/unload changes the stage's load rules and is not layer-authored. The
-Layers edit-target label reports the stage's raw current edit target, not the load state.
+Hierarchy acquisition now uses one bounded `UsdStage.GetHierarchySnapshot(UsdHierarchyLimits.Viewer)`
+query, followed by projection of its detached result, rather than native calls for every prim.
+The native all-prim traversal preserves inactive, undefined and abstract classifications, child
+order and shared prototype identity. Prototype filters cover both prototype roots and descendants.
+The snapshot records its stage change serial; quota failures are reported rather than presenting a
+partial tree. Viewer ceilings are one million prims, 128 MiB of hierarchy/source-admission text and
+depth 1,024, with separate variant and metadata-work bounds.
+
+Ordinary USDC hierarchy rows are supported. Where variant metadata cannot be admitted without
+unbounded deferred deserialization, the row is explicitly marked **variants deferred** and has no
+partial inline selector. This does not claim that deferred variant expansion is implemented.
+Long display names and tooltips are bounded independently; canonical path and selection identities
+remain unchanged.
+
+Wide hierarchy levels use **Previous / Next** pages of at most 64 sibling prims. Root navigation
+appears below the filters; expanded branches with more children show their own page range and
+navigation. Paging does not clear the selected prim or change the renderer's selection. Path/name,
+type and state filters still retain matching ancestors, and revealing an existing selection chooses
+the ancestor pages containing its exact path rather than a similar path prefix.
+
+Automatic **Expand depth** materialization has a 512-prim work budget. Further branches remain
+collapsed with an explicit message and can be expanded on demand. Up to 4,096 prim containers are
+retained; at that limit, collapse a branch or narrow the filter before opening more. Collapsing a
+branch releases its child controls. Revealing selected ancestors may exceed the automatic budget
+but never the retained-container limit; a narrow path filter can expose a deep selection with fewer
+sibling controls. These are presentation limits, not hidden truncation of the hierarchy or
+permission to flatten, unload or edit the stage. Native hierarchy acquisition has its own separate
+limits and is not made bounded merely by paging its presentation. Geometry statistics, camera
+discovery and full selected-prim property reads are separate operations; the hierarchy query does
+not make those operations bulk or complete the remaining inspector scalability work.
+
+Focused property authoring now uses the exact review-layer history described under
+[document editing](#document-editing-foundation). Older prim-metadata controls remain read-only
+until their target-local authored-state representation is supported; they must not bypass that
+history through the old session/root writer. Load/unload remains available: it changes load rules,
+not layer opinions. The Layers edit-target label still reports the stage's raw current edit target.
+Selecting the root target does not redirect the focused editor or grant permission to save source.
 
 Each variant set shows its available names, current selection, and an explicit **no selection**
-option. Changing a selection uses the same session/root edit policy and composition refresh as the
-other prim controls. A refresh preserves the current time, layer state, and selected path when that
-path still exists; if recomposition removes the selected prim, the Viewer clears the selection.
-Enumeration and edit failures are shown as errors rather than being presented as empty sets.
+option. Variant authoring is currently read-only because the exact native property-field seam does
+not represent variant selections. A composition refresh preserves time and the selected path when
+it still exists; if recomposition removes the selected prim, the Viewer clears the selection.
+Enumeration failures are shown as errors rather than being presented as empty sets.
 
 Payload arcs are read-only. The Viewer displays a bounded authored asset path, the authored target
 or a target-layer-default-prim marker, and the source-layer identifier. Relative asset paths are
@@ -168,10 +200,74 @@ labeled as relative. Anonymous source layers are labeled anonymous and process-l
 identifiers are not portable. Existing load/unload controls remain available; the Viewer does not
 offer payload add/remove authoring.
 
+### Searchable property pages
+
+The Properties, Value, and Metadata tabs share a **Find properties by name or type** filter and
+**Previous / Next** navigation. Search is case-insensitive; `relationship` finds relationship rows.
+Each page contains at most 32 attributes and relationships combined, in their snapshot order, with
+an explicit result range and empty-filter state. All matching properties remain reachable; paging
+does not truncate the result set or change the selected prim, authored opinions, or layer targets.
+
+Filtering and paging reuse the detached inspector snapshot rather than reading the native stage on
+each keystroke. A refresh retains the query and current page where possible; selecting another prim
+starts at its first page. Property controls are unavailable while a new snapshot is loading.
+On prims with more than 256 attributes, the focused review editor receives only the current page,
+so its existing bounded declaration selection no longer prevents editing a property on a large
+prim. Exact review-layer capture, conflict checks, and shared undo/redo still govern every edit.
+
+The Value tab keeps the property name, composed state, value preview, and **Edit Review** action
+visible. **Source, samples and assets** is collapsed by default; opening it creates controls from
+the cached snapshot, without another native read. Only one property's details are expanded at a
+time, and collapsing releases its detail controls. The chosen disclosure survives same-prim
+refreshes and undo but resets on a different prim. Missing assets remain visible as text warnings
+even when their details are collapsed.
+
+### Bounded values, provenance, and inspection time
+
+The selected prim's attributes and relationships now come from one owned native property query,
+not an attribute-by-attribute series of value, sample, and target reads. The Viewer admits at most
+65,536 complete property rows, 16 MiB of aggregate native text, and 1,048,576 metadata work units.
+Value, sample-time, and target previews contain at most 16 entries each, with a 4,096-byte native
+text limit per value preview element. A row-inventory quota failure is an inspection error, not a
+silently incomplete property list. These are property-query limits, not a CPU/RSS sandbox for
+arbitrary plugins or a bound on every other composition, variant, and spline inspection operation.
+
+Stored composition errors on the selected prim, its ancestors, or contributing layer stacks cause
+an inspection error rather than a misleading empty or partial property list. Repair missing
+references or layers and reload before retrying. An error on an unrelated prim does not, by itself,
+prevent inspection of a valid selection.
+
+The Value tab distinguishes composed value availability, default/sample/fallback resolution,
+authored declarations, and authored value opinions. **Unproven** is different from **No**. A winning
+value block remains visible even when the schema supplies a fallback value. Proven winning layer
+and property-spec paths are shown in their source namespace: a local declaration does not
+incorrectly replace provenance from a referenced layer. Inspection is read-only; exact review-layer
+capture and compare/apply remain the authority for edits and undo.
+
+Arrays, times, direct shader connections, and relationship targets show bounded prefixes, known
+counts, and explicit **Complete**, **Truncated**, **Deferred**, or **Unsupported** states. Unknown
+counts are labeled unproven rather than zero. Graph targets are not followed or rewritten, and a
+shader connection may coexist with an ordinary USD default value. Asset previews expose the raw
+authored path, evaluated path when available, native resolved path, anchor layer, and resolved,
+missing, or unproven status. Visible fields are shortened with an ellipsis; a property's detail
+block is capped at 8,192 characters and explicitly reports omitted details.
+
+Inspection initially uses **Default time (not timeline)**. **Current frame** takes one snapshot at
+the requested timeline time, labeled **Time N snapshot (not live)**. Moving the timeline or playing
+animation does not issue property queries or silently change that snapshot; click Current frame
+again to resample. **Default** returns to USD default-time values. Search and paging stay cached;
+ordinary property edits and undo refresh the selected time without changing the chosen mode.
+
+Ordinary USDA values and common USDC scalars are supported. Lazy crate arrays/path lists,
+value-clip evaluation, array edits, asset expressions, and other unadmitted materialization retain
+explicit deferred reasons; they are not empty values. The existing bounded spline preview below
+is separate from composed value evaluation. Broader schema-driven controls and bounds for other
+inspector collections remain separate work.
+
 ### Ts splines in the Value tab
 
-An attribute with an authored [Ts spline](data-api.md#ts-splines) shows one extra block in the
-Value tab, below its time samples. The block is a single wrapped text run: a summary line
+An attribute with an authored [Ts spline](data-api.md#ts-splines) shows one extra block in its
+Value-tab disclosure, below its time samples. The block is a single wrapped text run: a summary line
 reporting the authored knot count, the curve family, both extrapolations, and whether the spline is
 time-valued, then one line per knot carrying the knot time, value, an authored pre-value when
 present, the next-segment interpolation, and both tangent widths, slopes, and algorithms.
@@ -185,13 +281,13 @@ one rather than shown as zero. A spline with no knots, with a non-finite first o
 or whose knot span cannot be sampled without overflowing to infinity, is shown with no evaluated
 line instead of a fabricated or non-finite one.
 
-Three bounds apply. The snapshot builder reads and evaluates at most 16 splines per inspector,
-because each one costs two native calls plus one evaluation per preview sample and nothing bounds
-how many splined attributes a prim may carry; splined attributes past that budget are still listed
+Three bounds apply. Native property metadata identifies spline candidates without probing every
+attribute. The snapshot builder attempts at most 16 spline reads per inspector, before acquiring
+individual attributes or calling spline APIs. Splined attributes past that budget are still listed
 and are labeled `not read (...)`, naming the budget, rather than dropped or fabricated. Each
-projection that *is* read retains at most 32 knots. The Value tab then spends a budget of 64 knot
-lines per rebuild, so a prim with many splined attributes stays bounded: every splined attribute
-still gets its own summary, and a block that ran out of budget says how many knots it omitted. The
+projection that *is* read retains at most 32 knots. A single expanded property's detail block has a
+64-knot-line budget and is released on collapse, so many splined attributes do not materialize
+many knot controls. A block that runs out of budget says how many knots it omitted. The
 summary is also appended to the attribute's row in the Inspector tab, so a spline is visible
 without opening the Value tab.
 
@@ -202,9 +298,9 @@ when the runtime reports no reason, the label still names one. `unreadable` and 
 distinct: the first was attempted and failed, the second was never attempted.
 Splines are read-only in the Viewer; there is no knot authoring.
 
-The projection is a detached snapshot with value equality, so a caller polling an unchanged stage
-gets snapshots that compare equal and can diff them. The Value tab itself does not yet use that:
-it rebuilds its rows on every inspector refresh.
+The spline projection is a detached snapshot with value equality, so a caller polling an unchanged
+stage can compare and diff spline payloads. The Value tab rebuilds its bounded summary rows on
+inspector refresh and lazily recreates only the currently expanded detail block.
 
 ## UsdValidation results
 
@@ -351,6 +447,58 @@ Storm wheel snapshots use the same sign and logical-step intent on every platfor
 the native delta by 120, Linux maps wheel buttons 4/5 to +1/-1, and macOS maps traditional wheel
 events to signed detents. Precise macOS trackpad deltas use 40 points per logical step, retain
 fractional movement, clamp each event to four steps, and compensate for device-direction inversion.
+
+**Saved views.** **Camera > Saved Views...** opens an owned, themed manager for adding the current
+camera/time, renaming, removing and recalling named views. The manager is also searchable in the
+command palette using “saved views”, “add”, “rename” or “remove”. **Camera > Recall Saved View**
+and palette searches for a view's name recall that view directly. Dynamic commands use stable
+bookmark IDs, not names or filesystem paths; underscores in labels remain literal.
+
+Saved views are **review data**, not global settings or a settings sidecar. The reserved review-only
+address is `/__OpenUsdViewerReview.openusdViewer:cameraBookmarks`, a custom uniform `string[]` of
+versioned records. The catalog admits **32 views**, **1–128 UTF-8 bytes per trimmed name**,
+**4096 UTF-8 bytes per record**, and **128 KiB including array/string framing**. Names are unique
+ignoring case. Namespace collisions, incompatible declarations, unknown versions, duplicate IDs,
+malformed/oversized records and source-context mismatches are refused without truncating or
+overwriting the stored list. Reads use the actual registered review layer, not composed source values.
+
+**Add Current View** captures a finite USD time, exact matrices and aspect, and either the validated
+free perspective/orthographic state or the full sampled authored-camera identity. It does not capture
+render/display settings, selection, simulation or layout. Pause playback before adding a view.
+Pause waits for the last queued time and authored-camera update before enabling manual time edits
+or saved-view capture, so a late playback tick cannot change a supposedly paused view.
+Source notices coalesce with the newest pending time sample; a notice sampled before a time
+change is refreshed at the current time rather than restoring an older camera sample.
+Automatic is not an exact pose/projection and cannot be saved as one: use **Frame Selected** or
+**Explicit Legacy Pose** first. Unrepresentable/custom camera states are not silently approximated.
+
+Exact recall requires the captured aspect; resizing to another aspect is not silently adapted.
+An authored-camera view re-queries its recorded path/time and compares the full sample before
+activation. A missing, changed, non-camera or inactive prim leaves the current view intact instead
+of falling back to Automatic. After a successful authored-camera recall, normal later playback
+and source updates continue to follow that camera. Recalling a free view leaves stage-camera mode.
+
+Recall is navigation, not a review edit or an undo entry. It drains competing playback/gesture/camera
+work, checks backend acceptance, and commits matching renderer and logical/UI camera/time state.
+Success leaves playback paused. Cancellation or a pre-commit failure restores the prior view and
+playback mode; resizing cancels an in-flight recall. Reload and close cancel/drain the operation
+before retiring the document, so a closed manager cannot act on a replacement stage.
+
+Add/rename/remove are single exact whole-list transactions in the shared review Undo/Redo history.
+Disjoint review edits are preserved; competing changes to the catalog produce a conflict rather
+than a merge or overwrite. Cancelling a name edit makes no opinion/history change. An added or
+changed view remains **unsaved** until **Save Review Document** or **Save Review As...** succeeds.
+The existing native URD, source/dependency verification, late-edit acknowledgement, recovery,
+reopen/revert and Save/Discard/Cancel protocols apply. Reopening restores the catalog with fresh
+history, but does not automatically recall a view. Verified Windows text-USD review sources are the
+supported persistent domain; unverified session-only, crate/package and unsupported-resolver
+documents do not advertise persistent saved-view authoring. A stored source stamp is never
+permission to open another file.
+
+The native `camera-bookmarks` workflow covers actual review-property/URD round-trip, exact shared
+history, manager/palette operations, free/authored recalls, bounds/stale/source/ownership refusals,
+failed/cancelled acceptance, playback restoration, and pending Reload/Close. Its public renderer
+boundary failure checks supplement actual D3D12 view and pixel comparisons, not replace them.
 
 The Render menu's Draw Mode submenu exposes the usdview draw-mode ladder: Wireframe, Wireframe on
 surface, Smooth shaded, Flat shaded, Points, Geom only, Geom flat, Geom smooth, and Hidden
@@ -716,31 +864,260 @@ A row is editable only when both of these hold, and it says which one failed whe
 
 - *not simulated* — the built world does not report the capability the property's domain needs,
   so authoring it would change the file without changing what you are watching.
-- *read only* — the managed runtime carries `bool`, `int64`, `double`, `string`, `token`, and
+- *read only* — this panel's existing scalar projection admits `bool`, `int64`, `double`, `string`, `token`, and
   `float3` scalars only, matched exactly. Stock `UsdPhysics` masses, frictions, break forces, joint
   limits, and joint drives are `float`; centres of mass and joint frames are `point3f` and `quatf`;
   velocities are `vector3f`. Those rows still show their extracted value, because hiding them would
   say the scene has no such setting.
 
-Every edit is one transaction on the stage scheduler. The edit target is redirected into the
-session overlay's user-edit layer for the duration of the edit and restored afterwards, so the
-inspector can never write into the file the stage was opened from: simulation results compose above
-user edits, user edits compose above the authored scene. A step that authors several properties
-produces exactly one observed change rather than one per property.
+Production physics authoring now uses the same scheduler-owned exact review controller and history
+as ordinary property edits. Native capture supplies the selected layer's actual before-state; the
+old scalar `Before` value is not trusted as an undo proof. A typed batch uses affected-field native
+compare-and-apply, rather than a series of independent scalar writes. Float-vector overflow and
+non-finite values are rejected before the batch is submitted. Direct target-layer operations leave
+the stage's current edit target unchanged. Strong simulation, user-review and source layers remain
+separate. The old scalar adapter/history remain only for callers without the shared document editor.
 
-Undo stores intent rather than layer state. Each step carries the exact value every property held
-before it, *including the absence of an authored opinion*, so undoing an edit that created an
-opinion removes it again instead of freezing the schema fallback into the file. One pointer gesture
-is one undo step: consecutive edits to the same property inside a short merge window coalesce, so
-undoing a slider drag takes one press rather than a hundred. An undo whose re-author does not reach
-the stage is put back on the undo stack, so the history can never claim the stage holds a value it
-does not.
+The history owns immutable edit collections and retains only the first before-value and final
+after-value of a continuing single-property gesture. A changed intervening before-value breaks
+coalescing. The shared history engine bounds both entry count and retained payload bytes; oversized
+legacy physics steps are rejected before authoring, and eviction affects reach rather than stage content.
+The default bounds are 128 steps and 32 MiB of retained payload accounting. Failed history travel
+restores the retained entry rather than accepting a replacement payload.
+The shared engine also accepts explicit gesture identities, so a new document-editing drag can
+remain one step across pauses without merging a later, separate gesture.
+Its pending-application API reserves undo/redo without moving the cursor; rejected or cancelled
+application keeps the entry, and document replacement invalidates any old reservation. The exact
+native document adapter uses that API and commits the cursor only after native CAS succeeds.
+
+The legacy physics reader reports composed values and composed `IsAuthored`; that is not proof of
+an opinion in the chosen target layer. In particular, a weaker root opinion can make `IsAuthored`
+true while the session target contains no prim at all. General conflict-safe document undo cannot
+use that reader as its before-state source.
 
 The Viewer recognises its own authored changes exactly, by the change-serial pair that brackets
 them, and replaces the caller's conservative classification with what it actually authored. Editing
 a mass therefore pauses playback and rebuilds the world once the edit burst goes quiet, while
 editing simulation metadata - which is provenance, never an input - does not disturb a running
 simulation at all. A change with different serials is never treated as the Viewer's own.
+
+### Document editing foundation
+
+The bounded current-session editing and Windows portable-review workflows are live; the complete
+document-editing roadmap is **not complete**. Current sources require a matching native data
+runtime, authored-layer transactions and native portable-review inspection. There is no fallback
+to composed values, private packet parsing or an older data shim.
+
+**Edit > Edit Selected Property** (`Ctrl+E`) and the Value tab's **Edit Review...** action open an
+owned, themed window. It supports existing local declarations of `bool`, `int`, `int64`, `float`,
+`double`, `string`, `token`, `asset`, two/four-component float vectors, scalar-first `quatf`,
+row-major `matrix4d`, and three-component float/double vectors and their point, normal,
+vector and colour roles. Supported aliases include `texCoord2f` and `color4f`.
+This includes camera clipping ranges, ordinary translate/scale/Euler/matrix attributes and supported
+light/material parameters, not a material graph editor. Unsupported, referenced-only and
+schema-only declarations remain read-only instead of guessing their declaration metadata.
+
+Vector, quaternion and matrix input requires the exact number of finite components; float fields
+reject values outside the float range. Commas, whitespace, parentheses and matrix brackets/separators
+are accepted. Quaternions are scalar-first and are never silently normalized. Matrices retain
+OpenUSD row-vector semantics, with translation in the first three values of the final row; no
+transpose is applied. The form displays the input convention for the selected type.
+
+Asset properties include **Choose asset...**, which fills in an absolute local path without
+authoring anything. **Set** commits that exact asset-path opinion to the review layer; canceling
+or failing the picker preserves the previous draft and history. Manually entered paths remain
+authored paths, without implicit resolution or rebasing. Native anchor and dependency checks still
+govern portable save/reopen. Relinking a texture keeps the existing shader nodes and connections;
+shared Undo/Redo restores the earlier review opinion rather than modifying the source material.
+Closing the property window cancels a pending choice without applying its eventual result.
+
+The window distinguishes the read-only composed display snapshot from the exact target-layer
+opinion. **Set**, **Clear** and **Block** affect only the selected default or individual current-time
+sample. Uniform attributes reject sample editing. Other samples and list opinions are not cleared
+implicitly. Empty, blocked and absent target opinions are different states. The native history also
+round-trips supported connection/relationship list operations, but this window does not expose a
+list or spline editor. Conflict and unsupported-state errors keep the document usable and require
+an explicit Refresh before retrying.
+
+**Edit > Undo/Redo** (`Ctrl+Z`/`Ctrl+Y`), the palette and the existing Physics undo/redo paths use
+one chronological history. Actual returned native snapshots become the next replay precondition.
+Disjoint external opinions survive; conflicting values, declarations and stale generations are
+refused without advancing the cursor. No-op edits retain the redo branch even when a disjoint edit
+has advanced the review revision: after native CAS accepts, no-op detection compares target identity
+and exact affected declarations/value bytes, not the unrelated revision. Explicit gesture IDs
+coalesce across pauses only while the native packets match; unrelated revisions and separate form
+submissions split those steps. The retained-payload bounds are 128 entries and 32 MiB. No ordinary
+undo restores an old complete layer over unrelated edits.
+
+The property window waits for capture before focusing its input and drains an in-flight operation
+when closed. Only an active owned window suppresses owner hotkeys. Text inputs retain their own
+undo shortcut, and held document shortcuts are not repeated through the history. No Avalonia
+overlay is added above the live native renderer child.
+
+Dirty state identifies the real review target, source and other changed layers. Querying it does
+not create a review layer; creating an empty review editor alone does not count as a user edit.
+Document-state observation admits at most 256 local layers. Unavailable or unadmitted state keeps
+editing read-only and guarded destructive transitions fail closed, rather than assuming cleanliness.
+Close, stage replacement and Reload use an owned **Save Review / Discard / Cancel** prompt.
+Cancel preserves the usable stage. Layer identity/revision changes during the prompt reject the
+decision. Retirement then closes admission to tracked host callbacks, cancels and drains their
+returned tasks, and suspends physics document commands as well as the shared review writer.
+The shared scheduler then fences all public producer admission, drains previously accepted work,
+and compares the retained ticket on its owner thread. New raw `InvokeAsync`/`EditAsync` calls and
+render-source/lease acquisitions are refused while that fence is held. A rejected ticket releases
+the fence and Viewer barriers without cancelling the live document. On success, a private
+retirement lease keeps admission closed through colour polling, settings save and renderer
+cleanup; the Viewer commits retirement only after releasing its render registrations. Explicit
+Reload uses lease-authorized owner cleanup rather than bypassing the fence through a public call.
+Callback tasks must await their own child work, but that does not revoke scheduler references
+held elsewhere. If a late write aborts retirement after a stage-ready service was cancelled, the
+stage remains usable but that service is not restarted implicitly. New input callbacks can resume.
+Non-cooperative tracked host or physics work produces a bounded retirement failure.
+Simulation values are excluded from review dirtiness; unclassified session-topology changes are
+reported conservatively. Reload with Discard reopens the source with a fresh review/history and
+the normal new-document camera/selection/time state. It never saves a source file.
+
+New eligible Windows text-USD documents establish source origin through
+`UsdStageScheduler.OpenForReview` **before** review edits or host stage-ready callbacks. The
+prepared scheduler is retained for rendering and editing; the shell does not open a second stage
+to author through. Crate, package, non-Windows and unsupported filesystem paths remain available
+for ordinary viewing with a visible session-only saving restriction. An attempted native
+verification failure requires an explicit **Open session-only** decision or Cancel. A previously
+opened unverified session is never silently rebound, reloaded or discarded to manufacture proof;
+reloading a session-only document preserves that mode.
+
+**File > Save Review Document** (`Ctrl+S`) and **Save Review As...** (`Ctrl+Shift+S`) write native
+`.urd` source-linked review documents. They capture the exact native review and its private
+same-session receipt on the stage scheduler, bound the portable file to 24 MiB, and acknowledge
+saved state only after publication succeeds. The source, its dependency files, authored graph,
+root metadata and asset anchor are not rewritten or flattened. Save As does not silently rebase
+relative textures or other assets. The named document changes only after actual publication.
+Late edits or failed acknowledgement remain dirty and actionable, even if a captured older
+revision was successfully published. Saving does not clear the shared undo/redo history.
+
+Publication checks physical source/dependency identities and filesystem ancestors after destination
+selection and again under retained guards at publication. Reparse/short-name aliases and source or
+dependency hard links are refused. Guarded source reads admit at most 1,024 files, 16 MiB per file
+and 64 MiB total, with at most 4,096 retained ancestor directories. Publication uses stable local
+volume paths, uniquely created owned staging, flushing, ordinary atomic rename and handle-owned
+cleanup; it never deletes a foreign staging path. Same-process publishers serialize by physical
+parent identity and destination name.
+
+Replacing a named review uses an **optimistic observed-version check plus atomic publication**,
+not filesystem compare-and-swap. A changed observed file identity/content or parent directory
+refuses replacement; choosing another existing Save As destination requires an explicit overwrite
+decision. An uncooperative review-file rename/replacement after the final check remains outside
+that optimistic guarantee. This residual namespace race does not relax the independent retained
+source/dependency guards. Create-new Save As stays non-overwriting. Cancellation or I/O failure
+before publication preserves the prior output and edits; a completed publication is not rolled
+back over later work.
+
+**File > Open Review Document...**, ordinary Open, recent documents and drop accept `.urd` files.
+The bounded native `Inspect` call returns untrusted recorded claims, not source access permission.
+An owned confirmation names the source before native Read, verified source opening and pristine
+import. The candidate is validated before the old stage is retired through the existing scheduler
+fence. Source/dependency mismatches require reconciliation; the shell never patches identities or
+auto-replays old checkpoints. Successful import has fresh history and the original source remains
+the actual stage root.
+
+**Revert Review to Saved** checks that the published file still matches the observed saved
+baseline, then imports it into a fresh verified session after Discard/Cancel confirmation. Cancel
+keeps the current document and history. Unrelated dirty source/session opinions must be resolved
+first rather than silently lost. This restriction is enforced again on the retained transition
+state after saved-candidate preparation, so newly unrelated opinions cannot be accepted by a later
+Discard decision. Transient simulation is reset rather than persisted.
+**Save Source Layer** remains visibly disabled: no generic source-saving protocol is implemented.
+
+**File > Export Review Delta...** is a separate, working escape hatch for supported opinions.
+It exports the native bounded review-only USDA payload to a **new** `.usda` file, using a
+same-directory temporary file and non-overwriting publication. Existing files, including source
+aliases, are refused; cancellation and publication errors leave them intact. The limit is 4 MiB,
+and unsupported pseudo-root metadata or ambiguous relative/expression/cached asset relocation
+fails before publication. This is neither flattening nor a self-contained review document: it
+does not include source composition, reopening metadata or transient simulation. Its ordinary-spec
+payload can include the review's serialized saved-view property, but this does not make the delta a
+self-contained saved-view document or acknowledge a saved review; use URD for verified reopening.
+It does not acknowledge a saved revision, clear dirty state, or enable Revert to Saved.
+
+Save routing always selects the review target for Save/Ctrl+S, regardless of the current edit
+target. An anonymous review or Save As requires a destination and asset-anchor validation.
+The source-save policy still requires explicit source-edit opt-in, but does not enable a live
+source-saving adapter. A simulation layer can never substitute for review. A named review
+destination must not alias the source or a dependency, regardless of the raw stage edit target.
+The save/transition policy cannot discard separately dirty source or other-layer opinions after
+saving only review. The delta exporter remains a distinct create-only operation.
+
+Verified review changes schedule a coalesced recovery checkpoint after a 750 ms quiet interval.
+The cache holds at most 8 MiB of native URD payload plus bounded metadata and a SHA256 checksum;
+larger or unsupported checkpoints report recovery unavailability without discarding in-memory
+edits. It is keyed by the opened source or named review path and stored below the Viewer settings
+directory's `review-recovery` folder. Native capture receipts are not serialized or acknowledged
+for a recovery write. Recovery cache publication uses the same independent physical guards and
+owned staging rules.
+
+On opening, the cache envelope, source identity/fingerprint, review lineage and asset anchor are
+checked, and a fresh native import must validate all dependencies **before** recovery is offered.
+Only explicit **Recover review** installs that prepared candidate, as unsaved review work with
+fresh history. Cancel keeps the current document; explicit checkpoint discard removes only its
+validated owned file. A mismatch retains the checkpoint for reconciliation and can open the
+selected document without recovery only by explicit choice. Saving or accepted document retirement
+removes matching checkpoints safely; a changed or unremovable cache is retained with a diagnostic.
+If a transition's Save is cancelled or refused, the kept document's guarded refresh and recovery
+schedule resume after its busy/suspension state is cleared, without requiring another edit.
+There is no managed USDA/URD-offset parser, per-edit whole-layer rollback, serialized native handle
+or persisted undo stack. The cache is not a source-file save destination.
+Loading opens a checkpoint directly: only a missing file or directory means no checkpoint.
+Access failures, invalid filesystem entries and other I/O errors remain visible to the caller.
+File-identity preparation uses a caller-bounded streaming SHA256 read, not just file length or
+timestamps. Missing files, read failures, over-budget inputs and cancellation remain distinct.
+A fingerprint is an observation, not a write lease or atomic filesystem compare-and-swap.
+Portable review support remains bounded to the native Windows filesystem USDA/text-USD profile
+with concrete assets/composition. Non-Windows verified opening, crate/custom/URI/package/template/
+UDIM/value-clip/inherit/specialize/relocate portability and unverified dirty legacy reconciliation
+remain unsupported. Source saving and broader platform/document-editing work remain completion
+gaps. Counted review-layer admission into render-specification queries is validated separately;
+the Viewer workflow does not claim that broader render-request domain.
+
+Safe late simulation-overlay normalization preserves the registered review-layer identity and
+existing history through start, stop and restart. The review must be the unique strongest direct
+session sublayer at identity offset. Unsafe container opinions, metadata, topology or permissions
+are refused rather than merged or worked around by rewriting history identities. Older undo/redo
+continues to operate on the same native review target; genuinely stale or replaced targets still
+fail without advancing the shared cursor.
+Workspace presets, themes, saved renderer preference, pick/outline intent and OCIO remain
+independent of all these document operations.
+
+Ordinary shared review edits and Undo/Redo refresh the anchored Physics properties; history
+replay awaits the refresh before authoring controls become available again. Refresh results are
+correlated with the physics session, document lifetime and
+newest read request; an older completion cannot repopulate a new session. If the operator changes
+selection during a read, the fresh rows preserve that latest object/property identity rather than
+restoring the read's old selection. The same guard and document gate apply to Physics property
+authoring.
+
+The isolated Windows document-window scenario runs with a matching configured native root:
+
+```powershell
+$env:OPENUSD_VIEWER_DOCUMENT_SMOKE = '1'
+.\eng\run-managed-tests.ps1 -Project tests\OpenUsd.Viewer.Tests\OpenUsd.Viewer.Tests.csproj `
+  -Framework net10.0 -Configuration Release `
+  -TestArguments @('--treenode-filter', '/*/*/ViewerDocumentNativeSmokeTests/*')
+```
+
+It exercises an owned property window, a live Storm owner, menu/palette/shared history paths,
+Avalonia keyboard repeat/text-focus guards, close/reload/replacement cancellation, and source bytes.
+It is not physical keyboard injection, mixed-DPI, non-Windows, or portable document-reopen evidence.
+Focused retirement and Physics-refresh regressions use `ViewerDocumentRetirementNativeTests`
+with `OPENUSD_VIEWER_RETIREMENT_SMOKE=1` and `ViewerPhysicsHistoryNativeTests` with
+`OPENUSD_VIEWER_PHYSICS_HISTORY_SMOKE=1`, each in a separate desktop test process. The latter
+uses real extraction and ordinary review edits; it does not claim a solver is available when the
+separately packaged physics backend is absent.
+
+`ViewerPortableDocumentNativeTests`, run alone with `OPENUSD_VIEWER_PORTABLE_SMOKE=1`, exercises
+the live textured-source Save/Ctrl+S/Save As, source-confirmed Open Review, Revert/Cancel,
+dirty-close Save and explicit validated recovery journey. Use a physical `OPENUSD_TEST_WORK_ROOT`
+and the matching ABI21 runtime. This does not claim non-Windows, mixed-DPI, solver execution or
+unrestricted source saving.
 
 ### Gizmos and snapping
 
@@ -892,15 +1269,19 @@ only when an unredacted report is required.
 
 ## Menu-first shell
 
-The default window shows one compact, always-visible toolbar row: the **File**/**View**/**Render**/
-**Camera**/**Physics**/**Tools**/**Help** menu bar, **Open**, **Reload**, the renderer selector, and
-**Frame Selected**. Every other command that used to live in a second or third toolbar row, or in
-the removed Settings tab, now lives in the menu that owns it:
+The default window shows one compact, always-visible toolbar row: the **File**/**Edit**/**View**/**Render**/
+**Camera**/**Physics**/**Tools**/**Help** menu bar, **Open**, **Commands**, **Inspect**, **Frame**, and
+**Capture**. Inspection and capture availability follows the current document and selection.
+Reload and renderer selection remain in their menus instead of competing for viewport width.
+The status strip shows current document/camera/renderer information and active document, validation,
+or capture work; it is not a render-job queue.
 
-- **File**: Open, Recent Stages, Reload, Capture Frame, Exit.
+- **File**: Open, Review Sample, Recent Stages, Reload, review-delta export, frame capture/comparison, Exit.
+- **Edit**: focused review-property editing and shared Undo/Redo. Portable save/revert actions stay disabled.
 - **View**: Stage/Inspector/Timeline panel visibility, an Inspector Tabs submenu that shows or
   hides the Diagnostics, Hydra, and TfDebug developer tabs, snap-to-authored-frames, and
-  **Reset Layout**.
+  **Reset Layout**, plus **Theme > Follow system / Light / Dark**, command search, Find Prim,
+  Inspect Selection, and workspace presets.
 - **Render**: renderer backend, draw mode, render purposes, scene lighting/shadows/materials,
   backface culling, and background colour.
 - **Camera**: Reset Automatic, Explicit Legacy Pose, Toggle Projection, Use Selected Camera, Stage
@@ -914,6 +1295,236 @@ the removed Settings tab, now lives in the menu that owns it:
   and disabled and becomes visible only when an embedding host injects a bridge provider; see
   [Bridge connections](#bridge-connections).
 - **Help**: keyboard/mouse shortcuts and an About dialog.
+
+### Workspaces and command discovery
+
+**View > Workspace** offers four explicit, lightweight presets, also available through command search
+and `Ctrl+Alt+1` through `Ctrl+Alt+4`:
+
+| Preset | Layout |
+| --- | --- |
+| Review | Stage and timeline visible; inspector collapsed for a larger viewport. |
+| Inspect | Stage, Properties inspector, and timeline visible. |
+| Materials / Lighting | Stage and Appearance inspector visible; timeline collapsed. |
+| Presentation | Side panels and timeline collapsed; menu, essential actions, and status retained. |
+
+Presets change only panel visibility, requested splitter widths, selected inspector tab, and
+developer-tab visibility. They do not reload a stage, author opinions, change the edit target,
+select a renderer, change desired pick/outline behavior, change the theme or OpenColorIO, reset
+timeline snapping, or stop playback. Appearance groups the existing material/lighting display
+toggles and OpenColorIO actions; it is not a new USD material editor.
+
+Existing saved layouts are restored as-is, not replaced by a preset at startup. A preset is checked
+only while its layout matches; manual splitter/tab changes remain custom layouts. All four presets
+hide developer tabs explicitly, but an existing custom layout keeps its developer-tab choices until
+the operator applies a preset or Reset Layout. On compact windows the displayed panel widths are
+constrained to retain viewport space without overwriting the requested, persisted splitter widths.
+Reset Layout retains its separate, broader reset semantics described below.
+
+**Commands** or **View > Search Commands** opens an owned, themed search window. `Ctrl+Shift+P` opens
+it from Viewer controls; when Storm's native child owns keyboard focus, use the adjacent Commands
+button or View menu. Search matches words in menu paths, labels, accessible names, command IDs, and
+gestures, including current recent files and authored cameras. Queries are limited to 128 characters
+and results to 64 entries; refine the query to find additional actions.
+
+Menus remain the canonical action/state sources. The palette, contextual buttons and modified shell
+shortcuts invoke those same actions, including ancestor enablement, conditional visibility and
+current checked state. Unavailable actions remain dimmed in search; conditionally hidden commands,
+such as an unconfigured bridge, are omitted. In the search/results controls, Enter runs the selected
+available action and Up/Down moves selection. Focused Run and Close buttons retain normal keyboard
+activation; Enter on Close never executes the selected action. Escape closes from any control.
+The palette closes before dispatching an action that may open another
+dialog. Closing restores the prior control or the still-attached native viewport's actual focus.
+Typing in the active palette cannot drive camera or physics shortcuts. An open but inactive
+modeless palette does not suppress input after focus returns to the Viewer or native viewport.
+
+The review path is **Open > Find (`Ctrl+F`) > select > Frame (`F`) > Inspect > Capture
+(`Ctrl+Shift+C`)**. Find reveals the existing hierarchy search without clearing its filters; Inspect
+reveals Properties without resetting other preferences. Undo/redo remain available in Physics,
+command search, and the existing `Z`/`Y` bindings when their current state allows them.
+
+### Welcome and recent scenes
+
+With no document, the welcome surface offers Open, existing recent scenes, a drop target, command
+search, shortcuts, comparison, and a tiny bundled review sample. Open, recent, sample and drop actions
+all use the existing stage-open path. The recent list is still bounded to ten entries and removes
+missing files through the existing recent-stage store.
+
+The [review sample](../src/OpenUsd.Viewer/Assets/ReviewScene.usda) is project-owned and MIT-licensed.
+It is embedded in the Viewer assembly, requires no download or external textures, and works without
+a source checkout. Open Review Sample refreshes its Viewer-owned cache at
+`LocalApplicationData\OpenUsd\Viewer\samples\review-scene-v1.usda`, then opens it normally.
+This cache is not a user save destination. Runtime/driver failures remain actionable status text,
+with guidance to choose an available renderer, rather than being mistaken for an empty scene.
+The no-document view hides the empty timeline without changing its saved visibility preference.
+
+An empty but successfully loaded USD stage is a document: it keeps the viewport, stage identity,
+reload and inspection workflow rather than returning to welcome. Welcome is hidden before native
+surface creation and never overlaid over a live Storm child. Palette and comparison use separate
+owned windows; the viewport frame still contains only the renderer host.
+
+### Capturing the current viewport
+
+**File > Capture Frame** saves a PNG by default, or an uncompressed 24-bit BMP when chosen in the
+destination picker. The filename must end in `.png` or `.bmp`; other formats are refused rather
+than receiving mislabeled image data.
+Native-child Storm now uses its preserved completed framebuffer, rather than failing through an
+hdSilk-only capture interface. hdSilk retains its existing retained-scene readback path. The
+capture result carries its actual dimensions and RGBA row order, so Storm's bottom-up pixels and
+hdSilk's top-down pixels produce correctly oriented output without an extra image-sized flip buffer.
+PNG preserves RGBA, including alpha; BMP remains opaque. The writers process rows without applying
+another exposure or colour transform.
+
+Captured RGBA data and encoded output are each limited to 64 MiB, with at most 8192 pixels per side
+for export. Encoding runs off the UI thread into a new sibling temporary file. Only a completed,
+flushed image replaces the chosen destination; cancellation or encoding failure preserves any old
+file and removes temporary output. This is atomic publication, not a filesystem compare-and-swap
+lease against independent writers.
+
+Unsupported presentation paths, including the alternative
+Avalonia-hosted OpenGL Storm path without readback, disable Capture Frame rather than advertising
+an operation that will fail. Canceling the destination picker leaves the output untouched; access
+failures are reported, and closing the Viewer cancels and drains its capture work. This is a viewport still,
+not arbitrary-resolution rendering, an HDR/AOV export, or a sequence-render job.
+
+### Rendering an image sequence
+
+**File > Render Image Sequence...** is also discoverable in **Search Commands**. Its owned,
+themed window takes start/end time codes and a positive step, shows the derived frame count,
+and lets the operator choose an existing local output folder. The end is included when it
+falls on the stepped range. These are explicit time codes, not repeated captures of the current
+frame or timeline-snap requests. The current physical viewport size is used; resizing cancels
+the running job rather than changing its camera window partway through.
+
+PNG is always included. Two unchecked-by-default choices add raw data beside each PNG:
+
+- **HDR color data** writes `frame-000000.hdr.rgba16f`: tightly packed, top-down, little-endian
+  RGBA half-float framebuffer color before exposure, display conversion and display selection outlines.
+  These are the actual stored renderer-working composited samples, not reconstructed PNG values.
+  Alpha is stored framebuffer alpha after blending, not necessarily straight/unassociated; no named
+  primaries, albedo or physical-radiance interpretation is promised.
+- **Depth data** writes `frame-000000.device-depth.f32`: tightly packed, top-down, little-endian float32
+  normalized device depth in **[0, 1]**, with clear value **1**. This is not metric camera distance or
+  an independent coverage/hit mask; clear and a far-plane write cannot be distinguished.
+
+Choices are copied into immutable per-job options before rendering and are disabled while the job
+drains. They do not change source files or the preference format. Reopening the dialog defaults to
+PNG only; existing PNG-only jobs and **Capture Frame** keep their original readback paths without
+automatically requesting HDR or depth. The dialog shows the selected file types, applicable capture
+charge, and completed PNG/HDR/depth file counts.
+
+When HDR is enabled, **HDR format** offers **Raw half** (the default) or **EXR**.
+EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 24 Core encoder.
+It preserves the same finite binary16 samples and stored alpha without a color/alpha conversion;
+equal origin-zero windows, square pixels, unspecified primaries and alpha association remain explicit.
+The format is frozen with the job options and disabled during rendering; changing a control
+programmatically cannot alter an admitted sequence. EXR shares the existing combined encoded
+PNG/depth/HDR byte budget, but native codec working memory is outside that quota and is stated
+in the dialog. Other host encoding profiles remain unsupported.
+
+The first supported binding is a live **hdSilk / Direct3D 12** Viewer device with RGBA readback.
+The active renderer and dimensions are shown in the dialog. Native-child Storm still supports
+ordinary PNG/BMP captures, but its current Viewer binding cannot attest the complete sequence
+display/settings request. Vulkan/Metal composition hosts do not expose the required readback
+device. These sequence bindings are refused, not silently substituted. The current sync API
+also requires Default, Proxy and Render purposes, Guide off, authored visibility, and one sample
+per pixel. Unsupported purpose/visibility or sample requests are explained without rendering.
+Disable physics preview before starting: this is an authored USD-time sequence, not a simulation bake.
+Both optional planes support the committed GPU display-transform path on the current capable D3D12
+binding. HDR comes from that capture's completed scene target, before exposure, display/view/look
+conversion and selection; it does not come from an earlier cached target or an inverse display
+conversion. An unsupported device or a missing/invalid GPU transform fails the job rather than
+publishing fallback color as HDR. The existing PNG-only display fallback remains unchanged.
+
+Each frame uses the frozen draw, selection, display and committed OCIO settings. An active authored
+camera is queried at every requested time, including its animated transform, aperture offsets,
+focal length and clipping window; unavailable samples fail instead of falling back to another
+camera. Presentation must finish with the matching state before retained-scene readback. An OCIO
+request must have a matching applied display pass. All selected planes come from the same retained
+capture, and their original managed storage is wrapped without copying or widening pixels. The shared
+`RenderDiskJob` engine writes each frame's PNG and optional planes on a dedicated worker; graphics,
+capture and restoration are marshalled through the Viewer dispatcher/coordinator. Borrowed frame
+storage is consumed before the next capture. No frame-sized buffers are retained in result descriptors.
+
+Actual renderer capture diagnostics travel with each detached frame. The shared engine retains
+up to 128 distinct diagnostics across the whole job in first-occurrence order, including in
+`manifest.json`; a later clean frame cannot erase an earlier degradation. Completion reports
+retained diagnostics and highlights warnings/errors rather than presenting a degraded job as clean.
+
+Jobs admit **1-4096 frames**, no dimension above **8192 pixels**, and **4 GiB total output including
+the manifest**. The **64 MiB per-frame capture admission** charges **4 bytes/pixel for PNG only**
+or a uniform **20 bytes/pixel when either optional plane is selected**, even for HDR without depth.
+This is a managed capture-pixel budget, not a whole-process/GPU memory ceiling. The combined encoded
+PNG, HDR and depth files also share a **64 MiB per-frame output limit**. Oversized selected output
+sets are explained and disabled before synchronization or target allocation; reduce the viewport
+size or deselect the optional data.
+
+A generated `render-sequence-<id>` child contains ordered `frame-000000.png` files, selected raw
+sidecars and `manifest.json`.
+The manifest records requested times, dimensions, camera matrices, display/selection/render
+settings, plane storage/conventions, image sizes and hashes. Neither scene-authored product names nor
+RenderPass commands select filesystem paths or execute code. Only the operator-selected parent folder is used.
+
+Playback and competing view edits pause during execution. Cancel, Escape, the dialog's close,
+Viewer close and Reload cancel and drain in-flight work before document retirement. The original
+view is restored before the final frame can reach publication, and on cancellation/failure;
+playback remains paused. Native opinions are not rewritten or rolled back, and transient job
+states are not published as host camera changes or persisted as preferences. A scheduler-observed
+stage revision change fails the job while preserving that writer's opinions. These existing
+revision gates are not a guarantee against independently owned, unscheduled native writers.
+Source-change delivery stays attached for the document's lifetime. A bounded, coalescing handoff
+retains notices while sequence processing is paused and replays them after the camera pumps are
+ready and suppression is cleared. The same kept-notice path refreshes the active authored camera
+at the restored time and affected hierarchy/property data, without requiring another time change,
+edit, or resize. Unchanged-source jobs do not synthesize a refresh. Each handoff is bound to its
+document, coordinator and scheduler; retirement cancels/drains its work and refuses queued or late
+notifications instead of applying them to a replacement document.
+
+Only a fully completed job becomes visible at the final output location. Missing, mismatched or
+non-finite raw planes fail the whole job. Cancellation, middle-frame failure or restoration failure
+removes every private staging plane and cannot leave a completed-looking job folder. The dialog keeps
+progress, cancellation status and the completed location visible.
+Cancellation can wait for an already-running graphics call to drain; it does not forcibly interrupt
+a driver. This scope does not include arbitrary-resolution renders, UsdRender product/AOV execution,
+arbitrary EXR product metadata/windows, movies, contact sheets or a general render queue.
+
+The source/runtime-fingerprinted native scenario is `render-sequence` in
+`eng\run-viewer-workflow-tests.ps1`. It exercises differing animated frames, independent authored-camera
+matrix expectations, effective draw/OCIO settings, literal stored HDR values and actual device depth,
+PNG equality with optional planes, independent half-bit EXR decoding against raw HDR for both
+CPU/GPU display paths, raw-data invariance across Reinhard/identity, GPU display/view/look,
+exposure and selection, immutable admitted choices, bounded admission and explicit unsupported bindings.
+It also exercises GPU three-plane cancellation, mid-job source/non-finite failures, failed-transform
+cleanup and retry without stale HDR, actual rendered-view restoration, and pending Reload/Close.
+Running this scenario alone is not an all-Viewer-workflows result.
+
+### Comparing saved captures
+
+**File > Compare Captures** (also on welcome and in command search) compares two existing files
+without opening a stage or starting another render. Choose before/after independently, then use
+Side by side, Before, or After. Images fit independently and retain their original dimension labels;
+this is a visual comparison, not a pixel-error metric or a new colour-management pipeline.
+
+Comparison supports non-interlaced 8-bit RGBA PNGs with all five standard scanline filters, plus
+uncompressed 24-bit and 32-bit Windows BMPs. PNG transparency is preserved; the BMP reserved fourth
+byte is treated as opaque, not alpha. Indexed/RGB-only/grayscale/16-bit/interlaced PNG, compressed BMP,
+JPEG, HDR and video are not accepted. Each file is limited to 64 MiB, 8192 pixels
+per side and 16,777,216 pixels. Both headers, offsets, formats and dimensions are validated before
+allocating image buffers; truncated or unsupported files produce explicit errors, never black
+success-shaped images. PNG chunk CRCs, data ordering and inflated image size are checked; an
+overlong deflate result does not cause an image-sized speculative expansion.
+Decoder rejections clear both images and leave comparison/retry controls
+usable rather than escaping through an asynchronous button handler.
+
+Only one pair loads at a time, on a worker, with cancellation between bounded row reads. The decoded
+pair is at most 128 MiB of RGBA data, plus at most 128 MiB of display bitmap backing data and bounded
+I/O/control overhead; each PNG input additionally admits at most 64 MiB of encoded storage. PNG
+decoding reads the original IDAT segments directly and reconstructs rows into the output buffer,
+without a concatenated compressed stream or an image-sized filtered-data copy. The graphics
+compositor may also retain its own copies. Replacement releases
+previous display bitmaps before loading. Cancel loading reports cancellation, and closing cancels
+and drains the pending read before releasing the owned window. No partial pair is published and
+no renderer, theme, pick, authoring or OpenColorIO preference is changed.
 
 ### Pick target and selection outline
 
@@ -947,7 +1558,7 @@ switching to a capable backend restores the request without the user choosing it
 values are re-resolved against the backend every time the active backend changes, which is the only
 moment at which a refused request can become answerable or an applied one can stop being.
 
-Both settings persist in the `openusd-viewer-settings=3` profile as `pickTarget` and
+Both settings persist in the `openusd-viewer-settings=4` profile as `pickTarget` and
 `selectionMode`, written from the desired values rather than the applied ones. A v0, v1, or v2
 profile has neither key, and migration is exactly that: both fall
 back to **Prim** and **Visible only**, which reproduce the pre-v3 behaviour, and the profile is
@@ -1041,6 +1652,128 @@ cancelled leaves nothing running behind it, and the redacted, bounded status the
 already redacted by the provider before the Viewer sees it. See
 [Omniverse bridge](omniverse-bridge.md#viewer-integration).
 
+## Visual system
+
+Viewer chrome uses a local semantic resource layer over the existing Avalonia Fluent controls.
+**View > Theme** follows the OS/application theme by default; an explicit Light or Dark choice
+applies to this Viewer window and its owned dialogs, not to other windows in an embedding host.
+Theme changes do not reapply the settings profile or touch renderer selection, camera, exposure,
+OpenColorIO, the authored scene, or the viewport's chosen background.
+A host-selected startup renderer is a window override, not a new saved preference. Changing
+theme or closing the window preserves the stored renderer until the operator changes its selection.
+
+### Annotated light/dark layout references
+
+Both themes use the same viewport-first geometry. Workspace presets and command discovery use this
+same visual system; they do not add floating docking or a new review-layer editing lifecycle.
+
+```text
+LIGHT: warm-neutral panels; dark ink; restrained blue/teal interaction
++----------------------------------------------------------------------------+
+| CHROME  File View Render Camera Physics Tools Help | Commands | Frame Capture|
++------------------+-------------------------------------+-------------------+
+| PANEL            | CANVAS / NATIVE VIEWPORT             | PANEL             |
+| Stage identity   | No floating Avalonia chrome over     | Inspector tabs    |
+| Filters + tree   | the native Storm child.              | Grouped controls  |
+|                  | Rendered pixels keep their own       |                   |
+|                  | background and display transform.    |                   |
++------------------+-------------------------------------+-------------------+
+| CHROME  Existing timeline: play, time, range                               |
+| CHROME  Ready / actionable message         stage, camera, GPU, renderer     |
++----------------------------------------------------------------------------+
+
+DARK: graphite panels; light ink; the same blue/teal interaction
++----------------------------------------------------------------------------+
+| CHROME  File View Render Camera Physics Tools Help | Commands | Frame Capture|
++------------------+-------------------------------------+-------------------+
+| PANEL            | CANVAS / NATIVE VIEWPORT             | PANEL             |
+| Stage identity   | The viewport remains the largest     | Inspector tabs    |
+| Filters + tree   | uninterrupted surface.               | Grouped controls  |
+|                  | Raised surfaces identify inputs;    |                   |
+|                  | accent identifies interaction.       |                   |
++------------------+-------------------------------------+-------------------+
+| CHROME  Existing timeline: play, time, range                               |
+| CHROME  Ready / actionable message         stage, camera, GPU, renderer     |
++----------------------------------------------------------------------------+
+```
+
+| Reference state | Light layout annotation | Dark layout annotation |
+| --- | --- | --- |
+| No document | Warm-neutral welcome; Open and recent scenes. | Graphite welcome; the same open/sample guidance. |
+| Loaded | Image unchanged; neutral panels recede. | Image unchanged; muted teal selection. |
+| Editing | Raised fields and a clear focus ring. | Same geometry; a lighter focus ring. |
+| Warning | Explicit status beside the viewport. | Contrast-aware status ink, never colour alone. |
+| Presentation | Explicit preset hides panels/timeline. | Same preset and geometry; image colours unchanged. |
+
+Physics transport remains visible only when enabled. Warning messages use adjacent chrome or a
+dialog, not a native-child overlay. Presentation uses the layout policy's existing visibility
+controls while retaining the compact menu/status strip; it does not change the camera or render.
+
+Spacing uses a 4-unit scale (4/8/12/16), compact 28-unit controls, restrained 4-unit corners,
+13-unit body text, and 16-unit section headings. System font families retain platform glyph
+fallback; code-like shortcut gestures use a monospace fallback chain. Open and Frame
+use the small project-owned, MIT-licensed Viewer line-icon family, always alongside a label.
+Developer tabs remain hidden in a new profile; legacy visibility choices are preserved.
+
+The semantic palette separates canvas, chrome, panel, raised controls, primary/secondary/disabled
+text, accent/on-accent, selection, dividers/control borders, focus, and actual status colours.
+High-contrast OS preferences strengthen text, surface, border, and focus separation without changing
+the saved Light/Dark/System choice or any rendered pixels. Focus remains visible independently of
+hover, and no custom motion is introduced.
+
+### Embedding scope
+
+`MainWindow` and its owned Viewer dialogs install `ViewerStyles.axaml` locally. `App.axaml` keeps
+only its existing Fluent theme; neither Viewer brushes nor control selectors are installed in an
+embedding application's global styles. Hosts that want the visual system on their own bounded
+Viewer surface can add a local `StyleInclude` for
+`avares://OpenUsd.Viewer/ViewerStyles.axaml` to that control's `Styles` and set its
+`Classes="openusd-viewer"`. Use a `ThemeVariantScope` when that surface needs its own theme.
+Do not apply that class to an entire host window containing unrelated controls. Bare embedded
+viewport controls do not opt in automatically.
+
+### Visual smoke
+
+The focused headless tests exercise settings, command dispatch, theme inheritance, semantic
+palettes, contrast, and embedding scope. The Windows native-window smoke additionally drives the
+real menu handlers, verifies live panel/dialog colours and persisted choices, keeps an unrelated
+host window unchanged, and captures both themes at 1440x900 and 960x600 logical units. It uses
+temporary settings and no USD stage; it is not loaded-scene, native Storm input, or full DPI-matrix
+evidence. Run it alone against the built test project:
+
+```powershell
+$env:OPENUSD_VIEWER_THEME_SMOKE = '1'
+.\eng\run-managed-tests.ps1 -Project tests\OpenUsd.Viewer.Tests\OpenUsd.Viewer.Tests.csproj `
+  -Framework net10.0 -TestArguments @('--treenode-filter', '/*/OpenUsd.Viewer.Tests/ViewerVisualNativeSmokeTests/*')
+```
+
+`OPENUSD_VIEWER_THEME_SMOKE_ARTIFACTS` optionally selects the screenshot directory; otherwise the
+images go under the test output's `TestResults\viewer-theme-smoke` directory.
+
+The separate workspace smoke runs the native shell, a real Storm child, the bundled sample and an
+empty stage opened from recent files. It exercises presets without changing saved renderer/pick/theme
+intent or the edit target, find/select/frame/inspect, original menu invocation, native palette typing
+and focus restoration, owned-window z-order/client hit-testing, and comparison success/error/cancel/
+close paths. Run it in its own process with the existing native runtime staged:
+
+```powershell
+$env:OPENUSD_VIEWER_WORKSPACE_SMOKE = '1'
+$env:OPENUSD_PLUGIN_PATH = (Resolve-Path native\install\win-x64\plugin\usd).Path
+.\eng\run-managed-tests.ps1 -Project tests\OpenUsd.Viewer.Tests\OpenUsd.Viewer.Tests.csproj `
+  -Framework net10.0 -Configuration Release `
+  -TestArguments @('--treenode-filter', '/*/*/ViewerWorkspaceNativeSmokeTests/*')
+```
+
+The test host normally prepends the repository's native install on Windows. To use a different
+matched build without modifying that shared install, set `OPENUSD_VIEWER_TEST_NATIVE_ROOT` to an
+absolute runtime directory with `bin` and `lib`, and point `OPENUSD_PLUGIN_PATH` at its merged
+`plugin\usd` tree. The configured directories take precedence; invalid or missing configured
+directories fail rather than falling back to an older shim. Managed assemblies and the selected
+data shim must agree on the required ABI and capabilities.
+
+This is Windows/WGL evidence at the host's current scaling, not a mixed-monitor DPI matrix or
+executed GLX/XWayland/macOS evidence. No Avalonia overlay above a live native surface is assumed.
+
 ## Settings and accessibility
 
 Viewer settings are stored under:
@@ -1051,15 +1784,25 @@ LocalApplicationData\OpenUsd\Viewer\viewer-settings.txt
 
 The versioned, NativeAOT-safe text store is written atomically. It contains window dimensions, panel
 widths and visibility, renderer preference, the selected inspector tab's stable string identity,
-Diagnostics/Hydra/TfDebug tab visibility, and the manual timeline snap preference. Stage-specific
+Diagnostics/Hydra/TfDebug tab visibility, the manual timeline snap preference, and the Viewer theme
+choice. Schema v4 adds `theme=system|light|dark`; missing choices in v0-v3 profiles follow the system.
+An unknown or empty theme value falls back to System with an explicit diagnostic while preserving
+the rest of the profile. Explicit theme choices are saved atomically on selection and again on
+normal close; Reset Layout leaves the theme choice intact. Stage-specific
 camera and session state are not persisted. Malformed or oversized settings are ignored with an
-explicit Viewer diagnostic; I/O failures are shown in the status area.
+explicit Viewer diagnostic; I/O failures are shown in the status area. Unknown/removed selected tab
+IDs fall back to Properties and out-of-range saved dimensions are normalized independently, with
+a diagnostic, rather than discarding unrelated preferences. Non-finite dimensions use their clean
+defaults; numeric dimensions are clamped to the supported ranges. Restored window dimensions are
+also constrained to the current display's working area, subject to the 960x600 minimum window size.
 
 Settings schema v2 selects the inspector tab by a stable string identity (`properties`, `value`,
 `metadata`, `composition`, `layers`, `diagnostics`, `validation`, `hydra`, `physics`, `tfdebug`)
 rather than a visual index, and tracks Diagnostics, Hydra, and TfDebug visibility as three
 independent flags. A new profile defaults all three developer tabs to hidden; Stage, Inspector, and
-Timeline remain visible. **Reset Layout** (View menu) restores these clean v2 defaults deliberately.
+Timeline remain visible. The new `appearance` tab uses the same stable-ID field; presets persist the
+existing layout values rather than adding a startup preset override or another settings schema.
+**Reset Layout** (View menu) restores the clean defaults deliberately.
 
 Reset Layout is transactional where colour management is concerned. Restoring the default profile
 also means restoring "no display transform", and the profile may not claim that before the image
@@ -1126,7 +1869,13 @@ an explicit Refresh action, so hiding it has nothing further to skip.
 Access keys are shown with underlined menu/button labels. Keyboard shortcuts include:
 
 - `Ctrl+O`: open a stage
+- `Ctrl+E`: edit a supported property of the selected prim in the review layer
+- `Ctrl+Z`/`Ctrl+Y`: shared review Undo/Redo outside text inputs
 - `Ctrl+R`: reload the current stage
+- `Ctrl+Shift+P`: search commands from Viewer controls
+- `Ctrl+F`: reveal and focus hierarchy search
+- `Ctrl+Shift+C`: capture the current frame
+- `Ctrl+Alt+1`/`2`/`3`/`4`: Review/Inspect/Materials-Lighting/Presentation layout
 - `F1`: show the keyboard and mouse shortcuts dialog
 - `Space`: play or pause the timeline when focus is not in a text box
 - `F`: frame the selected prim

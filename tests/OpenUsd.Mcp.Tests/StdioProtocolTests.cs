@@ -12,17 +12,9 @@ public sealed class StdioProtocolTests
     public async Task ActualStdioHostUsesProtocolOnlyStdoutAndLogsToStderr()
     {
         string root = FindRepositoryRoot();
-        string testRoot = Path.Combine(
-            AppContext.BaseDirectory,
-            "stdio-tests",
-            Guid.NewGuid().ToString("N"));
-        string sourceRoot = Path.Combine(testRoot, "source");
-        string outputRoot = Path.Combine(testRoot, "output");
-        Directory.CreateDirectory(sourceRoot);
-        Directory.CreateDirectory(outputRoot);
         var standardError = new ConcurrentQueue<string>();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-        try
+        using (var files = new WorkspaceTestFiles())
         {
             var transport = new StdioClientTransport(
                 new StdioClientTransportOptions
@@ -30,22 +22,15 @@ public sealed class StdioProtocolTests
                     Command = RepositoryDotnet(root),
                     Arguments =
                     [
-                        Path.Combine(
-                            root,
-                            "src",
-                            "OpenUsd.Mcp",
-                            "bin",
-                            "Release",
-                            "net10.0",
-                            "OpenUsd.Mcp.dll"),
+                        typeof(OpenUsdMcpApplicationOptions).Assembly.Location,
                     ],
                     Name = "OpenUsd.Mcp stdio validation",
                     WorkingDirectory = root,
                     InheritEnvironmentVariables = true,
                     EnvironmentVariables = new Dictionary<string, string?>
                     {
-                        ["OPENUSD_MCP_SOURCE_ROOT"] = sourceRoot,
-                        ["OPENUSD_MCP_OUTPUT_ROOT"] = outputRoot,
+                        ["OPENUSD_MCP_SOURCE_ROOT"] = files.SourceRoot,
+                        ["OPENUSD_MCP_OUTPUT_ROOT"] = files.OutputRoot,
                     },
                     StandardErrorLines = line => standardError.Enqueue(line),
                 });
@@ -73,24 +58,18 @@ public sealed class StdioProtocolTests
                 },
                 cancellationToken: cancellation.Token);
 
-            await Assert.That(tools.Count).IsEqualTo(12);
+            await Assert.That(tools.Count).IsEqualTo(14);
             await Assert.That(resources).IsEmpty();
             await Assert.That(templates).Count().IsEqualTo(1);
             await Assert.That(noSession.IsError).IsTrue();
+            await Assert.That(noSession.StructuredContent.HasValue).IsTrue()
+                .Because(string.Join(Environment.NewLine, standardError));
             await Assert.That(noSession.StructuredContent!.Value
                     .GetProperty("error")
                     .GetProperty("code")
                     .GetString())
                 .IsEqualTo("no_session");
         }
-        finally
-        {
-            if (Directory.Exists(testRoot))
-            {
-                Directory.Delete(testRoot, recursive: true);
-            }
-        }
-
         await Assert.That(standardError).IsNotEmpty()
             .Because(
                 "the official stdio transport rejects non-JSON stdout frames, while host logs " +

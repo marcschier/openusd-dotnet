@@ -260,6 +260,12 @@ internal sealed class StormNativeControlHost : NativeControlHost
 
     internal void FocusEvidenceWindow() => GetSession().Focus();
 
+    internal void FocusNativeViewport()
+    {
+        Focus();
+        GetSession().Focus();
+    }
+
     internal void PumpEvidenceEvents() =>
         GetSession().RequestFrame(0, 0, CameraState.Default);
 

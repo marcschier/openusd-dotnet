@@ -18,7 +18,7 @@ float horizontalAperture = 20.955
 
 float verticalAperture = 15.2908
 
-double2 clippingRange = (0.1, 1000)
+float2 clippingRange = (0.1, 1000)
 
 double3 xformOp:translate.timeSamples = {
     0: (1.1, 2.45, 1.55),

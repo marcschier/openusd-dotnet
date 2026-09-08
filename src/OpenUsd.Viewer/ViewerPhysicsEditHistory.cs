@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
 
 namespace OpenUsd.Viewer;
 
@@ -11,10 +12,9 @@ namespace OpenUsd.Viewer;
 /// <param name="Before">The value the property held before the edit.</param>
 /// <param name="After">The value the edit authored.</param>
 /// <remarks>
-/// Both sides of the edit are carried, including the unauthored state, because undo has to be able
-/// to remove an opinion the edit created. An edit that only knew its new value could restore the
-/// schema fallback as an authored opinion at best, which changes what the file says even though the
-/// user asked for the change to be undone.
+/// The scalar before-value supports the legacy adapter and detached controller tests. Production
+/// authoring captures exact native target-layer state through the shared document editor instead;
+/// this supplied value is never accepted as proof of a review-layer opinion.
 /// </remarks>
 internal sealed record ViewerPhysicsEdit(
     string PrimPath,
@@ -38,8 +38,42 @@ internal sealed record ViewerPhysicsEdit(
 /// <param name="Edits">The property edits the step authored, in submission order.</param>
 internal sealed record ViewerPhysicsEditStep(
     string Description,
-    IReadOnlyList<ViewerPhysicsEdit> Edits)
+    IReadOnlyList<ViewerPhysicsEdit> Edits) : IViewerHistoryStep<ViewerPhysicsEditStep>
 {
+    public IReadOnlyList<ViewerPhysicsEdit> Edits { get; } = Array.AsReadOnly(Edits.ToArray());
+
+    public int ChangeCount => Edits.Count;
+
+    public long RetainedBytes
+    {
+        get
+        {
+            long bytes = 128L + (Description.Length * 2L);
+            foreach (ViewerPhysicsEdit edit in Edits)
+            {
+                bytes = checked(bytes + 256L +
+                    ((edit.PrimPath.Length + (long)edit.Name.Length + edit.Label.Length +
+                    (edit.Before.TextValue?.Length ?? 0) + (edit.After.TextValue?.Length ?? 0)) * 2L));
+            }
+            return bytes;
+        }
+    }
+
+    public bool TryCoalesce(
+        ViewerPhysicsEditStep next, [NotNullWhen(true)] out ViewerPhysicsEditStep? merged)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        if (Edits.Count == 1 && next.Edits.Count == 1 &&
+            Edits[0].PrimPath == next.Edits[0].PrimPath && Edits[0].Name == next.Edits[0].Name &&
+            Edits[0].After == next.Edits[0].Before)
+        {
+            merged = new ViewerPhysicsEditStep(Description, [Edits[0] with { After = next.Edits[0].After }]);
+            return true;
+        }
+        merged = null;
+        return false;
+    }
+
     /// <summary>Returns the step that reverses this one.</summary>
     /// <remarks>
     /// The edits are reversed in the opposite order they were applied, so a step that authored two
@@ -47,7 +81,7 @@ internal sealed record ViewerPhysicsEditStep(
     /// value the step started from rather than to whichever of the two happened to be applied last.
     /// </remarks>
     /// <returns>The reversed step.</returns>
-    internal ViewerPhysicsEditStep Reversed()
+    public ViewerPhysicsEditStep Reversed()
     {
         var reversed = new ViewerPhysicsEdit[Edits.Count];
         for (int index = 0; index < Edits.Count; index++)
@@ -64,10 +98,8 @@ internal sealed record ViewerPhysicsEditStep(
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The history stores intent, not stage state.</b> Each step carries the exact before and after
-/// value of every property it authored, so undo re-authors the previous opinion through the same
-/// transactional path a forward edit uses. Snapshotting layers instead would either restore edits
-/// the user made in between through some other surface, or fail the moment the stage was reloaded.
+/// This scalar history is used only when no shared document editor is supplied. Production physics
+/// and focused property edits use one bounded native authored-snapshot history with affected-field CAS.
 /// </para>
 /// <para>
 /// <b>A drag is one step.</b> A slider produces a value per pointer move; recording each as its own
@@ -80,56 +112,48 @@ internal sealed record ViewerPhysicsEditStep(
 /// would let a later redo re-author a value the user has already replaced.
 /// </para>
 /// </remarks>
-internal sealed class ViewerPhysicsEditHistory
+internal sealed class ViewerPhysicsEditHistory : IViewerEditHistoryView
 {
     /// <summary>The default number of steps the history keeps.</summary>
-    internal const int DefaultCapacity = 128;
-
-    private readonly List<ViewerPhysicsEditStep> _undo = [];
-    private readonly List<ViewerPhysicsEditStep> _redo = [];
-    private readonly int _capacity;
-    private readonly double _mergeSeconds;
-    private double _lastSeconds = double.NegativeInfinity;
-    private string _lastKey = string.Empty;
+    internal const int DefaultCapacity = ViewerEditHistory<ViewerPhysicsEditStep>.DefaultCapacity;
+    private readonly ViewerEditHistory<ViewerPhysicsEditStep> _history;
 
     /// <summary>Initializes a bounded history.</summary>
     /// <param name="capacity">The number of steps the history keeps.</param>
     /// <param name="mergeSeconds">How long consecutive edits to one property coalesce.</param>
     /// <exception cref="ArgumentOutOfRangeException">A bound is not positive and finite.</exception>
-    internal ViewerPhysicsEditHistory(int capacity = DefaultCapacity, double mergeSeconds = 0.5d)
+    internal ViewerPhysicsEditHistory(
+        int capacity = DefaultCapacity,
+        double mergeSeconds = 0.5d,
+        long maximumRetainedBytes = ViewerEditHistory<ViewerPhysicsEditStep>.DefaultMaximumRetainedBytes)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
-        if (!double.IsFinite(mergeSeconds) || mergeSeconds < 0d)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(mergeSeconds),
-                mergeSeconds,
-                "The merge window must be finite and non-negative.");
-        }
-
-        _capacity = capacity;
-        _mergeSeconds = mergeSeconds;
+        _history = new ViewerEditHistory<ViewerPhysicsEditStep>(capacity, mergeSeconds, maximumRetainedBytes);
     }
 
     /// <summary>Gets a value indicating whether a step can be undone.</summary>
-    internal bool CanUndo => _undo.Count != 0;
+    public bool CanUndo => _history.CanUndo;
 
     /// <summary>Gets a value indicating whether a step can be redone.</summary>
-    internal bool CanRedo => _redo.Count != 0;
+    public bool CanRedo => _history.CanRedo;
 
     /// <summary>Gets the number of steps that can be undone.</summary>
-    internal int UndoDepth => _undo.Count;
+    public int UndoDepth => _history.UndoDepth;
 
     /// <summary>Gets the number of steps that can be redone.</summary>
-    internal int RedoDepth => _redo.Count;
+    public int RedoDepth => _history.RedoDepth;
+
+    internal long RetainedBytes => _history.RetainedBytes;
+
+    internal bool CanRecord(ViewerPhysicsEditStep step, out string diagnostic) =>
+        _history.CanRecord(step, out diagnostic);
 
     /// <summary>Gets the sentence describing the step undo would reverse.</summary>
-    internal string UndoDescription =>
-        _undo.Count == 0 ? string.Empty : _undo[^1].Description;
+    public string UndoDescription =>
+        _history.UndoDescription;
 
     /// <summary>Gets the sentence describing the step redo would replay.</summary>
-    internal string RedoDescription =>
-        _redo.Count == 0 ? string.Empty : _redo[^1].Description;
+    public string RedoDescription =>
+        _history.RedoDescription;
 
     /// <summary>Records one applied step, coalescing a continuing gesture into the previous one.</summary>
     /// <param name="step">The step that was applied.</param>
@@ -139,52 +163,7 @@ internal sealed class ViewerPhysicsEditHistory
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="nowSeconds"/> is not finite.</exception>
     internal bool Record(ViewerPhysicsEditStep step, double nowSeconds)
     {
-        ArgumentNullException.ThrowIfNull(step);
-        if (!double.IsFinite(nowSeconds))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(nowSeconds),
-                nowSeconds,
-                "The record time must be finite.");
-        }
-
-        if (step.Edits.Count == 0)
-        {
-            return false;
-        }
-
-        _redo.Clear();
-        string key = DescribeKey(step);
-        bool continues = key.Length != 0 &&
-            string.Equals(key, _lastKey, StringComparison.Ordinal) &&
-            _undo.Count != 0 &&
-            nowSeconds - _lastSeconds <= _mergeSeconds;
-        _lastKey = key;
-        _lastSeconds = nowSeconds;
-
-        if (continues)
-        {
-            ViewerPhysicsEditStep previous = _undo[^1];
-            var merged = new List<ViewerPhysicsEdit>(previous.Edits.Count);
-            merged.AddRange(previous.Edits);
-            for (int index = 0; index < step.Edits.Count; index++)
-            {
-                merged.Add(step.Edits[index]);
-            }
-
-            _undo[^1] = new ViewerPhysicsEditStep(previous.Description, merged);
-            return false;
-        }
-
-        _undo.Add(step);
-        if (_undo.Count > _capacity)
-        {
-            // Dropping the oldest step only costs reach; keeping every step would let one long
-            // authoring session grow the history without bound.
-            _undo.RemoveAt(0);
-        }
-
-        return true;
+        return _history.Record(step, nowSeconds);
     }
 
     /// <summary>Takes the step undo must apply, moving it onto the redo stack.</summary>
@@ -192,17 +171,13 @@ internal sealed class ViewerPhysicsEditHistory
     /// <returns><see langword="true"/> when a step was taken.</returns>
     internal bool TryTakeUndo(out ViewerPhysicsEditStep step)
     {
-        if (_undo.Count == 0)
+        if (!_history.TryTakeUndo(out ViewerPhysicsEditStep? taken))
         {
             step = new ViewerPhysicsEditStep(string.Empty, []);
             return false;
         }
 
-        ViewerPhysicsEditStep applied = _undo[^1];
-        _undo.RemoveAt(_undo.Count - 1);
-        _redo.Add(applied);
-        BreakGesture();
-        step = applied.Reversed();
+        step = taken;
         return true;
     }
 
@@ -211,17 +186,13 @@ internal sealed class ViewerPhysicsEditHistory
     /// <returns><see langword="true"/> when a step was taken.</returns>
     internal bool TryTakeRedo(out ViewerPhysicsEditStep step)
     {
-        if (_redo.Count == 0)
+        if (!_history.TryTakeRedo(out ViewerPhysicsEditStep? taken))
         {
             step = new ViewerPhysicsEditStep(string.Empty, []);
             return false;
         }
 
-        ViewerPhysicsEditStep applied = _redo[^1];
-        _redo.RemoveAt(_redo.Count - 1);
-        _undo.Add(applied);
-        BreakGesture();
-        step = applied;
+        step = taken;
         return true;
     }
 
@@ -236,30 +207,13 @@ internal sealed class ViewerPhysicsEditHistory
     internal void Restore(ViewerPhysicsEditStep step, bool wasUndo)
     {
         ArgumentNullException.ThrowIfNull(step);
-        if (wasUndo)
-        {
-            if (_redo.Count != 0)
-            {
-                _redo.RemoveAt(_redo.Count - 1);
-            }
-
-            _undo.Add(step);
-            return;
-        }
-
-        if (_undo.Count != 0)
-        {
-            _undo.RemoveAt(_undo.Count - 1);
-        }
-
-        _redo.Add(step);
+        _history.RestoreTravel(wasUndo);
     }
 
     /// <summary>Ends the current gesture so the next edit starts a new step.</summary>
     internal void BreakGesture()
     {
-        _lastKey = string.Empty;
-        _lastSeconds = double.NegativeInfinity;
+        _history.BreakGesture();
     }
 
     /// <summary>Discards the whole history.</summary>
@@ -269,22 +223,6 @@ internal sealed class ViewerPhysicsEditHistory
     /// </remarks>
     internal void Clear()
     {
-        _undo.Clear();
-        _redo.Clear();
-        BreakGesture();
-    }
-
-    private static string DescribeKey(ViewerPhysicsEditStep step)
-    {
-        if (step.Edits.Count != 1)
-        {
-            // Only a single-property gesture coalesces. A multi-property step is a deliberate
-            // action - applying a preset, say - and merging two of them would make one undo
-            // reverse changes the user made in two separate actions.
-            return string.Empty;
-        }
-
-        ViewerPhysicsEdit edit = step.Edits[0];
-        return edit.PrimPath + "\u0000" + edit.Name;
+        _history.Clear();
     }
 }

@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "7af79908f754934591a63e45c1ec1315186da6c7ad237c6ea0f696cabc6c4a21"
+      "sha256": "7e291d92eb5e5d386d3166555d8bf9f0711dade4d608fa90c102361d71403c0f"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -247,7 +247,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "d2a1d31ea40f9b6f83ddfdcd9e142a9c0ce755a84977b356cc59fa15a2edcb40"
+      "sha256": "3aa47f66c75aec4454ba5702129239458a2239f52126aec3b5991fe5f285315d"
     }
   ],
   "programs": [

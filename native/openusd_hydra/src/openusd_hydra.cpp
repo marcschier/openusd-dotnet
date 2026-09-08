@@ -7,6 +7,9 @@
 #include "openusd_render_pick_internal.h"
 #include "openusd_renderer_stage_bridge.h"
 
+#include "openusd_storm_aov_internal.h"
+#include "openusd_storm_engine.h"
+
 #include "pxr/base/arch/defines.h"
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -65,7 +68,7 @@ struct openusd_storm_renderer
 {
     openusd_stage* stage_core = nullptr;
     UsdStageRefPtr stage;
-    std::unique_ptr<UsdImagingGLEngine> engine;
+    std::unique_ptr<OpenUsdStormEngine> engine;
     OpenUsdPhysicsOverrideSceneIndexRefPtr physics_overrides;
     std::thread::id owner;
     uintptr_t context_identity = 0;
@@ -83,6 +86,7 @@ struct openusd_storm_renderer
     size_t last_render_clip_plane_count = 0;
     size_t last_pick_clip_plane_count = 0;
     bool has_rendered_state = false;
+    OpenUsdStormAovState aov_state;
 };
 
 namespace
@@ -649,12 +653,12 @@ openusd_status InitializeStormRenderer(
     UsdImagingGLEngine::Parameters parameters;
     parameters.rendererPluginId = stormRendererId;
     OpenUsdPhysicsOverrideSceneIndexRefPtr physicsOverrides;
-    std::unique_ptr<UsdImagingGLEngine> engine;
+    std::unique_ptr<OpenUsdStormEngine> engine;
     {
         // The override scene index is installed into exactly the Hydra graph
         // this engine builds, in both scene-index and emulated legacy modes.
         const OpenUsdPhysicsOverrideSceneIndexRegistrar::Capture capture;
-        engine = std::make_unique<UsdImagingGLEngine>(parameters);
+        engine = std::make_unique<OpenUsdStormEngine>(parameters);
         physicsOverrides = capture.Take();
     }
     engine->SetEnablePresentation(true);
@@ -1943,6 +1947,181 @@ extern "C" OPENUSD_HYDRA_API void openusd_storm_diagnostic_reset_peak_renderer_c
     g_peak_storm_renderer_count.store(
         g_live_storm_renderer_count.load(std::memory_order_relaxed),
         std::memory_order_relaxed);
+}
+
+openusd_status openusd_storm_aov_capture(
+    openusd_storm_renderer* renderer,
+    const openusd_storm_aov_request* request,
+    openusd_storm_aov_owner** owner,
+    openusd_error_buffer* error)
+{
+    if (owner != nullptr)
+    {
+        *owner = nullptr;
+    }
+    using AovOwner = std::unique_ptr<
+        openusd_storm_aov_owner, decltype(&openusd_storm_aov_release)>;
+    AovOwner pending(nullptr, openusd_storm_aov_release);
+    bool selected_outputs = false;
+    bool multisampled_presentation = false;
+    openusd_status status = Guard(error, [&]()
+    {
+        if (request == nullptr || owner == nullptr)
+        {
+            WriteError(error, "A Storm AOV request and owner output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const openusd_status validation = ValidateStormOwner(renderer, error);
+        if (validation != OPENUSD_STATUS_OK)
+        {
+            return validation;
+        }
+        std::string message;
+        const openusd_status admission = openusd_storm_aov_detail::ValidateRequest(
+            *request, renderer->aov_state, message);
+        if (admission != OPENUSD_STATUS_OK)
+        {
+            WriteError(error, message);
+            return admission;
+        }
+        if (!openusd_render_camera_detail::Validate(&request->camera, message))
+        {
+            WriteError(error, message);
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const openusd_status selection = WithStageAccess(
+            renderer->stage_core, error, [&](openusd_stage_access*)
+            {
+                glBindFramebuffer(GL_FRAMEBUFFER, request->framebuffer);
+                GLint samples = 0;
+                glGetIntegerv(GL_SAMPLES, &samples);
+                if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE ||
+                    glGetError() != GL_NO_ERROR)
+                {
+                    WriteError(error, "The AOV presentation framebuffer is invalid.");
+                    return OPENUSD_STATUS_NATIVE_ERROR;
+                }
+                multisampled_presentation = samples > 1;
+                selected_outputs = true;
+                if (!renderer->engine->SetCaptureOutputs(
+                        openusd_storm_aov_detail::OutputNames(*request),
+                        multisampled_presentation))
+                {
+                    WriteError(error, "Storm refused the AOV output selection.");
+                    return OPENUSD_STATUS_NATIVE_ERROR;
+                }
+                return OPENUSD_STATUS_OK;
+            });
+        if (selection != OPENUSD_STATUS_OK)
+        {
+            return selection;
+        }
+        int32_t converged = 0;
+        for (uint32_t iteration = 0; iteration < 32; ++iteration)
+        {
+            const openusd_status render_status = openusd_storm_render_v2(
+                renderer, request->width, request->height, request->framebuffer,
+                request->time_code, &request->camera, request->state_revision,
+                request->scene_revision, request->revision_flags, &converged, error);
+            if (render_status != OPENUSD_STATUS_OK)
+            {
+                return render_status;
+            }
+            if (converged != 0)
+            {
+                break;
+            }
+        }
+        if (converged == 0)
+        {
+            WriteError(error, "Storm AOV render did not converge within 32 iterations.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+        return WithStageAccess(
+            renderer->stage_core, error, [&](openusd_stage_access*)
+            {
+                const openusd_status copy_validation = ValidateStormOwner(renderer, error);
+                if (copy_validation != OPENUSD_STATUS_OK)
+                {
+                    return copy_validation;
+                }
+                openusd_storm_aov_owner* copied = nullptr;
+                const openusd_status copy_status = openusd_storm_aov_detail::CopyCompleted(
+                    *renderer->engine, renderer->aov_state, *request,
+                    renderer->applied_camera, &copied, message);
+                pending.reset(copied);
+                if (copy_status != OPENUSD_STATUS_OK)
+                {
+                    WriteError(error, message);
+                }
+                return copy_status;
+            });
+    });
+    if (selected_outputs)
+    {
+        char restore_text[1024]{};
+        openusd_error_buffer restore_error{restore_text, sizeof(restore_text), 0};
+        const openusd_status restore = Guard(&restore_error, [&]()
+        {
+            const openusd_status validation = ValidateStormOwner(renderer, &restore_error);
+            if (validation != OPENUSD_STATUS_OK)
+            {
+                return validation;
+            }
+            return WithStageAccess(
+                renderer->stage_core, &restore_error, [&](openusd_stage_access*)
+                {
+                    TfErrorMark mark;
+                    if (!renderer->engine->SetCaptureOutputs(
+                            {TfToken("color")}, multisampled_presentation) ||
+                        !mark.IsClean())
+                    {
+                        mark.Clear();
+                        WriteError(&restore_error, "Could not restore Storm color presentation.");
+                        return OPENUSD_STATUS_NATIVE_ERROR;
+                    }
+                    return OPENUSD_STATUS_OK;
+                });
+        });
+        if (restore != OPENUSD_STATUS_OK)
+        {
+            status = Guard(error, [&]()
+            {
+                WriteError(error, restore_text);
+                return restore;
+            });
+        }
+    }
+    if (status == OPENUSD_STATUS_OK)
+    {
+        *owner = pending.release();
+    }
+    return status;
+}
+
+openusd_status openusd_storm_aov_get_view(
+    const openusd_storm_aov_owner* owner,
+    openusd_storm_aov_view* view,
+    openusd_error_buffer* error)
+{
+    return Guard(error, [&]()
+    {
+        bool valid_view = false;
+        if (view != nullptr)
+        {
+            valid_view =
+                view->struct_size == sizeof(*view) &&
+                view->version == OPENUSD_STORM_AOV_VERSION;
+            *view = {};
+        }
+        if (!valid_view || owner == nullptr)
+        {
+            WriteError(error, "A Storm AOV owner and versioned view are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        openusd_storm_aov_detail::GetView(*owner, *view);
+        return OPENUSD_STATUS_OK;
+    });
 }
 
 #if defined(OPENUSD_RENDERER_ENABLE_TEST_HOOKS)

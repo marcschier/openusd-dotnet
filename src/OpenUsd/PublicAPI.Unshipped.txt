@@ -1,4 +1,474 @@
 #nullable enable
+OpenUsd.UsdAttributePropertySnapshot
+OpenUsd.UsdAttributePropertySnapshot.Connections.get -> OpenUsd.UsdPropertyTargetPreview!
+OpenUsd.UsdAttributePropertySnapshot.HasAuthoredValueOpinion.get -> bool?
+OpenUsd.UsdAttributePropertySnapshot.ResolveSource.get -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributePropertySnapshot.TimeSamples.get -> OpenUsd.UsdPropertyTimeSamplePreview!
+OpenUsd.UsdAttributePropertySnapshot.TypeName.get -> string!
+OpenUsd.UsdAttributePropertySnapshot.Value.get -> OpenUsd.UsdPropertyValuePreview!
+OpenUsd.UsdAttributePropertySnapshot.ValueSource.get -> OpenUsd.UsdPropertySource?
+OpenUsd.UsdAttributePropertySnapshot.ValueState.get -> OpenUsd.UsdPropertyValueState
+OpenUsd.UsdAttributePropertySnapshot.Variability.get -> OpenUsd.UsdPropertyVariability
+OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.Default = 2 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.Deferred = 6 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.Fallback = 1 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.None = 0 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.Spline = 5 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.TimeSamples = 3 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdAttributeResolveSource.ValueClips = 4 -> OpenUsd.UsdAttributeResolveSource
+OpenUsd.UsdPrimPropertySnapshot
+OpenUsd.UsdPrimPropertySnapshot.ChangeSerial.get -> ulong
+OpenUsd.UsdPrimPropertySnapshot.IsComplete.get -> bool
+OpenUsd.UsdPrimPropertySnapshot.Limits.get -> OpenUsd.UsdPropertyInspectionLimits!
+OpenUsd.UsdPrimPropertySnapshot.MetadataWorkCount.get -> int
+OpenUsd.UsdPrimPropertySnapshot.PrimPath.get -> string!
+OpenUsd.UsdPrimPropertySnapshot.Properties.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdPropertySnapshot!>!
+OpenUsd.UsdPrimPropertySnapshot.TextByteCount.get -> int
+OpenUsd.UsdPrimPropertySnapshot.TimeCode.get -> double?
+OpenUsd.UsdPropertyAssetPath
+OpenUsd.UsdPropertyAssetPath.AnchorLayerIdentifier.get -> string!
+OpenUsd.UsdPropertyAssetPath.AuthoredPath.get -> string!
+OpenUsd.UsdPropertyAssetPath.EvaluatedPath.get -> string!
+OpenUsd.UsdPropertyAssetPath.IsMissing.get -> bool?
+OpenUsd.UsdPropertyAssetPath.ResolvedPath.get -> string!
+OpenUsd.UsdPropertyInspectionLimits
+OpenUsd.UsdPropertyInspectionLimits.MaximumMetadataWork.get -> int
+OpenUsd.UsdPropertyInspectionLimits.MaximumPreviewTextBytes.get -> int
+OpenUsd.UsdPropertyInspectionLimits.MaximumPropertyCount.get -> int
+OpenUsd.UsdPropertyInspectionLimits.MaximumTextBytes.get -> int
+OpenUsd.UsdPropertyInspectionLimits.PreviewElements.get -> int
+OpenUsd.UsdPropertyInspectionLimits.TargetPreview.get -> int
+OpenUsd.UsdPropertyInspectionLimits.TimeSamplePreview.get -> int
+OpenUsd.UsdPropertyInspectionLimits.UsdPropertyInspectionLimits(int maximumPropertyCount = 4096, int maximumTextBytes = 1048576, int previewElements = 16, int timeSamplePreview = 16, int targetPreview = 16, int maximumMetadataWork = 262144, int maximumPreviewTextBytes = 4096) -> void
+OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.ArrayEdit = 5 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.AssetExpression = 8 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.Composition = 9 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.DeferredStore = 3 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.None = 0 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.PreviewLimit = 1 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.Spline = 7 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.TextLimit = 2 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.UnsupportedType = 6 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewReasonKind.ValueClips = 4 -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyPreviewStatus.Complete = 0 -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyPreviewStatus.Deferred = 2 -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyPreviewStatus.Truncated = 1 -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyPreviewStatus.Unsupported = 3 -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertySnapshot
+OpenUsd.UsdPropertySnapshot.IsAuthored.get -> bool
+OpenUsd.UsdPropertySnapshot.IsCustom.get -> bool
+OpenUsd.UsdPropertySnapshot.Name.get -> string!
+OpenUsd.UsdPropertySource
+OpenUsd.UsdPropertySource.LayerIdentifier.get -> string!
+OpenUsd.UsdPropertySource.SpecPath.get -> string!
+OpenUsd.UsdPropertyTargetPreview
+OpenUsd.UsdPropertyTargetPreview.Count.get -> ulong?
+OpenUsd.UsdPropertyTargetPreview.Paths.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.UsdPropertyTargetPreview.Reason.get -> string!
+OpenUsd.UsdPropertyTargetPreview.ReasonKind.get -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyTargetPreview.Source.get -> OpenUsd.UsdPropertySource?
+OpenUsd.UsdPropertyTargetPreview.Status.get -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyTimeSamplePreview
+OpenUsd.UsdPropertyTimeSamplePreview.Count.get -> ulong?
+OpenUsd.UsdPropertyTimeSamplePreview.Reason.get -> string!
+OpenUsd.UsdPropertyTimeSamplePreview.ReasonKind.get -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyTimeSamplePreview.Status.get -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyTimeSamplePreview.Times.get -> System.Collections.Generic.IReadOnlyList<double>!
+OpenUsd.UsdPropertyValuePreview
+OpenUsd.UsdPropertyValuePreview.Assets.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdPropertyAssetPath!>!
+OpenUsd.UsdPropertyValuePreview.ElementCount.get -> ulong?
+OpenUsd.UsdPropertyValuePreview.Elements.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.UsdPropertyValuePreview.IsArray.get -> bool
+OpenUsd.UsdPropertyValuePreview.Reason.get -> string!
+OpenUsd.UsdPropertyValuePreview.ReasonKind.get -> OpenUsd.UsdPropertyPreviewReasonKind
+OpenUsd.UsdPropertyValuePreview.Status.get -> OpenUsd.UsdPropertyPreviewStatus
+OpenUsd.UsdPropertyValueState
+OpenUsd.UsdPropertyValueState.Blocked = 2 -> OpenUsd.UsdPropertyValueState
+OpenUsd.UsdPropertyValueState.Deferred = 3 -> OpenUsd.UsdPropertyValueState
+OpenUsd.UsdPropertyValueState.Unset = 0 -> OpenUsd.UsdPropertyValueState
+OpenUsd.UsdPropertyValueState.Value = 1 -> OpenUsd.UsdPropertyValueState
+OpenUsd.UsdPropertyVariability
+OpenUsd.UsdPropertyVariability.Uniform = 1 -> OpenUsd.UsdPropertyVariability
+OpenUsd.UsdPropertyVariability.Varying = 0 -> OpenUsd.UsdPropertyVariability
+OpenUsd.UsdRelationshipPropertySnapshot
+OpenUsd.UsdRelationshipPropertySnapshot.Targets.get -> OpenUsd.UsdPropertyTargetPreview!
+OpenUsd.UsdStage.GetPrimPropertySnapshot(string! primPath, double? timeCode = null, OpenUsd.UsdPropertyInspectionLimits? limits = null) -> OpenUsd.UsdPrimPropertySnapshot!
+static OpenUsd.UsdPropertyInspectionLimits.Default.get -> OpenUsd.UsdPropertyInspectionLimits!
+static OpenUsd.UsdPropertyInspectionLimits.Viewer.get -> OpenUsd.UsdPropertyInspectionLimits!
+OpenUsd.UsdHierarchyEntry
+OpenUsd.UsdHierarchyEntry.ChildCount.get -> int
+OpenUsd.UsdHierarchyEntry.Depth.get -> int
+OpenUsd.UsdHierarchyEntry.HasPayload.get -> bool
+OpenUsd.UsdHierarchyEntry.IsAbstract.get -> bool
+OpenUsd.UsdHierarchyEntry.IsActive.get -> bool
+OpenUsd.UsdHierarchyEntry.IsDefined.get -> bool
+OpenUsd.UsdHierarchyEntry.IsInPrototype.get -> bool
+OpenUsd.UsdHierarchyEntry.IsInstance.get -> bool
+OpenUsd.UsdHierarchyEntry.IsInstanceable.get -> bool
+OpenUsd.UsdHierarchyEntry.IsInstanceProxy.get -> bool
+OpenUsd.UsdHierarchyEntry.IsLoaded.get -> bool
+OpenUsd.UsdHierarchyEntry.IsPrototype.get -> bool
+OpenUsd.UsdHierarchyEntry.Name.get -> string!
+OpenUsd.UsdHierarchyEntry.ParentIndex.get -> int
+OpenUsd.UsdHierarchyEntry.Path.get -> string!
+OpenUsd.UsdHierarchyEntry.PrototypePath.get -> string!
+OpenUsd.UsdHierarchyEntry.TypeName.get -> string!
+OpenUsd.UsdHierarchyEntry.VariantMetadataStatus.get -> OpenUsd.UsdHierarchyVariantMetadataStatus
+OpenUsd.UsdHierarchyEntry.VariantSets.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdHierarchyVariantSet!>!
+OpenUsd.UsdHierarchyLimits
+OpenUsd.UsdHierarchyLimits.MaximumDepth.get -> int
+OpenUsd.UsdHierarchyLimits.MaximumMetadataWork.get -> int
+OpenUsd.UsdHierarchyLimits.MaximumPrimCount.get -> int
+OpenUsd.UsdHierarchyLimits.MaximumTextBytes.get -> int
+OpenUsd.UsdHierarchyLimits.MaximumVariantNames.get -> int
+OpenUsd.UsdHierarchyLimits.MaximumVariantSets.get -> int
+OpenUsd.UsdHierarchyLimits.UsdHierarchyLimits(int maximumPrimCount = 100000, int maximumTextBytes = 16777216, int maximumDepth = 256, int maximumVariantSets = 4096, int maximumVariantNames = 65536, int maximumMetadataWork = 2000000) -> void
+OpenUsd.UsdHierarchySnapshot
+OpenUsd.UsdHierarchySnapshot.ChangeSerial.get -> ulong
+OpenUsd.UsdHierarchySnapshot.Entries.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdHierarchyEntry!>!
+OpenUsd.UsdHierarchySnapshot.IsComplete.get -> bool
+OpenUsd.UsdHierarchySnapshot.Limits.get -> OpenUsd.UsdHierarchyLimits!
+OpenUsd.UsdHierarchySnapshot.MetadataWorkCount.get -> int
+OpenUsd.UsdHierarchySnapshot.TextByteCount.get -> int
+OpenUsd.UsdHierarchyVariantMetadataStatus
+OpenUsd.UsdHierarchyVariantMetadataStatus.Complete = 0 -> OpenUsd.UsdHierarchyVariantMetadataStatus
+OpenUsd.UsdHierarchyVariantMetadataStatus.Deferred = 1 -> OpenUsd.UsdHierarchyVariantMetadataStatus
+OpenUsd.UsdHierarchyVariantSet
+OpenUsd.UsdHierarchyVariantSet.Name.get -> string!
+OpenUsd.UsdHierarchyVariantSet.Selection.get -> string!
+OpenUsd.UsdHierarchyVariantSet.VariantNames.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.UsdStage.GetHierarchySnapshot(OpenUsd.UsdHierarchyLimits? limits = null) -> OpenUsd.UsdHierarchySnapshot!
+static OpenUsd.UsdHierarchyLimits.Default.get -> OpenUsd.UsdHierarchyLimits!
+static OpenUsd.UsdHierarchyLimits.Viewer.get -> OpenUsd.UsdHierarchyLimits!
+OpenUsd.Editing.UsdReviewDependency
+OpenUsd.Editing.UsdReviewDependency.ByteLength.get -> ulong
+OpenUsd.Editing.UsdReviewDependency.Kind.get -> OpenUsd.Editing.UsdReviewDependencyKind
+OpenUsd.Editing.UsdReviewDependency.Path.get -> string!
+OpenUsd.Editing.UsdReviewDependency.Sha256.get -> string!
+OpenUsd.Editing.UsdReviewDependencyKind
+OpenUsd.Editing.UsdReviewDependencyKind.Asset = 1 -> OpenUsd.Editing.UsdReviewDependencyKind
+OpenUsd.Editing.UsdReviewDependencyKind.Layer = 0 -> OpenUsd.Editing.UsdReviewDependencyKind
+OpenUsd.Editing.UsdReviewDocument
+OpenUsd.Editing.UsdReviewDocument.AssetAnchor.get -> string!
+OpenUsd.Editing.UsdReviewDocument.ByteLength.get -> int
+OpenUsd.Editing.UsdReviewDocument.CopyBytes() -> byte[]!
+OpenUsd.Editing.UsdReviewDocument.Dependencies.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Editing.UsdReviewDependency!>!
+OpenUsd.Editing.UsdReviewDocument.DocumentId.get -> string!
+OpenUsd.Editing.UsdReviewDocument.HasSamePayload(OpenUsd.Editing.UsdReviewDocument? other) -> bool
+OpenUsd.Editing.UsdReviewDocument.OriginalTargetIdentifier.get -> string!
+OpenUsd.Editing.UsdReviewDocument.SourceFingerprint.get -> string!
+OpenUsd.Editing.UsdReviewDocument.SourceRootPath.get -> string!
+OpenUsd.Editing.UsdReviewDocument.TargetDocumentPath.get -> string!
+OpenUsd.Editing.UsdReviewDocument.Version.get -> uint
+OpenUsd.Editing.UsdReviewDocumentExtensions
+OpenUsd.Editing.UsdReviewDocumentInfo
+OpenUsd.Editing.UsdReviewDocumentInfo.AssetAnchor.get -> string!
+OpenUsd.Editing.UsdReviewDocumentInfo.Dependencies.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Editing.UsdReviewDependency!>!
+OpenUsd.Editing.UsdReviewDocumentInfo.DocumentByteLength.get -> int
+OpenUsd.Editing.UsdReviewDocumentInfo.DocumentId.get -> string!
+OpenUsd.Editing.UsdReviewDocumentInfo.OriginalTargetIdentifier.get -> string!
+OpenUsd.Editing.UsdReviewDocumentInfo.SourceFingerprint.get -> string!
+OpenUsd.Editing.UsdReviewDocumentInfo.SourceRootPath.get -> string!
+OpenUsd.Editing.UsdReviewDocumentInfo.TargetDocumentPath.get -> string!
+OpenUsd.Editing.UsdReviewDocumentInfo.Version.get -> uint
+OpenUsd.Editing.UsdReviewDocumentImportResult
+OpenUsd.Editing.UsdReviewDocumentImportResult.AfterState.get -> OpenUsd.Editing.UsdLayerEditingState?
+OpenUsd.Editing.UsdReviewDocumentImportResult.Diagnostic.get -> string?
+OpenUsd.Editing.UsdReviewDocumentImportResult.Outcome.get -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdReviewSourceBinding
+OpenUsd.Editing.UsdReviewSourceBinding.AssetAnchor.get -> string!
+OpenUsd.Editing.UsdReviewSourceBinding.ByteLength.get -> int
+OpenUsd.Editing.UsdReviewSourceBinding.Dependencies.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Editing.UsdReviewDependency!>!
+OpenUsd.Editing.UsdReviewSourceBinding.HasSamePayload(OpenUsd.Editing.UsdReviewSourceBinding? other) -> bool
+OpenUsd.Editing.UsdReviewSourceBinding.SourceFingerprint.get -> string!
+OpenUsd.Editing.UsdReviewSourceBinding.SourceRootPath.get -> string!
+static OpenUsd.Editing.UsdReviewDocument.Inspect(System.ReadOnlySpan<byte> bytes) -> OpenUsd.Editing.UsdReviewDocumentInfo!
+static OpenUsd.Editing.UsdReviewDocument.Read(System.ReadOnlySpan<byte> bytes, string! expectedSourcePath) -> OpenUsd.Editing.UsdReviewDocument!
+static OpenUsd.Editing.UsdReviewDocumentExtensions.AcknowledgeSaved(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdReviewDocument! captured) -> bool
+static OpenUsd.Editing.UsdReviewDocumentExtensions.CaptureReviewDocument(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdReviewSourceBinding! source, string! targetDocumentPath) -> OpenUsd.Editing.UsdReviewDocument!
+static OpenUsd.Editing.UsdReviewDocumentExtensions.CaptureReviewSourceBinding(this OpenUsd.UsdStage! stage) -> OpenUsd.Editing.UsdReviewSourceBinding!
+static OpenUsd.Editing.UsdReviewDocumentExtensions.ImportReviewDocument(this OpenUsd.UsdStage! stage, OpenUsd.Editing.UsdReviewDocument! document, OpenUsd.Editing.UsdReviewSourceBinding! source) -> OpenUsd.Editing.UsdReviewDocumentImportResult!
+static OpenUsd.UsdStage.OpenForReview(string! sourcePath) -> OpenUsd.UsdStage!
+~override OpenUsd.Editing.UsdLayerAssetPath.Equals(object obj) -> bool
+~override OpenUsd.Editing.UsdLayerAssetPath.ToString() -> string
+~override OpenUsd.Editing.UsdLayerEditAddress.Equals(object obj) -> bool
+~override OpenUsd.Editing.UsdLayerEditAddress.ToString() -> string
+~override OpenUsd.Editing.UsdLayerIdentity.Equals(object obj) -> bool
+~override OpenUsd.Editing.UsdLayerIdentity.ToString() -> string
+OpenUsd.Editing.UsdLayerAssetPath
+OpenUsd.Editing.UsdLayerAssetPath.AuthoredPath.get -> string!
+OpenUsd.Editing.UsdLayerAssetPath.AuthoredPath.init -> void
+OpenUsd.Editing.UsdLayerAssetPath.Deconstruct(out string! AuthoredPath, out string! EvaluatedPath, out string! ResolvedPath) -> void
+OpenUsd.Editing.UsdLayerAssetPath.Equals(OpenUsd.Editing.UsdLayerAssetPath other) -> bool
+OpenUsd.Editing.UsdLayerAssetPath.EvaluatedPath.get -> string!
+OpenUsd.Editing.UsdLayerAssetPath.EvaluatedPath.init -> void
+OpenUsd.Editing.UsdLayerAssetPath.ResolvedPath.get -> string!
+OpenUsd.Editing.UsdLayerAssetPath.ResolvedPath.init -> void
+OpenUsd.Editing.UsdLayerAssetPath.UsdLayerAssetPath() -> void
+OpenUsd.Editing.UsdLayerAssetPath.UsdLayerAssetPath(string! AuthoredPath, string! EvaluatedPath, string! ResolvedPath) -> void
+OpenUsd.Editing.UsdLayerAuthoredOpinion
+OpenUsd.Editing.UsdLayerAuthoredOpinion.Address.get -> OpenUsd.Editing.UsdLayerEditAddress
+OpenUsd.Editing.UsdLayerAuthoredOpinion.Custom.get -> bool?
+OpenUsd.Editing.UsdLayerAuthoredOpinion.PropertyKind.get -> OpenUsd.Editing.UsdLayerPropertyKind
+OpenUsd.Editing.UsdLayerAuthoredOpinion.TypeName.get -> string?
+OpenUsd.Editing.UsdLayerAuthoredOpinion.Value.get -> OpenUsd.Editing.UsdLayerEditValue!
+OpenUsd.Editing.UsdLayerAuthoredOpinion.Variability.get -> OpenUsd.Editing.UsdLayerEditVariability?
+OpenUsd.Editing.UsdLayerAuthoredSnapshot
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.Addresses.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Editing.UsdLayerEditAddress>!
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.ByteLength.get -> int
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.CopyBytes() -> byte[]!
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.HasSamePayload(OpenUsd.Editing.UsdLayerAuthoredSnapshot? other) -> bool
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.Identity.get -> OpenUsd.Editing.UsdLayerIdentity
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.Opinions.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Editing.UsdLayerAuthoredOpinion!>!
+OpenUsd.Editing.UsdLayerAuthoredSnapshot.Revision.get -> ulong
+OpenUsd.Editing.UsdLayerCheckpoint
+OpenUsd.Editing.UsdLayerCheckpoint.AssetAnchor.get -> string!
+OpenUsd.Editing.UsdLayerCheckpoint.ByteLength.get -> int
+OpenUsd.Editing.UsdLayerCheckpoint.CopyBytes() -> byte[]!
+OpenUsd.Editing.UsdLayerCheckpoint.ExportBytes(string! destinationPath) -> byte[]!
+OpenUsd.Editing.UsdLayerCheckpoint.HasSamePayload(OpenUsd.Editing.UsdLayerCheckpoint? other) -> bool
+OpenUsd.Editing.UsdLayerCheckpoint.Identifier.get -> string!
+OpenUsd.Editing.UsdLayerCheckpoint.Identity.get -> OpenUsd.Editing.UsdLayerIdentity
+OpenUsd.Editing.UsdLayerCheckpoint.Revision.get -> ulong
+OpenUsd.Editing.UsdLayerCheckpointRestoreResult
+OpenUsd.Editing.UsdLayerCheckpointRestoreResult.AfterCheckpoint.get -> OpenUsd.Editing.UsdLayerCheckpoint?
+OpenUsd.Editing.UsdLayerCheckpointRestoreResult.Diagnostic.get -> string?
+OpenUsd.Editing.UsdLayerCheckpointRestoreResult.Outcome.get -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEdit
+OpenUsd.Editing.UsdLayerEdit.Address.get -> OpenUsd.Editing.UsdLayerEditAddress
+OpenUsd.Editing.UsdLayerEdit.CreationCustom.get -> bool
+OpenUsd.Editing.UsdLayerEdit.CreationTypeName.get -> string!
+OpenUsd.Editing.UsdLayerEdit.CreationVariability.get -> OpenUsd.Editing.UsdLayerEditVariability
+OpenUsd.Editing.UsdLayerEdit.Operation.get -> OpenUsd.Editing.UsdLayerEditOperation
+OpenUsd.Editing.UsdLayerEdit.Value.get -> OpenUsd.Editing.UsdLayerEditValue!
+OpenUsd.Editing.UsdLayerEditAddress
+OpenUsd.Editing.UsdLayerEditAddress.Equals(OpenUsd.Editing.UsdLayerEditAddress other) -> bool
+OpenUsd.Editing.UsdLayerEditAddress.Field.get -> OpenUsd.Editing.UsdLayerEditField
+OpenUsd.Editing.UsdLayerEditAddress.Path.get -> string!
+OpenUsd.Editing.UsdLayerEditAddress.TimeCode.get -> double
+OpenUsd.Editing.UsdLayerEditAddress.UsdLayerEditAddress() -> void
+OpenUsd.Editing.UsdLayerEditAddress.UsdLayerEditAddress(string! path, OpenUsd.Editing.UsdLayerEditField field, double timeCode = 0) -> void
+OpenUsd.Editing.UsdLayerEditField
+OpenUsd.Editing.UsdLayerEditField.AttributeConnections = 2 -> OpenUsd.Editing.UsdLayerEditField
+OpenUsd.Editing.UsdLayerEditField.Default = 0 -> OpenUsd.Editing.UsdLayerEditField
+OpenUsd.Editing.UsdLayerEditField.RelationshipTargets = 3 -> OpenUsd.Editing.UsdLayerEditField
+OpenUsd.Editing.UsdLayerEditField.TimeSample = 1 -> OpenUsd.Editing.UsdLayerEditField
+OpenUsd.Editing.UsdLayerEditingExtensions
+OpenUsd.Editing.UsdLayerEditingState
+OpenUsd.Editing.UsdLayerEditingState.AssetAnchor.get -> string!
+OpenUsd.Editing.UsdLayerEditingState.CanAttemptAuthoredEdits.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.CurrentlyLocal.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.EditingRestriction.get -> string?
+OpenUsd.Editing.UsdLayerEditingState.Identifier.get -> string!
+OpenUsd.Editing.UsdLayerEditingState.Identity.get -> OpenUsd.Editing.UsdLayerIdentity
+OpenUsd.Editing.UsdLayerEditingState.IsAnonymous.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.IsDirty.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.NativeIsDirty.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.PermissionToEdit.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.PermissionToSave.get -> bool
+OpenUsd.Editing.UsdLayerEditingState.RealPath.get -> string!
+OpenUsd.Editing.UsdLayerEditingState.ResolvedPath.get -> string!
+OpenUsd.Editing.UsdLayerEditingState.Revision.get -> ulong
+OpenUsd.Editing.UsdLayerEditingState.Role.get -> OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdLayerEditOperation
+OpenUsd.Editing.UsdLayerEditOperation.Block = 2 -> OpenUsd.Editing.UsdLayerEditOperation
+OpenUsd.Editing.UsdLayerEditOperation.Clear = 0 -> OpenUsd.Editing.UsdLayerEditOperation
+OpenUsd.Editing.UsdLayerEditOperation.Set = 1 -> OpenUsd.Editing.UsdLayerEditOperation
+OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEditOutcome.Applied = 0 -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEditOutcome.Conflict = 1 -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEditOutcome.NotEditable = 3 -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEditOutcome.StaleTarget = 2 -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEditResult
+OpenUsd.Editing.UsdLayerEditResult.AfterSnapshot.get -> OpenUsd.Editing.UsdLayerAuthoredSnapshot?
+OpenUsd.Editing.UsdLayerEditResult.Diagnostic.get -> string?
+OpenUsd.Editing.UsdLayerEditResult.Outcome.get -> OpenUsd.Editing.UsdLayerEditOutcome
+OpenUsd.Editing.UsdLayerEditValue
+OpenUsd.Editing.UsdLayerEditValue.AsAssetPath() -> OpenUsd.Editing.UsdLayerAssetPath
+OpenUsd.Editing.UsdLayerEditValue.AsBoolean() -> bool
+OpenUsd.Editing.UsdLayerEditValue.AsBooleanArray() -> bool[]!
+OpenUsd.Editing.UsdLayerEditValue.AsDouble() -> double
+OpenUsd.Editing.UsdLayerEditValue.AsDoubleArray() -> double[]!
+OpenUsd.Editing.UsdLayerEditValue.AsFloat() -> float
+OpenUsd.Editing.UsdLayerEditValue.AsFloatArray() -> float[]!
+OpenUsd.Editing.UsdLayerEditValue.AsInt32() -> int
+OpenUsd.Editing.UsdLayerEditValue.AsInt32Array() -> int[]!
+OpenUsd.Editing.UsdLayerEditValue.AsInt64() -> long
+OpenUsd.Editing.UsdLayerEditValue.AsInt64Array() -> long[]!
+OpenUsd.Editing.UsdLayerEditValue.AsMatrix4d() -> OpenUsd.UsdMatrix4d
+OpenUsd.Editing.UsdLayerEditValue.AsPathList() -> OpenUsd.Editing.UsdPathListEdit!
+OpenUsd.Editing.UsdLayerEditValue.AsQuatf() -> OpenUsd.UsdQuatf
+OpenUsd.Editing.UsdLayerEditValue.AsString() -> string!
+OpenUsd.Editing.UsdLayerEditValue.AsStringArray() -> string![]!
+OpenUsd.Editing.UsdLayerEditValue.AsToken() -> string!
+OpenUsd.Editing.UsdLayerEditValue.AsTokenArray() -> string![]!
+OpenUsd.Editing.UsdLayerEditValue.AsVec2f() -> OpenUsd.UsdVec2f
+OpenUsd.Editing.UsdLayerEditValue.AsVec3d() -> OpenUsd.UsdVec3d
+OpenUsd.Editing.UsdLayerEditValue.AsVec3f() -> OpenUsd.UsdVec3f
+OpenUsd.Editing.UsdLayerEditValue.AsVec4f() -> OpenUsd.UsdVec4f
+OpenUsd.Editing.UsdLayerEditValue.Equals(OpenUsd.Editing.UsdLayerEditValue? other) -> bool
+OpenUsd.Editing.UsdLayerEditValue.Kind.get -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Absent = 0 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.AssetPath = 9 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Block = 1 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Boolean = 2 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.BooleanArray = 258 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Dictionary = 22 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Double = 6 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.DoubleArray = 262 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Float = 5 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.FloatArray = 261 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Int32 = 3 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Int32Array = 259 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Int64 = 4 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Int64Array = 260 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Matrix4d = 15 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.PathList = 16 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Quatf = 14 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Specifier = 19 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.String = 8 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.StringArray = 264 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.StringVector = 18 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.TimeSamples = 21 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Token = 7 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.TokenArray = 263 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.TokenList = 23 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.TokenVector = 17 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Variability = 20 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Vec2f = 10 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Vec3d = 12 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Vec3f = 11 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditValueKind.Vec4f = 13 -> OpenUsd.Editing.UsdLayerEditValueKind
+OpenUsd.Editing.UsdLayerEditVariability
+OpenUsd.Editing.UsdLayerEditVariability.Uniform = 1 -> OpenUsd.Editing.UsdLayerEditVariability
+OpenUsd.Editing.UsdLayerEditVariability.Varying = 0 -> OpenUsd.Editing.UsdLayerEditVariability
+OpenUsd.Editing.UsdLayerIdentity
+OpenUsd.Editing.UsdLayerIdentity.Deconstruct(out ulong StageId, out ulong LayerId, out ulong Generation) -> void
+OpenUsd.Editing.UsdLayerIdentity.Equals(OpenUsd.Editing.UsdLayerIdentity other) -> bool
+OpenUsd.Editing.UsdLayerIdentity.Generation.get -> ulong
+OpenUsd.Editing.UsdLayerIdentity.Generation.init -> void
+OpenUsd.Editing.UsdLayerIdentity.LayerId.get -> ulong
+OpenUsd.Editing.UsdLayerIdentity.LayerId.init -> void
+OpenUsd.Editing.UsdLayerIdentity.StageId.get -> ulong
+OpenUsd.Editing.UsdLayerIdentity.StageId.init -> void
+OpenUsd.Editing.UsdLayerIdentity.UsdLayerIdentity() -> void
+OpenUsd.Editing.UsdLayerIdentity.UsdLayerIdentity(ulong StageId, ulong LayerId, ulong Generation) -> void
+OpenUsd.Editing.UsdLayerPropertyKind
+OpenUsd.Editing.UsdLayerPropertyKind.Absent = 0 -> OpenUsd.Editing.UsdLayerPropertyKind
+OpenUsd.Editing.UsdLayerPropertyKind.Attribute = 1 -> OpenUsd.Editing.UsdLayerPropertyKind
+OpenUsd.Editing.UsdLayerPropertyKind.Relationship = 2 -> OpenUsd.Editing.UsdLayerPropertyKind
+OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdLayerRole.Local = 4 -> OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdLayerRole.Physics = 3 -> OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdLayerRole.Root = 0 -> OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdLayerRole.SessionContainer = 1 -> OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdLayerRole.UserReview = 2 -> OpenUsd.Editing.UsdLayerRole
+OpenUsd.Editing.UsdPathListEdit
+OpenUsd.Editing.UsdPathListEdit.AddedItems.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Editing.UsdPathListEdit.AppendedItems.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Editing.UsdPathListEdit.DeletedItems.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Editing.UsdPathListEdit.ExplicitItems.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Editing.UsdPathListEdit.IsExplicit.get -> bool
+OpenUsd.Editing.UsdPathListEdit.OrderedItems.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Editing.UsdPathListEdit.PrependedItems.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Editing.UsdPathListEdit.UsdPathListEdit(bool isExplicit, System.Collections.Generic.IReadOnlyList<string!>? explicitItems = null, System.Collections.Generic.IReadOnlyList<string!>? addedItems = null, System.Collections.Generic.IReadOnlyList<string!>? prependedItems = null, System.Collections.Generic.IReadOnlyList<string!>? appendedItems = null, System.Collections.Generic.IReadOnlyList<string!>? deletedItems = null, System.Collections.Generic.IReadOnlyList<string!>? orderedItems = null) -> void
+override OpenUsd.Editing.UsdLayerAssetPath.GetHashCode() -> int
+override OpenUsd.Editing.UsdLayerEditAddress.GetHashCode() -> int
+override OpenUsd.Editing.UsdLayerEditValue.Equals(object? obj) -> bool
+override OpenUsd.Editing.UsdLayerEditValue.GetHashCode() -> int
+override OpenUsd.Editing.UsdLayerIdentity.GetHashCode() -> int
+static OpenUsd.Editing.UsdLayerAssetPath.operator !=(OpenUsd.Editing.UsdLayerAssetPath left, OpenUsd.Editing.UsdLayerAssetPath right) -> bool
+static OpenUsd.Editing.UsdLayerAssetPath.operator ==(OpenUsd.Editing.UsdLayerAssetPath left, OpenUsd.Editing.UsdLayerAssetPath right) -> bool
+static OpenUsd.Editing.UsdLayerEdit.Block(OpenUsd.Editing.UsdLayerEditAddress address, string! creationTypeName = "", OpenUsd.Editing.UsdLayerEditVariability creationVariability = OpenUsd.Editing.UsdLayerEditVariability.Varying, bool creationCustom = false) -> OpenUsd.Editing.UsdLayerEdit!
+static OpenUsd.Editing.UsdLayerEdit.Clear(OpenUsd.Editing.UsdLayerEditAddress address) -> OpenUsd.Editing.UsdLayerEdit!
+static OpenUsd.Editing.UsdLayerEdit.Set(OpenUsd.Editing.UsdLayerEditAddress address, OpenUsd.Editing.UsdLayerEditValue! value, string! creationTypeName = "", OpenUsd.Editing.UsdLayerEditVariability creationVariability = OpenUsd.Editing.UsdLayerEditVariability.Varying, bool creationCustom = false) -> OpenUsd.Editing.UsdLayerEdit!
+static OpenUsd.Editing.UsdLayerEditAddress.operator !=(OpenUsd.Editing.UsdLayerEditAddress left, OpenUsd.Editing.UsdLayerEditAddress right) -> bool
+static OpenUsd.Editing.UsdLayerEditAddress.operator ==(OpenUsd.Editing.UsdLayerEditAddress left, OpenUsd.Editing.UsdLayerEditAddress right) -> bool
+static OpenUsd.Editing.UsdLayerEditingExtensions.AcknowledgeSaved(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdLayerCheckpoint! captured) -> bool
+static OpenUsd.Editing.UsdLayerEditingExtensions.CaptureAuthored(this OpenUsd.UsdLayer! layer, System.ReadOnlySpan<OpenUsd.Editing.UsdLayerEditAddress> addresses) -> OpenUsd.Editing.UsdLayerAuthoredSnapshot!
+static OpenUsd.Editing.UsdLayerEditingExtensions.CaptureCheckpoint(this OpenUsd.UsdLayer! layer) -> OpenUsd.Editing.UsdLayerCheckpoint!
+static OpenUsd.Editing.UsdLayerEditingExtensions.CompareAndApply(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdLayerAuthoredSnapshot! expected, System.ReadOnlySpan<OpenUsd.Editing.UsdLayerEdit!> changes) -> OpenUsd.Editing.UsdLayerEditResult!
+static OpenUsd.Editing.UsdLayerEditingExtensions.CompareAndRestore(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdLayerAuthoredSnapshot! expectedCurrent, OpenUsd.Editing.UsdLayerAuthoredSnapshot! restore) -> OpenUsd.Editing.UsdLayerEditResult!
+static OpenUsd.Editing.UsdLayerEditingExtensions.GetEditingState(this OpenUsd.UsdLayer! layer) -> OpenUsd.Editing.UsdLayerEditingState!
+static OpenUsd.Editing.UsdLayerEditingExtensions.GetLocalLayer(this OpenUsd.UsdStage! stage, string! identifier) -> OpenUsd.UsdLayer!
+static OpenUsd.Editing.UsdLayerEditingExtensions.GetUserReviewLayer(this OpenUsd.UsdStage! stage) -> OpenUsd.UsdLayer!
+static OpenUsd.Editing.UsdLayerEditingExtensions.RestoreCheckpoint(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdLayerCheckpoint! expectedCurrent, OpenUsd.Editing.UsdLayerCheckpoint! restore) -> OpenUsd.Editing.UsdLayerCheckpointRestoreResult!
+static OpenUsd.Editing.UsdLayerEditValue.Absent.get -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.Block.get -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromAssetPath(string! authoredPath) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromBoolean(bool value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromBooleanArray(System.ReadOnlySpan<bool> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromDouble(double value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromDoubleArray(System.ReadOnlySpan<double> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromFloat(float value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromFloatArray(System.ReadOnlySpan<float> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromInt32(int value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromInt32Array(System.ReadOnlySpan<int> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromInt64(long value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromInt64Array(System.ReadOnlySpan<long> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromMatrix4d(OpenUsd.UsdMatrix4d value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromPathList(OpenUsd.Editing.UsdPathListEdit! value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromQuatf(OpenUsd.UsdQuatf value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromString(string! value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromStringArray(System.ReadOnlySpan<string!> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromToken(string! value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromTokenArray(System.ReadOnlySpan<string!> values) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromVec2f(OpenUsd.UsdVec2f value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromVec3d(OpenUsd.UsdVec3d value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromVec3f(OpenUsd.UsdVec3f value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerEditValue.FromVec4f(OpenUsd.UsdVec4f value) -> OpenUsd.Editing.UsdLayerEditValue!
+static OpenUsd.Editing.UsdLayerIdentity.operator !=(OpenUsd.Editing.UsdLayerIdentity left, OpenUsd.Editing.UsdLayerIdentity right) -> bool
+static OpenUsd.Editing.UsdLayerIdentity.operator ==(OpenUsd.Editing.UsdLayerIdentity left, OpenUsd.Editing.UsdLayerIdentity right) -> bool
+static OpenUsd.Render.UsdRenderStageExtensions.GetRenderSpecification(this OpenUsd.UsdStage! stage, string? settingsPath = null) -> OpenUsd.Render.UsdRenderSpecification?
+OpenUsd.Render.UsdRenderProductSpecification
+OpenUsd.Render.UsdRenderProductSpecification.ApertureSize.get -> OpenUsd.UsdVec2f
+OpenUsd.Render.UsdRenderProductSpecification.AspectRatioConformPolicy.get -> string!
+OpenUsd.Render.UsdRenderProductSpecification.CameraPath.get -> string!
+OpenUsd.Render.UsdRenderProductSpecification.DataWindowNdc.get -> OpenUsd.UsdVec4f
+OpenUsd.Render.UsdRenderProductSpecification.DisableDepthOfField.get -> bool
+OpenUsd.Render.UsdRenderProductSpecification.DisableMotionBlur.get -> bool
+OpenUsd.Render.UsdRenderProductSpecification.Height.get -> int
+OpenUsd.Render.UsdRenderProductSpecification.Name.get -> string!
+OpenUsd.Render.UsdRenderProductSpecification.NamespacedSettingNames.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Render.UsdRenderProductSpecification.Path.get -> string!
+OpenUsd.Render.UsdRenderProductSpecification.PixelAspectRatio.get -> float
+OpenUsd.Render.UsdRenderProductSpecification.ProductType.get -> string!
+OpenUsd.Render.UsdRenderProductSpecification.RenderVariableIndices.get -> System.Collections.Generic.IReadOnlyList<int>!
+OpenUsd.Render.UsdRenderProductSpecification.UsdRenderProductSpecification(string! path, string! name, string! productType, string! cameraPath, int width, int height, float pixelAspectRatio, string! aspectRatioConformPolicy, OpenUsd.UsdVec2f apertureSize, OpenUsd.UsdVec4f dataWindowNdc, bool disableMotionBlur, bool disableDepthOfField, System.Collections.Generic.IReadOnlyList<int>! renderVariableIndices, System.Collections.Generic.IReadOnlyList<string!>! namespacedSettingNames) -> void
+OpenUsd.Render.UsdRenderProductSpecification.Width.get -> int
+OpenUsd.Render.UsdRenderSpecification
+OpenUsd.Render.UsdRenderSpecification.IncludedPurposes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Render.UsdRenderSpecification.MaterialBindingPurposes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Render.UsdRenderSpecification.NamespacedSettingNames.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Render.UsdRenderSpecification.Products.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Render.UsdRenderProductSpecification!>!
+OpenUsd.Render.UsdRenderSpecification.RenderVariables.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Render.UsdRenderVariableSpecification!>!
+OpenUsd.Render.UsdRenderSpecification.RenderingColorSpace.get -> string!
+OpenUsd.Render.UsdRenderSpecification.SettingsPath.get -> string!
+OpenUsd.Render.UsdRenderSpecification.UsdRenderSpecification(string! settingsPath, System.Collections.Generic.IReadOnlyList<OpenUsd.Render.UsdRenderProductSpecification!>! products, System.Collections.Generic.IReadOnlyList<OpenUsd.Render.UsdRenderVariableSpecification!>! renderVariables, System.Collections.Generic.IReadOnlyList<string!>! includedPurposes, System.Collections.Generic.IReadOnlyList<string!>! materialBindingPurposes, string! renderingColorSpace, System.Collections.Generic.IReadOnlyList<string!>! namespacedSettingNames) -> void
+OpenUsd.Render.UsdRenderVariableSpecification
+OpenUsd.Render.UsdRenderVariableSpecification.DataType.get -> string!
+OpenUsd.Render.UsdRenderVariableSpecification.NamespacedSettingNames.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Render.UsdRenderVariableSpecification.Path.get -> string!
+OpenUsd.Render.UsdRenderVariableSpecification.SourceName.get -> string!
+OpenUsd.Render.UsdRenderVariableSpecification.SourceType.get -> string!
+OpenUsd.Render.UsdRenderVariableSpecification.UsdRenderVariableSpecification(string! path, string! dataType, string! sourceName, string! sourceType, System.Collections.Generic.IReadOnlyList<string!>! namespacedSettingNames) -> void
+OpenUsd.UsdVec4f
+OpenUsd.UsdVec4f.Equals(OpenUsd.UsdVec4f other) -> bool
+OpenUsd.UsdVec4f.UsdVec4f() -> void
+OpenUsd.UsdVec4f.UsdVec4f(float x, float y, float z, float w) -> void
+OpenUsd.UsdVec4f.W.get -> float
+OpenUsd.UsdVec4f.X.get -> float
+OpenUsd.UsdVec4f.Y.get -> float
+OpenUsd.UsdVec4f.Z.get -> float
+override OpenUsd.UsdVec4f.Equals(object? obj) -> bool
+override OpenUsd.UsdVec4f.GetHashCode() -> int
+override OpenUsd.UsdVec4f.ToString() -> string!
+static OpenUsd.UsdVec4f.operator !=(OpenUsd.UsdVec4f left, OpenUsd.UsdVec4f right) -> bool
+static OpenUsd.UsdVec4f.operator ==(OpenUsd.UsdVec4f left, OpenUsd.UsdVec4f right) -> bool
 OpenUsd.Geom.UsdExtent3f
 OpenUsd.Geom.UsdExtent3f.Deconstruct(out OpenUsd.UsdVec3f Minimum, out OpenUsd.UsdVec3f Maximum) -> void
 OpenUsd.Geom.UsdExtent3f.Equals(OpenUsd.Geom.UsdExtent3f other) -> bool
@@ -890,6 +1360,11 @@ OpenUsd.UsdStageRenderLease.Dispose() -> void
 OpenUsd.UsdStageRenderSource
 OpenUsd.UsdStageRenderSource.AcquireLease() -> OpenUsd.UsdStageRenderLease!
 OpenUsd.UsdStageRenderSource.Dispose() -> void
+OpenUsd.UsdStageRetirementLease
+OpenUsd.UsdStageRetirementLease.CommitAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.UsdStageRetirementLease.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.UsdStageRetirementLease.InvokeCleanupAsync(System.Action<OpenUsd.UsdStage!>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.UsdStageRetirementLease.InvokeCleanupAsync<T>(System.Func<OpenUsd.UsdStage!, T>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
 OpenUsd.UsdStageScheduler
 OpenUsd.UsdStageScheduler.AcquireRenderSourceAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.UsdStageRenderSource!>
 OpenUsd.UsdStageScheduler.DisposeAsync() -> System.Threading.Tasks.ValueTask
@@ -898,6 +1373,7 @@ OpenUsd.UsdStageScheduler.EditAsync<T>(System.Func<OpenUsd.UsdStage!, T>! edit, 
 OpenUsd.UsdStageScheduler.InvokeAsync(System.Action<OpenUsd.UsdStage!>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 OpenUsd.UsdStageScheduler.InvokeAsync<T>(System.Func<OpenUsd.UsdStage!, T>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
 OpenUsd.UsdStageScheduler.ReadChangesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<OpenUsd.UsdStageChange>!
+OpenUsd.UsdStageScheduler.TryPrepareRetirementAsync(System.Func<OpenUsd.UsdStage!, bool>! predicate, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.UsdStageRetirementLease?>
 OpenUsd.UsdStageSchedulerReentrancyException
 OpenUsd.UsdStageSchedulerReentrancyException.Code.get -> string!
 OpenUsd.UsdValidation
@@ -1129,6 +1605,8 @@ static OpenUsd.UsdStageScheduler.Create(string! path, int capacity = 1024) -> Op
 static OpenUsd.UsdStageScheduler.Create(string! path, int capacity, int notificationCapacity) -> OpenUsd.UsdStageScheduler!
 static OpenUsd.UsdStageScheduler.Open(string! path, int capacity = 1024) -> OpenUsd.UsdStageScheduler!
 static OpenUsd.UsdStageScheduler.Open(string! path, int capacity, int notificationCapacity) -> OpenUsd.UsdStageScheduler!
+static OpenUsd.UsdStageScheduler.OpenForReview(string! sourcePath, int capacity = 1024) -> OpenUsd.UsdStageScheduler!
+static OpenUsd.UsdStageScheduler.OpenForReview(string! sourcePath, int capacity, int notificationCapacity) -> OpenUsd.UsdStageScheduler!
 static OpenUsd.UsdValidation.GetRegisteredValidators() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdValidationValidatorInfo!>!
 static OpenUsd.UsdValidation.Validate(OpenUsd.UsdPrim prim) -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdValidationError!>!
 static OpenUsd.UsdValidation.Validate(OpenUsd.UsdStage! stage) -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdValidationError!>!

@@ -1,0 +1,89 @@
+<Window
+    x:Class="OpenUsd.Viewer.RenderImageSequenceWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
+    AutomationProperties.Name="Render image sequence"
+    Title="Render image sequence"
+    Width="620"
+    Height="650"
+    MinWidth="500"
+    MinHeight="610"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" RowSpacing="12">
+    <StackPanel Grid.Row="0" Spacing="4">
+      <TextBlock Text="Viewport image sequence" FontWeight="SemiBold" />
+      <TextBlock x:Name="SequenceRenderer" AutomationProperties.Name="Sequence renderer and dimensions"
+                 TextWrapping="Wrap" Classes="viewer-secondary" />
+      <TextBlock Text="The selected camera is sampled at every requested time. Playback and view edits pause until the job drains."
+                 TextWrapping="Wrap" Classes="viewer-caption" />
+    </StackPanel>
+    <Grid x:Name="SequenceRangeControls" Grid.Row="1" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto"
+          ColumnSpacing="8" RowSpacing="4">
+      <TextBlock Grid.Column="0" Text="Start time code" />
+      <TextBlock Grid.Column="1" Text="End time code (inclusive)" />
+      <TextBlock Grid.Column="2" Text="Step" />
+      <TextBox x:Name="SequenceStartTime" Grid.Row="1" Grid.Column="0"
+               AutomationProperties.Name="Sequence start time code" MaxLength="64" />
+      <TextBox x:Name="SequenceEndTime" Grid.Row="1" Grid.Column="1"
+               AutomationProperties.Name="Sequence end time code" MaxLength="64" />
+      <TextBox x:Name="SequenceStep" Grid.Row="1" Grid.Column="2" Text="1"
+               AutomationProperties.Name="Sequence time code step" MaxLength="64" />
+      <TextBlock x:Name="SequenceFrameCount" Grid.Row="2" Grid.ColumnSpan="3"
+                 AutomationProperties.Name="Sequence frame count" Classes="viewer-secondary" />
+    </Grid>
+    <StackPanel x:Name="SequenceOutputControls" Grid.Row="2" Spacing="4">
+      <TextBlock Text="Outputs (PNG is always included)" />
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <CheckBox x:Name="SequenceHdrColorData" Content="_HDR color data" IsChecked="False"
+                  AutomationProperties.Name="Include HDR color data"
+                  ToolTip.Tip="Half-float framebuffer color before exposure, display and selection; choose raw data or EXR." />
+        <CheckBox x:Name="SequenceDepthData" Content="_Depth data" IsChecked="False"
+                  AutomationProperties.Name="Include device-depth data"
+                  ToolTip.Tip="Normalized device depth (0–1, clear 1); not metric distance or an independent hit mask." />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="HDR format" VerticalAlignment="Center" />
+        <ComboBox x:Name="SequenceHdrFormat" SelectedIndex="0" MinWidth="220" IsEnabled="False"
+                  AutomationProperties.Name="HDR color output format"
+                  ToolTip.Tip="EXR preserves the working half-float samples and stored alpha; no color conversion. Windows x64 only.">
+          <ComboBoxItem Content="Raw half (.hdr.rgba16f)" />
+          <ComboBoxItem Content="EXR (.hdr.exr)" />
+        </ComboBox>
+      </StackPanel>
+      <TextBlock x:Name="SequenceOutputScope" TextWrapping="Wrap" Classes="viewer-secondary"
+                 AutomationProperties.Name="Image sequence output files per frame" />
+    </StackPanel>
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+      <TextBlock Text="Output folder (a new sequence subfolder will be created)" Grid.ColumnSpan="2" />
+      <TextBox x:Name="SequenceOutputFolder" Grid.Row="1" MaxLength="32767"
+               AutomationProperties.Name="Sequence output parent folder" />
+      <Button x:Name="SequenceBrowseButton" Grid.Row="1" Grid.Column="1" Content="Browse..."
+              AutomationProperties.Name="Choose image sequence output folder" />
+    </Grid>
+    <StackPanel Grid.Row="4" Spacing="6">
+      <ProgressBar x:Name="SequenceProgress" Minimum="0" Maximum="1" Value="0"
+                   AutomationProperties.Name="Image sequence progress" Height="4" />
+      <TextBlock x:Name="SequenceStatus" TextWrapping="Wrap" AutomationProperties.Name="Image sequence status" />
+      <TextBlock x:Name="SequenceLimits" AutomationProperties.Name="Image sequence output limits"
+                 TextWrapping="Wrap" Classes="viewer-caption" />
+    </StackPanel>
+    <StackPanel Grid.Row="5" Spacing="4">
+      <TextBlock Text="Completed output location" />
+      <TextBox x:Name="SequenceOutputLocation" IsReadOnly="True" TextWrapping="Wrap"
+               AutomationProperties.Name="Completed image sequence output location" />
+    </StackPanel>
+    <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="SequenceCancelButton" Content="Cancel job" IsEnabled="False"
+              AutomationProperties.Name="Cancel image sequence" />
+      <Button x:Name="SequenceCloseButton" Content="Close" AutomationProperties.Name="Close image sequence" />
+      <Button x:Name="SequenceRenderButton" Content="Render" Classes="accent" IsDefault="True"
+              AutomationProperties.Name="Start image sequence rendering" />
+    </StackPanel>
+  </Grid>
+</Window>

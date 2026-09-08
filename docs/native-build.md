@@ -47,6 +47,61 @@ OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings lock
 compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,
 examples, tutorials, tools, documentation, Embree, and RenderMan are excluded.
 
+## Isolated storage-admission SDK profile
+
+The render-specification deferred-input profile uses the same OpenUSD commit and dependency set,
+with the exact SDK source patches in `eng\openusd-storage-admission.lock.json`. It adds the
+native-only version-1 storage-admission accessor, borrowed Vt array-edit instruction access, and
+pre-allocation native list-composition accounting. A separate small prerequisite patch repairs
+render-product hash ADL for strict MSVC compilation; no compiler diagnostic is disabled.
+The project-owned C ABI and Core `GetRenderSpecification` API remain unchanged.
+
+Build this profile in a **new real directory**, never through a shared install/source junction or
+over an accepted runtime. From the existing x64 developer environment, after copying verified
+dependencies into the new prefix and configuring the existing Vulkan SDK:
+
+```powershell
+.\eng\build-native.ps1 -Rid win-x64 `
+    -NativeRoot artifacts\render-deferred-sdk `
+    -SdkBuildRoot artifacts\render-deferred-sdk\build `
+    -PatchLockPath eng\openusd-storage-admission.lock.json `
+    -SdkOnly -ReuseExistingDependencies -Jobs 4
+```
+
+`-ReuseExistingDependencies` requires a successful native build plan reporting **Dependencies None**;
+it does not download substitutes. Source archives and patch bytes are hash-verified. Patch application
+requires exact whole-patch preimages or postimages and refuses source drift, traversal and reparse
+points. The SDK is built in strict mode. `sdk-storage-admission-metadata.ps1` binds source commit,
+source/build-script/patch identities, accessor version, installed public headers, import library and
+actual SDK DLL. The shim validates that provenance and its actual link target at configure time,
+then repeats file/patch identity validation on every build. Same-version header or binary drift fails
+closed. The existing exact PCP header guards remain independently enforced.
+`-DisableSdkPrecompiledHeaders` trades compile time for a smaller isolated SDK build cache without
+relaxing diagnostics. The SDK admission scope rejects nested construction before changing TLS,
+including when the enclosing scope already has a sticky failure; nested render queries cannot
+replace an outer admission budget.
+
+Configure a fresh shim graph against that SDK, rather than reusing cached `pxr_DIR` or imported
+libraries from another prefix. Preserve the full matched SDK/shim runtime and its plugin/resource
+layout. Core runtime packages verify and retain SDK provenance under
+`build/OpenUsd.Runtime.Core.<rid>.storage-admission.json`; the manifest's paths describe the source
+SDK install, not the flattened publish directory. Package execution compares the actual published
+SDK/shim bytes and requires a real USDC NativeAOT query when this profile is present.
+Pack-time verification requires both pinned public headers and the target RID's SDK binary
+(plus the Windows import library) in a nonempty, unique, hash-bearing inventory. The packer passes
+its target RID explicitly; an empty/header-only sidecar or another RID's inventory cannot certify
+the SDK merely because the files happen to exist on disk.
+
+Run `eng\test-openusd-source-patches.ps1` for patch-application contracts and
+`eng\test-sdk-storage-admission.ps1 -SdkRoot <prefix> -CMake <cmake.exe>` for isolated
+configure/every-build drift controls. The native deferred-input probes cover mapped-path replacement,
+dirty overrides, array/list/decompression admission, malformed lengths and real constrained-memory
+negative controls. Set `OPENUSD_TEST_STORAGE_ADMISSION=1` when running the matching Core native tests;
+`OpenUsd.NativeProbe --render-deferred` requires the profile rather than skipping it.
+Windows x64 data execution is the local proof; this is not Linux/macOS or hardware-rendering evidence.
+`eng\test-sdk-storage-admission-metadata.ps1 -SdkRoot <win-x64-prefix>` covers malformed pack-time
+sidecars and actual missing/drifted binary files in isolated copies.
+
 ## Cesium-native quarantine
 
 `eng/cesium.lock.json` is separate from `eng/openusd.lock.json` by design. The Cesium lock pins

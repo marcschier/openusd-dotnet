@@ -6,6 +6,7 @@ namespace OpenUsd.Viewer;
 internal enum ViewerCommandGroup
 {
     File,
+    Edit,
     View,
     Render,
     Camera,
@@ -77,10 +78,23 @@ internal sealed record ViewerCommandDescriptor(
 internal static class ViewerCommandIds
 {
     internal const string FileOpenStage = "file.openStage";
+    internal const string FileOpenReview = "file.openReview";
+    internal const string FileOpenSample = "file.openSample";
     internal const string FileRecentStages = "file.recentStages";
     internal const string FileReloadStage = "file.reloadStage";
     internal const string FileCaptureFrame = "file.captureFrame";
+    internal const string FileRenderImageSequence = "file.renderImageSequence";
+    internal const string FileCompareCaptures = "file.compareCaptures";
     internal const string FileExit = "file.exit";
+    internal const string FileSaveReview = "file.saveReview";
+    internal const string FileSaveAs = "file.saveAs";
+    internal const string FileSaveSource = "file.saveSource";
+    internal const string FileRevertReview = "file.revertReview";
+    internal const string FileExportReviewDelta = "file.exportReviewDelta";
+
+    internal const string EditProperty = "edit.property";
+    internal const string EditUndo = "edit.undo";
+    internal const string EditRedo = "edit.redo";
 
     internal const string ViewStagePanel = "view.stagePanel";
     internal const string ViewInspectorPanel = "view.inspectorPanel";
@@ -90,6 +104,16 @@ internal static class ViewerCommandIds
     internal const string ViewTfDebugTabVisible = "view.tfDebugTabVisible";
     internal const string ViewSnapTimelineToFrames = "view.snapTimelineToFrames";
     internal const string ViewResetLayout = "view.resetLayout";
+    internal const string ViewThemeSystem = "view.theme.system";
+    internal const string ViewThemeLight = "view.theme.light";
+    internal const string ViewThemeDark = "view.theme.dark";
+    internal const string ViewCommandPalette = "view.commandPalette";
+    internal const string ViewFindPrim = "view.findPrim";
+    internal const string ViewInspectSelection = "view.inspectSelection";
+    internal const string ViewWorkspaceReview = "view.workspace.review";
+    internal const string ViewWorkspaceInspect = "view.workspace.inspect";
+    internal const string ViewWorkspaceMaterialsLighting = "view.workspace.materialsLighting";
+    internal const string ViewWorkspacePresentation = "view.workspace.presentation";
 
     internal const string RenderRendererAuto = "render.renderer.auto";
     internal const string RenderRendererStorm = "render.renderer.storm";
@@ -129,6 +153,8 @@ internal static class ViewerCommandIds
     internal const string CameraToggleProjection = "camera.toggleProjection";
     internal const string CameraUseSelectedCamera = "camera.useSelectedCamera";
     internal const string CameraStageCameras = "camera.stageCameras";
+    internal const string CameraSavedViews = "camera.savedViews";
+    internal const string CameraManageSavedViews = "camera.manageSavedViews";
     internal const string CameraFrameSelected = "camera.frameSelected";
     internal const string CameraOrbitLeft = "camera.orbitLeft";
     internal const string CameraOrbitRight = "camera.orbitRight";
@@ -239,21 +265,65 @@ internal static class ViewerCommandCatalog
     internal static IEnumerable<ViewerCommandDescriptor> ForGroup(ViewerCommandGroup group) =>
         All.Where(command => command.Group == group);
 
+    internal static string DisplayLabel(string label) =>
+        label.Replace("__", "\0", StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("\0", "_", StringComparison.Ordinal);
+
     private static IReadOnlyList<ViewerCommandDescriptor> BuildCatalog() =>
     [
         // File
         new(ViewerCommandIds.FileOpenStage, ViewerCommandGroup.File,
             "_Open Stage...", "Open stage", Gesture: "Ctrl+O"),
+        new(ViewerCommandIds.FileOpenReview, ViewerCommandGroup.File,
+            "Open _Review Document...", "Open a source-linked review document"),
+        new(ViewerCommandIds.FileOpenSample, ViewerCommandGroup.File,
+            "Open Review _Sample", "Open the bundled review sample"),
         new(ViewerCommandIds.FileRecentStages, ViewerCommandGroup.File,
             "Recent Stages", "Recent stages"),
         new(ViewerCommandIds.FileReloadStage, ViewerCommandGroup.File,
             "_Reload Stage", "Reload current stage", Gesture: "Ctrl+R"),
+        new(ViewerCommandIds.FileSaveReview, ViewerCommandGroup.File,
+            "_Save Review Document", "Save the review document without writing source layers", Gesture: "Ctrl+S"),
+        new(ViewerCommandIds.FileSaveAs, ViewerCommandGroup.File,
+            "Save Review _As...", "Save a composition-preserving review document", Gesture: "Ctrl+Shift+S"),
+        new(ViewerCommandIds.FileSaveSource, ViewerCommandGroup.File,
+            "Save _Source Layer...", "Save the source layer with explicit permission"),
+        new(ViewerCommandIds.FileRevertReview, ViewerCommandGroup.File,
+            "Revert Review to Saved", "Revert the review layer to its saved baseline"),
+        new(ViewerCommandIds.FileExportReviewDelta, ViewerCommandGroup.File,
+            "Export Review _Delta...", "Export only review opinions to a new USDA file"),
+        new(ViewerCommandIds.EditProperty, ViewerCommandGroup.Edit,
+            "Edit Selected _Property...", "Edit a selected review property", Gesture: "Ctrl+E"),
+        new(ViewerCommandIds.EditUndo, ViewerCommandGroup.Edit,
+            "_Undo", "Undo the last review edit", Gesture: "Ctrl+Z"),
+        new(ViewerCommandIds.EditRedo, ViewerCommandGroup.Edit,
+            "_Redo", "Redo the last undone review edit", Gesture: "Ctrl+Y"),
         new(ViewerCommandIds.FileCaptureFrame, ViewerCommandGroup.File,
-            "_Capture Frame...", "Capture current frame"),
+            "_Capture Frame...", "Capture current frame", Gesture: "Ctrl+Shift+C"),
+        new(ViewerCommandIds.FileRenderImageSequence, ViewerCommandGroup.File,
+            "Render Image _Sequence...", "Render image sequence"),
+        new(ViewerCommandIds.FileCompareCaptures, ViewerCommandGroup.File,
+            "Compare _Captures...", "Compare two saved captures"),
         new(ViewerCommandIds.FileExit, ViewerCommandGroup.File,
             "E_xit", "Exit OpenUsd Viewer"),
 
         // View
+        new(ViewerCommandIds.ViewCommandPalette, ViewerCommandGroup.View,
+            "Search _Commands...", "Search Viewer commands", Gesture: "Ctrl+Shift+P"),
+        new(ViewerCommandIds.ViewFindPrim, ViewerCommandGroup.View,
+            "_Find Prim...", "Find a prim in the stage hierarchy", Gesture: "Ctrl+F"),
+        new(ViewerCommandIds.ViewInspectSelection, ViewerCommandGroup.View,
+            "Inspect _Selection", "Inspect the selected prim"),
+        new(ViewerCommandIds.ViewWorkspaceReview, ViewerCommandGroup.View,
+            "_Review", "Workspace: Review", ViewerCommandCheckKind.Radio, "view.workspace", "Ctrl+Alt+1"),
+        new(ViewerCommandIds.ViewWorkspaceInspect, ViewerCommandGroup.View,
+            "_Inspect", "Workspace: Inspect", ViewerCommandCheckKind.Radio, "view.workspace", "Ctrl+Alt+2"),
+        new(ViewerCommandIds.ViewWorkspaceMaterialsLighting, ViewerCommandGroup.View,
+            "_Materials / Lighting", "Workspace: Materials and Lighting",
+            ViewerCommandCheckKind.Radio, "view.workspace", "Ctrl+Alt+3"),
+        new(ViewerCommandIds.ViewWorkspacePresentation, ViewerCommandGroup.View,
+            "_Presentation", "Workspace: Presentation", ViewerCommandCheckKind.Radio, "view.workspace", "Ctrl+Alt+4"),
         new(ViewerCommandIds.ViewStagePanel, ViewerCommandGroup.View,
             "_Stage panel", "Show stage panel", ViewerCommandCheckKind.Check),
         new(ViewerCommandIds.ViewInspectorPanel, ViewerCommandGroup.View,
@@ -272,6 +342,15 @@ internal static class ViewerCommandCatalog
             ViewerCommandCheckKind.Check),
         new(ViewerCommandIds.ViewResetLayout, ViewerCommandGroup.View,
             "_Reset Layout", "Reset the Viewer layout to its clean defaults"),
+        new(ViewerCommandIds.ViewThemeSystem, ViewerCommandGroup.View,
+            "_Follow system", "Viewer theme: Follow system",
+            ViewerCommandCheckKind.Radio, "view.theme"),
+        new(ViewerCommandIds.ViewThemeLight, ViewerCommandGroup.View,
+            "_Light", "Viewer theme: Light",
+            ViewerCommandCheckKind.Radio, "view.theme"),
+        new(ViewerCommandIds.ViewThemeDark, ViewerCommandGroup.View,
+            "_Dark", "Viewer theme: Dark",
+            ViewerCommandCheckKind.Radio, "view.theme"),
 
         // Render
         new(ViewerCommandIds.RenderRendererAuto, ViewerCommandGroup.Render,
@@ -363,6 +442,10 @@ internal static class ViewerCommandCatalog
             "_Use Selected Camera", "Use selected UsdGeomCamera"),
         new(ViewerCommandIds.CameraStageCameras, ViewerCommandGroup.Camera,
             "Stage _Cameras", "Stage-authored cameras"),
+        new(ViewerCommandIds.CameraManageSavedViews, ViewerCommandGroup.Camera,
+            "_Saved Views...", "Manage saved views: add, rename, remove and recall"),
+        new(ViewerCommandIds.CameraSavedViews, ViewerCommandGroup.Camera,
+            "Recall Saved _View", "Recall saved views"),
         new(ViewerCommandIds.CameraFrameSelected, ViewerCommandGroup.Camera,
             "_Frame Selected", "Frame selected prim", Gesture: "F"),
         new(ViewerCommandIds.CameraOrbitLeft, ViewerCommandGroup.Camera,
@@ -424,9 +507,9 @@ internal static class ViewerCommandCatalog
             "Snap", "Snap gizmo drags to increments", ViewerCommandCheckKind.Check,
             Gesture: "X"),
         new(ViewerCommandIds.PhysicsUndo, ViewerCommandGroup.Physics,
-            "Undo", "Undo the last physics property edit", Gesture: "Z"),
+            "Undo review edit", "Undo the last shared document edit", Gesture: "Z"),
         new(ViewerCommandIds.PhysicsRedo, ViewerCommandGroup.Physics,
-            "Redo", "Redo the last undone physics property edit", Gesture: "Y"),
+            "Redo review edit", "Redo the last undone shared document edit", Gesture: "Y"),
         new(ViewerCommandIds.PhysicsRefreshProperties, ViewerCommandGroup.Physics,
             "Reload Properties", "Reload physics properties"),
         new(ViewerCommandIds.PhysicsApplyProperty, ViewerCommandGroup.Physics,

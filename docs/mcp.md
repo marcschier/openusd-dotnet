@@ -460,7 +460,7 @@ all of these variables explicitly; only `PATH` is inherited automatically.
 
 ### Verify from Copilot
 
-After `copilot mcp get openusd` reports the server and its 12 tools, start interactive Copilot in a
+After `copilot mcp get openusd` reports the server and its available tools, start interactive Copilot in a
 trusted directory and try read-only prompts first:
 
 ```text
@@ -556,6 +556,12 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
   It accepts an optional authored camera path; otherwise turntables orbit the scene bounds.
   It emits at most 16 PNG descriptors/blocks. Errors are `invalid_argument`, `no_session`,
   `stale_session`, `stale_revision`, `quota_exceeded`, or `render_failure`.
+- **`render_sequence`:** current unreleased source adds disk-backed PNG sequences with exact revision,
+  sampled camera/time, up to 4096 frames and generated session-confined paths. Only completed jobs
+  are published. Errors include malformed/stale requests, path, render and quota failures.
+- **`read_sequence_frame`:** exposes one completed job frame through the existing immutable resource
+  store after verifying its recorded length and SHA256. Historical frames retain their original
+  revision. Unknown jobs, changed files, invalid indexes and exhausted artifact quotas are refused.
 - **`analyze_scene`:** requires the exact revision and bounded finite observations. It
   replaces the proposal set with at most 128 revision-bound proposals. Errors are
   `invalid_argument`, `no_session`, `stale_session`, `stale_revision`, or `native_failure`.
@@ -573,7 +579,9 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 
 ### Revision request
 
-Every tool except `open_scene` includes:
+Scene operations other than `open_scene` include the following coordinates. `read_sequence_frame`
+instead uses a completed job ID and frame index, because its immutable historical output does not
+depend on the active scene revision.
 
 ```json
 {
@@ -719,6 +727,95 @@ identity output instead. The result's bounded `diagnostics` array reports unreso
 materials, missing or invalid texture assets, and authored fallback use with stable machine-readable
 codes. An empty array means the retained preview renderer reported no current material or texture
 degradation; material changes clear stale entries before the next capture.
+
+### `render_sequence` and `read_sequence_frame`
+
+These two tools are unreleased source additions. The current source exposes 14 tools; the published
+`0.14.0-alpha` tool does not include disk-sequence execution.
+
+```json
+{
+  "request": {
+    "sessionId": "<id>",
+    "generation": 1,
+    "stageRevision": 2,
+    "cameraPath": "/World/ShotCamera",
+    "width": 1024,
+    "height": 1024,
+    "startTimeCode": 0,
+    "timeStep": 1,
+    "frameCount": 48
+  }
+}
+```
+
+`render_sequence` uses the shared renderer-neutral disk-job engine, not an enlarged in-memory preview.
+It samples the camera at each requested time, renders sequentially on the existing owned capture
+thread, and writes generated `frame-000000.png` names and `manifest.json`. The manifest records exact
+requested time, camera, display/colour settings and encoded image hashes. A scene-authored output name
+or RenderPass command is never filesystem or executable authority.
+
+The job admits 1-4096 frames, at most 4096 pixels per side and 64 MiB of RGBA/encoded data per frame.
+Completed sequence output is charged to an 8-job/4-GiB quota for the MCP process, independently of the
+existing 16-view/64-MiB preview and artifact-store quotas. Failed or canceled jobs remove their staging
+directory; only a completed directory is atomically published, without replacing an existing job.
+Cancellation keeps the scene-operation gate until the actual capture worker drains. Native rendering
+still requires cooperative completion; this is not a process sandbox for a hung GPU driver.
+
+The fixed-shape result includes `jobId`, output-root-relative directory and manifest paths,
+`frameCount` and `totalBytes`; it does not embed thousands of images or frame descriptors.
+The first adapter uses the same explicit presentation settings as `render_preview`, including its
+Reinhard transform and `-6` stop exposure. It does not claim arbitrary UsdRender/AOV or authored product
+execution. The unchanged source revision is returned.
+
+Set `includeDeviceDepth` to `true` to additionally capture the real visible-pass depth attachment.
+Color-and-depth admission charges 20 managed bytes per pixel within the 64-MiB frame budget, so a
+4096-square depth request is refused before scene inspection. Each depth file is packed top-down
+IEEE float32, little-endian, in `[0,1]`. The manifest names this
+`normalized-device-depth-zero-to-one`: near is zero, far/clear is one, perspective values are
+nonlinear, and clear cannot be distinguished from a far-plane write. Transparent draws with
+depth writes disabled do not contribute depth. These samples are not metric `cameraDepth` or a
+fabricated coverage mask.
+The conservative charge includes HDR color staging, color/depth outputs and a selection-compositing
+RGBA upload copy, even when a particular frame does not need that copy.
+
+Set `includeHdrColor` to `true` for an additional `.hdr.rgba16f` plane from the same render.
+The samples are top-down little-endian RGBA binary16 before exposure, tone mapping and display
+conversion. They preserve finite HDR values, negatives, signed zero and stored framebuffer alpha;
+no named primaries, universal straight-alpha convention or physical-radiance guarantee is implied.
+The same 20-byte-per-pixel admission applies with HDR alone or with both HDR and depth. All encoded
+planes count toward the existing output quotas. This is raw HDR data, not an EXR file.
+
+To encode that plane as lossless half EXR, add `"hdrColorFormat":"exr"` alongside
+`"includeHdrColor":true`. The default is `"raw"`; other values, or EXR without HDR, are
+invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 24
+Core runtime. It preserves the same working values and stored alpha, with origin-zero equal
+windows, square pixels and unspecified primaries/alpha association. It neither applies a display
+transform nor uses scene-authored product filenames. PNG, depth and the actual EXR encoded extent
+share the existing byte quotas; those quotas do not cover native codec scratch or kernel cache.
+
+Use `read_sequence_frame` to inspect a chosen output without loading the whole sequence:
+
+```json
+{"request":{"jobId":"<render_sequence jobId>","frameIndex":24}}
+```
+
+Only process-known completed jobs and valid zero-based indexes are accepted. The generated file is
+copied into content-addressed artifact storage only if its length and SHA256 still match the job.
+The response contains one PNG resource link accepted by the existing `openusd://artifact/{id}` reader.
+Existing resource-count, byte and response quotas apply. A cached resource remains immutable even if
+an external process later changes the output file. No caller-supplied path is accepted.
+
+For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
+It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
+return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
+Raw binary16 uses `application/octet-stream`; EXR uses `image/x-exr` and a generated `.hdr.exr`
+identifier. EXR is a resource link, not an inline PNG substitute.
+At most three resource links accompany the selected frame;
+the rest of the sequence remains on disk. All uncached planes
+are admitted and verified before their descriptors and quota charges are committed together.
+A missing/changed depth or HDR file, cancellation or insufficient capacity cannot leave only a newly
+registered PNG behind. Existing cached resources stay available and are not charged again.
 
 ### `analyze_scene` and proposals
 
@@ -992,7 +1089,7 @@ Linux shell, and macOS details.
 
 | Surface | `win-x64` | `linux-x64` | `osx-arm64` |
 | --- | --- | --- | --- |
-| `OpenUsd.Mcp.Tool` / 12 tools | net10.0 tool | net10.0 tool | net10.0 tool |
+| `OpenUsd.Mcp.Tool` | net10.0 tool | net10.0 tool | net10.0 tool |
 | Core operations | Core install | Core install | Core install |
 | Preview | hdSilk D3D12/WARP | hdSilk Vulkan | hdSilk Metal |
 | RID bundle script | Implemented | Implemented | Implemented |

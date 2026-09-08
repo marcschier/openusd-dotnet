@@ -16,13 +16,18 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiSeventeenRequiresAllSchemaCapabilities()
+    public async Task DataAbiTwentyFourRequiresGuardedExrOutputAndAllPriorCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
+        ulong exrCapability = OpenUsdNativeContract.ImageExrOutputCapability;
 
-        await Assert.That(abiVersion).IsEqualTo(17U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFFFFUL);
+        await Assert.That(abiVersion).IsEqualTo(24U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFFFFUL);
+        await Assert.That(exrCapability).IsEqualTo(1UL << 32);
+        await Assert.That(requiredCapabilities & OpenUsdNativeContract.ImageExrOutputCapability)
+            .IsEqualTo(OpenUsdNativeContract.ImageExrOutputCapability);
+        await Assert.That(requiredCapabilities & 0x40000000UL).IsEqualTo(0x40000000UL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
@@ -56,6 +61,31 @@ public sealed class NativeContractTests
 
         // Sdr/Ndr node-definition query: bulk shader node-definition registry introspection.
         await Assert.That(requiredCapabilities & 0x2000000UL).IsEqualTo(0x2000000UL);
+        await Assert.That(requiredCapabilities & 0x4000000UL).IsEqualTo(0x4000000UL);
+        await Assert.That(requiredCapabilities & 0x8000000UL).IsEqualTo(0x8000000UL);
+    }
+
+    /// <summary>
+    /// Pins the fixed-width EXR packets and their dedicated status domain.
+    /// </summary>
+    [Test]
+    public async Task ExrEncodingLayoutMatchesTheVersionOneCAbi()
+    {
+        await Assert.That(Marshal.SizeOf<OpenUsdImageExrRequest>()).IsEqualTo(112);
+        await Assert.That(Marshal.SizeOf<OpenUsdImageExrResult>()).IsEqualTo(40);
+        await Assert.That(Marshal.OffsetOf<OpenUsdImageExrRequest>(
+            nameof(OpenUsdImageExrRequest.PixelCeiling))).IsEqualTo((nint)72);
+        await Assert.That(Marshal.OffsetOf<OpenUsdImageExrRequest>(
+            nameof(OpenUsdImageExrRequest.OutputByteLimit))).IsEqualTo((nint)80);
+        await Assert.That(Marshal.OffsetOf<OpenUsdImageExrResult>(
+            nameof(OpenUsdImageExrResult.Status))).IsEqualTo((nint)8);
+        await Assert.That(Marshal.OffsetOf<OpenUsdImageExrResult>(
+            nameof(OpenUsdImageExrResult.EncodedBytes))).IsEqualTo((nint)16);
+        await Assert.That(Marshal.OffsetOf<OpenUsdImageExrResult>(
+            nameof(OpenUsdImageExrResult.EncodedRows))).IsEqualTo((nint)24);
+        uint[] statuses = Enum.GetValues<OpenUsdImageEncodeStatus>()
+            .Select(status => (uint)status).ToArray();
+        await Assert.That(statuses.SequenceEqual(new uint[] { 0, 1, 2, 3, 4, 5, 6, 7 })).IsTrue();
     }
 
     /// <summary>

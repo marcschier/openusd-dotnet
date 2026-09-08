@@ -545,6 +545,34 @@ internal sealed class ViewerCameraNavigationUiAdapter
 
     internal ViewerStageCameraModeState StageCameraMode => _stageCamera;
 
+    internal ViewerCameraBookmarkUiState CaptureSavedViewState()
+    {
+        _uiThread.VerifyAccess();
+        return new ViewerCameraBookmarkUiState(_controller.State, _controller.Viewport,
+            _stageCamera.CaptureSavedViewSample(), _stageCamera.GetView().ForcesAutomatic);
+    }
+
+    internal void ApplySavedView(ViewerCameraBookmark bookmark, ViewportDimensions viewport)
+    {
+        _uiThread.VerifyAccess();
+        if (!bookmark.HasMatchingAspect(viewport))
+        {
+            throw new ArgumentException("Exact saved-view recall requires the captured aspect.", nameof(viewport));
+        }
+        if (bookmark.StageCamera is null)
+        {
+            _controller.RestoreSavedViewState(bookmark.FreeCamera, viewport);
+        }
+        _stageCamera.RestoreSavedViewMode(bookmark.StageCamera, forcesAutomatic: false, viewport);
+    }
+
+    internal void RestoreSavedViewState(ViewerCameraBookmarkUiState state)
+    {
+        _uiThread.VerifyAccess();
+        _controller.RestoreSavedViewState(state.FreeCamera, state.Viewport);
+        _stageCamera.RestoreSavedViewMode(state.StageCamera, state.ForcesAutomatic, state.Viewport);
+    }
+
     internal bool ApplyGesture(
         ViewerCameraPointerGesture gesture,
         Vector2 physicalPixelDelta)

@@ -3,6 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:OpenUsd.Viewer"
+    Classes="openusd-viewer"
     AutomationProperties.Name="Bake physics simulation"
     Title="Bake Physics Simulation"
     Width="620"
@@ -10,12 +11,15 @@
     MinWidth="480"
     MinHeight="360"
     WindowStartupLocation="CenterOwner">
-  <DockPanel Margin="16">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <DockPanel Margin="{DynamicResource ViewerDialogPadding}">
     <TextBlock
         DockPanel.Dock="Top"
         Text="Baking writes simulated poses into a file-backed layer as authored time samples. The session overlay and the simulation itself are left untouched."
         TextWrapping="Wrap"
-        Opacity="0.75"
+        Classes="viewer-secondary"
         Margin="0,0,0,12" />
     <StackPanel
         DockPanel.Dock="Bottom"
@@ -29,7 +33,7 @@
           VerticalAlignment="Center"
           TextWrapping="Wrap"
           MaxWidth="320"
-          Opacity="0.85" />
+          Classes="viewer-warning" />
       <Button
           x:Name="BakeCancelButton"
           AutomationProperties.Name="Cancel bake"
@@ -38,13 +42,14 @@
           MinWidth="88" />
       <Button
           x:Name="BakeConfirmButton"
+          Classes="accent"
           AutomationProperties.Name="Start bake"
           Content="Bake"
           IsDefault="True"
           MinWidth="88" />
     </StackPanel>
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*,Auto"
-          RowSpacing="10" ColumnSpacing="8">
+          RowSpacing="8" ColumnSpacing="8">
       <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Destination layer" />
       <TextBox
           x:Name="BakeDestinationInput"

@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Runtime.ExceptionServices;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp;
 
@@ -102,6 +103,40 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
         PreviewCaptureRequest request,
         CancellationToken cancellationToken = default) =>
         CaptureAsync(request, TimeSpan.Zero, cancellationToken);
+
+    public async ValueTask<RenderDiskJobResult> CaptureDiskAsync(
+        RenderDiskJobRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        EnterOperation();
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _disposeCancellation.Token);
+            if (!_slots.Wait(0, CancellationToken.None))
+            {
+                throw new CaptureQueueFullException(_capacity);
+            }
+            var item = new DiskWorkItem(request, linked.Token);
+            lock (_stateGate)
+            {
+                if (_state != CaptureWorkerState.Running)
+                {
+                    _slots.Release();
+                    throw new ObjectDisposedException(nameof(CaptureWorker));
+                }
+                _requests.Enqueue(item);
+            }
+            _itemsAvailable.Release();
+            // Do not release the caller's scene gate until cancellation has drained the actual disk job.
+            return await item.Completion.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
 
     public async ValueTask<PreviewCaptureResult> CaptureAsync(
         PreviewCaptureRequest request,
@@ -519,6 +554,38 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
                 }
 
                 Completion.TrySetResult();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Completion.TrySetCanceled(cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                Completion.TrySetException(exception);
+            }
+        }
+
+        public void Fail(Exception failure) => Completion.TrySetException(failure);
+    }
+
+    private sealed class DiskWorkItem(
+        RenderDiskJobRequest request, CancellationToken cancellationToken) : IWorkItem
+    {
+        internal TaskCompletionSource<RenderDiskJobResult> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool UsesCaptureSlot => true;
+
+        public void Execute(IPreviewCaptureProcessor processor)
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (processor is not IRenderDiskCaptureProcessor disk)
+                {
+                    throw new NotSupportedException("The configured capture processor cannot execute disk jobs.");
+                }
+                Completion.TrySetResult(disk.ProcessDiskJob(request, cancellationToken));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

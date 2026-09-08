@@ -48,6 +48,7 @@ public sealed class ViewerCommandCatalogTests
         ViewerCommandGroup[] definedGroups =
         [
             ViewerCommandGroup.File,
+            ViewerCommandGroup.Edit,
             ViewerCommandGroup.View,
             ViewerCommandGroup.Render,
             ViewerCommandGroup.Camera,

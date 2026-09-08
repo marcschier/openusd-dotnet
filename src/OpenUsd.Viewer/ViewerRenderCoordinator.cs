@@ -16,7 +16,7 @@ internal readonly record struct ViewerStateMutationResult(
     bool Changed,
     StageRenderState PublishedState);
 
-internal sealed class ViewerRenderCoordinator : IAsyncDisposable
+internal sealed partial class ViewerRenderCoordinator : IAsyncDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ViewerRenderBackendRegistry _backendRegistry;
@@ -115,17 +115,17 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     internal int GetFactoryCreationCount(RenderBackendKind kind) =>
         _manager.GetFactoryCreationCount(kind);
 
-    internal static async ValueTask<ViewerRenderCoordinator> OpenAsync(
+    internal static ValueTask<ViewerRenderCoordinator> OpenAsync(
         string stagePath,
         Func<UsdStageScheduler, UsdStageRenderSource, IViewerRenderBackendHost> hostFactory,
         RenderBackendKind? requestedBackend,
         CancellationToken cancellationToken = default) =>
-        await OpenAsync(
+        OpenAsync(
             stagePath,
             hostFactory,
             requestedBackend,
             RenderSettings.PresentationDefault,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
 
     /// <summary>Opens a coordinator with explicit initial render settings.</summary>
     /// <remarks>
@@ -135,7 +135,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     /// default; the restored choice now travels into the very first state the backend is
     /// initialized with.
     /// </remarks>
-    internal static async ValueTask<ViewerRenderCoordinator> OpenAsync(
+    internal static ValueTask<ViewerRenderCoordinator> OpenAsync(
         string stagePath,
         Func<UsdStageScheduler, UsdStageRenderSource, IViewerRenderBackendHost> hostFactory,
         RenderBackendKind? requestedBackend,
@@ -146,14 +146,24 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(hostFactory);
         initialRenderSettings.ValidateDisplayTransform();
 
-        ViewerStartupOptions.WriteStatus(
-            "Renderer coordinator: open entered " +
-            FormatThreadStatus());
         ViewerStartupOptions.WriteStatus("Renderer coordinator: stage scheduler starting");
         UsdStageScheduler scheduler = UsdStageScheduler.Open(
             stagePath,
             capacity: 1024,
             notificationCapacity: 32);
+        return OpenAsync(scheduler, hostFactory, requestedBackend, initialRenderSettings, cancellationToken);
+    }
+
+    internal static async ValueTask<ViewerRenderCoordinator> OpenAsync(
+        UsdStageScheduler scheduler,
+        Func<UsdStageScheduler, UsdStageRenderSource, IViewerRenderBackendHost> hostFactory,
+        RenderBackendKind? requestedBackend,
+        RenderSettings initialRenderSettings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scheduler);
+        ArgumentNullException.ThrowIfNull(hostFactory);
+        initialRenderSettings.ValidateDisplayTransform();
         ViewerStartupOptions.WriteStatus("Renderer coordinator: stage scheduler created");
         UsdStageRenderSource? source = null;
         RenderBackendManager? manager = null;
@@ -411,7 +421,10 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         return _pickQueue.PickAsync(pixel, target, options, cancellationToken);
     }
 
-    internal ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+    internal bool CanCaptureFrame =>
+        _backendRegistry.CaptureFrameCaptureBackend()?.SupportsFrameCapture == true;
+
+    internal ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
         int width,
         int height,
         CancellationToken cancellationToken = default)
@@ -443,7 +456,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         return reapplied.IsSuccess ? switchResult : reapplied;
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => DisposeAsync(retirement: null);
+
+    internal async ValueTask DisposeAsync(UsdStageRetirementLease? retirement)
     {
         if (_disposed)
         {
@@ -452,6 +467,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
 
         _disposed = true;
         _lifetime.Cancel();
+        await CancelAndDrainRenderSequenceAsync().ConfigureAwait(false);
         _pickQueue.Dispose();
         var failures = new List<Exception>();
         try
@@ -483,7 +499,14 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         }
         try
         {
-            await Scheduler.DisposeAsync().ConfigureAwait(false);
+            if (retirement is null)
+            {
+                await Scheduler.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                await retirement.CommitAsync().ConfigureAwait(false);
+            }
         }
         catch (Exception exception)
         {

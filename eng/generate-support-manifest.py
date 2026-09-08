@@ -1,6 +1,6 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 #
-# Generates or verifies docs/support-manifest.md from eng/support-manifest.json.
+# Generates or verifies the support document and README overview from one manifest.
 #
 # Usage:
 #   python eng/generate-support-manifest.py            # generate the document
@@ -59,6 +59,28 @@ STATUSES_REQUIRING_TEST = frozenset({
 })
 
 GENERATED_DOC_PATH = "docs/support-manifest.md"
+SUMMARY_BEGIN = "<!-- BEGIN GENERATED RENDER SUPPORT -->"
+SUMMARY_END = "<!-- END GENERATED RENDER SUPPORT -->"
+README_SUMMARY_ENTRIES = [
+    ("preview-surface-textures", "PreviewSurface textures"),
+    ("preview-surface-transparency", "Transparent and cutout materials"),
+    ("materialx-projection", "MaterialX and OpenPBR projection"),
+    ("usdlux-light-linking", "Light linking"),
+    ("usdlux-shadow-linking", "Distant-light raster shadows"),
+    ("dome-light-directional-diffuse-ibl", "Diffuse dome lighting"),
+    ("dome-light-specular-ibl", "Specular dome lighting"),
+    ("gpu-ocio-presentation", "GPU OCIO display transforms"),
+    ("cpu-skinning", "CPU skinning"),
+    ("gpu-skinning", "GPU skinning"),
+    ("usdpreview-displacement", "Geometric displacement"),
+    ("catmull-clark-subdivision", "Catmull-Clark, Loop and bilinear subdivision"),
+    ("usdvol-density", "Sampled OpenVDB density"),
+    ("primitive-picking", "Storm, D3D12 and Vulkan primitive picking"),
+    ("primitive-picking-metal", "Metal primitive picking"),
+    ("face-identity", "Authored face picking"),
+    ("edge-point-picking", "Authored edge and point picking"),
+    ("xray-selection", "X-ray selection outlines"),
+]
 
 
 def read_text(path: pathlib.Path) -> str:
@@ -112,6 +134,48 @@ def _wrap_text(text: str, max_width: int) -> list[str]:
     return lines
 
 
+def _evidence_platforms(entry: dict) -> str:
+    return ", ".join(
+        f"`{platform}`" for platform in entry.get("evidencePlatforms", [])
+    ) or "None"
+
+
+def generate_summary(manifest: dict, entries: list[tuple[str, str]]) -> str:
+    """Renders an overview from the same claims as the detailed profile."""
+    by_id = {
+        entry["id"]: entry
+        for area in manifest["areas"]
+        for entry in area["entries"]
+    }
+    lines = [
+        "| Feature | Status | Evidence platforms |",
+        "| --- | --- | --- |",
+    ]
+    references = []
+    for index, (entry_id, label) in enumerate(entries, start=1):
+        if entry_id not in by_id:
+            raise ValueError(f"Summary references unknown support entry '{entry_id}'")
+        entry = by_id[entry_id]
+        lines.append(
+            f"| [{label}][support-{index}] "
+            f"| {_status_badge(entry['status'])} | {_evidence_platforms(entry)} |"
+        )
+        references.append(f"[support-{index}]: docs/support-manifest.md#{entry_id}")
+    lines.extend(["", *references])
+    return "\n".join(lines)
+
+
+def replace_summary(document: str, summary: str) -> str:
+    """Replaces only the explicitly delimited overview, rejecting ambiguous input."""
+    if document.count(SUMMARY_BEGIN) != 1 or document.count(SUMMARY_END) != 1:
+        raise ValueError("README support summary markers must occur exactly once")
+    start = document.index(SUMMARY_BEGIN) + len(SUMMARY_BEGIN)
+    end = document.index(SUMMARY_END)
+    if end < start:
+        raise ValueError("README support summary markers are out of order")
+    return document[:start] + "\n" + summary + "\n" + document[end:]
+
+
 def generate_document(manifest: dict) -> str:
     version = manifest["version"]
     lines: list[str] = []
@@ -139,6 +203,14 @@ def generate_document(manifest: dict) -> str:
     for status, meaning in manifest["statusTerms"].items():
         lines.append(f"| {_status_badge(status)} | {meaning} |")
     lines.append("")
+    lines.extend(_wrap_text(
+        "Platforms describe each claim's declared evidence scope, not every backend "
+        "available on that platform. The descriptions and limits below define the supported "
+        "subset. Workflow-gated means a required workflow exists; a skipped case or an "
+        "unsupported diagnostic is not executed proof of that feature.",
+        120,
+    ))
+    lines.append("")
 
     for area in manifest["areas"]:
         lines.append(f"## {area['title']}")
@@ -149,16 +221,27 @@ def generate_document(manifest: dict) -> str:
                 lines.append(wrapped)
             lines.append("")
 
-        lines.append("| Feature | Status |")
-        lines.append("| --- | --- |")
+        lines.append("| Feature | Status | Evidence platforms |")
+        lines.append("| --- | --- | --- |")
 
         for entry in area["entries"]:
             entry_id = entry["id"]
             status = entry["status"]
             badge = _status_badge(status)
-            lines.append(f"| `{entry_id}` | {badge} |")
+            platforms = _evidence_platforms(entry)
+            lines.append(f"| `{entry_id}` | {badge} | {platforms} |")
 
         lines.append("")
+        for entry in area["entries"]:
+            lines.append(f"### `{entry['id']}`")
+            lines.append("")
+            lines.extend(_wrap_text(entry["description"], 120))
+            lines.append("")
+            if entry.get("exclusionReason"):
+                lines.extend(_wrap_text(
+                    f"**Limits:** {entry['exclusionReason']}", 120
+                ))
+                lines.append("")
 
     lines.append("---")
     lines.append("")
@@ -247,6 +330,23 @@ def validate_manifest(
                     f"must be one of: {', '.join(sorted(valid_statuses))}"
                 )
 
+            platforms = entry.get("evidencePlatforms", [])
+            if not isinstance(platforms, list) or any(
+                not isinstance(platform, str) for platform in platforms
+            ):
+                errors.append(
+                    f"{full_id}: evidencePlatforms must be an array of platform names"
+                )
+                platforms = []
+            if len(platforms) != len(set(platforms)):
+                errors.append(f"{full_id}: evidencePlatforms contains duplicates")
+            unknown_platforms = sorted(set(platforms) - VALID_PLATFORMS)
+            if unknown_platforms:
+                errors.append(
+                    f"{full_id}: unknown evidencePlatforms: "
+                    f"{', '.join(unknown_platforms)}"
+                )
+
             # Stale-claim check 1: evidence paths must exist when the status
             # makes a positive implementation claim.
             if status in STATUSES_REQUIRING_EVIDENCE:
@@ -257,16 +357,9 @@ def validate_manifest(
                         f"{full_id}: status '{status}' requires at least one "
                         "evidenceTests or evidenceWorkflows entry"
                     )
-                platforms = entry.get("evidencePlatforms", [])
                 if not platforms:
                     errors.append(
                         f"{full_id}: status '{status}' requires evidencePlatforms"
-                    )
-                unknown_platforms = sorted(set(platforms) - VALID_PLATFORMS)
-                if unknown_platforms:
-                    errors.append(
-                        f"{full_id}: unknown evidencePlatforms: "
-                        f"{', '.join(unknown_platforms)}"
                     )
             if (
                 status in STATUSES_REQUIRING_WORKFLOW
@@ -447,32 +540,42 @@ def main() -> int:
             print(f"  {error}", file=sys.stderr)
         return 1
 
-    generated = generate_document(manifest)
-
     doc_path = root / manifest["generatedDocPath"]
+    readme_path = root / "README.md"
+    try:
+        readme = replace_summary(
+            read_text(readme_path),
+            generate_summary(manifest, README_SUMMARY_ENTRIES),
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Failed to generate README support summary: {exc}", file=sys.stderr)
+        return 1
+    outputs = [(doc_path, generate_document(manifest)), (readme_path, readme)]
 
     if args.verify:
-        if not doc_path.exists():
-            print(
-                f"Generated support document is missing: {doc_path}\n"
-                "Run 'python eng/generate-support-manifest.py' to create it.",
-                file=sys.stderr,
-            )
-            return 1
-        current = read_text(doc_path)
-        if current != generated:
-            print(
-                f"Generated support document is out of date: {doc_path}\n"
-                "Run 'python eng/generate-support-manifest.py' to regenerate it.",
-                file=sys.stderr,
-            )
-            print(unified_diff(doc_path, current, generated), file=sys.stderr)
-            return 1
-        print(f"Support manifest verified: {doc_path}")
+        for path, generated in outputs:
+            if not path.exists():
+                print(
+                    f"Generated support document is missing: {path}\n"
+                    "Run 'python eng/generate-support-manifest.py' to create it.",
+                    file=sys.stderr,
+                )
+                return 1
+            current = read_text(path)
+            if current != generated:
+                print(
+                    f"Generated support document is out of date: {path}\n"
+                    "Run 'python eng/generate-support-manifest.py' to regenerate it.",
+                    file=sys.stderr,
+                )
+                print(unified_diff(path, current, generated), file=sys.stderr)
+                return 1
+            print(f"Support manifest verified: {path}")
         return 0
 
-    write_text(doc_path, generated)
-    print(f"Support manifest generated: {doc_path}")
+    for path, generated in outputs:
+        write_text(path, generated)
+        print(f"Support manifest generated: {path}")
     return 0
 
 

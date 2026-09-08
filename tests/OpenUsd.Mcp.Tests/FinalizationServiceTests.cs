@@ -433,7 +433,7 @@ public sealed class FinalizationServiceTests
         await using var workspace = files.CreateWorkspace(backend);
         WorkspaceSessionInfo session = await workspace.StartAsync("scene.usda");
         File.WriteAllText(session.OverlayPath, "#usda 1.0\n");
-        var store = new ManifestRejectingArtifactStore(
+        using var store = new ManifestRejectingArtifactStore(
             Path.Combine(files.OutputRoot, ".artifact-resources"));
         var service = new FinalizationService(workspace, store);
 
@@ -788,7 +788,7 @@ public sealed class FinalizationServiceTests
         }
     }
 
-    private sealed class ManifestRejectingArtifactStore : IArtifactResourceStore
+    private sealed class ManifestRejectingArtifactStore : IArtifactResourceStore, IDisposable
     {
         internal const string ErrorMessage = "simulated manifest publication failure";
         private readonly ArtifactResourceStore _inner;
@@ -799,6 +799,8 @@ public sealed class FinalizationServiceTests
                 new ArtifactResourceStoreOptions(
                     FileStorageRoot: storageRoot));
         }
+
+        public void Dispose() => _inner.Dispose();
 
         public ArtifactResourceDescriptor Add(
             string artifactId,

@@ -31,7 +31,7 @@ extern "C" {
 
 typedef struct openusd_storm_renderer openusd_storm_renderer;
 
-#define OPENUSD_STORM_ABI_VERSION 8u
+#define OPENUSD_STORM_ABI_VERSION 9u
 
 OPENUSD_HYDRA_API uint32_t openusd_storm_get_abi_version(void)
     OPENUSD_HYDRA_NOEXCEPT;

@@ -1,0 +1,50 @@
+<ResourceDictionary
+    x:Class="OpenUsd.Viewer.ViewerContrastResources"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="ViewerSurfaceCanvasColor">#FFFFFF</Color>
+      <Color x:Key="ViewerSurfaceChromeColor">#F6F6F6</Color>
+      <Color x:Key="ViewerSurfacePanelColor">#FFFFFF</Color>
+      <Color x:Key="ViewerSurfaceRaisedColor">#FFFFFF</Color>
+      <Color x:Key="ViewerTextPrimaryColor">#000000</Color>
+      <Color x:Key="ViewerTextSecondaryColor">#202020</Color>
+      <Color x:Key="ViewerTextDisabledColor">#595959</Color>
+      <Color x:Key="ViewerAccentColor">#00536B</Color>
+      <Color x:Key="ViewerAccentHoverColor">#003C50</Color>
+      <Color x:Key="ViewerAccentPressedColor">#002E40</Color>
+      <Color x:Key="ViewerTextOnAccentColor">#FFFFFF</Color>
+      <Color x:Key="ViewerSelectionColor">#C9E8F1</Color>
+      <Color x:Key="ViewerTextSelectedColor">#002F3D</Color>
+      <Color x:Key="ViewerBorderColor">#595959</Color>
+      <Color x:Key="ViewerControlBorderColor">#202020</Color>
+      <Color x:Key="ViewerFocusColor">#00536B</Color>
+      <Color x:Key="ViewerWarningColor">#704100</Color>
+      <Color x:Key="ViewerErrorColor">#9D1428</Color>
+      <Color x:Key="ViewerSuccessColor">#164F2C</Color>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="ViewerSurfaceCanvasColor">#000000</Color>
+      <Color x:Key="ViewerSurfaceChromeColor">#090909</Color>
+      <Color x:Key="ViewerSurfacePanelColor">#000000</Color>
+      <Color x:Key="ViewerSurfaceRaisedColor">#111111</Color>
+      <Color x:Key="ViewerTextPrimaryColor">#FFFFFF</Color>
+      <Color x:Key="ViewerTextSecondaryColor">#E6E6E6</Color>
+      <Color x:Key="ViewerTextDisabledColor">#B3B3B3</Color>
+      <Color x:Key="ViewerAccentColor">#8BDBEF</Color>
+      <Color x:Key="ViewerAccentHoverColor">#B7EBF7</Color>
+      <Color x:Key="ViewerAccentPressedColor">#70CADD</Color>
+      <Color x:Key="ViewerTextOnAccentColor">#000000</Color>
+      <Color x:Key="ViewerSelectionColor">#123D4A</Color>
+      <Color x:Key="ViewerTextSelectedColor">#FFFFFF</Color>
+      <Color x:Key="ViewerBorderColor">#B3B3B3</Color>
+      <Color x:Key="ViewerControlBorderColor">#E6E6E6</Color>
+      <Color x:Key="ViewerFocusColor">#8BDBEF</Color>
+      <Color x:Key="ViewerWarningColor">#FFE0A3</Color>
+      <Color x:Key="ViewerErrorColor">#FFB9C2</Color>
+      <Color x:Key="ViewerSuccessColor">#ABEDC8</Color>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

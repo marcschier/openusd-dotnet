@@ -47,6 +47,7 @@ typedef struct openusd_ts_spline openusd_ts_spline;
 typedef struct openusd_validation_metadata_list openusd_validation_metadata_list;
 typedef struct openusd_validation_error_list openusd_validation_error_list;
 typedef struct openusd_sdr_node_definition_list openusd_sdr_node_definition_list;
+typedef struct openusd_render_specification openusd_render_specification;
 
 typedef struct openusd_string_list_view
 {
@@ -306,7 +307,7 @@ typedef struct openusd_image_info
     uint32_t reserved;
 } openusd_image_info;
 
-#define OPENUSD_DATA_ABI_VERSION 17
+#define OPENUSD_DATA_ABI_VERSION 24
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -334,6 +335,14 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION (UINT64_C(1) << 23)
 #define OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION (UINT64_C(1) << 24)
 #define OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY (UINT64_C(1) << 25)
+#define OPENUSD_CAPABILITY_RENDER_SPECIFICATION_QUERY (UINT64_C(1) << 26)
+#define OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS (UINT64_C(1) << 27)
+#define OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT (UINT64_C(1) << 28)
+#define OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION (UINT64_C(1) << 29)
+#define OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT (UINT64_C(1) << 30)
+#define OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT (UINT64_C(1) << 31)
+/* Guarded EXR output API; the initial file-handle implementation is Windows x64 only. */
+#define OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT (UINT64_C(1) << 32)
 
 typedef struct openusd_ocio_processor openusd_ocio_processor;
 
@@ -3457,6 +3466,105 @@ OPENUSD_DOTNET_API openusd_status openusd_sdr_get_node_definition_from_asset(
 OPENUSD_DOTNET_API void openusd_sdr_node_definition_list_release(
     openusd_sdr_node_definition_list* list);
 
+/*
+ * One owned, complete standard UsdRenderComputeSpec snapshot at uniform/default time.
+ * Budgets apply to query inputs and packed output; exceeding one fails, never truncates.
+ * Custom property names remain visible, but arbitrary custom values are not transported.
+ * Variable-sized source reads require resident SdfData/SdfUsdaData and concrete schema
+ * defaults. Deferred/custom payloads and array edits fail before unbounded materialization.
+ * Admission uses borrowed source values and a bounded composition-opinion walk.
+ */
+#define OPENUSD_RENDER_SPECIFICATION_VIEW_VERSION 1u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_PRODUCTS 1024u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_VARIABLES 4096u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_INDICES 65536u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_SETTING_NAMES 16384u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_PURPOSES 64u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_FORWARDING_DEPTH 64u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_RELATIONSHIP_TARGETS 65536u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_SOURCE_VISITS (1u << 20)
+#define OPENUSD_RENDER_SPECIFICATION_MAX_STRINGS 65536u
+#define OPENUSD_RENDER_SPECIFICATION_MAX_STRING_BYTES (8u << 20)
+
+/* Five strings: prim path, name, product type, camera path, conform policy, then setting names. */
+typedef struct openusd_render_product_specification_record
+{
+    int32_t width;
+    int32_t height;
+    float pixel_aspect_ratio;
+    float aperture_width;
+    float aperture_height;
+    float data_window_min_x;
+    float data_window_min_y;
+    float data_window_max_x;
+    float data_window_max_y;
+    int32_t disable_motion_blur;
+    int32_t disable_depth_of_field;
+    uint32_t reserved;
+    size_t string_offset;
+    size_t namespaced_setting_count;
+    size_t render_var_index_offset;
+    size_t render_var_index_count;
+} openusd_render_product_specification_record;
+
+/* Four strings: prim path, data type, source name, source type, then setting names. */
+typedef struct openusd_render_variable_specification_record
+{
+    size_t string_offset;
+    size_t namespaced_setting_count;
+} openusd_render_variable_specification_record;
+
+/*
+ * String groups are canonical and contiguous: settings path, rendering color space,
+ * included purposes, material-binding purposes, settings names, each product's strings,
+ * then each variable's strings. Product index ranges are contiguous in product order.
+ * has_settings==0 is only the absent default case: all pointers, counts and sizes are zero.
+ * has_settings==1 may have zero products (zero requested outputs), never a synthetic product.
+ * Pointers are borrowed from the owner until openusd_render_specification_release.
+ */
+typedef struct openusd_render_specification_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    int32_t has_settings;
+    uint32_t reserved;
+    const openusd_render_product_specification_record* products;
+    size_t products_size;
+    size_t product_count;
+    const openusd_render_variable_specification_record* variables;
+    size_t variables_size;
+    size_t variable_count;
+    const uint32_t* render_var_indices;
+    size_t render_var_indices_size;
+    size_t render_var_index_count;
+    const char* data;
+    size_t data_size;
+    const size_t* offsets;
+    size_t offsets_size;
+    size_t string_count;
+    size_t included_purpose_count;
+    size_t material_binding_purpose_count;
+    size_t namespaced_setting_count;
+} openusd_render_specification_view;
+
+/*
+ * NULL settings_path selects composed renderSettingsPrimPath metadata. An absent opinion
+ * succeeds with no owner and has_settings==0. Empty/invalid explicit or authored-default
+ * paths fail, as do invalid product/camera/variable relationships and exceeded budgets.
+ * Existing targetless forwarding is valid; product camera then inherits the settings camera.
+ * No stage opinion is changed and no RenderPass command or output file is executed.
+ * Initialize view.struct_size and view.version before calling.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_render_get_specification(
+    const openusd_stage* stage,
+    const char* settings_path,
+    openusd_render_specification** specification,
+    openusd_render_specification_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API void openusd_render_specification_release(
+    openusd_render_specification* specification);
+
 /* Session overlay: atomic sublayer normalization for simulation results. */
 OPENUSD_DOTNET_API openusd_status openusd_stage_session_overlay_normalize(
     const openusd_stage* stage,
@@ -3751,5 +3859,7 @@ OPENUSD_DOTNET_API void openusd_ocio_processor_release(
 #ifdef __cplusplus
 }
 #endif
+
+#include "openusd_image_exr.h"
 
 #endif

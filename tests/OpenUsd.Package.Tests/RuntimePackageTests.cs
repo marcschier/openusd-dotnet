@@ -14,7 +14,7 @@ using System.Xml.Linq;
 namespace OpenUsd.Package.Tests;
 
 [NotInParallel]
-public sealed class RuntimePackageTests
+public sealed partial class RuntimePackageTests
 {
     private const string RequiredExecutionEnvironmentVariable =
         "OPENUSD_PACKAGE_EXECUTION_REQUIRED";
@@ -43,7 +43,7 @@ public sealed class RuntimePackageTests
     private static readonly ulong PreviousDataCapabilities =
         RequiredDataCapabilities & ~HighestSetBit(RequiredDataCapabilities);
 
-    private const int RequiredStormAbiVersion = 8;
+    private const int RequiredStormAbiVersion = 9;
     private const int RequiredSilkSessionAbiVersion = 5;
     private const int RequiredSilkPageAbiVersion = 23;
     private const int RequiredStormChildAbiVersion = 8;
@@ -678,12 +678,16 @@ public sealed class RuntimePackageTests
                 corePackage.Path,
                 [
                     "buildTransitive/OpenUsd.Runtime.Core.win-x64.targets",
+                    "runtimes/win-x64/native/OpenEXR-3_1.dll",
+                    "runtimes/win-x64/native/Iex-3_1.dll",
+                    "runtimes/win-x64/native/IlmThread-3_1.dll",
                     "runtimes/win-x64/native/Imath-3_1.dll",
                     "runtimes/win-x64/native/MaterialXCore.dll",
                     "runtimes/win-x64/native/OpenColorIO_2_2.dll",
                     "runtimes/win-x64/native/openusd_dotnet.dll",
                     "runtimes/win-x64/native/usd_ms.dll",
                     "runtimes/win-x64/native/vulkan-1.dll",
+                    "runtimes/win-x64/native/zlib.dll",
                     "runtimes/win-x64/resources/usd/plugInfo.json",
                     "runtimes/win-x64/resources/usd/usd/resources/plugInfo.json",
                 ]);
@@ -705,6 +709,7 @@ public sealed class RuntimePackageTests
             await AssertPackageDoesNotContainAsync(
                 imagingPackage.Path,
                 "runtimes/win-x64/resources/bin/openusd_hdsilk.dll");
+            await AssertPackageDoesNotContainAsync(corePackage.Path, "ntdll.dll");
             await AssertHdSilkPackageAsync(
                 imagingPackage.Path,
                 "win-x64",
@@ -719,10 +724,14 @@ public sealed class RuntimePackageTests
             string[] publishedPaths =
             [
                 "MaterialXCore.dll",
+                "OpenEXR-3_1.dll",
+                "Iex-3_1.dll",
+                "IlmThread-3_1.dll",
                 "Imath-3_1.dll",
                 "OpenColorIO_2_2.dll",
                 "openusd_dotnet.dll",
                 "usd_ms.dll",
+                "zlib.dll",
                 Path.Combine("usd", "plugInfo.json"),
                 Path.Combine("usd", "usd", "resources", "plugInfo.json"),
             ];
@@ -730,6 +739,43 @@ public sealed class RuntimePackageTests
             {
                 await Assert.That(File.Exists(Path.Combine(publishRoot, publishedPath))).IsTrue();
             }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("OpenEXR-3_1.dll")]
+    [Arguments("Iex-3_1.dll")]
+    [Arguments("IlmThread-3_1.dll")]
+    [Arguments("zlib.dll")]
+    public async Task MissingExrCodecDependencyFailsWindowsCorePackClearly(string dependency)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            File.Delete(Path.Combine(installRoot, "bin", dependency));
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            InvalidOperationException? failure = null;
+            try
+            {
+                _ = await PackAsync(
+                    repositoryRoot, "OpenUsd.Runtime.Core.win-x64",
+                    installRoot, shimRoot, vulkanRuntimeLibrary, packageRoot);
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+            await Assert.That(failure).IsNotNull();
+            await Assert.That(failure!.Message).Contains("Core EXR output dependency is missing");
+            await Assert.That(failure.Message).Contains(dependency);
         }
         finally
         {
@@ -1375,6 +1421,91 @@ public sealed class RuntimePackageTests
 
             await Assert.That(result.ExitCode).IsNotEqualTo(0);
             await Assert.That(result.Output).Contains("The locked OpenUSD install for linux-x64 is missing");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task PackageConsumersKeepBuildStateOutsideTheParentArtifactGraph()
+    {
+        string workRoot = CreateWorkRoot(FindRepositoryRoot());
+        string? oldArtifacts = Environment.GetEnvironmentVariable("ArtifactsPath");
+        string? oldUseArtifacts = Environment.GetEnvironmentVariable("UseArtifactsOutput");
+        try
+        {
+            string consumerRoot = Path.Combine(workRoot, "isolated-consumer");
+            string parentArtifacts = Path.Combine(workRoot, "parent-artifacts");
+            WriteTestFile(Path.Combine(consumerRoot, "Consumer.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+                </Project>
+                """);
+            Environment.SetEnvironmentVariable("ArtifactsPath", parentArtifacts);
+            Environment.SetEnvironmentVariable("UseArtifactsOutput", "true");
+            CommandResult result = await RunDotnetAsync(consumerRoot,
+            [
+                "msbuild", "Consumer.csproj", "-nologo",
+                "-p:ImportDirectoryBuildProps=false", "-p:ImportDirectoryBuildTargets=false",
+                "-getProperty:ProjectAssetsFile"
+            ], Path.Combine(workRoot, "consumer-packages"));
+            await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
+            await Assert.That(result.Output.Trim())
+                .IsEqualTo(Path.Combine(consumerRoot, "obj", "project.assets.json"));
+            await Assert.That(Environment.GetEnvironmentVariable("ArtifactsPath")).IsEqualTo(parentArtifacts);
+            await Assert.That(Environment.GetEnvironmentVariable("UseArtifactsOutput")).IsEqualTo("true");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ArtifactsPath", oldArtifacts);
+            Environment.SetEnvironmentVariable("UseArtifactsOutput", oldUseArtifacts);
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task RuntimePackageMetadataUsesTheSelectedIntermediateDirectory(bool sdkArtifacts)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        (string Property, string RelativePath)[] metadata =
+        [
+            ("_OpenUsdHdSilkPackagePlugInfo", Path.Combine("hdSilk", "resources", "plugInfo.json")),
+            ("_OpenUsdHdSilkMergedPackagePlugInfo", Path.Combine("hdSilk-merged", "resources", "plugInfo.json")),
+            ("_OpenUsdPhysicsValidationEvidence", "physics-native-abi.json"),
+            ("_OpenUsdLinuxValidationEvidence", "linux-native-validation.json"),
+            ("_OpenUsdMacOsValidationEvidence", "macos-native-validation.json")
+        ];
+        try
+        {
+            foreach (string rid in new[] { "win-x64", "linux-x64", "osx-arm64" })
+            {
+                string packageId = $"OpenUsd.Runtime.Imaging.{rid}";
+                string projectDirectory = Path.Combine(repositoryRoot, "src", packageId);
+                string artifacts = Path.Combine(workRoot, "artifacts");
+                CommandResult result = await RunDotnetAsync(repositoryRoot,
+                [
+                    "msbuild", Path.Combine(projectDirectory, $"{packageId}.csproj"), "-nologo",
+                    "-p:Configuration=Release", "-p:TargetFramework=net8.0",
+                    $"-p:UseArtifactsOutput={sdkArtifacts.ToString().ToLowerInvariant()}",
+                    $"-p:ArtifactsPath={artifacts}",
+                    $"-getProperty:{string.Join(',', metadata.Select(static item => item.Property))}"
+                ]);
+                await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
+                using JsonDocument document = JsonDocument.Parse(result.Output);
+                string expectedRoot = sdkArtifacts
+                    ? Path.Combine(artifacts, "obj", packageId, "Release", "net8.0", "runtime-package")
+                    : Path.Combine(projectDirectory, "obj", "Release", "net8.0", "runtime-package");
+                foreach ((string property, string relativePath) in metadata)
+                {
+                    await Assert.That(document.RootElement.GetProperty("Properties").GetProperty(property).GetString())
+                        .IsEqualTo(Path.Combine(expectedRoot, relativePath));
+                }
+            }
         }
         finally
         {
@@ -2262,6 +2393,8 @@ public sealed class RuntimePackageTests
             "Verify",
             "-Rid",
             inputs.Platform.Rid,
+            "-InstallRoot",
+            Path.GetDirectoryName(inputs.InstallRoot)!,
         };
         if (inputs.Platform.Rid == "win-x64")
         {
@@ -2282,6 +2415,7 @@ public sealed class RuntimePackageTests
         await Assert.That(result.Output)
             .Contains($"capabilities 0x{RequiredDataCapabilities:X}");
         await Assert.That(result.Output).Contains("camera state v1");
+        await Assert.That(result.Output).Contains("EXR encoding v1");
         await Assert.That(result.Output)
             .Contains($"Storm ABI {RequiredStormAbiVersion}");
         await Assert.That(result.Output)
@@ -2306,8 +2440,10 @@ public sealed class RuntimePackageTests
             .IsEqualTo(RequiredDataCapabilities);
         await Assert.That(root.GetProperty("dataCameraStateVersion").GetInt32())
             .IsEqualTo(1);
+        await Assert.That(root.GetProperty("imageExrVersion").GetInt32()).IsEqualTo(1);
         await Assert.That(root.GetProperty("stormAbiVersion").GetInt32())
             .IsEqualTo(RequiredStormAbiVersion);
+        await Assert.That(root.GetProperty("stormAovVersion").GetInt32()).IsEqualTo(1);
         await Assert.That(root.GetProperty("silkSessionAbiVersion").GetInt32())
             .IsEqualTo(RequiredSilkSessionAbiVersion);
         await Assert.That(root.GetProperty("shimPageAbiVersion").GetInt32())
@@ -2332,6 +2468,10 @@ public sealed class RuntimePackageTests
                 inputs.ShimRoot,
                 "include",
                 "openusd_dotnet.h"),
+            ["imageExrHeaderSha256"] = Path.Combine(
+                inputs.ShimRoot,
+                "include",
+                "openusd_image_exr.h"),
             ["dataLibrarySha256"] = Path.Combine(
                 inputs.ShimRoot,
                 nativeDirectory,
@@ -2340,6 +2480,10 @@ public sealed class RuntimePackageTests
                 inputs.ShimRoot,
                 "include",
                 "openusd_hydra.h"),
+            ["stormAovHeaderSha256"] = Path.Combine(
+                inputs.ShimRoot,
+                "include",
+                "openusd_storm_aov.h"),
             ["hydraLibrarySha256"] = Path.Combine(
                 inputs.ShimRoot,
                 nativeDirectory,
@@ -2389,8 +2533,14 @@ public sealed class RuntimePackageTests
                 "openusd_dotnet.h"),
             hashedAssets["dataHeaderSha256"]);
         await AssertFileHashesEqualAsync(
+            Path.Combine(repositoryRoot, "native", "openusd_dotnet", "include", "openusd_image_exr.h"),
+            hashedAssets["imageExrHeaderSha256"]);
+        await AssertFileHashesEqualAsync(
             Path.Combine(repositoryRoot, "native", "openusd_hydra", "include", "openusd_hydra.h"),
             hashedAssets["hydraHeaderSha256"]);
+        await AssertFileHashesEqualAsync(
+            Path.Combine(repositoryRoot, "native", "openusd_hydra", "include", "openusd_storm_aov.h"),
+            hashedAssets["stormAovHeaderSha256"]);
         await AssertFileHashesEqualAsync(
             Path.Combine(repositoryRoot, "native", "hdSilk", "include", "openusd_hdsilk.h"),
             hashedAssets["hdSilkHeaderSha256"]);
@@ -3310,6 +3460,30 @@ public sealed class RuntimePackageTests
                     float focusDistance = 12
                     float fStop = 2.8
                 }
+
+                def RenderSettings "RenderSettings"
+                {
+                    rel camera = </Camera>
+                    rel products = </Product>
+                    uniform int2 resolution = (800, 400)
+                    uniform bool disableMotionBlur = true
+                    uniform float4 dataWindowNDC = (-0.25, 0, 1.25, 1)
+                    custom int renderer:unsupported = 1
+                }
+                def RenderProduct "Product"
+                {
+                    token productName = "package.exr"
+                    rel orderedVars = [</Beauty>, </Unsupported>]
+                }
+                def RenderVar "Beauty"
+                {
+                    string sourceName = "Ci"
+                }
+                def RenderVar "Unsupported"
+                {
+                    token sourceType = "lpe"
+                    string sourceName = "C<RD>L"
+                }
                 """);
 
             // A vendor plugin tree is staged beside the packaged trees, not merged into them. It
@@ -3348,11 +3522,21 @@ public sealed class RuntimePackageTests
                 }
                 """);
 
+            string storageMetadata = Path.Combine(inputs.InstallRoot, ".openusd-storage-admission.json");
+            bool requireStorageAdmission = File.Exists(storageMetadata);
+            Dictionary<string, string> runtimeEnvironment =
+                GetCoreRuntimeEnvironment(platform, consumer.PublishRoot) ?? new(StringComparer.Ordinal);
+            runtimeEnvironment["OPENUSD_PACKAGE_STORAGE_ADMISSION_REQUIRED"] = requireStorageAdmission ? "1" : "0";
+            if (requireStorageAdmission)
+            {
+                await AssertPackageEntryMatchesFileAsync(runtimePackage.Path,
+                    $"build/OpenUsd.Runtime.Core.{platform.Rid}.storage-admission.json", storageMetadata);
+            }
             CommandResult result = await RunExecutableAsync(
                 GetExecutablePath(consumer.PublishRoot, "Consumer"),
                 consumer.PublishRoot,
                 ["input.usda", "roundtrip.usda"],
-                GetCoreRuntimeEnvironment(platform, consumer.PublishRoot));
+                runtimeEnvironment);
 
             Console.WriteLine(result.Output.Trim());
             await Assert.That(result.ExitCode).IsEqualTo(0);
@@ -3362,8 +3546,19 @@ public sealed class RuntimePackageTests
                 .Contains($"CAPABILITIES=0x{RequiredDataCapabilities:X}");
             await Assert.That(result.Output).Contains("INPUT_OPENED=true");
             await Assert.That(result.Output).Contains("CAMERA_STATE_QUERY=true");
+            await Assert.That(result.Output).Contains("RENDER_SPECIFICATION_QUERY=true");
+            if (requireStorageAdmission)
+            {
+                await Assert.That(result.Output).Contains("RENDER_DEFERRED_QUERY=true");
+            }
+            await Assert.That(result.Output).Contains("HIERARCHY_SNAPSHOT_QUERY=true");
+            await Assert.That(result.Output).Contains("PRIM_PROPERTY_SNAPSHOT_QUERY=true");
             await Assert.That(result.Output).Contains("ROUNDTRIP_SAVED=true");
             await Assert.That(result.Output).Contains("ROUNDTRIP_VALUE=42.5");
+            await Assert.That(result.Output).Contains("AUTHORED_LAYER_EDIT=true");
+            await Assert.That(result.Output).Contains(platform.Rid == "win-x64"
+                ? "PORTABLE_REVIEW_DOCUMENT=true"
+                : "PORTABLE_REVIEW_DOCUMENT=unsupported-host");
             await Assert.That(result.Output).Contains("RESOLVER_PRIMARY=ArDefaultResolver");
             await Assert.That(result.Output).Contains("RESOLVER_BULK=true");
             await Assert.That(result.Output).Contains("RESOLVER_SCOPED=true");
@@ -3583,6 +3778,7 @@ public sealed class RuntimePackageTests
             Console.WriteLine(result.Output.Trim());
             await Assert.That(result.ExitCode).IsEqualTo(0);
             await Assert.That(result.Output).Contains("PACKAGE_IMAGING_EXECUTION_OK");
+            await Assert.That(result.Output).Contains("NATIVE_AOT=true");
             await Assert.That(result.Output).Contains("FIRST_PAGE_FRAMES=1");
             await Assert.That(result.Output).Contains("FIRST_PAGE_UPSERTS=");
             await Assert.That(result.Output).Contains("FIRST_PAGE_REMOVALS=0");
@@ -3596,6 +3792,12 @@ public sealed class RuntimePackageTests
             await Assert.That(result.Output).Contains("WAIT_IDLE=true");
             await Assert.That(result.Output).Contains("PLUGIN_LAYOUT=true");
             await Assert.That(result.Output).Contains("OCIO_DISPLAY_TRANSFORM=true");
+            await Assert.That(result.Output).Contains("PNG_ROW_ORDER=true");
+            await Assert.That(result.Output).Contains("RENDER_DISK_JOB=true");
+            await Assert.That(result.Output).Contains("DEPTH_CAPTURE=true");
+            await Assert.That(result.Output).Contains("HDR_CAPTURE=true");
+            await Assert.That(result.Output).Contains("HDR_DISK_JOB=true");
+            await Assert.That(result.Output).Contains("GPU_HDR_CAPTURE=true");
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             if (platform.Rid is "win-x64" or "osx-arm64")
             {
@@ -4456,6 +4658,8 @@ public sealed class RuntimePackageTests
                 packageId.Replace('.', '-'));
             Directory.CreateDirectory(stubRoot);
             string projectPath = Path.Combine(stubRoot, "Stub.csproj");
+            await File.WriteAllTextAsync(Path.Combine(stubRoot, "STUB.txt"),
+                $"Restore-only package-test stub for {packageId}.");
             await File.WriteAllTextAsync(
                 projectPath,
                 $"""
@@ -4470,6 +4674,9 @@ public sealed class RuntimePackageTests
                     <EnablePackageValidation>false</EnablePackageValidation>
                     <NoWarn>$(NoWarn);NU5128</NoWarn>
                   </PropertyGroup>
+                  <ItemGroup>
+                    <None Include="STUB.txt" Pack="true" PackagePath="" />
+                  </ItemGroup>
                 </Project>
                 """);
 
@@ -5752,6 +5959,8 @@ public sealed class RuntimePackageTests
                 <Nullable>enable</Nullable>
                 <StripSymbols>true</StripSymbols>
                 <OptimizationPreference>Size</OptimizationPreference>
+                <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="OpenUsd" Version="{packageVersion}" />
@@ -5769,6 +5978,8 @@ public sealed class RuntimePackageTests
             using OpenUsd;
             using OpenUsd.Geom;
             using OpenUsd.Interop;
+            using OpenUsd.Render;
+            using OpenUsd.Editing;
 
             namespace PackageExecutionConsumer;
 
@@ -5790,8 +6001,14 @@ public sealed class RuntimePackageTests
                     nuint plugins = OpenUsdNativeRuntime.RegisterPlugins(pluginPath);
                     bool inputOpened;
                     bool cameraStateQuery;
+                    UsdRenderSpecification? renderSpecification;
                     using (UsdStage input = UsdStage.Open(args[0]))
                     {
+                        if (input.GetRenderSpecification() is not null)
+                        {
+                            return 11;
+                        }
+                        renderSpecification = input.GetRenderSpecification("/RenderSettings");
                         inputOpened = input.HasPrim("/Input");
                         UsdGeomCamera camera = UsdGeomCamera.Wrap(
                             input.GetPrim("/Camera"));
@@ -5811,6 +6028,46 @@ public sealed class RuntimePackageTests
                     {
                         return 4;
                     }
+                    bool renderSpecificationQuery =
+                        renderSpecification is not null &&
+                        renderSpecification.SettingsPath == "/RenderSettings" &&
+                        renderSpecification.Products.Count == 1 &&
+                        renderSpecification.Products[0].CameraPath == "/Camera" &&
+                        renderSpecification.Products[0].Width == 800 &&
+                        renderSpecification.Products[0].Height == 400 &&
+                        renderSpecification.Products[0].ApertureSize == new UsdVec2f(20, 10) &&
+                        renderSpecification.Products[0].DataWindowNdc == new UsdVec4f(-0.25f, 0, 1.25f, 1) &&
+                        renderSpecification.Products[0].DisableMotionBlur &&
+                        renderSpecification.Products[0].RenderVariableIndices.Count == 2 &&
+                        renderSpecification.Products[0].RenderVariableIndices[1] == 1 &&
+                        renderSpecification.RenderVariables.Count == 2 &&
+                        renderSpecification.RenderVariables[1].SourceType == "lpe" &&
+                        renderSpecification.RenderVariables[1].SourceName == "C<RD>L" &&
+                        renderSpecification.NamespacedSettingNames.Count == 1 &&
+                        renderSpecification.NamespacedSettingNames[0] == "renderer:unsupported";
+                    if (!renderSpecificationQuery)
+                    {
+                        return 12;
+                    }
+                    bool hierarchySnapshotQuery = HierarchyConsumer.Run();
+                    if (!hierarchySnapshotQuery)
+                    {
+                        return 16;
+                    }
+                    bool propertySnapshotQuery = PropertyInspectionConsumer.Run();
+                    if (!propertySnapshotQuery)
+                    {
+                        return 17;
+                    }
+                    bool renderDeferredRequired =
+                        Environment.GetEnvironmentVariable("OPENUSD_PACKAGE_STORAGE_ADMISSION_REQUIRED") == "1";
+                    bool renderDeferredQuery = renderDeferredRequired && RenderDeferredConsumer.Run();
+                    if (renderDeferredRequired && !renderDeferredQuery)
+                    {
+                        return 18;
+                    }
+                    Console.WriteLine(
+                        $"RENDER_DEFERRED_QUERY={renderDeferredQuery.ToString().ToLowerInvariant()}");
 
                     using (UsdStage output = UsdStage.Create(args[1]))
                     {
@@ -5820,6 +6077,7 @@ public sealed class RuntimePackageTests
                     }
 
                     double value;
+                    bool authoredLayerEdit;
                     using (UsdStage reopened = UsdStage.Open(args[1]))
                     {
                         if (!reopened.HasPrim("/World/PackageRoundTrip"))
@@ -5829,10 +6087,66 @@ public sealed class RuntimePackageTests
                         value = reopened
                             .GetPrim("/World/PackageRoundTrip")
                             .GetDouble("custom:value");
+                        using UsdLayer review = reopened.GetUserReviewLayer();
+                        var address = new UsdLayerEditAddress(
+                            "/World/PackageRoundTrip.custom:value", UsdLayerEditField.Default);
+                        UsdLayerAuthoredSnapshot before = review.CaptureAuthored([address]);
+                        UsdLayerCheckpoint checkpoint = review.CaptureCheckpoint();
+                        bool packetMetadata =
+                            before.ByteLength == before.CopyBytes().Length &&
+                            before.HasSamePayload(review.CaptureAuthored([address])) &&
+                            checkpoint.ByteLength == checkpoint.CopyBytes().Length &&
+                            checkpoint.HasSamePayload(review.CaptureCheckpoint());
+                        UsdLayerEditResult applied = review.CompareAndApply(
+                            before, [UsdLayerEdit.Set(address, UsdLayerEditValue.FromDouble(99), "double")]);
+                        if (applied.AfterSnapshot is null)
+                        {
+                            return 13;
+                        }
+                        UsdLayerEditResult undone = review.CompareAndRestore(applied.AfterSnapshot, before);
+                        authoredLayerEdit =
+                            packetMetadata &&
+                            before.Opinions[0].PropertyKind == UsdLayerPropertyKind.Absent &&
+                            applied.Outcome == UsdLayerEditOutcome.Applied &&
+                            undone.Outcome == UsdLayerEditOutcome.Applied &&
+                            review.CaptureAuthored([address]).Opinions[0].PropertyKind == UsdLayerPropertyKind.Absent &&
+                            reopened.GetPrim("/World/PackageRoundTrip").GetDouble("custom:value") == 42.5;
                     }
-                    if (value != 42.5)
+                    if (value != 42.5 || !authoredLayerEdit)
                     {
                         return 6;
+                    }
+                    UsdStageScheduler scheduled = UsdStageScheduler.Open(args[1], capacity: 1);
+                    UsdStageRetirementLease? retirement = null;
+                    try
+                    {
+                        using UsdStageRenderSource retained =
+                            scheduled.AcquireRenderSourceAsync().GetAwaiter().GetResult();
+                        retirement = scheduled.TryPrepareRetirementAsync(
+                            stage => stage.GetPrim("/World/PackageRoundTrip").GetDouble("custom:value") == 42.5)
+                            .GetAwaiter().GetResult();
+                        if (retirement is null ||
+                            retirement.InvokeCleanupAsync(
+                                stage => stage.GetPrim("/World/PackageRoundTrip").GetDouble("custom:value"))
+                                .GetAwaiter().GetResult() != 42.5)
+                        {
+                            return 15;
+                        }
+                        retained.Dispose();
+                        retirement.CommitAsync().GetAwaiter().GetResult();
+                    }
+                    finally
+                    {
+                        if (retirement is not null)
+                        {
+                            retirement.DisposeAsync().GetAwaiter().GetResult();
+                        }
+                        scheduled.DisposeAsync().GetAwaiter().GetResult();
+                    }
+                    bool portableReviewSupported = OperatingSystem.IsWindows();
+                    if (portableReviewSupported && !PortableReviewConsumer.Run())
+                    {
+                        return 14;
                     }
 
                     // This proves the packaging half of the third-party contract: a tree that the
@@ -5938,8 +6252,18 @@ public sealed class RuntimePackageTests
                     Console.WriteLine($"INPUT_OPENED={inputOpened.ToString().ToLowerInvariant()}");
                     Console.WriteLine(
                         $"CAMERA_STATE_QUERY={cameraStateQuery.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"RENDER_SPECIFICATION_QUERY={renderSpecificationQuery.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"HIERARCHY_SNAPSHOT_QUERY={hierarchySnapshotQuery.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"PRIM_PROPERTY_SNAPSHOT_QUERY={propertySnapshotQuery.ToString().ToLowerInvariant()}");
                     Console.WriteLine($"ROUNDTRIP_SAVED={File.Exists(args[1]).ToString().ToLowerInvariant()}");
                     Console.WriteLine($"ROUNDTRIP_VALUE={value}");
+                    Console.WriteLine($"AUTHORED_LAYER_EDIT={authoredLayerEdit.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(portableReviewSupported
+                        ? "PORTABLE_REVIEW_DOCUMENT=true"
+                        : "PORTABLE_REVIEW_DOCUMENT=unsupported-host");
                     Console.WriteLine($"RESOLVER_PRIMARY={UsdResolver.PrimaryTypeName}");
                     Console.WriteLine($"RESOLVER_BULK={resolverBulk.ToString().ToLowerInvariant()}");
                     Console.WriteLine(
@@ -5956,6 +6280,18 @@ public sealed class RuntimePackageTests
             }
             """);
 
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "PortableReviewConsumer.cs"),
+            PortableReviewConsumerSource.Text);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "HierarchyConsumer.cs"),
+            HierarchyConsumerSource.Text);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "PropertyInspectionConsumer.cs"),
+            PropertyInspectionConsumerSource.Text);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "RenderDeferredConsumer.cs"),
+            RenderDeferredConsumerSource.Text);
         string globalPackagesRoot = Path.Combine(workRoot, "execution-global-packages");
         CommandResult result = await RunDotnetAsync(
             consumerRoot,
@@ -5966,6 +6302,7 @@ public sealed class RuntimePackageTests
                 "Release",
                 "-r",
                 platform.Rid,
+                "-p:UseArtifactsOutput=false",
                 "--nologo",
                 "--configfile",
                 "NuGet.config",
@@ -6811,6 +7148,7 @@ public sealed class RuntimePackageTests
         using OpenUsd.Rendering;
         using OpenUsd.Rendering.Silk;
         using __BACKEND_NAMESPACE__;
+        using System.Threading;
 
         namespace PackageImagingExecutionConsumer;
 
@@ -6825,6 +7163,8 @@ public sealed class RuntimePackageTests
                         return 8;
                     }
 
+                    Console.WriteLine(System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported
+                        ? "NATIVE_AOT=false" : "NATIVE_AOT=true");
                     string pluginPath = Path.Combine(
                         AppContext.BaseDirectory,
                         "plugin",
@@ -6868,6 +7208,44 @@ public sealed class RuntimePackageTests
                     {
                         return 12;
                     }
+
+                    using (var png = new MemoryStream())
+                    {
+                        long encoded = PngRgba8Writer.Write(png, 1, 1, displayPixel, maximumBytes: 512);
+                        if (encoded != png.Length || encoded < 33 ||
+                            !png.GetBuffer().AsSpan(0, 8).SequenceEqual(
+                                new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }))
+                        {
+                            return 13;
+                        }
+                    }
+
+                    using (var topDownPng = new MemoryStream())
+                    using (var bottomUpPng = new MemoryStream())
+                    {
+                        _ = PngRgba8Writer.Write(topDownPng, 1, 2,
+                            [255, 0, 0, 128, 0, 0, 255, 64], maximumBytes: 512);
+                        _ = PngRgba8Writer.Write(bottomUpPng, 1, 2,
+                            [0, 0, 255, 64, 255, 0, 0, 128], Rgba8RowOrder.BottomUp, maximumBytes: 512);
+                        if (!topDownPng.ToArray().AsSpan().SequenceEqual(bottomUpPng.ToArray()))
+                        {
+                            return 14;
+                        }
+                        Console.WriteLine("PNG_ROW_ORDER=true");
+                    }
+
+                    string jobDirectory = Path.Combine(AppContext.BaseDirectory, "render-job");
+                    StageRenderState jobState = StageRenderState.Create(new StageIdentity("package-fixture"))
+                        .WithViewport(new ViewportDimensions(1, 1));
+                    RenderDiskJobResult job = RenderDiskJob.Execute(
+                        new RenderDiskJobRequest(jobDirectory, [jobState, jobState.WithTime(new StageTime(2))]),
+                        new PackageFrameSource());
+                    if (job.Frames.Count != 2 || job.Diagnostics.Count != 0 ||
+                        !File.Exists(Path.Combine(jobDirectory, "manifest.json")))
+                    {
+                        return 15;
+                    }
+                    Console.WriteLine("RENDER_DISK_JOB=true");
 
                     uint stormChildAbi = 0;
                     bool stormChildDllImport = true;
@@ -6954,6 +7332,114 @@ public sealed class RuntimePackageTests
                         return 4;
                     }
 
+                    using (OpenUsdSilkSession depthSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
+                    using (var depthCapturer = new SilkFrameCapturer(device))
+                    {
+                        SilkFrameCaptureResult depthFrame = depthCapturer.CaptureWithDepth(
+                            depthSession, 16, 16, RenderSettings.Default);
+                        SilkDepthCaptureResult depth = depthFrame.Depth ??
+                            throw new InvalidOperationException("The depth plane is absent.");
+                        bool surface = false;
+                        foreach (float value in depth.Values.Span)
+                        {
+                            if (!float.IsFinite(value) || value < 0 || value > 1)
+                            {
+                                return 16;
+                            }
+                            surface |= value < 1;
+                        }
+                        if (!surface || depth.Values.Length != 256 ||
+                            depth.Convention != SilkDepthConvention.NormalizedDeviceDepthZeroToOne ||
+                            depth.ClearValue != 1)
+                        {
+                            return 17;
+                        }
+                        Console.WriteLine("DEPTH_CAPTURE=true");
+                        if (depthFrame.HdrColor is not null)
+                        {
+                            throw new InvalidOperationException("The old depth API unexpectedly retained HDR.");
+                        }
+                        SilkFrameCaptureResult hdrFrame = depthCapturer.CaptureWithHdrColor(
+                            depthSession, 16, 16, RenderSettings.Default,
+                            new SilkHdrColorCaptureOptions(includeDeviceDepth: true));
+                        SilkHdrColorCaptureResult hdr = hdrFrame.HdrColor ??
+                            throw new InvalidOperationException("The HDR plane is absent.");
+                        if (hdr.Rgba16Float.Length != 2048 ||
+                            hdr.Convention !=
+                                SilkHdrColorConvention.RendererWorkingCompositedBeforeExposureAndDisplay ||
+                            hdrFrame.Depth is null || hdrFrame.Depth.Values.Length != 256)
+                        {
+                            throw new InvalidOperationException(
+                                "The actual HDR capture layout or convention is wrong.");
+                        }
+                        foreach (Half value in MemoryMarshal.Cast<byte, Half>(hdr.Rgba16Float.Span))
+                        {
+                            if (!Half.IsFinite(value))
+                            {
+                                throw new InvalidOperationException("A stored HDR channel is non-finite.");
+                            }
+                        }
+                        Console.WriteLine("HDR_CAPTURE=true");
+                        StageRenderState hdrState = StageRenderState.Create(new StageIdentity(stagePath))
+                            .WithViewport(new ViewportDimensions(16, 16));
+                        RenderDiskJobResult hdrJob = RenderDiskJob.Execute(new RenderDiskJobRequest(
+                            Path.Combine(AppContext.BaseDirectory, "hdr-job"), [hdrState], true, true),
+                            new PackageCapturedFrameSource(hdrFrame));
+                        RenderDiskFrameResult hdrOutput = hdrJob.Frames[0];
+                        if (hdrOutput.HdrColorBytes != 2048 || hdrOutput.DepthBytes != 1024 ||
+                            !File.ReadAllBytes(Path.Combine(hdrJob.OutputDirectory, hdrOutput.HdrColorFileName!))
+                                .AsSpan().SequenceEqual(hdr.Rgba16Float.Span))
+                        {
+                            throw new InvalidOperationException("The disk job changed its captured HDR samples.");
+                        }
+                        Console.WriteLine("HDR_DISK_JOB=true");
+                        RenderSettings gpuSettings = RenderSettings.Default with
+                        {
+                            DisplayTransform = new RenderDisplayTransform(
+                                ocioConfigPath, "linear", "TestDisplay", "TestView")
+                        };
+                        SilkFrameCaptureResult gpuHdr = depthCapturer.CaptureWithHdrColor(
+                            depthSession, 16, 16, gpuSettings,
+                            new SilkHdrColorCaptureOptions(includeDeviceDepth: true));
+                        SilkFrameCaptureResult gpuDisplay = depthCapturer.CaptureWithDepth(
+                            depthSession, 16, 16, gpuSettings);
+                        if (gpuHdr.HdrColor is null || gpuHdr.Depth is null)
+                        {
+                            throw new InvalidOperationException("GPU HDR omitted a requested output plane.");
+                        }
+                        if (!gpuHdr.HdrColor.Rgba16Float.Span.SequenceEqual(hdr.Rgba16Float.Span))
+                        {
+                            throw new InvalidOperationException("Raw GPU HDR differs from CPU HDR.");
+                        }
+                        if (!gpuHdr.Depth.Values.Span.SequenceEqual(hdrFrame.Depth.Values.Span))
+                        {
+                            throw new InvalidOperationException("GPU device depth differs from CPU.");
+                        }
+                        if (!gpuHdr.Rgba.Span.SequenceEqual(gpuDisplay.Rgba.Span))
+                        {
+                            throw new InvalidOperationException("RGBA differs from old GPU capture.");
+                        }
+                        bool fallbackRefused = false;
+                        try
+                        {
+                            _ = depthCapturer.CaptureWithHdrColor(depthSession, 16, 16,
+                                gpuSettings with
+                                {
+                                    DisplayTransform = new RenderDisplayTransform(
+                                        Path.Combine(AppContext.BaseDirectory, "missing.ocio"), "linear")
+                                });
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            fallbackRefused = true;
+                        }
+                        if (!fallbackRefused)
+                        {
+                            throw new InvalidOperationException("GPU display fallback published stale HDR.");
+                        }
+                        Console.WriteLine("GPU_HDR_CAPTURE=true");
+                    }
+
                     string currentDirectory = Path.GetFullPath(".")
                         .TrimEnd(Path.DirectorySeparatorChar);
                     string baseDirectory = AppContext.BaseDirectory
@@ -7020,6 +7506,28 @@ public sealed class RuntimePackageTests
                 EntryPoint = "openusd_storm_child_get_abi_version",
                 CallingConvention = CallingConvention.Cdecl)]
             private static extern uint GetStormChildAbiVersion();
+
+            private sealed class PackageFrameSource : IRenderJobFrameSource
+            {
+                public RenderJobImage Render(StageRenderState state, CancellationToken cancellationToken)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return new RenderJobImage(1, 1, new byte[] { 20, 40, 80, 255 }, Rgba8RowOrder.TopDown);
+                }
+            }
+
+            private sealed class PackageCapturedFrameSource(SilkFrameCaptureResult frame) : IRenderJobFrameSource
+            {
+                public RenderJobImage Render(StageRenderState state, CancellationToken cancellationToken)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return new RenderJobImage(frame.Width, frame.Height, frame.Rgba, Rgba8RowOrder.TopDown)
+                    {
+                        HdrColor = new RenderJobHdrColor(frame.Width, frame.Height, frame.HdrColor!.Rgba16Float),
+                        DeviceDepth = new RenderJobDeviceDepth(frame.Width, frame.Height, frame.Depth!.Values)
+                    };
+                }
+            }
 
             [DllImport(
                 "openusd_storm_child",
@@ -7885,8 +8393,12 @@ public sealed class RuntimePackageTests
         string installRoot = Path.Combine(workRoot, "native", "install", "win-x64");
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", "win-x64");
         WriteTestFile(Path.Combine(installRoot, "bin", "MaterialXCore.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "OpenEXR-3_1.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "Iex-3_1.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "IlmThread-3_1.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "Imath-3_1.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_2.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "zlib.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd_ms.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "usd", "resources", "plugInfo.json"), "{}");
@@ -8196,8 +8708,8 @@ public sealed class RuntimePackageTests
     private static string CreateWorkRoot(string repositoryRoot)
     {
         string workRoot = Path.Combine(
-            repositoryRoot,
-            "artifacts",
+            Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ??
+                Path.Combine(repositoryRoot, "artifacts"),
             "package-tests",
             Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(workRoot);
@@ -8215,13 +8727,16 @@ public sealed class RuntimePackageTests
             return false;
         }
 
-        string installRoot = Path.Combine(repositoryRoot, "native", "install", platform.Rid);
-        string shimRoot = Path.Combine(
-            repositoryRoot,
-            "native",
-            "install",
-            "shim",
-            platform.Rid);
+        string installRoot = Environment.GetEnvironmentVariable("OPENUSD_PACKAGE_EXECUTION_INSTALL_ROOT") ??
+            Path.Combine(repositoryRoot, "native", "install", platform.Rid);
+        string shimRoot = Environment.GetEnvironmentVariable("OPENUSD_PACKAGE_EXECUTION_SHIM_ROOT") ??
+            Path.Combine(repositoryRoot, "native", "install", "shim", platform.Rid);
+        if (!Path.IsPathFullyQualified(installRoot) || !Path.IsPathFullyQualified(shimRoot))
+        {
+            inputs = default;
+            reason = "package execution install/shim roots must be absolute";
+            return false;
+        }
         string cesiumShimRoot = Path.Combine(
             repositoryRoot,
             "native",
@@ -8241,13 +8756,21 @@ public sealed class RuntimePackageTests
             "physx",
             platform.Rid);
         string nativeInstallRoot = Path.Combine(repositoryRoot, "native", "install");
-        string[] vulkanRuntimeLibraries = platform.Rid == "win-x64" &&
-            Directory.Exists(nativeInstallRoot)
-            ? Directory.GetFiles(
-                nativeInstallRoot,
-                "vulkan-1.dll",
-                SearchOption.AllDirectories)
-            : [];
+        string? explicitVulkan = Environment.GetEnvironmentVariable("OPENUSD_PACKAGE_EXECUTION_VULKAN_LIBRARY");
+        string[] vulkanRuntimeLibraries = platform.Rid != "win-x64"
+            ? []
+            : explicitVulkan is not null
+                ? [explicitVulkan]
+                : Directory.Exists(nativeInstallRoot)
+                    ? Directory.GetFiles(nativeInstallRoot, "vulkan-1.dll", SearchOption.AllDirectories)
+                    : [];
+        if (explicitVulkan is not null &&
+            (!Path.IsPathFullyQualified(explicitVulkan) || !File.Exists(explicitVulkan)))
+        {
+            inputs = default;
+            reason = "the explicit package execution Vulkan library must be an existing absolute file";
+            return false;
+        }
 
         if (!Directory.Exists(installRoot))
         {
@@ -8538,6 +9061,9 @@ public sealed class RuntimePackageTests
         if (nugetPackagesRoot is not null)
         {
             process.StartInfo.Environment["NUGET_PACKAGES"] = nugetPackagesRoot;
+            // A clean package consumer owns its build state as well as its restore cache.
+            process.StartInfo.Environment["UseArtifactsOutput"] = "false";
+            process.StartInfo.Environment.Remove("ArtifactsPath");
         }
         if (sanitizeRuntimeEnvironment)
         {

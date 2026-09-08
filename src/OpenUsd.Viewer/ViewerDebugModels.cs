@@ -278,22 +278,30 @@ internal sealed record ViewerHydraSceneSnapshot(
 
 internal static class ViewerFrameBitmapWriter
 {
-    internal static void WriteBmp(string path, int width, int height, ReadOnlySpan<byte> rgba)
+    internal static void WriteBmp(
+        string path, int width, int height, ReadOnlySpan<byte> rgba,
+        ViewerFrameRowOrder rowOrder = ViewerFrameRowOrder.TopDown)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        int rowStride = checked(((width * 3) + 3) & ~3);
-        int imageBytes = checked(rowStride * height);
-        int rgbaBytes = checked(width * height * 4);
-        if (rgba.Length != rgbaBytes)
-        {
-            throw new ArgumentException("The RGBA buffer size does not match the image dimensions.", nameof(rgba));
-        }
-
+        _ = ValidateImage(width, height, rgba, rowOrder);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        WriteBmp(stream, width, height, rgba, rowOrder);
+    }
+
+    internal static void WriteBmp(
+        Stream stream, int width, int height, ReadOnlySpan<byte> rgba, ViewerFrameRowOrder rowOrder,
+        long maximumBytes = long.MaxValue, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        (int rowStride, int imageBytes) = ValidateImage(width, height, rgba, rowOrder);
+        if (54L + imageBytes > maximumBytes)
+        {
+            throw new InvalidOperationException("Encoded BMP exceeds the output byte budget.");
+        }
+        cancellationToken.ThrowIfCancellationRequested();
         Span<byte> header = stackalloc byte[54];
+        header.Clear();
         header[0] = (byte)'B';
         header[1] = (byte)'M';
         WriteInt32(header[2..], checked(54 + imageBytes));
@@ -306,22 +314,42 @@ internal static class ViewerFrameBitmapWriter
         WriteInt32(header[34..], imageBytes);
         stream.Write(header);
 
-        byte[] bgr = new byte[imageBytes];
+        byte[] bgr = new byte[rowStride];
         for (int y = 0; y < height; y++)
         {
-            int sourceY = height - 1 - y;
+            cancellationToken.ThrowIfCancellationRequested();
+            int sourceY = rowOrder == ViewerFrameRowOrder.BottomUp ? y : height - 1 - y;
             int sourceRow = checked(sourceY * width * 4);
-            int destinationRow = checked(y * rowStride);
             for (int x = 0; x < width; x++)
             {
                 int source = sourceRow + (x * 4);
-                int destination = destinationRow + (x * 3);
+                int destination = x * 3;
                 bgr[destination] = rgba[source + 2];
                 bgr[destination + 1] = rgba[source + 1];
                 bgr[destination + 2] = rgba[source];
             }
+            stream.Write(bgr);
         }
-        stream.Write(bgr);
+    }
+
+    private static (int RowStride, int ImageBytes) ValidateImage(
+        int width, int height, ReadOnlySpan<byte> rgba, ViewerFrameRowOrder rowOrder)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        int rowStride = checked(((width * 3) + 3) & ~3);
+        int imageBytes = checked(rowStride * height);
+        int rgbaBytes = checked(width * height * 4);
+        if (rgba.Length != rgbaBytes)
+        {
+            throw new ArgumentException("The RGBA buffer size does not match the image dimensions.", nameof(rgba));
+        }
+        if (rowOrder is not (ViewerFrameRowOrder.TopDown or ViewerFrameRowOrder.BottomUp))
+        {
+            throw new ArgumentOutOfRangeException(nameof(rowOrder));
+        }
+
+        return (rowStride, imageBytes);
     }
 
     private static void WriteInt16(Span<byte> destination, short value)

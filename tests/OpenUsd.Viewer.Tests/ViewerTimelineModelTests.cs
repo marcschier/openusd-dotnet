@@ -217,6 +217,7 @@ public sealed class ViewerTimelineModelTests
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishApply = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var applied = new List<double>();
         var failures = new List<Exception>();
         var pump = new ViewerTimeUpdatePump(
@@ -234,6 +235,7 @@ public sealed class ViewerTimelineModelTests
                 if (value == 3)
                 {
                     completed.TrySetResult();
+                    await finishApply.Task.WaitAsync(cancellationToken);
                 }
             },
             failures.Add,
@@ -243,11 +245,17 @@ public sealed class ViewerTimelineModelTests
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await Assert.That(pump.TryPost(2)).IsTrue();
         await Assert.That(pump.TryPost(3)).IsTrue();
+        Task idle = pump.WaitForIdleAsync();
+        await Assert.That(idle.IsCompleted).IsFalse();
         release.TrySetResult();
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(idle.IsCompleted).IsFalse();
+        finishApply.TrySetResult();
+        await idle.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(pump.WaitForIdleAsync().IsCompletedSuccessfully).IsTrue();
         await pump.DisposeAsync();
 
-        await Assert.That(applied).IsEquivalentTo([1d, 3d]);
+        await Assert.That(applied.SequenceEqual([1d, 3d])).IsTrue();
         await Assert.That(failures).IsEmpty();
         await Assert.That(pump.TryPost(4)).IsFalse();
     }
@@ -263,10 +271,43 @@ public sealed class ViewerTimelineModelTests
             CancellationToken.None);
 
         await Assert.That(pump.TryPost(1)).IsTrue();
+        Task idle = pump.WaitForIdleAsync();
         Exception exception = await failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(async () => await idle).Throws<InvalidOperationException>();
+        await Assert.That(async () => await pump.WaitForIdleAsync()).Throws<InvalidOperationException>();
         await Assert.That(pump.TryPost(2)).IsFalse();
         await pump.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DisposingTheTimePumpCancelsAnOutstandingIdleWaitAfterDrainingTheCallback()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool drained = false;
+        await using var pump = new ViewerTimeUpdatePump(
+            async (_, token) =>
+            {
+                entered.SetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+                finally
+                {
+                    drained = true;
+                }
+            },
+            static exception => throw new InvalidOperationException("Unexpected time-pump failure.", exception),
+            CancellationToken.None);
+        pump.TryPost(5);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task idle = pump.WaitForIdleAsync();
+        await Assert.That(idle.IsCompleted).IsFalse();
+        await pump.DisposeAsync();
+        await Assert.That(async () => await idle).Throws<TaskCanceledException>();
+        await Assert.That(drained).IsTrue();
+        await Assert.That(pump.TryPost(6)).IsFalse();
     }
 }

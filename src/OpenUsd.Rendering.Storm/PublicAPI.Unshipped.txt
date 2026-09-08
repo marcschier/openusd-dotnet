@@ -1,4 +1,43 @@
 #nullable enable
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumDimension = 4096 -> int
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumIdentities = 4096 -> int
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumInstanceContexts = 16384 -> int
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumManagedBytes = 134217728 -> ulong
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumNativeWorkingBytes = 134217728 -> ulong
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumOutputs = 8 -> int
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumPathBytes = 1048576 -> int
+const OpenUsd.Rendering.Storm.StormAovLimits.MaximumPixels = 1048576 -> int
+OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.Color = 1 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.Depth = 2 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.ElementId = 5 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.InstanceId = 4 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.Neye = 6 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.None = 0 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.Normal = 7 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovKind.PrimId = 3 -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovLimits
+OpenUsd.Rendering.Storm.StormAovLimits.IdentityLimit.get -> int
+OpenUsd.Rendering.Storm.StormAovLimits.InstanceContextLimit.get -> int
+OpenUsd.Rendering.Storm.StormAovLimits.ManagedByteLimit.get -> ulong
+OpenUsd.Rendering.Storm.StormAovLimits.NativeWorkingByteLimit.get -> ulong
+OpenUsd.Rendering.Storm.StormAovLimits.PathByteLimit.get -> int
+OpenUsd.Rendering.Storm.StormAovLimits.PixelLimit.get -> int
+OpenUsd.Rendering.Storm.StormAovLimits.StormAovLimits(int pixelLimit = 1048576, int identityLimit = 4096, int instanceContextLimit = 16384, int pathByteLimit = 1048576, ulong nativeWorkingByteLimit = 134217728, ulong managedByteLimit = 134217728) -> void
+OpenUsd.Rendering.Storm.StormAovRequest
+OpenUsd.Rendering.Storm.StormAovRequest.CallerSceneRevision.get -> ulong?
+OpenUsd.Rendering.Storm.StormAovRequest.CallerStateRevision.get -> ulong
+OpenUsd.Rendering.Storm.StormAovRequest.Camera.get -> OpenUsd.Rendering.CameraState
+OpenUsd.Rendering.Storm.StormAovRequest.Framebuffer.get -> uint
+OpenUsd.Rendering.Storm.StormAovRequest.Height.get -> int
+OpenUsd.Rendering.Storm.StormAovRequest.IncludeIdentities.get -> bool
+OpenUsd.Rendering.Storm.StormAovRequest.Limits.get -> OpenUsd.Rendering.Storm.StormAovLimits!
+OpenUsd.Rendering.Storm.StormAovRequest.Outputs.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovKind>!
+OpenUsd.Rendering.Storm.StormAovRequest.StormAovRequest(int width, int height, uint framebuffer, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovKind>! outputs, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), double timeCode = 0, ulong callerStateRevision = 0, ulong? callerSceneRevision = null, bool includeIdentities = false, bool useSceneLights = false, OpenUsd.Rendering.Storm.StormAovLimits? limits = null) -> void
+OpenUsd.Rendering.Storm.StormAovRequest.TimeCode.get -> double
+OpenUsd.Rendering.Storm.StormAovRequest.UseSceneLights.get -> bool
+OpenUsd.Rendering.Storm.StormAovRequest.Width.get -> int
+static OpenUsd.Rendering.Storm.StormAovLimits.Default.get -> OpenUsd.Rendering.Storm.StormAovLimits!
 OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics
 OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CancelledCommandCount.get -> ulong
 OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CancelledCommandCount.init -> void
@@ -168,6 +207,7 @@ OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Dispose() -> void
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Name.get -> string!
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Pick(OpenUsd.Rendering.RenderPickRequest request) -> OpenUsd.Rendering.RenderPickResult
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Render(int width, int height, uint framebuffer, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong revision = 0, ulong? sceneRevision = null, bool useSceneLights = false) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.RenderAovs(OpenUsd.Rendering.Storm.StormAovRequest! request) -> OpenUsd.Rendering.Storm.StormAovSnapshot!
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetPhysicsDeformationOverrides(OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides! deformations) -> OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetPhysicsTransformOverrides(OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides! overrides) -> OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetSelection(OpenUsd.Rendering.SelectionState! selection, System.Numerics.Vector4 color) -> void
@@ -298,3 +338,127 @@ static OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.IsDomainSupported(
 ~override OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.ToString() -> string
 ~override OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.ToString() -> string
+~override OpenUsd.Rendering.Storm.StormAovClipPlane.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.StormAovClipPlane.ToString() -> string
+~override OpenUsd.Rendering.Storm.StormAovColor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.StormAovColor.ToString() -> string
+~override OpenUsd.Rendering.Storm.StormAovNeye.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.StormAovNeye.ToString() -> string
+OpenUsd.Rendering.Storm.StormAovCamera
+OpenUsd.Rendering.Storm.StormAovCamera.ClipPlanes.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovClipPlane>!
+OpenUsd.Rendering.Storm.StormAovCamera.Projection.get -> System.Collections.Generic.IReadOnlyList<double>!
+OpenUsd.Rendering.Storm.StormAovCamera.View.get -> System.Collections.Generic.IReadOnlyList<double>!
+OpenUsd.Rendering.Storm.StormAovClipPlane
+OpenUsd.Rendering.Storm.StormAovClipPlane.Deconstruct(out double X, out double Y, out double Z, out double W) -> void
+OpenUsd.Rendering.Storm.StormAovClipPlane.Equals(OpenUsd.Rendering.Storm.StormAovClipPlane other) -> bool
+OpenUsd.Rendering.Storm.StormAovClipPlane.StormAovClipPlane() -> void
+OpenUsd.Rendering.Storm.StormAovClipPlane.StormAovClipPlane(double X, double Y, double Z, double W) -> void
+OpenUsd.Rendering.Storm.StormAovClipPlane.W.get -> double
+OpenUsd.Rendering.Storm.StormAovClipPlane.W.init -> void
+OpenUsd.Rendering.Storm.StormAovClipPlane.X.get -> double
+OpenUsd.Rendering.Storm.StormAovClipPlane.X.init -> void
+OpenUsd.Rendering.Storm.StormAovClipPlane.Y.get -> double
+OpenUsd.Rendering.Storm.StormAovClipPlane.Y.init -> void
+OpenUsd.Rendering.Storm.StormAovClipPlane.Z.get -> double
+OpenUsd.Rendering.Storm.StormAovClipPlane.Z.init -> void
+OpenUsd.Rendering.Storm.StormAovColor
+OpenUsd.Rendering.Storm.StormAovColor.Alpha.get -> System.Half
+OpenUsd.Rendering.Storm.StormAovColor.Alpha.init -> void
+OpenUsd.Rendering.Storm.StormAovColor.Blue.get -> System.Half
+OpenUsd.Rendering.Storm.StormAovColor.Blue.init -> void
+OpenUsd.Rendering.Storm.StormAovColor.Deconstruct(out System.Half Red, out System.Half Green, out System.Half Blue, out System.Half Alpha) -> void
+OpenUsd.Rendering.Storm.StormAovColor.Equals(OpenUsd.Rendering.Storm.StormAovColor other) -> bool
+OpenUsd.Rendering.Storm.StormAovColor.Green.get -> System.Half
+OpenUsd.Rendering.Storm.StormAovColor.Green.init -> void
+OpenUsd.Rendering.Storm.StormAovColor.Red.get -> System.Half
+OpenUsd.Rendering.Storm.StormAovColor.Red.init -> void
+OpenUsd.Rendering.Storm.StormAovColor.StormAovColor() -> void
+OpenUsd.Rendering.Storm.StormAovColor.StormAovColor(System.Half Red, System.Half Green, System.Half Blue, System.Half Alpha) -> void
+OpenUsd.Rendering.Storm.StormAovDepthConvention
+OpenUsd.Rendering.Storm.StormAovDepthConvention.None = 0 -> OpenUsd.Rendering.Storm.StormAovDepthConvention
+OpenUsd.Rendering.Storm.StormAovDepthConvention.OpenGlWindow = 1 -> OpenUsd.Rendering.Storm.StormAovDepthConvention
+OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovFormat.Float16Vec4 = 1 -> OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovFormat.Float32 = 2 -> OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovFormat.Int32 = 3 -> OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovFormat.None = 0 -> OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovFormat.UNorm8Vec4 = 4 -> OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovNeye
+OpenUsd.Rendering.Storm.StormAovNeye.Deconstruct(out byte X, out byte Y, out byte Z, out byte W) -> void
+OpenUsd.Rendering.Storm.StormAovNeye.Equals(OpenUsd.Rendering.Storm.StormAovNeye other) -> bool
+OpenUsd.Rendering.Storm.StormAovNeye.StormAovNeye() -> void
+OpenUsd.Rendering.Storm.StormAovNeye.StormAovNeye(byte X, byte Y, byte Z, byte W) -> void
+OpenUsd.Rendering.Storm.StormAovNeye.W.get -> byte
+OpenUsd.Rendering.Storm.StormAovNeye.W.init -> void
+OpenUsd.Rendering.Storm.StormAovNeye.X.get -> byte
+OpenUsd.Rendering.Storm.StormAovNeye.X.init -> void
+OpenUsd.Rendering.Storm.StormAovNeye.Y.get -> byte
+OpenUsd.Rendering.Storm.StormAovNeye.Y.init -> void
+OpenUsd.Rendering.Storm.StormAovNeye.Z.get -> byte
+OpenUsd.Rendering.Storm.StormAovNeye.Z.init -> void
+OpenUsd.Rendering.Storm.StormAovOrigin
+OpenUsd.Rendering.Storm.StormAovOrigin.None = 0 -> OpenUsd.Rendering.Storm.StormAovOrigin
+OpenUsd.Rendering.Storm.StormAovOrigin.TopLeft = 1 -> OpenUsd.Rendering.Storm.StormAovOrigin
+OpenUsd.Rendering.Storm.StormAovOutput
+OpenUsd.Rendering.Storm.StormAovOutput.DepthConvention.get -> OpenUsd.Rendering.Storm.StormAovDepthConvention
+OpenUsd.Rendering.Storm.StormAovOutput.Format.get -> OpenUsd.Rendering.Storm.StormAovFormat
+OpenUsd.Rendering.Storm.StormAovOutput.Height.get -> int
+OpenUsd.Rendering.Storm.StormAovOutput.Kind.get -> OpenUsd.Rendering.Storm.StormAovKind
+OpenUsd.Rendering.Storm.StormAovOutput.Origin.get -> OpenUsd.Rendering.Storm.StormAovOrigin
+OpenUsd.Rendering.Storm.StormAovOutput.ResolvedMultisample.get -> bool
+OpenUsd.Rendering.Storm.StormAovOutput.RowStrideBytes.get -> int
+OpenUsd.Rendering.Storm.StormAovOutput.Status.get -> OpenUsd.Rendering.Storm.StormAovStatus
+OpenUsd.Rendering.Storm.StormAovOutput.Width.get -> int
+OpenUsd.Rendering.Storm.StormAovOutput<TPixel>
+OpenUsd.Rendering.Storm.StormAovOutput<TPixel>.GetPixel(int x, int y) -> TPixel
+OpenUsd.Rendering.Storm.StormAovOutput<TPixel>.Pixels.get -> System.Collections.Generic.IReadOnlyList<TPixel>!
+OpenUsd.Rendering.Storm.StormAovSnapshot
+OpenUsd.Rendering.Storm.StormAovSnapshot.AppliedCamera.get -> OpenUsd.Rendering.Storm.StormAovCamera!
+OpenUsd.Rendering.Storm.StormAovSnapshot.CallerSceneRevision.get -> ulong?
+OpenUsd.Rendering.Storm.StormAovSnapshot.CallerStateRevision.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.CaptureSequence.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.GetOutput(OpenUsd.Rendering.Storm.StormAovKind kind) -> OpenUsd.Rendering.Storm.StormAovOutput!
+OpenUsd.Rendering.Storm.StormAovSnapshot.GetOutput<TPixel>(OpenUsd.Rendering.Storm.StormAovKind kind) -> OpenUsd.Rendering.Storm.StormAovOutput<TPixel>!
+OpenUsd.Rendering.Storm.StormAovSnapshot.Height.get -> int
+OpenUsd.Rendering.Storm.StormAovSnapshot.ManagedStorageUpperBound.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.NativeOwnedBytes.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.NativeRetainedScratchUpperBound.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.NativeWorkingBytesUpperBound.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.Outputs.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovOutput!>!
+OpenUsd.Rendering.Storm.StormAovSnapshot.TimeCode.get -> double
+OpenUsd.Rendering.Storm.StormAovSnapshot.UseSceneLights.get -> bool
+OpenUsd.Rendering.Storm.StormAovSnapshot.Width.get -> int
+OpenUsd.Rendering.Storm.StormAovStatus
+OpenUsd.Rendering.Storm.StormAovStatus.Absent = 3 -> OpenUsd.Rendering.Storm.StormAovStatus
+OpenUsd.Rendering.Storm.StormAovStatus.NotRequested = 0 -> OpenUsd.Rendering.Storm.StormAovStatus
+OpenUsd.Rendering.Storm.StormAovStatus.Ready = 1 -> OpenUsd.Rendering.Storm.StormAovStatus
+OpenUsd.Rendering.Storm.StormAovStatus.Unsupported = 2 -> OpenUsd.Rendering.Storm.StormAovStatus
+override OpenUsd.Rendering.Storm.StormAovClipPlane.GetHashCode() -> int
+override OpenUsd.Rendering.Storm.StormAovColor.GetHashCode() -> int
+override OpenUsd.Rendering.Storm.StormAovNeye.GetHashCode() -> int
+static OpenUsd.Rendering.Storm.StormAovClipPlane.operator !=(OpenUsd.Rendering.Storm.StormAovClipPlane left, OpenUsd.Rendering.Storm.StormAovClipPlane right) -> bool
+static OpenUsd.Rendering.Storm.StormAovClipPlane.operator ==(OpenUsd.Rendering.Storm.StormAovClipPlane left, OpenUsd.Rendering.Storm.StormAovClipPlane right) -> bool
+static OpenUsd.Rendering.Storm.StormAovColor.operator !=(OpenUsd.Rendering.Storm.StormAovColor left, OpenUsd.Rendering.Storm.StormAovColor right) -> bool
+static OpenUsd.Rendering.Storm.StormAovColor.operator ==(OpenUsd.Rendering.Storm.StormAovColor left, OpenUsd.Rendering.Storm.StormAovColor right) -> bool
+static OpenUsd.Rendering.Storm.StormAovNeye.operator !=(OpenUsd.Rendering.Storm.StormAovNeye left, OpenUsd.Rendering.Storm.StormAovNeye right) -> bool
+static OpenUsd.Rendering.Storm.StormAovNeye.operator ==(OpenUsd.Rendering.Storm.StormAovNeye left, OpenUsd.Rendering.Storm.StormAovNeye right) -> bool
+OpenUsd.Rendering.Storm.StormAovIdentity
+OpenUsd.Rendering.Storm.StormAovIdentity.DecodedInstanceIndex.get -> int?
+OpenUsd.Rendering.Storm.StormAovIdentity.InstancerContext.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovInstanceContext!>!
+OpenUsd.Rendering.Storm.StormAovIdentity.InstancerPath.get -> string?
+OpenUsd.Rendering.Storm.StormAovIdentity.PrimPath.get -> string?
+OpenUsd.Rendering.Storm.StormAovIdentity.RawInstanceId.get -> int
+OpenUsd.Rendering.Storm.StormAovIdentity.RawPrimId.get -> int
+OpenUsd.Rendering.Storm.StormAovIdentity.Status.get -> OpenUsd.Rendering.Storm.StormAovIdentityStatus
+OpenUsd.Rendering.Storm.StormAovIdentityStatus
+OpenUsd.Rendering.Storm.StormAovIdentityStatus.None = 0 -> OpenUsd.Rendering.Storm.StormAovIdentityStatus
+OpenUsd.Rendering.Storm.StormAovIdentityStatus.Resolved = 1 -> OpenUsd.Rendering.Storm.StormAovIdentityStatus
+OpenUsd.Rendering.Storm.StormAovIdentityStatus.Unresolved = 2 -> OpenUsd.Rendering.Storm.StormAovIdentityStatus
+OpenUsd.Rendering.Storm.StormAovInstanceContext
+OpenUsd.Rendering.Storm.StormAovInstanceContext.InstanceIndex.get -> int
+OpenUsd.Rendering.Storm.StormAovInstanceContext.InstancerPath.get -> string!
+OpenUsd.Rendering.Storm.StormAovSnapshot.GetIdentity(int x, int y) -> OpenUsd.Rendering.Storm.StormAovIdentity?
+OpenUsd.Rendering.Storm.StormAovSnapshot.Identities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovIdentity!>!
+OpenUsd.Rendering.Storm.StormAovSnapshot.IdentityIndices.get -> System.Collections.Generic.IReadOnlyList<uint>!
+OpenUsd.Rendering.Storm.StormAovSnapshot.IdentityStatus.get -> OpenUsd.Rendering.Storm.StormAovStatus
+OpenUsd.Rendering.Storm.StormAovSnapshot.InstanceContexts.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Storm.StormAovInstanceContext!>!

@@ -42,7 +42,7 @@ public sealed class ViewerSettingsStoreTests
             await Assert.That(loaded.Settings == first || loaded.Settings == second).IsTrue();
             await Assert.That(Directory.GetFiles(root, "*.tmp")).IsEmpty();
             string[] lines = await File.ReadAllLinesAsync(store.StorePath);
-            await Assert.That(lines[0]).IsEqualTo("openusd-viewer-settings=3");
+            await Assert.That(lines[0]).IsEqualTo("openusd-viewer-settings=4");
             await Assert.That(lines.Any(line => line.StartsWith(
                 "snapTimelineToFrames=",
                 StringComparison.Ordinal))).IsTrue();
@@ -94,8 +94,6 @@ public sealed class ViewerSettingsStoreTests
     [Arguments("openusd-viewer-settings=2\ndiagnosticsVisible=maybe")]
     [Arguments("openusd-viewer-settings=2\nrenderer=Unknown")]
     [Arguments("openusd-viewer-settings=2\nwindowWidth=1200\nwindowWidth=1300")]
-    [Arguments("openusd-viewer-settings=2\nselectedTabId=settings")]
-    [Arguments("openusd-viewer-settings=2\nselectedTabId=bogus-tab")]
     [Arguments("openusd-viewer-settings=1\nselectedTab=10")]
     [Arguments("openusd-viewer-settings=1\nselectedTab=-1")]
     [Arguments("openusd-viewer-settings=1\nselectedTab=nope")]
@@ -106,6 +104,42 @@ public sealed class ViewerSettingsStoreTests
         await Assert.That(result.Status).IsEqualTo(ViewerSettingsLoadStatus.Malformed);
         await Assert.That(result.Settings).IsEqualTo(ViewerSettings.Default);
         await Assert.That(result.Diagnostic).IsNotNull();
+    }
+
+    [Test]
+    [Arguments(2)]
+    [Arguments(4)]
+    public async Task RemovedTabsAndOffscreenDimensionsDoNotDiscardOtherSavedPreferences(int version)
+    {
+        ViewerSettingsLoadResult result = ViewerSettingsStore.Parse(
+            $"openusd-viewer-settings={version}\n" +
+            "selectedTabId=removed-panel\nwindowWidth=99999\nwindowHeight=-250\n" +
+            "stagePanelWidth=9000\ninspectorPanelWidth=NaN\n" +
+            "stagePanelVisible=false\ninspectorPanelVisible=true\ntimelineVisible=false\n" +
+            "diagnosticsVisible=true\nrenderer=Vulkan\ntheme=dark\n" +
+            "pickTarget=edge\nselectionMode=xray\nsnapTimelineToFrames=true\n" +
+            "colorManagementEnabled=true\ncolorManagementSourceColorSpace=ACEScg\n");
+
+        await Assert.That(result.Status).IsEqualTo(version == 4
+            ? ViewerSettingsLoadStatus.Loaded
+            : ViewerSettingsLoadStatus.Migrated);
+        await Assert.That(result.Settings.SelectedTabId).IsEqualTo("properties");
+        await Assert.That(result.Settings.WindowWidth).IsEqualTo(7680);
+        await Assert.That(result.Settings.WindowHeight).IsEqualTo(600);
+        await Assert.That(result.Settings.StagePanelWidth).IsEqualTo(1600);
+        await Assert.That(result.Settings.InspectorPanelWidth).IsEqualTo(340);
+        await Assert.That(result.Settings.StagePanelVisible).IsFalse();
+        await Assert.That(result.Settings.InspectorPanelVisible).IsTrue();
+        await Assert.That(result.Settings.TimelineVisible).IsFalse();
+        await Assert.That(result.Settings.DiagnosticsVisible).IsTrue();
+        await Assert.That(result.Settings.RendererPreference).IsEqualTo("Vulkan");
+        await Assert.That(result.Settings.ThemePreference).IsEqualTo(ViewerThemePreference.Dark);
+        await Assert.That(result.Settings.PickTarget).IsEqualTo("edge");
+        await Assert.That(result.Settings.SelectionMode).IsEqualTo("xray");
+        await Assert.That(result.Settings.SnapTimelineToFrames).IsTrue();
+        await Assert.That(result.Settings.ColorManagement.Enabled).IsTrue();
+        await Assert.That(result.Settings.ColorManagement.SourceColorSpace).IsEqualTo("ACEScg");
+        await Assert.That(result.Diagnostic).Contains("layout");
     }
 
     /// <summary>
@@ -144,7 +178,7 @@ public sealed class ViewerSettingsStoreTests
             $"pickTarget={persistedTarget}\n" +
             $"selectionMode={persistedMode}\n");
 
-        await Assert.That(result.Status).IsEqualTo(ViewerSettingsLoadStatus.Loaded);
+        await Assert.That(result.Status).IsEqualTo(ViewerSettingsLoadStatus.Migrated);
         await Assert.That(result.Settings.PickTarget).IsEqualTo(expectedTarget);
         await Assert.That(result.Settings.SelectionMode).IsEqualTo(expectedMode);
     }
@@ -259,7 +293,7 @@ public sealed class ViewerSettingsStoreTests
     public async Task MissingSelectedTabIdDefaultsToProperties()
     {
         ViewerSettingsLoadResult result = ViewerSettingsStore.Parse(
-            "openusd-viewer-settings=3\nwindowWidth=1280\n");
+            "openusd-viewer-settings=4\nwindowWidth=1280\n");
 
         await Assert.That(result.Status).IsEqualTo(ViewerSettingsLoadStatus.Loaded);
         await Assert.That(result.Settings.SelectedTabId)

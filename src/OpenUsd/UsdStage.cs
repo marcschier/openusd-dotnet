@@ -54,6 +54,15 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
     /// <summary>Opens an existing stage.</summary>
     public static UsdStage Open(string path) => new(OpenUsdNativeRuntime.OpenStage(path));
 
+    /// <summary>Opens a filesystem text-USD stage with a native-verified portable-review source origin.</summary>
+    /// <remarks>
+    /// Verifies admitted source and dependency bytes before authoring. Unverified cached, crate, custom
+    /// resolver, package and template domains require explicit reconciliation or remain unsupported.
+    /// Normal <see cref="Open(string)"/> support is unchanged. This never saves or rewrites source files.
+    /// </remarks>
+    public static UsdStage OpenForReview(string sourcePath) =>
+        new(OpenUsdNativeRuntime.OpenStageForReview(sourcePath));
+
     /// <summary>Opens an existing stage whose asset resolution uses a resolver context.</summary>
     /// <remarks>
     /// The context is owned by the stage for the lifetime of its composition, so callers do not
@@ -89,6 +98,36 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
 
     /// <summary>Gets the serial advanced by OpenUSD object-change notices.</summary>
     public ulong ChangeSerial => Native.ChangeSerial;
+
+    /// <summary>Reads a bounded, immutable native hierarchy snapshot in one bulk query.</summary>
+    /// <remarks>
+    /// Includes all composed prim classifications and separate shared prototypes. Quotas fail
+    /// explicitly. Inspect <see cref="UsdHierarchySnapshot.IsComplete"/> for deferred variant metadata.
+    /// </remarks>
+    public UsdHierarchySnapshot GetHierarchySnapshot(UsdHierarchyLimits? limits = null)
+    {
+        limits ??= UsdHierarchyLimits.Default;
+        return new UsdHierarchySnapshot(
+            OpenUsdNativeRuntime.GetHierarchySnapshot(Native, limits.ToNative()), limits);
+    }
+
+    /// <summary>Reads a bounded, immutable selected-prim property snapshot in one native query.</summary>
+    /// <remarks>
+    /// A null time selects USD default time. Rows are complete or quota-refused; every unavailable
+    /// preview is explicit. This composed inspection result is not exact authored edit/undo state.
+    /// </remarks>
+    public UsdPrimPropertySnapshot GetPrimPropertySnapshot(
+        string primPath, double? timeCode = null, UsdPropertyInspectionLimits? limits = null)
+    {
+        UsdPath.ValidateAbsolutePrimPath(primPath);
+        if (timeCode.HasValue && !double.IsFinite(timeCode.Value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeCode), "Property inspection time must be finite.");
+        }
+        limits ??= UsdPropertyInspectionLimits.Default;
+        return new UsdPrimPropertySnapshot(
+            OpenUsdNativeRuntime.GetPrimPropertySnapshot(Native, primPath, timeCode, limits.ToNative()), limits);
+    }
 
     /// <summary>Gets or sets the composed start time code.</summary>
     public double StartTimeCode

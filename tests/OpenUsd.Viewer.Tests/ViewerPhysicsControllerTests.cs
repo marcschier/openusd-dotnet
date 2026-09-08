@@ -12,6 +12,29 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerPhysicsControllerTests
 {
     [Test]
+    public async Task DocumentSuspensionKeepsPreviewWritesQueuedUntilResumeOrDisposal()
+    {
+        var factory = new FakePhysicsTransportFactory();
+        await using var controller = NewController(factory, new FakePhysicsClock());
+        await controller.EnableAsync();
+        await controller.SuspendDocumentWritesAsync(CancellationToken.None);
+
+        Task<string> preview = controller.SetPreviewAsync(true);
+        await Assert.That(preview.IsCompleted).IsFalse();
+        await Assert.That(factory.Transport.PreviewApplications).IsEqualTo(0);
+        controller.ResumeDocumentWrites();
+        await preview;
+        await Assert.That(factory.Transport.PreviewApplications).IsEqualTo(1);
+
+        await controller.SuspendDocumentWritesAsync(CancellationToken.None);
+        Task<string> cancelled = controller.SetPreviewAsync(false);
+        await controller.DisposeAsync();
+        await cancelled;
+        await Assert.That(factory.Transport.PreviewApplications).IsEqualTo(1);
+        await Assert.That(controller.Snapshot.IsEnabled).IsFalse();
+    }
+
+    [Test]
     public async Task PhysicsIsNotCreatedUntilItIsRequested()
     {
         var factory = new FakePhysicsTransportFactory();

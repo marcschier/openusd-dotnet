@@ -41,14 +41,16 @@ public sealed class ViewerMenuShellTests
         string markup = await LoadMainWindowMarkupAsync();
 
         await Assert.That(markup).Contains("x:Name=\"ViewerToolbarGrid\"");
-        await Assert.That(markup).Contains("ColumnDefinitions=\"Auto,Auto,Auto,Auto,*,Auto\"");
+        await Assert.That(markup).Contains("ColumnDefinitions=\"Auto,Auto,*,Auto,Auto,Auto\"");
         await Assert.That(markup).Contains("x:Name=\"OpenStageButton\"");
         await Assert.That(markup).Contains("x:Name=\"ReloadStageButton\"");
         await Assert.That(markup).Contains("x:Name=\"RendererSelector\"");
         await Assert.That(markup).Contains("x:Name=\"FrameSelectedButton\"");
+        await Assert.That(markup).Contains("x:Name=\"CommandPaletteButton\"");
+        await Assert.That(markup).Contains("x:Name=\"WorkspaceCaptureButton\"");
 
-        // The row that carries Menu/Open/Reload/Renderer/Frame Selected must not be split across
-        // several rows the way the old three-row toolbar was.
+        // Discovery, inspection, framing and capture share the existing row; renderer and
+        // reload remain in their menus rather than adding another permanent chrome row.
         await Assert.That(markup).DoesNotContain("RowDefinitions=\"Auto,Auto,Auto\"");
     }
 
@@ -59,7 +61,7 @@ public sealed class ViewerMenuShellTests
 
         foreach (string header in new[]
         {
-            "_File", "_View", "_Render", "_Camera", "_Physics", "_Tools", "_Help",
+            "_File", "_Edit", "_View", "_Render", "_Camera", "_Physics", "_Tools", "_Help",
         })
         {
             await Assert.That(markup).Contains($"Header=\"{header}\"");
@@ -262,7 +264,8 @@ public sealed class ViewerMenuShellTests
             FindRepositoryRoot(), "src", "OpenUsd.Viewer", "MainWindow.ColorManagement.cs"));
         await Assert.That(colorManagement).Contains("internal async Task ResetLayoutAsync()");
         await Assert.That(colorManagement).Contains("ViewerLayoutReset.RunAsync(");
-        await Assert.That(colorManagement).Contains("ViewerSettings.Default,");
+        await Assert.That(colorManagement).Contains(
+            "ViewerSettings.Default with { ThemePreference = _settings.ThemePreference },");
     }
 
     [Test]

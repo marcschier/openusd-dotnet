@@ -109,9 +109,12 @@ public sealed class PreviewSilkFrameSourceFactory(
     }
 }
 
-internal sealed class PreviewSilkFrameSource : IPreviewFrameSource, IPreviewDiagnosticSource
+internal sealed class PreviewSilkFrameSource
+    : IPreviewFrameSource, IPreviewDiagnosticSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource
 {
     private readonly Func<CaptureView, int, int, CapturedFrame> _capture;
+    private readonly Func<CaptureView, int, int, long, CancellationToken, RenderJobImage>? _captureDepth;
+    private readonly Func<CaptureView, int, int, long, bool, CancellationToken, RenderJobImage>? _captureHdr;
     private IDisposable? _capturer;
     private IDisposable? _device;
     private IDisposable? _session;
@@ -142,6 +145,49 @@ internal sealed class PreviewSilkFrameSource : IPreviewFrameSource, IPreviewDiag
             device,
             source)
     {
+        _captureDepth = (view, width, height, maximumBytes, cancellationToken) =>
+        {
+            SilkFrameCaptureResult result = capturer.CaptureWithDepth(
+                session, width, height, RenderSettings.PresentationDefault,
+                new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes),
+                view.TimeCode, view.Camera, cancellationToken);
+            SilkDepthCaptureResult depth = result.Depth ??
+                throw new InvalidDataException("The depth capture returned no depth plane.");
+            if (depth.Convention != SilkDepthConvention.NormalizedDeviceDepthZeroToOne)
+            {
+                throw new NotSupportedException("The depth convention cannot be represented by this disk job.");
+            }
+            return new RenderJobImage(result.Width, result.Height, result.Rgba, Rgba8RowOrder.TopDown)
+            {
+                DeviceDepth = new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values),
+                Diagnostics = result.Diagnostics
+            };
+        };
+        _captureHdr = (view, width, height, maximumBytes, includeDepth, cancellationToken) =>
+        {
+            SilkFrameCaptureResult result = capturer.CaptureWithHdrColor(
+                session, width, height, RenderSettings.PresentationDefault,
+                new SilkHdrColorCaptureOptions(includeDepth, maximumReadbackBytes: maximumBytes),
+                view.TimeCode, view.Camera, cancellationToken);
+            SilkHdrColorCaptureResult hdr = result.HdrColor ??
+                throw new InvalidDataException("The HDR capture returned no HDR plane.");
+            if (hdr.Convention != SilkHdrColorConvention.RendererWorkingCompositedBeforeExposureAndDisplay)
+            {
+                throw new NotSupportedException("The HDR convention cannot be represented by this disk job.");
+            }
+            if (result.Depth is { } depth &&
+                depth.Convention != SilkDepthConvention.NormalizedDeviceDepthZeroToOne)
+            {
+                throw new NotSupportedException("The depth convention cannot be represented by this disk job.");
+            }
+            return new RenderJobImage(result.Width, result.Height, result.Rgba, Rgba8RowOrder.TopDown)
+            {
+                HdrColor = new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float),
+                DeviceDepth = result.Depth is { } values
+                    ? new RenderJobDeviceDepth(values.Width, values.Height, values.Values) : null,
+                Diagnostics = result.Diagnostics
+            };
+        };
     }
 
     internal PreviewSilkFrameSource(
@@ -178,6 +224,31 @@ internal sealed class PreviewSilkFrameSource : IPreviewFrameSource, IPreviewDiag
         CapturedFrame frame = _capture(view, width, height);
         Diagnostics = frame.Diagnostics;
         return frame.Image;
+    }
+
+    public RenderJobImage CaptureWithDepth(
+        CaptureView view, int width, int height, long maximumReadbackBytes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ObjectDisposedException.ThrowIf(_teardownStarted, this);
+        RenderJobImage result = (_captureDepth ??
+            throw new NotSupportedException("The configured preview source does not expose device depth."))(
+                view, width, height, maximumReadbackBytes, cancellationToken);
+        Diagnostics = result.Diagnostics;
+        return result;
+    }
+
+    public RenderJobImage CaptureWithHdrColor(
+        CaptureView view, int width, int height, long maximumReadbackBytes,
+        bool includeDepth, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ObjectDisposedException.ThrowIf(_teardownStarted, this);
+        RenderJobImage result = (_captureHdr ??
+            throw new NotSupportedException("The configured preview source does not expose HDR color."))(
+                view, width, height, maximumReadbackBytes, includeDepth, cancellationToken);
+        Diagnostics = result.Diagnostics;
+        return result;
     }
 
     public void Dispose()

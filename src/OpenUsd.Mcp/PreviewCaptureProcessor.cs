@@ -33,7 +33,7 @@ internal interface IPreviewDiagnosticSource
     RenderDiagnosticsState Diagnostics { get; }
 }
 
-public sealed class PreviewCaptureProcessor :
+public sealed partial class PreviewCaptureProcessor :
     IPreviewCaptureProcessor,
     IResettablePreviewCaptureProcessor,
     IDisposable

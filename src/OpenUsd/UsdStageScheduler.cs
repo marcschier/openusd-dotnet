@@ -19,7 +19,7 @@ namespace OpenUsd;
 /// </remarks>
 [ExcludeFromCodeCoverage(
     Justification = "Exercised by clean native and NativeAOT integration probes.")]
-public sealed class UsdStageScheduler : IAsyncDisposable
+public sealed partial class UsdStageScheduler : IAsyncDisposable
 {
     private const int DefaultNotificationCapacity = 64;
 
@@ -81,6 +81,28 @@ public sealed class UsdStageScheduler : IAsyncDisposable
             notificationCapacity);
     }
 
+    /// <summary>Opens a native-verified portable-review source on the scheduler owner thread.</summary>
+    /// <remarks>
+    /// Uses <see cref="UsdStage.OpenForReview"/> without retroactively binding a legacy stage.
+    /// Unsupported or unverifiable origins fail explicitly; ordinary <see cref="Open(string, int)"/>
+    /// behavior is unchanged.
+    /// </remarks>
+    public static UsdStageScheduler OpenForReview(string sourcePath, int capacity = 1024) =>
+        OpenForReview(sourcePath, capacity, DefaultNotificationCapacity);
+
+    /// <summary>Opens a verified review source with bounded work and change-notification queues.</summary>
+    public static UsdStageScheduler OpenForReview(
+        string sourcePath,
+        int capacity,
+        int notificationCapacity)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        return new UsdStageScheduler(
+            () => UsdStage.OpenForReview(sourcePath),
+            capacity,
+            notificationCapacity);
+    }
+
     /// <summary>Creates a scheduler that creates a new stage on its owner thread.</summary>
     public static UsdStageScheduler Create(string path, int capacity = 1024) =>
         Create(path, capacity, DefaultNotificationCapacity);
@@ -119,34 +141,40 @@ public sealed class UsdStageScheduler : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ThrowIfOwnerThreadReentrancy();
+        var item = new StageWorkItem<UsdStageRenderSource>(
+            stage => new UsdStageRenderSource(this, stage.Native.Retain()),
+            UsdStageInvalidationKind.Full,
+            _changes,
+            cancellationToken,
+            allowStageBoundResult: true,
+            recordInvalidation: RecordInvalidation);
         lock (_lifetimeGate)
         {
-            ObjectDisposedException.ThrowIf(_disposeState != 0, this);
+            AdmitSubmission();
+            // Keep acquisition failure cleanup inside the fence after its queue write completes.
+            _pendingSubmissions++;
             _activeRenderSources++;
         }
 
-        return AcquireRenderSourceCoreAsync(cancellationToken);
+        return AcquireRenderSourceCoreAsync(item, cancellationToken);
     }
 
     private async ValueTask<UsdStageRenderSource> AcquireRenderSourceCoreAsync(
+        StageWorkItem<UsdStageRenderSource> item,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await EnqueueAsync(
-                new StageWorkItem<UsdStageRenderSource>(
-                    stage => new UsdStageRenderSource(this, stage.Native.Retain()),
-                    UsdStageInvalidationKind.Full,
-                    _changes,
-                    cancellationToken,
-                    allowStageBoundResult: true,
-                    recordInvalidation: RecordInvalidation),
-                cancellationToken).ConfigureAwait(false);
+            return await EnqueueAdmittedAsync(item, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
             ReleaseRenderSourceRegistration();
             throw;
+        }
+        finally
+        {
+            CompleteSubmission();
         }
     }
 
@@ -262,6 +290,11 @@ public sealed class UsdStageScheduler : IAsyncDisposable
         {
             if (_disposeState == 0)
             {
+                if (_retirement is not null)
+                {
+                    throw new InvalidOperationException(
+                        "The active retirement lease owns scheduler disposal.");
+                }
                 if (_activeRenderSources != 0)
                 {
                     throw new InvalidOperationException(
@@ -289,10 +322,12 @@ public sealed class UsdStageScheduler : IAsyncDisposable
     {
         lock (_lifetimeGate)
         {
-            ObjectDisposedException.ThrowIf(_disposeState != 0, this);
+            AdmitSubmission();
             _activeRenderSources++;
         }
     }
+
+    internal void CompleteRenderSourceAcquisition() => CompleteSubmission();
 
     internal UsdStageSchedulerDiagnosticSnapshot GetDiagnosticSnapshot()
     {
@@ -334,13 +369,31 @@ public sealed class UsdStageScheduler : IAsyncDisposable
         }
     }
 
-    private async ValueTask<T> EnqueueAsync<T>(
+    private ValueTask<T> EnqueueAsync<T>(
+        StageWorkItem<T> item,
+        CancellationToken cancellationToken)
+    {
+        lock (_lifetimeGate)
+        {
+            AdmitSubmission();
+        }
+        return EnqueueAdmittedAsync(item, cancellationToken);
+    }
+
+    private async ValueTask<T> EnqueueAdmittedAsync<T>(
         StageWorkItem<T> item,
         CancellationToken cancellationToken)
     {
         try
         {
-            await _queue.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _queue.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                CompleteSubmission();
+            }
         }
         catch (ChannelClosedException exception)
         {

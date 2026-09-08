@@ -313,33 +313,10 @@ internal static class ViewerPhysicsValueParser
         out string error)
     {
         value = ViewerPhysicsValue.Unauthored(ViewerPhysicsValueKind.Vector3);
-        string cleaned = text.Replace("(", " ", StringComparison.Ordinal)
-            .Replace(")", " ", StringComparison.Ordinal)
-            .Replace(",", " ", StringComparison.Ordinal);
-        string[] parts = cleaned.Split(
-            ' ',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length != 3)
-        {
-            error = "Enter three numbers, for example 0 -9.81 0.";
-            return false;
-        }
-
         Span<double> components = stackalloc double[3];
-        for (int index = 0; index < 3; index++)
+        if (!ViewerNumericComponents.TryParse(text, components, out error))
         {
-            if (!double.TryParse(
-                    parts[index],
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out double component) ||
-                !double.IsFinite(component))
-            {
-                error = "Every component must be a finite number.";
-                return false;
-            }
-
-            components[index] = component;
+            return false;
         }
 
         value = ViewerPhysicsValue.FromVector(

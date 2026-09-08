@@ -145,6 +145,36 @@ After a Release build, run the Pester-free runner contract checks with:
 ./eng/test-run-managed-tests.ps1
 ```
 
+### Native Viewer workflow gate
+
+The Windows WGL render job also runs the Viewer document and inspector journeys through
+`eng/run-viewer-workflow-tests.ps1`. It reuses the managed test runner and starts one test
+process per desktop workflow, so Avalonia initialization and native window ownership do not
+leak between scenarios.
+
+```powershell
+.\eng\run-viewer-workflow-tests.ps1 `
+  -NativeRuntimeRoot 'D:\openusd-runtime' `
+  -OutputRoot 'D:\viewer-evidence\new-run'
+```
+
+The explicit runtime must match the built source ABI and contain `bin`, `lib`, and `plugin\usd`.
+The gate builds the current Viewer test project, restoring only after a missing-assets failure;
+`-SkipBuild` instead uses an already-built matching test graph. Use `-ListScenarios` to list
+workflows, or `-Scenario asset-relink` for a focused run. Partial runs are identified as partial
+in the evidence rather than presented as the full registered set.
+
+Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
+history, property pages, hierarchy pages, and visible texture relinking run with their own
+explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and
+source or binary changes during execution. A new output directory receives per-scenario logs and
+an atomic `summary.json` containing source/runtime/test hashes only after the selected scenarios
+succeed. An existing evidence directory is never overwritten; failure restores the caller's
+environment and produces no success summary.
+
+This Windows desktop gate complements backend conformance and clean-package gates; it does not
+claim other-platform execution, unsupported portable input profiles, or full OpenUSD coverage.
+
 ## Performance safety gates
 
 The native-independent performance gate builds the focused TUnit safety project, repeats allocation,
@@ -912,9 +942,10 @@ guards on both entry points are asserted to return `OPENUSD_STATUS_INVALID_ARGUM
 
 `ParityImageComparer` in `OpenUsd.Rendering` is the renderer-neutral core of the parity
 harness. It compares a Storm reference capture with an hdSilk candidate capture as raw
-top-down RGBA8 buffers of identical dimensions, and is deliberately geometry-first: hdSilk
-still shades with an absolute-normal debug visualization, so colour comparison is opt-in and
-disabled by the default `ParityTolerance.Geometry` contract.
+top-down RGBA8 buffers of identical dimensions, and is deliberately geometry-first. Coverage
+and colour are separate metrics: colour comparison is opt-in and disabled by the default
+`ParityTolerance.Geometry` contract. hdSilk's material and lighting output needs the explicit
+colour and feature-sensitivity gates; geometry-only agreement does not establish shading fidelity.
 
 A pixel counts as covered when any channel differs from the declared background by more than
 `BackgroundChannelTolerance`. From the two coverage masks the comparer reports intersection,
@@ -1026,10 +1057,9 @@ an argument buffer, require a buffer-only layout *not* to be refused so the pred
 vacuously rejecting everything, and read the checked `*.metal` sources to prove the switch
 still matches them.
 
-`MetalSampledVolumeConformanceTests` covers the Metal half, which has no executed pixel
-evidence at all: a Metal volume image can only be rendered on macOS and no render job
-captures one. It therefore runs on every host that runs the conformance assembly and proves
-only what a file can prove -- that `MetalSilkGraphicsDevice` still implements
+`MetalSampledVolumeConformanceTests` covers Metal's structural contracts on every host that
+runs the conformance assembly. It proves only what a file can prove -- that
+`MetalSilkGraphicsDevice` still implements
 `ISilkVolumeTextureGraphicsDevice` with the expected `CreateTexture3D` shape, that
 `MetalSilkGraphicsCommandList` still implements `ISilkVolumeTextureCommandList`, that the
 checked `mesh.volume.fragment.metal` binds its `texture3d` and sampler at the argument
@@ -1037,8 +1067,8 @@ indices `MetalShaderResourceIndices` encodes, and that no other checked mesh Met
 declares a `texture3d`. Losing the two implementations is silent rather than loud:
 `SilkMeshRenderer` selects the sampled-volume pipeline only for a device that implements
 them, so a Metal backend without them renders the proxy at the authored uniform density.
-Passing these does not make Metal sampled volumes supported; it only keeps the wiring from
-disappearing between macOS runs.
+Passing these does not establish Metal pixel correctness; it keeps the wiring from
+disappearing between the independent macOS pixel runs below.
 
 #### The executed Metal gate and its promotion step
 
@@ -1064,12 +1094,19 @@ evidence is a wiring fault and always fails the job. A capability skip -- no nat
 or no `hioOpenVDB` reader in the profile -- is a documented outcome that `-AllowCapabilitySkip`
 downgrades to a warning while still recording `status=capability-skip`.
 
-That switch is the promotion gate, and it is the only thing to change. osx-arm64 is
-deliberately absent from the sampled-volume evidence platforms until a run uploads
-`volume-evidence-metal-status.json` with `status=executed`; at that point the switch is
-removed, the Metal gate becomes required evidence on that runner the way the D3D12 WARP gate
-already is on Windows, and osx-arm64 joins the claim. Until then the Metal legs are wired and
-executed but their result is unobserved, which is not the same as passing.
+The Metal promotion is now backed by release run
+[33931868184](https://github.com/marcschier/openusd-dotnet/actions/runs/33931868184), attempt 1,
+at `f33ba5672b8cf854280c3562725475c5ee52664d`. Its
+`render-volume-evidence-osx-arm64-33931868184` artifact reports `status=executed`, no wiring
+failures, and no capability skips. The sampled-versus-uniform comparison measured
+`maxChannelDelta=100`, `meanChannelDelta=19.730324`; shifting the grid measured
+`maxChannelDelta=115`, `meanChannelDelta=2.409473`.
+
+The workflow no longer permits a capability skip for the uniform or sampled Metal case, and
+osx-arm64 joins that subset's evidence platforms. `-SkipDepthGate` remains explicit: the
+96-layer thin-feature/depth-integration case and the impossible-material-combination case
+are separate D3D12/Vulkan evidence. This promotion says nothing about Metal shadows, GPU
+deformation, GPU OCIO, component picking, or CGL-dependent Storm/Metal parity.
 
 ## Windows native Storm child
 
@@ -2561,9 +2598,9 @@ readbacks are already top-down. The driver also maps the exact captured corner b
 colour and forces alpha to opaque for both captures. This corrects clear and
 background representation differences without altering covered RGB pixels. No
 colour-space, premultiplication, material colour, or threshold massaging is
-performed; colour remains a separate opt-in comparer metric because hdSilk still
-shades with its debug absolute-normal model rather than the Storm material and
-headlight path.
+performed. Colour remains a separate opt-in comparer metric with per-scene thresholds,
+because geometry agreement alone cannot prove that a material, texture, or light affected
+the rendered pixels.
 
 The conformance test runs each capture twice and requires identical SHA-256 input
 bytes for Storm and for every hdSilk backend it exercises. It also writes a small
@@ -2574,12 +2611,77 @@ clear colour, matrices, and headlight), and `packageIdentity` (runtime plugin
 and native package hashes). A stored parity result is stale if any of those
 identities changes.
 
+Schema 2 normalizes repository source paths to `/` on every OS and requires every declared
+source input to exist; Unix captures can no longer silently omit Windows-spelled paths.
+`sourceIdentity.hashPolicy` is `sha256-crlf-to-lf`: source and USDA stage hashes and lengths
+describe CRLF-to-LF-normalized bytes, preserving the UTF-8 BOM and lone CR bytes. Hashing
+streams through bounded buffers, including CRLF pairs split across reads. Empty, duplicate
+and escaping source input sets are refused rather than reported as complete evidence.
+Schema 1 source/stage fingerprints use a different policy and must not be compared as if
+they were schema 2. Package file hashes remain raw-byte identities, include both staged
+`bin` and `lib` trees and the executed OpenUsd managed assemblies. Hashing binary payloads
+also streams through bounded buffers. The runner supplies the install metadata from the
+actual selected native tree, including `-NativeInstallRoot` overrides; missing metadata is
+explicitly `unavailable`, not inferred from another platform's default install.
+`OPENUSD_PARITY_RUNTIME_ROOT` makes the staged runtime authoritative for native helper
+search paths, so a helper cannot prepend an older local/sibling shim over the selected archive.
+The runner restores that value and the checkout/metadata environment after execution.
+
+Both primary and perturbation reports include `execution`: local versus GitHub Actions,
+runtime/framework, repository/job, run ID and the actual run attempt. The checkout commit
+and dirty state come from `git` in the runner, not from `GITHUB_SHA`; workflow-run triggers
+can name a different commit from the tree that was checked out. The trigger commit is kept
+separately. Direct invocations without the runner report checkout identity as `unavailable`;
+a dirty checkout is `modified`, not a claim that the committed tree produced those pixels.
+Malformed or missing hosted run coordinates are errors rather than a guessed first attempt.
+Each hdSilk backend also records capabilities from its actual device, including its device
+name, API version and software-device flag. These values and binary identities do not
+invent a vendor driver version that the RHI does not expose.
+
+`parity-capture-corpus.json` inventories the registered cases, linked feature IDs, exact
+reference scope, colour/coverage tolerances and host selection. Its status is
+`planned-not-execution`: listing a case, a feature, or an asset is not proof that it rendered.
+The fixture fingerprint covers the complete `test-assets` tree, including the chase scene
+and its separately documented CC0 texture inputs. Text uses the declared CRLF policy;
+PNG/JPEG/HDR, VDB, Alembic, Draco and Ptex payloads retain raw-byte hashes. Source and fixture
+identities are captured before rendering and rechecked afterward, so changing an input
+mid-capture cannot publish a result as one revision. Headlight direction and colour vectors
+are included explicitly in the serialized camera data instead of empty JSON objects.
+
+After the selected tests succeed, `eng/verify-render-corpus.py` requires the corpus, primary
+images and independent perturbations to agree on source, fixture and run-attempt identities.
+It checks complete scene/backend sets, stage membership in the fingerprinted fixtures,
+positive coverage, repeated image hashes, actual device information, declared colour limits
+and independently recomputed perturbation margins. Measured reference limitations remain
+measured, not required passes. Only then is `parity-capture-status.json` published atomically
+with `status=executed`. Missing reports, malformed numbers, mismatched attempts, unexpected
+skips and insensitive controls fail the runner. A new invocation clears prior result JSON
+before tests, and a rejected classification cannot leave an earlier success status behind.
+
+Repeatability preserves the existing Mesa WGL distinction: colour-sensitive Storm cases and
+every hdSilk case require byte-identical repeat images. Geometry-only Storm cases on Mesa
+may vary in RGB only if their coverage is exactly identical, without edge dilation or any
+changed coverage pixel. The plan records that policy, and a non-byte-identical repeat must
+carry its actual comparison metrics. The classifier rechecks those strict coverage limits;
+it neither labels the hashes identical nor applies this exception to a colour-sensitive case.
+
+The controlled scale fixture is generated deterministically by
+`StormSilkParityCaptureDriverTests.Scale.cs` under the project's MIT license: 10,000 placed
+instances share one triangle prototype. D3D12 WARP and Vulkan gates require one geometry
+build and one instanced draw, visible pixels, byte-stable repeat capture without geometry,
+allocation or texture-upload growth, and complete pixel retirement after a scheduler-owned
+deactivation. They retain the generated USDA and `scale-<backend>-evidence.json`, binding
+its normalized hash, source/execution identity, device and observed metrics. First-frame
+timing is informational, not an FPS claim for shared software-rendering hosts. These scale
+cases supplement the 25-scene reference corpus; they do not silently change its scene count
+or claim executed scale evidence on Metal.
+
 The curated parity set lives under `test-assets/parity/` and is intentionally
 small. `orientation-asymmetric` is the orientation gate: its hook silhouette is
 asymmetric in both axes. `depth-overlap-multiprim` exercises multiple retained
 draws, depth, and per-prim transforms. `material-normals-uv` carries a bound
-PreviewSurface plus authored normals and UVs so colour comparison can be enabled
-when hdSilk leaves debug normal shading. `materials-textures` gates the checked
+PreviewSurface plus authored normals and UVs to exercise that material path.
+`materials-textures` gates the checked
 base-colour texture permutation at max 13 / mean 4.48 channel delta.
 `materialx-standard-surface-constant` is deliberately ungated evidence for the
 MaterialX subset: Storm renders only the PreviewSurface anchor in this harness,

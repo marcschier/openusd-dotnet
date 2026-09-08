@@ -1,0 +1,2 @@
+#pragma once
+#include "@OPENUSD_PROPERTY_PCP_INCLUDE_ROOT@/pxr/usd/sdf/storageAdmission.h"

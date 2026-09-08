@@ -4,8 +4,49 @@ using System.Security.Cryptography;
 
 namespace OpenUsd.Mcp.Tests;
 
-public sealed class ArtifactResourceStoreTests
+public sealed partial class ArtifactResourceStoreTests
 {
+    [Test]
+    [Arguments(0)]
+    [Arguments(128 * 1024)]
+    public async Task ChangedRecordedExtentIsRejectedBeforeCreatingCopyStorage(int changedLength)
+    {
+        using var files = new ResourceStoreTestFiles();
+        byte[] admitted = new byte[4096];
+        string source = files.CreateFile("frame.png", admitted);
+        string recordedHash = Hash(admitted);
+        await File.WriteAllBytesAsync(source, new byte[changedLength]);
+        var store = files.CreateStore(maximumTotalBytes: admitted.Length);
+
+        await Assert.That(async () => await store.AddVerifiedFileAsync(
+            "frame-0", "image/png", source, admitted.Length, recordedHash))
+            .Throws<ArtifactResourceIntegrityException>();
+
+        await Assert.That(store.Count).IsEqualTo(0);
+        await Assert.That(store.TotalBytes).IsEqualTo(0L);
+        await Assert.That(Directory.Exists(files.StoreRoot)).IsFalse();
+    }
+
+    [Test]
+    public async Task VerifiedFilePublicationRejectsChangedBytesBeforeRegisteringAResource()
+    {
+        using var files = new ResourceStoreTestFiles();
+        string source = files.CreateFile("frame.png", [9, 2, 3, 4]);
+        var store = files.CreateStore();
+        const string originalHash = "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a";
+
+        await Assert.That(async () => await store.AddVerifiedFileAsync(
+            "frame-0", "image/png", source, 4, originalHash)).Throws<ArtifactResourceIntegrityException>();
+        await Assert.That(store.Count).IsEqualTo(0);
+        await Assert.That(store.TotalBytes).IsEqualTo(0L);
+        await File.WriteAllBytesAsync(source, [1, 2, 3, 4]);
+        ArtifactResourceDescriptor descriptor = await store.AddVerifiedFileAsync(
+            "frame-0", "image/png", source, 4, originalHash);
+        await File.WriteAllBytesAsync(source, [8, 8, 8, 8]);
+        ArtifactResourceContent? read = await store.ReadAsync(descriptor.ResourceUri);
+        await Assert.That(Convert.ToHexString(read!.Content.Span)).IsEqualTo("01020304");
+    }
+
     [Test]
     public async Task AddsImmutableContentWithOpenUsdResourceUri()
     {
@@ -270,7 +311,9 @@ public sealed class ArtifactResourceStoreTests
     }
 
     [Test]
-    public async Task CancelledFilePublicationRemovesPartialContent()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CancelledFilePublicationRemovesPartialContent(bool batch)
     {
         using var files = new ResourceStoreTestFiles();
         string sourcePath = Path.Combine(files.Root, "large.bin");
@@ -283,17 +326,34 @@ public sealed class ArtifactResourceStoreTests
             stream.SetLength(128L * 1024 * 1024);
         }
 
-        var store = files.CreateStore(maximumTotalBytes: 256L * 1024 * 1024);
-        using var cancellation = new CancellationTokenSource(
-            TimeSpan.FromMilliseconds(1));
-
-        await Assert.That(
-                async () => await store.AddFileAsync(
+        ArtifactResourceFileWrite[] writes = [];
+        if (batch)
+        {
+            string first = files.CreateFile("first.bin", [1, 2, 3, 4]);
+            using FileStream original = File.OpenRead(sourcePath);
+            string expectedHash = Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
+            writes =
+            [
+                new("first", "application/octet-stream", first, 4, Hash([1, 2, 3, 4])),
+                new("cancelled", "application/octet-stream", sourcePath, 128L * 1024 * 1024, expectedHash)
+            ];
+        }
+        using var store = files.CreateStore(maximumTotalBytes: 256L * 1024 * 1024);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(1));
+        if (batch)
+        {
+            await Assert.That(async () => await store.AddVerifiedFilesAsync(writes, cancellation.Token))
+                .Throws<OperationCanceledException>();
+        }
+        else
+        {
+            await Assert.That(async () => await store.AddFileAsync(
                     "cancelled",
                     "application/octet-stream",
                     sourcePath,
                     cancellation.Token))
-            .Throws<OperationCanceledException>();
+                .Throws<OperationCanceledException>();
+        }
         await Assert.That(store.Count).IsEqualTo(0);
         await Assert.That(
                 Directory.Exists(files.StoreRoot)
@@ -313,7 +373,7 @@ public sealed class ArtifactResourceStoreTests
         internal ResourceStoreTestFiles()
         {
             Root = Path.Combine(
-                AppContext.BaseDirectory,
+                Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ?? Path.GetTempPath(),
                 "artifact-store-tests",
                 Guid.NewGuid().ToString("N"));
             StoreRoot = Path.Combine(Root, "store");

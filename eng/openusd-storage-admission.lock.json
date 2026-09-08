@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "2095fafafd033fa23386d7ec6d58c7cc33974518",
+  "accessorVersion": 1,
+  "patches": [
+    {
+      "id": "sdk-storage-admission-v1",
+      "path": "eng\\patches\\openusd\\storage-admission-v1.patch",
+      "sha256": "EE2BA2379795EC569AFBB056D2A5AE1154548E81E88911FF1E75B1B44C06CC0E",
+      "files": [
+        {
+          "path": "pxr\\usd\\sdf\\CMakeLists.txt",
+          "beforeSha256": "146D80BFDC2ADEB1482AF00C908EE713A0C89E135EAEB93BB2B3E4CE7872525B",
+          "afterSha256": "76C79E7B690EE5C5CE4838E234A01B584EC4AFBEF4939177B4BA07F62EF11663"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\crateData.cpp",
+          "beforeSha256": "375F3D96F8634273779E77268E262BAE63395F3C1DC29B8742656EBBF8836B29",
+          "afterSha256": "B5128C8C069EFEEEFBA05EFDDFE61B8C05BA7E25F21AA23005C1F5B2E10F5472"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\crateFile.h",
+          "beforeSha256": "1B9F8ADFE731F24D21C149FEF84B3EA23420970EDE002979C2C84CC350FBA250",
+          "afterSha256": "94BF346B17F2CB9B6F34CE9D11BAC979DA65EA04EDC017DD51A9D962BD23A000"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\crateFile.cpp",
+          "beforeSha256": "6BA71BC4D507F53F150DEAFE900B325DAE62746A710CB7DDB6D91F505D2A2D1D",
+          "afterSha256": "4CE0BC68EFB350D0B1096222BFF9355DED88ECDAA00EDC83359EF3A551AAA51B"
+        },
+        {
+          "path": "pxr\\base\\vt\\arrayEdit.h",
+          "beforeSha256": "DEFB0C313A756B7602813D95B9046CF32C606E02640A12EC7C42CA8EBFE6B36A",
+          "afterSha256": "461C793A83A5ADD94D12EE0F687201B63F9D1F716E83A6BBD7914A4E51772F88"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\storageAdmission.h",
+          "beforeSha256": null,
+          "afterSha256": "A2AF4DDD4643B60448DEAE8192F8D70B171D1DFEBBE635B12AF56646EB94AAA6"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\storageAdmission.cpp",
+          "beforeSha256": null,
+          "afterSha256": "B79BC71234F91D4C953A1A083C99971FEF2078D311747FEC8A7EDC0496402D15"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\listOp.cpp",
+          "beforeSha256": "EE59FFA18FC09398AEDB91C665EFA264AAEEAC344AD2087C92D369754D1B6FDD",
+          "afterSha256": "01448BE874AC780FE09E9E1704A7765DB8B1EB75B57E0F7B384EEC2C7A77BAD4"
+        }
+      ]
+    },
+    {
+      "id": "sdk-render-product-hash-adl",
+      "path": "eng\\patches\\openusd\\render-product-hash-adl.patch",
+      "sha256": "7CA3394CF068DA773A6563421907A3378194CB7080C51C112A446D0090F74DF9",
+      "files": [
+        {
+          "path": "pxr\\imaging\\hd\\renderSettings.cpp",
+          "beforeSha256": "05FF7003E62A6C5EC7F109C140BE91D54A851769A8FA3CB3A323997917073495",
+          "afterSha256": "C0CA1630C270C93DDDF61996FAA068413BF7A9E36FA8E0F2E524456E3F79746F"
+        }
+      ]
+    }
+  ]
+}

@@ -102,6 +102,8 @@ public sealed class ViewerSourceContractTests
     public async Task AutomatedStageOpenReportsEachBlockingBoundary()
     {
         string root = FindRepositoryRoot();
+        string preparation = await File.ReadAllTextAsync(Path.Combine(
+            root, "src", "OpenUsd.Viewer", "ViewerPreparedDocument.cs"));
         string window = await File.ReadAllTextAsync(Path.Combine(
             root,
             "src",
@@ -131,9 +133,6 @@ public sealed class ViewerSourceContractTests
         foreach (string status in new[]
         {
             "Viewer stage open: resolved",
-            "Viewer stage open: validation scheduler starting",
-            "Viewer stage open: validation root layer query starting",
-            "Viewer stage open: validation root layer query completed",
             "Viewer stage open: dispatcher timer armed",
             "Viewer stage open: dispatcher timer not armed",
             "ShouldRunStageOpenDispatcherProbe",
@@ -165,6 +164,10 @@ public sealed class ViewerSourceContractTests
         {
             await Assert.That(window).Contains(status);
         }
+
+        await Assert.That(preparation).Contains("Viewer stage open: validation scheduler starting");
+        await Assert.That(preparation).Contains("Viewer stage open: validation root layer query starting");
+        await Assert.That(preparation).Contains("Viewer stage open: validation root layer query completed");
 
         foreach (string status in new[]
         {
@@ -290,8 +293,9 @@ public sealed class ViewerSourceContractTests
 
         await Assert.That(models).Contains("ViewerDocumentSnapshot BuildDocument(UsdStage stage)");
         await Assert.That(models).Contains(
-            "foreach (UsdPrim root in stage.Traverse().Where(static prim => GetPrimDepth(prim.Path) == 0))");
-        await Assert.That(models).Contains("foreach (UsdPrim child in prim.GetChildren())");
+            "ViewerHierarchySnapshot.FromNative(stage.GetHierarchySnapshot(UsdHierarchyLimits.Viewer))");
+        await Assert.That(models).DoesNotContain("stage.Traverse()");
+        await Assert.That(models).DoesNotContain("foreach (UsdPrim child in prim.GetChildren())");
         await Assert.That(models).Contains("ViewerVariantSetSnapshot[] variantSets = BuildVariantSets(prim);");
         await Assert.That(models).Contains("stage.StartTimeCode");
         await Assert.That(models).Contains("stage.EndTimeCode");
@@ -305,9 +309,10 @@ public sealed class ViewerSourceContractTests
         await Assert.That(window).Contains("await StopCurrentDocumentAsync();");
         await Assert.That(window).Contains("await StopTimelineAsync();");
         await Assert.That(window).Contains("_documentLifetime?.Cancel();");
-        await Assert.That(window).Contains("await _coordinator.DisposeAsync();");
+        await Assert.That(window).Contains("await _coordinator.DisposeAsync(_documentRetirementLease);");
         await Assert.That(window.IndexOf("await StopTimelineAsync();", StringComparison.Ordinal))
-            .IsLessThan(window.IndexOf("await _coordinator.DisposeAsync();", StringComparison.Ordinal));
+            .IsLessThan(window.IndexOf(
+                "await _coordinator.DisposeAsync(_documentRetirementLease);", StringComparison.Ordinal));
     }
 
     [Test]
@@ -883,7 +888,8 @@ public sealed class ViewerSourceContractTests
             "private async Task LoadRecentStagesAsync");
         int cancel = stop.IndexOf("_documentLifetime?.Cancel();", StringComparison.Ordinal);
         int join = stop.IndexOf("await _hostStageReadyTask;", StringComparison.Ordinal);
-        int dispose = stop.IndexOf("await _coordinator.DisposeAsync();", StringComparison.Ordinal);
+        int dispose = stop.IndexOf(
+            "await _coordinator.DisposeAsync(_documentRetirementLease);", StringComparison.Ordinal);
         await Assert.That(cancel).IsGreaterThanOrEqualTo(0);
         await Assert.That(join).IsGreaterThan(cancel);
         await Assert.That(dispose).IsGreaterThan(join);

@@ -2,6 +2,7 @@
     x:Class="OpenUsd.Viewer.BridgeConnectionWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
     AutomationProperties.Name="Omniverse Bridge connection"
     Title="Omniverse Bridge"
     Width="520"
@@ -9,19 +10,22 @@
     MinWidth="420"
     MinHeight="300"
     WindowStartupLocation="CenterOwner">
-  <DockPanel Margin="16">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <DockPanel Margin="{DynamicResource ViewerDialogPadding}">
     <TextBlock
         x:Name="BridgeProviderText"
         DockPanel.Dock="Top"
         AutomationProperties.Name="Bridge provider"
         Text="Bridge provider"
-        FontSize="16"
-        FontWeight="SemiBold"
+        Classes="viewer-heading"
         TextTrimming="CharacterEllipsis"
         Margin="0,0,0,4" />
     <TextBlock
         DockPanel.Dock="Top"
         AutomationProperties.Name="Bridge credential notice"
+        Classes="viewer-secondary"
         Text="The endpoint and its credential are configured by the embedding host. The Viewer never reads, stores, or displays them."
         TextWrapping="Wrap"
         Margin="0,0,0,12" />
@@ -33,6 +37,7 @@
         Margin="0,12,0,0">
       <Button
           x:Name="BridgeConnectButton"
+          Classes="accent"
           AutomationProperties.Name="Connect to the selected Omniverse Bridge session"
           Content="_Connect"
           MinWidth="88"
@@ -88,6 +93,7 @@
           Text="Counters" />
       <TextBlock
           x:Name="BridgeCountersText"
+          Classes="viewer-secondary"
           Grid.Row="2"
           Grid.Column="1"
           AutomationProperties.Name="Omniverse Bridge counters"
@@ -101,7 +107,7 @@
           AutomationProperties.Name="Omniverse Bridge error"
           TextWrapping="Wrap"
           IsVisible="False"
-          Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}" />
+          Classes="viewer-error" />
     </Grid>
   </DockPanel>
 </Window>

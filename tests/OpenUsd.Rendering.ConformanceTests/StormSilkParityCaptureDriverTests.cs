@@ -176,7 +176,11 @@ def Xform "World"
     private const byte MaximumShadedChannelDelta = 16;
 
     private const double MaximumShadedMeanChannelDelta = 8;
-    private static readonly JsonSerializerOptions EvidenceJsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions EvidenceJsonOptions = new()
+    {
+        WriteIndented = true,
+        IncludeFields = true
+    };
 
     [Test]
     public async Task CuratedSceneParityClaimsAreStructured()
@@ -199,6 +203,51 @@ def Xform "World"
             await Assert.That(scene.RequiredAdjustedIou).IsNull()
                 .Because($"{scene.Name} is measured but deliberately not an exact-parity gate.");
         }
+
+        ParitySourceIdentity source = CreateSourceIdentity();
+        await Assert.That(source.HashPolicy).IsEqualTo("sha256-crlf-to-lf");
+        foreach (string requiredPath in new[]
+        {
+            ".github/workflows/render.yml",
+            "eng/run-parity-capture.ps1",
+            "src/OpenUsd.Rendering/ParityImageComparison.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/ParityEvidenceInputs.cs",
+        })
+        {
+            await Assert.That(source.Files.Any(file => file.Path == requiredPath))
+                .IsTrue()
+                .Because($"Source evidence must include {requiredPath} on every operating system.");
+        }
+
+        ParitySourceIdentity fixtures = CreateFixtureIdentity();
+        await Assert.That(fixtures.HashPolicy).IsEqualTo("sha256-per-input");
+        await Assert.That(fixtures.Files.Any(static file =>
+            file.Path == "test-assets/mcp-monkey-car-city-textures/car_metal_diffuse.jpg" &&
+            file.HashPolicy == "sha256-raw")).IsTrue();
+        await Assert.That(fixtures.Files.Any(static file =>
+            file.Path == "test-assets/parity/parity-material-texture-asymmetric.usda")).IsTrue();
+        foreach (ParityScene scene in scenes)
+        {
+            await Assert.That(scene.FeatureIds).IsNotEmpty();
+        }
+        await Assert.That(scenes.Single(static scene => scene.Name == "materials-textures").FeatureIds)
+            .Contains("preview-surface-textures");
+        await Assert.That(scenes.Single(static scene => scene.Name == "skinned-pennant").FeatureIds)
+            .Contains("cpu-skinning");
+        var cameraInput = new ParityCaptureInput(
+            "unused", "unused", 160, 128, 2, new CameraState(Matrix4x4.Identity, Matrix4x4.Identity),
+            new SilkColor(0, 0, 0, 1), RenderHeadlight.Deterministic, UseSceneLights: false);
+        using JsonDocument cameraEvidence = JsonDocument.Parse(
+            JsonSerializer.Serialize(CreateCameraIdentity(cameraInput), EvidenceJsonOptions));
+        JsonElement headlight = cameraEvidence.RootElement.GetProperty("Headlight");
+        await Assert.That(headlight.GetProperty("Direction").GetProperty("Z").GetSingle()).IsEqualTo(1f);
+        await Assert.That(headlight.GetProperty("Color").GetProperty("X").GetSingle()).IsEqualTo(1f);
+        using JsonDocument toleranceEvidence = JsonDocument.Parse(JsonSerializer.Serialize(
+            CreateToleranceEvidence(scenes.Single(static scene => scene.Name == "material-normals-uv"))));
+        await Assert.That(toleranceEvidence.RootElement.GetProperty("MaximumChannelDifference").GetInt32())
+            .IsEqualTo(16);
+        await Assert.That(toleranceEvidence.RootElement.GetProperty("MaximumMeanChannelDifference").GetDouble())
+            .IsEqualTo(8d);
     }
 
     [Test]
@@ -217,9 +266,14 @@ def Xform "World"
 
     private static async Task CaptureStormAndHdSilkBackendsDeterministicallyCore()
     {
+        File.Delete(Path.Combine(EvidenceDirectory(), "parity-capture-evidence.json"));
+        File.Delete(Path.Combine(EvidenceDirectory(), "parity-capture-status.json"));
+        ParityExecutionIdentity execution = ParityExecutionIdentity.Read(Environment.GetEnvironmentVariable);
+        ParitySourceIdentity sourceIdentity = CreateSourceIdentity();
+        ParitySourceIdentity fixtureIdentity = CreateFixtureIdentity();
         ParityScene[] scenes = CreateScenes();
         VerifyExpectedSceneSet(scenes);
-        WriteScenePlan(scenes);
+        WriteScenePlan(scenes, execution, sourceIdentity, fixtureIdentity);
         WriteMesaWglSceneExclusions();
         if (!StormGlContextFactory.IsCurrentPlatformSupported)
         {
@@ -329,7 +383,7 @@ def Xform "World"
 
             await Assert.That(stormDeterministic)
                 .IsTrue()
-                .Because($"Storm parity capture for {scene.Name} must be byte-stable.");
+                .Because($"Storm parity capture for {scene.Name} must meet its repeatability policy.");
 
             var backendEvidence = new List<object>();
             for (int i = 0; i < first.SilkCaptures.Count; i++)
@@ -375,6 +429,7 @@ def Xform "World"
                 backendEvidence.Add(new
                 {
                     backend = firstSilk.BackendName,
+                    device = firstSilk.Capabilities,
                     firstHash = Hash(firstSilk.Image),
                     secondHash = Hash(secondSilk.Image),
                     firstSilk.DrawCount,
@@ -396,6 +451,8 @@ def Xform "World"
             jsonEvidence.Add(new
             {
                 scene = scene.Name,
+                featureIds = scene.FeatureIds,
+                status = scene.GateEnabled ? "executed-gate" : "measured-reference-limit",
                 scene.StagePath,
                 scene.Purpose,
                 scene.ColorComparisonReady,
@@ -408,7 +465,10 @@ def Xform "World"
                 stormOpenGl = first.OpenGlEvidence,
                 sceneLightSensitivity = lightSensitivity,
                 shadowSensitivity,
-                deterministic = first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span),
+                deterministic = stormDeterministic,
+                stormByteIdentical = first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span),
+                stormRepeatPolicy = StormRepeatPolicy(scene),
+                stormRepeatComparison = stormDeterminism is null ? null : ToEvidence(stormDeterminism),
                 stageIdentity = CreateStageIdentity(scene),
                 cameraIdentity = CreateCameraIdentity(input),
                 backends = backendEvidence,
@@ -417,18 +477,22 @@ def Xform "World"
 
         WriteEvidence("parity-capture-metrics.txt", evidence);
         WriteEvidence("parity-capture-adjusted-iou.tsv", adjustedIouEvidence);
+        ParityEvidenceInputs.RequireUnchanged(sourceIdentity, CreateSourceIdentity());
+        ParityEvidenceInputs.RequireUnchanged(fixtureIdentity, CreateFixtureIdentity());
         WriteJsonEvidence("parity-capture-evidence.json", new
         {
-            schemaVersion = 1,
+            schemaVersion = 2,
             generatedUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-            sourceIdentity = CreateSourceIdentity(),
+            execution,
+            sourceIdentity,
+            fixtureIdentity,
             packageIdentity = CreatePackageIdentity(ResolvePluginPath()),
             normalization = new
             {
                 rowOrder = "Storm GL readback is converted bottom-up to top-down; hdSilk is top-down.",
                 clear = "The captured corner background is mapped to the requested opaque clear colour.",
                 alpha = "Captures are normalized to opaque alpha before coverage comparison.",
-                color = "Coverage is gated today; colour remains opt-in until hdSilk implements BRDF shading.",
+                color = "Coverage and colour use per-scene reference tolerances; covered RGB is not remapped.",
             },
             wglMesaExcludedScenes = CreateMesaWglSceneExclusionEvidence(),
             scenes = jsonEvidence,
@@ -451,9 +515,14 @@ def Xform "World"
 
     private static async Task ComparePerturbedCapturesCore()
     {
+        File.Delete(Path.Combine(EvidenceDirectory(), "parity-capture-perturbations.json"));
+        File.Delete(Path.Combine(EvidenceDirectory(), "parity-capture-status.json"));
+        ParityExecutionIdentity execution = ParityExecutionIdentity.Read(Environment.GetEnvironmentVariable);
+        ParitySourceIdentity sourceIdentity = CreateSourceIdentity();
+        ParitySourceIdentity fixtureIdentity = CreateFixtureIdentity();
         ParityScene[] scenes = CreateScenes();
         VerifyExpectedSceneSet(scenes);
-        WriteScenePlan(scenes);
+        WriteScenePlan(scenes, execution, sourceIdentity, fixtureIdentity);
         WriteMesaWglSceneExclusions();
         if (!StormGlContextFactory.IsCurrentPlatformSupported)
         {
@@ -630,10 +699,15 @@ def Xform "World"
         }
 
         WriteEvidence("parity-capture-perturbations.txt", evidence);
+        ParityEvidenceInputs.RequireUnchanged(sourceIdentity, CreateSourceIdentity());
+        ParityEvidenceInputs.RequireUnchanged(fixtureIdentity, CreateFixtureIdentity());
         WriteJsonEvidence("parity-capture-perturbations.json", new
         {
-            schemaVersion = 1,
+            schemaVersion = 2,
             generatedUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            execution,
+            sourceIdentity,
+            fixtureIdentity,
             minimumRequiredMargin = MinimumDiscriminationMargin,
             rejectedScenes = new[]
             {
@@ -752,6 +826,86 @@ def Xform "World"
         }
 
         await AssertChaseOutputTransform(saturation);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task InstancedScaleSceneRetainsOneGeometryAndRespondsToEditsOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("D3D12 scale evidence requires Windows.");
+            return;
+        }
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            await ExerciseInstancedScaleScene(device, "d3d12");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk instanced-scale D3D12", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
+    public async Task InstancedScaleSceneRetainsOneGeometryAndRespondsToEditsOnVulkan()
+    {
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await ExerciseInstancedScaleScene(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk instanced-scale Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Arguments(false)]
+    [Arguments(true)]
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task AuthoredRenderProductCropMatchesFullRasterOnD3D12(bool crate)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("D3D12 product capture requires Windows.");
+            return;
+        }
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            await RenderProductRasterConformance.CroppedProductMatchesFullRaster(device, ResolvePluginPath(), crate);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("authored render-product D3D12", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredRenderProductCropMatchesFullRasterOnVulkan(bool crate)
+    {
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await RenderProductRasterConformance.CroppedProductMatchesFullRaster(device, ResolvePluginPath(), crate);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("authored render-product Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
     }
 
     [Test]
@@ -2594,8 +2748,14 @@ def Xform "World"
         File.WriteAllText(Path.Combine(directory, fileName), json + "\n", new UTF8Encoding(false));
     }
 
-    private static void WriteScenePlan(IReadOnlyCollection<ParityScene> scenes)
+    private static void WriteScenePlan(
+        IReadOnlyCollection<ParityScene> scenes,
+        ParityExecutionIdentity execution,
+        ParitySourceIdentity sourceIdentity,
+        ParitySourceIdentity fixtureIdentity)
     {
+        string repository = FindRepositoryRoot()
+            ?? throw new InvalidOperationException("A corpus plan requires the repository inputs.");
         string[] gatedNames = scenes.Select(scene => scene.Name).ToArray();
         string[] excludedNames = CreateAllScenes()
             .Select(scene => scene.Name)
@@ -2614,6 +2774,35 @@ def Xform "World"
                 exclusionSummary,
                 $"gated scenes: {string.Join(", ", gatedNames)}",
             ]);
+        WriteJsonEvidence("parity-capture-corpus.json", new
+        {
+            schemaVersion = 2,
+            status = "planned-not-execution",
+            execution,
+            sourceIdentity,
+            fixtureIdentity,
+            license = "Project-authored fixtures are MIT; third-party input provenance accompanies the assets.",
+            scope = "Fixture inventory is not proof that every included scene or feature executed.",
+            cases = CreateAllScenes().Select(scene => new
+            {
+                id = scene.Name,
+                featureIds = scene.FeatureIds,
+                scope = scene.Purpose,
+                stage = CreateStageIdentity(scene),
+                stagePath = Path.GetRelativePath(repository, scene.StagePath).Replace('\\', '/'),
+                scene.TimeCode,
+                tolerance = CreateToleranceEvidence(scene),
+                stormRepeatPolicy = StormRepeatPolicy(scene),
+                scene.ColorComparisonReady,
+                scene.GateEnabled,
+                scene.GateReason,
+                scene.RequiredAdjustedIou,
+                selected = gatedNames.Contains(scene.Name, StringComparer.Ordinal),
+                oracle = "Pinned Storm configuration with separate coverage and optional colour tolerances",
+                negativeControls =
+                    "Vertical/horizontal reversal, transposed axes, shifted camera and applicable wrong time",
+            }).ToArray(),
+        });
     }
 
     private static void VerifyExpectedSceneSet(IReadOnlyCollection<ParityScene> scenes)
@@ -2820,6 +3009,9 @@ def Xform "World"
             });
         return comparison.Passed;
     }
+
+    private static string StormRepeatPolicy(ParityScene scene) =>
+        IsMesaWglParityRuntime() && !scene.ColorComparisonReady ? "identical-coverage" : "byte-identical";
 
     private static bool CanCreatePlatformGlContext()
     {
@@ -4421,6 +4613,8 @@ def Xform "World"
         string stagePath = ResolveTestAsset("mcp-monkey-car-city.usda");
         string pluginPath = ResolvePluginPath();
         using UsdStage stage = UsdStage.Open(stagePath);
+        UsdVec2f clippingRange = OpenUsd.Geom.UsdGeomCamera.Wrap(
+            stage.GetPrim("/World/MonkeyChaseCamera")).ClippingRange;
         CameraState camera = CameraState.FromStageCamera(
             stage,
             "/World/MonkeyChaseCamera",
@@ -4451,7 +4645,8 @@ def Xform "World"
         color.ReadbackForTesting(mapped);
         return new OutputTransformSaturation(
             ExactWhiteFraction(identity),
-            ExactWhiteFraction(mapped));
+            ExactWhiteFraction(mapped),
+            clippingRange);
     }
 
     private static double ExactWhiteFraction(ReadOnlySpan<byte> pixels)
@@ -4471,6 +4666,7 @@ def Xform "World"
 
     private static async Task AssertChaseOutputTransform(OutputTransformSaturation saturation)
     {
+        await Assert.That(saturation.ClippingRange).IsEqualTo(new UsdVec2f(0.1f, 1000f));
         await Assert.That(saturation.IdentityWhiteFraction).IsGreaterThan(0.4);
         await Assert.That(saturation.PresentationWhiteFraction).IsLessThan(0.01);
     }
@@ -4918,6 +5114,23 @@ def Xform "World"
 
     private static void PrependHdSilkNativeSearchPath()
     {
+        string? configuredRuntime = Environment.GetEnvironmentVariable("OPENUSD_PARITY_RUNTIME_ROOT");
+        if (!string.IsNullOrEmpty(configuredRuntime))
+        {
+            if (!Path.IsPathFullyQualified(configuredRuntime))
+            {
+                throw new InvalidOperationException("The configured parity runtime root must be absolute.");
+            }
+            string bin = Path.Combine(configuredRuntime, "bin");
+            string lib = Path.Combine(configuredRuntime, "lib");
+            if (!Directory.Exists(bin) || !Directory.Exists(lib))
+            {
+                throw new DirectoryNotFoundException("The configured parity runtime has no bin/lib layout.");
+            }
+            PrependNativeSearchPath(bin, lib);
+            return;
+        }
+
         string? root = FindRepositoryRoot();
         if (root is null)
         {
@@ -5826,6 +6039,20 @@ def Xform "World"
                 scene.ColorComparisonReady ? MaximumShadedMeanChannelDelta : byte.MaxValue,
         };
 
+    private static object CreateToleranceEvidence(ParityScene scene)
+    {
+        ParityTolerance tolerance = CreateTolerance(scene);
+        return new
+        {
+            tolerance.MinimumCoverageIntersectionOverUnion,
+            tolerance.MaximumCoverageDifferenceFraction,
+            tolerance.EdgeDilationRadius,
+            tolerance.CompareColor,
+            tolerance.MaximumChannelDifference,
+            tolerance.MaximumMeanChannelDifference,
+        };
+    }
+
     private static bool MeetsRequiredAdjustedIou(
         ParityScene scene,
         ParityComparisonResult result) =>
@@ -5950,6 +6177,7 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
+                FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 2_116, 2_036, TexturedPennantMipChainBytes)),
             },
@@ -5967,6 +6195,7 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
+                FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 2_116, 2_036, TexturedPennantMipChainBytes)),
             },
@@ -5984,6 +6213,7 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
+                FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 2_244, 2_164, TexturedPennantMipChainBytes)),
             },
@@ -6001,6 +6231,7 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
+                FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 2_244, 2_164, TexturedPennantMipChainBytes)),
             },
@@ -6141,6 +6372,7 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: null)
             {
+                FeatureIds = ["storm-hdsilk-parity", "usdlux-shadow-linking"],
                 UseSceneLights = true,
                 ShadowDisabledStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-shadow-disabled.usda"),
@@ -6308,6 +6540,7 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
+                FeatureIds = ["storm-hdsilk-parity", "cpu-skinning"],
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 2_032, 2_032, 0)),
@@ -6445,9 +6678,10 @@ def Xform "World"
         return new ParityImage(image.Width, image.Height, transposed);
     }
 
-    private static object CreateSourceIdentity()
+    private static ParitySourceIdentity CreateSourceIdentity()
     {
-        string root = FindRepositoryRoot() ?? AppContext.BaseDirectory;
+        string root = FindRepositoryRoot()
+            ?? throw new InvalidOperationException("Parity source evidence requires the repository inputs.");
         string[] paths =
         [
             "Directory.Build.props",
@@ -6455,11 +6689,20 @@ def Xform "World"
             "global.json",
             ".github\\workflows\\render.yml",
             "eng\\run-parity-capture.ps1",
+            "eng\\verify-render-corpus.py",
+            "eng\\support-manifest.json",
+            "eng\\shaders\\checked\\manifest.json",
             "src\\OpenUsd.Rendering\\ParityImageComparison.cs",
             "src\\OpenUsd.Rendering.Silk\\SilkSceneState.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\OpenUsd.Rendering.ConformanceTests.csproj",
             "tests\\OpenUsd.Rendering.ConformanceTests\\ParityCaptureDriver.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\RenderProductRasterConformance.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\ParityEvidenceInputs.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\ParityEvidenceInputsTests.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\ParityExecutionIdentity.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\ParityExecutionIdentityTests.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.Scale.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\WindowsMesaWglRuntimeLoader.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\WindowsWglStormContext.cs",
             "test-assets\\parity\\parity-orientation-asymmetric.usda",
@@ -6486,38 +6729,22 @@ def Xform "World"
             "docs\\performance.md",
             "docs\\testing.md",
         ];
-        var files = new List<object>();
-        foreach (string relative in paths)
-        {
-            string path = Path.Combine(root, relative);
-            if (!File.Exists(path))
-            {
-                continue;
-            }
-
-            var file = new FileInfo(path);
-            files.Add(new
-            {
-                path = Path.GetRelativePath(root, path).Replace('\\', '/'),
-                sha256 = FileHash(path),
-                length = file.Length,
-            });
-        }
-
-        string payload = JsonSerializer.Serialize(files);
-        string sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
-        return new { sha256, fileCount = files.Count, files };
+        return ParityEvidenceInputs.CreateTextIdentity(root, paths);
     }
 
-    private static object CreateStageIdentity(ParityScene scene)
+    private static ParitySourceIdentity CreateFixtureIdentity()
     {
-        var file = new FileInfo(scene.StagePath);
-        return new
-        {
-            path = Path.GetFileName(scene.StagePath),
-            sha256 = FileHash(scene.StagePath),
-            length = file.Length,
-        };
+        string root = FindRepositoryRoot()
+            ?? throw new InvalidOperationException("Parity fixture evidence requires the repository inputs.");
+        return ParityEvidenceInputs.CreateFixtureIdentity(root, ["test-assets"]);
+    }
+
+    private static ParityInputIdentity CreateStageIdentity(ParityScene scene)
+    {
+        string path = Path.GetFullPath(scene.StagePath);
+        string directory = Path.GetDirectoryName(path)
+            ?? throw new InvalidOperationException("A parity stage requires a parent directory.");
+        return ParityEvidenceInputs.CreateTextIdentity(directory, [Path.GetFileName(path)]).Files[0];
     }
 
     private static object CreateCameraIdentity(ParityCaptureInput input) =>
@@ -6526,6 +6753,7 @@ def Xform "World"
             input.Width,
             input.Height,
             input.TimeCode,
+            input.UseSceneLights,
             view = MatrixValues(input.Camera.View),
             projection = MatrixValues(input.Camera.Projection),
             clipPlanes = input.Camera.ClipPlanes.Select(PlaneValues).ToArray(),
@@ -6548,11 +6776,17 @@ def Xform "World"
         {
             roots.Add(runtimeBin);
         }
+        string runtimeLib = Path.Combine(runtimeRoot, "lib");
+        if (Directory.Exists(runtimeLib))
+        {
+            roots.Add(runtimeLib);
+        }
 
-        string? repoRoot = FindRepositoryRoot();
-        string? metadataPath = repoRoot is null
-            ? null
-            : Path.Combine(repoRoot, "native", "install", "win-x64", ".openusd-install-metadata.json");
+        string? metadataPath = Environment.GetEnvironmentVariable("OPENUSD_PARITY_INSTALL_METADATA_PATH");
+        if (!string.IsNullOrEmpty(metadataPath) && !Path.IsPathFullyQualified(metadataPath))
+        {
+            throw new InvalidOperationException("Parity install metadata must name an absolute path.");
+        }
         var files = new List<object>();
         foreach (string root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
         {
@@ -6570,6 +6804,34 @@ def Xform "World"
             }
         }
 
+        foreach (System.Reflection.Assembly assembly in new[]
+        {
+            typeof(UsdStage).Assembly,
+            typeof(OpenUsdNativeRuntime).Assembly,
+            typeof(ParityImageComparer).Assembly,
+            typeof(SilkMeshRenderer).Assembly,
+            typeof(OpenUsdStormRuntime).Assembly,
+            typeof(D3D12SilkGraphicsDevice).Assembly,
+            typeof(VulkanSilkGraphicsDevice).Assembly,
+            typeof(MetalSilkGraphicsDevice).Assembly,
+            typeof(ParityCaptureDriver).Assembly,
+        }.Distinct().OrderBy(static assembly => assembly.GetName().Name, StringComparer.Ordinal))
+        {
+            string location = assembly.Location;
+            if (string.IsNullOrEmpty(location) || !File.Exists(location))
+            {
+                throw new InvalidOperationException(
+                    "Parity package evidence requires the executed managed assembly files.");
+            }
+            files.Add(new
+            {
+                path = Path.GetFileName(location),
+                root = "managed",
+                sha256 = FileHash(location),
+                length = new FileInfo(location).Length,
+            });
+        }
+
         string payload = JsonSerializer.Serialize(files);
         return new
         {
@@ -6579,6 +6841,9 @@ def Xform "World"
             installMetadataSha256 = metadataPath is not null && File.Exists(metadataPath)
                 ? FileHash(metadataPath)
                 : null,
+            installMetadataStatus = metadataPath is not null && File.Exists(metadataPath)
+                ? "identified"
+                : "unavailable",
             files,
         };
     }
@@ -6759,8 +7024,11 @@ def Xform "World"
             scene.RecommendedMinimumAdjustedIou,
             scene.GateEnabled);
 
-    private static string FileHash(string path) =>
-        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+    private static string FileHash(string path)
+    {
+        using FileStream stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
 
     private static Dictionary<string, ParityPerformanceBudget> CurrentBackendBudgets(
         ParityPerformanceBudget budget) =>
@@ -6781,6 +7049,8 @@ def Xform "World"
         double RecommendedMinimumAdjustedIou,
         double? RequiredAdjustedIou)
     {
+        public IReadOnlyList<string> FeatureIds { get; init; } = ["storm-hdsilk-parity"];
+
         public IReadOnlyList<Vector4> ClipPlanes { get; init; } = [];
 
         public double TimeCode { get; init; } = StormSilkParityCaptureDriverTests.TimeCode;
@@ -6813,7 +7083,8 @@ def Xform "World"
 
     private readonly record struct OutputTransformSaturation(
         double IdentityWhiteFraction,
-        double PresentationWhiteFraction);
+        double PresentationWhiteFraction,
+        UsdVec2f ClippingRange);
 
     private readonly record struct ParityPerformanceBudget(
         int MeasuredDrawCount,

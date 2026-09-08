@@ -1,0 +1,979 @@
+--- a/pxr/usd/sdf/CMakeLists.txt
++++ b/pxr/usd/sdf/CMakeLists.txt
+@@ -72,6 +72,7 @@
+         siteUtils
+         spec
+         specType
++        storageAdmission
+         textParserUtils
+         timeCode
+         tokens
+--- a/pxr/usd/sdf/crateData.cpp
++++ b/pxr/usd/sdf/crateData.cpp
+@@ -6,6 +6,7 @@
+ //
+ #include "pxr/pxr.h"
+ #include "pxr/usd/sdf/crateData.h"
++#include "pxr/usd/sdf/storageAdmission.h"
+ 
+ #include "crateFile.h"
+ 
+@@ -155,6 +156,9 @@
+ 
+     template <class ...Args>
+     bool Open(string const& assetPath, Args&&... args) {
++        if (auto* admission = SdfStorageAdmissionScope::GetCurrent()) {
++            admission->_Fail(SdfStorageAdmissionStatus::UnsupportedStore);
++        }
+         TfAutoMallocTag tag("Sdf_CrateDataImpl::Open");
+ 
+         TF_DESCRIBE_SCOPE("Opening usd binary asset @%s@", assetPath.c_str());
+@@ -242,6 +246,7 @@
+             return;
+         }
+         _lastSet = _data.end();
++        ++_storageGeneration;
+         TF_VERIFY(_data.erase(path), "%s", path.GetText());
+     }
+ 
+@@ -256,6 +261,7 @@
+             return;
+         }
+         _lastSet = _data.end();
++        ++_storageGeneration;
+         auto tmpFields(std::move(oldIter->second));
+         _data.erase_fast(oldIter);
+         auto iresult = _data.emplace(newPath, std::move(tmpFields));
+@@ -296,6 +302,7 @@
+         }
+         // Need to blow/reset the _lastSet cache here, since inserting
+         // into the table will invalidate existing references.
++        ++_storageGeneration;
+         auto iter = _data.emplace(path, _SpecData()).first;
+         iter.value().specType = specType;
+         _lastSet = iter;
+@@ -362,7 +369,7 @@
+         
+         if (VtValue const *fieldValue = _GetFieldValue(path, field, specType)) {
+             if (value) {
+-                VtValue val = _DetachValue(*fieldValue);
++                VtValue val = _DetachValue(*fieldValue, field);
+                 if (field == SdfDataTokens->TimeSamples) {
+                     // Special case, convert internal TimeSamples to
+                     // SdfTimeSampleMap.
+@@ -395,7 +402,7 @@
+         //TfScopeDescription desc2(field.GetText());
+         if (VtValue const *fieldValue = _GetFieldValue(path, field, specType)) {
+             if (value) {
+-                *value = _DetachValue(*fieldValue);
++                *value = _DetachValue(*fieldValue, field);
+                 if (field == SdfDataTokens->TimeSamples) {
+                     // Special case, convert internal TimeSamples to
+                     // SdfTimeSampleMap.
+@@ -541,6 +548,7 @@
+         }
+         
+         auto &spec = _lastSet.value();
++        ++_storageGeneration;
+         spec.DetachIfNotUnique();
+         auto &fields = spec.fields.GetMutable();
+         for (size_t j=0, jEnd = fields.size(); j != jEnd; ++j) {
+@@ -572,6 +580,7 @@
+         auto const &fields = spec.fields.Get();
+         for (size_t j=0, jEnd = fields.size(); j != jEnd; ++j) {
+             if (fields[j].first == field) {
++                ++_storageGeneration;
+                 // Detach if not unique, and remove the j'th element.
+                 spec.DetachIfNotUnique();
+                 auto &mutableFields = spec.fields.GetMutable();
+@@ -667,6 +676,7 @@
+     inline void
+     SetTimeSample(const SdfPath& path, double time,
+                   const VtValue & value) {
++        ++_storageGeneration;
+         if (value.IsEmpty()) {
+             EraseTimeSample(path, time);
+             return;
+@@ -705,6 +715,7 @@
+     }
+     
+     inline void EraseTimeSample(const SdfPath& path, double time) {
++        ++_storageGeneration;
+         TimeSamples newSamples;
+         
+         VtValue *fieldValue =
+@@ -1145,12 +1156,24 @@
+         return nullptr;
+     }
+ 
+-    inline VtValue _DetachValue(VtValue const &val) const {
++    inline VtValue _DetachValue(VtValue const &val, const TfToken& field = TfToken()) const {
++        if (auto* admission = SdfStorageAdmissionScope::GetCurrent()) {
++            const bool serialized = val.IsHolding<ValueRep>();
++            admission->_BeginRead(_storageIdentity, _storageGeneration, !serialized);
++            admission->_Field(field);
++            admission->_Text(_crateFile->GetAssetPath().size() + 1);
++            if (serialized) {
++                _crateFile->AdmitStorageValue(val.UncheckedGet<ValueRep>(), *admission);
++            } else {
++                admission->_ResidentValue(val);
++            }
++        }
+         return val.IsHolding<ValueRep>() ?
+             _crateFile->UnpackValue(val.UncheckedGet<ValueRep>()) : val;
+     }
+ 
+     inline void _ClearSpecData() {
++        ++_storageGeneration;
+         TfReset(_data);
+         _lastSet = _data.end();
+     }
+@@ -1185,6 +1208,8 @@
+ 
+     // Underlying file.
+     std::unique_ptr<CrateFile> _crateFile;
++    const uint64_t _storageIdentity = SdfStorageAdmissionScope::_NewStoreIdentity();
++    uint64_t _storageGeneration = 1;
+ };
+ 
+ 
+@@ -1479,4 +1504,3 @@
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/usd/sdf/crateFile.h
++++ b/pxr/usd/sdf/crateFile.h
+@@ -42,6 +42,8 @@
+ #include <vector>
+ 
+ PXR_NAMESPACE_OPEN_SCOPE
++
++class SdfStorageAdmissionScope;
+ 
+ namespace Sdf_CrateFile {
+ 
+@@ -768,7 +770,13 @@
+ 
+     std::type_info const &GetTypeid(ValueRep rep) const;
+ 
++    // Validate and charge the actual backing value before any detach allocation.
++    void AdmitStorageValue(ValueRep rep, SdfStorageAdmissionScope& scope) const;
++
+ private:
++    class _StorageCursor;
++    void _AdmitStorageValue(ValueRep rep, SdfStorageAdmissionScope& scope, unsigned depth) const;
++    uint64_t _StorageLength(SdfStorageAdmissionScope& scope) const;
+     enum class Options {
+         Default,
+         UseMmap,
+--- a/pxr/usd/sdf/crateFile.cpp
++++ b/pxr/usd/sdf/crateFile.cpp
+@@ -6,6 +6,7 @@
+ //
+ 
+ #include "pxr/pxr.h"
++#include "pxr/usd/sdf/storageAdmission.h"
+ #include "crateFile.h"
+ #include "integerCoding.h"
+ 
+@@ -4012,6 +4013,272 @@
+     }
+ }
+ 
++uint64_t
++CrateFile::_StorageLength(SdfStorageAdmissionScope& scope) const
++{
++    if (_useMmap && _mmapSrc) return _mmapSrc.GetLength();
++    if (_preadSrc && _preadSrc.length >= 0) return static_cast<uint64_t>(_preadSrc.length);
++    if (_assetSrc) scope._Fail(SdfStorageAdmissionStatus::UnsupportedStore);
++    scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++}
++
++class CrateFile::_StorageCursor
++{
++public:
++    _StorageCursor(const CrateFile& file, SdfStorageAdmissionScope& scope, uint64_t offset)
++        : _file(file), _scope(scope), _offset(offset), _length(file._StorageLength(scope)) {}
++
++    template <typename T>
++    T Read()
++    {
++        Check(sizeof(T));
++        _scope._Decode(sizeof(T));
++        T result{};
++        _file._ReadRawBytes(static_cast<int64_t>(_offset), sizeof(T), reinterpret_cast<char*>(&result));
++        _offset += sizeof(T);
++        return result;
++    }
++
++    void Skip(uint64_t bytes)
++    {
++        Check(bytes);
++        _scope._Decode(bytes);
++        _offset += bytes;
++    }
++
++    void Check(uint64_t bytes) const
++    {
++        if (_offset > _length || bytes > _length - _offset ||
++            _offset > static_cast<uint64_t>(INT64_MAX))
++            _scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++    }
++
++private:
++    const CrateFile& _file;
++    SdfStorageAdmissionScope& _scope;
++    uint64_t _offset;
++    uint64_t _length;
++};
++
++void
++CrateFile::AdmitStorageValue(ValueRep rep, SdfStorageAdmissionScope& scope) const
++{
++    _AdmitStorageValue(rep, scope, 0);
++}
++
++void
++CrateFile::_AdmitStorageValue(
++    ValueRep rep, SdfStorageAdmissionScope& scope, unsigned depth) const
++{
++    if (depth > 4) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++    if (rep.IsArray() && rep.IsArrayEdit()) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++    if ((rep.IsInlined() && (rep.IsArray() || rep.IsArrayEdit() || rep.IsCompressed())) ||
++        (rep.IsCompressed() && !rep.IsArray()))
++        scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++    scope._Decode(1);
++    const auto type = rep.GetType();
++    if (type <= TypeEnum::Invalid || type >= TypeEnum::NumTypes)
++        scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++
++    auto token = [&](uint32_t index) -> const TfToken&
++    {
++        if (index >= _tokens.size()) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++        return _tokens[index];
++    };
++    auto stringBytes = [&](uint32_t index)
++    {
++        if (index >= _strings.size()) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++        const auto& text = token(_strings[index].value).GetString();
++        scope._Text(text.size() + 1);
++        scope._Materialization(text.size() + 1);
++    };
++    auto pathBytes = [&](uint32_t index)
++    {
++        if (index >= _paths.size()) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++        scope._PathText(_paths[index]);
++    };
++
++    if (rep.IsArrayEdit())
++    {
++        if (type != TypeEnum::Token || Version(_boot.version) < Version(0,14,0))
++            scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++        scope._Materialization(256);
++        if (rep.GetPayload() == 0)
++        {
++            scope._Items(0);
++            return;
++        }
++        _StorageCursor cursor(*this, scope, rep.GetPayload());
++        const auto valuesRep = cursor.Read<ValueRep>();
++        const auto indexesRep = cursor.Read<ValueRep>();
++        cursor.Read<bool>();
++        if (!valuesRep.IsArray() || valuesRep.GetType() != TypeEnum::Token ||
++            !indexesRep.IsArray() || indexesRep.GetType() != TypeEnum::Int64)
++            scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++        _AdmitStorageValue(valuesRep, scope, depth + 1);
++        const auto before = scope.GetLastResult().itemCount;
++        _AdmitStorageValue(indexesRep, scope, depth + 1);
++        const auto words = scope.GetLastResult().itemCount - before;
++        // Array-edit construction copies its encoded words. Include temporary
++        // validation decode and the later normal SDK decode in total admission.
++        scope._Materialization(words * sizeof(int64_t) * 3 + 256);
++        _AdmitStorageValue(indexesRep, scope, depth + 1);
++        TfErrorMark errors;
++        VtInt64Array indexes;
++        _UnpackValue(indexesRep, &indexes);
++        if (!errors.IsClean() || indexes.size() != words)
++        {
++            errors.Clear();
++            scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++        }
++        const auto& admittedIndexes = indexes;
++        size_t position = 0;
++        while (position < admittedIndexes.size())
++        {
++            Vt_ArrayEditOps::OpAndCount block{};
++            std::memcpy(&block, &admittedIndexes[position++], sizeof(block));
++            if (!Vt_ArrayEditOps::IsValidOp(block.op) || block.count < 0 ||
++                static_cast<uint64_t>(block.count) > (admittedIndexes.size() - position) /
++                    static_cast<size_t>(Vt_ArrayEditOps::GetArity(block.op)))
++                scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++            position += static_cast<size_t>(block.count) *
++                static_cast<size_t>(Vt_ArrayEditOps::GetArity(block.op));
++        }
++        return;
++    }
++
++    if (rep.IsArray())
++    {
++        if (type != TypeEnum::Token && type != TypeEnum::String && type != TypeEnum::AssetPath &&
++            type != TypeEnum::Int && type != TypeEnum::UInt &&
++            type != TypeEnum::Int64 && type != TypeEnum::UInt64)
++            scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++        if (rep.GetPayload() == 0)
++        {
++            scope._Items(0);
++            scope._Materialization(128);
++            return;
++        }
++        const auto version = Version(_boot.version);
++        if (version < Version(0,5,0)) scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++        _StorageCursor cursor(*this, scope, rep.GetPayload());
++        const uint64_t count = version < Version(0,7,0) ? cursor.Read<uint32_t>() : cursor.Read<uint64_t>();
++        scope._Items(count);
++        scope._Decode(count);
++        if (type == TypeEnum::Token || type == TypeEnum::String || type == TypeEnum::AssetPath)
++        {
++            if (rep.IsCompressed()) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++            scope._Materialization(count * (type == TypeEnum::Token ? sizeof(TfToken) :
++                (type == TypeEnum::String ? sizeof(std::string) : sizeof(SdfAssetPath))) * 2 + 256);
++            cursor.Check(count * sizeof(uint32_t));
++            for (uint64_t index = 0; index < count; ++index)
++            {
++                const auto id = cursor.Read<uint32_t>();
++                if (type == TypeEnum::String) stringBytes(id);
++                else
++                {
++                    const auto bytes = token(id).GetString().size() + 1;
++                    scope._Text(bytes);
++                    if (type == TypeEnum::AssetPath) scope._Materialization(bytes);
++                }
++            }
++            return;
++        }
++        if (type == TypeEnum::Int64 || type == TypeEnum::UInt64 ||
++            type == TypeEnum::Int || type == TypeEnum::UInt)
++        {
++            const size_t width = type == TypeEnum::Int64 || type == TypeEnum::UInt64 ? 8 : 4;
++            scope._Materialization(count * width * 2 + 128);
++            if (!rep.IsCompressed() || count < MinCompressedArraySize)
++            {
++                cursor.Skip(count * width);
++                return;
++            }
++            const uint64_t compressedBytes = cursor.Read<uint64_t>();
++            const uint64_t capacity = width == 8 ?
++                Sdf_IntegerCompression64::GetCompressedBufferSize(count) :
++                Sdf_IntegerCompression::GetCompressedBufferSize(count);
++            const uint64_t workspace = width == 8 ?
++                Sdf_IntegerCompression64::GetDecompressionWorkingSpaceSize(count) :
++                Sdf_IntegerCompression::GetDecompressionWorkingSpaceSize(count);
++            if (compressedBytes > capacity) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++            scope._Materialization(capacity + workspace);
++            scope._Decode(count * width);
++            cursor.Skip(compressedBytes);
++            return;
++        }
++        scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++    }
++
++    if (type == TypeEnum::PathListOp || type == TypeEnum::TokenListOp ||
++        type == TypeEnum::StringListOp || type == TypeEnum::PathVector || type == TypeEnum::TokenVector)
++    {
++        if (rep.IsInlined()) scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++        scope._Materialization(256);
++        _StorageCursor cursor(*this, scope, rep.GetPayload());
++        auto list = [&]()
++        {
++            const uint64_t count = cursor.Read<uint64_t>();
++            scope._Items(count);
++            scope._Decode(count);
++            scope._Materialization(count * (type == TypeEnum::StringListOp ? sizeof(std::string) :
++                sizeof(SdfPath)) * 4 + 256);
++            cursor.Check(count * sizeof(uint32_t));
++            for (uint64_t index = 0; index < count; ++index)
++            {
++                const auto id = cursor.Read<uint32_t>();
++                if (type == TypeEnum::PathListOp || type == TypeEnum::PathVector) pathBytes(id);
++                else if (type == TypeEnum::StringListOp) stringBytes(id);
++                else scope._Text(token(id).GetString().size() + 1);
++            }
++        };
++        if (type == TypeEnum::PathVector || type == TypeEnum::TokenVector) list();
++        else
++        {
++            const auto header = cursor.Read<_ListOpHeader>();
++            scope._Items(0);
++            if (header.HasExplicitItems()) list();
++            if (header.HasAddedItems()) list();
++            if (header.HasPrependedItems()) list();
++            if (header.HasAppendedItems()) list();
++            if (header.HasDeletedItems()) list();
++            if (header.HasOrderedItems()) list();
++        }
++        return;
++    }
++
++    scope._Items(1);
++    if (type == TypeEnum::String || type == TypeEnum::Token || type == TypeEnum::AssetPath)
++    {
++        if (!rep.IsInlined()) scope._Fail(SdfStorageAdmissionStatus::InvalidData);
++        if (type == TypeEnum::String) stringBytes(static_cast<uint32_t>(rep.GetPayload()));
++        else scope._Text(token(static_cast<uint32_t>(rep.GetPayload())).GetString().size() + 1);
++        scope._Materialization(256);
++        return;
++    }
++    if (type == TypeEnum::Bool || type == TypeEnum::UChar ||
++        type == TypeEnum::Int || type == TypeEnum::UInt ||
++        type == TypeEnum::Int64 || type == TypeEnum::UInt64 ||
++        type == TypeEnum::Half || type == TypeEnum::Float || type == TypeEnum::Double ||
++        type == TypeEnum::Vec2i || type == TypeEnum::Vec4f ||
++        type == TypeEnum::Specifier || type == TypeEnum::Variability ||
++        type == TypeEnum::Permission || type == TypeEnum::ValueBlock || type == TypeEnum::AnimationBlock)
++    {
++        scope._Materialization(256);
++        scope._Decode(32);
++        if (!rep.IsInlined())
++        {
++            const uint64_t bytes = type == TypeEnum::Vec4f ? 16 :
++                (type == TypeEnum::Vec2i || type == TypeEnum::Double ||
++                 type == TypeEnum::Int64 || type == TypeEnum::UInt64 ? 8 : 4);
++            _StorageCursor cursor(*this, scope, rep.GetPayload());
++            cursor.Check(bytes);
++        }
++        return;
++    }
++    scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++}
++
+ PathIndex
+ CrateFile::_AddPath(const SdfPath &path)
+ {
+@@ -4445,4 +4712,3 @@
+ 
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/base/vt/arrayEdit.h
++++ b/pxr/base/vt/arrayEdit.h
+@@ -79,6 +79,18 @@
+     /// Return a view of the literal elements that this edit makes use of.
+     TfSpan<const ElementType> GetLiterals() const {
+         return _literals;
++    }
++
++    /// Return the read-only encoded operation stream for bounded storage
++    /// admission. No vector is copied by this view.
++    TfSpan<const int64_t> GetEncodedInstructions() const {
++        return _ops._ins;
++    }
++
++    /// Visit valid operations using native index normalization and validation.
++    template <class Fn>
++    void ForEachValidInstruction(size_t initialSize, Fn &&fn) const {
++        _ops.ForEachValid(_literals.size(), initialSize, std::forward<Fn>(fn));
+     }
+ 
+     /// Return a mutable view of the literal elements that this edit makes use
+--- /dev/null
++++ b/pxr/usd/sdf/storageAdmission.h
+@@ -0,0 +1,132 @@
++// Copyright (c) marcschier. Licensed under the MIT License.
++
++#ifndef PXR_USD_SDF_STORAGE_ADMISSION_H
++#define PXR_USD_SDF_STORAGE_ADMISSION_H
++
++#include "pxr/pxr.h"
++#include "pxr/usd/sdf/api.h"
++
++#include <cstdint>
++#include <map>
++#include <stdexcept>
++
++#define SDF_STORAGE_ADMISSION_VERSION 1u
++
++PXR_NAMESPACE_OPEN_SCOPE
++
++class SdfPath;
++class TfToken;
++class VtValue;
++
++enum class SdfStorageAdmissionStatus : uint32_t
++{
++    Ready,
++    Absent,
++    UnsupportedStore,
++    UnsupportedType,
++    QuotaExceeded,
++    InvalidData,
++    Stale
++};
++
++struct SdfStorageAdmissionLimits
++{
++    uint64_t maximumItems = 1048576;
++    uint64_t maximumUtf8Bytes = 8388608;
++    uint64_t maximumDecodeWork = 67108864;
++    uint64_t maximumPeakMaterializationBytes = 67108864;
++    uint64_t maximumTotalMaterializationBytes = 67108864;
++};
++
++struct SdfStorageAdmissionStatistics
++{
++    uint64_t items = 0;
++    uint64_t utf8Bytes = 0;
++    uint64_t decodeWork = 0;
++    uint64_t peakMaterializationBytes = 0;
++    uint64_t totalMaterializationBytes = 0;
++    uint64_t readCount = 0;
++};
++
++struct SdfStorageAdmissionResult
++{
++    SdfStorageAdmissionStatus status = SdfStorageAdmissionStatus::Absent;
++    // Only observed serialized/resident item counts are known. A refusal before
++    // reading them is not an empty value. Only Ready denotes complete admission;
++    // failed reads may contain partial observed counts, including validation reads.
++    bool countKnown = false;
++    bool resident = false;
++    uint64_t itemCount = 0;
++    uint64_t utf8Bytes = 0;
++    uint64_t decodeWork = 0;
++    uint64_t materializationBytes = 0;
++    uint64_t storeIdentity = 0;
++    uint64_t storeGeneration = 0;
++};
++
++#if defined(_MSC_VER)
++class SdfStorageAdmissionError : public std::runtime_error
++#else
++class SDF_API SdfStorageAdmissionError : public std::runtime_error
++#endif
++{
++public:
++    SDF_API explicit SdfStorageAdmissionError(SdfStorageAdmissionStatus status);
++    SDF_API SdfStorageAdmissionStatus GetStatus() const noexcept { return _status; }
++private:
++    SdfStorageAdmissionStatus _status;
++};
++
++/// Optional native-only scoped admission for reads from known crate stores.
++/// Inactive scopes do not change ordinary SDK behavior. A scope never reopens
++/// an asset, replaces a layer or executes scene-authored commands.
++/// Reservations are retained until scope destruction, so peak is a conservative
++/// bound even when callers retain values from earlier reads. Read counts include
++/// repeated detaches; GetLastResult describes the last materializing field read,
++/// not an existence-only Has or a missing field. Unknown serialized types and
++/// generic ArAsset readers are refused, not represented by an invented count.
++/// Nesting is refused before replacing the active scope; an enclosing failure
++/// remains sticky. A failed nested construction leaves the enclosing scope current.
++class SdfStorageAdmissionScope
++{
++public:
++    SDF_API explicit SdfStorageAdmissionScope(const SdfStorageAdmissionLimits& limits);
++    SDF_API ~SdfStorageAdmissionScope();
++    SdfStorageAdmissionScope(const SdfStorageAdmissionScope&) = delete;
++    SdfStorageAdmissionScope& operator=(const SdfStorageAdmissionScope&) = delete;
++
++    SDF_API static uint32_t GetApiVersion() noexcept;
++    SDF_API static SdfStorageAdmissionScope* GetCurrent() noexcept;
++    const SdfStorageAdmissionStatistics& GetStatistics() const noexcept { return _statistics; }
++    const SdfStorageAdmissionResult& GetLastResult() const noexcept { return _last; }
++
++    /// Reserve caller-known composition/copy allocations against the same
++    /// cumulative budget used by every native repeat read.
++    SDF_API void ReserveExternalMaterialization(uint64_t bytes);
++    SDF_API void RequireSucceeded() const;
++
++    // SDK storage integration. These operate on actual resident store identity
++    // and generation; they are not permission tokens for a pathname.
++    SDF_API static uint64_t _NewStoreIdentity() noexcept;
++    SDF_API void _BeginRead(uint64_t identity, uint64_t generation, bool resident);
++    SDF_API void _Field(const TfToken& field);
++    SDF_API void _Items(uint64_t count);
++    SDF_API void _Text(uint64_t bytes);
++    SDF_API void _Decode(uint64_t work);
++    SDF_API void _Materialization(uint64_t bytes);
++    SDF_API void _PathText(const SdfPath& path);
++    SDF_API void _ResidentValue(const VtValue& value);
++    [[noreturn]] SDF_API void _Fail(SdfStorageAdmissionStatus status);
++
++private:
++    SdfStorageAdmissionLimits _limits;
++    SdfStorageAdmissionStatistics _statistics;
++    SdfStorageAdmissionResult _last;
++    SdfStorageAdmissionStatus _failure = SdfStorageAdmissionStatus::Ready;
++    std::map<uint64_t, uint64_t> _generations;
++    SdfStorageAdmissionScope* _previous;
++};
++
++PXR_NAMESPACE_CLOSE_SCOPE
++
++#endif
+--- /dev/null
++++ b/pxr/usd/sdf/storageAdmission.cpp
+@@ -0,0 +1,271 @@
++// Copyright (c) marcschier. Licensed under the MIT License.
++
++#include "pxr/usd/sdf/storageAdmission.h"
++#include "pxr/usd/sdf/assetPath.h"
++#include "pxr/usd/sdf/listOp.h"
++#include "pxr/usd/sdf/path.h"
++#include "pxr/usd/sdf/types.h"
++#include "pxr/base/tf/token.h"
++#include "pxr/base/vt/arrayEdit.h"
++#include "pxr/base/vt/value.h"
++#include "pxr/base/gf/vec2i.h"
++#include "pxr/base/gf/vec4f.h"
++
++#include <algorithm>
++#include <atomic>
++#include <limits>
++#include <type_traits>
++
++PXR_NAMESPACE_OPEN_SCOPE
++
++namespace
++{
++thread_local SdfStorageAdmissionScope* currentScope = nullptr;
++std::atomic<uint64_t> nextStoreIdentity{1};
++
++const char* Message(SdfStorageAdmissionStatus status)
++{
++    switch (status)
++    {
++        case SdfStorageAdmissionStatus::UnsupportedStore:
++            return "Native storage admission: backing store or deferred layer open is unsupported.";
++        case SdfStorageAdmissionStatus::UnsupportedType:
++            return "Native storage admission: field or storage type is unsupported.";
++        case SdfStorageAdmissionStatus::QuotaExceeded:
++            return "Native storage admission: item/text/decode/materialization budget exceeded before allocation.";
++        case SdfStorageAdmissionStatus::InvalidData:
++            return "Native storage admission: serialized field data is invalid.";
++        case SdfStorageAdmissionStatus::Stale:
++            return "Native storage admission: source store generation changed during preparation.";
++        default:
++            return "Native storage admission failed.";
++    }
++}
++
++template <typename T>
++bool TokenList(const VtValue& value, SdfStorageAdmissionScope& scope)
++{
++    if (!value.IsHolding<T>()) return false;
++    const auto& op = value.UncheckedGet<T>();
++    for (const auto* items : {&op.GetExplicitItems(), &op.GetAddedItems(),
++        &op.GetPrependedItems(), &op.GetAppendedItems(), &op.GetDeletedItems(), &op.GetOrderedItems()})
++    {
++        scope._Items(items->size());
++        scope._Decode(items->size());
++        scope._Materialization(items->size() * sizeof(typename T::ItemType) * 4 + 128);
++        for (const auto& item : *items)
++        {
++            if constexpr (std::is_same_v<typename T::ItemType, TfToken>) scope._Text(item.GetString().size() + 1);
++            else if constexpr (std::is_same_v<typename T::ItemType, std::string>) scope._Text(item.size() + 1);
++            else scope._PathText(item);
++        }
++    }
++    return true;
++}
++}
++
++SdfStorageAdmissionError::SdfStorageAdmissionError(SdfStorageAdmissionStatus status)
++    : std::runtime_error(Message(status)), _status(status) {}
++
++SdfStorageAdmissionScope::SdfStorageAdmissionScope(const SdfStorageAdmissionLimits& limits)
++    : _limits(limits), _previous(currentScope)
++{
++    if (_previous)
++    {
++        _previous->RequireSucceeded();
++        throw std::logic_error("Native storage admission: nested preparation scopes are unsupported.");
++    }
++    if (limits.maximumItems > (uint64_t{1} << 30) ||
++        limits.maximumUtf8Bytes > (uint64_t{1} << 40))
++        _Fail(SdfStorageAdmissionStatus::InvalidData);
++    currentScope = this;
++}
++
++SdfStorageAdmissionScope::~SdfStorageAdmissionScope()
++{
++    currentScope = _previous;
++}
++
++uint32_t SdfStorageAdmissionScope::GetApiVersion() noexcept { return SDF_STORAGE_ADMISSION_VERSION; }
++SdfStorageAdmissionScope* SdfStorageAdmissionScope::GetCurrent() noexcept { return currentScope; }
++uint64_t SdfStorageAdmissionScope::_NewStoreIdentity() noexcept { return nextStoreIdentity.fetch_add(1); }
++
++void SdfStorageAdmissionScope::_Fail(SdfStorageAdmissionStatus status)
++{
++    if (_failure == SdfStorageAdmissionStatus::Ready) _failure = status;
++    _last.status = status;
++    if (status == SdfStorageAdmissionStatus::UnsupportedType ||
++        status == SdfStorageAdmissionStatus::UnsupportedStore)
++        _last.countKnown = false;
++    throw SdfStorageAdmissionError(status);
++}
++
++void SdfStorageAdmissionScope::_BeginRead(uint64_t identity, uint64_t generation, bool resident)
++{
++    RequireSucceeded();
++    _last = {};
++    _last.status = SdfStorageAdmissionStatus::Ready;
++    _last.resident = resident;
++    _last.storeIdentity = identity;
++    _last.storeGeneration = generation;
++    _Decode(1);
++    auto found = _generations.find(identity);
++    if (found != _generations.end())
++    {
++        if (found->second != generation) _Fail(SdfStorageAdmissionStatus::Stale);
++    }
++    else
++    {
++        ReserveExternalMaterialization(128);
++        _generations.emplace(identity, generation);
++    }
++    ++_statistics.readCount;
++}
++
++void SdfStorageAdmissionScope::RequireSucceeded() const
++{
++    if (_failure != SdfStorageAdmissionStatus::Ready) throw SdfStorageAdmissionError(_failure);
++}
++
++void SdfStorageAdmissionScope::_Items(uint64_t count)
++{
++    if (count > std::numeric_limits<uint64_t>::max() - _last.itemCount)
++    {
++        _last.countKnown = false;
++        _Fail(SdfStorageAdmissionStatus::InvalidData);
++    }
++    _last.countKnown = true;
++    _last.itemCount += count;
++    if (count > _limits.maximumItems - _statistics.items)
++        _Fail(SdfStorageAdmissionStatus::QuotaExceeded);
++    _statistics.items += count;
++}
++
++void SdfStorageAdmissionScope::_Field(const TfToken& field)
++{
++    const auto& name = field.GetString();
++    _Text(name.size() + 1);
++    if (name != "default" && name != "properties" && name != "propertyChildren" &&
++        name != "propertyOrder" && name != "variantSetChildren" &&
++        name != "typeName" && name != "custom" && name != "variability" &&
++        name != "specifier" && name != "permission" && name != "apiSchemas" &&
++        name != "targetPaths" && name != "connectionPaths" && name != "renderSettingsPrimPath")
++        _Fail(SdfStorageAdmissionStatus::UnsupportedType);
++}
++
++void SdfStorageAdmissionScope::_Text(uint64_t bytes)
++{
++    if (bytes > _limits.maximumUtf8Bytes - _statistics.utf8Bytes)
++        _Fail(SdfStorageAdmissionStatus::QuotaExceeded);
++    _statistics.utf8Bytes += bytes;
++    _last.utf8Bytes += bytes;
++    _Decode(bytes);
++    _Materialization(bytes * 2);
++}
++
++void SdfStorageAdmissionScope::_Decode(uint64_t work)
++{
++    if (work > _limits.maximumDecodeWork - _statistics.decodeWork)
++        _Fail(SdfStorageAdmissionStatus::QuotaExceeded);
++    _statistics.decodeWork += work;
++    _last.decodeWork += work;
++}
++
++void SdfStorageAdmissionScope::_Materialization(uint64_t bytes)
++{
++    if (bytes > _limits.maximumPeakMaterializationBytes - _statistics.totalMaterializationBytes ||
++        bytes > _limits.maximumTotalMaterializationBytes - _statistics.totalMaterializationBytes)
++        _Fail(SdfStorageAdmissionStatus::QuotaExceeded);
++    _last.materializationBytes += bytes;
++    _statistics.totalMaterializationBytes += bytes;
++    _statistics.peakMaterializationBytes = _statistics.totalMaterializationBytes;
++}
++
++void SdfStorageAdmissionScope::ReserveExternalMaterialization(uint64_t bytes)
++{
++    if (bytes > _limits.maximumPeakMaterializationBytes - _statistics.totalMaterializationBytes ||
++        bytes > _limits.maximumTotalMaterializationBytes - _statistics.totalMaterializationBytes)
++        _Fail(SdfStorageAdmissionStatus::QuotaExceeded);
++    _statistics.totalMaterializationBytes += bytes;
++    _statistics.peakMaterializationBytes = _statistics.totalMaterializationBytes;
++}
++
++void SdfStorageAdmissionScope::_PathText(const SdfPath& path)
++{
++    if ((!path.IsPrimPath() && !path.IsPrimPropertyPath() && !path.IsAbsoluteRootPath()) ||
++        path.ContainsPrimVariantSelection())
++        _Fail(SdfStorageAdmissionStatus::UnsupportedType);
++    _Text(1);
++    for (const auto& part : path.GetAncestorsRange())
++    {
++        _Decode(1);
++        _Text(part.GetNameToken().GetString().size() + 1);
++    }
++}
++
++void SdfStorageAdmissionScope::_ResidentValue(const VtValue& value)
++{
++    if (value.IsHolding<TfTokenVector>())
++    {
++        const auto& items = value.UncheckedGet<TfTokenVector>();
++        _Items(items.size());
++        _Decode(items.size());
++        _Materialization(items.size() * sizeof(TfToken) * 2 + 128);
++        for (const auto& token : items) _Text(token.GetString().size() + 1);
++    }
++    else if (value.IsHolding<SdfPathVector>())
++    {
++        const auto& items = value.UncheckedGet<SdfPathVector>();
++        _Items(items.size());
++        _Decode(items.size());
++        _Materialization(items.size() * sizeof(SdfPath) * 2 + 128);
++        for (const auto& path : items) _PathText(path);
++    }
++    else if (TokenList<SdfTokenListOp>(value, *this) || TokenList<SdfPathListOp>(value, *this) ||
++        TokenList<SdfStringListOp>(value, *this)) {}
++    else if (value.IsHolding<VtArray<TfToken>>())
++    {
++        const auto& items = value.UncheckedGet<VtArray<TfToken>>();
++        _Items(items.size());
++        _Decode(items.size());
++        _Materialization(items.size() * sizeof(TfToken) * 2 + 128);
++        for (const auto& item : items) _Text(item.GetString().size() + 1);
++    }
++    else if (value.IsHolding<VtArrayEdit<TfToken>>())
++    {
++        const auto& edit = value.UncheckedGet<VtArrayEdit<TfToken>>();
++        const auto words = edit.GetEncodedInstructions();
++        _Items(words.size() + edit.GetLiterals().size());
++        _Decode(words.size() + edit.GetLiterals().size());
++        _Materialization(words.size() * sizeof(int64_t) * 2 + edit.GetLiterals().size() * sizeof(TfToken) * 2 + 256);
++        for (const auto& literal : edit.GetLiterals()) _Text(literal.GetString().size() + 1);
++    }
++    else if (value.IsHolding<std::string>())
++    {
++        const auto size = value.UncheckedGet<std::string>().size();
++        _Items(1); _Text(size + 1); _Materialization(size + 129);
++    }
++    else if (value.IsHolding<TfToken>())
++    {
++        _Items(1); _Text(value.UncheckedGet<TfToken>().GetString().size() + 1); _Materialization(128);
++    }
++    else if (value.IsHolding<SdfAssetPath>())
++    {
++        const auto& asset = value.UncheckedGet<SdfAssetPath>();
++        const auto size = asset.GetAuthoredPath().size() + asset.GetEvaluatedPath().size() + asset.GetResolvedPath().size();
++        _Items(1); _Text(size + 3); _Materialization(size + 256);
++    }
++    else if (value.IsEmpty() || value.IsHolding<bool>() || value.IsHolding<int>() ||
++        value.IsHolding<unsigned int>() || value.IsHolding<int64_t>() || value.IsHolding<uint64_t>() ||
++        value.IsHolding<float>() || value.IsHolding<double>() || value.IsHolding<GfHalf>() ||
++        value.IsHolding<GfVec2i>() || value.IsHolding<GfVec4f>() ||
++        value.IsHolding<SdfSpecifier>() || value.IsHolding<SdfVariability>() ||
++        value.IsHolding<SdfPermission>() || value.IsHolding<SdfValueBlock>() ||
++        value.IsHolding<SdfAnimationBlock>())
++    {
++        _Items(1); _Materialization(256);
++    }
++    else _Fail(SdfStorageAdmissionStatus::UnsupportedType);
++}
++
++PXR_NAMESPACE_CLOSE_SCOPE
+--- a/pxr/usd/sdf/listOp.cpp
++++ b/pxr/usd/sdf/listOp.cpp
+@@ -11,6 +11,7 @@
+ #include "pxr/usd/sdf/path.h"
+ #include "pxr/usd/sdf/payload.h"
+ #include "pxr/usd/sdf/reference.h"
++#include "pxr/usd/sdf/storageAdmission.h"
+ #include "pxr/usd/sdf/types.h"
+ #include "pxr/base/tf/debug.h"
+ #include "pxr/base/tf/denseHashSet.h"
+@@ -26,11 +27,65 @@
+ #include "pxr/base/vt/valueComposeOver.h"
+ 
+ #include <ostream>
++#include <type_traits>
+ 
+ using std::string;
+ using std::vector;
+ 
+ PXR_NAMESPACE_OPEN_SCOPE
++
++namespace
++{
++template <typename T>
++uint64_t _AdmitListItems(const std::vector<T>& items, SdfStorageAdmissionScope& scope)
++{
++    scope._Items(items.size());
++    scope._Decode(items.size());
++    for (const auto& item : items)
++    {
++        if constexpr (std::is_same_v<T, TfToken>) scope._Text(item.GetString().size() + 1);
++        else if constexpr (std::is_same_v<T, SdfPath>) scope._PathText(item);
++        else scope._Fail(SdfStorageAdmissionStatus::UnsupportedType);
++    }
++    return items.size();
++}
++
++template <typename T>
++uint64_t _AdmitListStorage(const SdfListOp<T>& op, SdfStorageAdmissionScope& scope)
++{
++    uint64_t count = 0;
++    for (const auto* items : {&op.GetExplicitItems(), &op.GetAddedItems(),
++        &op.GetPrependedItems(), &op.GetAppendedItems(), &op.GetDeletedItems(), &op.GetOrderedItems()})
++    {
++        count += _AdmitListItems(*items, scope);
++    }
++    return count;
++}
++
++template <typename T>
++void _AdmitListComposition(const SdfListOp<T>& op, const std::vector<T>* input,
++                          const SdfListOp<T>* inner)
++{
++    auto* scope = SdfStorageAdmissionScope::GetCurrent();
++    if (!scope) return;
++    scope->RequireSucceeded();
++    if constexpr (!std::is_same_v<T, TfToken> && !std::is_same_v<T, SdfPath>)
++        scope->_Fail(SdfStorageAdmissionStatus::UnsupportedType);
++    uint64_t count = _AdmitListStorage(op, *scope);
++    if (inner) count += _AdmitListStorage(*inner, *scope);
++    if (input)
++    {
++        count += _AdmitListItems(*input, *scope);
++    }
++    // Pinned ApplyOperations uses temporary list/map nodes and result vectors;
++    // the list-op-over-list-op overload also performs quadratic linear searches.
++    uint64_t comparisons = count;
++    if (inner) comparisons *= count;
++    else for (auto remaining = count; remaining > 0; remaining >>= 1) comparisons += count;
++    scope->_Decode(comparisons);
++    scope->ReserveExternalMaterialization(count * (128 + sizeof(T) * 12) + 512);
++}
++}
+ 
+ TF_REGISTRY_FUNCTION(TfType)
+ {
+@@ -415,6 +470,7 @@
+     if (!vec) {
+         return;
+     }
++    _AdmitListComposition(*this, vec, static_cast<const SdfListOp<T>*>(nullptr));
+ 
+     TRACE_FUNCTION();
+ 
+@@ -468,6 +524,7 @@
+ std::optional<SdfListOp<T>>
+ SdfListOp<T>::ApplyOperations(const SdfListOp<T> &inner) const
+ {
++    _AdmitListComposition(*this, static_cast<const ItemVector*>(nullptr), &inner);
+     if (IsExplicit()) {
+         // Explicit list-op replaces the result entirely.
+         return *this;

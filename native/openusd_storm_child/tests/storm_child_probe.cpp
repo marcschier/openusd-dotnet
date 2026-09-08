@@ -232,11 +232,14 @@ bool TestRetryableDestroyFailure(
 
 int main(int argc, char** argv)
 {
-    if (argc != 3)
+    if (argc != 3 &&
+        (argc != 4 || std::strcmp(argv[3], "--render-only") != 0))
     {
-        std::cerr << "Usage: storm_child_probe <plugin-path> <stage-path>\n";
+        std::cerr <<
+            "Usage: storm_child_probe <plugin-path> <stage-path> [--render-only]\n";
         return 2;
     }
+    const bool render_only = argc == 4;
 
     WNDCLASSW window_class{};
     window_class.lpfnWndProc = DefWindowProcW;
@@ -249,7 +252,7 @@ int main(int argc, char** argv)
         return 3;
     }
     HWND parent = CreateWindowExW(
-        0,
+        render_only ? WS_EX_NOACTIVATE : 0,
         ParentClassName,
         L"",
         WS_OVERLAPPEDWINDOW,
@@ -615,6 +618,37 @@ int main(int argc, char** argv)
                   << initial_capture.pixel_hash
                   << " clearedHash=" << cleared_selection_capture.pixel_hash
                   << " restored=1\n";
+    }
+
+    if (render_only)
+    {
+        if (!Require(
+                openusd_storm_child_destroy(child, &error) == OPENUSD_STATUS_OK,
+                error_data))
+        {
+            openusd_stage_release(stage);
+            return 6;
+        }
+        openusd_stage_release(stage);
+        passed =
+            Require(
+                openusd_storm_child_diagnostic_get_live_count() == 0,
+                "Storm child wrapper leaked after render-only execution.") &&
+            Require(
+                openusd_storm_diagnostic_get_live_renderer_count() == 0,
+                "Storm renderer leaked after render-only execution.") &&
+            passed;
+        DestroyWindow(parent);
+        if (passed)
+        {
+            std::cout
+                << "Storm child render-only probe passed: actualFramebuffer="
+                << initial_capture.width << 'x' << initial_capture.height
+                << ", nonBackground=" << initial_capture.non_background_pixel_count
+                << ", pick=" << center_pick_identity
+                << ", selectionClear=exact, inputOrFocusMessages=none.\n";
+        }
+        return passed ? 0 : 6;
     }
 
     std::vector<uint8_t> pattern_pixels(256u * 192u * 4u);

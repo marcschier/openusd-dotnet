@@ -33,6 +33,28 @@ public sealed class ViewerLayoutResetTests
     };
 
     [Test]
+    public async Task LayoutResetKeepsTheThemeWhileUsingTheExistingColorManagementTransaction()
+    {
+        using var shell = new ColorManagementShell();
+        await shell.ApplyColorManagementAsync(EnabledChoice);
+        ViewerSettings defaults = ViewerSettings.Default with
+        {
+            ThemePreference = ViewerThemePreference.Dark
+        };
+
+        ViewerLayoutResetOutcome outcome = await ViewerLayoutReset.RunAsync(
+            defaults,
+            shell.ReadColorManagementView,
+            shell.ApplyColorManagementAsync,
+            shell.ApplySettings);
+
+        await Assert.That(outcome.Applied.ThemePreference).IsEqualTo(ViewerThemePreference.Dark);
+        await Assert.That(outcome.Applied.DiagnosticsVisible).IsFalse();
+        await Assert.That(outcome.IsConsistent).IsTrue();
+        await Assert.That(shell.State.RenderSettings.DisplayTransform).IsNull();
+    }
+
+    [Test]
     public async Task ResetClearsAnActiveTransformBeforeCommittingTheDefaults()
     {
         using var shell = new ColorManagementShell();

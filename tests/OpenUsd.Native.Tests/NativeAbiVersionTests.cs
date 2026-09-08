@@ -286,6 +286,21 @@ public sealed class NativeAbiVersionTests
                 .Order(StringComparer.Ordinal)
                 .Select(File.ReadAllText));
         string implementation = ReadDataAbiImplementation(repositoryRoot);
+        string reviewImplementation = File.ReadAllText(Path.Combine(
+            repositoryRoot, "native", "openusd_dotnet", "src", "review_document.cpp"));
+        Match reviewGuard = Regex.Match(
+            reviewImplementation,
+            @"openusd_status BufferGuard\(.*?(?=\r?\nBytes MakeReceipt\()",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        await Assert.That(reviewGuard.Success).IsTrue();
+        await Assert.That(reviewGuard.Value).Contains("GuardStage(stage, error");
+        await Assert.That(reviewGuard.Value).Contains("OpenUsdEdit::Outputs(owner, view);");
+        await Assert.That(reviewGuard.Value).Contains("if (status != OPENUSD_STATUS_OK)");
+        await Assert.That(reviewGuard.Value).Contains("openusd_edit_buffer_release(*owner)");
+        await Assert.That(Regex.Count(reviewGuard.Value, @"ResetAbiOutput\(owner\)",
+            RegexOptions.CultureInvariant)).IsEqualTo(2);
+        await Assert.That(Regex.Count(reviewGuard.Value, @"ResetAbiOutput\(view\)",
+            RegexOptions.CultureInvariant)).IsEqualTo(2);
 
         MatchCollection declarations = Regex.Matches(
             header,
@@ -348,6 +363,7 @@ public sealed class NativeAbiVersionTests
                 body.Contains("return Guard(", StringComparison.Ordinal) ||
                 body.Contains("return GuardStage(", StringComparison.Ordinal) ||
                 body.Contains("return GuardLayer(", StringComparison.Ordinal) ||
+                body.Contains("return OpenUsdReview::BufferGuard(", StringComparison.Ordinal) ||
                 name == "openusd_stage_access_end").IsTrue();
             if (outputBearingExports.Contains(name))
             {

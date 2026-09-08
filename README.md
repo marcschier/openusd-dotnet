@@ -216,23 +216,9 @@ workflow-defined gates, and hosted execution evidence.
 | Vulkan | Hydra to hdSilk pages | Vulkan | `win-x64`, `linux-x64` | Managed fallback |
 | Metal | Hydra to hdSilk pages | Metal | `osx-arm64` | Managed fallback |
 
-The renderer-neutral capability declarations are:
-
-| Capability | Storm | D3D12 | Vulkan | Metal |
-| --- | :---: | :---: | :---: | :---: |
-| Presentation | ✅ | ✅ | ✅ | ✅ |
-| Offscreen | — | ✅ | ✅ | ✅ |
-| Compute | — | ✅ | ✅ | ✅ |
-| Multisampling | Up to 8x | 1x | 1x | 1x |
-| Shadows | ✅ | — | — | — |
-| Device-loss detection | ✅ | ✅ | ✅ | ✅ |
-| One-pixel picking | ✅ | ✅ | ✅ | ✅ |
-| Selection display | Storm highlight | Visible outline | Visible outline | Visible outline |
-
-An em dash means the capability is not advertised by the current renderer-neutral descriptor, not
-that the underlying graphics API can never provide it. The `Shadows` row states that the Storm
-descriptor advertises the capability; it does not mean shadows are rendered in every configuration,
-and the offscreen parity harness is measured not to produce them at all.
+Renderer-neutral capability flags describe the active backend contract, not proof of every material,
+light, or selection mode. The generated feature summary below names the declared evidence platforms
+and links each claim to its exact supported subset and limitations.
 
 ## 🧩 Feature matrix
 
@@ -251,41 +237,58 @@ and the offscreen parity harness is measured not to produce them at all.
 | Shared-stage authoring | Scheduler, change feed, retained render source, bounded sample queue | Implemented |
 | Viewer | Hierarchy, properties, layers, timeline, cameras, switching, diagnostics | Implemented |
 | Viewer diagnostics | Backend API/device, compute, descriptor indexing, software device, frame counters | Implemented |
-| Primitive picking | Storm and hdSilk backend paths with stale-result handling | Implemented |
-| Face picking | hdSilk preserves authored triangle/subprim identity | Implemented on Silk |
-| Edge and point picking | Valid requests report unsupported | Not supported |
-| Selection outlines | Visible-only hdSilk outline; Storm uses its native highlight | Implemented |
-| X-ray selection | Explicitly rejected by the current outline contract | Not supported |
+| Picking and selection | Backend-specific identity and outline modes | See generated summary below |
 | NativeAOT | Compile gates on all RIDs; package-only execution gates per RID | Alpha-gated |
 
 ### hdSilk rendering features
 
-These are the managed renderer's Hydra-fed features. "Parity-gated" means a curated scene is
-compared against Storm and must match exactly; see the section below for what that does and does
-not claim.
+This summary is generated from `eng/support-manifest.json`. Platforms indicate the scope of a
+claim, not support by every renderer on that platform. Follow the feature link for backend-specific
+limits. A workflow declaration is not a claim that every case executed, and a diagnostic fallback
+does not count as implementing a feature. The full [support profile](docs/support-manifest.md)
+also covers data, schemas, runtime contracts, optional integrations, and explicit exclusions.
 
-| Area | Coverage | Status |
+<!-- BEGIN GENERATED RENDER SUPPORT -->
+| Feature | Status | Evidence platforms |
 | --- | --- | --- |
-| Mesh topology and transforms | Triangulated meshes, authored normals, UVs, display colour | Parity-gated |
-| Primvar interpolation | Constant, vertex, varying, uniform, face-varying | Implemented; constant/vertex gated |
-| `UsdPreviewSurface` | All 14 inputs, both specular and metallic workflows | Implemented; specular workflow gated |
-| Textures | Image decode, GPU cache, `UsdUVTexture` wrap and colour space | Implemented; `repeat`+`sRGB` gated |
-| MaterialX | Projection plus generated Vulkan SPIR-V and Metal MSL source | Vulkan generated path gated |
-| `UsdLux` lighting | Distant, sphere, and untextured dome ambient with exposure | Parity-gated |
-| Shadows | Transport exists; Storm produces no offscreen reference to gate against | Measured, ungated |
-| Image-based lighting | Textured dome diffuse/specular prefilter and BRDF table | Analytic and WARP/SwiftShader gates |
-| Point instancing | Prototype-plus-instance wire format, hardware instanced draws | Parity-gated |
-| Basis curves | Linear curves as line topology | Implemented subset; gated |
-| Points | `UsdGeomPoints` as point-list topology | Parity-gated |
-| Draw modes | Cards, bounds, and origin | Parity-gated |
-| Cull style | `doubleSided` and authored cull style | Implemented; `doubleSided` gated |
-| Clip planes | Eye-space clip planes through the camera API | Parity-gated |
-| Time-varying values | Transforms and primvars resample without a full scene rebuild | Parity-gated |
-| `UsdSkel` skinning | CPU evaluation in hdSilk sync | Parity-gated |
-| Blend shapes | Narrow CPU point-offset subset before skinning; GPU deformation excluded | Implemented subset |
-| Subdivision | Storm renders the control cage at harness complexity | Measured, ungated |
-| Draw batching | Sorted and batched by pipeline and material | Implemented |
-| Volumes beyond Vulkan single-density OpenVDB, path tracing, full MaterialX | — | Out of current alpha scope |
+| [PreviewSurface textures][support-1] | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| [Transparent and cutout materials][support-2] | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| [MaterialX and OpenPBR projection][support-3] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Light linking][support-4] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Distant-light raster shadows][support-5] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Diffuse dome lighting][support-6] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Specular dome lighting][support-7] | Workflow-gated | `win-x64`, `linux-x64` |
+| [GPU OCIO display transforms][support-8] | Workflow-gated | `win-x64`, `linux-x64` |
+| [CPU skinning][support-9] | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| [GPU skinning][support-10] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Geometric displacement][support-11] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Catmull-Clark, Loop and bilinear subdivision][support-12] | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| [Sampled OpenVDB density][support-13] | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| [Storm, D3D12 and Vulkan primitive picking][support-14] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Metal primitive picking][support-15] | Pending hosted proof | `osx-arm64` |
+| [Authored face picking][support-16] | Workflow-gated | `win-x64`, `linux-x64` |
+| [Authored edge and point picking][support-17] | Workflow-gated | `win-x64`, `linux-x64` |
+| [X-ray selection outlines][support-18] | Workflow-gated | `win-x64`, `linux-x64` |
+
+[support-1]: docs/support-manifest.md#preview-surface-textures
+[support-2]: docs/support-manifest.md#preview-surface-transparency
+[support-3]: docs/support-manifest.md#materialx-projection
+[support-4]: docs/support-manifest.md#usdlux-light-linking
+[support-5]: docs/support-manifest.md#usdlux-shadow-linking
+[support-6]: docs/support-manifest.md#dome-light-directional-diffuse-ibl
+[support-7]: docs/support-manifest.md#dome-light-specular-ibl
+[support-8]: docs/support-manifest.md#gpu-ocio-presentation
+[support-9]: docs/support-manifest.md#cpu-skinning
+[support-10]: docs/support-manifest.md#gpu-skinning
+[support-11]: docs/support-manifest.md#usdpreview-displacement
+[support-12]: docs/support-manifest.md#catmull-clark-subdivision
+[support-13]: docs/support-manifest.md#usdvol-density
+[support-14]: docs/support-manifest.md#primitive-picking
+[support-15]: docs/support-manifest.md#primitive-picking-metal
+[support-16]: docs/support-manifest.md#face-identity
+[support-17]: docs/support-manifest.md#edge-point-picking
+[support-18]: docs/support-manifest.md#xray-selection
+<!-- END GENERATED RENDER SUPPORT -->
 
 ## 🔬 What "parity with Storm" means here
 
@@ -361,7 +364,7 @@ itself lives under `src/` and is documented in [Live authoring](docs/live-author
 | [Live authoring](docs/live-authoring.md) | Ordered batches, backpressure, consumers, and disposal |
 | [Rendering](docs/rendering.md) | Renderer-neutral contracts, Storm, hdSilk, picking, and selection |
 | [Viewer](docs/viewer.md) | Desktop workflows, camera controls, editing, and diagnostics |
-| [MCP server](docs/mcp.md) | .NET tool install, Copilot CLI setup, 12 tools, security, and RID bundles |
+| [MCP server](docs/mcp.md) | .NET tool install, Copilot CLI setup, bounded tools, security, and RID bundles |
 | [Samples](samples/README.md) | Runnable data API and live-authoring examples |
 | [Native build](docs/native-build.md) | Locked OpenUSD inputs, toolchains, and native probes |
 | [Packaging](docs/packaging.md) | Runtime asset layout and clean package consumers |
@@ -433,20 +436,17 @@ but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, sha
 performance gates exist, and this README states what they do and do not prove. Public API and package
 identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.
 
-Before 1.0 the remaining work is code signing and notarization credentials for signed Viewer
-distributions, GPU-equipped self-hosted runners for the two Vulkan composition gates, and closing
-the measured divergences recorded in [Testing](docs/testing.md).
+Remaining rendering and workflow subsets are recorded in the
+[support profile](docs/support-manifest.md), not reduced to a single completeness percentage.
+Delivery work also includes signing/notarization credentials, durable Viewer downloads, and
+GPU-equipped runners for the two Vulkan composition gates.
 
-The standalone Viewer bundle smoke is now proven on `win-x64` and `linux-x64`. Run 31290108012
-records `viewer distribution linux-x64` as successful and reports a rendered Storm/OpenGL frame under
-Xvfb after the Linux X11 error-trap self-deadlock was fixed in 278b1f6. The `osx-arm64` result is
-also established, but still red: the same evidence records `GPU composition: ready (808 x 513)`,
-`initialized=True resources=True`, and the stage-open task completing successfully as
-`RanToCompletion` on a pool thread. Probes posted after initialization at both
-`DispatcherPriority.Send` and `Background` were armed and posted, but neither priority was processed
-before the smoke timed out. The published packages are unaffected — they are gated separately — and
-the observations point at Avalonia dispatcher servicing after initialization rather than the Metal
-renderer, backend initialization, or stage-open async chain.
+The `0.14.0-alpha` [release run 33931868184](https://github.com/marcschier/openusd-dotnet/actions/runs/33931868184)
+at `f33ba56`, attempt 1, passed the installed Viewer bundle smokes on `win-x64`, `linux-x64`, and
+`osx-arm64`. This supersedes the earlier macOS dispatcher failure. The same run produced executed
+Metal uniform and sampled-density volume evidence, but still recorded a Windows Vulkan
+composition capability skip. These are distinct claims: a working Metal volume does not prove
+every Metal feature, and offscreen Vulkan does not prove external-image composition.
 
 [ci]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml
 [ci-badge]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml/badge.svg?branch=main

@@ -388,7 +388,7 @@ public sealed class ViewerDisplayTransformWiringTests
             "await ConfirmColorManagementOpenAsync(",
             StringComparison.Ordinal);
         int readyIndex = window.IndexOf(
-            "SetReady($\"Opened {normalizedPath}\");",
+            "SetReady($\"Opened {openedPath}\");",
             StringComparison.Ordinal);
         int drainIndex = window.IndexOf(
             "await DrainColorManagementRequestsAsync();",

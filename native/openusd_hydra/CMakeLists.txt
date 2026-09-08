@@ -3,8 +3,12 @@ set(OPENUSD_HYDRA_SOURCES
     ../include/openusd_render_lighting.h
     ../include/openusd_render_pick.h
     include/openusd_hydra.h
+    include/openusd_storm_aov.h
     ../private/openusd_render_camera_internal.h
     src/openusd_render_pick_internal.h
+    src/openusd_storm_aov_internal.h
+    src/openusd_storm_engine.h
+    src/openusd_storm_aov.cpp
     src/openusd_hydra.cpp)
 
 function(configure_openusd_hydra_target target_name core_target)
@@ -36,7 +40,9 @@ install(TARGETS openusd_hydra
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/openusd_hydra.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(
+    FILES include/openusd_hydra.h include/openusd_storm_aov.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # The Storm probes link openusd_dotnet_renderer_test, which only exists when the
 # native test targets are built, so this must follow OPENUSD_BUILD_NATIVE_TESTS.

@@ -20,6 +20,209 @@ sensor.SetMetadata("owner", "team-sensors");
 stage.Save();
 ```
 
+## Bounded hierarchy snapshots
+
+```csharp
+UsdHierarchySnapshot snapshot = stage.GetHierarchySnapshot(UsdHierarchyLimits.Viewer);
+foreach (UsdHierarchyEntry entry in snapshot.Entries)
+{
+    Console.WriteLine($"{entry.Depth}: {entry.Path} ({entry.TypeName}), parent={entry.ParentIndex}");
+}
+```
+
+This is **one native bulk query plus one release**, not `Traverse()` followed by per-prim P/Invoke.
+Entries are in native all-prim preorder, including inactive, undefined/over and abstract/class prims.
+The pseudo-root `/` is not a row. Scene roots and prototype roots have `ParentIndex == -1` and
+`Depth == 1`; every other parent precedes its children. `ChildCount` counts immediate represented
+children. Inactive descendants are not composed; unloaded payloads are not loaded. Instance proxies
+are not expanded. Referenced prototypes follow the scene in first-reference order, once per shared
+prototype, including nested instances.
+
+Each entry carries path/name/type, native active/loaded/defined/abstract/instanceable/instance and
+prototype classification, effective `HasPayload` without enumerating payload arcs, `PrototypePath`,
+and inline read-only variant-set metadata. Set order, choice order and actually applied selection
+(including fallbacks) follow the native `UsdVariantSets`/`UsdVariantSet` APIs and the real Pcp indices.
+The query does not parse USDA in managed code, flatten/rewrite the stage, enumerate properties,
+change variant selections or save files.
+
+`UsdHierarchySnapshot`, its entries, selectors and limits are sealed, immutable detached results.
+Collections are read-only wrappers, never exposed arrays. They remain usable after stage or scheduler
+disposal, including when returned directly from `UsdStageScheduler.InvokeAsync`. `ChangeSerial` is
+captured under the same native stage-access lock as the rows.
+
+| Limit | `Default` | `Viewer` / maximum |
+| --- | ---: | ---: |
+| Scene + prototype prims | 100,000 | 1,000,000 |
+| UTF-8 text bytes, including NUL terminators | 16 MiB | 128 MiB |
+| Hierarchy depth | 256 | 1,024 |
+| Variant sets | 4,096 | 65,536 |
+| Variant choices | 65,536 | 262,144 |
+| Metadata admission work units | 2,000,000 | 16,000,000 |
+
+The text budget includes output **and** borrowed source variant text admitted before SDK copies.
+Set/choice limits apply independently to emitted counts and aggregate source list elements, including
+duplicate, deleted and reordered list-op items. Metadata work charges composition-node, layer and
+variant-item visits, bounding expansion even when composed output is small. Limits may be reduced to
+zero; an empty stage can satisfy all-zero limits. Exceeding a limit throws `OpenUsdNativeException`
+with the quota and observed bound; native failure outputs are cleared. Rows are **never silently
+truncated**. `TextByteCount` is packed output bytes, not admission bytes or total process memory.
+Container/DTO overhead is proportional to the limits; stage opening, composition and already-resident
+SDK storage precede and are outside this query's budgets.
+
+Full paths are assembled only after admission from borrowed name tokens and already-bounded parent
+paths; the query never calls `SdfPath::GetString`. Variant source list operations and choice vectors
+are inspected through pinned, known resident stores before calling allocating SDK enumeration APIs.
+This includes ordinary filesystem USDA and USDC composed hierarchies, without the portable-review
+document format restrictions.
+
+**Variant availability is explicit.** Pinned crate data eagerly retains token vectors, but its
+`variantSetNames` string list operations can remain deferred. The query does not deserialize those
+unbounded values implicitly. Affected entries have `VariantMetadataStatus == Deferred` and an empty,
+not partial, selector list. Unrecognized backing stores also defer variant metadata. Every hierarchy
+row is still returned, but `IsComplete` is false if any selectors are deferred. A complete empty
+selector list is distinguished by `VariantMetadataStatus == Complete`. This is not a claim that
+deferred USDC variant expansion is implemented.
+
+The native contract is version 1 in `openusd_hierarchy.h`: fixed-width entry/variant records,
+canonical contiguous UTF-8 strings with 32-bit offsets, byte extents and an opaque owner. Managed
+decoding validates counts, extents, alignment, UTF-8, preorder parents, child counts, prototype
+references, variant ranges and completeness before exposing any DTO.
+
+Windows x64 native, managed and NativeAOT/package seams are exercised. Portable source and build
+gates do not constitute Linux/macOS execution evidence.
+
+## Bounded selected-prim property inspection
+
+```csharp
+UsdPrimPropertySnapshot snapshot = stage.GetPrimPropertySnapshot(
+    "/World/Model",
+    timeCode: 24, // null selects USD default time
+    limits: UsdPropertyInspectionLimits.Default);
+
+foreach (UsdPropertySnapshot property in snapshot.Properties)
+{
+    if (property is UsdAttributePropertySnapshot attribute)
+    {
+        Console.WriteLine($"{attribute.Name}: {attribute.TypeName} [{attribute.ResolveSource}]");
+        Console.WriteLine($"{attribute.Value.Status}: {attribute.Value.Reason}");
+        // Elements are invariant typed preview text, not an editable value serialization.
+        // Connections are graph identities and may coexist with a USD default.
+    }
+}
+```
+
+This is **one native query plus one release**, not one P/Invoke per property, sample, target or array
+element. The snapshot and every nested DTO are immutable `IUsdDetachedResult` values and remain usable
+after stage/scheduler disposal. `ChangeSerial`, `PrimPath` and `TimeCode` identify the read. No USD
+handles, mutable arrays or lazy native views escape. The complete property inventory is in ordinal
+UTF-8 name order; authored `propertyOrder` is deliberately not materialized. Quotas refuse the query
+with an actionable error and cleared native outputs, never successful partial property rows.
+
+Stored composition errors on the selected prim or its ancestors, and errors in relevant contributing
+layer stacks, also refuse the inventory before property enumeration. Missing internal/external
+references or sublayers therefore cannot produce a complete empty list or a falsely complete list
+of surviving local properties. An unrelated prim's errors do not globally poison a valid selection.
+The diagnostic is fixed and bounded; stored SDK errors are never formatted. SDK26.05's
+`GetLocalErrors()` getters copy their vectors, so the shim instead uses a narrow SDK-version-pinned,
+compiler-checked read-only error-owner accessor. It neither changes SDK definitions nor guesses
+member offsets, copies error lists, or changes the native ABI.
+Private SDK member names are confined to one compatibility translation unit; the reader sees only
+boolean predicates. Configure and every native target build verify SDK version 2605 and exact SHA-256
+identities of the installed `primIndex.h`, `layerStack.h`, and `errors.h` headers. Generated
+absolute includes select those verified files, and compilation checks SDK version 2605 and the const
+error-owner types. Missing or changed headers fail closed, including comment-only changes; updating
+the pin requires an explicit compatibility review. Negative build-contract tests modify only owned
+header copies, never the installed SDK.
+
+The Windows error-vector negative control is distinct from the long-diagnostic tests. Its resident
+layer stack contains 131,072 error entries (16 bytes per shared-pointer entry on Win-x64): the old
+by-value `GetLocalErrors()` needs a 2 MiB vector allocation and demonstrably throws `std::bad_alloc`
+under the same 1 MiB query-only headroom in which the bounded inspection correctly refuses with
+cleared outputs. Error-list cardinality is verified after releasing that limit. Separate cases retain
+4 MiB diagnostic claims and verify refusal without formatting error objects; those are not presented
+as evidence about error-vector allocation.
+
+Attribute rows distinguish:
+
+- Exact native Sdf `TypeName`, uniform/varying `Variability`, `IsCustom`, and authored **declaration**
+  state (`IsAuthored`). A local declaration alone is not an authored value or winning provenance.
+- `ResolveSource` and `ValueState`: default, time samples, schema fallback, unset, blocked, or explicit
+  deferral. A block can coexist with a schema fallback preview. `HasAuthoredValueOpinion` includes
+  native block/sample opinions; null means the bounded query could not prove the state.
+- `ValueSource`: native `UsdResolveInfo`/resolver winning layer identifier and spec path when proven,
+  including references, inheritance and variant namespaces. It is not inferred from declaration order
+  or `IsAuthored`. Fallbacks have no authored layer source. Time-code values and sample times use native
+  layer-to-stage offsets, not local layer times.
+- `Value`, `TimeSamples`, and `Connections`: separate previews with `Status`, `Reason`, exact counts
+  when proven, and bounded prefixes. Relationship rows have the same `Targets` shape. Targets retain
+  native ordering and direct graph identity; relationship forwarding and shader/material graphs are
+  not flattened. A singular target `Source` is exposed only for an unopposed strongest explicit list.
+  Native Pcp mapping errors produce explicit `Deferred` previews, not warning-derived empty success.
+
+`UsdPropertyPreviewStatus` is `Complete`, `Truncated`, `Deferred`, or `Unsupported`. A null count is
+explicitly unknown, not zero. Numeric elements use invariant scalars/tuples with the attribute's type
+retained, including doubles, integer widths, vectors, matrices, quaternions and typed array prefixes.
+String/token prefixes never split UTF-8 code points. There is no whole-value stringification.
+Raw values inconsistent with the native declared storage type are `Unsupported`, not retagged previews.
+Do not parse these preview strings for edits or undo: **`CaptureAuthored` remains the exact authored
+before-state authority**.
+
+Every value, time-sample and target preview also exposes typed `ReasonKind`
+(`UsdPropertyPreviewReasonKind`); keep `Reason` for display, not dispatch. The enum mirrors the existing
+wire reasons: `None`, `PreviewLimit`, `TextLimit`, `DeferredStore`, `ValueClips`, `ArrayEdit`,
+`UnsupportedType`, `Spline`, `AssetExpression`, and `Composition`. This is an additive managed API,
+not a new ABI or native runtime. `ReasonKind == Spline` means the native admission guard encountered
+contributing spline metadata; it does **not** establish a winning spline source or a `HasSpline` fact.
+A consumer may use that reason to select candidates for its separately bounded legacy spline preview,
+without probing every attribute. Preserve `ResolveSource == Deferred` and handle unavailable legacy
+reads; other admission reasons may take precedence. Default-time spline and non-spline reason paths
+are exercised against the same frozen ABI23 runtime.
+
+For admitted asset elements, `Assets` retains complete `AuthoredPath`, `EvaluatedPath`, `ResolvedPath`,
+the native winning `AnchorLayerIdentifier`, and nullable `IsMissing`. Literal evaluated paths are
+empty, not copied from authored paths. A nonempty anchored path with no resolver result is missing;
+empty/unanchored values remain unknown/not applicable. Resolution uses the same native Sdf anchor
+semantics and stage resolver context as USD, including reference-layer anchors. Asset identifiers
+are never shortened: oversized fields omit the preview with an explicit status. Variable-expression
+assets are deferred **before expansion**.
+
+| Limit | Default | Viewer | Hard ceiling |
+| --- | ---: | ---: | ---: |
+| Complete property rows | 4,096 | 65,536 | 65,536 |
+| Aggregate output/admitted source UTF-8 bytes | 1 MiB | 16 MiB | 16 MiB |
+| Value elements per attribute | 16 | 16 | 16 |
+| Sample times per attribute | 16 | 16 | 16 |
+| Targets/connections per property | 16 | 16 | 16 |
+| Charged metadata/source/resolver work units | 262,144 | 1,048,576 | 1,048,576 |
+| UTF-8 bytes per value element/asset path field | 4,096 | 4,096 | 65,536 |
+
+Zero preview lengths retain proven counts and explicit truncation. Text admission includes source
+names, paths and list-operation inputs before SDK copies; `TextByteCount` reports packed output only.
+The native path walk admits borrowed source/variant tokens before path stringification, even if the
+SDK previously cached an encoded path. Source list sizes/work are admitted before target composition.
+Resident arrays/strings are borrowed through shared `VtValue` storage, and sample counts/bracketing APIs
+avoid entire time-sample vectors. These are query admission limits, not a universal CPU/RSS or resolver
+plugin sandbox: stage opening/composition/resident storage precede the query, and arbitrary resolver
+plugin internals are outside the memory bound.
+
+**Format and deferred-domain boundary:** ordinary USDA values and ordinary USDC fixed-size scalars,
+default strings/tokens/assets, scalar sample metadata and schema fallbacks are supported. The pinned
+crate interface cannot prove array/path-list/sample-string or sample-asset size before lazy
+deserialization, so those previews are `Deferred`, with unknown counts where needed. Unknown property
+inventory stores are refused rather than misreported as an empty inventory. Value clips, splines,
+array edits, non-exact interpolated arrays and unsupported value types do not silently expand.
+An array edit elsewhere in the sample domain also prevents a false complete sample count, even when
+the requested exact-time value itself is concrete. This does not broaden portable-review file support.
+
+The version-1 C contract is `openusd_property_inspection.h`, requiring data ABI23 and capability
+`OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT`. The managed decoder validates header versions, fixed
+record sizes, byte extents/alignment, ranges, UTF-8, type/array flags, provenance pairs, finite ordered
+times and completeness; its native owner is released exactly once on success, native error or decode
+failure. Windows native admission probes execute with only **1 MiB of additional query memory** after
+constructing 64 MiB resident strings/arrays/source names, four-million-entry property lists and large
+sample/target lists. The package-only NativeAOT consumer exercises this same seam. Linux/macOS source
+portability does not constitute execution evidence.
+
 ## Stage timing, default prim, and layers
 
 Viewer-facing stage controls expose the composed timeline and root-layer authored defaults:
@@ -93,6 +296,25 @@ the guard is held. Callback exceptions and cancellation still release the guard 
 thread; an access-end failure causes fail-fast because continuing with an owned native lock would be
 unsafe. Access-begin allocation and post-lock failures roll back both the recursive lock and retained
 stage reference before returning `NativeError`.
+
+`UsdStageScheduler.OpenForReview` establishes the native-verified source origin on that same owner
+thread. It uses the explicit portable-review open contract, not late binding of an already-open
+legacy stage; unsupported or unverifiable origins fail without changing ordinary `Open` behavior.
+
+For a destructive document transition, `TryPrepareRetirementAsync` fences every scheduler producer,
+including `InvokeAsync`, `EditAsync`, render-source acquisition and new renderer leases. Previously
+admitted operations, including submissions awaiting bounded queue capacity, drain before its
+owner-thread predicate runs. A false predicate returns null; an exception or cancellation resumes
+the usable stage. A successful predicate returns an opaque `UsdStageRetirementLease` that keeps
+foreign submissions explicitly refused through awaited teardown.
+
+Only that lease grants `InvokeCleanupAsync` access for owner-controlled cleanup; there is no ambient
+or callback-inherited bypass. Cleanup retains ordinary stage-result and reentrancy guards. Release
+existing renderer resources, sources and leases, then use `CommitAsync` instead of ordinary
+scheduler disposal. Commit refuses active child registrations and leaves the fence held for retry
+or abort. Disposing an uncommitted retirement lease drains owner cleanup and resumes scheduling;
+it does not dispose the stage. Hosts remain responsible for coordinating independently owned native
+writers and for keeping cleanup free of unreviewed source edits after the accepted predicate.
 
 ```csharp
 UsdStageScheduler scheduler = UsdStageScheduler.Open("scene.usda");
@@ -958,6 +1180,384 @@ a string) throws an `OpenUsdNativeException` explicitly rather than silently coe
 
 ## Native ABI contract and runtime discovery
 
+### Detached render specifications
+
+`OpenUsd.Render.UsdRenderStageExtensions.GetRenderSpecification` reads the pinned OpenUSD
+`UsdRenderComputeSpec` result, rather than reimplementing USD product inheritance and aspect
+conformance in managed code:
+
+```csharp
+using OpenUsd.Render;
+
+UsdRenderSpecification? specification =
+    await scheduler.InvokeAsync(stage => stage.GetRenderSpecification());
+// Or select a specific UsdRenderSettings prim:
+// stage.GetRenderSpecification("/Render/Settings")
+```
+
+The optional path selects composed `renderSettingsPrimPath` stage metadata when omitted.
+Only an **unauthored default** returns `null`. An authored empty, invalid, missing, or wrong-schema
+default, or an invalid explicit path, throws an actionable exception. A valid settings prim with
+no products returns a non-null snapshot with **zero requested outputs**.
+
+`UsdRenderSpecification` carries `SettingsPath`, ordered `Products`, first-use-ordered shared
+`RenderVariables`, `IncludedPurposes`, `MaterialBindingPurposes`, `RenderingColorSpace`, and
+`NamespacedSettingNames`. The color-space token is empty when unauthored. Each
+`UsdRenderProductSpecification` contains its path/name/type, effective camera, resolution,
+conformed pixel aspect/aperture, conform policy, data window, motion-blur/depth-of-field disables,
+ordered indices into the shared variable table, and unevaluated setting names.
+`UsdRenderVariableSpecification` preserves path, data type, source name, and source type, including
+unsupported types or expressions. Native forwarded-relationship ordering and shared-variable
+deduplication are retained; products never make individual managed/native query round trips.
+
+All three DTOs are sealed, deeply immutable `IUsdDetachedResult` implementations. Their constructors
+copy collections, and snapshots remain usable after the stage, scheduler, and native owner are
+released. `UsdVec2f` aperture and `UsdVec4f` data-window values are detached values too.
+
+The upstream evaluator has **no time-code parameter**: uniform/default-time settings and camera
+aperture are used. `ApertureSize` is the default-time aperture after native aspect conformance;
+it is not an animated per-frame camera state. A renderer-neutral caller must resolve animated
+camera/time state for each frame separately. Crop and overscan remain the exact bottom-left and
+top-right NDC window, including values outside `[0, 1]`. The read does not alter stage opinions,
+write output files, or execute scene-authored RenderPass command strings.
+
+`NamespacedSettingNames` preserves nonstandard authored attribute and relationship names on each
+render prim, including custom names without a namespace. Their arbitrary values are deliberately
+not fetched as renderer settings or serialized into untyped blobs. The native evaluator is called
+with a namespace filter that requests no custom attribute values. These names and all explicit
+render-variable metadata remain visible so a job planner can diagnose unsupported settings/AOVs;
+a snapshot by itself is **not a claim that every requested output can be rendered**.
+
+Data ABI 18 adds `openusd_render_get_specification` and `openusd_render_specification_release`.
+The version-1 owned view has flat product/variable/index arrays and one canonical packed UTF-8
+table. Native preflight rejects invalid product/camera/variable relationships, missing forwarded
+relationships, cycles, invalid defaults, non-finite or non-positive dimensions/aspects/apertures,
+and empty/inverted/non-finite data-window extents before exposing a result. The managed decoder
+also validates header/version, reserved and boolean fields, byte sizes, pointer alignment, every
+canonical offset/range, strict UTF-8, numeric values, and every variable index before copying data.
+
+Forwarding to an existing targetless relationship is valid: settings products remain a present
+zero-output specification, and a targetless product camera inherits the settings camera. Forwarding
+depth includes the starting relationship. Cached tails retain their maximum remaining depth, so
+prefixing a previously admitted 64-relationship chain still fails at 65.
+Relationship admission separately checks structured Pcp property-index and target-index errors.
+It does not classify success by an error mark or warning text: upstream can issue `TF_WARN` while
+returning a valid-looking surviving subset. Such partial results fail as a whole. A stronger
+explicit valid or empty opinion that legitimately masks a weaker error remains valid.
+
+**Bounded-admission input contract:** variable-sized payload reads support the pinned resident
+`SdfData`/`SdfUsdaData`, exact project-owned `OpenUsdEdit::CountedData`, and the separately pinned
+storage-admission SDK profile described below. The final counted review-store type overrides mutation/inventory
+bookkeeping only; its `Has`, `Get` and time-sample reads remain the resident SdfData implementations.
+Admission is exact-type, not a general subclass/dynamic-cast exemption. Empty and edited owned
+review layers therefore participate in the same source-path, role, value and resource checks;
+arbitrary SdfData subclasses, unknown deferred backings and unsupported value expressions remain refused.
+Before asking USD to
+materialize composed properties or targets, the reader walks borrowed Pcp node/layer opinions and
+shared `VtValue` payloads. It admits property-child/order vectors, all six target list-op vectors
+(including deleted/ordered items), standard strings and purpose arrays without first copying them.
+Explicit C strings are length-capped before copying. The source walk is itself bounded.
+Every contributing source-site path is also component/byte-admitted before composition or
+diagnostics can stringify it, including cached/shared paths and resident nested variant sites.
+Variant names are resolved from bounded resident metadata without copying an unbounded variant
+selection pair. A variant site whose set name cannot be safely identified fails with a short
+diagnostic rather than implicitly serializing its unadmitted path.
+
+Concrete default requirements are role-specific: settings, product, variable and camera fields
+are checked only when the prim serves that role. Unrelated attributes on forwarding-only prims
+are not treated as render schema fields. Cached admission merges newly required roles, so an
+earlier forwarding visit cannot bypass a later product/default requirement.
+
+**Deferred-input preparation is internal and read-only.** The same stage-access lock encloses
+source inventory, bounded preparation, native evaluation and packing. No prepared handle or mutable
+layer escapes; the result remains the existing detached DTO. Scheduler cancellation retains its
+existing queued-work semantics; this does not promise interruption of an executing native query.
+Selected/ancestor stored prim-index and contributing layer-stack errors are checked before success.
+Even an unauthored default cannot return `null` over a broken root layer-stack inventory.
+
+Bounded token-array edits for the two purpose lists are admitted from borrowed instructions/literals.
+Native `Vt_ArrayEditOps` validation determines index normalization and valid operations; invalid
+out-of-range operations retain USD's no-op semantics. Every intermediate array size, not just the
+final size, must fit 64 elements. Preparation includes literal/instruction concatenation and repeated
+native evaluation costs. The final values still come from `UsdRenderComputeSpec`; source opinions,
+references, forwarding graphs and default-time semantics are not flattened or rewritten.
+
+**Actual filesystem USDC values require the matching storage-admission SDK/shim pair.**
+`eng/openusd-storage-admission.lock.json` pins the isolated SDK extension. Its native-only
+`SdfStorageAdmissionScope` version 1 checks actual `CrateData`/`CrateFile` storage before detachment:
+serialized lengths, token/path tables, integer decompression buffers, list operations and array-edit
+instructions are admitted before allocation. Every repeated native read and native list composition
+is charged. The source is the original retained mapping/file handle, not a reopened pathname or
+mtime guess; dirty in-memory overrides use the actual store identity and generation. Source
+generation changes within a preparation scope fail. Unknown serialized types, generic `ArAsset`
+readers requiring callbacks, and unknown stores are refused explicitly. This is not a general
+resolver/plugin CPU or process-memory sandbox, nor protection against unsupported concurrent
+external in-place modification of an open USD file.
+
+The scope caps cumulative storage items at 1,048,576, UTF-8 at 8 MiB, decode/composition work at
+64 Mi units, and conservative peak/total materialization reservations at 64 MiB. Reservations
+remain charged until release; retaining an earlier value cannot bypass the peak bound. SDK
+refusals are sticky and checked before successful publication, including absence. Quotas produce
+an exception and cleared native outputs, never a truncated or falsely empty specification.
+Nested admission scopes are refused before replacing TLS; a render query inside an existing scope
+cannot reset its budgets or escape its sticky failure. The enclosing scope remains current and
+ordinary queries work again after it is released.
+Stage opening and already-resident composition/storage remain outside query budgets.
+
+The unextended SDK still refuses unprovable crate payloads rather than materializing and checking
+afterward. This eligibility extension changes neither data ABI 23 / capability mask `0xFFFFFFFF`
+nor the version-1 render view/Core APIs. It does not change the separately bounded hierarchy or
+selected-prim property-inspection admission profiles. See
+[isolated SDK profile builds](native-build.md#isolated-storage-admission-sdk-profile).
+
+| Query input and snapshot budget | Limit |
+| --- | ---: |
+| Products | 1,024 |
+| Unique render variables | 4,096 |
+| Ordered variable indices across products | 65,536 |
+| Nonstandard setting names across render prims | 16,384 |
+| Entries in each purpose list | 64 |
+| Forwarded-relationship depth, including the starting relationship | 64 |
+| Authored target list-op items across all six operation vectors | 65,536 |
+| Source node/layer/field/property/path-component admission visits | 1,048,576 |
+| Strings in input preflight or packed output | 65,536 |
+| UTF-8 bytes including terminal NULs in input preflight or packed output | 8 MiB |
+
+Input preflight and packed output are independently bounded; neither silently truncates. Exceeding
+a limit fails the read with a diagnostic instead of returning a success-shaped partial render job.
+Source opinions are admitted conservatively across contributing layers, before composition.
+Already-resident USD scene storage is not an allocation of this query. The limits describe this
+admission/transport contract, not a global process-memory limit or a promise that arbitrary plugin
+backends can be inspected with bounded allocation. Windows native probes establish oversized-copy
+rejection with only 1 MiB of additional query memory after resident fixture setup.
+
+### Exact authored layer editing
+
+`OpenUsd.Editing` provides the bounded target-layer seam used by safe document editing.
+It does not treat a composed weaker value as the review layer's before-state:
+
+```csharp
+using OpenUsd.Editing;
+
+var captured = await scheduler.InvokeAsync(stage =>
+{
+    using UsdLayer review = stage.GetUserReviewLayer();
+    var address = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+    UsdLayerAuthoredSnapshot before = review.CaptureAuthored([address]);
+    UsdLayerEditResult result = review.CompareAndApply(
+        before,
+        [UsdLayerEdit.Set(address, UsdLayerEditValue.FromDouble(47), "double")]);
+    return (before, result);
+});
+```
+
+`GetUserReviewLayer` resolves the actual registered user-review layer, distinct from the
+session container and stronger physics layer. It creates an owned resident review layer when
+needed; it does not implicitly normalize or copy existing session content. The existing overlay
+normalization path registers its actual user/physics identities separately. `GetLocalLayer`
+resolves only an already registered stage-local identifier; it never opens an arbitrary file.
+Owned `UsdLayer` handles remain stage-bound/disposable and must stay inside scheduler callbacks.
+
+Starting `NormalizeSessionOverlay` after review edits preserves that same owned review layer,
+backing data, identity/generation and undo ownership when it is the unique strongest direct session
+sublayer at an exact identity offset. Normalization inserts only a new stronger physics layer;
+weaker sublayers and offsets stay in order. Stopping and restarting simulation keeps the same
+review history. The session must be editable, but review permissions are neither changed nor
+bypassed. Construction failure of the managed overlay never detaches the persistent user layer.
+
+This adoption path refuses direct container specs, registered-schema root metadata, ambiguous
+ordering/offsets, detached or unsupported review backing, and already-active simulation instead
+of merging or moving opinions. Unrecognized raw root metadata is left untouched at its original
+location; it is not migrated or evaluated. Topology and identifier budgets are checked before
+insertion, and a failed insertion/registration restores only the affected container topology,
+not the review contents. Without a pre-existing registered review, the original initial-session
+opinion migration remains available. Genuine external detach/reload/replacement still makes old
+history stale; normalization does not repair or rewrite packet identities.
+
+`CaptureAuthored` captures exact raw Sdf target-layer declarations and addressed opinions:
+absent property versus absent declaration field, absent default versus block versus concrete
+value, exact numeric time samples, and connection/relationship list-op buckets. The immutable
+`UsdLayerAuthoredSnapshot`, value/list DTOs, results, state and checkpoint objects implement
+`IUsdDetachedResult`; their private native-produced byte packets contain no handles, and byte
+or array access returns copies. Managed code never parses USDA or uses arbitrary JSON values.
+
+Snapshots and checkpoints expose `ByteLength` without copying their native packets. This counts
+packet bytes, not decoded object/string/collection storage, which history budgets must also allow
+for. `HasSamePayload` compares the complete immutable packet without allocating, including target
+identity and capture revision. It is deliberately stricter than affected-opinion equality and
+does not replace native transaction preconditions or saved acknowledgement.
+
+`CompareAndApply` and `CompareAndRestore` compare the target's logical identity/generation and
+affected declarations/opinions, not global stage revision. Disjoint edits can therefore proceed,
+while conflicting, reloaded/replaced/detached targets are refused. `Applied`, `Conflict`,
+`StaleTarget` and `NotEditable` are explicit outcomes; native validation failures throw.
+An applied result's `AfterSnapshot` is the actual after-state for subsequent undo/redo CAS.
+Writes leave the existing `UsdEditTarget` unchanged.
+
+Transactions preflight the complete batch, including aggregate time-sample growth, before writes.
+Only direct prim-property addresses are accepted. Partial failures explicitly restore affected
+opinions and the bounded affected parent inventories, including authored presence and exact
+property/prim-child ordering. A saved logical baseline is reinstated only after that restoration
+is verified. A `SdfChangeBlock` only batches notifications and is not rollback. Replay removes
+only owned created properties/empty ancestors when no foreign fields, children or unaddressed
+samples would be lost; failure cleanup is limited to specs created by the failed transaction.
+It never restores a whole layer over unrelated edits.
+
+`GetEditingState` reports process-local logical identity/generation, revision, role, real/resolved
+paths, asset anchor, permissions, and both logical editing dirtiness and native dirtiness.
+Native edit permission alone does not imply that an imported layer supports bounded writes:
+generic resident root/local layers are capture-only. Transactions/checkpoints require the
+project-owned counted review store, whose inventory admits spec/field changes before allocation.
+`CanAttemptAuthoredEdits` is an initial role/locality/permission gate; native admission is authoritative.
+
+Review persistence is separate from per-edit undo. `CaptureCheckpoint` captures only admitted
+review opinions without flattening. `checkpoint.ExportBytes(destination)` produces bounded native
+UTF-8 USDA bytes for an absolute `.usda` destination; it does not write that file. The caller owns
+publication/atomic replacement, then may call `AcknowledgeSaved(checkpoint)` on the layer.
+Acknowledgement requires the same identity/generation/revision/content, so edits after capture
+remain dirty, even if later reverted. Anonymous native dirtiness is not silently cleared.
+
+`RestoreCheckpoint(expectedCurrent, restore)` is a conditional same-document operation that
+invalidates per-edit generations. It installs and verifies canonical bit-exact authored content
+before reporting `Applied`, including signed-zero scalar, vector, array and time-sample values.
+Failed installation restores an independent capture of the prior document and verifies it before
+reinstating a saved logical baseline. This whole-document recovery is not per-edit undo.
+Unknown field names with admitted concrete values remain in binary checkpoints. Unsupported
+pseudo-root metadata text export, relative/expression/cached
+asset paths, unsupported arcs/backings/value types, and ambiguous relocation fail closed.
+These UED1 checkpoints do not support cross-process identity/anchor rebinding: there is no
+`FromBytes` shortcut. Use the separately validated portable review document contract below for
+supported new-session recovery. The exact counted review store is
+also admitted by the render-spec reader, so an authored review-camera override can be consumed
+without changing the weaker source opinion; this does not broaden persistence or backing support.
+
+| Authored-edit boundary | Limit |
+| --- | ---: |
+| Input/output packet or exported USDA bytes | 4 MiB |
+| UTF-8 bytes per string | 4,096 |
+| Addressed opinions per transaction | 256 |
+| Array/list bucket/dictionary/time-map entries | 4,096 |
+| Review specs and retained ownership entries | 4,096 |
+| Fields per review spec | 128 |
+| Path elements | 32 |
+| Nested value depth | 16 |
+
+Unsupported opinions remain intact/read-only. Cancellation is observed by the scheduler before
+the bounded synchronous call; in-flight cancellation and concurrent/re-entrant external native
+mutation are not supported. The C packet contract is in `openusd_layer_edit.h`, and its generated
+LibraryImport declarations introduced in data ABI 19 remain unchanged in ABI 23.
+
+### Portable review documents
+
+Data ABI 20 adds a distinct native-produced **URD1 sidecar**, not a flattened USD stage or a
+bare USDA delta. Its supported verified-open profile currently requires **Windows filesystem
+stable-read leases**, USDA/text-USD source layers, and concrete filesystem assets. The encoded
+document is platform-neutral; verified source opening/import on other platforms is explicitly
+unsupported rather than relying on unproved read stability.
+
+Start provenance before authoring:
+
+```csharp
+using UsdStage stage = UsdStage.OpenForReview(sourcePath);
+UsdReviewSourceBinding source = stage.CaptureReviewSourceBinding();
+using UsdLayer review = stage.GetUserReviewLayer();
+var address = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+review.CompareAndApply(review.CaptureAuthored([address]),
+    [UsdLayerEdit.Set(address, UsdLayerEditValue.FromDouble(47), "double")]);
+
+UsdReviewDocument document = review.CaptureReviewDocument(source, documentPath);
+byte[] portableBytes = document.CopyBytes();
+// The host publishes portableBytes atomically at its approved documentPath.
+// Only after successful publication: review.AcknowledgeSaved(document).
+```
+
+The factory admits actual source/dependency byte images before opening and binds source
+provenance to the resulting stage. Clean cached layers, current timestamps, or a hash of a
+different disk image are not retrospective proof. Unknown cached, divergent, dirty/reverted,
+or changed sources require explicit reconciliation; shared layers are never flushed or reloaded
+to hide that condition. Existing ordinary `Open`/render support is unchanged, including crate.
+Unverified legacy sessions keep their work and cannot silently acquire a portable binding.
+
+The original source stays the actual stage root, preserving its root metadata, sublayers,
+references, payloads and authored variants. Review opinions are kept in a separate, genuinely
+anchored resident layer; raw relative asset paths are not rewritten. Resolution is verified
+against the recorded anchor and dependency identities, not guessed from an anonymous layer or
+the SaveAs destination. New active composition dependencies must first be opened with
+`OpenForReview(dependencyPath)` and retained until attachment, so their bytes have origin proof.
+
+For a user-selected sidecar whose source is not yet known, inspect its recorded metadata first:
+
+```csharp
+byte[] documentBytes = File.ReadAllBytes(documentPath);
+UsdReviewDocumentInfo claims = UsdReviewDocument.Inspect(documentBytes);
+// Display claims.SourceRootPath/provenance and apply the host's path/access policy.
+// expectedSourcePath below must be the caller's explicitly approved intent.
+```
+
+`Inspect` uses the native URD1 decoder and retains its checksum, type, extent, depth and
+unsupported-opinion guards. It performs only lexical path checks: it does not canonicalize
+against the filesystem, contact a recorded network path, open source/dependency files, create
+a stage, import opinions or produce a save receipt. `UsdReviewDocumentInfo` is detached metadata
+only, with no portable payload or import/acknowledgement methods. Every returned path, fingerprint
+and dependency is an **untrusted recorded claim**, not source verification or authorization.
+Inspection works even when the recorded source files are unavailable. This does not broaden
+the verified-open platform or source-format profile.
+
+Inspection validates built-in field applicability, concrete types and attribute declarations using
+rules derived from the pinned OpenUSD SDK, without initializing its filesystem-backed schema/plugin
+registry. Unknown metadata remains bounded typed claims; plugin-defined field validation is deferred
+to explicit Read/Import, not silently treated as verified. Temporary inspection data is destroyed
+synchronously. The native cold-process probe observes all six Windows process I/O counters through
+inspection, release and a post-return interval, before any stage/schema/plugin initialization.
+
+After that policy decision, read and install in a new verified session:
+
+```csharp
+UsdReviewDocument saved = UsdReviewDocument.Read(
+    File.ReadAllBytes(documentPath), expectedSourcePath);
+using UsdStage reopened = UsdStage.OpenForReview(expectedSourcePath);
+UsdReviewDocumentImportResult imported = reopened.ImportReviewDocument(
+    saved, reopened.CaptureReviewSourceBinding());
+if (imported.Outcome != UsdLayerEditOutcome.Applied)
+{
+    throw new InvalidOperationException(imported.Diagnostic);
+}
+```
+
+Read performs native checksum/schema/extent validation against explicit source intent; it does
+not install anything. Import revalidates source, dependencies and anchors, requires a pristine
+verified session, excludes physics, and establishes fresh native history identity. It preserves
+admitted authored metadata, declarations, list-op buckets, presence/blocks, exact samples and IEEE
+bits. Partial failure rolls back the owned review installation/topology without changing source
+files or unrelated work. Existing dirty review data, foreign ambient session opinions and
+non-pristine repeat import are explicit conflicts.
+
+`UsdReviewDocument` and `UsdReviewSourceBinding` are detached immutable values with bounded
+metadata; `ByteLength` is cheap and byte access returns copies. A captured document has a private
+same-session save receipt outside its portable bytes. `AcknowledgeSaved(document)` requires that
+receipt plus unchanged target and source/dependency state; reading or importing bytes cannot
+manufacture a receipt. Source changes are actionable errors, not false clean state. The caller
+still owns publication, physical alias policy, host/scheduler lifecycle and explicit reconciliation.
+
+This profile refuses crate/custom/URI/package portability, templates/UDIM, value clips,
+inherit/specialize/relocate composition, unsafe anchor-changing aliases and unbounded composition.
+It does not execute scene-authored commands, plugins or encoders. Generic source/root saving and
+automatic replay of dirty legacy sessions remain outside the interface.
+
+| Portable-review admission | Limit |
+| --- | ---: |
+| Owned metadata envelope / URD1 document | 24 MiB / 16 MiB |
+| Exact review content | 4 MiB, with the authored-edit limits above |
+| Source/dependency files | 1,024 |
+| Individual / aggregate admitted file bytes | 16 MiB / 64 MiB |
+| Source specs / per-file tokens / aggregate tokens | 65,536 / 262,144 / 1,048,576 |
+| Source edges / composition work / composition depth | 65,536 / 262,144 / 32 |
+
+Portable path values, including list entries, are depth-admitted before native path
+materialization. Limits fail explicitly; no output or dependency set is silently truncated.
+
+### Runtime discovery
+
 `OpenUsd.Interop` intentionally exposes only the versioned ABI contract, runtime discovery and plugin
 registration, native status codes, and typed native exceptions:
 
@@ -982,11 +1582,14 @@ Numeric and vector arrays use caller-owned contiguous bulk transfers rather than
 without invoking managed callbacks from OpenUSD threads.
 
 `eng/generate-interop.py` derives the checked-in `[LibraryImport]` declarations from
-`native/openusd_dotnet/include/openusd_dotnet.h`. CI fails if `OpenUsdNativeMethods.g.cs` is stale.
+`native/openusd_dotnet/include/openusd_dotnet.h`, `openusd_layer_edit.h` and
+`openusd_review_document.h`, `openusd_hierarchy.h`, and `openusd_property_inspection.h`.
+It also generates the separate EXR mirror from `openusd_image_exr.h`.
+CI fails if either generated mirror is stale.
 Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
 `bool[]`, `token[]`, and `string[]` attribute array accessors through
 `OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
-`0x3FFFFFF`.
+`0x1FFFFFFFF`.
 
 The additive `OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION` capability (`0x40000`)
 adds allocation-free prim-count and total-path-byte preflight before packed path
@@ -999,9 +1602,27 @@ resolution, and plugin enumeration.
 Data ABI v17 preserves every v16 export and capability and adds
 `OPENUSD_CAPABILITY_SDR_NODE_DEFINITION_QUERY` (`0x2000000`) for bulk, read-only shader
 node-definition registry introspection.
-Current managed startup requires the v17 `0x3FFFFFF` mask and rejects
-older runtimes or runtimes missing required exports. Every status-returning
-export executes its complete body inside the common exception/TfError guard, so C++ exceptions and
+Data ABI v18 preserves every v17 export and capability and adds
+`OPENUSD_CAPABILITY_RENDER_SPECIFICATION_QUERY` (`0x4000000`) for the bounded standard render
+specification snapshot described above.
+Data ABI v19 preserves every v18 export and capability and adds
+`OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS` (`0x8000000`) for exact authored capture,
+affected-state CAS, owned review-layer state and bounded checkpoint operations.
+Data ABI v20 additionally provides `OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT`
+(`0x10000000`) for the verified-source URD1 review-only persistence profile above.
+Data ABI v21 adds `OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION`
+(`0x20000000`) for bounded, no-I/O metadata discovery through the native decoder.
+Data ABI v22 adds `OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT` (`0x40000000`) for the bounded
+owned all-prim hierarchy and explicit variant availability described above.
+Data ABI v23 adds `OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT` (`0x80000000`) for one bounded,
+owned selected-prim property snapshot with detached typed previews and explicit native provenance.
+Data ABI v24 adds `OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT` (`0x100000000`) for bounded
+raw-working RGBA16Float EXR output through one synchronous bulk call. This guarded API has
+a dedicated encoding-status domain and an initial Windows x64 regular-file profile; see
+[EXR output](image-exr-output.md) for ownership, cancellation and native-heap limitations.
+Current managed startup requires the v24 `0x1FFFFFFFF` mask and rejects
+older runtimes or runtimes missing required exports. The data-query/status-returning
+exports execute their complete body inside the common exception/TfError guard, so C++ exceptions and
 unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated
 owner-thread `noexcept` commit after the guard.
 Clean false typed reads, including blocked or declared-but-unvalued attributes, return `NotFound`;
@@ -1156,8 +1777,8 @@ P/Invoke on authoring paths.
 
 The data API now includes focused schema views for volume assets, render settings, spatial media,
 generative procedurals, and selected UI metadata. The locked native profile includes OpenVDB runtime
-support for referenced `.vdb` assets. Rendering support is limited to the Vulkan and D3D12 single-density
-OpenVDB gate described in the support matrix; it is not part of Storm cross-renderer parity.
+support for referenced `.vdb` assets. Rendering support is limited to the Vulkan, D3D12 and Metal
+single-density OpenVDB subset described in the support matrix; it is not part of Storm cross-renderer parity.
 
 ```csharp
 UsdVolVolume volume = stage.DefineVolume("/World/Volume");

@@ -104,6 +104,36 @@ public sealed class OpenUsdStormRenderer : IDisposable
         }
     }
 
+    /// <summary>Renders and copies bounded typed AOV outputs from the same completed native render.</summary>
+    /// <param name="request">Immutable output selection, render inputs, caller claims, and storage limits.</param>
+    /// <returns>A deeply readonly managed snapshot independent of native owner and renderer lifetimes.</returns>
+    /// <remarks>
+    /// This operation requires the creation thread and original current GL context.
+    /// Revisions are caller claims; the snapshot separately reports the exact applied native camera.
+    /// A failed capture invalidates the managed pick binding rather than retaining a possibly stale frame.
+    /// </remarks>
+    public StormAovSnapshot RenderAovs(StormAovRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            ThrowIfWrongThread();
+            ObjectDisposedException.ThrowIf(_handle == 0, this);
+            _hasRenderedFrame = false;
+            StormAovSnapshot snapshot = OpenUsdStormRuntime.RenderAovs(_handle, request);
+            _lastFrame = new StormFrameBinding(
+                request.Width,
+                request.Height,
+                request.TimeCode,
+                request.FrameCamera,
+                request.CallerStateRevision,
+                request.CallerSceneRevision,
+                ContextGeneration: 0);
+            _hasRenderedFrame = true;
+            return snapshot;
+        }
+    }
+
     /// <summary>Resolves one nearest hit from the exact last rendered frame.</summary>
     public RenderPickResult Pick(RenderPickRequest request)
     {

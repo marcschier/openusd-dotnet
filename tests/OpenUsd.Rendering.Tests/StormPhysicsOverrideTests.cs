@@ -492,7 +492,7 @@ public sealed class StormPhysicsOverrideTests
             "OPENUSD_STORM_TRANSFORM_OVERRIDE_ITEM_PRESERVE_STRETCH 0x2u");
         await Assert.That(physicsHeader).DoesNotContain("PhysX");
         await Assert.That(physicsHeader).DoesNotContain("physx");
-        await Assert.That(hydraHeader).Contains("OPENUSD_STORM_ABI_VERSION 8u");
+        await Assert.That(hydraHeader).Contains("OPENUSD_STORM_ABI_VERSION 9u");
         await Assert.That(hydraHeader).Contains("openusd_storm_set_transform_overrides");
         await Assert.That(hydraHeader).Contains(
             "openusd_storm_get_transform_override_diagnostics");

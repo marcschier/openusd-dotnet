@@ -82,7 +82,9 @@ public sealed class ViewerDebugModelsTests
     }
 
     [Test]
-    public async Task BitmapWriterEmitsBottomUpTwentyFourBitBmpWithPaddedRows()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task BitmapWriterEmitsBottomUpTwentyFourBitBmpWithPaddedRows(bool sourceIsBottomUp)
     {
         string root = Path.Combine(
             AppContext.BaseDirectory,
@@ -91,13 +93,18 @@ public sealed class ViewerDebugModelsTests
         string path = Path.Combine(root, "capture.bmp");
         try
         {
-            byte[] rgba =
-            [
-                255, 0, 0, 255,      0, 255, 0, 255,      0, 0, 255, 255,
-                0, 255, 255, 255,    255, 0, 255, 255,    255, 255, 0, 255
-            ];
+            byte[] rgba = sourceIsBottomUp
+                ? [
+                    0, 255, 255, 255,    255, 0, 255, 255,    255, 255, 0, 255,
+                    255, 0, 0, 255,      0, 255, 0, 255,      0, 0, 255, 255
+                ]
+                : [
+                    255, 0, 0, 255,      0, 255, 0, 255,      0, 0, 255, 255,
+                    0, 255, 255, 255,    255, 0, 255, 255,    255, 255, 0, 255
+                ];
 
-            ViewerFrameBitmapWriter.WriteBmp(path, width: 3, height: 2, rgba);
+            ViewerFrameBitmapWriter.WriteBmp(path, width: 3, height: 2, rgba,
+                sourceIsBottomUp ? ViewerFrameRowOrder.BottomUp : ViewerFrameRowOrder.TopDown);
             byte[] bmp = File.ReadAllBytes(path);
 
             await Assert.That(Encoding.ASCII.GetString(bmp, 0, 2)).IsEqualTo("BM");

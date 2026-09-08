@@ -721,6 +721,32 @@ internal sealed class ViewerStageCameraModeState
         }
     }
 
+    internal ViewerStageCameraSnapshot? CaptureSavedViewSample()
+    {
+        lock (_gate)
+        {
+            return _active ? _snapshot : null;
+        }
+    }
+
+    internal void RestoreSavedViewMode(
+        ViewerStageCameraSnapshot? sample, bool forcesAutomatic, ViewportDimensions viewport)
+    {
+        CameraState camera = sample is { } stage
+            ? StageCameraProjectionMath.CreateCameraState(stage.WorldToView, stage.Optics, viewport)
+            : CameraState.Default;
+        lock (_gate)
+        {
+            _generation++;
+            _viewport = viewport;
+            _snapshot = sample ?? default;
+            _camera = camera;
+            _primPath = sample?.PrimPath;
+            _active = sample.HasValue;
+            _forcesAutomatic = !sample.HasValue && forcesAutomatic;
+        }
+    }
+
     internal void Resize(ViewportDimensions viewport)
     {
         lock (_gate)
@@ -854,8 +880,11 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
     private readonly object _gate = new();
     private readonly Task _worker;
     private ViewerStageCameraRefreshRequest _pending;
+    private TaskCompletionSource? _idle;
+    private Exception? _failure;
     private long _latestSequence;
     private bool _hasPending;
+    private bool _applying;
     private bool _disposed;
     private bool _accepting = true;
 
@@ -901,7 +930,11 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
                 return false;
             }
 
-            _pending = request;
+            // A source notice must refresh the newest requested time, not replace a queued timeline change.
+            _pending = (_hasPending || _applying) && _pending.ApplyTime && !request.ApplyTime &&
+                _pending.Generation == request.Generation && _pending.PrimPath == request.PrimPath
+                ? request with { TimeCode = _pending.TimeCode, ApplyTime = true }
+                : request;
             _hasPending = true;
             _latestSequence++;
             if (_signal.CurrentCount == 0)
@@ -909,6 +942,20 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
                 _signal.Release();
             }
             return true;
+        }
+    }
+
+    internal Task WaitForIdleAsync()
+    {
+        lock (_gate)
+        {
+            if (_failure is { } failure)
+            {
+                return Task.FromException(failure);
+            }
+            return _hasPending || _applying
+                ? (_idle ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
+                : Task.CompletedTask;
         }
     }
 
@@ -942,6 +989,15 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
         {
             while (true)
             {
+                lock (_gate)
+                {
+                    _applying = false;
+                    if (!_hasPending)
+                    {
+                        _idle?.TrySetResult();
+                        _idle = null;
+                    }
+                }
                 await _signal.WaitAsync(cancellationToken).ConfigureAwait(false);
                 ViewerStageCameraRefreshRequest request;
                 long sequence;
@@ -954,6 +1010,7 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
                     request = _pending;
                     sequence = _latestSequence;
                     _hasPending = false;
+                    _applying = true;
                 }
 
                 ViewerStageCameraQueryResult result;
@@ -1045,6 +1102,13 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            lock (_gate)
+            {
+                _failure = exception;
+                _accepting = false;
+                _idle?.TrySetException(exception);
+                _idle = null;
+            }
             _reportFailure(exception);
         }
         finally
@@ -1052,6 +1116,10 @@ internal sealed class ViewerStageCameraRefreshPump : IAsyncDisposable
             lock (_gate)
             {
                 _accepting = false;
+                _hasPending = false;
+                _applying = false;
+                _idle?.TrySetCanceled(cancellationToken);
+                _idle = null;
             }
         }
     }

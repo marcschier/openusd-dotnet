@@ -89,6 +89,7 @@ on:
       - 'eng/test-viewer-evidence-contract.ps1'
       - 'eng/test-ocio-alias-evidence.ps1'
       - 'eng/run-parity-capture.ps1'
+      - 'eng/verify-render-corpus.py'
       - 'eng/run-platform-smoke.ps1'
       - 'eng/run-native-probe.ps1'
       - 'eng/run-silk-probe.ps1'
@@ -308,6 +309,13 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release -StormGl Mesa
+      - name: Execute native Viewer document and inspector workflows
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          .\eng\run-viewer-workflow-tests.ps1 `
+            -NativeRuntimeRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\parity-capture\win-x64\runtime') `
+            -OutputRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\viewer-workflows\windows-wgl')
       - name: Execute D3D12 transparent opacity conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -527,6 +535,7 @@ jobs:
           path: |
             artifacts/platform-smoke/windows-wgl
             artifacts/parity-capture/win-x64
+            artifacts/viewer-workflows/windows-wgl
             artifacts/silk-probe/win-x64/shared-stage-soak.json
             artifacts/native-input/win-x64/source.json
             tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
@@ -1736,14 +1745,13 @@ jobs:
         # volume-evidence-metal-status.json into the uploaded evidence, so the osx-arm64
         # support claim can only be promoted from a run whose status is "executed".
         # Missing or malformed evidence is a wiring fault and fails the job outright.
-        # -AllowCapabilitySkip is the one thing to remove once a run records "executed":
-        # dropping it makes the Metal volume gate required evidence on this runner, the
-        # way the D3D12 WARP gate already is on the Windows job.
+        # Release run 33931868184 recorded executed uniform and sampled Metal evidence.
+        # Both cases are now required, just like the D3D12 and Vulkan cases. The separate
+        # depth-integration gate is not part of this Metal subset.
         run: >
           ./eng/assert-volume-evidence.ps1
           -Root tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes
           -Backend metal
-          -AllowCapabilitySkip
           -SkipDepthGate
       - name: Upload macOS sampled volume evidence
         if: always()

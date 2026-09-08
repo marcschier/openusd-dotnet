@@ -505,7 +505,7 @@ public readonly record struct SelectionInstancerEntry
 /// </summary>
 public readonly record struct SelectionItem
 {
-    private readonly SelectionInstancerEntry[]? _instancerContext;
+    private readonly OwnedReadOnlyList<SelectionInstancerEntry>? _instancerContext;
 
     /// <summary>
     /// Creates one renderer-neutral selection item from a complete instancing
@@ -583,7 +583,7 @@ public readonly record struct SelectionItem
         ValidateElement(elementIndex, elementKind);
 
         PrimPath = primPath;
-        _instancerContext = chain;
+        _instancerContext = chain is null ? null : new OwnedReadOnlyList<SelectionInstancerEntry>(chain);
         ElementIndex = elementIndex;
         ElementKind = elementKind;
     }
@@ -664,7 +664,8 @@ public readonly record struct SelectionItem
         PrimPath = primPath;
         _instancerContext = instancerPath is null
             ? null
-            : [new SelectionInstancerEntry(instancerPath, instanceIndex!.Value)];
+            : new OwnedReadOnlyList<SelectionInstancerEntry>(
+                [new SelectionInstancerEntry(instancerPath, instanceIndex!.Value)]);
         ElementIndex = elementIndex;
         ElementKind = elementKind;
     }
@@ -677,7 +678,7 @@ public readonly record struct SelectionItem
     /// the item selects the prim itself.
     /// </summary>
     public IReadOnlyList<SelectionInstancerEntry> InstancerContext =>
-        _instancerContext ?? [];
+        _instancerContext is { } context ? context : Array.Empty<SelectionInstancerEntry>();
 
     /// <summary>
     /// Gets the innermost instancer path, when the item is an instance.
@@ -691,7 +692,7 @@ public readonly record struct SelectionItem
     /// outer levels must read the chain, which is the only place they exist.
     /// </remarks>
     public string? InstancerPath =>
-        _instancerContext is { Length: > 0 } chain
+        _instancerContext is { Count: > 0 } chain
             ? chain[^1].InstancerPath
             : null;
 
@@ -706,7 +707,7 @@ public readonly record struct SelectionItem
     /// instance that does not exist.
     /// </remarks>
     public int? InstanceIndex =>
-        _instancerContext is { Length: > 0 } chain
+        _instancerContext is { Count: > 0 } chain
             ? chain[^1].InstanceIndex
             : null;
 
@@ -733,7 +734,7 @@ public readonly record struct SelectionItem
 
     private SelectionItem(
         string primPath,
-        SelectionInstancerEntry[]? instancerContext,
+        OwnedReadOnlyList<SelectionInstancerEntry>? instancerContext,
         int? elementIndex,
         SelectionElementKind elementKind)
     {

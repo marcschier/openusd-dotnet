@@ -125,6 +125,44 @@ internal static class OpenUsdMcpDescriptions
         "sion\":1,\"observations\":{\"rendererId\":\"silk\",\"qualityPreset\":\"balanced\"}}}" +
         ". Omitted observation fields use schema defaults.";
 
+    internal const string RenderSequence =
+        "Render a bounded PNG image sequence to a new session-confined disk directory. " +
+        "Preconditions: exact active sessionId/generation/stageRevision; dimensions 1-4096, " +
+        "frameCount 1-4096, finite startTimeCode and nonzero timeStep with a finite final time. " +
+        "Optional cameraPath is an absolute UsdGeomCamera path sampled at every time. " +
+        "Optional includeDeviceDepth adds real normalized device-depth float32 files, not metric distance. " +
+        "Optional includeHdrColor adds actual pre-display RGBA binary16, not tone-mapped pixels. " +
+        "hdrColorFormat is 'raw' by default; 'exr' selects lossless half EXR and requires HDR plus Windows x64. " +
+        "Encoded-byte quotas do not bound native EXR codec heap. " +
+        "Effects: renders sequentially on the retained capture worker using explicit presentation " +
+        "settings; writes generated frame names and a request/hash manifest, never scene-authored " +
+        "RenderPass commands or product filenames. Only a complete job is published; cancellation " +
+        "drains rendering and removes staging. Existing scene opinions and revision are unchanged. " +
+        "Limits: 64 MiB per frame (20 managed bytes/pixel with depth or HDR), 4096 frames, " +
+        "8 completed jobs and 4 GiB of output per MCP process. " +
+        "The 16-view/64-MiB in-memory preview limits are not raised. " +
+        "Result bounds: one structured object with output-root-relative directory and manifest paths, " +
+        "frame count and bytes; no inline images or unbounded frame descriptor list. " +
+        "Errors: invalid_argument, no_session, stale_session, stale_revision, " +
+        "quota_exceeded, path_denied, render_failure. " +
+        "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":0,\"stageRevision\":1," +
+        "\"width\":512,\"height\":512,\"frameCount\":48,\"startTimeCode\":0,\"timeStep\":1}}.";
+
+    internal const string ReadSequenceFrame =
+        "Expose one completed disk-sequence PNG through the bounded immutable artifact store. " +
+        "Preconditions: jobId came from render_sequence in this process and frameIndex is within that job. " +
+        "A completed historical job remains readable after scene edits; returned revision is the captured revision. " +
+        "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +
+        "registers all uncached planes; failures do not charge a partial frame. " +
+        "Arbitrary paths and changed output files are refused; existing cached resources remain immutable. " +
+        "Result bounds: one structured frame descriptor, one text summary and up to three resource-link blocks: " +
+        "PNG, optional top-down little-endian normalized device-depth float32 (clear/far=1), " +
+        "and optional raw RGBA binary16 or lossless half EXR before exposure/display, with stored alpha " +
+        "and unnamed primaries; hdrColorFormat and resource MIME identify the container. " +
+        "The existing artifact count/byte/read quotas apply; the full sequence is never loaded into memory. " +
+        "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
+        "Example arguments: {\"request\":{\"jobId\":\"<render_sequence jobId>\",\"frameIndex\":0}}.";
+
     internal const string ApplyProposals =
         "Atomically apply selected overlay-applicable proposals from the latest analysis. " +
         "Preconditions: exact active revision; 1-128 proposal IDs exist in the latest " +
@@ -331,6 +369,38 @@ internal sealed class OpenUsdMcpTools(
         InvokeAsync(token => service.RenderPreviewAsync(request, token), cancellationToken);
 
     [McpServerTool(
+        Name = "render_sequence",
+        Title = "Render OpenUSD Image Sequence",
+        Destructive = false,
+        Idempotent = false,
+        OpenWorld = false,
+        ReadOnly = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpRenderSequenceResultDto))]
+    [Description(OpenUsdMcpDescriptions.RenderSequence)]
+    public ValueTask<CallToolResult> RenderSequenceAsync(
+        [Description("Exact scene revision, finite time range and bounded disk-sequence dimensions.")]
+        RenderSequenceRequest request,
+        CancellationToken cancellationToken) =>
+        InvokeAsync(token => service.RenderSequenceAsync(request, token), cancellationToken);
+
+    [McpServerTool(
+        Name = "read_sequence_frame",
+        Title = "Read OpenUSD Sequence Frame",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpSequenceFrameResultDto))]
+    [Description(OpenUsdMcpDescriptions.ReadSequenceFrame)]
+    public ValueTask<CallToolResult> ReadSequenceFrameAsync(
+        [Description("Generated completed job ID and zero-based frame index.")]
+        ReadSequenceFrameRequest request,
+        CancellationToken cancellationToken) =>
+        InvokeAsync(token => service.ReadSequenceFrameAsync(request, token), cancellationToken);
+
+    [McpServerTool(
         Name = "analyze_scene",
         Title = "Analyze OpenUSD Scene",
         Destructive = false,
@@ -495,7 +565,10 @@ internal sealed class OpenUsdMcpTools(
             WorkspacePathContainmentException => (
                 OpenUsdMcpErrorCodes.PathDenied,
                 "The requested path is unavailable or outside the configured roots."),
-            WorkspaceQuotaExceededException => (
+            ArtifactResourceIntegrityException => (
+                "artifact_integrity_error",
+                "The generated artifact no longer matches its recorded identity."),
+            WorkspaceQuotaExceededException or OpenUsd.Rendering.RenderOutputQuotaExceededException => (
                 OpenUsdMcpErrorCodes.QuotaExceeded,
                 effective.Message),
             StageStatisticsQuotaExceededException => (

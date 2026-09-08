@@ -59,6 +59,8 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
     internal Task<bool> WaitForInitializationAsync(CancellationToken cancellationToken) =>
         _initialization.Task.WaitAsync(cancellationToken);
 
+    internal Task WaitForPresentationIdleAsync() => _pump.WaitForIdleAsync();
+
     internal async Task<CompositionPresentOutcome> PresentNextFrameAsync(
         CancellationToken cancellationToken)
     {

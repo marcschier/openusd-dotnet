@@ -209,7 +209,7 @@ public sealed class ViewerColorManagementTests
     public async Task SettingsWithoutColorManagementKeysLoadTheDisabledDefault()
     {
         ViewerSettingsLoadResult result = ViewerSettingsStore.Parse(
-            "openusd-viewer-settings=3\nrenderer=Auto\n");
+            "openusd-viewer-settings=4\nrenderer=Auto\n");
 
         await Assert.That(result.Status).IsEqualTo(ViewerSettingsLoadStatus.Loaded);
         await Assert.That(result.Settings.ColorManagement)
