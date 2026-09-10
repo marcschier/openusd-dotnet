@@ -3,6 +3,7 @@ set(OPENUSD_STORM_CHILD_SOURCES
     ../include/openusd_render_pick.h
     ../private/openusd_render_camera_internal.h
     include/openusd_storm_child.h
+    src/openusd_storm_child_aov.h
     src/openusd_storm_child_pick.h
     src/openusd_storm_child_navigation.h)
 
@@ -50,8 +51,8 @@ elseif(UNIX AND NOT APPLE)
     set_target_properties(
         openusd_storm_child
         PROPERTIES
-            VERSION 8.0.0
-            SOVERSION 8)
+            VERSION 9.0.0
+            SOVERSION 9)
     target_link_libraries(
         openusd_storm_child
         PRIVATE OpenGL::GL OpenGL::GLX X11::X11)

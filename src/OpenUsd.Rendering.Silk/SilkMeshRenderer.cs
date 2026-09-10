@@ -750,6 +750,8 @@ public sealed class SilkMeshRenderer :
         }
     }
 
+    internal ISilkGraphicsDevice? CaptureDevice => Volatile.Read(ref _disposed) ? null : _device;
+
     internal IDisposable AcquireDisplayCaptureLease()
     {
         Monitor.Enter(_gate);

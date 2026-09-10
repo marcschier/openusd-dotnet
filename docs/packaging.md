@@ -94,7 +94,7 @@ packages for each supported RID:
   Windows package also carries the locked `vulkan-1.dll` required by `usd_ms.dll`.
 - `OpenUsd.Runtime.Imaging.<rid>` depends on the exact matching Core package and adds the
   `openusd_hydra` and `openusd_hdsilk` C ABI shims, renderer plugins, and the hdSilk plugin tree.
-  Windows includes `openusd_storm_child.dll`; Linux includes the exact ABI-8 Storm child SONAME link
+  Windows includes `openusd_storm_child.dll`; Linux includes the exact ABI-9 Storm child SONAME link
   chain; macOS includes exactly one `libopenusd_storm_child.dylib`.
 - `OpenUsd.Runtime.Cesium.<rid>` contains only the optional `openusd_cesium` C ABI shim.
   Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
@@ -269,20 +269,23 @@ would register its OpenUSD types twice.
 resource tree supplies Storm renderer metadata.
 
 `OpenUsd.Runtime.Imaging.linux-x64` requires ELF `DT_SONAME` to be exactly
-`libopenusd_storm_child.so.8`. CMake uses `SOVERSION 8` and `VERSION 8.0.0`, so
+`libopenusd_storm_child.so.9`. CMake uses `SOVERSION 9` and `VERSION 9.0.0`, so
 its native asset set is exactly
-`libopenusd_storm_child.so -> libopenusd_storm_child.so.8 ->
-libopenusd_storm_child.so.8.0.0`, with only `.so.8.0.0` a regular ELF. Missing
+`libopenusd_storm_child.so -> libopenusd_storm_child.so.9 ->
+libopenusd_storm_child.so.9.0.0`, with only `.so.9.0.0` a regular ELF. Missing
 links, regular duplicate copies, unversioned or arbitrary SONAMEs, absolute
 link targets, and extra `.so.*` entries fail packing. The nupkg records links using Unix ZIP
 symlink metadata and link-target payloads; its Linux build target rehydrates
 those links after NuGet extraction. They are never flattened into resources.
-Packing validates the source header as ABI v8, requires the ABI-query, v2/v3 frame,
-pick, packed-selection, navigation-input, and framebuffer-capture exports, and parses
+Packing validates the source header as ABI v9, requires the ABI-query, v2/v3 frame,
+pick, packed-selection, navigation-input, framebuffer-capture and owned AOV-capture exports, and parses
 `readelf --dynamic --wide` output for
 the Storm child, Hydra, and hdSilk.
 Linux additionally requires `openusd_storm_child_initialize_linux`; Windows and
 macOS intentionally omit that platform-only export.
+The child AOV export is present on macOS but explicitly refuses the unimplemented Metal Hgi route;
+an exported symbol is not an execution-support claim. Native install metadata includes the shared
+child AOV command/ownership helper's source hash as well as the child header, source and binary hashes.
 The exact allowed dynamic-loader policy is one `DT_RUNPATH` entry containing
 only `$ORIGIN`. Legacy `DT_RPATH`, absolute paths, source/build/install paths,
 empty or duplicate entries, additional relative directories, and missing or
@@ -405,7 +408,7 @@ Canonical evidence is generated with the build it describes:
   and upload it as
   `openusd-release.cdx.json`.
 - `artifacts/package-linux-storm-child/package-evidence.json` records the Linux
-  nupkg and validation-manifest hashes, exact ABI-8 SONAME topology, RUNPATH
+  nupkg and validation-manifest hashes, exact ABI-9 SONAME topology, RUNPATH
   policy, package-only ABI output, and loaded-library confinement.
 - `artifacts/package-macos-storm-child/package-evidence.json` records the macOS
   nupkg and validation-manifest hashes, install names, RPATH policy, package-only
@@ -684,7 +687,7 @@ mapped `libopenusd_*.so*` and
 source, or system copies fail the process. Its project, output, and evidence
 must not contain source paths. Synthetic tests cover clean-feed compilation,
 exact Core dependency versioning, real ELF hashes, ZIP symlink targets, exact
-ABI-8 SONAME topology, no flattened or duplicate Storm child copies, and
+ABI-9 SONAME topology, no flattened or duplicate Storm child copies, and
 negative topology/parser cases for missing/wrong links, arbitrary `.so.*`,
 RPATH, absolute/source paths, missing RUNPATH, empty, duplicate, and unexpected
 entries.
@@ -783,8 +786,8 @@ execution enabled. A successful job therefore proves both Core and Imaging
 package-only NativeAOT execution for that RID. The Linux job additionally
 requires evidence schema 3; recomputes the nupkg, native-validation, Storm link
 payloads, and real ELF hash; requires
-`DT_SONAME=libopenusd_storm_child.so.8` with the exact symlink chain; enforces
-exact `DT_RUNPATH=[$ORIGIN]`; and requires ABI 8,
+`DT_SONAME=libopenusd_storm_child.so.9` with the exact symlink chain; enforces
+exact `DT_RUNPATH=[$ORIGIN]`; and requires ABI 9,
 invalid-handle navigation/capture status 1, a reset navigation snapshot,
 `LD_LIBRARY_PATH_PRESENT=false`, and confined `/proc/self/maps` results.
 The macOS job requires evidence schema 2, the
@@ -809,21 +812,25 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 24 and
-capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 5/23, and Storm child
-ABI 8. Metadata schema 3 records camera-state and EXR request version 1, Storm-child navigation
+capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 6/23, and Storm child
+ABI 9. Metadata schema 3 records camera-state and EXR request version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their
 exact source-matching headers, the version-1 public EXR and Storm AOV headers, and the shared render-camera,
 render-lighting, and render-pick headers. A post-build
 source change therefore invalidates metadata even if an installed binary is
-still present. The Windows gate also requires the locked Vulkan loader.
+still present. The session version is pinned by `abi.silkSession` in `eng/openusd.lock.json`;
+the managed loader also requires both version-query exports before session creation. The
+package-only NativeAOT imaging consumer executes the public scene-ingestion request through
+authored product jobs, including real full/preview/legacy pixels and ordered HDR/depth outputs.
+The Windows gate also requires the locked Vulkan loader.
 Missing or mismatched metadata fails clearly and requires rebuilding the native
 install, preventing a stale cache from reaching package tests. Linux and macOS
 execution remains CI-gated when their native installs and hardware APIs are
 unavailable on a developer machine.
 
 These current source contracts do not relabel published `0.14.0-alpha` assets, which retain
-data ABI 17 and direct Storm ABI 8. The new `OpenUsd.Rendering.Storm` AOV API requires its matching
+data ABI 17 and direct Storm ABI 9. The new `OpenUsd.Rendering.Storm` AOV API requires its matching
 ABI 9 Imaging runtime. The installed `openusd_storm_aov.h` hash and view version participate in
 current install verification, so an old or changed AOV header cannot accompany a newly stamped bundle.
 
@@ -837,8 +844,10 @@ On a Windows host with a working modern Storm OpenGL context, set
 `OPENUSD_STORM_AOV_EXECUTION_REQUIRED=1` and run
 `RuntimePackageTests.StormPackagesExecuteBoundedAovsFromCleanNativeAotFeed` through the managed-test
 runner. This opt-in gate packs the current six-package graph and executes an isolated NativeAOT
-consumer, including the million-pixel AOV/identity case. Other hosts report an explicit skip; that
-skip is not native rendering evidence.
+consumer, including the million-pixel AOV/identity case, detached conversion to disk-job images,
+two-frame PNG/raw color/depth jobs and independently decoded EXR half-bit equality. It also
+requires selected native color to refuse pre-selection HDR rather than silently changing selection.
+Other hosts report an explicit skip; that skip is not native rendering evidence.
 
 ## Related documentation
 

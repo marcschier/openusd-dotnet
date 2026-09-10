@@ -6,6 +6,7 @@
     Classes="openusd-viewer"
     AutomationProperties.Name="OpenUsd Viewer"
     Title="OpenUsd Viewer"
+    ClosingBehavior="OwnerWindowOnly"
     Width="1440"
     Height="900"
     MinWidth="960"
@@ -61,6 +62,7 @@
                   InputGesture="Ctrl+Shift+C"
                   IsEnabled="False" />
               <MenuItem x:Name="RenderImageSequenceMenuItem" Header="Render Image _Sequence..." IsEnabled="False" />
+              <MenuItem x:Name="RenderAuthoredProductMenuItem" Header="Render Authored _Product..." IsEnabled="False" />
               <MenuItem x:Name="CompareCapturesMenuItem" Header="Compare _Captures..." />
               <Separator />
               <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />

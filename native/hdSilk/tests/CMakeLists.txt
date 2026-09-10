@@ -241,3 +241,28 @@ add_test(NAME hdsilk_subdivision_probe
         ${HDSILK_SUBDIVISION_PROBE_STAGE})
 set_tests_properties(hdsilk_subdivision_probe
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
+
+add_executable(hdsilk_scene_ingestion_probe hdsilk_scene_ingestion_probe.cpp)
+target_compile_features(hdsilk_scene_ingestion_probe PRIVATE cxx_std_17)
+target_link_libraries(
+    hdsilk_scene_ingestion_probe
+    PRIVATE
+        openusd_hdsilk_test
+        openusd_dotnet_renderer_test)
+target_include_directories(
+    hdsilk_scene_ingestion_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_dotnet/tests)
+if(MSVC)
+    target_compile_options(hdsilk_scene_ingestion_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_scene_ingestion_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_scene_ingestion_probe hdsilk_probe_runtime)
+add_test(NAME hdsilk_scene_ingestion_probe
+    COMMAND hdsilk_scene_ingestion_probe ${HDSILK_PROBE_PLUGIN_DIR})
+set_tests_properties(hdsilk_scene_ingestion_probe
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")

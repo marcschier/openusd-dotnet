@@ -5,7 +5,9 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class PreviewGraphicsDeviceFactoryTests
 {
     [Test]
-    public async Task RoutesToPlatformBackendWithoutCreatingNativeTestDevice()
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task RoutesToPlatformBackendWithoutCreatingNativeTestDevice(bool useWarp)
     {
         string? selected = null;
         bool? warp = null;
@@ -27,7 +29,7 @@ public sealed class PreviewGraphicsDeviceFactoryTests
                 return null!;
             });
 
-        _ = factory.Create(new PreviewGraphicsDeviceOptions(UseWarpOnWindows: true));
+        _ = factory.Create(new PreviewGraphicsDeviceOptions(UseWarpOnWindows: useWarp));
 
         string expected = OperatingSystem.IsWindows()
             ? "d3d12"
@@ -37,7 +39,7 @@ public sealed class PreviewGraphicsDeviceFactoryTests
         await Assert.That(selected).IsEqualTo(expected);
         if (OperatingSystem.IsWindows())
         {
-            await Assert.That(warp).IsTrue();
+            await Assert.That(warp).IsEqualTo(useWarp);
         }
     }
 }

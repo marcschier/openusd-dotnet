@@ -15,9 +15,11 @@
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/imaging/hd/extComputation.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/usd/usdShade/tokens.h"
 
 #include <atomic>
 #include <mutex>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
@@ -27,6 +29,7 @@ namespace
 {
 std::atomic<uint64_t> _nextCreationToken{1};
 thread_local uint64_t _activeCreationToken = 0;
+thread_local std::shared_ptr<HdSilkSceneState> _requestedSceneState;
 std::mutex _creationRegistryMutex;
 std::unordered_map<uint64_t, std::shared_ptr<HdSilkSceneState>> _creationRegistry;
 }
@@ -78,15 +81,23 @@ void
 HdSilkRenderDelegate::_Initialize()
 {
     _resourceRegistry = std::make_shared<HdResourceRegistry>();
-    _sceneState = std::make_shared<HdSilkSceneState>();
+    _sceneState = _requestedSceneState
+        ? _requestedSceneState
+        : std::make_shared<HdSilkSceneState>();
     _renderParam = std::make_unique<HdSilkRenderParam>(_sceneState);
 
 }
 
 uint64_t
-HdSilkRenderDelegate::BeginSceneStateCapture()
+HdSilkRenderDelegate::BeginSceneStateCapture(
+    const std::shared_ptr<HdSilkSceneState>& existingState)
 {
+    if (_activeCreationToken != 0)
+    {
+        throw std::logic_error("An hdSilk scene-state capture is already active on this thread.");
+    }
     const uint64_t token = _nextCreationToken.fetch_add(1, std::memory_order_relaxed);
+    _requestedSceneState = existingState;
     _activeCreationToken = token;
     return token;
 }
@@ -111,6 +122,7 @@ HdSilkRenderDelegate::EndSceneStateCapture(uint64_t token)
         return nullptr;
     }
     _activeCreationToken = 0;
+    _requestedSceneState.reset();
     std::lock_guard<std::mutex> lock(_creationRegistryMutex);
     const auto iterator = _creationRegistry.find(token);
     if (iterator == _creationRegistry.end())
@@ -128,6 +140,7 @@ HdSilkRenderDelegate::CancelSceneStateCapture(uint64_t token) noexcept
     if (_activeCreationToken == token)
     {
         _activeCreationToken = 0;
+        _requestedSceneState.reset();
     }
     try
     {
@@ -198,6 +211,18 @@ HdSilkRenderDelegate::DestroyRprim(HdRprim* rPrim)
         _sceneState->RemoveMesh(rPrim->GetId().GetString());
     }
     delete rPrim;
+}
+
+TfToken
+HdSilkRenderDelegate::GetMaterialBindingPurpose() const
+{
+    if (!_sceneState)
+    {
+        return UsdShadeTokens->allPurpose;
+    }
+
+    const std::string purpose = _sceneState->GetMaterialBindingPurpose();
+    return purpose.empty() ? UsdShadeTokens->allPurpose : TfToken(purpose);
 }
 
 HdSprim*

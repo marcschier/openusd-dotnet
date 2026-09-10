@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenUsd.Rendering.Silk;
@@ -17,6 +18,54 @@ namespace OpenUsd.Rendering.Tests;
 /// </summary>
 public sealed class SilkPageAbiVersionContractTests
 {
+    [Test]
+    public async Task NativeChildHeaderManagedConstantAndPackagePinMatchTheLockedAbi()
+    {
+        string root = FindRepositoryRoot();
+        using JsonDocument lockFile = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(root, "eng", "openusd.lock.json")));
+        uint locked = lockFile.RootElement.GetProperty("abi").GetProperty("stormChild").GetUInt32();
+        string header = await File.ReadAllTextAsync(Path.Combine(
+            root, "native", "openusd_storm_child", "include", "openusd_storm_child.h"));
+        Match native = Regex.Match(header, @"OPENUSD_STORM_CHILD_ABI_VERSION\s+(\d+)u",
+            RegexOptions.None, TimeSpan.FromSeconds(5));
+        await Assert.That(native.Success).IsTrue();
+        await Assert.That(uint.Parse(native.Groups[1].Value, CultureInfo.InvariantCulture)).IsEqualTo(locked);
+        await Assert.That(locked).IsEqualTo(RenderNativeAbiVersions.StormChildAbi);
+        string package = await File.ReadAllTextAsync(Path.Combine(
+            root, "tests", "OpenUsd.Package.Tests", "RuntimePackageTests.cs"));
+        Match required = Regex.Match(package, @"RequiredStormChildAbiVersion\s*=\s*(\d+);",
+            RegexOptions.None, TimeSpan.FromSeconds(5));
+        await Assert.That(required.Success).IsTrue();
+        await Assert.That(uint.Parse(required.Groups[1].Value, CultureInfo.InvariantCulture)).IsEqualTo(locked);
+        await Assert.That(header).Contains("openusd_storm_child_capture_aovs");
+    }
+
+    [Test]
+    public async Task NativeHeaderAndManagedLoaderMatchTheLockedSessionAbi()
+    {
+        string root = FindRepositoryRoot();
+        string header = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "hdSilk", "include", "openusd_hdsilk.h"));
+        Match match = Regex.Match(
+            header, @"#define\s+OPENUSD_SILK_SESSION_ABI_VERSION\s+(\d+)u",
+            RegexOptions.None, TimeSpan.FromSeconds(5));
+        await Assert.That(match.Success).IsTrue();
+        using JsonDocument lockFile = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(root, "eng", "openusd.lock.json")));
+        uint locked = lockFile.RootElement.GetProperty("abi").GetProperty("silkSession").GetUInt32();
+        await Assert.That(uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)).IsEqualTo(locked);
+        await Assert.That(locked).IsEqualTo(RenderNativeAbiVersions.SilkSessionAbi);
+        await Assert.That(locked).IsEqualTo(OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion);
+        await Assert.That(Marshal.SizeOf<OpenUsdSilkRuntime.NativeSceneIngestionRequest>()).IsEqualTo(32);
+        await Assert.That(Marshal.OffsetOf<OpenUsdSilkRuntime.NativeSceneIngestionRequest>(
+            nameof(OpenUsdSilkRuntime.NativeSceneIngestionRequest.MaterialBindingPurpose)).ToInt64()).IsEqualTo(24L);
+        await Assert.That(header).Contains("#define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u");
+        await Assert.That(header).Contains("openusd_silk_get_session_abi_version");
+        await Assert.That(header).Contains("openusd_silk_get_page_abi_version");
+        await Assert.That(header).Contains("openusd_silk_session_sync_with_scene_ingestion");
+    }
+
     [Test]
     public async Task ManagedParserMatchesTheLockedRenderCommandAbi()
     {

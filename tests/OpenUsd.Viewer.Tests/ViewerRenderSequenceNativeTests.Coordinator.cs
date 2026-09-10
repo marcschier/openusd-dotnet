@@ -26,7 +26,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 stagePath,
                 (scheduler, source) => new AvaloniaViewerRenderBackendHost(
                     viewport, scheduler, source, Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH")!, _ => { }),
-                RenderBackendKind.D3D12);
+                ViewerNativeCaptureBackend.Kind);
+            await Assert.That(coordinator.ActiveBackend?.Kind).IsEqualTo(ViewerNativeCaptureBackend.Kind);
             window.UpdateLayout();
             ViewportDimensions dimensions = ViewportPixelMath.ToPixels(
                 viewport.Bounds.Width, viewport.Bounds.Height, window.RenderScaling);
@@ -38,6 +39,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 .WithTime(new StageTime(1))
                 .WithCamera(StageCameraProjectionMath.CreateCameraState(
                     camera.Snapshot.WorldToView, camera.Snapshot.Optics, dimensions)).AdvanceRevision());
+            _ = await coordinator.RenderAsync();
+            await Assert.That(coordinator.CanCaptureFrame).IsTrue();
             string? previous = null;
             (RenderOutputTransform Transform, float Exposure, RenderDisplayTransform? Display, bool Selected)[] cases =
             {

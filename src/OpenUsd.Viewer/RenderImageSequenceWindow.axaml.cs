@@ -6,6 +6,7 @@ using Avalonia.Platform.Storage;
 using OpenUsd.Interop;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
+using OpenUsd.Rendering.Storm;
 
 namespace OpenUsd.Viewer;
 
@@ -14,6 +15,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
     private readonly Func<ViewerRenderSequenceRange, string, ViewerRenderSequenceOutputOptions,
         Action<ViewerRenderSequenceProgress>, CancellationToken, Task<RenderDiskJobResult>> _render;
     private readonly Func<ViewerRenderSequenceOutputOptions, string?> _getUnsupportedReason;
+    private readonly ViewerCompletedJobResults _results;
     private string? _unsupportedReason;
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _windowLifetime = new();
@@ -35,6 +37,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         _getUnsupportedReason = getUnsupportedReason;
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
+        _results = new ViewerCompletedJobResults(this, SequenceViewResultsButton);
         SequenceRenderer.Text = renderer;
         SequenceStartTime.Text = ViewerTimelineMath.Format(start);
         SequenceEndTime.Text = ViewerTimelineMath.Format(end);
@@ -53,8 +56,16 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
             {
                 return;
             }
-            _runTask = RunAsync();
-            await _runTask;
+            var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _runTask = drained.Task;
+            try
+            {
+                await RunAsync();
+            }
+            finally
+            {
+                drained.TrySetResult();
+            }
         };
         SequenceCancelButton.Click += (_, _) => Cancel();
         SequenceCloseButton.Click += (_, _) => Close();
@@ -189,11 +200,14 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         SetRunningControls();
         try
         {
+            await _results.ClearAsync();
+            cancellation.Token.ThrowIfCancellationRequested();
             ViewerRenderSequenceRange range = ReadRange();
             SequenceProgress.Maximum = range.Times.Count;
             SequenceProgress.Value = 0;
             RenderDiskJobResult result = await _render(
                 range, SequenceOutputFolder.Text ?? string.Empty, outputs, ReportProgress, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
             SequenceOutputLocation.Text = result.OutputDirectory;
             SequenceProgress.Value = result.Frames.Count;
             string diagnostics = result.Diagnostics.Count == 0
@@ -210,6 +224,10 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
                 $"{diagnostics} The pre-job view has been restored.";
             SequenceStatus.Classes.Set("viewer-warning", result.Diagnostics.Any(static diagnostic =>
                 diagnostic.Severity is RenderDiagnosticSeverity.Warning or RenderDiagnosticSeverity.Error));
+            if (!_closing)
+            {
+                _results.Publish(result, "Viewport image sequence");
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -217,7 +235,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
             InvalidOperationException or InvalidDataException or NotSupportedException or ArgumentException or
-            OpenUsdNativeException or OpenUsdSilkException or TimeoutException or OverflowException)
+            OpenUsdNativeException or OpenUsdSilkException or OpenUsdStormException or TimeoutException or OverflowException)
         {
             SequenceStatus.Text = $"Sequence failed: {ViewerPackageErrorFormatter.Format(exception)}";
             ViewerStartupOptions.WriteStatus(SequenceStatus.Text);
@@ -300,7 +318,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         bool wasClosing = _closing;
         _closing = true;
         _windowLifetime.Cancel();
-        if (_runTask.IsCompleted)
+        Task results = _results.ClearAsync();
+        if (_runTask.IsCompleted && results.IsCompleted)
         {
             return;
         }
@@ -311,7 +330,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         }
         Cancel();
         SetRunningControls();
-        await _runTask;
+        await Task.WhenAll(_runTask, results);
         Close();
     }
 }

@@ -57,16 +57,16 @@ function Assert-ViewerRunEvidence
     $artifact = Get-Content $EvidencePath -Raw | ConvertFrom-Json -Depth 20
     $identity = Get-Content $IdentityPath -Raw | ConvertFrom-Json -Depth 20
     $expectedStormCaptureApi =
-        'openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)'
+        'openusd_storm_child_capture_framebuffer(ABI9,preserved-texture)'
     $expectedStormNavigationDeliveryApi =
-        'SendMessageTimeoutW+StormChildWndProc+ABI8Poll+ViewerCameraNavigationUiAdapter'
+        'SendMessageTimeoutW+StormChildWndProc+ABI9Poll+ViewerCameraNavigationUiAdapter'
     $expectedStormNavigationSnapshotApi =
-        'openusd_storm_child_get_navigation_input(ABI8,v2)'
+        'openusd_storm_child_get_navigation_input(ABI9,v2)'
     Assert-ViewerEvidenceSchemaVersion -Artifact $artifact -ArtifactKind 'Viewer run'
     if ($artifact.runtimeCompositor -ne 'ANGLE/D3D11 (runtime-observed)' -or
         $artifact.PSObject.Properties.Name -contains 'shellMode' -or
         $artifact.platformHandle -ne 'HWND' -or
-        [int]$artifact.stormChildAbiVersion -ne 8 -or
+        [int]$artifact.stormChildAbiVersion -ne 9 -or
         @($artifact.loadedArtifacts).Count -eq 0 -or
         @($artifact.states).Count -eq 0 -or
         @($artifact.pixels).Count -eq 0 -or
@@ -159,10 +159,10 @@ function Assert-ViewerRunEvidence
                 $expectedStormNavigationDeliveryApi -or
             [string]$navigation.snapshotApi -ne
                 $expectedStormNavigationSnapshotApi -or
-            [int]$navigation.stormChildAbiVersion -ne 8)
+            [int]$navigation.stormChildAbiVersion -ne 9)
         {
             throw (
-                'Viewer native Storm navigation did not use ABI 8 ' +
+                'Viewer native Storm navigation did not use ABI 9 ' +
                 'provenance labels.')
         }
     }

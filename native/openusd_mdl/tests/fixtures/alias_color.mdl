@@ -1,0 +1,68 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+// Exercises the existing default-expression subset, not new graph admission.
+mdl 1.7;
+import ::df::*;
+import ::tex::*;
+
+export material diffuse_alias(
+    uniform texture_2d source_texture = texture_2d(),
+    uniform texture_2d diffuse_texture = source_texture,
+    float reflection_roughness_constant = 0.25) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            tint: tex::lookup_color(diffuse_texture, float2(0.0)),
+            roughness: reflection_roughness_constant)));
+
+export material normal_alias(
+    uniform texture_2d source_texture = texture_2d(),
+    uniform texture_2d normalmap_texture = source_texture,
+    float reflection_roughness_constant = 0.25) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            roughness: reflection_roughness_constant)),
+        geometry: material_geometry(
+            normal: tex::lookup_float3(normalmap_texture, float2(0.0))));
+
+export material roughness_alias(
+    uniform texture_2d source_texture = texture_2d(),
+    uniform texture_2d reflectionroughness_texture = source_texture,
+    float reflection_roughness_constant = 0.25,
+    float reflection_roughness_texture_influence = 1.0) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            tint: tex::lookup_color(reflectionroughness_texture, float2(0.0)),
+            roughness: reflection_roughness_constant * reflection_roughness_texture_influence)));
+
+export material nested_alias(
+    uniform texture_2d source_texture = texture_2d(),
+    uniform texture_2d intermediate_texture = source_texture,
+    uniform texture_2d diffuse_texture = intermediate_texture,
+    float reflection_roughness_constant = 0.25) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            tint: tex::lookup_color(diffuse_texture, float2(0.0)),
+            roughness: reflection_roughness_constant)));
+
+export material copy_alias(
+    uniform texture_2d source_texture = texture_2d(),
+    uniform texture_2d intermediate_texture = texture_2d(source_texture),
+    uniform texture_2d diffuse_texture = texture_2d(intermediate_texture),
+    float reflection_roughness_constant = 0.25) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            tint: tex::lookup_color(diffuse_texture, float2(0.0)),
+            roughness: reflection_roughness_constant)));
+
+export material module_raw_alias(
+    uniform texture_2d source_texture =
+        texture_2d("./wrappers/textures/albedo.ppm", ::tex::gamma_linear),
+    uniform texture_2d diffuse_texture = source_texture,
+    float reflection_roughness_constant = 0.25) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            tint: tex::lookup_color(diffuse_texture, float2(0.0)),
+            roughness: reflection_roughness_constant)));
+
+export material module_srgb_alias(
+    uniform texture_2d source_texture =
+        texture_2d("./wrappers/textures/albedo.ppm", ::tex::gamma_srgb),
+    uniform texture_2d normalmap_texture = source_texture,
+    float reflection_roughness_constant = 0.25) = material(
+        surface: material_surface(scattering: df::diffuse_reflection_bsdf(
+            roughness: reflection_roughness_constant)),
+        geometry: material_geometry(
+            normal: tex::lookup_float3(normalmap_texture, float2(0.0))));

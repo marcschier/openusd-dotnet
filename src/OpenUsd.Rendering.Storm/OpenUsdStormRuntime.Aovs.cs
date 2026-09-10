@@ -8,10 +8,12 @@ namespace OpenUsd.Rendering.Storm;
 
 public static unsafe partial class OpenUsdStormRuntime
 {
-    internal static StormAovSnapshot RenderAovs(nint renderer, StormAovRequest request) =>
-        RenderAovs<NativeAovCall>(renderer, request);
+    internal static StormAovSnapshot RenderAovs(
+        nint renderer, StormAovRequest request, bool hasDisplaySelection) =>
+        RenderAovs<NativeAovCall>(renderer, request, hasDisplaySelection);
 
-    internal static StormAovSnapshot RenderAovs<TCall>(nint renderer, StormAovRequest request)
+    internal static StormAovSnapshot RenderAovs<TCall>(
+        nint renderer, StormAovRequest request, bool hasDisplaySelection = true)
         where TCall : struct, IStormAovCall
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -38,7 +40,14 @@ public static unsafe partial class OpenUsdStormRuntime
             throw new OpenUsdStormException(
                 OpenUsdNativeStatus.NativeError, "Native capture succeeded without a valid owner.");
         }
+        return ReadAovOwner(owner, request, hasDisplaySelection);
+    }
 
+    internal static StormAovSnapshot ReadAovOwner<TCall>(
+        StormAovOwnerHandle<TCall> owner, StormAovRequest request, bool hasDisplaySelection)
+        where TCall : struct, IStormAovCall
+    {
+        Span<byte> error = stackalloc byte[ErrorBufferSize];
         // The native view borrows memory beyond the get-view call. Keep a
         // SafeHandle reference through validation and every managed copy.
         bool borrowed = false;
@@ -47,9 +56,10 @@ public static unsafe partial class OpenUsdStormRuntime
             owner.DangerousAddRef(ref borrowed);
             StormAovNative.View view = StormAovNative.View.Create();
             error.Clear();
-            status = TCall.GetView(owner.DangerousGetHandle(), ref view, error, out errorRequired);
+            OpenUsdNativeStatus status = TCall.GetView(
+                owner.DangerousGetHandle(), ref view, error, out nuint errorRequired);
             ThrowIfFailed(status, error, (nuint)error.Length, errorRequired);
-            return StormAovDecoder.Decode(in view, request);
+            return StormAovDecoder.Decode(in view, request, hasDisplaySelection);
         }
         finally
         {
@@ -72,7 +82,7 @@ public static unsafe partial class OpenUsdStormRuntime
         static abstract void Release(nint owner);
     }
 
-    private readonly struct NativeAovCall : IStormAovCall
+    internal readonly struct NativeAovCall : IStormAovCall
     {
         public static OpenUsdNativeStatus Capture(
             nint renderer, in StormAovNative.Request request, out nint owner,

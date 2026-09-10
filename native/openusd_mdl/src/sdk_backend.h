@@ -10,6 +10,17 @@
 
 namespace openusd_mdl
 {
+constexpr uint32_t kMaxSdkParameters = 256;
+constexpr uint32_t kMaxSdkTextBytes = 4096;
+constexpr uint32_t kMaxSdkTotalTextBytes = 256 * 1024;
+
+enum class SdkMaterialKind
+{
+    Unspecified,
+    OmniPbr,
+    OmniGlass
+};
+
 /// One parameter value the MDL SDK resolved out of a compiled module. It is a
 /// plain value, deliberately: no MDL SDK type appears in this header, so the
 /// SDK backend can be compiled out entirely and nothing else in the adapter has
@@ -25,6 +36,10 @@ struct SdkParameterValue
     std::string text;
     /// OPENUSD_MDL_ORIGIN_*.
     uint32_t origin = 1u;
+    /// Texture gamma metadata, when supplied by the SDK.
+    std::string colorSpace;
+    /// Authored inputs used by a default's parameter references.
+    std::vector<std::string> authoredSources;
 };
 
 /// What one material resolution produced.
@@ -33,13 +48,14 @@ struct SdkMaterialResolution
     /// OPENUSD_MDL_STATUS_*.
     uint32_t status = 0;
     std::string diagnostic;
-    /// Parameter name to resolved value, for every parameter whose default this
-    /// backend could reduce to a value.
+    SdkMaterialKind kind = SdkMaterialKind::Unspecified;
+    bool isVariant = false;
+    /// Resolved formal values, including authored bindings needed by aliases.
     std::map<std::string, SdkParameterValue> defaults;
     /// Parameter names the material declares whose defaults are expressions this
     /// backend does not evaluate -- a call it does not fold, a layered BSDF, or
-    /// a resource it could not resolve. Reported by name so a caller can say
-    /// which input it dropped.
+    /// a resource it could not resolve. body:/prototype: markers explicitly
+    /// distinguish an unproven body/interface from projected parameters.
     std::vector<std::string> unresolved;
 };
 
@@ -70,10 +86,15 @@ public:
         uint64_t generation,
         std::string* diagnostic);
 
-    /// Compiles the module and reduces the named material's parameter defaults.
+    /// Resolves the module and its SDK-proven variant interface/defaults.
+    /// Configuration and authored bindings are supplied with each bulk request
+    /// so interleaved adapter instances cannot observe another instance's state.
     SdkMaterialResolution ResolveMaterial(
         const std::string& moduleUri,
-        const std::string& materialName);
+        const std::string& materialName,
+        const std::vector<std::string>& searchPaths,
+        uint64_t generation,
+        const std::map<std::string, SdkParameterValue>& authored);
 
     /// A short provenance string naming the loaded SDK, or why there is none.
     std::string Describe();

@@ -3112,6 +3112,98 @@ HdSilkSceneState::SetDrawMode(uint32_t drawMode)
 }
 
 void
+HdSilkSceneState::ResetForSceneIngestionChange()
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    for (const auto& entry : _meshes)
+    {
+        _pendingRemovals.push_back(entry.first);
+    }
+    _meshes.clear();
+    _instancesByPath.clear();
+
+    for (const auto& entry : _materials)
+    {
+        _pendingMaterialRemovals.push_back(entry.first);
+    }
+    _materials.clear();
+
+    _publishedLinks = HdSilkLinkTable();
+    _publishedShadows = HdSilkShadowTable();
+    _publishedEnvironments.clear();
+}
+
+void
+HdSilkSceneState::SetMaterialBindingPurpose(const std::string& purpose)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    _materialBindingPurpose = purpose;
+}
+
+std::string
+HdSilkSceneState::GetMaterialBindingPurpose() const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _materialBindingPurpose;
+}
+
+bool
+HdSilkSceneState::HasMaterial(const std::string& path) const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _materials.find(path) != _materials.end();
+}
+
+bool
+HdSilkSceneState::HasMeshPath(const std::string& path) const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _instancesByPath.find(path) != _instancesByPath.end();
+}
+
+void
+HdSilkSceneState::SetMeshMaterialPath(
+    const std::string& path,
+    const std::string& materialPath)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    const auto instances = _instancesByPath.find(path);
+    if (instances == _instancesByPath.end())
+    {
+        return;
+    }
+    for (int32_t instanceIndex : instances->second)
+    {
+        const HdSilkMeshKey key{path, instanceIndex};
+        const auto entry = _meshes.find(key);
+        if (entry == _meshes.end() || entry->second.record.materialPath == materialPath)
+        {
+            continue;
+        }
+        entry->second.record.materialPath = materialPath;
+        entry->second.dirty = true;
+    }
+}
+
+void
+HdSilkSceneState::NoteMaterialBindingPurposeChanged()
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (_materialBindingGeneration == std::numeric_limits<uint64_t>::max())
+    {
+        throw std::overflow_error("The hdSilk material-binding generation is exhausted.");
+    }
+    ++_materialBindingGeneration;
+}
+
+uint64_t
+HdSilkSceneState::GetMaterialBindingGeneration() const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _materialBindingGeneration;
+}
+
+void
 HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
 {
     if (record.path.empty())

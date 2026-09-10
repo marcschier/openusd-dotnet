@@ -9,8 +9,8 @@
 // built into, or redistributed by, anything this repository produces.
 //
 // What it does: load a module from an explicitly configured search path,
-// compile it, find the named material, and reduce that material's parameter
-// defaults to plain values. What it does not do: evaluate layered BSDFs,
+// compile it, find the named material, and reduce its SDK-proven variant
+// interface or parameter defaults to plain values. It does not evaluate BSDFs,
 // generate shader code, or fold a call it does not recognise. Each of those is
 // reported by parameter name instead.
 
@@ -22,12 +22,21 @@
 
 #if defined(OPENUSD_MDL_WITH_SDK)
 
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <set>
+#include <utility>
+
 #include <mi/base/handle.h>
 #include <mi/neuraylib/factory.h>
 #include <mi/neuraylib/idatabase.h>
+#include <mi/neuraylib/ifunction_call.h>
 #include <mi/neuraylib/ifunction_definition.h>
 #include <mi/neuraylib/iimage.h>
 #include <mi/neuraylib/imdl_configuration.h>
+#include <mi/neuraylib/imdl_entity_resolver.h>
 #include <mi/neuraylib/imdl_execution_context.h>
 #include <mi/neuraylib/imdl_factory.h>
 #include <mi/neuraylib/imdl_impexp_api.h>
@@ -67,6 +76,12 @@ BackendLock()
 constexpr const char* kRuntimePathVariable = "OPENUSD_MDL_SDK_RUNTIME";
 
 #if defined(OPENUSD_MDL_WITH_SDK)
+
+constexpr size_t kMaxModuleScopes = 32;
+constexpr unsigned int kMaxPrototypeDepth = 8;
+constexpr unsigned int kMaxExpressionDepth = 16;
+constexpr unsigned int kMaxExpressionWork = 4096;
+constexpr size_t kMaxDiagnosticBytes = 32768;
 
 #if defined(_WIN32)
 using RuntimeHandle = HMODULE;
@@ -192,6 +207,11 @@ struct RuntimeState
     std::vector<std::string> searchPaths;
     uint64_t generation = 0;
     bool configured = false;
+    // SDK names alone are not file identities. Sibling scopes prevent modules
+    // with identical qualified names in different configured roots from mixing.
+    std::map<
+        std::pair<std::string, std::string>,
+        mi::base::Handle<mi::neuraylib::IScope>> moduleScopes;
 };
 
 RuntimeState&
@@ -329,47 +349,207 @@ ConfigureRuntime(
     return OPENUSD_MDL_STATUS_OK;
 }
 
-/// Reduces an MDL module reference to the qualified module name the SDK loads.
-/// `OmniPBR.mdl` becomes `::OmniPBR`; a search-path relative `Base/Thing.mdl`
-/// becomes `::Base::Thing`. Any leading directory that is not part of the search
-/// path is the caller's problem to configure, which is why unresolved modules
-/// are reported as MODULE_NOT_FOUND rather than guessed at.
-std::string
-ToQualifiedModuleName(const std::string& moduleUri)
+uint32_t
+ConfigureLocked(
+    RuntimeState& state,
+    const std::vector<std::string>& searchPaths,
+    uint64_t generation,
+    std::string* diagnostic)
 {
-    std::string name = moduleUri;
-    const size_t scheme = name.find("://");
-    if (scheme != std::string::npos)
+    if (!EnsureRuntimeLoaded(state))
     {
-        name = name.substr(scheme + 3);
-        const size_t host = name.find('/');
-        name = host == std::string::npos ? std::string() : name.substr(host + 1);
+        *diagnostic = state.failure;
+        return OPENUSD_MDL_STATUS_SDK_UNAVAILABLE;
     }
-    if (name.size() > 4 &&
-        name.compare(name.size() - 4, 4, ".mdl") == 0)
+    const bool changed = !state.configured || state.generation != generation ||
+        state.searchPaths != searchPaths;
+    if (!changed)
     {
-        name.resize(name.size() - 4);
+        return OPENUSD_MDL_STATUS_OK;
     }
-    std::string qualified;
-    std::string segment;
-    for (const char character : name)
+    const uint32_t status = ConfigureRuntime(state, searchPaths, diagnostic);
+    if (status != OPENUSD_MDL_STATUS_OK)
     {
-        if (character == '/' || character == '\\')
+        return status;
+    }
+    for (auto entry = state.moduleScopes.begin(); entry != state.moduleScopes.end();)
+    {
+        if (state.database->remove_scope(entry->second->get_id()) != 0)
         {
-            if (!segment.empty())
-            {
-                qualified += "::" + segment;
-                segment.clear();
-            }
+            *diagnostic = "the MDL SDK could not invalidate module '" +
+                entry->first.first + "'";
+            return OPENUSD_MDL_STATUS_DISTILLATION_FAILED;
+        }
+        entry = state.moduleScopes.erase(entry);
+    }
+    state.database->garbage_collection();
+    state.searchPaths = searchPaths;
+    state.generation = generation;
+    state.configured = true;
+    return OPENUSD_MDL_STATUS_OK;
+}
+
+bool
+CopySdkText(const char* text, std::string* out)
+{
+    size_t length = 0;
+    if (text != nullptr)
+    {
+        while (length <= kMaxSdkTextBytes && text[length] != '\0')
+        {
+            ++length;
+        }
+    }
+    if (length > kMaxSdkTextBytes)
+    {
+        return false;
+    }
+    out->assign(text == nullptr ? "" : text, length);
+    return true;
+}
+
+void
+AppendDiagnostic(std::string* diagnostic, const std::string& message)
+{
+    if (message.empty() || diagnostic->size() >= kMaxDiagnosticBytes)
+    {
+        return;
+    }
+    const std::string separator = diagnostic->empty() ? "" : "; ";
+    if (diagnostic->size() + separator.size() + message.size() >
+        kMaxDiagnosticBytes)
+    {
+        const std::string notice = "; further SDK diagnostics exceed the text limit";
+        diagnostic->resize(
+            std::min(diagnostic->size(), kMaxDiagnosticBytes - notice.size()));
+        *diagnostic += notice;
+        return;
+    }
+    *diagnostic += separator + message;
+}
+
+bool
+PathContains(
+    const std::filesystem::path& directory,
+    const std::filesystem::path& file)
+{
+    auto part = file.begin();
+    for (const auto& expected : directory)
+    {
+        if (part == file.end())
+        {
+            return false;
+        }
+#if defined(_WIN32)
+        const std::wstring& left = expected.native();
+        const std::wstring& right = part->native();
+        if (CompareStringOrdinal(
+                left.c_str(), static_cast<int>(left.size()),
+                right.c_str(), static_cast<int>(right.size()), TRUE) != CSTR_EQUAL)
+#else
+        if (expected != *part)
+#endif
+        {
+            return false;
+        }
+        ++part;
+    }
+    return true;
+}
+
+struct ModuleLocation
+{
+    std::string filename;
+    std::string qualified;
+    std::vector<std::string> searchPaths;
+};
+
+bool
+LocateModule(
+    RuntimeState& state,
+    const std::string& moduleUri,
+    ModuleLocation* location,
+    std::string* diagnostic)
+{
+    if (moduleUri.empty() || moduleUri.find("://") != std::string::npos)
+    {
+        *diagnostic = "only modules inside the configured local search paths can be loaded";
+        return false;
+    }
+    std::string fileUri = moduleUri;
+    if (fileUri.rfind("::", 0) == 0)
+    {
+        if (ConfigureRuntime(state, state.searchPaths, diagnostic) != OPENUSD_MDL_STATUS_OK)
+        {
+            return false;
+        }
+        mi::base::Handle<mi::neuraylib::IMdl_configuration> configuration(
+            state.neuray->get_api_component<mi::neuraylib::IMdl_configuration>());
+        mi::base::Handle<mi::neuraylib::IMdl_entity_resolver> resolver(
+            configuration->get_entity_resolver());
+        mi::base::Handle<mi::neuraylib::IMdl_resolved_module> module(
+            resolver->resolve_module(fileUri.c_str(), nullptr, nullptr, 0, 0));
+        if (!module || !CopySdkText(module->get_filename(), &fileUri) || fileUri.empty())
+        {
+            *diagnostic = "the MDL SDK could not resolve module '" + moduleUri + "'";
+            return false;
+        }
+    }
+    else
+    {
+        std::replace(fileUri.begin(), fileUri.end(), '\\', '/');
+    }
+    const std::filesystem::path requested = std::filesystem::u8path(fileUri);
+    for (size_t index = 0; index < state.searchPaths.size(); ++index)
+    {
+        std::error_code error;
+        const std::filesystem::path root = std::filesystem::canonical(
+            std::filesystem::u8path(state.searchPaths[index]), error);
+        if (error)
+        {
+            *diagnostic = "cannot access module search path '" +
+                state.searchPaths[index] + "': " + error.message();
+            return false;
+        }
+        const std::filesystem::path candidate = std::filesystem::canonical(
+            IsAbsolute(fileUri) ? requested : root / requested, error);
+        if (error || !PathContains(root, candidate) ||
+            !std::filesystem::is_regular_file(candidate, error) || error)
+        {
             continue;
         }
-        segment.push_back(character);
+        location->filename = candidate.u8string();
+        if (location->filename.size() > kMaxSdkTextBytes)
+        {
+            *diagnostic = "the resolved module filename exceeds the text limit";
+            return false;
+        }
+        // The root containing an explicitly requested file takes precedence.
+        // No per-asset path is added, even for package/file names with spaces.
+        location->searchPaths = state.searchPaths;
+        std::rotate(
+            location->searchPaths.begin(),
+            location->searchPaths.begin() + static_cast<std::ptrdiff_t>(index),
+            location->searchPaths.begin() + static_cast<std::ptrdiff_t>(index + 1));
+        if (ConfigureRuntime(state, location->searchPaths, diagnostic) !=
+            OPENUSD_MDL_STATUS_OK)
+        {
+            return false;
+        }
+        mi::base::Handle<const mi::IString> name(
+            state.impexp->get_mdl_module_name(location->filename.c_str()));
+        if (!name || !CopySdkText(name->get_c_str(), &location->qualified) ||
+            location->qualified.empty())
+        {
+            *diagnostic = "the MDL SDK could not derive the module name for '" +
+                location->filename + "'";
+            return false;
+        }
+        return true;
     }
-    if (!segment.empty())
-    {
-        qualified += "::" + segment;
-    }
-    return qualified.empty() ? std::string("::") + name : qualified;
+    *diagnostic = "module '" + moduleUri +
+        "' is not a file inside any configured module search path";
+    return false;
 }
 
 std::string
@@ -381,57 +561,180 @@ ContextMessages(mi::neuraylib::IMdl_execution_context* context)
         return text;
     }
     const mi::Size count = context->get_messages_count();
-    for (mi::Size index = 0; index < count && index < 8; ++index)
+    mi::Size index = 0;
+    unsigned int reported = 0;
+    for (; index < count && index < kMaxSdkParameters && reported < 8; ++index)
     {
         mi::base::Handle<const mi::neuraylib::IMessage> message(
             context->get_message(index));
-        if (!message.is_valid_interface() || message->get_string() == nullptr)
+        if (!message.is_valid_interface() ||
+            message->get_severity() > mi::base::MESSAGE_SEVERITY_WARNING)
         {
             continue;
         }
-        if (!text.empty())
+        std::string messageText;
+        if (!CopySdkText(message->get_string(), &messageText))
         {
-            text += "; ";
+            messageText = "an SDK diagnostic exceeds the text limit";
         }
-        text += message->get_string();
+        AppendDiagnostic(&text, messageText);
+        ++reported;
+    }
+    if (index < count)
+    {
+        AppendDiagnostic(&text, "additional SDK messages exceed the bounded diagnostic list");
     }
     return text;
 }
 
-/// Resolves the filesystem path of a texture the SDK already resolved. The
-/// image's own filename is preferred because it is what a renderer can open;
-/// the MDL file path is the fallback for a resource the SDK knows of but did not
-/// materialise on disk.
-std::string
-ResolveTexturePath(
-    mi::neuraylib::ITransaction* transaction,
-    const mi::neuraylib::IValue_texture* texture)
+struct ReductionContext
 {
-    if (texture == nullptr)
+    mi::neuraylib::ITransaction* transaction;
+    mi::neuraylib::IMdl_factory* factory;
+    mi::neuraylib::IMdl_entity_resolver* resolver;
+    const mi::neuraylib::IFunction_definition* definition;
+    const mi::neuraylib::IExpression_list* defaults;
+    const std::map<std::string, SdkParameterValue>& authored;
+    unsigned int remainingWork = kMaxExpressionWork;
+    size_t remainingText = kMaxSdkTotalTextBytes;
+    bool exhausted = false;
+    std::string issue{};
+
+    bool Step(unsigned int depth)
     {
-        return std::string();
-    }
-    const char* dbName = texture->get_value();
-    if (dbName != nullptr && transaction != nullptr)
-    {
-        mi::base::Handle<const mi::neuraylib::ITexture> resolved(
-            transaction->access<mi::neuraylib::ITexture>(dbName));
-        if (resolved.is_valid_interface())
+        if (depth > kMaxExpressionDepth || remainingWork == 0)
         {
-            mi::base::Handle<const mi::neuraylib::IImage> image(
-                transaction->access<mi::neuraylib::IImage>(resolved->get_image()));
-            if (image.is_valid_interface())
-            {
-                const char* fileName = image->get_filename(0, 0);
-                if (fileName != nullptr && fileName[0] != '\0')
-                {
-                    return std::string(fileName);
-                }
-            }
+            exhausted = true;
+            issue = "SDK expression depth/work limit exceeded (16 levels, 4096 nodes)";
+            return false;
+        }
+        --remainingWork;
+        return true;
+    }
+
+    bool Text(const char* text, std::string* out)
+    {
+        if (!CopySdkText(text, out) || out->size() > remainingText)
+        {
+            exhausted = true;
+            issue = "SDK expression text limit exceeded";
+            return false;
+        }
+        remainingText -= out->size();
+        return true;
+    }
+};
+
+bool
+ResolveTexture(
+    ReductionContext& context,
+    const mi::neuraylib::IValue_texture* texture,
+    SdkParameterValue* out)
+{
+    mi::base::Handle<const mi::neuraylib::IType_texture> type(texture->get_type());
+    std::string path;
+    std::string owner;
+    std::string databaseName;
+    std::string selector;
+    if (!context.Text(texture->get_file_path(), &path) ||
+        !context.Text(texture->get_owner_module(), &owner) ||
+        !context.Text(texture->get_value(), &databaseName) ||
+        !context.Text(texture->get_selector(), &selector))
+    {
+        return false;
+    }
+    if (type->get_shape() != mi::neuraylib::IType_texture::TS_2D || !selector.empty())
+    {
+        context.issue = "only unselected texture_2d resources are projected: '" + path + "'";
+        return false;
+    }
+    out->kind = OPENUSD_MDL_VALUE_ASSET;
+    if (path.empty() && databaseName.empty() && owner.empty())
+    {
+        // An SDK invalid/unset texture_2d() is absence. A nonempty unresolved
+        // path, owner, or DB reference must never take this branch.
+        return true;
+    }
+
+    const float gamma = texture->get_gamma();
+    if (gamma == 0.0F)
+    {
+        out->colorSpace = "auto";
+    }
+    else if (gamma == 1.0F)
+    {
+        out->colorSpace = "raw";
+    }
+    else if (gamma == 2.2F)
+    {
+        out->colorSpace = "srgb";
+    }
+    else
+    {
+        context.issue = "texture gamma is outside the surface record: '" + path + "'";
+        return false;
+    }
+
+    if (!path.empty())
+    {
+        mi::base::Handle<const mi::IString> moduleName(
+            owner.empty() ? nullptr : context.factory->get_db_module_name(owner.c_str()));
+        mi::base::Handle<const mi::neuraylib::IModule> module(
+            context.transaction->access<mi::neuraylib::IModule>(
+                moduleName ? moduleName->get_c_str() : context.definition->get_module()));
+        std::string ownerFile;
+        if (!module || !context.Text(module->get_filename(), &ownerFile))
+        {
+            context.issue = "texture owner module is unavailable: '" + owner + "'";
+            return false;
+        }
+        mi::base::Handle<mi::neuraylib::IMdl_execution_context> messages(
+            context.factory->create_execution_context());
+        mi::base::Handle<mi::neuraylib::IMdl_resolved_resource> resource(
+            context.resolver->resolve_resource(
+                path.c_str(), ownerFile.c_str(),
+                owner.empty() ? module->get_mdl_name() : owner.c_str(),
+                0, 0, messages.get()));
+        if (!resource || resource->has_sequence_marker() ||
+            resource->get_uvtile_mode() != mi::neuraylib::UVTILE_MODE_NONE ||
+            resource->get_count() != 1)
+        {
+            context.issue = "unresolved or non-single-file texture '" + path +
+                "' in '" + owner + "'";
+            AppendDiagnostic(&context.issue, ContextMessages(messages.get()));
+            return false;
+        }
+        mi::base::Handle<const mi::neuraylib::IMdl_resolved_resource_element> element(
+            resource->get_element(0));
+        if (!element || element->get_count() != 1 ||
+            !context.Text(element->get_filename(0), &out->text))
+        {
+            context.issue = "texture has no single filesystem asset: '" + path + "'";
+            return false;
         }
     }
-    const char* filePath = texture->get_file_path();
-    return filePath == nullptr ? std::string() : std::string(filePath);
+    else if (!databaseName.empty())
+    {
+        mi::base::Handle<const mi::neuraylib::ITexture> resolved(
+            context.transaction->access<mi::neuraylib::ITexture>(databaseName.c_str()));
+        mi::base::Handle<const mi::neuraylib::IImage> image(
+            resolved ? context.transaction->access<mi::neuraylib::IImage>(
+                           resolved->get_image()) : nullptr);
+        if (!image || !context.Text(image->get_filename(0, 0), &out->text))
+        {
+            context.issue = "texture DB reference has no filesystem asset: '" + databaseName + "'";
+            return false;
+        }
+    }
+    std::error_code error;
+    if (!IsAbsolute(out->text) ||
+        !std::filesystem::is_regular_file(std::filesystem::u8path(out->text), error) ||
+        error)
+    {
+        context.issue = "texture is not a resolved regular file: '" + path + "'";
+        return false;
+    }
+    return true;
 }
 
 /// Reduces one MDL value to the plain form the adapter's C ABI carries. Returns
@@ -439,11 +742,12 @@ ResolveTexturePath(
 /// reported by name instead of being narrowed into a different type.
 bool
 ReduceValue(
-    mi::neuraylib::ITransaction* transaction,
+    ReductionContext& context,
     const mi::neuraylib::IValue* value,
+    unsigned int depth,
     SdkParameterValue* out)
 {
-    if (value == nullptr)
+    if (value == nullptr || !context.Step(depth))
     {
         return false;
     }
@@ -500,7 +804,7 @@ ReduceValue(
                 mi::base::Handle<const mi::neuraylib::IValue> component(
                     typed->get_value(index));
                 SdkParameterValue scalar;
-                if (!ReduceValue(transaction, component.get(), &scalar) ||
+                if (!ReduceValue(context, component.get(), depth + 1, &scalar) ||
                     scalar.componentCount != 1 ||
                     (scalar.kind != OPENUSD_MDL_VALUE_FLOAT &&
                      scalar.kind != OPENUSD_MDL_VALUE_INT))
@@ -521,47 +825,203 @@ ReduceValue(
         {
             mi::base::Handle<const mi::neuraylib::IValue_string> typed(
                 value->get_interface<mi::neuraylib::IValue_string>());
-            const char* text = typed->get_value();
             out->kind = OPENUSD_MDL_VALUE_STRING;
-            out->text = text == nullptr ? std::string() : std::string(text);
-            return true;
+            return context.Text(typed->get_value(), &out->text);
         }
         case mi::neuraylib::IValue::VK_TEXTURE:
         {
             mi::base::Handle<const mi::neuraylib::IValue_texture> typed(
                 value->get_interface<mi::neuraylib::IValue_texture>());
-            const std::string path = ResolveTexturePath(transaction, typed.get());
-            if (path.empty())
-            {
-                // The module names a texture the SDK could not resolve to
-                // anything a renderer can open. Reporting it is the only honest
-                // outcome; publishing an unresolvable path would fail later, far
-                // from the cause.
-                return false;
-            }
-            out->kind = OPENUSD_MDL_VALUE_ASSET;
-            out->text = path;
-            return true;
+            return ResolveTexture(context, typed.get(), out);
         }
         default:
+            context.issue = "SDK value kind " + std::to_string(value->get_kind()) +
+                " is outside the surface parameter subset";
             return false;
     }
 }
 
-/// Folds one default expression. Constants reduce directly; a parameter
-/// reference is an alias that resolves to another parameter's own default; a
-/// direct call is folded only when it is an elemental constructor over operands
-/// that themselves fold, which is what makes `color(0.5)` and `float3(a, b, c)`
-/// usable without evaluating arbitrary MDL.
 bool
 ReduceExpression(
-    mi::neuraylib::ITransaction* transaction,
+    ReductionContext& context,
     const mi::neuraylib::IExpression* expression,
-    const mi::neuraylib::IExpression_list* siblings,
+    unsigned int depth,
+    SdkParameterValue* out);
+
+bool
+ReduceConstructor(
+    ReductionContext& context,
+    const mi::neuraylib::IExpression* expression,
+    const char* definitionName,
+    const mi::neuraylib::IExpression_list* arguments,
     unsigned int depth,
     SdkParameterValue* out)
 {
-    if (expression == nullptr || depth > 4)
+    std::string name;
+    if (!context.Text(definitionName, &name))
+    {
+        return false;
+    }
+    mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
+        context.transaction->access<mi::neuraylib::IFunction_definition>(name.c_str()));
+    if (!definition || arguments == nullptr)
+    {
+        context.issue = "SDK call definition is unavailable: '" + name + "'";
+        return false;
+    }
+    const auto semantic = definition->get_semantic();
+    if (semantic != mi::neuraylib::IFunction_definition::DS_ELEM_CONSTRUCTOR &&
+        semantic != mi::neuraylib::IFunction_definition::DS_CONV_CONSTRUCTOR &&
+        semantic != mi::neuraylib::IFunction_definition::DS_COPY_CONSTRUCTOR)
+    {
+        context.issue = "unsupported SDK call '" + name + "'";
+        return false;
+    }
+    const mi::Size count = arguments->get_size();
+    if (count == 0 || count > 4)
+    {
+        context.issue = "unsupported constructor arity: '" + name + "'";
+        return false;
+    }
+    mi::base::Handle<const mi::neuraylib::IType> type(expression->get_type());
+    type = mi::base::Handle<const mi::neuraylib::IType>(type->skip_all_type_aliases());
+    const auto kind = type->get_kind();
+    mi::Size arity = 1;
+    if (kind == mi::neuraylib::IType::TK_COLOR)
+    {
+        arity = 3;
+    }
+    else if (kind == mi::neuraylib::IType::TK_VECTOR)
+    {
+        mi::base::Handle<const mi::neuraylib::IType_vector> vector(
+            type->get_interface<mi::neuraylib::IType_vector>());
+        mi::base::Handle<const mi::neuraylib::IType_atomic> element(vector->get_element_type());
+        if (element->get_kind() != mi::neuraylib::IType::TK_FLOAT)
+        {
+            context.issue = "unsupported vector element type: '" + name + "'";
+            return false;
+        }
+        arity = vector->get_size();
+    }
+    else if (kind != mi::neuraylib::IType::TK_FLOAT &&
+        kind != mi::neuraylib::IType::TK_DOUBLE &&
+        kind != mi::neuraylib::IType::TK_INT &&
+        kind != mi::neuraylib::IType::TK_BOOL &&
+        kind != mi::neuraylib::IType::TK_TEXTURE &&
+        kind != mi::neuraylib::IType::TK_STRING)
+    {
+        context.issue = "unsupported constructor type: '" + name + "'";
+        return false;
+    }
+    if (arity == 0 || arity > 4 || (count != 1 && count != arity))
+    {
+        context.issue = "unsupported constructor shape: '" + name + "'";
+        return false;
+    }
+    double components[4]{};
+    bool authored = false;
+    for (mi::Size index = 0; index < count; ++index)
+    {
+        mi::base::Handle<const mi::neuraylib::IExpression> argument(
+            arguments->get_expression(index));
+        SdkParameterValue reduced;
+        if (!ReduceExpression(context, argument.get(), depth + 1, &reduced))
+        {
+            return false;
+        }
+        if ((kind == mi::neuraylib::IType::TK_TEXTURE &&
+             reduced.kind == OPENUSD_MDL_VALUE_ASSET) ||
+            (kind == mi::neuraylib::IType::TK_STRING &&
+             reduced.kind == OPENUSD_MDL_VALUE_STRING))
+        {
+            if (count != 1 || semantic != mi::neuraylib::IFunction_definition::DS_COPY_CONSTRUCTOR)
+            {
+                context.issue = "only resource/string copy constructors are projected: '" + name + "'";
+                return false;
+            }
+            *out = std::move(reduced);
+            return true;
+        }
+        if (reduced.componentCount == 0 ||
+            (reduced.kind != OPENUSD_MDL_VALUE_BOOL &&
+             reduced.kind != OPENUSD_MDL_VALUE_INT &&
+             reduced.kind != OPENUSD_MDL_VALUE_FLOAT &&
+             reduced.kind != OPENUSD_MDL_VALUE_FLOAT2 &&
+             reduced.kind != OPENUSD_MDL_VALUE_FLOAT3 &&
+             reduced.kind != OPENUSD_MDL_VALUE_FLOAT4))
+        {
+            context.issue = "constructor operand is not a numeric value: '" + name + "'";
+            return false;
+        }
+        if (reduced.componentCount != 1)
+        {
+            if (count != 1 || reduced.componentCount != arity)
+            {
+                context.issue = "constructor operand has an unsupported shape: '" + name + "'";
+                return false;
+            }
+            std::copy_n(reduced.value, arity, components);
+        }
+        else
+        {
+            components[index] = reduced.kind == OPENUSD_MDL_VALUE_BOOL
+                ? (reduced.integerValue != 0 ? 1.0 : 0.0)
+                : reduced.kind == OPENUSD_MDL_VALUE_INT
+                    ? static_cast<double>(reduced.integerValue) : reduced.value[0];
+            if (count == 1)
+            {
+                std::fill_n(components, arity, components[0]);
+            }
+        }
+        authored = authored || reduced.origin == OPENUSD_MDL_ORIGIN_AUTHORED;
+        for (const std::string& source : reduced.authoredSources)
+        {
+            if (std::find(out->authoredSources.begin(), out->authoredSources.end(), source) ==
+                out->authoredSources.end())
+            {
+                out->authoredSources.push_back(source);
+            }
+        }
+    }
+    out->componentCount = static_cast<uint32_t>(arity);
+    out->origin = authored ? OPENUSD_MDL_ORIGIN_AUTHORED : OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION;
+    if (kind == mi::neuraylib::IType::TK_BOOL)
+    {
+        out->kind = OPENUSD_MDL_VALUE_BOOL;
+        out->integerValue = components[0] != 0.0F ? 1 : 0;
+    }
+    else if (kind == mi::neuraylib::IType::TK_INT)
+    {
+        const double value = components[0];
+        if (!std::isfinite(value) || value < INT32_MIN || value > INT32_MAX)
+        {
+            context.issue = "integer constructor is out of range: '" + name + "'";
+            return false;
+        }
+        out->kind = OPENUSD_MDL_VALUE_INT;
+        out->integerValue = static_cast<int32_t>(value);
+    }
+    else
+    {
+        out->kind = arity == 1 ? OPENUSD_MDL_VALUE_FLOAT :
+            arity == 2 ? OPENUSD_MDL_VALUE_FLOAT2 :
+            arity == 3 ? OPENUSD_MDL_VALUE_FLOAT3 : OPENUSD_MDL_VALUE_FLOAT4;
+        for (mi::Size index = 0; index < arity; ++index)
+        {
+            out->value[index] = static_cast<float>(components[index]);
+        }
+    }
+    return true;
+}
+
+bool
+ReduceExpression(
+    ReductionContext& context,
+    const mi::neuraylib::IExpression* expression,
+    unsigned int depth,
+    SdkParameterValue* out)
+{
+    if (expression == nullptr || !context.Step(depth))
     {
         return false;
     }
@@ -572,115 +1032,355 @@ ReduceExpression(
             mi::base::Handle<const mi::neuraylib::IExpression_constant> constant(
                 expression->get_interface<mi::neuraylib::IExpression_constant>());
             mi::base::Handle<const mi::neuraylib::IValue> value(constant->get_value());
-            return ReduceValue(transaction, value.get(), out);
+            return ReduceValue(context, value.get(), depth, out);
         }
         case mi::neuraylib::IExpression::EK_PARAMETER:
         {
             mi::base::Handle<const mi::neuraylib::IExpression_parameter> parameter(
                 expression->get_interface<mi::neuraylib::IExpression_parameter>());
-            if (siblings == nullptr)
-            {
-                return false;
-            }
             const mi::Size index = parameter->get_index();
-            if (index >= siblings->get_size())
+            std::string name;
+            if (index >= context.definition->get_parameter_count() ||
+                !context.Text(context.definition->get_parameter_name(index), &name))
             {
+                context.issue = "SDK parameter reference is outside the formal parameter list";
                 return false;
             }
+            const auto authored = context.authored.find(name);
+            if (authored != context.authored.end())
+            {
+                *out = authored->second;
+                out->authoredSources = {name};
+                return true;
+            }
+            // Default-list indices are not formal parameter indices: parameters
+            // without defaults are omitted from that list by the SDK.
             mi::base::Handle<const mi::neuraylib::IExpression> target(
-                siblings->get_expression(index));
-            return ReduceExpression(
-                transaction, target.get(), siblings, depth + 1, out);
+                context.defaults ? context.defaults->get_expression(name.c_str()) : nullptr);
+            if (!target)
+            {
+                context.issue = "no authored value or default for parameter '" + name + "'";
+                return false;
+            }
+            return ReduceExpression(context, target.get(), depth + 1, out);
         }
         case mi::neuraylib::IExpression::EK_DIRECT_CALL:
         {
             mi::base::Handle<const mi::neuraylib::IExpression_direct_call> call(
                 expression->get_interface<mi::neuraylib::IExpression_direct_call>());
-            mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
-                transaction->access<mi::neuraylib::IFunction_definition>(
-                    call->get_definition()));
-            if (!definition.is_valid_interface())
-            {
-                return false;
-            }
-            // Only the elemental constructors fold. Anything else is a real
-            // computation, and folding one by guessing would publish a value the
-            // module does not produce.
-            const mi::neuraylib::IFunction_definition::Semantics semantic =
-                definition->get_semantic();
-            if (semantic !=
-                    mi::neuraylib::IFunction_definition::DS_ELEM_CONSTRUCTOR &&
-                semantic !=
-                    mi::neuraylib::IFunction_definition::DS_CONV_CONSTRUCTOR &&
-                semantic !=
-                    mi::neuraylib::IFunction_definition::DS_COPY_CONSTRUCTOR)
-            {
-                return false;
-            }
             mi::base::Handle<const mi::neuraylib::IExpression_list> arguments(
                 call->get_arguments());
-            const mi::Size count = arguments->get_size();
-            if (count == 0 || count > 4)
+            return ReduceConstructor(
+                context, expression, call->get_definition(), arguments.get(), depth, out);
+        }
+        case mi::neuraylib::IExpression::EK_CALL:
+        {
+            mi::base::Handle<const mi::neuraylib::IExpression_call> expressionCall(
+                expression->get_interface<mi::neuraylib::IExpression_call>());
+            std::string name;
+            if (!context.Text(expressionCall->get_call(), &name))
             {
                 return false;
             }
-            float components[4] = {0.0F, 0.0F, 0.0F, 0.0F};
-            for (mi::Size index = 0; index < count; ++index)
+            mi::base::Handle<const mi::neuraylib::IFunction_call> call(
+                context.transaction->access<mi::neuraylib::IFunction_call>(name.c_str()));
+            if (!call)
             {
-                mi::base::Handle<const mi::neuraylib::IExpression> argument(
-                    arguments->get_expression(index));
-                SdkParameterValue reduced;
-                if (!ReduceExpression(
-                        transaction, argument.get(), siblings, depth + 1, &reduced))
-                {
-                    return false;
-                }
-                if (reduced.kind == OPENUSD_MDL_VALUE_ASSET ||
-                    reduced.kind == OPENUSD_MDL_VALUE_STRING)
-                {
-                    // A single-argument copy of a resource is still that
-                    // resource, which is worth carrying; anything else is not a
-                    // numeric constructor.
-                    if (count != 1)
-                    {
-                        return false;
-                    }
-                    *out = reduced;
-                    return true;
-                }
-                if (reduced.componentCount == 1)
-                {
-                    components[index] = reduced.kind == OPENUSD_MDL_VALUE_INT ||
-                            reduced.kind == OPENUSD_MDL_VALUE_BOOL
-                        ? static_cast<float>(reduced.integerValue)
-                        : reduced.value[0];
-                    continue;
-                }
-                if (count != 1)
-                {
-                    return false;
-                }
-                *out = reduced;
-                return true;
+                context.issue = "SDK indirect call is unavailable: '" + name + "'";
+                return false;
             }
-            // `color(0.5)` and `float3(0.5)` broadcast their single argument,
-            // which is the MDL conversion-constructor rule this fold models.
-            const mi::Size arity = count;
-            out->componentCount = static_cast<uint32_t>(arity);
-            for (mi::Size index = 0; index < arity; ++index)
+            mi::base::Handle<const mi::neuraylib::IExpression_list> arguments(call->get_arguments());
+            return ReduceConstructor(
+                context, expression, call->get_function_definition(), arguments.get(), depth, out);
+        }
+        case mi::neuraylib::IExpression::EK_TEMPORARY:
+        {
+            mi::base::Handle<const mi::neuraylib::IExpression_temporary> temporary(
+                expression->get_interface<mi::neuraylib::IExpression_temporary>());
+            if (temporary->get_index() >= context.definition->get_temporary_count() ||
+                context.definition->get_temporary_count() > kMaxSdkParameters)
             {
-                out->value[index] = components[index];
+                context.issue = "SDK temporary is outside the bounded definition";
+                return false;
             }
-            out->kind = arity == 1   ? OPENUSD_MDL_VALUE_FLOAT
-                : arity == 2         ? OPENUSD_MDL_VALUE_FLOAT2
-                : arity == 3         ? OPENUSD_MDL_VALUE_FLOAT3
-                                     : OPENUSD_MDL_VALUE_FLOAT4;
-            out->origin = OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION;
-            return true;
+            mi::base::Handle<const mi::neuraylib::IExpression> target(
+                context.definition->get_temporary(temporary->get_index()));
+            return ReduceExpression(context, target.get(), depth + 1, out);
         }
         default:
+            context.issue = "unsupported SDK expression kind";
             return false;
     }
+}
+
+SdkMaterialKind
+KnownRoot(const mi::neuraylib::IFunction_definition* definition)
+{
+    const char* module = definition->get_mdl_module_name();
+    const char* name = definition->get_mdl_simple_name();
+    if (module != nullptr && name != nullptr)
+    {
+        if (std::strcmp(module, "::OmniPBR") == 0 && std::strcmp(name, "OmniPBR") == 0)
+        {
+            return SdkMaterialKind::OmniPbr;
+        }
+        if (std::strcmp(module, "::OmniGlass") == 0 && std::strcmp(name, "OmniGlass") == 0)
+        {
+            return SdkMaterialKind::OmniGlass;
+        }
+    }
+    return SdkMaterialKind::Unspecified;
+}
+
+bool
+ResolveVariantRoot(
+    mi::neuraylib::ITransaction* transaction,
+    const mi::neuraylib::IFunction_definition* definition,
+    SdkMaterialResolution* resolution)
+{
+    resolution->kind = KnownRoot(definition);
+    resolution->isVariant = definition->get_prototype() != nullptr;
+    if (resolution->kind != SdkMaterialKind::Unspecified || !resolution->isVariant)
+    {
+        return true;
+    }
+    mi::base::Handle<const mi::neuraylib::IFunction_definition> owner;
+    std::set<std::string> visited;
+    for (unsigned int depth = 0; depth < kMaxPrototypeDepth; ++depth)
+    {
+        std::string prototype;
+        if (!CopySdkText(definition->get_prototype(), &prototype) ||
+            prototype.empty() || !visited.insert(prototype).second)
+        {
+            std::string name;
+            if (!CopySdkText(definition->get_mdl_simple_name(), &name))
+            {
+                name = "(SDK name exceeds the text limit)";
+            }
+            resolution->unresolved.push_back("body:" + name);
+            resolution->diagnostic = "unsupported variant root '" + name +
+                "'; only SDK-proven OmniPBR/OmniGlass variant interfaces are admitted";
+            return false;
+        }
+        mi::base::Handle<const mi::neuraylib::IFunction_definition> target(
+            transaction->access<mi::neuraylib::IFunction_definition>(prototype.c_str()));
+        if (!target || !target->is_material() ||
+            target->get_parameter_count() > kMaxSdkParameters ||
+            definition->get_parameter_count() != target->get_parameter_count())
+        {
+            resolution->unresolved.push_back("prototype:" + prototype);
+            resolution->diagnostic = "unsupported SDK variant parameter interface: '" + prototype + "'";
+            return false;
+        }
+        // (*) variants retain the prototype's formal interface. The SDK moves
+        // named overrides into these defaults, then inlines the BSDF body.
+        // Validate that relationship, never reverse-engineer the inlined BSDF.
+        for (mi::Size index = 0; index < target->get_parameter_count(); ++index)
+        {
+            std::string name;
+            std::string targetName;
+            std::string type;
+            std::string targetType;
+            if (!CopySdkText(definition->get_parameter_name(index), &name) ||
+                !CopySdkText(target->get_parameter_name(index), &targetName) ||
+                !CopySdkText(definition->get_mdl_parameter_type_name(index), &type) ||
+                !CopySdkText(target->get_mdl_parameter_type_name(index), &targetType) ||
+                name != targetName || type != targetType)
+            {
+                resolution->unresolved.push_back("prototype:" + prototype);
+                resolution->diagnostic = "variant formal names/types do not match '" + prototype + "'";
+                return false;
+            }
+        }
+        resolution->kind = KnownRoot(target.get());
+        if (resolution->kind != SdkMaterialKind::Unspecified)
+        {
+            return true;
+        }
+        owner = std::move(target);
+        definition = owner.get();
+    }
+    resolution->unresolved.emplace_back("prototype:depth");
+    resolution->diagnostic = "SDK variant prototype depth exceeds 8 retained links";
+    return false;
+}
+
+SdkMaterialResolution
+ResolveInTransaction(
+    RuntimeState& state,
+    mi::neuraylib::ITransaction* transaction,
+    const ModuleLocation& location,
+    const std::string& materialName,
+    const std::map<std::string, SdkParameterValue>& authored)
+{
+    SdkMaterialResolution resolution;
+    mi::base::Handle<mi::neuraylib::IMdl_execution_context> context(
+        state.factory->create_execution_context());
+    // The surface record needs resource identities, not decoded image data.
+    // Preserve SDK resource paths/owners and resolve them with its resolver.
+    if (context->set_option("resolve_resources", false) != 0)
+    {
+        resolution.status = OPENUSD_MDL_STATUS_SDK_UNAVAILABLE;
+        resolution.diagnostic = "the MDL SDK cannot preserve unresolved resource identities";
+        return resolution;
+    }
+    const mi::Sint32 loaded =
+        state.impexp->load_module(transaction, location.qualified.c_str(), context.get());
+    resolution.diagnostic = ContextMessages(context.get());
+    if (loaded < 0)
+    {
+        resolution.status = OPENUSD_MDL_STATUS_MODULE_COMPILE_FAILED;
+        resolution.diagnostic = "MDL module '" + location.filename + "' did not compile (" +
+            std::to_string(loaded) + "): " + resolution.diagnostic;
+        return resolution;
+    }
+    mi::base::Handle<const mi::IString> moduleName(
+        state.factory->get_db_module_name(location.qualified.c_str()));
+    mi::base::Handle<const mi::neuraylib::IModule> module(
+        moduleName ? transaction->access<mi::neuraylib::IModule>(moduleName->get_c_str()) : nullptr);
+    std::string filename;
+    std::error_code error;
+    if (!module || !CopySdkText(module->get_filename(), &filename) ||
+        !std::filesystem::equivalent(
+            std::filesystem::u8path(filename), std::filesystem::u8path(location.filename), error) ||
+        error)
+    {
+        resolution.status = OPENUSD_MDL_STATUS_MODULE_COMPILE_FAILED;
+        resolution.diagnostic = "the SDK module identity does not match requested file '" +
+            location.filename + "'";
+        return resolution;
+    }
+    if (module->get_material_count() > kMaxSdkParameters)
+    {
+        resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+        resolution.diagnostic = "module '" + location.filename +
+            "' exceeds the 256 material-definition limit";
+        return resolution;
+    }
+    const std::string requestedName = materialName.empty()
+        ? std::filesystem::u8path(location.filename).stem().u8string() : materialName;
+    std::string definitionName;
+    for (mi::Size index = 0; index < module->get_material_count(); ++index)
+    {
+        std::string candidate;
+        if (!CopySdkText(module->get_material(index), &candidate))
+        {
+            resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+            resolution.diagnostic = "an SDK material-definition name exceeds the text limit";
+            return resolution;
+        }
+        mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
+            transaction->access<mi::neuraylib::IFunction_definition>(candidate.c_str()));
+        std::string name;
+        if (!definition || !CopySdkText(definition->get_mdl_simple_name(), &name) ||
+            name != requestedName)
+        {
+            continue;
+        }
+        if (!definitionName.empty())
+        {
+            resolution.status = OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL;
+            resolution.diagnostic = "material name '" + requestedName + "' is ambiguous";
+            return resolution;
+        }
+        definitionName = std::move(candidate);
+    }
+    if (definitionName.empty())
+    {
+        resolution.status = OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL;
+        resolution.diagnostic = "MDL module '" + location.filename +
+            "' declares no material named '" + requestedName + "'";
+        return resolution;
+    }
+    mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
+        transaction->access<mi::neuraylib::IFunction_definition>(definitionName.c_str()));
+    if (definition->get_parameter_count() > kMaxSdkParameters)
+    {
+        resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+        resolution.diagnostic = "material '" + requestedName + "' exceeds the 256 formal-parameter limit";
+        return resolution;
+    }
+    if (!ResolveVariantRoot(transaction, definition.get(), &resolution))
+    {
+        resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+        return resolution;
+    }
+    mi::base::Handle<const mi::neuraylib::IExpression_list> defaults(definition->get_defaults());
+    mi::base::Handle<mi::neuraylib::IMdl_configuration> configuration(
+        state.neuray->get_api_component<mi::neuraylib::IMdl_configuration>());
+    mi::base::Handle<mi::neuraylib::IMdl_entity_resolver> resolver(
+        configuration->get_entity_resolver());
+    ReductionContext reduction{
+        transaction, state.factory.get(), resolver.get(), definition.get(), defaults.get(), authored};
+    for (mi::Size index = 0; index < definition->get_parameter_count(); ++index)
+    {
+        std::string name;
+        if (!reduction.Text(definition->get_parameter_name(index), &name))
+        {
+            break;
+        }
+        SdkParameterValue reduced;
+        const auto override = authored.find(name);
+        if (override != authored.end())
+        {
+            reduced = override->second;
+        }
+        else
+        {
+            mi::base::Handle<const mi::neuraylib::IExpression> expression(
+                defaults ? defaults->get_expression(name.c_str()) : nullptr);
+            if (!expression)
+            {
+                continue;
+            }
+            reduction.issue.clear();
+            if (!ReduceExpression(reduction, expression.get(), 0, &reduced))
+            {
+                resolution.unresolved.push_back(name);
+                AppendDiagnostic(
+                    &resolution.diagnostic, "parameter '" + name + "': " +
+                        (reduction.issue.empty() ? "unsupported SDK expression" : reduction.issue));
+                if (reduction.exhausted)
+                {
+                    break;
+                }
+                continue;
+            }
+        }
+        if (!reduced.colorSpace.empty() && !reduced.text.empty())
+        {
+            SdkParameterValue metadata;
+            metadata.kind = OPENUSD_MDL_VALUE_STRING;
+            metadata.text = reduced.colorSpace;
+            metadata.origin = reduced.origin;
+            resolution.defaults.emplace("colorSpace:" + name, std::move(metadata));
+        }
+        resolution.defaults.emplace(std::move(name), std::move(reduced));
+    }
+    if (reduction.exhausted)
+    {
+        resolution.defaults.clear();
+        resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+        AppendDiagnostic(&resolution.diagnostic, reduction.issue);
+        return resolution;
+    }
+    if (resolution.kind == SdkMaterialKind::Unspecified)
+    {
+        // Preserve the pre-existing direct parameter-default API, but do not
+        // misrepresent it as a proven wrapper or a clean BSDF projection.
+        resolution.unresolved.push_back("body:" + requestedName);
+        AppendDiagnostic(
+            &resolution.diagnostic, "material '" + requestedName +
+                "' has no admitted SDK variant root; parameter-default projection only, body unsupported");
+    }
+    if (resolution.defaults.empty())
+    {
+        resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+        AppendDiagnostic(
+            &resolution.diagnostic, "MDL material '" + requestedName +
+                "' declares no parameter value inside the projection subset");
+    }
+    return resolution;
 }
 #endif
 }
@@ -722,10 +1422,16 @@ SdkBackend::Configure(
 SdkMaterialResolution
 SdkBackend::ResolveMaterial(
     const std::string& moduleUri,
-    const std::string& materialName)
+    const std::string& materialName,
+    const std::vector<std::string>& searchPaths,
+    uint64_t generation,
+    const std::map<std::string, SdkParameterValue>& authored)
 {
     (void)moduleUri;
     (void)materialName;
+    (void)searchPaths;
+    (void)generation;
+    (void)authored;
     SdkMaterialResolution resolution;
     resolution.status = OPENUSD_MDL_STATUS_SDK_UNAVAILABLE;
     resolution.diagnostic = "this adapter was built without an MDL SDK";
@@ -755,58 +1461,23 @@ SdkBackend::Configure(
     std::string ignored;
     std::string& message = diagnostic == nullptr ? ignored : *diagnostic;
     std::lock_guard<std::mutex> guard(BackendLock());
-    RuntimeState& state = State();
-    if (!EnsureRuntimeLoaded(state))
-    {
-        message = state.failure;
-        return OPENUSD_MDL_STATUS_SDK_UNAVAILABLE;
-    }
-    if (state.configured && state.generation == generation &&
-        state.searchPaths == searchPaths)
-    {
-        return OPENUSD_MDL_STATUS_OK;
-    }
-
-    const uint32_t status = ConfigureRuntime(state, searchPaths, &message);
-    if (status != OPENUSD_MDL_STATUS_OK)
-    {
-        return status;
-    }
-
-    // A new generation, or a different search path set, invalidates everything
-    // the database cached about previously loaded modules: a module resolved
-    // from an old path must not answer a request made under a new one.
-    if (state.configured &&
-        (state.generation != generation || state.searchPaths != searchPaths))
-    {
-        mi::base::Handle<mi::neuraylib::IScope> scope(
-            state.database->get_global_scope());
-        mi::base::Handle<mi::neuraylib::ITransaction> transaction(
-            scope->create_transaction());
-        transaction->commit();
-        state.database->garbage_collection();
-    }
-
-    state.searchPaths = searchPaths;
-    state.generation = generation;
-    state.configured = true;
-    return OPENUSD_MDL_STATUS_OK;
+    return ConfigureLocked(State(), searchPaths, generation, &message);
 }
 
 SdkMaterialResolution
 SdkBackend::ResolveMaterial(
     const std::string& moduleUri,
-    const std::string& materialName)
+    const std::string& materialName,
+    const std::vector<std::string>& searchPaths,
+    uint64_t generation,
+    const std::map<std::string, SdkParameterValue>& authored)
 {
     SdkMaterialResolution resolution;
     std::lock_guard<std::mutex> guard(BackendLock());
     RuntimeState& state = State();
-    if (!state.started || !state.configured)
+    resolution.status = ConfigureLocked(state, searchPaths, generation, &resolution.diagnostic);
+    if (resolution.status != OPENUSD_MDL_STATUS_OK)
     {
-        resolution.status = OPENUSD_MDL_STATUS_SDK_UNAVAILABLE;
-        resolution.diagnostic = state.failure.empty()
-            ? "the MDL SDK backend has no configured module search path"
-            : state.failure;
         return resolution;
     }
     if (state.searchPaths.empty())
@@ -819,137 +1490,60 @@ SdkBackend::ResolveMaterial(
         return resolution;
     }
 
-    mi::base::Handle<mi::neuraylib::IScope> scope(state.database->get_global_scope());
-    mi::base::Handle<mi::neuraylib::ITransaction> transaction(
-        scope->create_transaction());
-    mi::base::Handle<mi::neuraylib::IMdl_execution_context> context(
-        state.factory->create_execution_context());
-
-    const std::string qualified = ToQualifiedModuleName(moduleUri);
-    const mi::Sint32 loaded =
-        state.impexp->load_module(transaction.get(), qualified.c_str(), context.get());
-    const std::string messages = ContextMessages(context.get());
-    if (loaded < 0)
+    ModuleLocation location;
+    if (!LocateModule(state, moduleUri, &location, &resolution.diagnostic))
     {
-        transaction->abort();
-        // -1 is "module name invalid", -2 is "failed to find or initialize". Both
-        // are the caller's search path, not the module's contents, so they are
-        // reported as not-found rather than as a compile failure.
-        resolution.status = loaded == -2 || loaded == -1
-            ? OPENUSD_MDL_STATUS_MODULE_NOT_FOUND
-            : OPENUSD_MDL_STATUS_MODULE_COMPILE_FAILED;
-        resolution.diagnostic = "MDL module '" + qualified + "' did not load (" +
-            std::to_string(loaded) + ")" +
-            (messages.empty() ? std::string() : ": " + messages);
+        resolution.status = OPENUSD_MDL_STATUS_MODULE_NOT_FOUND;
         return resolution;
     }
-
-    mi::base::Handle<const mi::IString> moduleDbName(
-        state.factory->get_db_module_name(qualified.c_str()));
-    if (!moduleDbName.is_valid_interface())
+    const auto key = std::make_pair(location.filename, materialName);
+    auto cached = state.moduleScopes.find(key);
+    if (cached == state.moduleScopes.end())
     {
-        transaction->abort();
-        resolution.status = OPENUSD_MDL_STATUS_MODULE_COMPILE_FAILED;
-        resolution.diagnostic =
-            "MDL module '" + qualified + "' has no database name";
-        return resolution;
-    }
-    mi::base::Handle<const mi::neuraylib::IModule> module(
-        transaction->access<mi::neuraylib::IModule>(moduleDbName->get_c_str()));
-    if (!module.is_valid_interface())
-    {
-        transaction->abort();
-        resolution.status = OPENUSD_MDL_STATUS_MODULE_COMPILE_FAILED;
-        resolution.diagnostic = "MDL module '" + qualified + "' is not in the database";
-        return resolution;
-    }
-
-    // Find the material by its simple name. The database name carries the module
-    // prefix and the signature, so matching on a suffix boundary is what keeps
-    // `Metal` from matching `BrushedMetal`.
-    std::string definitionName;
-    const std::string needle = "::" + materialName + "(";
-    for (mi::Size index = 0; index < module->get_material_count(); ++index)
-    {
-        const char* candidate = module->get_material(index);
-        if (candidate == nullptr)
+        if (state.moduleScopes.size() >= kMaxModuleScopes)
         {
-            continue;
+            const auto first = state.moduleScopes.begin();
+            if (state.database->remove_scope(first->second->get_id()) != 0)
+            {
+                resolution.status = OPENUSD_MDL_STATUS_DISTILLATION_FAILED;
+                resolution.diagnostic = "the SDK module-scope cache could not evict '" +
+                    first->first.first + "'";
+                return resolution;
+            }
+            state.moduleScopes.erase(first);
+            state.database->garbage_collection();
         }
-        const std::string text(candidate);
-        if (text.find(needle) != std::string::npos)
+        mi::base::Handle<mi::neuraylib::IScope> scope(state.database->create_scope(nullptr));
+        if (!scope)
         {
-            definitionName = text;
-            break;
-        }
-    }
-    // Every database handle is released before the transaction is committed.
-    // neuray reports a still-referenced element as an error and leaves the
-    // database in a state later transactions inherit, so the release is a
-    // correctness requirement rather than tidiness.
-    module.reset();
-    if (definitionName.empty())
-    {
-        transaction->abort();
-        resolution.status = OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL;
-        resolution.diagnostic = "MDL module '" + qualified +
-            "' declares no material named '" + materialName + "'";
-        return resolution;
-    }
-
-    {
-        mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
-            transaction->access<mi::neuraylib::IFunction_definition>(
-                definitionName.c_str()));
-        if (!definition.is_valid_interface())
-        {
-            transaction->abort();
-            resolution.status = OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL;
-            resolution.diagnostic =
-                "MDL material '" + definitionName + "' is not in the database";
+            resolution.status = OPENUSD_MDL_STATUS_DISTILLATION_FAILED;
+            resolution.diagnostic = "the SDK could not create an isolated module scope";
             return resolution;
         }
-
-        mi::base::Handle<const mi::neuraylib::IExpression_list> defaults(
-            definition->get_defaults());
-        const mi::Size parameterCount = definition->get_parameter_count();
-        for (mi::Size index = 0; index < parameterCount; ++index)
+        cached = state.moduleScopes.emplace(key, std::move(scope)).first;
+    }
+    mi::base::Handle<mi::neuraylib::ITransaction> transaction(cached->second->create_transaction());
+    if (!transaction)
+    {
+        resolution.status = OPENUSD_MDL_STATUS_DISTILLATION_FAILED;
+        resolution.diagnostic = "the SDK could not create a module transaction";
+        return resolution;
+    }
+    // The helper releases every DB element before commit/abort; only plain
+    // values survive into a result owned by the public adapter instance.
+    resolution = ResolveInTransaction(state, transaction.get(), location, materialName, authored);
+    if (resolution.status == OPENUSD_MDL_STATUS_OK)
+    {
+        if (transaction->commit() != 0)
         {
-            const char* name = definition->get_parameter_name(index);
-            if (name == nullptr)
-            {
-                continue;
-            }
-            mi::base::Handle<const mi::neuraylib::IExpression> expression(
-                defaults.is_valid_interface() ? defaults->get_expression(name)
-                                              : nullptr);
-            if (!expression.is_valid_interface())
-            {
-                // A parameter with no default states nothing this backend can
-                // carry. It is not reported: the material simply leaves it to
-                // the caller.
-                continue;
-            }
-            SdkParameterValue reduced;
-            reduced.origin = OPENUSD_MDL_ORIGIN_MODULE_DEFAULT;
-            if (ReduceExpression(
-                    transaction.get(), expression.get(), defaults.get(), 0, &reduced))
-            {
-                resolution.defaults.emplace(std::string(name), reduced);
-                continue;
-            }
-            resolution.unresolved.emplace_back(name);
+            resolution.defaults.clear();
+            resolution.status = OPENUSD_MDL_STATUS_DISTILLATION_FAILED;
+            resolution.diagnostic = "the SDK could not commit material '" + materialName + "'";
         }
     }
-
-    transaction->commit();
-    resolution.status = OPENUSD_MDL_STATUS_OK;
-    if (resolution.defaults.empty())
+    else
     {
-        resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
-        resolution.diagnostic = "MDL material '" + materialName + "' in module '" +
-            qualified +
-            "' declares no parameter default this adapter reduces to a value";
+        transaction->abort();
     }
     return resolution;
 }

@@ -14,6 +14,7 @@ public sealed partial class MainWindow
         {
             await CloseSavedViewsAsync();
             await CloseRenderSequenceAsync();
+            await CloseAuthoredRenderProductAsync();
             await _documentGate.WaitAsync(_viewerLifetime.Token);
             entered = true;
             ViewerAuthoredEditController editor = _documentEditor ??
@@ -89,6 +90,7 @@ public sealed partial class MainWindow
         }
         await CloseSavedViewsAsync();
         await CloseRenderSequenceAsync();
+        await CloseAuthoredRenderProductAsync();
         await _documentGate.WaitAsync(cancellationToken);
         try
         {

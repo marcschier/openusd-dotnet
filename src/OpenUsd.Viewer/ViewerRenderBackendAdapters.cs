@@ -126,12 +126,29 @@ internal interface IViewerFrameCaptureBackend
 
 internal interface IViewerRenderSequenceCaptureBackend
 {
+    string? RenderSequenceProfileDescription => null;
+
     string? GetRenderSequenceUnsupportedReason(StageRenderState state, ViewerRenderSequenceOutputOptions outputs);
 
     ValueTask<ViewerFrameCaptureResult> CaptureRenderSequenceFrameAsync(
         StageRenderState state, ViewerRenderSequenceOutputOptions outputs, CancellationToken cancellationToken);
 
     ValueTask RestoreRenderSequenceFrameAsync(StageRenderState state, CancellationToken cancellationToken);
+}
+
+internal interface IViewerRenderProductCaptureBackend
+{
+    string? GetRenderProductUnsupportedReason(
+        StageRenderState state, RenderProductJobPlan plan, RenderHdrColorFormat hdrColorFormat);
+
+    ValueTask<IViewerRenderProductCaptureLease> BeginRenderProductCaptureAsync(
+        RenderProductJobPlan plan, RenderHdrColorFormat hdrColorFormat, CancellationToken cancellationToken);
+}
+
+internal interface IViewerRenderProductCaptureLease : IAsyncDisposable
+{
+    ValueTask<ViewerFrameCaptureResult> CaptureAsync(
+        StageRenderState state, CancellationToken cancellationToken);
 }
 
 internal sealed class ViewerBackendInitializationException : Exception
@@ -397,10 +414,22 @@ internal sealed class ViewerRenderBackend :
 
     internal string? GetRenderSequenceUnsupportedReason(
         StageRenderState state, ViewerRenderSequenceOutputOptions outputs) =>
-        Identity.Kind == RenderBackendKind.D3D12 && _session is IViewerRenderSequenceCaptureBackend sequence
+        _session is IViewerRenderSequenceCaptureBackend sequence
             ? sequence.GetRenderSequenceUnsupportedReason(state, outputs)
             : "The active renderer has no exact timed RGBA sequence binding. " +
-                "Choose a supported hdSilk / Direct3D 12 renderer; still-frame capture is unchanged.";
+                "Choose native Storm for PNG or a capture-capable hdSilk renderer for HDR/depth.";
+
+    internal string? RenderSequenceProfileDescription =>
+        (_session as IViewerRenderSequenceCaptureBackend)?.RenderSequenceProfileDescription;
+
+    internal string? GetRenderProductUnsupportedReason(
+        StageRenderState state, RenderProductJobPlan plan, RenderHdrColorFormat hdrColorFormat) =>
+        _session is IViewerRenderProductCaptureBackend product
+            ? product.GetRenderProductUnsupportedReason(state, plan, hdrColorFormat)
+            : "The active renderer has no authored RenderProduct capture binding.";
+
+    internal bool SupportsRenderProductCapture =>
+        _session is IViewerRenderProductCaptureBackend && SupportsFrameCapture;
 
     internal async ValueTask<ViewerFrameCaptureResult> CaptureRenderSequenceFrameAsync(
         StageRenderState state, ViewerRenderSequenceOutputOptions outputs, CancellationToken cancellationToken)
@@ -422,6 +451,17 @@ internal sealed class ViewerRenderBackend :
         GetSession() is IViewerRenderSequenceCaptureBackend sequence
             ? sequence.RestoreRenderSequenceFrameAsync(state, cancellationToken)
             : throw new NotSupportedException("The sequence renderer is no longer available for restoration.");
+
+    internal ValueTask<IViewerRenderProductCaptureLease> BeginRenderProductCaptureAsync(
+        RenderProductJobPlan plan, RenderHdrColorFormat hdrColorFormat, CancellationToken cancellationToken)
+    {
+        IViewerRenderBackendSession session = GetSession();
+        if (session is IViewerRenderProductCaptureBackend product)
+        {
+            return product.BeginRenderProductCaptureAsync(plan, hdrColorFormat, cancellationToken);
+        }
+        throw new NotSupportedException("The product renderer is no longer available for capture.");
+    }
 
     public bool SupportsPhysicsTransformOverrides =>
         (_session as IViewerPhysicsOverrideTarget)?.SupportsPhysicsTransformOverrides ?? false;

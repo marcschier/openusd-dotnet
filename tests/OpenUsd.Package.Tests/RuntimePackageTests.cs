@@ -44,9 +44,10 @@ public sealed partial class RuntimePackageTests
         RequiredDataCapabilities & ~HighestSetBit(RequiredDataCapabilities);
 
     private const int RequiredStormAbiVersion = 9;
-    private const int RequiredSilkSessionAbiVersion = 5;
+    private static readonly int RequiredSilkSessionAbiVersion =
+        checked((int)ReadLockNumber("silkSession"));
     private const int RequiredSilkPageAbiVersion = 23;
-    private const int RequiredStormChildAbiVersion = 8;
+    private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
     // Kept in step with eng/openusd.lock.json by
@@ -485,7 +486,7 @@ public sealed partial class RuntimePackageTests
 
         await Assert.That(result.ExitCode).IsEqualTo(0);
         await Assert.That(result.Output).Contains(
-            "Linux ELF DT_RUNPATH and ABI-8 DT_SONAME parser tests passed.");
+            "Linux ELF DT_RUNPATH and ABI-9 DT_SONAME parser tests passed.");
 
         CommandResult topologyResult = await RunProcessAsync(
             "pwsh",
@@ -500,7 +501,7 @@ public sealed partial class RuntimePackageTests
             runtimeEnvironment: null);
         await Assert.That(topologyResult.ExitCode).IsEqualTo(0);
         await Assert.That(topologyResult.Output).Contains(
-            "Linux Storm child ABI-8 SONAME topology tests passed.");
+            "Linux Storm child ABI-9 SONAME topology tests passed.");
 
         CommandResult evidenceResult = await RunProcessAsync(
             "pwsh",
@@ -1623,20 +1624,20 @@ public sealed partial class RuntimePackageTests
                 shimRoot,
                 "lib",
                 "libopenusd_storm_child.so");
-            string versionedStormChild = $"{stormChild}.8.0.0";
+            string versionedStormChild = $"{stormChild}.{RequiredStormChildAbiVersion}.0.0";
             await AssertPackageEntriesAsync(
                 imagingPackage.Path,
                 [
                     "buildTransitive/OpenUsd.Runtime.Imaging.linux-x64.targets",
                     "runtimes/linux-x64/native/libopenusd_storm_child.so",
-                    "runtimes/linux-x64/native/libopenusd_storm_child.so.8",
-                    "runtimes/linux-x64/native/libopenusd_storm_child.so.8.0.0",
+                    "runtimes/linux-x64/native/libopenusd_storm_child.so.9",
+                    "runtimes/linux-x64/native/libopenusd_storm_child.so.9.0.0",
                 ]);
             await AssertPackageEntryContainsAsync(
                 imagingPackage.Path,
                 "buildTransitive/OpenUsd.Runtime.Imaging.linux-x64.targets",
-                "libopenusd_storm_child.so.8.0.0",
-                "libopenusd_storm_child.so.7");
+                "libopenusd_storm_child.so.9.0.0",
+                "libopenusd_storm_child.so.8");
             await AssertSingleNativePackageEntryAsync(
                 imagingPackage.Path,
                 "linux-x64",
@@ -1644,22 +1645,22 @@ public sealed partial class RuntimePackageTests
             await AssertSingleNativePackageEntryAsync(
                 imagingPackage.Path,
                 "linux-x64",
-                "libopenusd_storm_child.so.8");
+                "libopenusd_storm_child.so.9");
             await AssertSingleNativePackageEntryAsync(
                 imagingPackage.Path,
                 "linux-x64",
-                "libopenusd_storm_child.so.8.0.0");
+                "libopenusd_storm_child.so.9.0.0");
             await AssertPackageSymbolicLinkAsync(
                 imagingPackage.Path,
                 "runtimes/linux-x64/native/libopenusd_storm_child.so",
-                "libopenusd_storm_child.so.8");
+                "libopenusd_storm_child.so.9");
             await AssertPackageSymbolicLinkAsync(
                 imagingPackage.Path,
-                "runtimes/linux-x64/native/libopenusd_storm_child.so.8",
-                "libopenusd_storm_child.so.8.0.0");
+                "runtimes/linux-x64/native/libopenusd_storm_child.so.9",
+                "libopenusd_storm_child.so.9.0.0");
             await AssertPackageEntryMatchesFileAsync(
                 imagingPackage.Path,
-                "runtimes/linux-x64/native/libopenusd_storm_child.so.8.0.0",
+                "runtimes/linux-x64/native/libopenusd_storm_child.so.9.0.0",
                 versionedStormChild);
             await AssertLinuxStormChildInstallMatchesPackageAsync(
                 imagingPackage.Path,
@@ -1688,10 +1689,10 @@ public sealed partial class RuntimePackageTests
                 "libopenusd_storm_child.so");
             await AssertPackageDoesNotContainFileNameOutsideNativeAsync(
                 imagingPackage.Path,
-                "libopenusd_storm_child.so.8");
+                "libopenusd_storm_child.so.9");
             await AssertPackageDoesNotContainFileNameOutsideNativeAsync(
                 imagingPackage.Path,
-                "libopenusd_storm_child.so.8.0.0");
+                "libopenusd_storm_child.so.9.0.0");
 
             ExecutionConsumer consumer = await PublishStormChildConsumerAsync(
                 workRoot,
@@ -2460,6 +2461,9 @@ public sealed partial class RuntimePackageTests
         await Assert.That(root.GetProperty("stormChildSourceSha256").GetString())
             .IsEqualTo(GetFileSha256(
                 ResolveMetadataHashedSource(repositoryRoot, "stormChildSource")));
+        await Assert.That(root.GetProperty("stormChildAovSourceSha256").GetString())
+            .IsEqualTo(GetFileSha256(
+                ResolveMetadataHashedSource(repositoryRoot, "stormChildAovSource")));
 
         string nativeDirectory = inputs.Platform.Rid == "win-x64" ? "bin" : "lib";
         var hashedAssets = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -3798,6 +3802,10 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("HDR_CAPTURE=true");
             await Assert.That(result.Output).Contains("HDR_DISK_JOB=true");
             await Assert.That(result.Output).Contains("GPU_HDR_CAPTURE=true");
+            await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_JOB=true");
+            await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_FILTER_PIXELS=true");
+            await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_LEGACY_RESET=true");
+            await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_SOURCE_UNCHANGED=true");
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             if (platform.Rid is "win-x64" or "osx-arm64")
             {
@@ -5022,11 +5030,11 @@ public sealed partial class RuntimePackageTests
             if (linkTarget is null &&
                 installedInfo.Length < 256 &&
                 (installedInfo.Name == "libopenusd_storm_child.so" ||
-                    installedInfo.Name == "libopenusd_storm_child.so.8"))
+                    installedInfo.Name == "libopenusd_storm_child.so.9"))
             {
                 string candidate = await File.ReadAllTextAsync(installedPath);
                 if (candidate.StartsWith(
-                    "libopenusd_storm_child.so.8",
+                    "libopenusd_storm_child.so.9",
                     StringComparison.Ordinal))
                 {
                     linkTarget = candidate;
@@ -5049,15 +5057,15 @@ public sealed partial class RuntimePackageTests
     private static async Task AssertPublishedLinuxStormChildTopologyAsync(string publishRoot)
     {
         string linkPath = Path.Combine(publishRoot, "libopenusd_storm_child.so");
-        string sonamePath = Path.Combine(publishRoot, "libopenusd_storm_child.so.8");
+        string sonamePath = Path.Combine(publishRoot, "libopenusd_storm_child.so.9");
         await Assert.That(new FileInfo(linkPath).LinkTarget)
-            .IsEqualTo("libopenusd_storm_child.so.8");
+            .IsEqualTo("libopenusd_storm_child.so.9");
         await Assert.That(File.Exists(sonamePath)).IsTrue();
         await Assert.That(new FileInfo(sonamePath).LinkTarget)
-            .IsEqualTo("libopenusd_storm_child.so.8.0.0");
+            .IsEqualTo("libopenusd_storm_child.so.9.0.0");
         await Assert.That(File.Exists(Path.Combine(
             publishRoot,
-            "libopenusd_storm_child.so.8.0.0"))).IsTrue();
+            "libopenusd_storm_child.so.9.0.0"))).IsTrue();
         string[] stormEntries = Directory.GetFiles(
             publishRoot,
             "libopenusd_storm_child.so*",
@@ -5287,12 +5295,12 @@ public sealed partial class RuntimePackageTests
         await Assert.That(exports).Contains("openusd_storm_child_capture_framebuffer");
         JsonElement topology = root.GetProperty("stormChildTopology");
         await Assert.That(topology.GetProperty("soname").GetString())
-            .IsEqualTo("libopenusd_storm_child.so.8");
+            .IsEqualTo("libopenusd_storm_child.so.9");
         await Assert.That(topology.GetProperty("linkName").GetString())
             .IsEqualTo("libopenusd_storm_child.so");
         string realFile = topology.GetProperty("realFile").GetString()!;
         await Assert.That(realFile.StartsWith(
-            "libopenusd_storm_child.so.8",
+            "libopenusd_storm_child.so.9",
             StringComparison.Ordinal)).IsTrue();
         JsonElement[] topologyEntries = topology
             .GetProperty("entries")
@@ -5301,7 +5309,7 @@ public sealed partial class RuntimePackageTests
         await Assert.That(topologyEntries.Single(entry =>
             entry.GetProperty("name").GetString() == "libopenusd_storm_child.so")
             .GetProperty("target").GetString())
-            .IsEqualTo("libopenusd_storm_child.so.8");
+            .IsEqualTo("libopenusd_storm_child.so.9");
 
         JsonElement[] libraries = root
             .GetProperty("libraries")
@@ -5322,7 +5330,7 @@ public sealed partial class RuntimePackageTests
         await Assert.That(libraries.Single(library =>
             library.GetProperty("name").GetString() == "libopenusd_storm_child.so")
             .GetProperty("soname").GetString())
-            .IsEqualTo("libopenusd_storm_child.so.8");
+            .IsEqualTo("libopenusd_storm_child.so.9");
     }
 
     private static async Task AssertHdSilkPackageAsync(
@@ -7059,6 +7067,9 @@ public sealed partial class RuntimePackageTests
                 <TargetFramework>net10.0</TargetFramework>
                 <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier>
                 <PublishAot>{publishAot.ToString().ToLowerInvariant()}</PublishAot>
+                <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
+                <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
                 <InvariantGlobalization>true</InvariantGlobalization>
                 <Nullable>enable</Nullable>
                 <StripSymbols>true</StripSymbols>
@@ -7102,6 +7113,9 @@ public sealed partial class RuntimePackageTests
             CreateImagingConsumerProgram(
                 platform,
                 ReadStormChildAbiVersion(FindRepositoryRoot())));
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "AuthoredProduct.cs"),
+            CreateRenderProductConsumerProgram());
 
         string globalPackagesRoot = Path.Combine(workRoot, "imaging-global-packages");
         var publishArguments = new List<string>
@@ -7288,6 +7302,7 @@ public sealed partial class RuntimePackageTests
                     }
 
                     using ISilkGraphicsDevice device = __DEVICE_FACTORY__;
+                    PackageAuthoredProductExecution.Run(device, pluginPath);
                     using var sceneResources = new SilkSceneGpuResources(device);
                     var scene = new SilkSceneState();
                     using OpenUsdSilkSession session =

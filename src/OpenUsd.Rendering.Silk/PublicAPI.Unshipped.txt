@@ -1,4 +1,6 @@
 #nullable enable
+OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkSceneIngestionOptions! ingestionOptions, OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions? hdrColorOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithDepth(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkSceneIngestionOptions! ingestionOptions, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.ISilkComputeBindingLayout
 OpenUsd.Rendering.Silk.ISilkComputeBindingLayout.Descriptor.get -> OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor
 OpenUsd.Rendering.Silk.ISilkComputePipeline
@@ -151,6 +153,11 @@ OpenUsd.Rendering.Silk.OpenUsdSilkRuntime
 OpenUsd.Rendering.Silk.OpenUsdSilkSession
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Dispose() -> void
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low, OpenUsd.Rendering.RenderDrawMode drawMode = OpenUsd.Rendering.RenderDrawMode.SmoothShaded) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
+OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, OpenUsd.Rendering.Silk.SilkSceneIngestionOptions! ingestionOptions, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low, OpenUsd.Rendering.RenderDrawMode drawMode = OpenUsd.Rendering.RenderDrawMode.SmoothShaded) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.IncludedPurposes.get -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.MaterialBindingPurpose.get -> string!
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.SilkSceneIngestionOptions(OpenUsd.Rendering.RenderPurpose includedPurposes, string! materialBindingPurpose) -> void
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Constant = 0 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Vertex = 1 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation

@@ -55,6 +55,7 @@ public sealed partial class MainWindow
         setAccessibleName(ReloadStageMenuItem, ViewerCommandIds.FileReloadStage);
         setAccessibleName(CaptureFrameMenuItem, ViewerCommandIds.FileCaptureFrame);
         setAccessibleName(RenderImageSequenceMenuItem, ViewerCommandIds.FileRenderImageSequence);
+        setAccessibleName(RenderAuthoredProductMenuItem, ViewerCommandIds.FileRenderAuthoredProduct);
         setAccessibleName(CompareCapturesMenuItem, ViewerCommandIds.FileCompareCaptures);
         setAccessibleName(RecentStagesMenu, ViewerCommandIds.FileRecentStages);
         setAccessibleName(FileExitMenuItem, ViewerCommandIds.FileExit);

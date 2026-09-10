@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "id": "warehouse-01",
+  "dataset": "nvidia/PhysicalAI-SimReady-Warehouse-01",
+  "revision": "c7fe115cb79c7ddbd0532630d7768b5736b0ecc4",
+  "rootScene": "physical_ai_simready_warehouse_01.usd",
+  "catalog": "physical_ai_simready_warehouse_01.csv",
+  "license": "CC-BY-4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "NVIDIA Corporation, PhysicalAI-SimReady-Warehouse-01, dataset version 1.1.0",
+  "localAssetMappings": [
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_cardboard.usda",
+      "path": "Props/materials/physics/physics_cardboard.usda"
+    },
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_fabric.usda",
+      "path": "Props/materials/physics/physics_fabric.usda"
+    },
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_glass.usda",
+      "path": "Props/materials/physics/physics_glass.usda"
+    },
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_metal.usda",
+      "path": "Props/materials/physics/physics_metal.usda"
+    },
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_plastic.usda",
+      "path": "Props/materials/physics/physics_plastic.usda"
+    },
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_stone.usda",
+      "path": "Props/materials/physics/physics_stone.usda"
+    },
+    {
+      "asset": "omniverse://simready.ov.nvidia.com/NVIDIA/Assets/simready_content/materials/physics/physics_wood.usda",
+      "path": "Props/materials/physics/physics_wood.usda"
+    },
+    {
+      "asset": "omniverse://art.ov.nvidia.com/Projects/Digital%20Twins%20Library/Warehouse%20and%20Logistics/Computex_2025/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_albedo.png",
+      "path": "Props/general/HandManipulation/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_albedo.png"
+    },
+    {
+      "asset": "omniverse://art.ov.nvidia.com/Projects/Digital%20Twins%20Library/Warehouse%20and%20Logistics/Computex_2025/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_normal.png",
+      "path": "Props/general/HandManipulation/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_normal.png"
+    },
+    {
+      "asset": "omniverse://art.ov.nvidia.com/Projects/Digital%20Twins%20Library/Warehouse%20and%20Logistics/Computex_2025/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_orm.png",
+      "path": "Props/general/HandManipulation/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_orm.png"
+    },
+    {
+      "asset": "omniverse://art.ov.nvidia.com/Projects/Digital%20Twins%20Library/Warehouse%20and%20Logistics/Computex_2025/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_rough.png",
+      "path": "Props/general/HandManipulation/measurement_clock_alarm_a/Textures/T_measurement_clock_alarm_rough.png"
+    }
+  ],
+  "inventory": {
+    "fileCount": 8804,
+    "sourceBytes": 14446592890,
+    "sha256": "f09418f2d624fbb635d3f202433f3a8cf1bbd78b2aa149d4201cd5d204ed26cd"
+  },
+  "budgets": {
+    "cacheBytes": 8589934592,
+    "outputBytes": 4294967296,
+    "safetyBytes": 2147483648
+  }
+}

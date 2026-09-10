@@ -157,6 +157,7 @@ $renderLightingHeader = Join-Path $repoRoot 'native/include/openusd_render_light
 $renderPickHeader = Join-Path $repoRoot 'native/include/openusd_render_pick.h'
 $stormChildHeader = Join-Path $repoRoot 'native/openusd_storm_child/include/openusd_storm_child.h'
 $stormChildSource = Join-Path $repoRoot 'native/openusd_storm_child/src/openusd_storm_child.cpp'
+$stormChildAovSource = Join-Path $repoRoot 'native/openusd_storm_child/src/openusd_storm_child_aov.h'
 $dataAbi = Get-SourceAbiVersion `
     -Path $dataAbiSource `
     -Pattern 'DataAbiVersion\s*=\s*(\d+)' `
@@ -215,13 +216,13 @@ if ($stormAbi -ne [int]$lock.abi.storm)
 {
     throw "Storm ABI $stormAbi does not match lock ABI $($lock.abi.storm)."
 }
-if ($sessionAbi -ne 5)
+if ($sessionAbi -ne [int]$lock.abi.silkSession)
 {
-    throw "hdSilk session ABI $sessionAbi does not match the package ABI 5 contract."
+    throw "hdSilk session ABI $sessionAbi does not match lock ABI $($lock.abi.silkSession)."
 }
-if ($stormChildAbi -ne 8)
+if ($stormChildAbi -ne [int]$lock.abi.stormChild)
 {
-    throw "Storm child ABI $stormChildAbi does not match the package ABI 8 contract."
+    throw "Storm child ABI $stormChildAbi does not match lock ABI $($lock.abi.stormChild)."
 }
 if ($cameraStateVersion -ne 1)
 {
@@ -340,6 +341,7 @@ $expected = [ordered]@{
     lockSha256 = (Get-FileHash $lockPath -Algorithm SHA256).Hash
     dataSourceSha256 = (Get-FileHash $dataAbiSource -Algorithm SHA256).Hash
     stormChildSourceSha256 = (Get-FileHash $stormChildSource -Algorithm SHA256).Hash
+    stormChildAovSourceSha256 = (Get-FileHash $stormChildAovSource -Algorithm SHA256).Hash
     shimDataAbiVersion = $dataAbi
     shimDataCapabilities = $dataCapabilities
     dataCameraStateVersion = $cameraStateVersion

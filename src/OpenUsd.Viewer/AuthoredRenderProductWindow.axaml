@@ -1,0 +1,95 @@
+<Window
+    x:Class="OpenUsd.Viewer.AuthoredRenderProductWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Classes="openusd-viewer"
+    AutomationProperties.Name="Render authored RenderProduct"
+    Title="Render authored RenderProduct"
+    Width="720"
+    Height="760"
+    MinWidth="620"
+    MinHeight="680"
+    ShowInTaskbar="False"
+    ClosingBehavior="OwnerWindowOnly"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"
+        RowSpacing="12">
+    <StackPanel Grid.Row="0" Spacing="4">
+      <TextBlock Text="Authored USD RenderProduct" FontWeight="SemiBold" />
+      <TextBlock x:Name="ProductRenderer" TextWrapping="Wrap" Classes="viewer-secondary" />
+      <TextBlock Text="The product camera, raster, purposes and variables come from UsdRender, not the current viewport camera or size. PNG is a display companion; raw half color and normalized device depth remain separate product planes."
+                 TextWrapping="Wrap" Classes="viewer-caption" />
+    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+      <TextBlock Text="Render settings prim (blank = authored default)" Grid.ColumnSpan="2" />
+      <TextBox x:Name="ProductSettingsPath" Grid.Row="1" MaxLength="1024"
+               AutomationProperties.Name="Authored render settings path" />
+      <Button x:Name="ProductRefreshButton" Grid.Row="1" Grid.Column="1" Content="Refresh"
+              AutomationProperties.Name="Refresh authored render products" />
+    </Grid>
+    <StackPanel Grid.Row="2" Spacing="4">
+      <TextBlock Text="Render product" />
+      <ComboBox x:Name="ProductSelector" MaxDropDownHeight="220"
+                AutomationProperties.Name="Authored render product selector" />
+      <TextBlock x:Name="ProductDetails" TextWrapping="Wrap" Classes="viewer-secondary"
+                 AutomationProperties.Name="Authored render product details" />
+    </StackPanel>
+    <Grid x:Name="ProductRangeControls" Grid.Row="3" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto"
+          ColumnSpacing="8" RowSpacing="4">
+      <TextBlock Grid.Column="0" Text="Start time code" />
+      <TextBlock Grid.Column="1" Text="End time code (inclusive)" />
+      <TextBlock Grid.Column="2" Text="Step" />
+      <TextBox x:Name="ProductStartTime" Grid.Row="1" Grid.Column="0"
+               AutomationProperties.Name="Product start time code" MaxLength="64" />
+      <TextBox x:Name="ProductEndTime" Grid.Row="1" Grid.Column="1"
+               AutomationProperties.Name="Product end time code" MaxLength="64" />
+      <TextBox x:Name="ProductStep" Grid.Row="1" Grid.Column="2" Text="1"
+               AutomationProperties.Name="Product time code step" MaxLength="64" />
+      <TextBlock x:Name="ProductFrameCount" Grid.Row="2" Grid.ColumnSpan="3"
+                 AutomationProperties.Name="Product frame count" Classes="viewer-secondary" />
+    </Grid>
+    <StackPanel x:Name="ProductOutputControls" Grid.Row="4" Spacing="4">
+      <TextBlock Text="HDR color encoding" />
+      <ComboBox x:Name="ProductHdrFormat" SelectedIndex="0" MinWidth="220"
+                AutomationProperties.Name="Product HDR color output format"
+                ToolTip.Tip="Raw half stores top-down RGBA binary16. EXR is accepted only for uncropped square-pixel products.">
+        <ComboBoxItem Content="Raw half (.hdr.rgba16f)" />
+        <ComboBoxItem Content="EXR (.hdr.exr)" />
+      </ComboBox>
+      <TextBlock x:Name="ProductOutputScope" TextWrapping="Wrap" Classes="viewer-secondary"
+                 AutomationProperties.Name="Product output files per frame" />
+    </StackPanel>
+    <Grid Grid.Row="5" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+      <TextBlock Text="Output folder (a generated product subfolder will be created)" Grid.ColumnSpan="2" />
+      <TextBox x:Name="ProductOutputFolder" Grid.Row="1" MaxLength="32767"
+               AutomationProperties.Name="Product output parent folder" />
+      <Button x:Name="ProductBrowseButton" Grid.Row="1" Grid.Column="1" Content="Browse..."
+              AutomationProperties.Name="Choose product output folder" />
+    </Grid>
+    <StackPanel Grid.Row="6" Spacing="6">
+      <ProgressBar x:Name="ProductProgress" Minimum="0" Maximum="1" Value="0"
+                   AutomationProperties.Name="Authored RenderProduct progress" Height="4" />
+      <TextBlock x:Name="ProductStatus" TextWrapping="Wrap"
+                 AutomationProperties.Name="Authored RenderProduct status" />
+      <TextBlock x:Name="ProductLimits" AutomationProperties.Name="Authored RenderProduct limits"
+                 TextWrapping="Wrap" Classes="viewer-caption" />
+      <TextBlock Text="Completed output location" />
+      <TextBox x:Name="ProductOutputLocation" IsReadOnly="True" TextWrapping="Wrap"
+               AutomationProperties.Name="Completed authored RenderProduct output location" />
+    </StackPanel>
+    <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="ProductViewResultsButton" Content="_View results" IsEnabled="False"
+              AutomationProperties.Name="View completed authored product results"
+              ToolTip.Tip="Preview up to 16 verified PNG display companions; no rendering or raw-plane conversion." />
+      <Button x:Name="ProductCancelButton" Content="Cancel job" IsEnabled="False"
+              AutomationProperties.Name="Cancel authored RenderProduct" />
+      <Button x:Name="ProductCloseButton" Content="Close" AutomationProperties.Name="Close authored RenderProduct" />
+      <Button x:Name="ProductRenderButton" Content="Render product" Classes="accent" IsDefault="True"
+              AutomationProperties.Name="Start authored RenderProduct rendering" />
+    </StackPanel>
+  </Grid>
+</Window>

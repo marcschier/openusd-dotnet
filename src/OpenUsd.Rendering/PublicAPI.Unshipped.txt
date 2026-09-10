@@ -1,4 +1,40 @@
 #nullable enable
+OpenUsd.Rendering.RenderCameraFrameSettings
+OpenUsd.Rendering.RenderCameraFrameSettings.RenderCameraFrameSettings(double shutterOpen = 0, double shutterClose = 0, double exposure = 0, double exposureIso = 100, double exposureTime = 1, double exposureFStop = 1, double exposureResponsivity = 1) -> void
+static OpenUsd.Rendering.RenderCameraFrameSettings.Default.get -> OpenUsd.Rendering.RenderCameraFrameSettings!
+OpenUsd.Rendering.RenderCameraFrameSettings.ShutterOpen.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.ShutterClose.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.Exposure.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.ExposureIso.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.ExposureTime.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.ExposureFStop.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.ExposureResponsivity.get -> double
+OpenUsd.Rendering.RenderCameraFrameSettings.LinearExposureScale.get -> double
+OpenUsd.Rendering.RenderPreparedFrame.CameraSettings.get -> OpenUsd.Rendering.RenderCameraFrameSettings?
+OpenUsd.Rendering.RenderProductRequest.PrepareExecutionFrame(OpenUsd.UsdStage! stage, double timeCode) -> OpenUsd.Rendering.RenderPreparedFrame!
+OpenUsd.Rendering.RenderProductRequest.PrepareFrame(OpenUsd.UsdMatrix4d worldToView, OpenUsd.Geom.UsdGeomCameraState sampledCamera, double timeCode, OpenUsd.Rendering.RenderCameraFrameSettings! cameraSettings) -> OpenUsd.Rendering.RenderPreparedFrame!
+OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductPlane.HdrColor = 0 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductPlane.DeviceDepth = 1 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductOutputBinding
+OpenUsd.Rendering.RenderProductOutputBinding.Variable.get -> OpenUsd.Render.UsdRenderVariableSpecification!
+OpenUsd.Rendering.RenderProductOutputBinding.Plane.get -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan
+OpenUsd.Rendering.RenderProductJobPlan.RenderProductJobPlan(OpenUsd.Rendering.StageIdentity! stage, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderPreparedFrame!>! frames, OpenUsd.Rendering.RenderSettings renderSettings, ulong? sourceStageRevision = null) -> void
+OpenUsd.Rendering.RenderProductJobPlan.Request.get -> OpenUsd.Rendering.RenderProductRequest!
+OpenUsd.Rendering.RenderProductJobPlan.Frames.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderPreparedFrame!>!
+OpenUsd.Rendering.RenderProductJobPlan.Outputs.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderProductOutputBinding!>!
+OpenUsd.Rendering.RenderProductJobPlan.IncludedPurposes.get -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderProductJobPlan.MaterialBindingPurpose.get -> string!
+OpenUsd.Rendering.RenderProductJobPlan.RenderSettings.get -> OpenUsd.Rendering.RenderSettings
+OpenUsd.Rendering.RenderProductJobPlan.SourceStageRevision.get -> ulong?
+OpenUsd.Rendering.RenderProductJobPlan.IncludeHdrColor.get -> bool
+OpenUsd.Rendering.RenderProductJobPlan.IncludeDeviceDepth.get -> bool
+OpenUsd.Rendering.RenderProductJobPlan.CreateJob(string! outputDirectory, OpenUsd.Rendering.RenderHdrColorFormat hdrColorFormat = OpenUsd.Rendering.RenderHdrColorFormat.RawRgba16Float, OpenUsd.Rendering.RenderDiskJobLimits? limits = null) -> OpenUsd.Rendering.RenderDiskJobRequest!
+static OpenUsd.Rendering.RenderProductJobPlan.PrepareAsync(OpenUsd.UsdStageScheduler! scheduler, OpenUsd.Rendering.StageIdentity! stage, System.Collections.Generic.IReadOnlyList<double>! timeCodes, OpenUsd.Rendering.RenderSettings renderSettings, string? settingsPath = null, string? productPath = null, OpenUsd.Rendering.RenderProductOverrides? overrides = null, ulong? expectedStageRevision = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderProductJobPlan!>
+OpenUsd.Rendering.RenderDiskJobRequest.ProductPlan.get -> OpenUsd.Rendering.RenderProductJobPlan?
+OpenUsd.Rendering.IRenderProductFrameSource
+OpenUsd.Rendering.IRenderProductFrameSource.ValidateProduct(OpenUsd.Rendering.RenderProductJobPlan! plan, System.Threading.CancellationToken cancellationToken) -> void
 OpenUsd.Rendering.RenderHdrColorFormat
 OpenUsd.Rendering.RenderHdrColorFormat.RawRgba16Float = 0 -> OpenUsd.Rendering.RenderHdrColorFormat
 OpenUsd.Rendering.RenderHdrColorFormat.Exr = 1 -> OpenUsd.Rendering.RenderHdrColorFormat

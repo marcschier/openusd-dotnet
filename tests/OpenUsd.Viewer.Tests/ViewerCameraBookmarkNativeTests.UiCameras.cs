@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Avalonia.Controls;
+using Avalonia;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using OpenUsd.Editing;
@@ -149,11 +150,32 @@ public sealed partial class ViewerCameraBookmarkNativeTests
                     $"viewer={BookmarkControl<TextBlock>(window, "ViewerStatus").Text}.", exception);
             }
             StageRenderState before = session.CurrentRenderState;
-            ClickBookmarkButton(manager, "SavedViewsCancelButton");
-            await WaitBookmarkOperationAsync(manager, token);
+            StageRenderState? completedState = null;
+            TextBlock status = BookmarkControl<TextBlock>(manager, "SavedViewsStatus");
+            void ObserveCancellation(object? sender, AvaloniaPropertyChangedEventArgs args)
+            {
+                if (args.Property == TextBlock.TextProperty &&
+                    status.Text?.StartsWith("Cancelled", StringComparison.Ordinal) == true)
+                {
+                    completedState = session.CurrentRenderState;
+                }
+            }
+            status.PropertyChanged += ObserveCancellation;
+            try
+            {
+                ClickBookmarkButton(manager, "SavedViewsCancelButton");
+                // Cancellation drains admitted scheduler work; it cannot preempt this fixture's held callback.
+                await blocked.ReleaseAsync();
+                await WaitBookmarkOperationAsync(manager, token);
+            }
+            finally
+            {
+                status.PropertyChanged -= ObserveCancellation;
+            }
             await Assert.That(BookmarkControl<TextBlock>(manager, "SavedViewsStatus").Text).Contains("Cancelled");
-            await Assert.That(session.CurrentRenderState.Camera).IsEqualTo(before.Camera);
-            await Assert.That(session.CurrentRenderState.Time).IsEqualTo(before.Time);
+            await Assert.That(completedState).IsNotNull();
+            await Assert.That(completedState!.Camera).IsEqualTo(before.Camera);
+            await Assert.That(completedState.Time).IsEqualTo(before.Time);
             await Assert.That(BookmarkControl<Button>(window, "PlayPauseButton").Content).IsEqualTo("_Pause")
                 .Because("a cancelled recall must resume the pre-recall playback mode");
         }

@@ -11,6 +11,9 @@ internal sealed partial class ViewerRenderCoordinator
     private CancellationTokenSource? _sequenceCancellation;
     private Task _sequenceDrained = Task.CompletedTask;
 
+    internal string? RenderSequenceProfileDescription =>
+        _backendRegistry.CaptureRenderSequenceBackend()?.RenderSequenceProfileDescription;
+
     internal string? GetRenderSequenceUnsupportedReason(ViewerRenderSequenceOutputOptions outputs) =>
         _backendRegistry.CaptureRenderSequenceBackend() is { } backend
             ? backend.GetRenderSequenceUnsupportedReason(CurrentState, outputs)

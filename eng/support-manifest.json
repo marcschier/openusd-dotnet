@@ -441,6 +441,18 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "mcp-sequence-contact-sheets",
+          "description": "read_sequence_sheet presents already completed render_sequence/render_product PNGs without rerendering or requiring an active scene. It verifies each source length/hash/dimensions, loads frames one at a time, fits up to16 ordered frames into the existing deterministic contact-sheet grid and returns original job revision plus cell/frame/time metadata. Missing selection samples up to16 evenly spaced frames with endpoints. Sheet sides are4..1024, encoded output is at most8MiB, and existing artifact count/byte quotas apply independently of the8-render-job quota. Tampered later frames, invalid selections, cancellation and exhausted capacity cannot register partial output. Actual native product pixels and official RPC/stdio discovery are covered on Windows.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Mcp.Tests/SequenceContactSheetTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.Products.cs",
+            "tests/OpenUsd.Mcp.Tests/OpenUsdMcpToolsTests.cs",
+            "tests/OpenUsd.Mcp.Tests/StdioProtocolTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "mcp-tool",
           "description": "OpenUsd.Mcp.Tool net10.0 .NET tool; command openusd-mcp",
           "status": "workflow-gated",
@@ -711,14 +723,19 @@
         },
         {
           "id": "storm-aov-snapshots",
-          "description": "Unreleased direct Storm ABI 9 owned bulk AOV snapshots with typed binary16 RGBA, normalized window depth, native prim/instance IDs and canonical-path/context decoding. Raw UNorm8 Neye is preserved; plain normal is Unsupported and elementId is Absent. Tight top-down outputs, exact native applied camera and explicit caller revision claims are bounded to 8 output slots, 4096 per dimension, 1048576 pixels, 4096 unique identities, 16384 contexts, 1 MiB UTF-8 paths and separate 128 MiB known-native/managed storage ceilings. Windows RTX 5070 native and package-only NativeAOT execution includes the million-pixel case and ordinary framebuffer preservation; this does not claim Linux/CGL execution, stable authored integer IDs or general normals.",
+          "description": "Unreleased direct Storm ABI 9 owned bulk AOV snapshots with typed binary16 RGBA, normalized window depth, native prim/instance IDs and canonical-path/context decoding. Raw UNorm8 Neye is preserved; plain normal is Unsupported and elementId is Absent. Tight top-down outputs, exact native applied camera and explicit caller revision claims are bounded to 8 slots, 4096 per dimension,1048576 pixels,4096 identities,16384 contexts,1MiB UTF-8 paths and separate128MiB native/managed ceilings. Child ABI9 queues native viewport RGBA8 and typed AOV capture on its original render thread, refuses intervening stage changes and transfers CPU-only ownership. Its budgets additionally charge4N+16KiB native and4N+512 managed companion storage. CreateJobImage supplies shared PNG/raw/EXR jobs under a separate64MiB combined capture/conversion budget; child PNG preserves native appearance rather than tone-mapped AOV color. Selected or uncertain captures refuse pre-selection HDR without silently deselecting. Windows RTX5070 and clean-feed NativeAOT cover direct and child output, exact million-pixel conversion, context/owner lifetime and independent EXR decoding. Linux child wiring is not execution evidence; Metal child AOV capture, general normals and authored Storm product filtering remain incomplete.",
           "status": "implemented",
           "evidenceTests": [
             "tests/OpenUsd.Rendering.Tests/StormAovRequestTests.cs",
             "tests/OpenUsd.Rendering.Tests/StormAovDecoderTests.cs",
             "tests/OpenUsd.Rendering.Tests/StormAovOwnershipTests.cs",
+            "tests/OpenUsd.Rendering.Tests/StormAovJobImageTests.cs",
             "tests/OpenUsd.StormAov.NativeProbe/Program.cs",
-            "native/openusd_hydra/tests/storm_aov_public_abi_probe.c"
+            "tests/OpenUsd.StormAov.NativeProbe/StormChildAovProbe.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.StormAovs.cs",
+            "native/openusd_hydra/tests/storm_aov_public_abi_probe.c",
+            "native/openusd_storm_child/tests/storm_child_aov_probe.cpp",
+            "native/openusd_storm_child/tests/storm_child_aov_resize_probe.cpp"
           ],
           "evidencePlatforms": ["win-x64"]
         },
@@ -904,11 +921,15 @@
         },
         {
           "id": "mdl-sdk-module-evaluation",
-          "description": "MDL SDK-backed module evaluation in the optional openusd_mdl_sdk adapter: an MDL module is compiled from an explicitly configured absolute search path through a user-supplied MDL SDK runtime, the named material's unauthored parameter defaults are resolved, constant expression defaults are folded (elemental, conversion and copy constructors, and parameter aliases), and texture-valued defaults the SDK materialises are resolved to a path the renderer can open. Authored stage values always win over module defaults, and every distilled entry says which of the two it came from. Nothing else is evaluated: a default that is any other call, a layered BSDF, or a resource the SDK cannot resolve is reported by parameter name and never folded into a value. Proven on win-x64 against MDL SDK 2026.0.2 and repository-authored synthetic modules, end to end through UsdImaging and the hdSilk page wire format",
+          "description": "Optional openusd_mdl_sdk evaluation through an explicitly supplied MDL SDK runtime and absolute module search roots. The adapter resolves parameter defaults, supported constant constructors and aliases, and texture resources. Bounded SDK-proven OmniPBR/OmniGlass material variants also retain body constants and named arguments. Authored values win; texture aliases preserve source color-space metadata while explicit destination metadata retains precedence, and each result records its origin. Unknown calls, roots, resources and unprojected controls remain explicit; ordinary bodies without a proven variant relationship are not qualified as body evaluation. Win-x64 evidence includes synthetic public-C-ABI regressions, pinned first-party PBR/glass defaults, two unchanged warehouse wrappers, and literal PreviewSurface-equivalent HDR pixels through hdSilk on an observed RTX 5070. These are partial material projections, not general MDL, complete warehouse shading, or BSDF execution.",
           "status": "implemented-not-gated",
           "evidenceTests": [
             "native/openusd_mdl/tests/mdl_sdk_probe.cpp",
+            "native/openusd_mdl/tests/mdl_module_probe.cpp",
+            "native/openusd_mdl/tests/mdl_wrapper_probe.cpp",
+            "native/openusd_mdl/tests/mdl_alias_color_probe.cpp",
             "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkWarehouseMdlWrapperTests.cs",
             "tests/OpenUsd.Package.Tests/MdlAdapterIsolationTests.cs"
           ],
           "evidencePlatforms": ["win-x64"],
@@ -1206,6 +1227,21 @@
           "evidencePlatforms": ["win-x64"]
         },
         {
+          "id": "bounded-authored-render-products",
+          "description": "Shared immutable RenderProductJobPlan executes one admitted raster product with batched sampled camera/raster preparation, revision checks, ordered raw half4 color and/or float normalized depth, PNG display companions, bounded jobs and atomic generated-name publication. Session ABI6 carries exact default-inclusive purpose masks and full/preview material binding through the owned C ABI. Filter changes repopulate current USD imaging instead of restoring cached geometry; reconstruction failures remain retryable. Hidden color/normals/topology/ancestor/deletion/redefinition/instance cases compare real pixels with fresh current-source sessions on Windows D3D12/Vulkan, with MCP and package-only NativeAOT product execution on D3D12. Unit exposure, no active blur/DOF and unnamed working color space only; broader variables, settings, windows, other Viewer bindings and non-Windows execution remain unclaimed.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/RenderProductJobPlanTests.cs",
+            "tests/OpenUsd.Rendering.Tests/RenderProductCameraNativeTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkSceneIngestionConformanceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkHiddenGeometryFreshnessTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.Products.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.RenderProducts.cs",
+            "native/hdSilk/tests/hdsilk_scene_ingestion_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "texture-residency-budgets",
           "description": "Bounded Silk texture cache residency: SilkTextureResidencyOptions carries independently configurable, validated nonzero decoded-CPU and estimated-GPU byte budgets (512 MiB defaults) threaded through a dedicated SilkSceneGpuResources/SilkMeshRenderer constructor overload alongside the original device-only overload; ordinary, UDIM, fallback, and volume entries are tracked and evicted by a single deterministic LRU policy with a stable creation-order tie-breaker from an internal submission-safe trim point invoked only after a graphics submission has completed, never while unsubmitted or in-flight commands may still use a retained texture, and only against entries not referenced since the previous trim so an over-budget working set rendered every frame is retained rather than re-decoded and re-evicted every frame, with failed texture fallbacks eligible for eviction only as a last resort; an entry that alone exceeds a budget is evicted once with a bounded diagnostic rather than looped on, and the same bounded diagnostic reports a pinned current-frame working set that alone stays over budget",
           "status": "implemented",
@@ -1440,14 +1476,30 @@
         },
         {
           "id": "viewer-image-sequences",
-          "description": "Owned themed image-sequence dialog with sampled authored cameras, PNG by default and optional HDR/depth sidecars. HDR format defaults to raw binary16 and offers explicit Windows x64 lossless EXR with unspecified working primaries and stored alpha association. Immutable admitted choices, bounded progress/cancellation, atomic new-directory publication and exact operator-state restoration precede publication. GPU display/view/look/exposure and selection affect PNG without changing raw HDR/depth; independent EXR decoding matches every raw half bit on CPU/GPU display paths. Failed transform preparation publishes no fallback HDR. Native evidence covers the D3D12 Viewer binding, close/reload/source-change drainage and surviving-camera-edit reconciliation. Other sequence bindings, arbitrary EXR product windows/metadata, metric depth and named working primaries are not claimed; native codec heap is not quota-certified.",
+          "description": "Owned themed image-sequence dialog with sampled authored cameras and atomic bounded publication. Windows D3D12 and Vulkan supply PNG plus optional HDR/depth; raw binary16 is the HDR default and Windows x64 EXR preserves exact half samples. GPU display/view/look/exposure and selection affect their PNG without changing raw HDR/depth. Exclusive capture leases serialize the real composition device against presentation, resizing and teardown; coordinator-driven frames allow close to drain. Windows native Storm child ABI9 also supplies optional HDR/depth/EXR while preserving its explicitly identified native viewport PNG appearance, not hdSilk exposure/OCIO/quality overrides. Storm data capture is limited to4096 per side and1048576 physical pixels, and HDR requires no display selection. Bottom-up native PNG and top-down raw planes retain their orientation; time/camera, cancellation, repeated-close, Reload and owner-close preserve source and view. Linux Storm AOV wiring is unverified and macOS Metal Storm remains PNG-only. The shared composition adapter is source-wired for Metal without native macOS execution claims. General authored output windows, metric depth and named working primaries remain incomplete; native codec heap is not quota-certified.",
           "status": "implemented",
           "evidenceTests": [
             "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceTests.cs",
             "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.cs",
             "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Planes.cs",
             "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Exr.cs",
-            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Coordinator.cs"
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Coordinator.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Storm.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerStormSequenceProfileTests.cs",
+            "tests/OpenUsd.Viewer.Tests/CompositionViewportTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerNativeCaptureBackend.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "viewer-authored-products",
+          "description": "File-menu and command-palette authored-product dialog on Windows D3D12 and Vulkan composition bindings. Shared admission retains unsupported products with reasons, refuses catalogs above256, and requires an existing operator-selected output parent. Correlated refresh/backend/settings state, cancellation, repeated close/reload and GUI-thread capture preserve source and view. Product-only resources borrow the exact active graphics device under presenter/lifecycle leases, retained across cleanup failures and released before restoration/publication. Actual camera/time/crop and full/preview pixels, raw planes and EXR-window refusal execute on both backends without fallback; PNG remains a display companion. Metal is source-wired through the same adapter but lacks native capture proof. Storm products and general UsdRender semantics remain incomplete.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerAuthoredRenderProductTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerAuthoredRenderProductNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerAuthoredRenderProductNativeTests.Lifecycle.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerProductResourceRegistryTests.cs"
           ],
           "evidencePlatforms": ["win-x64"]
         },
@@ -1462,6 +1514,21 @@
             "tests/OpenUsd.Viewer.Tests/ViewerCameraBookmarkNativeTests.Transitions.cs",
             "tests/OpenUsd.Viewer.Tests/ViewerTimelineModelTests.cs",
             "tests/OpenUsd.Viewer.Tests/ViewerStageCameraTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "viewer-completed-job-gallery",
+          "description": "Owned themed View results contact sheet for successful sequence and authored-product jobs. Up to16 deterministic endpoint-inclusive samples use original frame indices, USD times, job identity and output paths without rerendering or acquiring a scene/physics lease. One completed PNG at a time is checked for containment, reparse points, recorded length/SHA256, dimensions and valid CRC/zlib content before aspect-fit thumbnail creation. Each thumbnail is256x256 RGBA;16retain at most4MiB of thumbnail pixels, not a whole-process or decoder-memory guarantee. No partial sheet survives a later invalid file. Close, new jobs, cancellation, stage Reload and Viewer close drain loading and release every Bitmap; late results cannot replace newer jobs. Windows D3D12 and real Vulkan sequence/product UI journeys, plus the full native Viewer workflow matrix, are executed. Other native platforms and persistent cross-document result browsing are not claimed.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerCompletedJobPreviewTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCompletedJobPreviewTests.Integrity.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCompletedJobPreviewJourney.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCompletedJobPreviewJourney.Lifecycle.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Results.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerAuthoredRenderProductNativeTests.cs",
+            "tests/OpenUsd.Mcp.Tests/SequenceContactSheetTests.cs"
           ],
           "evidencePlatforms": ["win-x64"]
         },
@@ -1590,11 +1657,13 @@
         },
         {
           "id": "mdl-sdk-module-evaluation-interchange",
-          "description": "MDL SDK-backed material evaluation for Omniverse interchange: compiling a module the user supplies and resolving its parameter defaults and constant expression defaults, so a material that authors only some of its inputs still shades from what the module says about the rest. The rendering-side statement of the same capability is rendering/mdl-sdk-module-evaluation.",
+          "description": "MDL SDK-backed material projection for Omniverse interchange: supplied modules provide supported parameter defaults and constant expressions, while bounded SDK-proven PBR/glass variants also provide body constants and aliases. Authored-value and texture color-space precedence remain intact. The rendering-side statement of this partial capability is rendering/mdl-sdk-module-evaluation; complete MDL graphs and warehouse shading are not claimed.",
           "status": "implemented-not-gated",
           "exclusionReason": "Real Omniverse modules such as OmniPBR.mdl are never vendored here, so this path reaches them only when the user supplies the modules on the configured search path; without them the module is reported as not found and the authored-value subset still distils. No workflow builds the SDK-backed configuration, and MDL-generated shader code and layered BSDF evaluation remain unimplemented; see rendering/mdl-generated-shader-code.",
           "evidenceTests": [
             "native/openusd_mdl/tests/mdl_sdk_probe.cpp",
+            "native/openusd_mdl/tests/mdl_wrapper_probe.cpp",
+            "native/openusd_mdl/tests/mdl_alias_color_probe.cpp",
             "native/hdSilk/tests/hdsilk_probe.cpp"
           ],
           "evidencePlatforms": ["win-x64"]

@@ -30,7 +30,8 @@ extern "C" {
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
 #define OPENUSD_SILK_PAGE_ABI_VERSION 23u
-#define OPENUSD_SILK_SESSION_ABI_VERSION 5u
+#define OPENUSD_SILK_SESSION_ABI_VERSION 6u
+#define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 
 /// Command types written into openusd_silk_page_view::data. Every command
 /// starts with a little-endian uint32 "type" followed by a little-endian
@@ -1366,6 +1367,33 @@ typedef struct openusd_silk_page_view
     uint32_t command_count;
 } openusd_silk_page_view;
 
+/// Append-only request packet for per-sync scene-ingestion choices. Session
+/// ABI v6 adds this public contract; page ABI stays unchanged at v23.
+/// Set struct_size to at least sizeof(this struct) and version to
+/// OPENUSD_SILK_SCENE_INGESTION_VERSION. On all shipped 64-bit platforms the
+/// size is 32 bytes; the pointer is at offset 24 and padding is not inspected.
+/// included_purpose_mask uses OPENUSD_GEOM_PURPOSE_MASK_* and must include
+/// DEFAULT. complexity and draw_mode use the corresponding OPENUSD_SILK_* enums.
+/// material_binding_purpose borrows a NUL-terminated UTF-8 string for this call;
+/// only the exact tokens "full" and "preview" are supported, not allPurpose.
+typedef struct openusd_silk_scene_ingestion_request
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t included_purpose_mask;
+    uint32_t complexity;
+    uint32_t draw_mode;
+    const char* material_binding_purpose;
+} openusd_silk_scene_ingestion_request;
+
+/// Returns the native hdSilk session ABI version this binary implements.
+OPENUSD_HDSILK_API uint32_t openusd_silk_get_session_abi_version(void)
+    OPENUSD_HDSILK_NOEXCEPT;
+
+/// Returns the page ABI version this binary writes into page views.
+OPENUSD_HDSILK_API uint32_t openusd_silk_get_page_abi_version(void)
+    OPENUSD_HDSILK_NOEXCEPT;
+
 /// Compatibility path API. Registers hdSilk, opens a temporary data-stage
 /// handle, and delegates to openusd_silk_session_create_from_stage.
 OPENUSD_HDSILK_API openusd_status openusd_silk_session_create(
@@ -1434,6 +1462,27 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_complexity_and_
     const openusd_render_camera* camera,
     uint32_t complexity,
     uint32_t draw_mode,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error);
+
+/// Same as openusd_silk_session_sync_with_complexity_and_draw_mode, with an
+/// explicit purpose mask and one exact material-binding-purpose token. Legacy
+/// viewport defaults (default|proxy|render, empty all-purpose binding) remain
+/// available through the older openusd_silk_session_sync* entry points.
+/// A filter change reconstructs USD imaging from the current retained stage;
+/// this can cost a complete native scene population. Unchanged requests retain
+/// ordinary incremental synchronization. No USD opinions are authored.
+/// A failed call returns no page and leaves previously returned owned pages
+/// valid. Requested filters commit only with a successful page; after a valid
+/// request fails, the next sync reconstructs native imaging before retrying.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_scene_ingestion(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    const openusd_silk_scene_ingestion_request* request,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
     openusd_error_buffer* error);

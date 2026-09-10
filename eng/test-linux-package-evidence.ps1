@@ -15,9 +15,9 @@ if (-not $stormChildAbiMatch.Success)
     throw "Could not read the Storm child ABI from $stormChildHeader."
 }
 $stormChildAbiVersion = [int]$stormChildAbiMatch.Groups[1].Value
-if ($stormChildAbiVersion -ne 8)
+if ($stormChildAbiVersion -ne 9)
 {
-    throw "Linux package evidence tests require ABI 8, got $stormChildAbiVersion."
+    throw "Linux package evidence tests require ABI 9, got $stormChildAbiVersion."
 }
 $testRoot = Join-Path $repoRoot 'artifacts/linux-package-evidence-test'
 $packageName = 'OpenUsd.Runtime.Imaging.linux-x64.0.0.0-test.nupkg'
@@ -70,7 +70,8 @@ try
             'openusd_storm_child_set_selection',
             'openusd_storm_child_get_navigation_input',
             'openusd_storm_child_set_transform_overrides',
-            'openusd_storm_child_capture_framebuffer')
+            'openusd_storm_child_capture_framebuffer',
+            'openusd_storm_child_capture_aovs')
         runpathPolicy = [ordered]@{
             dynamicTag = 'DT_RUNPATH'
             allowedEntries = @('$ORIGIN')
@@ -81,7 +82,7 @@ try
                 name = 'libopenusd_storm_child.so'
                 dynamicTag = 'DT_RUNPATH'
                 runpathEntries = @('$ORIGIN')
-                soname = 'libopenusd_storm_child.so.8'
+                soname = 'libopenusd_storm_child.so.9'
             },
             [ordered]@{
                 name = 'libopenusd_hydra.so'
@@ -100,24 +101,24 @@ try
     $stormHash = [Convert]::ToHexString(
         [System.Security.Cryptography.SHA256]::HashData($stormBytes))
     $validation.stormChildTopology = [ordered]@{
-        soname = 'libopenusd_storm_child.so.8'
+        soname = 'libopenusd_storm_child.so.9'
         linkName = 'libopenusd_storm_child.so'
-        realFile = 'libopenusd_storm_child.so.8.0.0'
+        realFile = 'libopenusd_storm_child.so.9.0.0'
         realFileSize = $stormBytes.Length
         realFileSha256 = $stormHash
         entries = @(
             [ordered]@{
                 name = 'libopenusd_storm_child.so'
                 type = 'symlink'
-                target = 'libopenusd_storm_child.so.8'
+                target = 'libopenusd_storm_child.so.9'
             },
             [ordered]@{
-                name = 'libopenusd_storm_child.so.8'
+                name = 'libopenusd_storm_child.so.9'
                 type = 'symlink'
-                target = 'libopenusd_storm_child.so.8.0.0'
+                target = 'libopenusd_storm_child.so.9.0.0'
             },
             [ordered]@{
-                name = 'libopenusd_storm_child.so.8.0.0'
+                name = 'libopenusd_storm_child.so.9.0.0'
                 type = 'regular'
                 target = $null
             })
@@ -140,17 +141,17 @@ try
             -Archive $archive `
             -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so' `
             -Bytes ([System.Text.Encoding]::UTF8.GetBytes(
-                'libopenusd_storm_child.so.8')) `
+                'libopenusd_storm_child.so.9')) `
             -SymbolicLink
         Add-ZipBytes `
             -Archive $archive `
-            -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so.8' `
+            -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so.9' `
             -Bytes ([System.Text.Encoding]::UTF8.GetBytes(
-                'libopenusd_storm_child.so.8.0.0')) `
+                'libopenusd_storm_child.so.9.0.0')) `
             -SymbolicLink
         Add-ZipBytes `
             -Archive $archive `
-            -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so.8.0.0' `
+            -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so.9.0.0' `
             -Bytes $stormBytes
     }
     finally
@@ -160,11 +161,11 @@ try
 
     $packageHash = (Get-FileHash $packagePath -Algorithm SHA256).Hash
     $validationHash = (Get-FileHash $validationPath -Algorithm SHA256).Hash
-    $linkBytes = [System.Text.Encoding]::UTF8.GetBytes('libopenusd_storm_child.so.8')
+    $linkBytes = [System.Text.Encoding]::UTF8.GetBytes('libopenusd_storm_child.so.9')
     $linkHash = [Convert]::ToHexString(
         [System.Security.Cryptography.SHA256]::HashData($linkBytes))
     $sonameLinkBytes = [System.Text.Encoding]::UTF8.GetBytes(
-        'libopenusd_storm_child.so.8.0.0')
+        'libopenusd_storm_child.so.9.0.0')
     $sonameLinkHash = [Convert]::ToHexString(
         [System.Security.Cryptography.SHA256]::HashData($sonameLinkBytes))
     $evidence = [ordered]@{
@@ -175,26 +176,26 @@ try
         packageSha256 = $packageHash
         nativeValidation = 'linux-native-validation.json'
         nativeValidationSha256 = $validationHash
-        stormChildSoname = 'libopenusd_storm_child.so.8'
-        stormChildRealFile = 'libopenusd_storm_child.so.8.0.0'
+        stormChildSoname = 'libopenusd_storm_child.so.9'
+        stormChildRealFile = 'libopenusd_storm_child.so.9.0.0'
         stormChildRealFileSha256 = $stormHash
         stormChildEntries = @(
             [ordered]@{
                 path = 'runtimes/linux-x64/native/libopenusd_storm_child.so'
                 type = 'symlink'
-                target = 'libopenusd_storm_child.so.8'
+                target = 'libopenusd_storm_child.so.9'
                 size = $linkBytes.Length
                 sha256 = $linkHash
             },
             [ordered]@{
-                path = 'runtimes/linux-x64/native/libopenusd_storm_child.so.8'
+                path = 'runtimes/linux-x64/native/libopenusd_storm_child.so.9'
                 type = 'symlink'
-                target = 'libopenusd_storm_child.so.8.0.0'
+                target = 'libopenusd_storm_child.so.9.0.0'
                 size = $sonameLinkBytes.Length
                 sha256 = $sonameLinkHash
             },
             [ordered]@{
-                path = 'runtimes/linux-x64/native/libopenusd_storm_child.so.8.0.0'
+                path = 'runtimes/linux-x64/native/libopenusd_storm_child.so.9.0.0'
                 type = 'regular'
                 target = $null
                 size = $stormBytes.Length
@@ -258,7 +259,7 @@ try
     {
         Add-ZipBytes `
             -Archive $archive `
-            -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so.8.99' `
+            -Path 'runtimes/linux-x64/native/libopenusd_storm_child.so.9.99' `
             -Bytes $stormBytes
     }
     finally

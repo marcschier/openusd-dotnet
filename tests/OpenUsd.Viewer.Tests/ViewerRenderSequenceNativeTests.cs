@@ -45,9 +45,12 @@ public sealed partial class ViewerRenderSequenceNativeTests
                     try
                     {
                         await ExerciseSequenceAsync(root);
+                        await ExerciseCompletedResultsOwnerCloseAsync(root);
+                        await ViewerCompletedJobPreviewJourney.ExerciseLifetimesAsync();
                         await ExerciseSequenceAdapterAsync(root);
                         await ExerciseRawSequenceAsync(root);
                         await ExerciseDisplaySettingsAtCoordinatorAsync(root);
+                        await ExerciseStormSequenceAsync(root);
                         completion.TrySetResult();
                     }
                     catch (Exception exception)
@@ -105,7 +108,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
         {
             StagePath = stagePath,
             StageCameraPath = "/World/Camera",
-            Renderer = "D3D12",
+            Renderer = ViewerNativeCaptureBackend.Kind.ToString(),
             PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH"),
             StageReadyAsync = (session, _) =>
             {
@@ -145,6 +148,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
             window.Show();
             ViewerStageSession session = await opened.Task.WaitAsync(TimeSpan.FromSeconds(35));
             await WaitUntilAsync(() => Required<MenuItem>(window, "CaptureFrameMenuItem").IsEnabled);
+            ViewerNativeCaptureBackend.Require(session);
             await ConfigureSequenceDisplayAsync(window, session);
             StageRenderState before = session.CurrentRenderState;
             ViewerSettings settingsBefore = (await store.LoadAsync()).Settings;
@@ -170,6 +174,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
             await Assert.That(Required<TextBox>(sequence, "SequenceStartTime").IsKeyboardFocusWithin).IsTrue();
             await Assert.That(Required<CheckBox>(sequence, "SequenceHdrColorData").IsChecked).IsFalse();
             await Assert.That(Required<CheckBox>(sequence, "SequenceDepthData").IsChecked).IsFalse();
+            await Assert.That(Required<Button>(sequence, "SequenceViewResultsButton").IsEnabled).IsFalse();
             Required<TextBox>(sequence, "SequenceStartTime").Text = "0";
             Required<TextBox>(sequence, "SequenceEndTime").Text = "4096";
             await WaitUntilAsync(() => !Required<Button>(sequence, "SequenceRenderButton").IsEnabled);
@@ -206,10 +211,16 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 await Assert.That(frames[index].TryGetProperty("deviceDepth", out _)).IsFalse();
             }
             await Assert.That(Directory.GetFiles(output).Length).IsEqualTo(4);
+            ViewerNativeCaptureBackend.RecordComposition(window, session, Path.Combine(root, "sequence-composition.json"));
             await Assert.That(frames[0].GetProperty("sha256").GetString())
                 .IsNotEqualTo(frames[1].GetProperty("sha256").GetString());
             await Assert.That(frames[1].GetProperty("sha256").GetString())
                 .IsNotEqualTo(frames[2].GetProperty("sha256").GetString());
+            CompletedRenderJobWindow results = await ViewerCompletedJobPreviewJourney.OpenAsync(
+                sequence, "SequenceViewResultsButton", output, [0, 1, 2], [1, 2, 3]);
+            await ViewerCompletedJobPreviewJourney.CloseAsync(results, sequence, "SequenceViewResultsButton");
+            await ViewerCompletedJobPreviewJourney.RefuseTamperedOutputAsync(
+                sequence, "SequenceViewResultsButton", output, "frame-000002.png");
             await Assert.That(session.CurrentRenderState.Camera).IsEqualTo(before.Camera);
             await Assert.That(session.CurrentRenderState.Time).IsEqualTo(before.Time);
             await Assert.That(session.CurrentRenderState.Display).IsEqualTo(before.Display);

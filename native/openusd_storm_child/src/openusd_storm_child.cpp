@@ -1,11 +1,16 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "openusd_storm_child.h"
+#include "openusd_storm_child_aov.h"
 #include "openusd_storm_child_navigation.h"
 #include "openusd_hydra.h"
 #include "openusd_render_camera_internal.h"
 #include "openusd_storm_child_internal.h"
 #include "openusd_storm_child_pick.h"
+
+#if defined(OPENUSD_STORM_CHILD_AOV_TEST_HOOKS)
+#include "../tests/storm_child_aov_test_hooks.h"
+#endif
 
 #define NOMINMAX
 #include <Windows.h>
@@ -83,6 +88,7 @@ enum class CommandKind
 {
     Render,
     Capture,
+    CaptureAovs,
     Pick,
     Selection,
     TransformOverrides,
@@ -118,6 +124,7 @@ struct Command
     bool capture_pixels = false;
     openusd_storm_child_framebuffer_capture capture{};
     std::vector<uint8_t> captured_pixels;
+    std::unique_ptr<OpenUsdStormChildAovPayload> aovs;
     std::unique_ptr<OpenUsdStormChildPickPayload> pick;
     std::unique_ptr<OpenUsdStormChildSelectionPayload> selection;
     std::unique_ptr<OpenUsdStormChildTransformOverridePayload>
@@ -1072,7 +1079,8 @@ openusd_status RenderFrame(
     uint32_t revision_flags,
     uint64_t& frame_count,
     int32_t& converged,
-    std::string& error)
+    std::string& error,
+    const openusd_storm_aov_request* capture_request = nullptr)
 {
     if (child->renderer == nullptr || child->context == nullptr)
     {
@@ -1084,9 +1092,10 @@ openusd_status RenderFrame(
         error_bytes,
         sizeof(error_bytes),
         0};
-    const int32_t width =
+    // Native resize may run concurrently; AOV companions keep their admitted raster.
+    const int32_t width = capture_request != nullptr ? capture_request->width :
         std::max<int32_t>(1, child->width.load(std::memory_order_relaxed));
-    const int32_t height =
+    const int32_t height = capture_request != nullptr ? capture_request->height :
         std::max<int32_t>(1, child->height.load(std::memory_order_relaxed));
     openusd_status status = EnsureRenderTarget(child, width, height, error);
     if (status != OPENUSD_STATUS_OK)
@@ -1315,9 +1324,9 @@ openusd_status CaptureFramebuffer(
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
 
-    const int32_t width =
+    const int32_t width = command->aovs != nullptr ? command->aovs->request.width :
         std::max<int32_t>(1, child->width.load(std::memory_order_relaxed));
-    const int32_t height =
+    const int32_t height = command->aovs != nullptr ? command->aovs->request.height :
         std::max<int32_t>(1, child->height.load(std::memory_order_relaxed));
     const size_t pixel_count =
         static_cast<size_t>(width) * static_cast<size_t>(height);
@@ -1327,8 +1336,6 @@ openusd_status CaptureFramebuffer(
             "The framebuffer exceeds the 64 MiB diagnostic capture limit.";
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    const size_t byte_count = pixel_count * 4u;
-    std::vector<uint8_t> pixels(byte_count);
     if (child->render_framebuffer == 0 ||
         child->render_width != width ||
         child->render_height != height)
@@ -1337,6 +1344,15 @@ openusd_status CaptureFramebuffer(
             "A completed Storm frame at the current dimensions is required before capture.";
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
+    const size_t byte_count = pixel_count * 4u;
+#if defined(OPENUSD_STORM_CHILD_AOV_TEST_HOOKS)
+    if (command->aovs != nullptr)
+    {
+        OpenUsdStormChildAovTestHook(
+            OpenUsdStormChildAovTestPhase::BeforeRgbaAllocation, byte_count);
+    }
+#endif
+    std::vector<uint8_t> pixels(byte_count);
 
     while (glGetError() != GL_NO_ERROR)
     {
@@ -1482,6 +1498,101 @@ openusd_status CaptureFramebuffer(
         command->captured_pixels = std::move(pixels);
     }
     return OPENUSD_STATUS_OK;
+}
+
+openusd_status CaptureAovs(ChildState* child, Command* command)
+{
+    char error_bytes[4096]{};
+    openusd_error_buffer native_error{error_bytes, sizeof(error_bytes), 0};
+    const openusd_status status = Guard(&native_error, [&]
+    {
+        const auto& request = command->aovs->request;
+        if (child->renderer == nullptr || child->context == nullptr)
+        {
+            WriteError(&native_error, "The Storm child renderer is unavailable.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+        if (child->width.load(std::memory_order_relaxed) != request.width ||
+            child->height.load(std::memory_order_relaxed) != request.height)
+        {
+            WriteError(
+                &native_error,
+                "Storm child AOV dimensions must match the current viewport.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        uint64_t serial_before = 0;
+        openusd_status capture_status = openusd_stage_get_change_serial(
+            child->stage, &serial_before, &native_error);
+        if (capture_status != OPENUSD_STATUS_OK)
+        {
+            return capture_status;
+        }
+        capture_status = EnsureRenderTarget(
+            child, request.width, request.height, command->error);
+        if (capture_status != OPENUSD_STATUS_OK)
+        {
+            WriteError(&native_error, command->error);
+            return capture_status;
+        }
+        capture_status = command->aovs->Execute(
+            child->renderer, child->render_framebuffer, &native_error);
+        if (capture_status != OPENUSD_STATUS_OK)
+        {
+            return capture_status;
+        }
+#if defined(OPENUSD_STORM_CHILD_AOV_TEST_HOOKS)
+        OpenUsdStormChildAovTestHook(OpenUsdStormChildAovTestPhase::BeforeCompanionRender);
+#endif
+        capture_status = RenderFrame(
+            child,
+            request.time_code,
+            request.camera,
+            request.state_revision,
+            request.scene_revision,
+            request.revision_flags,
+            command->frame_count,
+            command->converged,
+            command->error,
+            &request);
+        if (capture_status == OPENUSD_STATUS_OK)
+        {
+#if defined(OPENUSD_STORM_CHILD_AOV_TEST_HOOKS)
+            OpenUsdStormChildAovTestHook(OpenUsdStormChildAovTestPhase::BeforeCompanionReadback);
+#endif
+            capture_status = CaptureFramebuffer(child, command);
+        }
+        if (capture_status != OPENUSD_STATUS_OK)
+        {
+            WriteError(&native_error, command->error);
+            return capture_status;
+        }
+        uint64_t serial_after = 0;
+        capture_status = openusd_stage_get_change_serial(
+            child->stage, &serial_after, &native_error);
+        if (capture_status != OPENUSD_STATUS_OK)
+        {
+            return capture_status;
+        }
+        if (serial_before != serial_after ||
+            child->width.load(std::memory_order_relaxed) != request.width ||
+            child->height.load(std::memory_order_relaxed) != request.height ||
+            command->capture.width != request.width ||
+            command->capture.height != request.height ||
+            command->converged == 0)
+        {
+            WriteError(
+                &native_error,
+                "The scene, viewport or convergence changed during Storm child AOV capture.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+        return OPENUSD_STATUS_OK;
+    });
+    if (status != OPENUSD_STATUS_OK)
+    {
+        command->error = error_bytes;
+        command->aovs->owner.reset();
+    }
+    return status;
 }
 
 openusd_status RecreateAfterContextLoss(
@@ -1715,6 +1826,9 @@ void RenderThreadMain(ChildState* child)
             case CommandKind::Capture:
                 command->status =
                     CaptureFramebuffer(child, command.get());
+                break;
+            case CommandKind::CaptureAovs:
+                command->status = CaptureAovs(child, command.get());
                 break;
             case CommandKind::Pick:
                 command->status = command->pick->Execute(
@@ -1962,6 +2076,81 @@ openusd_status QueueCapture(
         rgba_buffer,
         command->captured_pixels.data(),
         *rgba_required);
+    return OPENUSD_STATUS_OK;
+}
+
+openusd_status QueueAovCapture(
+    ChildState* child,
+    const openusd_storm_aov_request* request,
+    openusd_storm_aov_owner** owner,
+    uint8_t* rgba_buffer,
+    size_t rgba_capacity,
+    size_t* rgba_required,
+    openusd_storm_child_framebuffer_capture* capture,
+    openusd_error_buffer* error)
+{
+    const openusd_status child_status = ValidateChild(child, error);
+    if (child_status != OPENUSD_STATUS_OK)
+    {
+        return child_status;
+    }
+    std::string validation_error;
+    if (!OpenUsdStormChildAovPayload::Validate(request, validation_error))
+    {
+        WriteError(error, validation_error);
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    const size_t byte_count = static_cast<size_t>(
+        OpenUsdStormChildAovPayload::PixelCount(*request) * 4u);
+    if (rgba_buffer == nullptr || rgba_capacity < byte_count)
+    {
+        *rgba_required = byte_count;
+        WriteError(error, "The Storm child AOV RGBA8 output buffer is too small.");
+        return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+    }
+    auto command = std::make_shared<Command>();
+    command->kind = CommandKind::CaptureAovs;
+    command->wait = true;
+    command->capture_pixels = true;
+    command->capture_background_rgba = 0xff0e0e0e;
+    command->capture_tolerance = 2;
+    command->error.reserve(4096);
+    command->aovs = std::make_unique<OpenUsdStormChildAovPayload>();
+    command->aovs->request = *request;
+    std::unique_lock lock(child->gate);
+    if (child->lifecycle != LifecycleState::Running)
+    {
+        WriteError(error, "The Storm child is closing or stopped.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    child->synchronous_commands.push_back(command);
+    if (child->asynchronous_render != nullptr)
+    {
+        child->asynchronous_render.reset();
+        child->cancelled_command_count.fetch_add(1, std::memory_order_relaxed);
+    }
+    child->latest_requested_revision.store(request->state_revision, std::memory_order_relaxed);
+    child->latest_requested_camera_signature.store(
+        openusd_render_camera_detail::Signature(request->camera), std::memory_order_relaxed);
+    UpdatePendingPeak(child);
+    child->commands_available.notify_one();
+    command->completion.wait(lock, [&command] { return command->done; });
+    if (command->status != OPENUSD_STATUS_OK)
+    {
+        WriteError(error, command->error);
+        return command->status;
+    }
+    lock.unlock();
+    if (command->captured_pixels.size() != byte_count ||
+        command->aovs->owner == nullptr)
+    {
+        WriteError(error, "Storm child AOV capture returned incomplete owned output.");
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    std::memcpy(rgba_buffer, command->captured_pixels.data(), byte_count);
+    *capture = command->capture;
+    *rgba_required = byte_count;
+    *owner = command->aovs->owner.release();
     return OPENUSD_STATUS_OK;
 }
 
@@ -3018,6 +3207,43 @@ extern "C" openusd_status openusd_storm_child_capture_framebuffer(
             rgba_required,
             capture,
             error);
+    });
+}
+
+extern "C" openusd_status openusd_storm_child_capture_aovs(
+    openusd_storm_child* child,
+    const openusd_storm_aov_request* request,
+    openusd_storm_aov_owner** owner,
+    uint8_t* rgba_buffer,
+    size_t rgba_capacity,
+    size_t* rgba_required,
+    openusd_storm_child_framebuffer_capture* capture,
+    openusd_error_buffer* error)
+{
+    if (owner != nullptr)
+    {
+        *owner = nullptr;
+    }
+    if (rgba_required != nullptr)
+    {
+        *rgba_required = 0;
+    }
+    if (capture != nullptr)
+    {
+        std::memset(capture, 0, sizeof(*capture));
+    }
+    if (owner == nullptr || rgba_required == nullptr || capture == nullptr ||
+        (rgba_buffer == nullptr && rgba_capacity != 0))
+    {
+        WriteError(error, "Storm child AOV outputs and buffer arguments are invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]
+    {
+        const std::shared_ptr<ChildState> state = LookupChild(child);
+        return QueueAovCapture(
+            state.get(), request, owner, rgba_buffer, rgba_capacity,
+            rgba_required, capture, error);
     });
 }
 

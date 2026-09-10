@@ -1,0 +1,4 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+mdl 1.7;
+using ::wrappers::variants import textured;
+export material inherited(*) = textured();

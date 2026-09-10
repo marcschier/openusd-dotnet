@@ -33,7 +33,11 @@ public sealed class OpenUsdSilkSession : IDisposable
     }
 
     /// <summary>
-    /// Synchronizes Hydra and returns a managed-owned immutable dirty page.
+    /// Synchronizes Hydra with the historical viewport ingestion defaults and
+    /// returns a managed-owned immutable dirty page.
+    /// Legacy sync intentionally restores the original purpose mask
+    /// (default|proxy|render) and the original material-binding token
+    /// (empty/allPurpose), even after an earlier explicit product-style sync.
     /// </summary>
     public OpenUsdSilkPage Sync(
         int width,
@@ -54,6 +58,38 @@ public sealed class OpenUsdSilkSession : IDisposable
                 camera,
                 complexity,
                 drawMode);
+            _hasSynchronized = true;
+            return page;
+        }
+    }
+
+    /// <summary>
+    /// Synchronizes Hydra using explicit scene-ingestion choices and returns a
+    /// managed-owned immutable dirty page.
+    /// </summary>
+    public OpenUsdSilkPage Sync(
+        int width,
+        int height,
+        SilkSceneIngestionOptions ingestionOptions,
+        double timeCode = 0,
+        CameraState camera = default,
+        RenderComplexity complexity = RenderComplexity.Low,
+        RenderDrawMode drawMode = RenderDrawMode.SmoothShaded)
+    {
+        ArgumentNullException.ThrowIfNull(ingestionOptions);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_handle.IsClosed || _handle.IsInvalid, this);
+            OpenUsdSilkPage page = OpenUsdSilkRuntime.Sync(
+                _handle.DangerousGetHandle(),
+                width,
+                height,
+                timeCode,
+                camera,
+                complexity,
+                drawMode,
+                ingestionOptions);
             _hasSynchronized = true;
             return page;
         }

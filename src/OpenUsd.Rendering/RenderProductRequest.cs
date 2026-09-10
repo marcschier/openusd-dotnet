@@ -57,7 +57,15 @@ public sealed class RenderProductRequest : IUsdDetachedResult
     /// mutate the stage or execute rendering. Authored extra clipping planes are refused until
     /// the stage-camera data interface can transfer them instead of silently dropping them.
     /// </remarks>
-    public RenderPreparedFrame PrepareFrame(UsdStage stage, double timeCode)
+    public RenderPreparedFrame PrepareFrame(UsdStage stage, double timeCode) =>
+        PrepareStageFrame(stage, timeCode, includeExecutionSettings: false);
+
+    /// <summary>Samples raster geometry plus shutter/exposure inputs for product-execution admission.</summary>
+    /// <remarks>Call on the owning stage thread. No stage or renderer is mutated.</remarks>
+    public RenderPreparedFrame PrepareExecutionFrame(UsdStage stage, double timeCode) =>
+        PrepareStageFrame(stage, timeCode, includeExecutionSettings: true);
+
+    private RenderPreparedFrame PrepareStageFrame(UsdStage stage, double timeCode, bool includeExecutionSettings)
     {
         ArgumentNullException.ThrowIfNull(stage);
         if (!double.IsFinite(timeCode))
@@ -68,7 +76,12 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         {
             throw new ArgumentException($"Camera '{CameraPath}' does not exist in the stage.", nameof(stage));
         }
-        UsdGeomCamera camera = UsdGeomCamera.Wrap(stage.GetPrim(CameraPath));
+        UsdPrim prim = stage.GetPrim(CameraPath);
+        if (includeExecutionSettings && (!prim.IsActive() || !prim.IsDefined()))
+        {
+            throw new NotSupportedException($"Camera '{CameraPath}' must be active and defined.");
+        }
+        UsdGeomCamera camera = UsdGeomCamera.Wrap(prim);
         if (camera.Prim.GetAttribute("clippingPlanes").GetValueState(timeCode).HasAuthoredValueOpinion)
         {
             throw new NotSupportedException(
@@ -79,7 +92,10 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         {
             throw new InvalidOperationException($"Camera '{CameraPath}' has a non-invertible transform.");
         }
-        return PrepareFrame(worldToView, camera.GetState(timeCode), timeCode);
+        UsdGeomCameraState sampled = camera.GetState(timeCode);
+        return includeExecutionSettings
+            ? PrepareFrame(worldToView, sampled, timeCode, RenderCameraFrameSettings.Read(stage, prim, timeCode))
+            : PrepareFrame(worldToView, sampled, timeCode);
     }
 
     /// <summary>Prepares a raster frame from a caller-sampled camera and world-to-view transform.</summary>
@@ -91,7 +107,21 @@ public sealed class RenderProductRequest : IUsdDetachedResult
     public RenderPreparedFrame PrepareFrame(
         UsdMatrix4d worldToView,
         UsdGeomCameraState sampledCamera,
-        double timeCode)
+        double timeCode) => PrepareFrameCore(worldToView, sampledCamera, timeCode, null);
+
+    /// <summary>Prepares a raster frame with caller-sampled shutter and exposure inputs.</summary>
+    /// <remarks>The caller supplies every camera input from the same camera/time sample.</remarks>
+    public RenderPreparedFrame PrepareFrame(
+        UsdMatrix4d worldToView, UsdGeomCameraState sampledCamera, double timeCode,
+        RenderCameraFrameSettings cameraSettings)
+    {
+        ArgumentNullException.ThrowIfNull(cameraSettings);
+        return PrepareFrameCore(worldToView, sampledCamera, timeCode, cameraSettings);
+    }
+
+    private RenderPreparedFrame PrepareFrameCore(
+        UsdMatrix4d worldToView, UsdGeomCameraState sampledCamera, double timeCode,
+        RenderCameraFrameSettings? cameraSettings)
     {
         if (!double.IsFinite(timeCode))
         {
@@ -120,6 +150,6 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         var camera = new CameraState(
             StageCameraMatrixConversion.ToMatrix4x4(worldToView),
             StageCameraProjectionMath.CreateProjectionMatrix(sampledCamera, framing.Window));
-        return new RenderPreparedFrame(this, sampledCamera, timeCode, camera, framing);
+        return new RenderPreparedFrame(this, sampledCamera, timeCode, camera, framing, cameraSettings);
     }
 }

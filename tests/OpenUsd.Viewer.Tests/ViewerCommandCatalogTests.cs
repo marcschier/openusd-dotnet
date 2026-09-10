@@ -127,6 +127,7 @@ public sealed class ViewerCommandCatalogTests
     [Arguments(ViewerCommandIds.FileOpenStage)]
     [Arguments(ViewerCommandIds.FileReloadStage)]
     [Arguments(ViewerCommandIds.FileCaptureFrame)]
+    [Arguments(ViewerCommandIds.FileRenderAuthoredProduct)]
     [Arguments(ViewerCommandIds.ViewStagePanel)]
     [Arguments(ViewerCommandIds.ViewInspectorPanel)]
     [Arguments(ViewerCommandIds.ViewTimeline)]

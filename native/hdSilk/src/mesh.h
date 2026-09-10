@@ -190,6 +190,7 @@ private:
     int _refineLevel = 0;
     VtVec3fArray _refinedPoints;
     uint64_t _topologyRevision = 0;
+    uint64_t _materialBindingGeneration = 0;
     GfVec3f _displayColor{0.7f};
     // CPU-resolved UsdSkel deformation. The binding is resolved once per stage
     // because resolving it walks the whole SkelRoot; the deformed normals are

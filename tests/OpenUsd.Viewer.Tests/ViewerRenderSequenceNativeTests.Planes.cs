@@ -24,7 +24,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
         {
             StagePath = stagePath,
             StageCameraPath = "/World/Camera",
-            Renderer = "D3D12",
+            Renderer = ViewerNativeCaptureBackend.Kind.ToString(),
             PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH"),
             StageReadyAsync = (session, _) =>
             {
@@ -41,6 +41,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
             window.Show();
             ViewerStageSession session = await opened.Task.WaitAsync(TimeSpan.FromSeconds(35));
             await WaitUntilAsync(() => Required<MenuItem>(window, "CaptureFrameMenuItem").IsEnabled);
+            ViewerNativeCaptureBackend.Require(session);
             await Assert.That(session.CurrentRenderState.RenderSettings.DisplayTransform).IsNull();
             var original = session.CurrentRenderState;
             string[]? pngHashes = null;
@@ -117,7 +118,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
             }
             await ExerciseExrFormatAsync(window, session, Path.Combine(work, "exr"), allPlanesOutput!);
             await ExerciseRawSelectionAsync(window, session, work, allPlanesOutput!);
-            await ExerciseUnsupportedRendererAsync(window, session);
+            await ExerciseStormSelectedHdrRefusalAsync(window, session);
             await Assert.That(await File.ReadAllTextAsync(stagePath)).IsEqualTo(EmissiveSequenceStage);
         }
         finally
@@ -242,11 +243,12 @@ public sealed partial class ViewerRenderSequenceNativeTests
         }
     }
 
-    private static async Task ExerciseUnsupportedRendererAsync(MainWindow window, ViewerStageSession session)
+    private static async Task ExerciseStormSelectedHdrRefusalAsync(MainWindow window, ViewerStageSession session)
     {
         Required<ComboBox>(window, "RendererSelector").SelectedIndex = 1;
         await WaitUntilAsync(() => Required<MenuItem>(window, "CaptureFrameMenuItem").IsEnabled &&
             session.PickingBackend is ViewerRenderBackend { Identity.Kind: RenderBackendKind.Storm });
+        await Assert.That(session.CurrentRenderState.Selection.Items.Count).IsGreaterThan(0);
         Required<MenuItem>(window, "RenderImageSequenceMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         RenderImageSequenceWindow sequence = window.OwnedWindows.OfType<RenderImageSequenceWindow>().Single();
         try
@@ -254,7 +256,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
             Required<CheckBox>(sequence, "SequenceHdrColorData").IsChecked = true;
             Required<CheckBox>(sequence, "SequenceDepthData").IsChecked = true;
             await Assert.That(Required<Button>(sequence, "SequenceRenderButton").IsEnabled).IsFalse();
-            await Assert.That(Required<TextBlock>(sequence, "SequenceStatus").Text).Contains("Direct3D 12");
+            await Assert.That(Required<TextBlock>(sequence, "SequenceStatus").Text).Contains("selection");
             await Assert.That(Required<TextBox>(sequence, "SequenceOutputLocation").Text).IsNullOrEmpty();
         }
         finally

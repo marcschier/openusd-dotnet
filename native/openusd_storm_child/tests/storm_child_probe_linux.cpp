@@ -485,8 +485,8 @@ bool ValidateStormChildRuntimeTopology(const char* runtime_path)
     namespace fs = std::filesystem;
     const fs::path directory(runtime_path);
     const fs::path link = directory / "libopenusd_storm_child.so";
-    const fs::path soname = directory / "libopenusd_storm_child.so.8";
-    const fs::path real = directory / "libopenusd_storm_child.so.8.0.0";
+    const fs::path soname = directory / "libopenusd_storm_child.so.9";
+    const fs::path real = directory / "libopenusd_storm_child.so.9.0.0";
     std::error_code error;
     const bool valid =
         fs::is_symlink(link, error) &&
@@ -562,7 +562,7 @@ int RunLifecycleSmokeChild(
     bool passed =
         Require(
             ValidateStormChildRuntimeTopology(runtime_path),
-            "Storm child runtime does not contain the exact ABI-8 SONAME link chain.") &&
+            "Storm child runtime does not contain the exact ABI-9 SONAME link chain.") &&
         Require(
             openusd_register_plugins(plugin_path, &plugin_count, &error) ==
                 OPENUSD_STATUS_OK,
@@ -863,7 +863,7 @@ int main(int argc, char** argv)
             "Storm child ABI mismatch.") &&
         Require(
             ValidateStormChildRuntimeTopology(argv[3]),
-            "Storm child runtime does not contain the exact ABI-8 SONAME link chain.") &&
+            "Storm child runtime does not contain the exact ABI-9 SONAME link chain.") &&
         Require(
             openusd_register_plugins(argv[1], &plugin_count, &error) ==
                 OPENUSD_STATUS_OK,

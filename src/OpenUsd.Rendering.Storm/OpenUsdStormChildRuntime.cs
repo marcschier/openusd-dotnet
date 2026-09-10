@@ -139,7 +139,7 @@ public readonly record struct OpenUsdStormNavigationInput(
 /// <remarks>
 /// This owner is deliberately non-finalizable. Native teardown synchronously joins the render thread.
 /// </remarks>
-public sealed class OpenUsdStormChildSession : IDisposable
+public sealed partial class OpenUsdStormChildSession : IDisposable
 {
     private readonly object _gate = new();
     private readonly int _creatorThreadId = Environment.CurrentManagedThreadId;
@@ -147,6 +147,7 @@ public sealed class OpenUsdStormChildSession : IDisposable
     private nint _handle;
     private StormFrameBinding _latestFrame;
     private bool _hasRequestedFrame;
+    private bool _hasDisplaySelection;
     private ulong _contextGeneration;
     private int _width;
     private int _height;
@@ -294,10 +295,13 @@ public sealed class OpenUsdStormChildSession : IDisposable
     {
         lock (_gate)
         {
+            nint handle = GetHandleLocked();
+            _hasDisplaySelection = true;
             OpenUsdStormChildRuntime.SetSelection(
-                GetHandleLocked(),
+                handle,
                 selection,
                 color);
+            _hasDisplaySelection = selection.Items.Count != 0;
         }
     }
 
@@ -469,7 +473,7 @@ public static unsafe partial class OpenUsdStormChildRuntime
 {
     private const string LibraryName = "openusd_storm_child";
     private const int ErrorBufferSize = 4096;
-    private const uint ExpectedAbiVersion = 8;
+    private const uint ExpectedAbiVersion = RenderNativeAbiVersions.StormChildAbi;
     internal const uint NavigationInputVersion = 2;
 
     /// <summary>Gets the Storm child ABI version.</summary>

@@ -111,11 +111,13 @@ public sealed partial class ViewerRenderSequenceNativeTests
             await Assert.That(current.CurrentRenderState.Viewport).IsEqualTo(viewport);
             await Assert.That(Directory.GetDirectories(outputParent).Length).IsEqualTo(1);
             await Assert.That(sequence.IsVisible).IsFalse();
+            await WaitUntilAsync(() => current.PickingBackend is IViewerRenderedPickStateSource rendered &&
+                rendered.LastRenderedPickState?.State == current.CurrentRenderState &&
+                Required<MenuItem>(window, "CaptureFrameMenuItem").IsEnabled);
+            ViewerNativeCaptureBackend.Require(current);
             await Assert.That(Required<MenuItem>(window, "CaptureFrameMenuItem").IsEnabled).IsTrue();
             await Assert.That(await current.Scheduler.InvokeAsync(static stage =>
                 stage.HasPrim("/World/LateBeforeReload") || stage.HasPrim("/World/AddedDuringSequence"))).IsFalse();
-            await WaitUntilAsync(() => current.PickingBackend is IViewerRenderedPickStateSource rendered &&
-                rendered.LastRenderedPickState?.State == current.CurrentRenderState);
             await Assert.That(current.CurrentRenderState.Camera.View.M41).IsEqualTo(0f);
             await Assert.That(current.CurrentRenderState.Camera.View.M43).IsEqualTo(-8f);
             await Assert.That(Required<TreeView>(window, "StageHierarchy").Items.OfType<TreeViewItem>()

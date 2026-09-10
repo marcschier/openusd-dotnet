@@ -58,6 +58,8 @@ internal static class McpHostConfiguration
                 MaximumReadResponseBytes: GetPositiveLong(
                     "OPENUSD_MCP_MAX_ARTIFACT_READ_BYTES",
                     64L * 1024 * 1024)),
+            Graphics: new PreviewGraphicsDeviceOptions(
+                UseWarpOnWindows: GetBoolean("OPENUSD_MCP_USE_WARP", defaultValue: true)),
             MaximumCheckpointCount: GetNonNegativeInt(
                 "OPENUSD_MCP_MAX_CHECKPOINTS",
                 256),
@@ -155,6 +157,21 @@ internal static class McpHostConfiguration
     {
         int value = GetInt(variableName, defaultValue);
         ArgumentOutOfRangeException.ThrowIfNegative(value, variableName);
+        return value;
+    }
+
+    private static bool GetBoolean(string variableName, bool defaultValue)
+    {
+        string? configured = Environment.GetEnvironmentVariable(variableName);
+        if (configured is null)
+        {
+            return defaultValue;
+        }
+        if (!bool.TryParse(configured, out bool value))
+        {
+            throw new ArgumentException(
+                $"Environment variable {variableName} must be true or false.", variableName);
+        }
         return value;
     }
 

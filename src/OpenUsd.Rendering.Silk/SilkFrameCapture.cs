@@ -144,7 +144,7 @@ public static partial class SilkFrameCapture
     /// <summary>Synchronizes, renders, and captures one RGBA8 frame.</summary>
     /// <remarks>
     /// This is a one-shot helper: it builds a renderer per call, while
-    /// <see cref="OpenUsdSilkSession.Sync"/> reports only what changed since the previous
+    /// <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/> reports only what changed since the previous
     /// synchronization. A session that has already been synchronized therefore yields a page
     /// with no geometry, which would render an empty frame. Use <see cref="SilkFrameCapturer"/>
     /// to capture repeatedly from one session.
@@ -206,7 +206,7 @@ public static partial class SilkFrameCapture
     /// </summary>
     /// <remarks>
     /// A live renderer - a viewer's presentation renderer, say - synchronizes its session on
-    /// every presented frame, and <see cref="OpenUsdSilkSession.Sync"/> reports only what changed
+    /// every presented frame, and <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/> reports only what changed
     /// since the previous synchronization. Capturing such a session through
     /// <see cref="Capture(OpenUsdSilkSession, ISilkGraphicsDevice, int, int, double, CameraState)"/>
     /// or <see cref="SilkFrameCapturer"/> would synchronize a session with nothing left to report,
@@ -403,7 +403,8 @@ public static partial class SilkFrameCapture
         RenderSettings renderSettings,
         double timeCode,
         CameraState camera,
-        SilkDepthCaptureRequest? depthRequest = null)
+        SilkDepthCaptureRequest? depthRequest = null,
+        SilkSceneIngestionOptions? ingestionOptions = null)
     {
         renderSettings.ValidateDisplayTransform();
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
@@ -416,12 +417,8 @@ public static partial class SilkFrameCapture
         {
             using ISilkGraphicsTexture display = CreateDisplayTarget(device, width, height);
             depthRequest?.ThrowIfCancellationRequested();
-            using OpenUsdSilkPage transformedPage = session.Sync(
-                width,
-                height,
-                timeCode,
-                camera,
-                renderSettings.Complexity);
+            using OpenUsdSilkPage transformedPage = SyncCapture(
+                session, width, height, timeCode, camera, renderSettings.Complexity, ingestionOptions);
             SilkMeshRenderResult transformedResult =
                 renderer.ApplyAndRenderForDisplayCapture(
                     transformedPage,
@@ -445,12 +442,8 @@ public static partial class SilkFrameCapture
 
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         depthRequest?.ThrowIfCancellationRequested();
-        using OpenUsdSilkPage page = session.Sync(
-            width,
-            height,
-            timeCode,
-            camera,
-            renderSettings.Complexity);
+        using OpenUsdSilkPage page = SyncCapture(
+            session, width, height, timeCode, camera, renderSettings.Complexity, ingestionOptions);
         SilkMeshRenderResult result = renderer.ApplyAndRenderForDisplayCapture(
             page,
             color,
@@ -482,7 +475,8 @@ public static partial class SilkFrameCapture
         SilkOpenColorIoProcessor ocioProcessor,
         double timeCode,
         CameraState camera,
-        SilkDepthCaptureRequest? depthRequest = null)
+        SilkDepthCaptureRequest? depthRequest = null,
+        SilkSceneIngestionOptions? ingestionOptions = null)
     {
         ValidateOcioSettings(renderSettings);
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
@@ -493,12 +487,8 @@ public static partial class SilkFrameCapture
                 checked((uint)width),
                 checked((uint)height)));
         depthRequest?.ThrowIfCancellationRequested();
-        using OpenUsdSilkPage page = session.Sync(
-            width,
-            height,
-            timeCode,
-            camera,
-            renderSettings.Complexity);
+        using OpenUsdSilkPage page = SyncCapture(
+            session, width, height, timeCode, camera, renderSettings.Complexity, ingestionOptions);
         SilkMeshRenderResult result = renderer.ApplyAndRenderForDisplayCapture(
             page,
             color,
@@ -529,6 +519,13 @@ public static partial class SilkFrameCapture
             SilkTextureDescriptor.HdrColorTarget(
                 checked((uint)width),
                 checked((uint)height)));
+
+    private static OpenUsdSilkPage SyncCapture(
+        OpenUsdSilkSession session, int width, int height, double timeCode, CameraState camera,
+        RenderComplexity complexity, SilkSceneIngestionOptions? ingestionOptions) =>
+        ingestionOptions is null
+            ? session.Sync(width, height, timeCode, camera, complexity)
+            : session.Sync(width, height, ingestionOptions, timeCode, camera, complexity);
 
     private static SilkMeshRenderOptions CreateRenderOptions(RenderSettings renderSettings) =>
         new SilkMeshRenderOptions(

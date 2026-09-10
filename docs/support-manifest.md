@@ -264,6 +264,7 @@ Package publication, source-build, and MCP distribution gates.
 | --- | --- | --- |
 | `nuget-publish` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `source-build` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| `mcp-sequence-contact-sheets` | Implemented | `win-x64` |
 | `mcp-tool` | Workflow-gated | `win-x64`, `linux-x64` |
 
 ### `nuget-publish`
@@ -273,6 +274,16 @@ Published to NuGet.org via OIDC trusted publishing (27 package IDs)
 ### `source-build`
 
 Full source build with dotnet build OpenUsd.slnx
+
+### `mcp-sequence-contact-sheets`
+
+read_sequence_sheet presents already completed render_sequence/render_product PNGs without rerendering or requiring an
+active scene. It verifies each source length/hash/dimensions, loads frames one at a time, fits up to16 ordered frames
+into the existing deterministic contact-sheet grid and returns original job revision plus cell/frame/time metadata.
+Missing selection samples up to16 evenly spaced frames with endpoints. Sheet sides are4..1024, encoded output is at
+most8MiB, and existing artifact count/byte quotas apply independently of the8-render-job quota. Tampered later frames,
+invalid selections, cancellation and exhausted capacity cannot register partial output. Actual native product pixels and
+official RPC/stdio discovery are covered on Windows.
 
 ### `mcp-tool`
 
@@ -456,6 +467,7 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `cpu-ocio-export` | Implemented | `win-x64`, `linux-x64` |
 | `bounded-hdr-depth-capture` | Implemented | `win-x64` |
 | `bounded-exr-output` | Implemented | `win-x64` |
+| `bounded-authored-render-products` | Implemented | `win-x64` |
 | `texture-residency-budgets` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `gpu-ocio-presentation` | Workflow-gated | `win-x64`, `linux-x64` |
 | `gpu-skinning` | Workflow-gated | `win-x64`, `linux-x64` |
@@ -473,10 +485,15 @@ Storm renderer: presentation via WGL/GLX/CGL, GPU picking, device-loss detection
 Unreleased direct Storm ABI 9 owned bulk AOV snapshots with typed binary16 RGBA, normalized window depth, native
 prim/instance IDs and canonical-path/context decoding. Raw UNorm8 Neye is preserved; plain normal is Unsupported and
 elementId is Absent. Tight top-down outputs, exact native applied camera and explicit caller revision claims are bounded
-to 8 output slots, 4096 per dimension, 1048576 pixels, 4096 unique identities, 16384 contexts, 1 MiB UTF-8 paths and
-separate 128 MiB known-native/managed storage ceilings. Windows RTX 5070 native and package-only NativeAOT execution
-includes the million-pixel case and ordinary framebuffer preservation; this does not claim Linux/CGL execution, stable
-authored integer IDs or general normals.
+to 8 slots, 4096 per dimension,1048576 pixels,4096 identities,16384 contexts,1MiB UTF-8 paths and separate128MiB
+native/managed ceilings. Child ABI9 queues native viewport RGBA8 and typed AOV capture on its original render thread,
+refuses intervening stage changes and transfers CPU-only ownership. Its budgets additionally charge4N+16KiB native
+and4N+512 managed companion storage. CreateJobImage supplies shared PNG/raw/EXR jobs under a separate64MiB combined
+capture/conversion budget; child PNG preserves native appearance rather than tone-mapped AOV color. Selected or
+uncertain captures refuse pre-selection HDR without silently deselecting. Windows RTX5070 and clean-feed NativeAOT cover
+direct and child output, exact million-pixel conversion, context/owner lifetime and independent EXR decoding. Linux
+child wiring is not execution evidence; Metal child AOV capture, general normals and authored Storm product filtering
+remain incomplete.
 
 ### `d3d12-offscreen`
 
@@ -554,14 +571,15 @@ are not claimed as evidence platforms.
 
 ### `mdl-sdk-module-evaluation`
 
-MDL SDK-backed module evaluation in the optional openusd_mdl_sdk adapter: an MDL module is compiled from an explicitly
-configured absolute search path through a user-supplied MDL SDK runtime, the named material's unauthored parameter
-defaults are resolved, constant expression defaults are folded (elemental, conversion and copy constructors, and
-parameter aliases), and texture-valued defaults the SDK materialises are resolved to a path the renderer can open.
-Authored stage values always win over module defaults, and every distilled entry says which of the two it came from.
-Nothing else is evaluated: a default that is any other call, a layered BSDF, or a resource the SDK cannot resolve is
-reported by parameter name and never folded into a value. Proven on win-x64 against MDL SDK 2026.0.2 and
-repository-authored synthetic modules, end to end through UsdImaging and the hdSilk page wire format
+Optional openusd_mdl_sdk evaluation through an explicitly supplied MDL SDK runtime and absolute module search roots. The
+adapter resolves parameter defaults, supported constant constructors and aliases, and texture resources. Bounded
+SDK-proven OmniPBR/OmniGlass material variants also retain body constants and named arguments. Authored values win;
+texture aliases preserve source color-space metadata while explicit destination metadata retains precedence, and each
+result records its origin. Unknown calls, roots, resources and unprojected controls remain explicit; ordinary bodies
+without a proven variant relationship are not qualified as body evaluation. Win-x64 evidence includes synthetic
+public-C-ABI regressions, pinned first-party PBR/glass defaults, two unchanged warehouse wrappers, and literal
+PreviewSurface-equivalent HDR pixels through hdSilk on an observed RTX 5070. These are partial material projections, not
+general MDL, complete warehouse shading, or BSDF execution.
 
 **Limits:** No workflow builds this configuration. It needs the MDL SDK acquisition eng/fetch-mdl-sdk.ps1 performs -- a
 roughly 276 MiB download verified against the SHA-256 in eng/mdl.lock.json -- and a user-supplied MDL SDK runtime at
@@ -803,6 +821,18 @@ Origin-zero equal windows and square pixels only; primaries and alpha associatio
 and managed-raster quotas do not bound native codec heap. Independent half-bit decoding and actual clean-feed NativeAOT
 execution cover Windows; POSIX/macOS/ARM64 encoders and full authored-product semantics are not claimed.
 
+### `bounded-authored-render-products`
+
+Shared immutable RenderProductJobPlan executes one admitted raster product with batched sampled camera/raster
+preparation, revision checks, ordered raw half4 color and/or float normalized depth, PNG display companions, bounded
+jobs and atomic generated-name publication. Session ABI6 carries exact default-inclusive purpose masks and full/preview
+material binding through the owned C ABI. Filter changes repopulate current USD imaging instead of restoring cached
+geometry; reconstruction failures remain retryable. Hidden
+color/normals/topology/ancestor/deletion/redefinition/instance cases compare real pixels with fresh current-source
+sessions on Windows D3D12/Vulkan, with MCP and package-only NativeAOT product execution on D3D12. Unit exposure, no
+active blur/DOF and unnamed working color space only; broader variables, settings, windows, other Viewer bindings and
+non-Windows execution remain unclaimed.
+
 ### `texture-residency-budgets`
 
 Bounded Silk texture cache residency: SilkTextureResidencyOptions carries independently configurable, validated nonzero
@@ -969,7 +999,9 @@ Interactive desktop inspection, playback, selection, and focused editing capabil
 | `renderer-switching` | Implemented | `win-x64`, `linux-x64` |
 | `timeline-playback` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `viewer-image-sequences` | Implemented | `win-x64` |
+| `viewer-authored-products` | Implemented | `win-x64` |
 | `review-camera-bookmarks` | Implemented | `win-x64` |
+| `viewer-completed-job-gallery` | Implemented | `win-x64` |
 | `viewer-picking` | Implemented | `win-x64`, `linux-x64` |
 | `viewer-physics` | Implemented | `win-x64`, `linux-x64` |
 | `composition-tab` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
@@ -989,15 +1021,28 @@ Timeline playback and authored timing
 
 ### `viewer-image-sequences`
 
-Owned themed image-sequence dialog with sampled authored cameras, PNG by default and optional HDR/depth sidecars. HDR
-format defaults to raw binary16 and offers explicit Windows x64 lossless EXR with unspecified working primaries and
-stored alpha association. Immutable admitted choices, bounded progress/cancellation, atomic new-directory publication
-and exact operator-state restoration precede publication. GPU display/view/look/exposure and selection affect PNG
-without changing raw HDR/depth; independent EXR decoding matches every raw half bit on CPU/GPU display paths. Failed
-transform preparation publishes no fallback HDR. Native evidence covers the D3D12 Viewer binding,
-close/reload/source-change drainage and surviving-camera-edit reconciliation. Other sequence bindings, arbitrary EXR
-product windows/metadata, metric depth and named working primaries are not claimed; native codec heap is not
-quota-certified.
+Owned themed image-sequence dialog with sampled authored cameras and atomic bounded publication. Windows D3D12 and
+Vulkan supply PNG plus optional HDR/depth; raw binary16 is the HDR default and Windows x64 EXR preserves exact half
+samples. GPU display/view/look/exposure and selection affect their PNG without changing raw HDR/depth. Exclusive capture
+leases serialize the real composition device against presentation, resizing and teardown; coordinator-driven frames
+allow close to drain. Windows native Storm child ABI9 also supplies optional HDR/depth/EXR while preserving its
+explicitly identified native viewport PNG appearance, not hdSilk exposure/OCIO/quality overrides. Storm data capture is
+limited to4096 per side and1048576 physical pixels, and HDR requires no display selection. Bottom-up native PNG and
+top-down raw planes retain their orientation; time/camera, cancellation, repeated-close, Reload and owner-close preserve
+source and view. Linux Storm AOV wiring is unverified and macOS Metal Storm remains PNG-only. The shared composition
+adapter is source-wired for Metal without native macOS execution claims. General authored output windows, metric depth
+and named working primaries remain incomplete; native codec heap is not quota-certified.
+
+### `viewer-authored-products`
+
+File-menu and command-palette authored-product dialog on Windows D3D12 and Vulkan composition bindings. Shared admission
+retains unsupported products with reasons, refuses catalogs above256, and requires an existing operator-selected output
+parent. Correlated refresh/backend/settings state, cancellation, repeated close/reload and GUI-thread capture preserve
+source and view. Product-only resources borrow the exact active graphics device under presenter/lifecycle leases,
+retained across cleanup failures and released before restoration/publication. Actual camera/time/crop and full/preview
+pixels, raw planes and EXR-window refusal execute on both backends without fallback; PNG remains a display companion.
+Metal is source-wired through the same adapter but lacks native capture proof. Storm products and general UsdRender
+semantics remain incomplete.
 
 ### `review-camera-bookmarks`
 
@@ -1009,6 +1054,18 @@ retired-document refusal are checked. Pause drains queued time/camera work, and 
 requested sample. Automatic views, changed/missing/inactive cameras, aspect/source mismatches, namespace collisions and
 malformed catalogs are refused instead of substituted. Persistent saved views are limited to the verified Windows
 text-USD review profile, not generic DCC camera editing.
+
+### `viewer-completed-job-gallery`
+
+Owned themed View results contact sheet for successful sequence and authored-product jobs. Up to16 deterministic
+endpoint-inclusive samples use original frame indices, USD times, job identity and output paths without rerendering or
+acquiring a scene/physics lease. One completed PNG at a time is checked for containment, reparse points, recorded
+length/SHA256, dimensions and valid CRC/zlib content before aspect-fit thumbnail creation. Each thumbnail is256x256
+RGBA;16retain at most4MiB of thumbnail pixels, not a whole-process or decoder-memory guarantee. No partial sheet
+survives a later invalid file. Close, new jobs, cancellation, stage Reload and Viewer close drain loading and release
+every Bitmap; late results cannot replace newer jobs. Windows D3D12 and real Vulkan sequence/product UI journeys, plus
+the full native Viewer workflow matrix, are executed. Other native platforms and persistent cross-document result
+browsing are not claimed.
 
 ### `viewer-picking`
 
@@ -1102,10 +1159,10 @@ rendering/mdl-accepted-subset-distillation.
 
 ### `mdl-sdk-module-evaluation-interchange`
 
-MDL SDK-backed material evaluation for Omniverse interchange: compiling a module the user supplies and resolving its
-parameter defaults and constant expression defaults, so a material that authors only some of its inputs still shades
-from what the module says about the rest. The rendering-side statement of the same capability is
-rendering/mdl-sdk-module-evaluation.
+MDL SDK-backed material projection for Omniverse interchange: supplied modules provide supported parameter defaults and
+constant expressions, while bounded SDK-proven PBR/glass variants also provide body constants and aliases.
+Authored-value and texture color-space precedence remain intact. The rendering-side statement of this partial capability
+is rendering/mdl-sdk-module-evaluation; complete MDL graphs and warehouse shading are not claimed.
 
 **Limits:** Real Omniverse modules such as OmniPBR.mdl are never vendored here, so this path reaches them only when the
 user supplies the modules on the configured search path; without them the module is reported as not found and the

@@ -164,6 +164,38 @@ The gate builds the current Viewer test project, restoring only after a missing-
 workflows, or `-Scenario asset-relink` for a focused run. Partial runs are identified as partial
 in the evidence rather than presented as the full registered set.
 
+The sequence and authored-product journeys default to D3D12. Pass `-CaptureRenderer Vulkan`
+with `-Scenario render-sequence,authored-product` to execute the same pixel, output, cancellation,
+reload and close assertions on a real Vulkan composition host. Configure a matching vendor ICD
+through `VK_DRIVER_FILES` when necessary; offscreen SwiftShader support alone does not establish
+compositor image sharing. These journeys reject fallback to a different renderer. The summary
+records the selected capture renderer and hashes small composition receipts containing the actual
+compositor device LUID/UUID, imported handle type, synchronization and successful presentation counts.
+
+Both journeys invoke **View results** on their real completed PNG outputs, check tile identities and
+bitmap pixels, and exercise tampered-later-file errors without a partial grid. Sequence coverage also
+includes Viewer close immediately after opening results and controlled late-load, inline-close,
+newer-job, cancellation, theme, keyboard/focus and bitmap-disposal cases for both job dialogs.
+The product journey reloads the stage with completed results open and requires the sheet's bitmaps
+to be released. These extend the existing scenario cases; they are not a separate render backend.
+
+The focused `ViewerCompletedJobPreviewTests` model class covers deterministic endpoints/order,
+one/16/17/4096-frame cases, literal aspect/alpha/row-order pixels, the exact 64-MiB encoded bound,
+recorded extents and hashes, PNG CRC/Adler checks, reparse-point refusal, cancellation and owned
+raster release. It uses completed outputs without retaining a render source. Run it after building
+the matching test graph:
+
+```powershell
+.\eng\run-managed-tests.ps1 `
+  -Project tests\OpenUsd.Viewer.Tests\OpenUsd.Viewer.Tests.csproj `
+  -Framework net10.0 -Configuration Release `
+  -TestArguments @('--treenode-filter', '/*/*/ViewerCompletedJobPreviewTests/*')
+```
+
+The shared internal completed-PNG reader also serves MCP contact sheets. Keep
+`OpenUsd.Mcp.Tests/SequenceContactSheetTests` passing when changing its verification or resampling;
+the Viewer does not depend on MCP and does not add a second contact-sheet encoder.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and
@@ -1117,7 +1149,7 @@ affinity, exact shared-stage retention, first/live-edit frames, and context-loss
 also covers 150%/200% DPI transitions, focus/input delivery, a 10,000-request bounded coalescing
 burst, concurrent render/request/resize/diagnostics/focus versus Stop, stale handles, and retryable
 Storm destroy/abandon, WGL unbind/context deletion, DC release, and `DestroyWindow` failures.
-The ABI v8 framebuffer/navigation gate rejects invalid camera sizes, modes, NaN/Inf matrices,
+The child ABI v9 framebuffer/navigation gate rejects invalid camera sizes, modes, NaN/Inf matrices,
 invalid navigation layouts, and capture before a
 frame and after destruction, reads a real
 shared-stage Storm frame, verifies dimensions/DPI and non-background pixels, proves a
@@ -1130,6 +1162,37 @@ new sequence, and focus loss clears pressed state.
 The macOS source/native gates additionally pin non-precise detents, fractional precise deltas,
 40 points per step, four-step bounds, direction inversion, sign, and magnitude. Managed tests also prove a
 disposed session rejects diagnostic capture without entering native code.
+
+The Windows `openusd_storm_child_aov_probe` CTest covers the owned child-AOV command: native
+RGBA8 presentation equality, typed top-down color/depth, exact buffer admission, refusal of a
+second live owner without partial output, and CPU get-view/release after child destruction.
+CTest puts staged shim libraries ahead of SDK directories; sequential prepend operations must
+not accidentally select an older shim that happens to exist in the SDK.
+
+`openusd_storm_child_aov_resize_probe` compiles the same native implementation into a dedicated
+test executable with hooks that are absent from the shipped library. Creator-thread resize is
+held at three exact capture boundaries: before companion rendering, before readback, and before
+RGBA allocation. Both larger and smaller viewports must leave the allocation within the admitted
+raster, return no partial output, and permit a fresh retry. The test observes the actual RGBA
+allocation size; rejecting the result only after an oversized allocation is not sufficient.
+
+`tests/OpenUsd.StormAov.NativeProbe` additionally drives the public child interface from a worker
+without a caller GL context. It covers literal 0.2/0.6/1 depth, the actual 1,048,576-pixel limit,
+native-appearance disk images, selected and failed-selection HDR refusal, invalid/cancelled
+admission, depth-only retry, context recreation and detached data after scheduler retirement.
+The package test `StormPackagesExecuteBoundedAovsFromCleanNativeAotFeed` requires those child
+markers as well as the direct Storm markers and a native-AOT executable. It uses a clean local
+package feed and rejects a managed fallback.
+Use a short physical `OPENUSD_TEST_WORK_ROOT` on Windows for that package proof. Long temporary
+roots can push nested MaterialX/shader package paths past 259 characters, causing incomplete
+NuGet extraction and misleading missing-file copy errors; do not suppress those missing assets.
+
+The canonical Viewer `render-sequence` workflow covers native Storm PNG/HDR/depth/EXR equality,
+an independent EXR decoder, asymmetric row orientation, selected-HDR refusal, cancellation,
+repeated close, Reload and owner close. Its admitted Storm fixture saves a compact window size
+in preferences so startup geometry does not silently exceed the physical-pixel AOV limit.
+These AOV execution claims are Windows-specific; Linux wiring and Metal refusal are not native
+cross-platform evidence.
 
 Windows CTest reports the WGL-only probes as capability skips only when the host lacks the required
 WGL context-creation or framebuffer extension. Context creation and incomplete-framebuffer failures

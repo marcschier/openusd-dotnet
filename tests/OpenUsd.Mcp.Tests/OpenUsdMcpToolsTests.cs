@@ -298,7 +298,9 @@ public sealed class OpenUsdMcpToolsTests
             "open_scene",
             "present_scene",
             "read_sequence_frame",
+            "read_sequence_sheet",
             "render_preview",
+            "render_product",
             "render_sequence",
             "rollback_scene",
         ];
@@ -384,6 +386,27 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(service.LastSequenceRequest!.IncludeHdrColor).IsTrue();
         await Assert.That(service.LastSequenceRequest.HdrColorFormat).IsEqualTo("exr");
 
+        CallToolResult product = await client.CallToolAsync("render_product",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["sessionId"] = "session-1",
+                    ["generation"] = 2,
+                    ["stageRevision"] = 3,
+                    ["settingsPath"] = "/Render/Settings",
+                    ["productPath"] = "/Render/Product",
+                    ["frameCount"] = 3
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(product.IsError).IsFalse();
+        await Assert.That(product.StructuredContent!.Value.GetProperty("authoredProduct")
+            .GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
+        await Assert.That(product.StructuredContent.Value.GetProperty("authoredProduct")
+            .GetProperty("outputs")[0].GetProperty("dataType").GetString()).IsEqualTo("half4");
+        await Assert.That(product.StructuredContent.Value.GetProperty("frameCount").GetInt32()).IsEqualTo(3);
+        await Assert.That(product.Content.Count).IsEqualTo(1);
+
         CallToolResult sequenceFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
             {
@@ -397,6 +420,25 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sequenceFrame.StructuredContent!.Value.GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
         await Assert.That(sequenceFrame.Content.Count).IsEqualTo(2);
         await Assert.That(sequenceFrame.Content[1]).IsTypeOf<ResourceLinkBlock>();
+
+        int[] sheetIndices = [0];
+        CallToolResult sheet = await client.CallToolAsync("read_sequence_sheet",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["jobId"] = "job-1",
+                    ["frameIndices"] = sheetIndices,
+                    ["width"] = 32,
+                    ["height"] = 16
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(sheet.IsError).IsFalse();
+        await Assert.That(sheet.StructuredContent!.Value.GetProperty("width").GetInt32()).IsEqualTo(32);
+        await Assert.That(sheet.StructuredContent.Value.GetProperty("tiles")[0]
+            .GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
+        await Assert.That(sheet.Content.Count).IsEqualTo(2);
+        await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri).IsEqualTo("openusd://artifact/sheet-0");
 
         CallToolResult hdrFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
@@ -603,6 +645,35 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
         return ValueTask.FromResult(new McpRenderSequenceResultDto(
             request.SessionId, request.Generation, request.StageRevision, "job-1",
             "session-1/renders/job-1", "session-1/renders/job-1/manifest.json", request.FrameCount, 2048, []));
+    }
+
+    public ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
+        RenderProductCaptureRequest request, CancellationToken cancellationToken)
+    {
+        LastCancellationToken = cancellationToken;
+        return ValueTask.FromResult(new McpRenderSequenceResultDto(
+            request.SessionId, request.Generation, request.StageRevision, "product-1",
+            "session-1/renders/product-1", "session-1/renders/product-1/manifest.json", request.FrameCount, 2048, [])
+        {
+            AuthoredProduct = new McpAuthoredProductDto(request.SettingsPath ?? "/Render/Settings",
+                request.ProductPath ?? "/Render/Product", request.CameraPath ?? "/Camera",
+                "raw-raster-split-planes-v1", "full",
+                [new McpProductVariableDto("/Render/Color", "color", "half4", "hdrColor")])
+        });
+    }
+
+    public ValueTask<McpSequenceSheetResultDto> ReadSequenceSheetAsync(
+        ReadSequenceSheetRequest request, CancellationToken cancellationToken)
+    {
+        LastCancellationToken = cancellationToken;
+        var descriptor = new ArtifactResourceDescriptor(
+            "sheet-0", ArtifactResourceUri.Create("sheet-0"), "image/png", 128, new string('a', 64));
+        return ValueTask.FromResult(new McpSequenceSheetResultDto(
+            "session-1", 2, 3, request.JobId, request.Width, request.Height,
+            new McpArtifactDto(descriptor.Id, descriptor.ResourceUri.AbsoluteUri,
+                descriptor.MediaType, descriptor.ByteLength, descriptor.Sha256, false),
+            [new McpSequenceSheetTileDto(0, 0, 0, 0, request.Width, request.Height)],
+            [descriptor]));
     }
 
     public ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(

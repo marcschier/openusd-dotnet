@@ -6,6 +6,48 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class McpHostConfigurationTests
 {
     [Test]
+    [Arguments(null, true)]
+    [Arguments("true", true)]
+    [Arguments("false", false)]
+    [Arguments("FALSE", false)]
+    public async Task WindowsPreviewDevicePreferencePreservesDefaultAndAllowsExplicitHardware(
+        string? configured, bool expectedWarp)
+    {
+        const string variable = "OPENUSD_MCP_USE_WARP";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, configured);
+            OpenUsdMcpApplicationOptions options = McpHostConfiguration.LoadOptions();
+            PreviewGraphicsDeviceOptions graphics = options.Graphics ?? new PreviewGraphicsDeviceOptions();
+            await Assert.That(graphics.UseWarpOnWindows).IsEqualTo(expectedWarp);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Test]
+    [Arguments("hardware")]
+    [Arguments("1")]
+    [Arguments("unknown")]
+    public async Task InvalidPreviewDevicePreferenceDoesNotSilentlySelectAnyRenderer(string configured)
+    {
+        const string variable = "OPENUSD_MCP_USE_WARP";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, configured);
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Test]
     public async Task ViewerPathDefaultsBeneathConfiguredViewerRoot()
     {
         string root = Path.Combine(

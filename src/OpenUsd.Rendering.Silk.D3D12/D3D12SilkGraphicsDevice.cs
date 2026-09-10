@@ -84,6 +84,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12Device* device,
         ID3D12CommandQueue* queue,
         ID3D12Fence* fence,
+        string adapterName,
         bool software)
     {
         _api = api;
@@ -104,7 +105,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     out descriptorIndexedTextureTablesDiagnostic);
         }
         Capabilities = new SilkGraphicsCapabilities(
-            software ? "D3D12 WARP" : "D3D12 Adapter",
+            adapterName,
             "Direct3D 12",
             SupportsCompute: true,
             IsSoftware: software)
@@ -165,6 +166,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 SilkMarshal.ThrowHResult(factory->EnumAdapters1(0, &adapter));
             }
 
+            AdapterDesc1 description;
+            SilkMarshal.ThrowHResult(adapter->GetDesc1(&description));
+            (string adapterName, bool software) = ReadAdapterIdentity(description);
+
             Guid deviceId = ID3D12Device.Guid;
             SilkMarshal.ThrowHResult(api.CreateDevice(
                 (IUnknown*)adapter,
@@ -200,7 +205,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 device,
                 queue,
                 fence,
-                useWarp);
+                adapterName,
+                software);
         }
         catch
         {
@@ -228,6 +234,17 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             dxgi.Dispose();
             throw;
         }
+    }
+
+    internal static (string Name, bool IsSoftware) ReadAdapterIdentity(AdapterDesc1 description)
+    {
+        var name = new ReadOnlySpan<char>(description.Description, 128);
+        int terminator = name.IndexOf('\0');
+        if (terminator <= 0)
+        {
+            throw new InvalidDataException("DXGI returned an empty or unterminated adapter description.");
+        }
+        return (new string(name[..terminator]), (description.Flags & (uint)AdapterFlag.Software) != 0);
     }
 
     /// <inheritdoc/>

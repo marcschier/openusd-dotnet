@@ -11,6 +11,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/renderDelegate.h"
 #include "pxr/imaging/hd/resourceRegistry.h"
+#include "pxr/base/tf/token.h"
 
 #include "sceneState.h"
 
@@ -87,11 +88,13 @@ public:
     /// `outputs:mdl:surface`, which is how Omniverse-authored stages that never
     /// got a preview context are written, reaches this delegate at all instead
     /// of arriving with no surface terminal and being drawn as a default.
+    TfToken GetMaterialBindingPurpose() const override;
     TfTokenVector GetMaterialRenderContexts() const override;
 
     HdRenderParam* GetRenderParam() const override;
 
-    static uint64_t BeginSceneStateCapture();
+    static uint64_t BeginSceneStateCapture(
+        const std::shared_ptr<HdSilkSceneState>& existingState = {});
     static void PublishSceneStateForActiveCapture(
         const std::shared_ptr<HdSilkSceneState>& sceneState);
     static std::shared_ptr<HdSilkSceneState> EndSceneStateCapture(uint64_t token);

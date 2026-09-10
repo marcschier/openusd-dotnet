@@ -1,0 +1,4 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+// Deliberate compiler-error fixture; a found file is not MODULE_NOT_FOUND.
+mdl 1.7;
+export material invalid_module() = missing_material_constructor();

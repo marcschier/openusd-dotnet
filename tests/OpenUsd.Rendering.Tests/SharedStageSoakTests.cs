@@ -63,7 +63,7 @@ public sealed class SharedStageSoakTests
         await Assert.That(json).Contains("\"sourceHash\": \"SOURCE\"");
         await Assert.That(json).Contains($"\"dataAbi\": {OpenUsdNativeContract.AbiVersion}");
         await Assert.That(json).Contains($"\"stormAbi\": {RenderNativeAbiVersions.StormAbi}");
-        await Assert.That(json).Contains("\"silkSessionAbi\": 5");
+        await Assert.That(json).Contains($"\"silkSessionAbi\": {RenderNativeAbiVersions.SilkSessionAbi}");
         await Assert.That(json).Contains("\"silkPageAbi\": 23");
         await Assert.That(json).Contains("\"expectedFinalMeshes\"");
         await Assert.That(json).Contains("\"actualFinalDisplayColor\"");

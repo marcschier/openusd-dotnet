@@ -85,6 +85,7 @@ if(NOT EXISTS "${_openusd_test_prefix}/lib/usd")
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/hierarchy_probe.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/warehouse_audit_probe.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/property_inspection_probe.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/tests/render_deferred_probe.cmake")
 openusd_add_render_deferred_probes("${_openusd_test_prefix}")

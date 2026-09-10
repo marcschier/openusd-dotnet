@@ -11,7 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'MacOsNativeValidation.Common.ps1')
-$requiredStormChildAbiVersion = 8
+$requiredStormChildAbiVersion = 9
 
 if (-not $IsMacOS)
 {
@@ -56,7 +56,8 @@ foreach ($requiredExport in @(
     'openusd_storm_child_set_selection',
     'openusd_storm_child_set_transform_overrides',
     'openusd_storm_child_get_navigation_input',
-    'openusd_storm_child_capture_framebuffer'))
+    'openusd_storm_child_capture_framebuffer',
+    'openusd_storm_child_capture_aovs'))
 {
     if ($requiredExports -notcontains $requiredExport)
     {

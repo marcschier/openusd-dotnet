@@ -365,6 +365,7 @@ itself lives under `src/` and is documented in [Live authoring](docs/live-author
 | [Rendering](docs/rendering.md) | Renderer-neutral contracts, Storm, hdSilk, picking, and selection |
 | [Viewer](docs/viewer.md) | Desktop workflows, camera controls, editing, and diagnostics |
 | [MCP server](docs/mcp.md) | .NET tool install, Copilot CLI setup, bounded tools, security, and RID bundles |
+| [SimReady Warehouse](docs/simready-warehouse.md) | Verified data, rendering, and physics progress |
 | [Samples](samples/README.md) | Runnable data API and live-authoring examples |
 | [Native build](docs/native-build.md) | Locked OpenUSD inputs, toolchains, and native probes |
 | [Packaging](docs/packaging.md) | Runtime asset layout and clean package consumers |

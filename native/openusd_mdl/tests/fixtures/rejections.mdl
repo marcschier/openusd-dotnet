@@ -1,0 +1,33 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+mdl 1.7;
+import ::df::*;
+import ::state::*;
+
+export material unrelated(
+    color diffuse_color_constant = color(0.9, 0.8, 0.7),
+    float reflection_roughness_constant = 0.15) =
+    material(surface: material_surface(scattering:
+        df::diffuse_reflection_bsdf(
+            tint: diffuse_color_constant, roughness: reflection_roughness_constant)));
+
+export material unknown_root(*) = unrelated(
+    diffuse_color_constant: color(0.7, 0.6, 0.5));
+
+export material unsupported_body() = material(
+    surface: material_surface(scattering: df::diffuse_reflection_bsdf()));
+
+export material sparse_defaults(
+    float caller_level,
+    color diffuse_color_constant = color(0.42),
+    float reflection_roughness_constant = caller_level) = material(
+        surface: material_surface(scattering:
+            df::diffuse_reflection_bsdf(
+                tint: diffuse_color_constant, roughness: reflection_roughness_constant)));
+
+export material constructor_defaults(
+    float caller_level = 0.3,
+    color diffuse_color_constant = color(caller_level),
+    float reflection_roughness_constant = 0.2) = material(
+        surface: material_surface(scattering:
+            df::diffuse_reflection_bsdf(
+                tint: diffuse_color_constant, roughness: reflection_roughness_constant)));

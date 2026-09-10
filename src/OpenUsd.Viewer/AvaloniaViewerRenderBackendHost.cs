@@ -490,6 +490,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             {
                 BackendKind = kind,
                 ManagerControlsDeviceLoss = true,
+                AutoContinueRendering = false,
                 PresenterFactory = () =>
                 {
                     resources = resourceFactory(initialState);
@@ -605,7 +606,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 meshRenderer,
                 device,
                 renderer,
-                device.Capabilities);
+                device.Capabilities,
+                () => OpenUsdSilkRuntime.Create(pluginPath, source));
         }
         catch
         {
@@ -637,7 +639,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     "Vulkan composition device",
                     "Vulkan",
                     SupportsCompute: true,
-                    IsSoftware: false));
+                    IsSoftware: false),
+                () => OpenUsdSilkRuntime.Create(pluginPath, source));
         }
         catch
         {
@@ -673,7 +676,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     IsSoftware: false)
                 {
                     SupportsDescriptorIndexedTextureTables = true
-                });
+                },
+                () => OpenUsdSilkRuntime.Create(pluginPath, source));
         }
         catch
         {
@@ -1045,7 +1049,7 @@ internal sealed class StormHostedBackendSession(
         ]);
 }
 
-internal sealed class StormNativeHostedBackendSession(
+internal sealed partial class StormNativeHostedBackendSession(
     RendererSwitchingViewport viewportHost,
     StormNativeControlHost control,
     StageRenderState initialState,
@@ -1055,7 +1059,8 @@ internal sealed class StormNativeHostedBackendSession(
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerPhysicsOverrideTarget,
-    IViewerFrameCaptureBackend
+    IViewerFrameCaptureBackend,
+    IViewerRenderSequenceCaptureBackend
 {
     private StageRenderState _state = initialState;
     private SelectionState? _appliedSelection;
@@ -1314,7 +1319,8 @@ internal sealed partial class CompositionHostedBackendSession(
     private int _disposed;
 
     public bool SupportsFrameCapture =>
-        Volatile.Read(ref _disposed) == 0 && resources.Device is ISilkGraphicsDevice;
+        Volatile.Read(ref _disposed) == 0 &&
+        resources.CaptureDevice is not null;
 
     public bool SupportsPhysicsTransformOverrides => resources.Renderer.PhysicsStage is not null;
 
@@ -1488,7 +1494,7 @@ internal sealed partial class CompositionHostedBackendSession(
         CancellationToken cancellationToken) =>
         resources.Renderer.PickAsync(request, cancellationToken);
 
-    public ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
+    public async ValueTask<ViewerFrameCaptureResult> CaptureFrameAsync(
         int width,
         int height,
         CancellationToken cancellationToken)
@@ -1496,10 +1502,21 @@ internal sealed partial class CompositionHostedBackendSession(
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         _ = ViewerFrameCaptureResult.GetByteCount(width, height);
-        if (resources.Device is not ISilkGraphicsDevice device)
+        using IDisposable ownership = await control.AcquireCaptureAsync(cancellationToken);
+        return await Dispatcher.UIThread.InvokeAsync(
+            () => CaptureFrameCore(width, height, cancellationToken),
+            DispatcherPriority.Normal, cancellationToken);
+    }
+
+    private ViewerFrameCaptureResult CaptureFrameCore(
+        int width, int height, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (resources.CaptureDevice is not { } device)
         {
             throw new NotSupportedException(
-                "Frame capture is available only for hdSilk backends with a managed graphics device.");
+                "The active composition renderer has no live graphics device available for readback.");
         }
 
         // The presentation renderer synchronizes this session on every presented frame, and Sync
@@ -1523,8 +1540,8 @@ internal sealed partial class CompositionHostedBackendSession(
                     CurrentState.RenderSettings,
                     CurrentState.Time.TimeCode,
                     CurrentState.Camera);
-        return ValueTask.FromResult(new ViewerFrameCaptureResult(
-            capture.Width, capture.Height, capture.Rgba, ViewerFrameRowOrder.TopDown, capture.Diagnostics));
+        return new ViewerFrameCaptureResult(
+            capture.Width, capture.Height, capture.Rgba, ViewerFrameRowOrder.TopDown, capture.Diagnostics);
     }
 
     public async ValueTask DisposeAsync()
@@ -1535,6 +1552,8 @@ internal sealed partial class CompositionHostedBackendSession(
         }
         try
         {
+            await Dispatcher.UIThread.InvokeAsync(_productResources.Dispose);
+            await control.WaitForPresentationIdleAsync().ConfigureAwait(false);
             await control.DisposeAsync().ConfigureAwait(false);
             resources.Dispose();
             await Dispatcher.UIThread.InvokeAsync(() => viewportHost.Detach(control));
@@ -2032,7 +2051,8 @@ internal sealed class SilkCompositionResources(
     SilkMeshRenderer? meshRenderer,
     IDisposable? device,
     ISilkStagePresentationRenderer renderer,
-    SilkGraphicsCapabilities capabilities) : IDisposable
+    SilkGraphicsCapabilities capabilities,
+    Func<OpenUsdSilkSession> productSessionFactory) : IDisposable
 {
     private IDisposable? _device = device;
     private SilkMeshRenderer? _meshRenderer = meshRenderer;
@@ -2045,11 +2065,16 @@ internal sealed class SilkCompositionResources(
 
     internal SilkGraphicsCapabilities Capabilities { get; } = capabilities;
 
+    internal OpenUsdSilkSession CreateProductSession() => productSessionFactory();
+
     internal OpenUsdSilkSession Session =>
         Volatile.Read(ref _session) ??
         throw new ObjectDisposedException(nameof(SilkCompositionResources));
 
     internal IDisposable? Device => Volatile.Read(ref _device);
+
+    internal ISilkGraphicsDevice? CaptureDevice =>
+        (Renderer.RetainedRenderer as SilkMeshRenderer)?.CaptureDevice;
 
     public void Dispose()
     {

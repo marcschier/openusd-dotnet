@@ -57,7 +57,7 @@ internal sealed class RenderSequenceRequest : SceneRevisionRequestBase
 internal sealed class ReadSequenceFrameRequest
 {
     [JsonPropertyName("jobId"), Required, MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description("Exact completed job identifier returned by render_sequence in this MCP process.")]
+    [Description("Exact completed job identifier returned by render_sequence or render_product in this MCP process.")]
     public required string JobId { get; init; }
 
     [JsonPropertyName("frameIndex"), Range(0, 4095)]
@@ -88,6 +88,9 @@ internal sealed record McpRenderSequenceResultDto(
     [Description("Bounded human-readable completion summary.")]
     public string Summary =>
         $"Rendered {FrameCount} PNG frames to {OutputDirectory}; {TotalBytes} bytes including the manifest.";
+
+    [Description("Optional authored-product selection and exact variable bindings; null for viewport sequences.")]
+    public McpAuthoredProductDto? AuthoredProduct { get; init; }
 }
 
 internal sealed record McpSequenceFrameResultDto(
@@ -118,4 +121,7 @@ internal sealed record McpSequenceFrameResultDto(
 
     [Description("HDR container: 'raw' or 'exr', or null when no HDR plane was captured.")]
     public string? HdrColorFormat { get; init; }
+
+    [Description("Original authored-product selection and bindings, independent of later scene edits.")]
+    public McpAuthoredProductDto? AuthoredProduct { get; init; }
 }

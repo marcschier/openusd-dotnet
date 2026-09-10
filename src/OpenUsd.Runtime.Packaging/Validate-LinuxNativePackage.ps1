@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'LinuxStormChildTopology.ps1')
 
 $allowedRunpathEntries = @('$ORIGIN')
-$requiredStormChildAbiVersion = 8
+$requiredStormChildAbiVersion = 9
 
 if (-not $IsLinux)
 {
@@ -133,7 +133,8 @@ $requiredExports = @(
     'openusd_storm_child_set_selection',
     'openusd_storm_child_set_transform_overrides',
     'openusd_storm_child_get_navigation_input',
-    'openusd_storm_child_capture_framebuffer')
+    'openusd_storm_child_capture_framebuffer',
+    'openusd_storm_child_capture_aovs')
 foreach ($export in $requiredExports)
 {
     if (-not ($symbols | Where-Object { $_ -match "\s$([regex]::Escape($export))$" }))
@@ -178,5 +179,5 @@ New-Item -ItemType Directory -Force -Path (
 $evidence | ConvertTo-Json -Depth 4 | Set-Content $EvidencePath -Encoding utf8NoBOM
 Write-Output (
     "Validated Linux package ELF inputs: ABI $stormChildAbiVersion, " +
-    "DT_SONAME $script:OpenUsdStormChildSoname, exact ABI-8 link topology, " +
+    "DT_SONAME $script:OpenUsdStormChildSoname, exact ABI-9 link topology, " +
     'dispatcher/picking/selection/navigation/capture exports, and exact DT_RUNPATH [$ORIGIN].')

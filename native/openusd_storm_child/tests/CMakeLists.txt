@@ -156,12 +156,51 @@ if(UNIX AND NOT APPLE)
             ${STORM_CHILD_PROBE_ARGUMENTS})
 endif()
 if(WIN32)
+    add_executable(openusd_storm_child_aov_probe storm_child_aov_probe.cpp)
+    target_compile_features(openusd_storm_child_aov_probe PRIVATE cxx_std_17)
+    target_compile_options(openusd_storm_child_aov_probe PRIVATE /W4 /WX /permissive- /EHsc)
+    target_include_directories(openusd_storm_child_aov_probe PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_dotnet/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_hydra/include)
+    target_link_libraries(openusd_storm_child_aov_probe PRIVATE
+        openusd_storm_child openusd_hydra openusd_dotnet user32)
+    add_dependencies(openusd_storm_child_aov_probe
+        openusd_storm_child_probe_runtime openusd_storm_child_probe_native_runtime)
+    add_test(NAME openusd_storm_child_aov_probe
+        COMMAND openusd_storm_child_aov_probe ${STORM_CHILD_PROBE_ARGUMENTS})
+    set_tests_properties(openusd_storm_child_aov_probe PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:${pxr_DIR}/bin;PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR}")
+    add_executable(openusd_storm_child_aov_resize_probe
+        storm_child_aov_resize_probe.cpp
+        ../src/openusd_storm_child.cpp)
+    target_compile_features(openusd_storm_child_aov_resize_probe PRIVATE cxx_std_17)
+    target_compile_definitions(openusd_storm_child_aov_resize_probe PRIVATE
+        OPENUSD_STORM_CHILD_BUILD OPENUSD_STORM_CHILD_AOV_TEST_HOOKS)
+    target_compile_options(openusd_storm_child_aov_resize_probe PRIVATE /W4 /WX /permissive- /EHsc)
+    target_include_directories(openusd_storm_child_aov_resize_probe PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../private
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_dotnet/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_hydra/include)
+    target_link_libraries(openusd_storm_child_aov_resize_probe PRIVATE
+        openusd_hydra openusd_dotnet opengl32 gdi32 user32)
+    add_dependencies(openusd_storm_child_aov_resize_probe
+        openusd_storm_child_probe_runtime openusd_storm_child_probe_native_runtime)
+    add_test(NAME openusd_storm_child_aov_resize_probe
+        COMMAND openusd_storm_child_aov_resize_probe ${STORM_CHILD_PROBE_ARGUMENTS})
+    set_tests_properties(openusd_storm_child_aov_resize_probe PROPERTIES
+        TIMEOUT 120
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:${pxr_DIR}/bin;PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR}")
     set_tests_properties(
         openusd_storm_child_probe
         PROPERTIES
             SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
-                "PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR};PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${pxr_DIR}/bin")
+                "PATH=path_list_prepend:${pxr_DIR}/bin;PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR}")
 elseif(UNIX AND NOT APPLE)
     set_tests_properties(
         openusd_storm_child_probe
@@ -169,7 +208,7 @@ elseif(UNIX AND NOT APPLE)
         PROPERTIES
             SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
-                "LD_LIBRARY_PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR};LD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
+                "LD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib;LD_LIBRARY_PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR}")
     # Installed for the same reason as macOS: a run that consumes a verified archive has
     # no build tree, so CTest cannot report the probe's capability skip. Without the
     # installed probe the Linux switching gate has no way to learn that the host cannot
@@ -184,7 +223,7 @@ elseif(APPLE)
         PROPERTIES
             SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
-                "DYLD_LIBRARY_PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR};DYLD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
+                "DYLD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib;DYLD_LIBRARY_PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR}")
     install(
         TARGETS openusd_storm_child_probe
         RUNTIME DESTINATION bin)

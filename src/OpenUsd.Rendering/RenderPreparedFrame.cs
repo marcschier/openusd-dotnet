@@ -12,7 +12,8 @@ public sealed class RenderPreparedFrame : IUsdDetachedResult
         UsdGeomCameraState sampledCamera,
         double timeCode,
         CameraState camera,
-        RenderProductFraming framing)
+        RenderProductFraming framing,
+        RenderCameraFrameSettings? cameraSettings = null)
     {
         Request = request;
         SampledCamera = sampledCamera;
@@ -22,6 +23,7 @@ public sealed class RenderPreparedFrame : IUsdDetachedResult
         DataWindowMinX = framing.DataWindowMinX;
         DataWindowMinY = framing.DataWindowMinY;
         PixelAspectRatio = framing.PixelAspectRatio;
+        CameraSettings = cameraSettings;
     }
 
     /// <summary>Gets the request, including output variables and settings still to be honored by an adapter.</summary>
@@ -29,6 +31,9 @@ public sealed class RenderPreparedFrame : IUsdDetachedResult
 
     /// <summary>Gets the unmodified sampled camera optics, including focus and aperture information.</summary>
     public UsdGeomCameraState SampledCamera { get; }
+
+    /// <summary>Gets sampled shutter/exposure inputs, or null for geometry-only preparation.</summary>
+    public RenderCameraFrameSettings? CameraSettings { get; }
 
     /// <summary>Gets the numeric USD time code of this frame.</summary>
     public double TimeCode { get; }

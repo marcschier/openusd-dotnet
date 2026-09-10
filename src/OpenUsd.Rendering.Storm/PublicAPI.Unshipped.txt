@@ -1,4 +1,11 @@
 #nullable enable
+OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture
+OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture.Aovs.get -> OpenUsd.Rendering.Storm.StormAovSnapshot!
+OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture.CreateJobImage(bool includeDeviceDepth = false, bool includeHdrColor = false, long maximumManagedBytes = 67108864, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.RenderJobImage!
+OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture.Framebuffer.get -> OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture
+OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture.ManagedStorageUpperBound.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture.NativeWorkingBytesUpperBound.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.RenderAovs(OpenUsd.Rendering.Storm.StormAovRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Storm.OpenUsdStormChildAovCapture!
 const OpenUsd.Rendering.Storm.StormAovLimits.MaximumDimension = 4096 -> int
 const OpenUsd.Rendering.Storm.StormAovLimits.MaximumIdentities = 4096 -> int
 const OpenUsd.Rendering.Storm.StormAovLimits.MaximumInstanceContexts = 16384 -> int
@@ -417,6 +424,7 @@ OpenUsd.Rendering.Storm.StormAovSnapshot.AppliedCamera.get -> OpenUsd.Rendering.
 OpenUsd.Rendering.Storm.StormAovSnapshot.CallerSceneRevision.get -> ulong?
 OpenUsd.Rendering.Storm.StormAovSnapshot.CallerStateRevision.get -> ulong
 OpenUsd.Rendering.Storm.StormAovSnapshot.CaptureSequence.get -> ulong
+OpenUsd.Rendering.Storm.StormAovSnapshot.CreateJobImage(bool includeDeviceDepth = false, bool includeHdrColor = false, OpenUsd.Rendering.RenderOutputTransform outputTransform = OpenUsd.Rendering.RenderOutputTransform.Identity, float exposure = 0, long maximumManagedBytes = 67108864, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.RenderJobImage!
 OpenUsd.Rendering.Storm.StormAovSnapshot.GetOutput(OpenUsd.Rendering.Storm.StormAovKind kind) -> OpenUsd.Rendering.Storm.StormAovOutput!
 OpenUsd.Rendering.Storm.StormAovSnapshot.GetOutput<TPixel>(OpenUsd.Rendering.Storm.StormAovKind kind) -> OpenUsd.Rendering.Storm.StormAovOutput<TPixel>!
 OpenUsd.Rendering.Storm.StormAovSnapshot.Height.get -> int

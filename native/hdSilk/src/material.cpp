@@ -16,6 +16,9 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/usd/sdf/assetPath.h"
+#include "pxr/usd/usdShade/connectableAPI.h"
+#include "pxr/usd/usdShade/material.h"
+#include "pxr/usd/usdShade/shader.h"
 
 #include <algorithm>
 #include <atomic>
@@ -30,6 +33,86 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 namespace {
+bool _TryReadFloat(const UsdShadeInput& input, float* value)
+{
+    if (!input || input.HasConnectedSource())
+    {
+        return false;
+    }
+
+    if (float direct = 0.0f; input.Get(&direct))
+    {
+        *value = direct;
+        return true;
+    }
+    if (double wide = 0.0; input.Get(&wide) && std::isfinite(wide))
+    {
+        *value = static_cast<float>(wide);
+        return true;
+    }
+    if (int integer = 0; input.Get(&integer))
+    {
+        *value = static_cast<float>(integer);
+        return true;
+    }
+    if (bool boolean = false; input.Get(&boolean))
+    {
+        *value = boolean ? 1.0f : 0.0f;
+        return true;
+    }
+    return false;
+}
+
+bool _TryReadVec3(const UsdShadeInput& input, float (&value)[3])
+{
+    if (!input || input.HasConnectedSource())
+    {
+        return false;
+    }
+
+    if (GfVec3f direct(0.0f); input.Get(&direct))
+    {
+        value[0] = direct[0];
+        value[1] = direct[1];
+        value[2] = direct[2];
+        return true;
+    }
+    if (GfVec3d wide(0.0); input.Get(&wide) &&
+        std::isfinite(wide[0]) && std::isfinite(wide[1]) && std::isfinite(wide[2]))
+    {
+        value[0] = static_cast<float>(wide[0]);
+        value[1] = static_cast<float>(wide[1]);
+        value[2] = static_cast<float>(wide[2]);
+        return true;
+    }
+    return false;
+}
+
+void _AppendScalar(
+    HdSilkMaterialRecord* record,
+    uint32_t parameter,
+    float value)
+{
+    HdSilkMaterialScalar scalar;
+    scalar.parameter = parameter;
+    scalar.componentCount = 1;
+    scalar.value[0] = value;
+    record->scalars.push_back(scalar);
+}
+
+void _AppendColor3(
+    HdSilkMaterialRecord* record,
+    uint32_t parameter,
+    const float (&value)[3])
+{
+    HdSilkMaterialScalar scalar;
+    scalar.parameter = parameter;
+    scalar.componentCount = 3;
+    scalar.value[0] = value[0];
+    scalar.value[1] = value[1];
+    scalar.value[2] = value[2];
+    record->scalars.push_back(scalar);
+}
 
 // Counts ND_surface_unlit generation failures. The surface kind no longer
 // records one -- a failure keeps OPENUSD_SILK_SURFACE_MATERIALX_GENERATED with an

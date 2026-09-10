@@ -320,7 +320,11 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnRendererStatusChanged(object? sender, string status)
     {
-        Dispatcher.UIThread.Post(() => RendererStatus.Text = status);
+        Dispatcher.UIThread.Post(() =>
+        {
+            RendererStatus.Text = status;
+            UpdateCaptureAvailability();
+        });
     }
 
     private void OnCompositionStatusChanged(string status) =>
@@ -3067,11 +3071,7 @@ public sealed partial class MainWindow : Window, IDisposable
         BackfaceCullingCheckBox.IsEnabled = enabled;
         SceneMaterialsCheckBox.IsEnabled = enabled;
         BackgroundColorSelector.IsEnabled = enabled;
-        CaptureFrameMenuItem.IsEnabled =
-            enabled && !_workspaceCaptureBusy && _coordinator is { CanCaptureFrame: true };
-        RenderImageSequenceMenuItem.IsEnabled = enabled && !_workspaceCaptureBusy &&
-            _coordinator is { CurrentState.Viewport: { Width: > 0, Height: > 0 } };
-        UpdateRenderSequenceContext();
+        UpdateCaptureAvailability();
         bool hydraRefreshEnabled = ViewerDeveloperTabGate.IsReachable(
             HydraSceneTab.IsVisible, _coordinator is not null && !_documentBusy);
         RefreshHydraSceneButton.IsEnabled = hydraRefreshEnabled;
@@ -3700,6 +3700,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
         await CloseSavedViewsAsync();
         await CloseRenderSequenceAsync();
+        await CloseAuthoredRenderProductAsync();
         await _documentGate.WaitAsync(cancellationToken);
         try
         {
@@ -4221,6 +4222,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         await CloseSavedViewsAsync();
         await CloseRenderSequenceAsync();
+        await CloseAuthoredRenderProductAsync();
         await StopReviewRecoveryAsync();
         await RemoveRetiringRecoveryAsync();
         if (_hostCallbacks is { } callbacks)
@@ -6550,6 +6552,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ReloadStageMenuItem.IsEnabled = false;
         CaptureFrameMenuItem.IsEnabled = false;
         RenderImageSequenceMenuItem.IsEnabled = false;
+        RenderAuthoredProductMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         RenderStageCameraMenu();
         StageHierarchy.ItemsSource = null;
@@ -8590,6 +8593,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        // OwnerWindowOnly lets this handler drain owned work before any child can veto the close.
         if (ViewerStartupOptions.SharedStageSoak)
         {
             _shutdownComplete = true;
@@ -8607,6 +8611,7 @@ public sealed partial class MainWindow : Window, IDisposable
         _closeDecisionPending = true;
         await CloseSavedViewsAsync();
         await CloseRenderSequenceAsync();
+        await CloseAuthoredRenderProductAsync();
         bool admitted = false;
         await _documentGate.WaitAsync();
         try

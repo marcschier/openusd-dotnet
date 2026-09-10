@@ -61,10 +61,7 @@ internal sealed partial class OpenUsdMcpService
         {
             WorkspaceSessionSnapshot snapshot = await GetSnapshotAsync(
                 request.ToRevisionRequest(), cancellationToken).ConfigureAwait(false);
-            if (_publishedDiskJobs >= MaximumDiskJobs || _publishedDiskBytes >= MaximumDiskJobBytes)
-            {
-                throw new WorkspaceQuotaExceededException("The MCP process has exhausted its 8-job/4-GiB disk quota.");
-            }
+            RequireDiskJobCapacity();
             var revision = new WorkspaceSessionRevision(
                 request.SessionId, request.Generation, request.StageRevision);
             var frames = new StageRenderState[request.FrameCount];
@@ -113,14 +110,7 @@ internal sealed partial class OpenUsdMcpService
                 throw new OpenUsdMcpFailureException(
                     OpenUsdMcpErrorCodes.RenderFailure, "Image-sequence rendering failed.", exception);
             }
-            _publishedDiskJobs++;
-            _publishedDiskBytes += result.TotalBytes;
-            _sequences.Add(id, new CompletedSequence(revision, result));
-            string relative = Path.GetRelativePath(options.OutputRoot, result.OutputDirectory).Replace('\\', '/');
-            return new McpRenderSequenceResultDto(
-                request.SessionId, request.Generation, request.StageRevision, id, relative,
-                relative + "/manifest.json", result.Frames.Count, result.TotalBytes,
-                Array.AsReadOnly(result.Diagnostics.Select(ToDiagnostic).ToArray()));
+            return RegisterCompletedSequence(revision, id, result);
         }
         finally
         {
@@ -230,7 +220,8 @@ internal sealed partial class OpenUsdMcpService
             {
                 DeviceDepth = depth is null ? null : ToArtifact(depth),
                 HdrColor = hdr is null ? null : ToArtifact(hdr),
-                HdrColorFormat = hdr is null ? null : frame.HdrColorFormat == RenderHdrColorFormat.Exr ? "exr" : "raw"
+                HdrColorFormat = hdr is null ? null : frame.HdrColorFormat == RenderHdrColorFormat.Exr ? "exr" : "raw",
+                AuthoredProduct = sequence.AuthoredProduct
             };
         }
         finally
@@ -251,5 +242,30 @@ internal sealed partial class OpenUsdMcpService
         }
     }
 
-    private sealed record CompletedSequence(WorkspaceSessionRevision Revision, RenderDiskJobResult Result);
+    private void RequireDiskJobCapacity()
+    {
+        if (_publishedDiskJobs >= MaximumDiskJobs || _publishedDiskBytes >= MaximumDiskJobBytes)
+        {
+            throw new WorkspaceQuotaExceededException("The MCP process has exhausted its 8-job/4-GiB disk quota.");
+        }
+    }
+
+    private McpRenderSequenceResultDto RegisterCompletedSequence(
+        WorkspaceSessionRevision revision, string id, RenderDiskJobResult result,
+        McpAuthoredProductDto? authoredProduct = null)
+    {
+        _publishedDiskJobs++;
+        _publishedDiskBytes += result.TotalBytes;
+        _sequences.Add(id, new CompletedSequence(revision, result, authoredProduct));
+        string relative = Path.GetRelativePath(options.OutputRoot, result.OutputDirectory).Replace('\\', '/');
+        return new McpRenderSequenceResultDto(revision.SessionId, revision.Generation, revision.StageRevision,
+            id, relative, relative + "/manifest.json", result.Frames.Count, result.TotalBytes,
+            Array.AsReadOnly(result.Diagnostics.Select(ToDiagnostic).ToArray()))
+        {
+            AuthoredProduct = authoredProduct
+        };
+    }
+
+    private sealed record CompletedSequence(
+        WorkspaceSessionRevision Revision, RenderDiskJobResult Result, McpAuthoredProductDto? AuthoredProduct);
 }

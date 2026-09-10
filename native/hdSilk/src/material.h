@@ -10,7 +10,6 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/material.h"
-
 #include <memory>
 
 PXR_NAMESPACE_OPEN_SCOPE

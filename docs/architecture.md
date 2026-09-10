@@ -226,22 +226,35 @@ flowchart LR
 
 ### Storm
 
-The direct Storm adapter calls `openusd_hydra` ABI 6. Creation, rendering, picking, selection, and
+The direct Storm adapter calls `openusd_hydra` ABI 9. Creation, rendering, picking, selection, and
 destruction remain on the creating OpenGL owner thread and context.
 
-The Viewer uses `openusd_storm_child` ABI 8 to host a native child window and a dedicated render
+The Viewer uses `openusd_storm_child` ABI 9 to host a native child window and a dedicated render
 thread. The child owns its context and prioritized command queue. Frame requests may be coalesced,
 while synchronous lifecycle, picking, input, diagnostics, and teardown commands retain explicit
 ordering. The child creates Storm from a lease on the exact scheduler stage.
+
+Child AOV capture owns one synchronous command containing the copied request. On its original
+render thread it obtains typed AOVs and native viewport RGBA8 for the same time/camera, refusing
+intervening stage changes. CPU-only AOV ownership transfers once and is released after bounded
+managed decoding. The native framebuffer is never chosen by the caller. Selection, resize and
+disposal share the session gate; selected or uncertain color cannot be exported as pre-selection HDR.
+Windows execution is verified; Linux is source-wired and Metal Storm AOV capture remains unsupported.
 
 Both paths use the shared 528-byte naturally aligned camera struct. Storm picking uses caller-owned
 buffers, and selection crosses the ABI once as a packed update.
 
 ### Hydra to Silk
 
-`openusd_hdsilk` session ABI 5 registers the hdSilk Hydra plugin against the exact retained stage.
+`openusd_hdsilk` session ABI 6 registers the hdSilk Hydra plugin against the exact retained stage.
 Each sync returns a native-owned immutable page. Managed code validates page ABI 23, copies the page
 bytes once, and releases the native page.
+
+Session and page versions are checked before creating a managed session. The version-1 scene-ingestion
+request carries explicit purposes, a single material-binding purpose, complexity and draw mode.
+Filter changes repopulate USD imaging from the retained stage while preserving the owned delta
+stream; unchanged requests retain incremental synchronization. Failed reconstruction remains
+retryable and never falls back to cached geometry or scene-authored output commands.
 
 The wire format is pointer-free and little-endian. Commands currently describe the frame,
 triangulated mesh upserts, mesh removals, material upserts, and material removals. Paths are

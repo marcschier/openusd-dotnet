@@ -13,7 +13,8 @@ internal static unsafe class StormAovDecoder
     internal const ulong MinimumManagedStorage = 8192;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    internal static StormAovSnapshot Decode(in StormAovNative.View view, StormAovRequest request)
+    internal static StormAovSnapshot Decode(
+        in StormAovNative.View view, StormAovRequest request, bool hasDisplaySelection = true)
     {
         ArgumentNullException.ThrowIfNull(request);
         ulong managedBytes = Validate(in view, request);
@@ -50,7 +51,8 @@ internal static unsafe class StormAovDecoder
         }
         uint[] identityIndices = view.IdentityIndexCount == 0
             ? [] : new ReadOnlySpan<uint>(view.IdentityIndices, (int)view.IdentityIndexCount).ToArray();
-        return new StormAovSnapshot(in view, outputs, identities, contexts, identityIndices, managedBytes);
+        return new StormAovSnapshot(
+            in view, outputs, identities, contexts, identityIndices, managedBytes, hasDisplaySelection);
     }
 
     internal static ulong Validate(in StormAovNative.View view, StormAovRequest request)

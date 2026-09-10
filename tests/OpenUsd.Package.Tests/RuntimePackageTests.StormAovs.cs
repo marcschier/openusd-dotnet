@@ -80,6 +80,9 @@ public sealed partial class RuntimePackageTests
             string probe = Path.Combine(repositoryRoot, "tests", "OpenUsd.StormAov.NativeProbe");
             File.Copy(Path.Combine(probe, "Program.cs"), Path.Combine(consumer, "Program.cs"));
             File.Copy(Path.Combine(probe, "WindowsContext.cs"), Path.Combine(consumer, "WindowsContext.cs"));
+            File.Copy(Path.Combine(probe, "StormChildAovProbe.cs"), Path.Combine(consumer, "StormChildAovProbe.cs"));
+            File.Copy(Path.Combine(repositoryRoot, "tests", "OpenUsd.Exr.NativeProbe", "ExrScanlineOracle.cs"),
+                Path.Combine(consumer, "ExrScanlineOracle.cs"));
             File.Copy(Path.Combine(repositoryRoot, "native", "openusd_hydra", "tests", "storm_aov_planes.usda"),
                 Path.Combine(consumer, "storm_aov_planes.usda"));
             string publishRoot = Path.Combine(consumer, "publish");
@@ -98,6 +101,15 @@ public sealed partial class RuntimePackageTests
             await Assert.That(execution.Output).Contains("PUBLIC_AOV_MANAGED_NATIVE_EXECUTION=passed");
             await Assert.That(execution.Output).Contains("PUBLIC_AOV_PACKAGE_ONLY=passed");
             await Assert.That(execution.Output).Contains("PUBLIC_AOV_NATIVE_AOT=true");
+            await Assert.That(execution.Output).Contains("PUBLIC_AOV_JOB_IMAGE=passed");
+            await Assert.That(execution.Output).Contains("PUBLIC_AOV_JOB_EXR=passed");
+            await Assert.That(execution.Output).Contains("PUBLIC_AOV_JOB_EXACT_LIMIT=1048576");
+            await Assert.That(execution.Output).Contains("PUBLIC_AOV_JOB_SELECTION_REFUSAL=passed");
+            await Assert.That(execution.Output).Contains("PUBLIC_CHILD_AOV_CAPTURE=passed");
+            await Assert.That(execution.Output).Contains("PUBLIC_CHILD_AOV_SELECTION_REFUSAL=passed");
+            await Assert.That(execution.Output).Contains("PUBLIC_CHILD_AOV_DETACHED_OWNER=passed");
+            await Assert.That(execution.Output).Contains("PUBLIC_CHILD_AOV_EXACT_LIMIT=1048576");
+            await Assert.That(execution.Output).Contains("PUBLIC_CHILD_AOV_REFUSAL_RECOVERY=passed");
             await AssertNoSourcePathLeakageAsync(execution.Output, repositoryRoot);
             Console.WriteLine(execution.Output);
         }

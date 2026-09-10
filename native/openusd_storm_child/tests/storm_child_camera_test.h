@@ -12,7 +12,7 @@
 
 namespace openusd_storm_child_camera_test
 {
-static_assert(OPENUSD_STORM_CHILD_ABI_VERSION == 8);
+static_assert(OPENUSD_STORM_CHILD_ABI_VERSION == 9);
 static_assert(OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION == 2);
 static_assert(sizeof(openusd_storm_child_navigation_input) == 104);
 static_assert(

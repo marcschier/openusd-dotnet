@@ -59,15 +59,18 @@ public sealed class StormAovCamera
 /// Native capture sequence and applied matrices describe the actual capture.
 /// The explicitly named caller revisions are opaque claims, not observed USD change serials.
 /// </remarks>
-public sealed class StormAovSnapshot
+public sealed partial class StormAovSnapshot
 {
+    private readonly bool _hasDisplaySelection;
+
     internal unsafe StormAovSnapshot(
         in StormAovNative.View view,
         StormAovOutput[] outputs,
         StormAovIdentity[] identities,
         StormAovInstanceContext[] contexts,
         uint[] identityIndices,
-        ulong managedStorageUpperBound)
+        ulong managedStorageUpperBound,
+        bool hasDisplaySelection = true)
     {
         Width = (int)view.Width;
         Height = (int)view.Height;
@@ -81,6 +84,7 @@ public sealed class StormAovSnapshot
         NativeWorkingBytesUpperBound = view.AdmittedWorkingBytes;
         NativeRetainedScratchUpperBound = view.RetainedScratchUpperBoundBytes;
         ManagedStorageUpperBound = managedStorageUpperBound;
+        _hasDisplaySelection = hasDisplaySelection;
         Outputs = new OwnedReadOnlyList<StormAovOutput>(outputs);
         AppliedCamera = new StormAovCamera(in view.AppliedCamera);
         IdentityStatus = view.IdentityStatus;

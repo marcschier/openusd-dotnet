@@ -101,10 +101,16 @@ internal static class ViewerRenderSequenceRunner
         Func<StageRenderState, CancellationToken, ValueTask<ViewerFrameCaptureResult>> capture,
         Func<ValueTask> restore,
         Action<ViewerRenderSequenceProgress> progress,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        Action<RenderProductJobPlan, CancellationToken>? validateProduct = null) =>
         Task.Factory.StartNew(
             () => RenderDiskJob.Execute(
-                request, new FrameSource(capture, restore, progress, request.Frames.Count), cancellationToken),
+                request, new FrameSource(
+                    capture,
+                    restore,
+                    progress,
+                    request.Frames.Count,
+                    validateProduct), cancellationToken),
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
@@ -113,9 +119,16 @@ internal static class ViewerRenderSequenceRunner
         Func<StageRenderState, CancellationToken, ValueTask<ViewerFrameCaptureResult>> capture,
         Func<ValueTask> restore,
         Action<ViewerRenderSequenceProgress> progress,
-        int totalFrames) : IRenderJobFrameSource
+        int totalFrames,
+        Action<RenderProductJobPlan, CancellationToken>? validateProduct) : IRenderProductFrameSource
     {
         private int _completed;
+
+        public void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(plan);
+            validateProduct?.Invoke(plan, cancellationToken);
+        }
 
         public RenderJobImage Render(StageRenderState state, CancellationToken cancellationToken)
         {

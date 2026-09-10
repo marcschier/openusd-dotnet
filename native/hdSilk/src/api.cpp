@@ -6,12 +6,14 @@
 
 #include "renderDelegate.h"
 #include "mesh.h"
+#include "material.h"
 
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec4d.h"
+#include "pxr/imaging/hd/material.h"
 #include "pxr/imaging/hio/fieldTextureData.h"
 #include "pxr/imaging/hio/types.h"
 #include "pxr/base/plug/plugin.h"
@@ -19,18 +21,30 @@
 #include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/imaging/cameraUtil/conformWindow.h"
+#include "pxr/imaging/hd/renderSettingsSchema.h"
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/prim.h"
+#include "pxr/usd/usdShade/materialBindingAPI.h"
 #include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usdGeom/imageable.h"
+#include "pxr/usd/usdGeom/basisCurves.h"
+#include "pxr/usd/usdGeom/boundable.h"
+#include "pxr/usd/usdGeom/gprim.h"
+#include "pxr/usd/usdGeom/pointInstancer.h"
+#include "pxr/usd/usdGeom/points.h"
 #include "pxr/usd/usd/primRange.h"
+#include "pxr/usd/usdShade/tokens.h"
+#include "pxr/usd/usdShade/material.h"
 #include "pxr/usd/usdGeom/xformCache.h"
 #include "pxr/usd/usdVol/openVDBAsset.h"
 #include "pxr/usd/usdVol/volume.h"
+#include "pxr/usdImaging/usdImaging/materialParamUtils.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 #include "pxr/usdImaging/usdImagingGL/renderParams.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
@@ -49,13 +63,38 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+struct SilkSessionState;
+
 namespace
 {
+constexpr uint32_t SceneIngestionRequestVersion = OPENUSD_SILK_SCENE_INGESTION_VERSION;
+constexpr uint32_t LegacyViewportPurposeMask =
+    OPENUSD_GEOM_PURPOSE_MASK_DEFAULT |
+    OPENUSD_GEOM_PURPOSE_MASK_PROXY |
+    OPENUSD_GEOM_PURPOSE_MASK_RENDER;
+
 const TfToken& SilkRendererPluginId()
 {
     static const TfToken id("HdSilkRendererPlugin");
     return id;
 }
+
+struct SilkSceneIngestionState
+{
+    uint32_t includedPurposeMask = LegacyViewportPurposeMask;
+    std::string materialBindingPurpose;
+
+    bool operator==(const SilkSceneIngestionState& other) const
+    {
+        return includedPurposeMask == other.includedPurposeMask &&
+            materialBindingPurpose == other.materialBindingPurpose;
+    }
+
+    bool operator!=(const SilkSceneIngestionState& other) const
+    {
+        return !(*this == other);
+    }
+};
 
 UsdImagingGLDrawMode MapDrawMode(uint32_t drawMode)
 {
@@ -112,6 +151,111 @@ float MapMeshRefinementComplexity(uint32_t complexity)
         return 1.0F;
     }
 }
+
+TfTokenVector MakeIncludedPurposeTokens(uint32_t purposeMask)
+{
+    TfTokenVector purposes;
+    purposes.reserve(4);
+    if ((purposeMask & OPENUSD_GEOM_PURPOSE_MASK_DEFAULT) != 0)
+    {
+        purposes.push_back(UsdGeomTokens->default_);
+    }
+    if ((purposeMask & OPENUSD_GEOM_PURPOSE_MASK_PROXY) != 0)
+    {
+        purposes.push_back(UsdGeomTokens->proxy);
+    }
+    if ((purposeMask & OPENUSD_GEOM_PURPOSE_MASK_RENDER) != 0)
+    {
+        purposes.push_back(UsdGeomTokens->render);
+    }
+    if ((purposeMask & OPENUSD_GEOM_PURPOSE_MASK_GUIDE) != 0)
+    {
+        purposes.push_back(UsdGeomTokens->guide);
+    }
+    return purposes;
+}
+
+bool HasWhitespace(std::string_view value)
+{
+    for (const unsigned char ch : value)
+    {
+        if (std::isspace(ch) != 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IncludesPurpose(uint32_t purposeMask, const TfToken& purpose)
+{
+    if (purpose == UsdGeomTokens->default_)
+    {
+        return (purposeMask & OPENUSD_GEOM_PURPOSE_MASK_DEFAULT) != 0;
+    }
+    if (purpose == UsdGeomTokens->proxy)
+    {
+        return (purposeMask & OPENUSD_GEOM_PURPOSE_MASK_PROXY) != 0;
+    }
+    if (purpose == UsdGeomTokens->render)
+    {
+        return (purposeMask & OPENUSD_GEOM_PURPOSE_MASK_RENDER) != 0;
+    }
+    if (purpose == UsdGeomTokens->guide)
+    {
+        return (purposeMask & OPENUSD_GEOM_PURPOSE_MASK_GUIDE) != 0;
+    }
+    return false;
+}
+
+void ApplyRequestedSceneIngestionState(
+    SilkSessionState* state,
+    const SilkSceneIngestionState& ingestionState);
+std::string ResolveAuthoritativeMaterialPath(
+    const UsdPrim& prim,
+    const TfToken& materialPurpose);
+void EnsureResolvedBoundMaterialsPresent(
+    SilkSessionState* state,
+    const TfToken& materialPurpose,
+    UsdTimeCode time);
+void ReapplyResolvedMeshMaterialPaths(
+    SilkSessionState* state,
+    const TfToken& materialPurpose);
+
+bool IsSceneSyncFailpoint(const char* name) noexcept
+{
+#if !defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+    static_cast<void>(name);
+    return false;
+#elif defined(_WIN32)
+    char* value = nullptr;
+    size_t value_size = 0;
+    if (_dupenv_s(
+            &value,
+            &value_size,
+            "OPENUSD_HDSILK_SCENE_SYNC_FAILPOINT") != 0)
+    {
+        return false;
+    }
+
+    const bool matches = value != nullptr && std::strcmp(value, name) == 0;
+    std::free(value);
+    return matches;
+#else
+    const char* value = std::getenv("OPENUSD_HDSILK_SCENE_SYNC_FAILPOINT");
+    return value != nullptr && std::strcmp(value, name) == 0;
+#endif
+}
+
+void ThrowIfSceneSyncFailpoint(const char* name)
+{
+    if (IsSceneSyncFailpoint(name))
+    {
+        throw std::runtime_error(
+            std::string("The hdSilk scene-ingestion sync failpoint fired: ") +
+            name + '.');
+    }
+}
 }
 
 struct SilkSessionState
@@ -120,6 +264,7 @@ struct SilkSessionState
     UsdStageRefPtr stage;
     std::unique_ptr<UsdImagingGLEngine> engine;
     std::shared_ptr<HdSilkSceneState> sceneState;
+    SilkSceneIngestionState ingestionState;
     std::vector<std::string> volumeProxyPaths;
     std::vector<std::string> volumeMaterialPaths;
     mutable std::mutex mutex;
@@ -127,6 +272,7 @@ struct SilkSessionState
     std::condition_variable lifetime_changed;
     size_t in_flight = 0;
     bool closing = false;
+    bool sceneSyncRecoveryPending = false;
     std::string name;
 };
 
@@ -136,6 +282,141 @@ struct openusd_silk_page
     uint64_t revision = 0;
     uint32_t command_count = 0;
 };
+
+namespace
+{
+void ApplyRequestedSceneIngestionState(
+    SilkSessionState* state,
+    const SilkSceneIngestionState& ingestionState)
+{
+    state->engine->SetRendererSetting(
+        HdRenderSettingsSchemaTokens->includedPurposes,
+        VtValue(MakeIncludedPurposeTokens(ingestionState.includedPurposeMask)));
+    VtArray<TfToken> materialBindingPurposes;
+    materialBindingPurposes.push_back(
+        ingestionState.materialBindingPurpose.empty()
+            ? UsdShadeTokens->allPurpose
+            : TfToken(ingestionState.materialBindingPurpose));
+    state->engine->SetRendererSetting(
+        HdRenderSettingsSchemaTokens->materialBindingPurposes,
+        VtValue(materialBindingPurposes));
+    state->sceneState->SetMaterialBindingPurpose(
+        ingestionState.materialBindingPurpose);
+}
+
+std::string ResolveAuthoritativeMaterialPath(
+    const UsdPrim& prim,
+    const TfToken& materialPurpose)
+{
+    const UsdShadeMaterial material =
+        UsdShadeMaterialBindingAPI(prim).ComputeBoundMaterial(materialPurpose);
+    if (material)
+    {
+        return material.GetPath().GetString();
+    }
+    if (materialPurpose != UsdShadeTokens->allPurpose)
+    {
+        return std::string();
+    }
+
+    static const TfToken directBinding("material:binding");
+    for (UsdPrim current = prim; current; current = current.GetParent())
+    {
+        const UsdRelationship relationship = current.GetRelationship(directBinding);
+        if (!relationship)
+        {
+            continue;
+        }
+
+        SdfPathVector targets;
+        if (relationship.GetTargets(&targets) && !targets.empty())
+        {
+            return targets.front().GetString();
+        }
+    }
+
+    return std::string();
+}
+
+HdSilkMaterialRecord ResolveStageMaterialRecord(
+    const UsdShadeMaterial& material,
+    UsdTimeCode time)
+{
+    HdSilkMaterialRecord record;
+    if (!material)
+    {
+        return record;
+    }
+
+    static const TfTokenVector renderContexts = { TfToken(), TfToken("mdl") };
+    TfToken terminalName;
+    UsdShadeAttributeType sourceType = UsdShadeAttributeType::Invalid;
+    const UsdShadeShader shader =
+        material.ComputeSurfaceSource(
+            renderContexts,
+            &terminalName,
+            &sourceType);
+    if (!shader || sourceType == UsdShadeAttributeType::Invalid)
+    {
+        record.path = material.GetPath().GetString();
+        record.surfaceKind = OPENUSD_SILK_SURFACE_UNSUPPORTED;
+        return record;
+    }
+
+    HdMaterialNetworkMap networkMap;
+    static const TfTokenVector shaderSourceTypes = { TfToken() };
+    UsdImagingBuildHdMaterialNetworkFromTerminal(
+        shader.GetPrim(),
+        terminalName,
+        shaderSourceTypes,
+        renderContexts,
+        &networkMap,
+        time);
+
+    return HdSilkMaterial::Resolve(
+        material.GetPath(),
+        networkMap);
+}
+
+void EnsureResolvedBoundMaterialsPresent(
+    SilkSessionState* state,
+    const TfToken& materialPurpose,
+    UsdTimeCode time)
+{
+    for (const UsdPrim& prim : state->stage->Traverse())
+    {
+        const std::string materialPath =
+            ResolveAuthoritativeMaterialPath(prim, materialPurpose);
+        if (materialPath.empty() || state->sceneState->HasMaterial(materialPath))
+        {
+            continue;
+        }
+
+        const UsdShadeMaterial material(
+            state->stage->GetPrimAtPath(SdfPath(materialPath)));
+        if (!material)
+        {
+            continue;
+        }
+
+        state->sceneState->ReplaceMaterial(
+            ResolveStageMaterialRecord(material, time));
+    }
+}
+
+void ReapplyResolvedMeshMaterialPaths(
+    SilkSessionState* state,
+    const TfToken& materialPurpose)
+{
+    for (const UsdPrim& prim : state->stage->Traverse())
+    {
+        state->sceneState->SetMeshMaterialPath(
+            prim.GetPath().GetString(),
+            ResolveAuthoritativeMaterialPath(prim, materialPurpose));
+    }
+}
+
+}
 
 namespace
 {
@@ -468,8 +749,9 @@ private:
 class SceneStateCaptureGuard final
 {
 public:
-    SceneStateCaptureGuard()
-        : _token(HdSilkRenderDelegate::BeginSceneStateCapture())
+    explicit SceneStateCaptureGuard(
+        const std::shared_ptr<HdSilkSceneState>& existingState = {})
+        : _token(HdSilkRenderDelegate::BeginSceneStateCapture(existingState))
     {
     }
 
@@ -852,14 +1134,18 @@ void PublishVolumeProxy(
     state->volumeMaterialPaths.push_back(materialPath);
 }
 
-void PublishVolumes(SilkSessionState* state, UsdTimeCode time)
+void PublishVolumes(
+    SilkSessionState* state,
+    UsdTimeCode time,
+    uint32_t includedPurposeMask)
 {
     RetirePreviousVolumes(state);
     UsdGeomXformCache xformCache(time);
     for (const UsdPrim& prim : state->stage->Traverse())
     {
         const UsdVolVolume volume(prim);
-        if (!volume)
+        if (!volume || !IncludesPurpose(
+                includedPurposeMask, UsdGeomImageable(prim).ComputePurpose()))
         {
             continue;
         }
@@ -903,6 +1189,328 @@ openusd_status CopyString(
 
     std::memcpy(buffer, value.c_str(), *required);
     return OPENUSD_STATUS_OK;
+}
+
+openusd_status DecodeSceneIngestionRequest(
+    const openusd_silk_scene_ingestion_request* request,
+    SilkSceneIngestionState* ingestionState,
+    uint32_t* complexity,
+    uint32_t* drawMode,
+    openusd_error_buffer* error)
+{
+    if (request == nullptr || ingestionState == nullptr ||
+        complexity == nullptr || drawMode == nullptr)
+    {
+        WriteError(error, "A valid hdSilk scene-ingestion request is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (request->struct_size < sizeof(openusd_silk_scene_ingestion_request) ||
+        request->version != SceneIngestionRequestVersion)
+    {
+        WriteError(error, "The hdSilk scene-ingestion request version is unsupported.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if ((request->included_purpose_mask & ~OPENUSD_GEOM_PURPOSE_MASK_ALL) != 0 ||
+        (request->included_purpose_mask & OPENUSD_GEOM_PURPOSE_MASK_DEFAULT) == 0)
+    {
+        WriteError(
+            error,
+            "hdSilk currently requires default purpose and supports only the standard purpose mask bits.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (request->complexity > OPENUSD_SILK_COMPLEXITY_VERY_HIGH)
+    {
+        WriteError(error, "A valid hdSilk complexity level is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (request->draw_mode > OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME)
+    {
+        WriteError(error, "A valid hdSilk draw mode is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (request->material_binding_purpose == nullptr)
+    {
+        WriteError(error, "A material-binding purpose token is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    size_t tokenLength = 0;
+    while (tokenLength <= 128 && request->material_binding_purpose[tokenLength] != '\0')
+    {
+        ++tokenLength;
+    }
+    if (tokenLength > 128)
+    {
+        WriteError(error, "The explicit hdSilk material-binding purpose exceeds 128 bytes.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    const std::string materialBindingPurpose(request->material_binding_purpose, tokenLength);
+    if (materialBindingPurpose.size() > 128 || HasWhitespace(materialBindingPurpose))
+    {
+        WriteError(
+            error,
+            "The explicit hdSilk material-binding purpose must be the exact token 'full' or 'preview'.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (materialBindingPurpose != "full" &&
+        materialBindingPurpose != "preview")
+    {
+        WriteError(
+            error,
+            "Explicit hdSilk scene ingestion currently supports only the exact material-binding purposes 'full' and 'preview'.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    ingestionState->includedPurposeMask = request->included_purpose_mask;
+    ingestionState->materialBindingPurpose = materialBindingPurpose;
+    *complexity = request->complexity;
+    *drawMode = request->draw_mode;
+    return OPENUSD_STATUS_OK;
+}
+
+openusd_status RebuildSceneImagingEngine(
+    SilkSessionState* state,
+    openusd_error_buffer* error)
+{
+    // Rebuild USD imaging, not geometry. Keep the owned delta stream and its
+    // overrides while Hydra repopulates current topology, primvars and instances.
+    state->engine.reset();
+    state->sceneState->ResetForSceneIngestionChange();
+    ThrowIfSceneSyncFailpoint("after-engine-reset");
+    TfErrorMark mark;
+    SceneStateCaptureGuard capture(state->sceneState);
+    UsdImagingGLEngine::Parameters parameters;
+    parameters.rendererPluginId = SilkRendererPluginId();
+    parameters.gpuEnabled = false;
+    auto engine = std::make_unique<UsdImagingGLEngine>(parameters);
+    engine->SetEnablePresentation(false);
+    ThrowIfSceneSyncFailpoint("after-engine-create");
+    const std::shared_ptr<HdSilkSceneState> captured = capture.Take();
+    if (engine->GetCurrentRendererId() != SilkRendererPluginId() ||
+        captured != state->sceneState)
+    {
+        WriteError(error, "Hydra did not reconstruct the owned hdSilk scene delegate.");
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    if (!mark.IsClean())
+    {
+        WriteError(error, ConsumeErrors(mark));
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    state->engine = std::move(engine);
+    return OPENUSD_STATUS_OK;
+}
+
+openusd_status SyncSessionWithSceneIngestionState(
+    SilkSessionState* state,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    const SilkSceneIngestionState& ingestionState,
+    uint32_t complexity,
+    uint32_t draw_mode,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error)
+{
+    const bool reapplyRequested =
+        !state->engine ||
+        state->sceneSyncRecoveryPending ||
+        state->ingestionState != ingestionState;
+    const bool purposeMaskChanged =
+        reapplyRequested ||
+        state->ingestionState.includedPurposeMask !=
+        ingestionState.includedPurposeMask;
+    const bool materialBindingPurposeChanged =
+        reapplyRequested ||
+        state->ingestionState.materialBindingPurpose !=
+        ingestionState.materialBindingPurpose;
+    const TfToken materialPurpose =
+        ingestionState.materialBindingPurpose.empty()
+            ? UsdShadeTokens->allPurpose
+            : TfToken(ingestionState.materialBindingPurpose);
+    try
+    {
+        if (reapplyRequested)
+        {
+            const openusd_status rebuildStatus = RebuildSceneImagingEngine(state, error);
+            if (rebuildStatus != OPENUSD_STATUS_OK)
+            {
+                state->sceneSyncRecoveryPending = true;
+                return rebuildStatus;
+            }
+        }
+        ApplyRequestedSceneIngestionState(state, ingestionState);
+        if (materialBindingPurposeChanged)
+        {
+            ReapplyResolvedMeshMaterialPaths(state, materialPurpose);
+            state->sceneState->NoteMaterialBindingPurposeChanged();
+        }
+        ThrowIfSceneSyncFailpoint("after-configure");
+
+        GfMatrix4d viewMatrix(1.0);
+        GfMatrix4d projectionMatrix(1.0);
+        if (camera->mode == OPENUSD_RENDER_CAMERA_MODE_AUTO)
+        {
+            viewMatrix.SetLookAt(
+                GfVec3d(4.0, 3.0, 4.0),
+                GfVec3d(0.0, 0.0, 0.0),
+                GfVec3d(0.0, 1.0, 0.0));
+            GfFrustum frustum;
+            frustum.SetPerspective(
+                45.0,
+                static_cast<double>(width) / static_cast<double>(height),
+                0.1,
+                1000.0);
+            projectionMatrix = frustum.ComputeProjectionMatrix();
+        }
+        else
+        {
+            openusd_render_camera_detail::AssignRowMajor(
+                camera->view,
+                viewMatrix);
+            openusd_render_camera_detail::AssignRowMajor(
+                camera->projection,
+                projectionMatrix);
+        }
+
+        state->engine->SetCameraState(
+            viewMatrix, projectionMatrix);
+        state->engine->SetRenderBufferSize(GfVec2i(width, height));
+
+        const GfMatrix4d conformedProjection = CameraUtilConformedWindow(
+            projectionMatrix,
+            CameraUtilFit,
+            static_cast<double>(width) / static_cast<double>(height));
+
+        auto renderCurrentScene = [&]() -> openusd_status
+        {
+            TfErrorMark mark;
+            UsdImagingGLRenderParams parameters;
+            parameters.frame = UsdTimeCode(time_code);
+            parameters.showProxy =
+                (ingestionState.includedPurposeMask & OPENUSD_GEOM_PURPOSE_MASK_PROXY) != 0;
+            parameters.showRender =
+                (ingestionState.includedPurposeMask & OPENUSD_GEOM_PURPOSE_MASK_RENDER) != 0;
+            parameters.showGuides =
+                (ingestionState.includedPurposeMask & OPENUSD_GEOM_PURPOSE_MASK_GUIDE) != 0;
+            parameters.drawMode = MapDrawMode(draw_mode);
+            parameters.complexity = MapMeshRefinementComplexity(complexity);
+            parameters.cullStyle =
+                UsdImagingGLCullStyle::CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED;
+            parameters.clipPlanes.reserve(camera->clip_plane_count);
+            for (uint32_t plane = 0; plane < camera->clip_plane_count; ++plane)
+            {
+                parameters.clipPlanes.emplace_back(
+                    camera->clip_planes[plane][0],
+                    camera->clip_planes[plane][1],
+                    camera->clip_planes[plane][2],
+                    camera->clip_planes[plane][3]);
+            }
+            state->sceneState->SetComplexity(complexity);
+            state->sceneState->SetDrawMode(draw_mode);
+            HdSilkBeginUsdSkelEvaluation(
+                state->sceneState.get(),
+                state->stage,
+                UsdTimeCode(time_code));
+            try
+            {
+                state->engine->Render(state->stage->GetPseudoRoot(), parameters);
+            }
+            catch (...)
+            {
+                HdSilkEndUsdSkelEvaluation(state->sceneState.get());
+                throw;
+            }
+            HdSilkEndUsdSkelEvaluation(state->sceneState.get());
+            if (!mark.IsClean())
+            {
+                state->sceneSyncRecoveryPending = true;
+                WriteError(error, ConsumeErrors(mark));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            ThrowIfSceneSyncFailpoint("after-render");
+            return OPENUSD_STATUS_OK;
+        };
+
+        const openusd_status initialRenderStatus = renderCurrentScene();
+        if (initialRenderStatus != OPENUSD_STATUS_OK)
+        {
+            return initialRenderStatus;
+        }
+
+        if (materialBindingPurposeChanged)
+        {
+            EnsureResolvedBoundMaterialsPresent(
+                state,
+                materialPurpose,
+                UsdTimeCode(time_code));
+            ReapplyResolvedMeshMaterialPaths(state, materialPurpose);
+        }
+        if (purposeMaskChanged)
+        {
+            ReapplyResolvedMeshMaterialPaths(state, materialPurpose);
+        }
+
+        HdSilkFrameState frame;
+        frame.width = width;
+        frame.height = height;
+        HdSilkFlattenMatrix(conformedProjection, frame.projectionMatrix);
+        if (camera->mode == OPENUSD_RENDER_CAMERA_MODE_MATRICES)
+        {
+            std::memcpy(
+                frame.viewMatrix,
+                camera->view,
+                sizeof(frame.viewMatrix));
+        }
+        else
+        {
+            HdSilkFlattenMatrix(viewMatrix, frame.viewMatrix);
+        }
+        frame.clipPlaneCount = camera->clip_plane_count;
+        std::memcpy(
+            frame.clipPlanes,
+            camera->clip_planes,
+            sizeof(frame.clipPlanes));
+        state->sceneState->SetFrame(frame);
+        PublishVolumes(state, UsdTimeCode(time_code), ingestionState.includedPurposeMask);
+        for (const UsdPrim& prim : state->stage->Traverse())
+        {
+            const UsdGeomImageable imageable(prim);
+            if (imageable && !IncludesPurpose(
+                    ingestionState.includedPurposeMask, imageable.ComputePurpose()))
+            {
+                state->sceneState->RemoveMesh(prim.GetPath().GetString());
+            }
+        }
+        ThrowIfSceneSyncFailpoint("before-build-page");
+
+        auto result = std::make_unique<openusd_silk_page>();
+        result->data =
+            state->sceneState->BuildPage(&result->revision, &result->command_count);
+
+        view->struct_size = sizeof(openusd_silk_page_view);
+        view->abi_version = OPENUSD_SILK_PAGE_ABI_VERSION;
+        view->revision = result->revision;
+        view->data = result->data.empty() ? nullptr : result->data.data();
+        view->data_size = result->data.size();
+        view->command_count = result->command_count;
+
+        const size_t live =
+            g_live_page_count.fetch_add(1, std::memory_order_relaxed) + 1;
+        UpdatePeak(g_peak_page_count, live);
+        *page = result.release();
+        state->ingestionState = ingestionState;
+        state->sceneSyncRecoveryPending = false;
+        return OPENUSD_STATUS_OK;
+    }
+    catch (...)
+    {
+        HdSilkEndUsdSkelEvaluation(state->sceneState.get());
+        state->sceneSyncRecoveryPending = true;
+        throw;
+    }
 }
 
 struct SilkInitializationContext
@@ -1030,6 +1638,18 @@ openusd_status openusd_silk_session_create(
         StageReleaseGuard stage_guard(stage);
         return openusd_silk_session_create_from_stage(plugin_path, stage, session, error);
     });
+}
+
+extern "C" OPENUSD_HDSILK_API uint32_t
+openusd_silk_get_session_abi_version(void) noexcept
+{
+    return OPENUSD_SILK_SESSION_ABI_VERSION;
+}
+
+extern "C" OPENUSD_HDSILK_API uint32_t
+openusd_silk_get_page_abi_version(void) noexcept
+{
+    return OPENUSD_SILK_PAGE_ABI_VERSION;
 }
 
 openusd_status openusd_silk_session_create_from_stage(
@@ -1240,7 +1860,9 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
     }
     if (page == nullptr || view == nullptr)
     {
-        WriteError(error, "A valid session, page, and view outputs are required.");
+        WriteError(
+            error,
+            "A valid session, page, and view outputs are required.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
 
@@ -1250,15 +1872,92 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
         WriteError(error, camera_error);
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    if (complexity > OPENUSD_SILK_COMPLEXITY_VERY_HIGH)
+
+    return Guard(error, [&]()
     {
-        WriteError(error, "A valid hdSilk complexity level is required.");
+        const std::shared_ptr<SilkSessionState> state =
+            AcquireSessionOperation(session, error);
+        if (!state)
+        {
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->stage_core == nullptr || !state->stage ||
+            !state->sceneState ||
+            width <= 0 || height <= 0 ||
+            view->struct_size < sizeof(openusd_silk_page_view))
+        {
+            WriteError(
+                error,
+                "A valid session, positive viewport size, and page/view outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return WithStageAccess(state->stage_core, error, [&](openusd_stage_access*)
+        {
+            const SilkSceneIngestionState legacyIngestionState
+            {
+                LegacyViewportPurposeMask,
+                ""
+            };
+            return SyncSessionWithSceneIngestionState(
+                state.get(),
+                width,
+                height,
+                time_code,
+                camera,
+                legacyIngestionState,
+                complexity,
+                draw_mode,
+                page,
+                view,
+                error);
+        });
+    });
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_session_sync_with_scene_ingestion(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    const openusd_silk_scene_ingestion_request* request,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error)
+{
+    if (page != nullptr)
+    {
+        *page = nullptr;
+    }
+    if (page == nullptr || view == nullptr || request == nullptr)
+    {
+        WriteError(
+            error,
+            "A valid session, scene-ingestion request, page, and view outputs are required.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    if (draw_mode > OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME)
+
+    std::string camera_error;
+    if (!openusd_render_camera_detail::Validate(camera, camera_error))
     {
-        WriteError(error, "A valid hdSilk draw mode is required.");
+        WriteError(error, camera_error);
         return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    SilkSceneIngestionState ingestionState;
+    uint32_t complexity = OPENUSD_SILK_COMPLEXITY_LOW;
+    uint32_t draw_mode = OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED;
+    const openusd_status requestStatus = DecodeSceneIngestionRequest(
+        request,
+        &ingestionState,
+        &complexity,
+        &draw_mode,
+        error);
+    if (requestStatus != OPENUSD_STATUS_OK)
+    {
+        return requestStatus;
     }
     return Guard(error, [&]()
     {
@@ -1271,7 +1970,7 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
         SessionOperationGuard operation(state);
         std::lock_guard<std::mutex> lock(state->mutex);
         if (state->stage_core == nullptr || !state->stage ||
-            !state->engine || !state->sceneState ||
+            !state->sceneState ||
             width <= 0 || height <= 0 ||
             view->struct_size < sizeof(openusd_silk_page_view))
         {
@@ -1282,139 +1981,18 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
         }
         return WithStageAccess(state->stage_core, error, [&](openusd_stage_access*)
         {
-            TfErrorMark mark;
-
-            GfMatrix4d viewMatrix(1.0);
-            GfMatrix4d projectionMatrix(1.0);
-            if (camera->mode == OPENUSD_RENDER_CAMERA_MODE_AUTO)
-            {
-                viewMatrix.SetLookAt(
-                    GfVec3d(4.0, 3.0, 4.0),
-                    GfVec3d(0.0, 0.0, 0.0),
-                    GfVec3d(0.0, 1.0, 0.0));
-                GfFrustum frustum;
-                frustum.SetPerspective(
-                    45.0,
-                    static_cast<double>(width) / static_cast<double>(height),
-                    0.1,
-                    1000.0);
-                projectionMatrix = frustum.ComputeProjectionMatrix();
-            }
-            else
-            {
-                openusd_render_camera_detail::AssignRowMajor(
-                    camera->view,
-                    viewMatrix);
-                openusd_render_camera_detail::AssignRowMajor(
-                    camera->projection,
-                    projectionMatrix);
-            }
-
-            state->engine->SetCameraState(
-                viewMatrix, projectionMatrix);
-            state->engine->SetRenderBufferSize(GfVec2i(width, height));
-
-            // Storm reaches Hydra through UsdImagingGLEngine, whose free camera
-            // conforms the projection to the render buffer aspect with
-            // CameraUtilFit. Publishing the caller's raw matrix here instead made
-            // hdSilk render the same stage at a different scale from Storm on any
-            // non-square viewport: the parity harness measured hdSilk covering
-            // 1.24-1.27x Storm on every scene, exactly the 160x128 aspect, and a
-            // square viewport compared byte-identical. Conform the published
-            // matrix the same way so both renderers agree.
-            const GfMatrix4d conformedProjection = CameraUtilConformedWindow(
-                projectionMatrix,
-                CameraUtilFit,
-                static_cast<double>(width) / static_cast<double>(height));
-
-            UsdImagingGLRenderParams parameters;
-            parameters.frame = UsdTimeCode(time_code);
-            parameters.showRender = true;
-            parameters.drawMode = MapDrawMode(draw_mode);
-            // Complexity drives mesh subdivision through UsdImaging's display
-            // style refine level rather than through a private channel, so a
-            // refined prim reaches hdSilk's Rprim Sync exactly as it reaches
-            // Storm's. Curve and point tessellation density stays a scene-state
-            // transform applied when the page is built.
-            parameters.complexity = MapMeshRefinementComplexity(complexity);
-            // UsdImagingGLRenderParams defaults cullStyle to CULL_STYLE_NOTHING,
-            // which UsdImaging reports as the per-prim fallback because USD gprims
-            // author doubleSided rather than a Hydra cull style. That made hdSilk
-            // resolve HdCullStyleNothing for every mesh and never cull, while the
-            // Storm reference culls single-sided back faces. Declare the usdview
-            // default explicitly so authored doubleSided is honored.
-            parameters.cullStyle =
-                UsdImagingGLCullStyle::CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED;
-            parameters.clipPlanes.reserve(camera->clip_plane_count);
-            for (uint32_t plane = 0; plane < camera->clip_plane_count; ++plane)
-            {
-                parameters.clipPlanes.emplace_back(
-                    camera->clip_planes[plane][0],
-                    camera->clip_planes[plane][1],
-                    camera->clip_planes[plane][2],
-                    camera->clip_planes[plane][3]);
-            }
-            state->sceneState->SetComplexity(complexity);
-            state->sceneState->SetDrawMode(draw_mode);
-            HdSilkBeginUsdSkelEvaluation(
-                state->sceneState.get(),
-                state->stage,
-                UsdTimeCode(time_code));
-            try
-            {
-                state->engine->Render(state->stage->GetPseudoRoot(), parameters);
-            }
-            catch (...)
-            {
-                HdSilkEndUsdSkelEvaluation(state->sceneState.get());
-                throw;
-            }
-            HdSilkEndUsdSkelEvaluation(state->sceneState.get());
-            if (!mark.IsClean())
-            {
-                WriteError(error, ConsumeErrors(mark));
-                return OPENUSD_STATUS_NATIVE_ERROR;
-            }
-
-            HdSilkFrameState frame;
-            frame.width = width;
-            frame.height = height;
-            HdSilkFlattenMatrix(conformedProjection, frame.projectionMatrix);
-            if (camera->mode == OPENUSD_RENDER_CAMERA_MODE_MATRICES)
-            {
-                std::memcpy(
-                    frame.viewMatrix,
-                    camera->view,
-                    sizeof(frame.viewMatrix));
-            }
-            else
-            {
-                HdSilkFlattenMatrix(viewMatrix, frame.viewMatrix);
-            }
-            frame.clipPlaneCount = camera->clip_plane_count;
-            std::memcpy(
-                frame.clipPlanes,
-                camera->clip_planes,
-                sizeof(frame.clipPlanes));
-            state->sceneState->SetFrame(frame);
-            PublishVolumes(state.get(), UsdTimeCode(time_code));
-
-            auto result = std::make_unique<openusd_silk_page>();
-            result->data =
-                state->sceneState->BuildPage(&result->revision, &result->command_count);
-
-            view->struct_size = sizeof(openusd_silk_page_view);
-            view->abi_version = OPENUSD_SILK_PAGE_ABI_VERSION;
-            view->revision = result->revision;
-            view->data = result->data.empty() ? nullptr : result->data.data();
-            view->data_size = result->data.size();
-            view->command_count = result->command_count;
-
-            const size_t live =
-                g_live_page_count.fetch_add(1, std::memory_order_relaxed) + 1;
-            UpdatePeak(g_peak_page_count, live);
-            *page = result.release();
-            return OPENUSD_STATUS_OK;
+            return SyncSessionWithSceneIngestionState(
+                state.get(),
+                width,
+                height,
+                time_code,
+                camera,
+                ingestionState,
+                complexity,
+                draw_mode,
+                page,
+                view,
+                error);
         });
     });
 }

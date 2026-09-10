@@ -23,6 +23,36 @@ Without it every reference fails to resolve, the Viewer opens an effectively emp
 renderer legitimately reports zero draws while logging one `Could not open asset` warning per
 unresolved reference.
 
+## Authored RenderProduct captures
+
+**File > Render Authored Product...** and the command palette open a Viewer-owned dialog for bounded
+UsdRender product execution with the matching hdSilk session ABI 6 runtime. This source workflow
+is not part of the published `0.14.0-alpha` runtime.
+The dialog reads the selected `UsdRenderSettings` without authoring,
+keeps unsupported products visible with their refusal reason, and renders only products admitted by
+the shared `RenderProductJobPlan` profile. Catalogs above 256 products are refused explicitly rather
+than silently truncated; select a smaller settings set to use this bounded dialog. Static admission
+rules are shared with the job planner, while sampled camera and backend checks run before capture.
+The output parent must be an existing local folder chosen
+by the operator; opening, refreshing, cancelling or closing the dialog does not create directories.
+Each job publishes a generated subfolder only after all frames, sidecars and the manifest are
+complete, and authored `productName` values are never treated as filesystem authority.
+
+The capture uses the authored product camera, raster, variables, scene purposes and exact
+material-binding purpose rather than the current viewport camera or dimensions. PNG files are
+explicit display companions. Raw HDR product variables are top-down RGBA16F, EXR is available only
+when the current encoder restrictions admit the product window, and depth variables are top-down
+float32 normalized device depth rather than metric distance. Windows Viewer execution covers
+hdSilk Direct3D 12 and Vulkan. Both capture on the active composition device, with an exclusive
+lease that prevents presentation, device replacement or teardown while capture resources are
+owned. Failed resource cleanup retains that lease for retry. Native Storm has no authored-product
+binding. The same managed adapter is wired for Metal, but native macOS capture execution remains
+unverified; this is not a Metal support claim.
+
+After a successful job, **View results** opens the read-only
+[completed-job contact sheet](#previewing-completed-render-jobs) using its PNG display companions.
+It does not interpret the raw HDR/depth planes or rerun the product.
+
 ## Embedding the viewer
 
 The `OpenUsd.Viewer` package targets `net8.0`, `net9.0` and `net10.0`, so a host does not have to be
@@ -661,7 +691,7 @@ Selected** queries the selected prim's world bounds once on the stage scheduler 
 using the current render-purpose mask. Missing selections, missing prims, and empty bounds are
 reported without changing the camera.
 
-Native Storm child-window camera input is polled from the ABI-8 navigation v2 child snapshot at a bounded
+Native Storm child-window camera input is polled from the child ABI-9 navigation v2 snapshot at a bounded
 UI cadence. The snapshot carries physical pointer position, buttons, modifiers, cumulative wheel,
 focus/inside state, cumulative F/Home/P command counters, and four repeat-aware arrow counters, so
 the child may retain native focus
@@ -1422,29 +1452,55 @@ programmatically cannot alter an admitted sequence. EXR shares the existing comb
 PNG/depth/HDR byte budget, but native codec working memory is outside that quota and is stated
 in the dialog. Other host encoding profiles remain unsupported.
 
-The first supported binding is a live **hdSilk / Direct3D 12** Viewer device with RGBA readback.
-The active renderer and dimensions are shown in the dialog. Native-child Storm still supports
-ordinary PNG/BMP captures, but its current Viewer binding cannot attest the complete sequence
-display/settings request. Vulkan/Metal composition hosts do not expose the required readback
-device. These sequence bindings are refused, not silently substituted. The current sync API
+The Windows **hdSilk / Direct3D 12** and **hdSilk / Vulkan** bindings support PNG and both optional data planes.
+**Native Storm** captures timed PNG sequences using its completed native viewport framebuffer.
+The dialog identifies this native-appearance profile before capture, and the manifest records it
+as a diagnostic: Storm's native lighting/material/background behavior is retained, not a promise
+to apply the Viewer's hdSilk exposure, tone-map or OCIO controls. The native profile admits only
+the application's default presentation choices, smooth shading and ordinary purpose/visibility
+settings; custom overrides are refused rather than ignored. It waits for
+convergence, matches camera/frame identity and preserves bottom-up framebuffer orientation in
+the top-down PNG. Cancel, repeated close, Reload and owner close drain through the shared job
+and restoration path.
+
+On the verified Windows child ABI 9 route, optional HDR/depth and Windows EXR also work while
+preserving those native PNG pixels. Their stricter raster limit is **4096 per side and 1,048,576
+total physical pixels**, matching the child viewport. Reduce the window/viewport before enabling
+data planes if the dialog reports that limit; high-DPI scaling counts toward physical pixels.
+Raw HDR additionally requires **empty display selection**, because Storm can bake highlights into
+its color AOV. The dialog explains the refusal; capture never silently deselects. Native RGBA8 and
+top-down AOVs come from one render-thread operation that refuses intervening stage changes.
+Linux is source-wired but unverified for this capture profile; macOS Metal Storm remains PNG-only.
+
+The active renderer and dimensions are shown in the dialog. Capture readiness follows the actual
+retained graphics device; Vulkan becomes available after its first completed frame rather than
+being replaced by another renderer. The common adapter is also wired for Metal, but macOS
+sequence execution still needs native evidence. The current sync API
 also requires Default, Proxy and Render purposes, Guide off, authored visibility, and one sample
 per pixel. Unsupported purpose/visibility or sample requests are explained without rendering.
 Disable physics preview before starting: this is an authored USD-time sequence, not a simulation bake.
-Both optional planes support the committed GPU display-transform path on the current capable D3D12
-binding. HDR comes from that capture's completed scene target, before exposure, display/view/look
+Both optional planes support the committed GPU display-transform path on the D3D12 and Vulkan
+bindings. HDR comes from that capture's completed scene target, before exposure, display/view/look
 conversion and selection; it does not come from an earlier cached target or an inverse display
 conversion. An unsupported device or a missing/invalid GPU transform fails the job rather than
 publishing fallback color as HDR. The existing PNG-only display fallback remains unchanged.
 
-Each frame uses the frozen draw, selection, display and committed OCIO settings. An active authored
+On hdSilk, each frame uses the frozen draw, selection, display and committed OCIO settings.
+Native Storm uses the explicitly identified native viewport appearance instead. An active authored
 camera is queried at every requested time, including its animated transform, aperture offsets,
 focal length and clipping window; unavailable samples fail instead of falling back to another
 camera. Presentation must finish with the matching state before retained-scene readback. An OCIO
-request must have a matching applied display pass. All selected planes come from the same retained
-capture, and their original managed storage is wrapped without copying or widening pixels. The shared
+request must have a matching applied display pass. On composition backends, all selected planes come
+from the same retained capture, and their original managed storage is wrapped without copying or
+widening pixels. Storm instead copies detached native presentation and typed AOV planes under its
+combined storage limits. The shared
 `RenderDiskJob` engine writes each frame's PNG and optional planes on a dedicated worker; graphics,
 capture and restoration are marshalled through the Viewer dispatcher/coordinator. Borrowed frame
 storage is consumed before the next capture. No frame-sized buffers are retained in result descriptors.
+Composition capture excludes presenter calls, resizing and teardown for its entire operation.
+An authored-product job pins that same device until all of its native/GPU resources are released;
+it never creates a hidden replacement device. The coordinator drives presentation on demand so a
+backend's continuous-preview preference cannot prevent cancellation or close from draining.
 
 Actual renderer capture diagnostics travel with each detached frame. The shared engine retains
 up to 128 distinct diagnostics across the whole job in first-occurrence order, including in
@@ -1454,7 +1510,9 @@ retained diagnostics and highlights warnings/errors rather than presenting a deg
 Jobs admit **1-4096 frames**, no dimension above **8192 pixels**, and **4 GiB total output including
 the manifest**. The **64 MiB per-frame capture admission** charges **4 bytes/pixel for PNG only**
 or a uniform **20 bytes/pixel when either optional plane is selected**, even for HDR without depth.
-This is a managed capture-pixel budget, not a whole-process/GPU memory ceiling. The combined encoded
+This is a managed capture-pixel budget, not a whole-process/GPU memory ceiling.
+Native Storm data output also enforces its stricter million-pixel limit and a separate 64-MiB
+combined snapshot/native-presentation/conversion budget. The combined encoded
 PNG, HDR and depth files also share a **64 MiB per-frame output limit**. Oversized selected output
 sets are explained and disabled before synchronization or target allocation; reduce the viewport
 size or deselect the optional data.
@@ -1486,7 +1544,7 @@ removes every private staging plane and cannot leave a completed-looking job fol
 progress, cancellation status and the completed location visible.
 Cancellation can wait for an already-running graphics call to drain; it does not forcibly interrupt
 a driver. This scope does not include arbitrary-resolution renders, UsdRender product/AOV execution,
-arbitrary EXR product metadata/windows, movies, contact sheets or a general render queue.
+arbitrary EXR product metadata/windows, movies or a general render queue.
 
 The source/runtime-fingerprinted native scenario is `render-sequence` in
 `eng\run-viewer-workflow-tests.ps1`. It exercises differing animated frames, independent authored-camera
@@ -1497,6 +1555,49 @@ exposure and selection, immutable admitted choices, bounded admission and explic
 It also exercises GPU three-plane cancellation, mid-job source/non-finite failures, failed-transform
 cleanup and retry without stale HDR, actual rendered-view restoration, and pending Reload/Close.
 Running this scenario alone is not an all-Viewer-workflows result.
+
+### Previewing completed render jobs
+
+After **Render Image Sequence** or **Render Authored Product** succeeds, its **View results**
+button opens an owned, themed **Contact sheet** window. The button stays disabled until success;
+starting another job closes and drains the previous preview before clearing its result. A failed
+or cancelled newer job cannot expose the previous job as its own result.
+
+The compact, scrollable grid shows all frames for jobs of up to 16 frames. Longer jobs use 16
+deterministic, evenly distributed indices in original job order, including the first and last.
+For `N` frames and `K = min(N, 16)` tiles, tile `i` uses `floor(i * (N - 1) / (K - 1))`;
+a one-frame job uses index zero. Each tile labels the zero-based frame index, original USD time
+code, source raster dimensions and generated PNG filename. The header keeps the original generated
+job identity, stage identity, output directory and, for products, the original product path.
+Changing a dialog's inputs does not relabel previously completed output.
+
+This is an in-app PNG preview, not a new render, export, movie encoder or file-association launcher.
+It reads only the recorded generated PNGs; no scheduler, renderer or render slot is acquired.
+It does not change the current camera/time, display settings, source or review data. Images keep
+their aspect ratio and alpha with transparent letterboxing, no crop and no colour conversion.
+The grid follows Viewer dark/light and contrast resources. Tab reaches the output location, frame
+grid and Close action; arrow keys move between frames. Escape closes the preview and restores focus
+to **View results** when its job dialog remains open.
+
+Every selected file must remain inside the recorded job directory, with no reparse-point or
+filesystem-alias traversal. Windows reads reuse the retained physical-directory/file handles.
+The exact recorded file length (at most **64 MiB**), stable read/EOF, SHA256, PNG dimensions,
+chunk CRCs and zlib checksum are checked before the sheet is displayed. A missing or modified
+later sample fails the entire preview: no partial grid is kept, and the error is shown and logged.
+Close and reopen **View results** to retry after repairing the completed files; this still does
+not render anything.
+
+Each cell has a **256 x 256 RGBA** thumbnail, at most **4 MiB of retained thumbnail rasters** per
+16-cell sheet. One source PNG is decoded at a time, admitted at no more than 8192 pixels per side
+and 64 MiB of decoded RGBA. Encoded-source storage, that full-size decode, temporary bitmap upload,
+uncollected managed storage and Avalonia/native/graphics working memory are **not** covered by the
+thumbnail raster quota. This is not a process-memory guarantee.
+
+Close cancels and asynchronously drains loading before releasing the window and every owned
+bitmap; it does not block the UI thread waiting for a file or decoder. Late completions cannot
+publish into a closing or replacement preview. The sheet belongs to its job dialog: closing that
+dialog, closing the stage/Viewer or reloading the stage closes and drains it too. It is not a
+persistent results browser that survives document retirement.
 
 ### Comparing saved captures
 
@@ -1901,7 +2002,7 @@ variant controls, or sample the interactive diagnostics model. Schema 8 camera e
 automated and does not change interactive camera navigation: it temporarily applies deterministic
 managed view/projection matrices, captures bound backend pixels and Storm camera diagnostics, and
 restores automatic mode before continuing fallback, loss, quarantine, or switching scenarios.
-On Windows it additionally delivers a real Win32 Alt-left drag to the Storm child, polls the ABI-8
+On Windows it additionally delivers a real Win32 Alt-left drag to the Storm child, polls the ABI-9
 navigation snapshots, applies the normal Viewer camera adapter, and binds the changed camera and
 pixel artifacts while proving that no duplicate Avalonia routed event fired.
 Automated runs bypass interactive camera publication during resize, so temporary evidence camera

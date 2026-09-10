@@ -51,6 +51,8 @@
     "data": 24,
     "dataCapabilities": 8589934591,
     "storm": 9,
+    "stormChild": 9,
+    "silkSession": 6,
     "renderCommands": 23,
     "physics": 7,
     "physicsExtract": 1

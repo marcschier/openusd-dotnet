@@ -57,7 +57,10 @@ authored-value fast path exactly as it is and adds module evaluation on top:
 * resolves unauthored parameter defaults;
 * folds constant expression defaults -- elemental, conversion and copy
   constructors, and parameter aliases;
-* resolves texture-valued defaults the SDK materialises.
+* resolves texture-valued defaults the SDK materialises;
+* follows bounded, SDK-proven `(*)` variant relationships rooted in OmniPBR or
+  OmniGlass, preserving wrapper body constants and argument aliases rather than
+  replacing them with the root's defaults.
 
 Authored stage values always win, and each distilled entry records whether it
 came from the stage or the module. Any other expression, a layered BSDF, or an
@@ -72,6 +75,24 @@ development.
 Anything outside the accepted subset is returned by name in
 `unsupported_parameters` so hdSilk can report each dropped input rather than
 folding it into an unrelated parameter.
+
+An ordinary material body without a proven variant relationship is not part of
+the wrapper profile. Legacy direct-default projection reports that its body is
+not proven; unknown variant roots and arbitrary calls are refused or named as
+unsupported rather than evaluated as general MDL.
+
+`OPENUSD_MDL_MODULE_PATH` configures the SDK's module search roots. Absolute and
+relative file identities, including paths with spaces, are resolved inside
+those roots; use one common asset root, not a search path per asset. A URI
+outside the configured roots remains a refusal. Cache identity includes the
+resolved module filename, material, configuration and generation.
+
+The variant evaluator bounds retained SDK prototype links to eight, expression
+depth to 16, reduction work to 4,096 steps, parameter counts to 256, strings to
+4 KiB each and aggregate text to 256 KiB. It retains at most 32 module/material
+scopes. The SDK can normalize a source variant chain, so source nesting is not
+the retained prototype-link count. Empty default textures mean absence;
+nonempty missing or unsupported resources retain explicit diagnostics.
 
 ## Accepted subset
 
@@ -101,3 +122,32 @@ rather than proven.
 The build produces `openusd_mdl` in the build tree and installs nothing. hdSilk
 finds it beside its own binary, or at the absolute path named by the
 `OPENUSD_MDL_ADAPTER_PATH` environment variable.
+
+## Real standalone module qualification
+
+The SimReady warehouse tooling can acquire pinned, first-party BSD-noticed OmniPBR and
+OmniGlass sources independently of Kit; see [the warehouse guide](../../docs/simready-warehouse.md).
+An SDK-enabled build also produces `mdl_module_probe`. Give it the absolute acquired
+module directory and set `OPENUSD_MDL_SDK_RUNTIME` to the installed `libmdl_sdk` file.
+Unlike optional-availability probes, it fails if the real modules do not compile or their
+known defaults cannot be obtained through the adapter's C ABI.
+
+`OPENUSD_MDL_REAL_MODULE_ROOT` enables the opt-in `mdl_real_module_defaults` CTest for that
+directory. It checks actual PBR diffuse/roughness and glass IOR defaults, while printing
+every unsupported projection parameter. Passing establishes compiled module defaults,
+not complete BSDF evaluation, full warehouse material support, or RTX-equivalent output.
+
+The same real-module root enables `mdl_sdk_wrapper_variants`. Supplying
+`OPENUSD_MDL_WAREHOUSE_SOURCE_ROOT` additionally enables
+`mdl_warehouse_wrapper_projection`, which consumes the unchanged warehouse
+wrappers. `mdl_sdk_wrapper_rejections` covers the public refusal and input-bound
+contracts without acquiring the warehouse. The wrapper cases also check
+authored precedence, texture origin/gamma/owner, same-name module isolation,
+result release and cache-generation changes. They do not make unprojected UV,
+tint, opacity, glass/volume or layered-BSDF controls supported.
+
+`mdl_sdk_alias_color_probe` additionally checks that authored texture decoding
+metadata follows parameter aliases and copy constructors. Explicit destination
+metadata still wins. It uses the existing default-expression subset, keeps
+unproven bodies diagnosed, and can load a preserved adapter by absolute path to
+demonstrate the pre-correction raw-versus-sRGB failure.

@@ -108,7 +108,52 @@ existing retained capturer. It compares an asymmetric 60x36 product crop with th
 region of a 96x96 full raster and rejects a resize using the uncropped camera as a negative
 control. This proves raster geometry integration, not EXR writing or fulfillment of other AOVs.
 
+### Admitted authored-product jobs
+
+`RenderProductJobPlan` is the execution admission layer above geometry-only preparation.
+`RenderProductRequest.PrepareExecutionFrame` adds shutter and exposure samples; the existing
+`PrepareFrame` overloads retain their geometry-only behavior. Camera execution inputs come from
+one bounded native property snapshot with complete, typed invariant scalar values. Deferred,
+blocked, missing or incompatible inputs are refused rather than replaced with camera defaults.
+The query admits at most 128 camera properties and 64 KiB of text.
+
+`RenderProductJobPlan.PrepareAsync` selects an explicit product (or a sole product), copies finite
+time samples, and samples in scheduler batches of at most sixteen. It checks the observed stage
+revision before and after each batch. The caller must continue excluding or detecting writers
+through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
+
+The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
+variables, one per plane, with one material-binding purpose and standard scene-purpose tokens.
+Depth is normalized device depth, not metric camera distance. Named rendering color spaces,
+unevaluated settings, other source/data types, non-unit camera exposure and active motion-blur
+or depth-of-field requirements are not silently approximated. These remain incomplete portions
+of the larger authored-render milestone.
+
+`plan.CreateJob` reuses the existing disk engine and quota policy. A source must explicitly
+implement `IRenderProductFrameSource.ValidateProduct` and honor every admitted filter and setting;
+viewport-only sources are rejected before staging output. A display PNG is an identified
+companion, never a substitute for a requested variable. The manifest retains product selection,
+original name without filename authority, ordered variable/file bindings, sampled optics,
+camera exposure inputs, raster origin and pixel aspect. Raw split planes retain crop/overscan
+metadata; current EXR output refuses windows/aspect that its encoder cannot represent.
+
+This admitted profile is wired through shared jobs, MCP and the D3D12/Vulkan Viewer with hdSilk session
+ABI 6. Filter transitions repopulate from current USD data, including hidden geometry edits;
+the legacy viewport reset remains explicit. Windows evidence covers D3D12 MCP execution and
+D3D12/Vulkan Viewer product execution and native ingestion. The common composition adapter is
+wired for Metal but its native capture execution is unverified. Other-platform evidence, Storm
+product bindings and the broader UsdRender profile remain incomplete.
+
+The existing package-only NativeAOT imaging consumer also exercises this module: sampled authored
+products, ordered depth/HDR outputs, file hashes and manifest semantics, full/preview material and
+purpose filters, restoration to legacy capture, and unchanged source. Those checks supplement
+retained-geometry edit and Viewer lifecycle coverage; they do not replace it.
+
 ### Bounded disk image jobs
+
+Completed MCP disk jobs can be presented without rendering again through
+[`read_sequence_sheet`](mcp.md#read_sequence_sheet): a bounded, hash-verified contact sheet of
+up to sixteen existing display PNGs with original frame/time metadata and aspect-preserving tiles.
 
 `RenderDiskJob.Execute` consumes a bounded immutable list of `StageRenderState` requests and an
 `IRenderJobFrameSource`. It executes on the calling thread so adapters can retain graphics-thread
@@ -217,7 +262,7 @@ Output availability is per plane, not inferred from its requested name:
 
 | Output | Native representation and meaning |
 | --- | --- |
-| Color | `StormAovColor`: native RGBA binary16 render color, not a presented RGBA8 capture. |
+| Color | `StormAovColor`: native RGBA binary16, may include selection highlighting; not presented RGBA8. |
 | Depth | Float32 OpenGL window depth in `[0,1]`; near is zero and far/clear is one. |
 | PrimId / InstanceId | Signed Int32 snapshot-local Hydra IDs; `-1` is background. |
 | ElementId | Explicitly `Absent` on the pinned task-controller route. |
@@ -244,6 +289,84 @@ the million-pixel boundary, ordinary framebuffer preservation, C11 layouts and a
 NativeAOT consumer. This does not establish Linux/CGL execution or full component-selection parity.
 The versioned public C contract is `openusd_storm_aov.h`; the protected SDK engine-extension seam used
 to keep MRT color presentation and framebuffer sample mode aligned must be revalidated on SDK upgrades.
+
+### Using Storm snapshots in disk jobs
+
+`snapshot.CreateJobImage()` converts available native half-color into an independent, top-down
+`RenderJobImage` for an `IRenderJobFrameSource`. Optional device depth and raw HDR use the same
+disk-job PNG/sidecar/EXR engine as hdSilk:
+
+```csharp
+RenderJobImage image = snapshot.CreateJobImage(
+    includeDeviceDepth: true,
+    includeHdrColor: true,
+    outputTransform: RenderOutputTransform.Reinhard,
+    exposure: -6,
+    maximumManagedBytes: 64 * 1024 * 1024,
+    cancellationToken: cancellationToken);
+```
+
+Exposure and tone mapping affect only display RGB; stored alpha and every raw half bit are
+preserved, including finite negative values and signed zero. Native depth remains normalized
+OpenGL window depth, not metric distance. Color is required, and missing/unsupported selected
+planes are refused rather than synthesized. Conversion makes no native calls and works after
+renderer disposal or on another managed thread. It does not re-render, apply scene settings or
+certify an authored product: the frame source must still match the actual capture's time/camera
+and uphold the job's renderer-thread/source-revision requirements.
+
+Storm can bake selection highlighting into its native color AOV. Raw HDR conversion therefore
+requires a capture made without display selection; selected snapshots remain valid for display
+PNG and depth but are refused for pre-selection HDR. The conversion never silently deselects or
+changes the renderer. Its budget charges `ManagedStorageUpperBound` for the existing snapshot,
+512 bytes of bookkeeping and new pixel buffers (4 bytes/pixel display, plus 8 HDR and/or 4 depth),
+with a 64-MiB ceiling. The snapshot's native working-storage budget and the disk job's encoded-byte
+limits remain separate. No ID, element or Neye plane is relabeled as a supported job plane.
+
+### Native-child AOV capture
+
+Child ABI 9 exposes the same typed AOVs through the child's existing render thread; the caller
+does not need a current GL context. Use the actual physical child dimensions and framebuffer zero:
+
+```csharp
+OpenUsdStormChildAovCapture capture = child.RenderAovs(
+    new StormAovRequest(width, height, 0,
+        [StormAovKind.Color, StormAovKind.Depth], camera, timeCode),
+    cancellationToken);
+RenderJobImage image = capture.CreateJobImage(
+    includeDeviceDepth: true,
+    includeHdrColor: true,
+    cancellationToken: cancellationToken);
+```
+
+`Framebuffer` preserves tightly packed, **bottom-up native RGBA8**; `Aovs` has **top-down**
+typed planes and exact applied camera metadata. A single queued operation captures both for the
+requested time/camera and refuses intervening USD change-serial changes. The PNG is not replaced
+by tone-mapped half color. `CreateJobImage` makes independent copies, retaining native PNG appearance
+and each plane's row order; a depth-only AOV request does not need a color AOV for that native PNG.
+The result survives child/source/scheduler retirement and can be converted on another managed thread.
+
+The direct limits still apply: 4096 per side and **1,048,576 pixels**, with exact child-size matching.
+The companion render and readback retain those admitted dimensions even when a native caller
+resizes concurrently. A viewport mismatch at completion rejects the whole result without
+growing the admitted copy buffers; the managed session additionally serializes resize and capture.
+The request's native working budget additionally charges 4 bytes/pixel plus 16 KiB for the
+RGBA8 companion and command storage; the managed request budget charges 4 bytes/pixel plus
+512 bytes alongside the AOV snapshot. Conversion has a separate 64-MiB combined existing-capture
+and new-output ceiling. These remain known-copy limits, not scene/GPU/codec/RSS or driver-wait bounds.
+
+Selection, resize, capture and disposal use the same managed session gate. Native highlights
+can affect color, so selected or uncertain captures refuse raw HDR instead of silently changing
+selection. A failed selection update stays conservative until a successful empty update; clearing
+selection later cannot requalify an earlier selected capture. Cancellation is observed before
+admission and after native work, not by interrupting a native driver wait.
+
+Windows RTX 5070 execution covers native PNG equality, literal depth, the exact million-pixel
+limit, owner/refusal/retry, context recreation and Viewer PNG/HDR/depth/EXR lifecycle workflows.
+A fresh package-only NativeAOT consumer exercises both direct and child captures, including those
+limits, selection refusals and detached ownership; it cannot fall back to managed JIT execution.
+Linux GLX is source-wired but has no execution claim here. The macOS Metal Storm child explicitly
+refuses AOV capture and retains its existing PNG path. Authored Storm product filtering, general
+normals/element semantics and required Metal AOV support remain unfinished.
 
 ## Headless CI rendering on Linux
 
@@ -335,7 +458,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v5; the hdSilk page ABI is v23. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v6; the hdSilk page ABI is v23. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -3006,7 +3129,7 @@ automatic-reset pixels. `eng/run-viewer-stage-camera-smoke.ps1` executes only th
 is runtime-observed: successful D3D11 NT-handle/keyed-mutex imports and the compositor LUID classify the ANGLE/D3D11
 path, synchronous Win32 messages must traverse the real Viewer and Storm window procedures before routed/native input
 counters can advance, diagnostic `WM_DPICHANGED` must change and restore DPI, and Win32 child enumeration supplies Storm
-visibility and ownership transitions. A separate Alt-left drag targets the Storm HWND, advances ABI-8 navigation
+visibility and ownership transitions. A separate Alt-left drag targets the Storm HWND, advances ABI-9 navigation
 snapshots, changes the renderer-neutral Viewer camera and preserved Storm pixels, and records zero overlapping Avalonia
 routed events. Persistent cleanup failure must keep Storm candidate/factory/attach counts unchanged and the actual
 native-child peak at one until cleanup reaches zero. The single-pixel readback is smoke diagnostics only; interactive

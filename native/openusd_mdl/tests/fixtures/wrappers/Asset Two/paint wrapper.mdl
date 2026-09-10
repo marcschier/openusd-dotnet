@@ -1,0 +1,7 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+mdl 1.7;
+using ::OmniPBR import OmniPBR;
+export material paint(*) = OmniPBR(
+    diffuse_color_constant: color(0.61, 0.72, 0.83),
+    reflection_roughness_constant: 0.87,
+    metallic_constant: 0.91);

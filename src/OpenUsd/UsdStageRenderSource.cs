@@ -180,6 +180,8 @@ public sealed class UsdStageRenderLease : IDisposable, IUsdStageBound
         Volatile.Read(ref _native)
         ?? throw new ObjectDisposedException(nameof(UsdStageRenderLease));
 
+    internal ulong ChangeSerial => Native.ChangeSerial;
+
     /// <inheritdoc/>
     public void Dispose()
     {

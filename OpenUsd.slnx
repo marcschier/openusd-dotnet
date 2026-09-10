@@ -58,6 +58,7 @@
     <Project Path="tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj" />
     <Project Path="tests/OpenUsd.RhiProbe/OpenUsd.RhiProbe.csproj" />
     <Project Path="tests/OpenUsd.SilkProbe/OpenUsd.SilkProbe.csproj" />
+    <Project Path="tests/OpenUsd.SimReadyWarehouse.NativeProbe/OpenUsd.SimReadyWarehouse.NativeProbe.csproj" />
     <Project Path="tests/OpenUsd.StormAov.NativeProbe/OpenUsd.StormAov.NativeProbe.csproj" />
     <Project Path="tests/OpenUsd.Tests/OpenUsd.Tests.csproj" />
     <Project Path="tests/OpenUsd.Viewer.Tests/OpenUsd.Viewer.Tests.csproj" />

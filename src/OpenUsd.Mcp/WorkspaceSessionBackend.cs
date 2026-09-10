@@ -20,6 +20,15 @@ public interface IWorkspaceSessionBackendFactory
         CancellationToken cancellationToken);
 }
 
+/// <summary>Opt-in authored-product preparation without changing legacy workspace backends.</summary>
+public interface IWorkspaceRenderProductBackend
+{
+    /// <summary>Prepares an exact selected product on the stage scheduler at the expected revision.</summary>
+    ValueTask<RenderProductJobPlan> PrepareRenderProductAsync(
+        IReadOnlyList<double> timeCodes, string? settingsPath, string? productPath,
+        RenderProductOverrides? rasterOverrides, ulong expectedStageRevision, CancellationToken cancellationToken);
+}
+
 /// <summary>Isolates native and filesystem mutation from session orchestration.</summary>
 public interface IWorkspaceSessionBackend : IAsyncDisposable, IPreviewRenderSourceProvider
 {

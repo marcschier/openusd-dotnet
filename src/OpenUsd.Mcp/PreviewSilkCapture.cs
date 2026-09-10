@@ -110,11 +110,14 @@ public sealed class PreviewSilkFrameSourceFactory(
 }
 
 internal sealed class PreviewSilkFrameSource
-    : IPreviewFrameSource, IPreviewDiagnosticSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource
+    : IPreviewFrameSource, IPreviewDiagnosticSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource,
+        IPreviewProductFrameSource
 {
     private readonly Func<CaptureView, int, int, CapturedFrame> _capture;
     private readonly Func<CaptureView, int, int, long, CancellationToken, RenderJobImage>? _captureDepth;
     private readonly Func<CaptureView, int, int, long, bool, CancellationToken, RenderJobImage>? _captureHdr;
+    private readonly Action<RenderProductJobPlan, CancellationToken>? _validateProduct;
+    private readonly Func<RenderProductJobPlan, StageRenderState, long, CancellationToken, RenderJobImage>? _captureProduct;
     private IDisposable? _capturer;
     private IDisposable? _device;
     private IDisposable? _session;
@@ -188,6 +191,40 @@ internal sealed class PreviewSilkFrameSource
                 Diagnostics = result.Diagnostics
             };
         };
+        SilkSceneIngestionOptions? productOptions = null;
+        RenderProductJobPlan? admittedProduct = null;
+        _validateProduct = (plan, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (plan.RenderSettings != RenderSettings.PresentationDefault)
+            {
+                throw new NotSupportedException("The MCP product adapter requires its explicit presentation settings.");
+            }
+            var ingestion = new SilkSceneIngestionOptions(plan.IncludedPurposes, plan.MaterialBindingPurpose);
+            RequireProductRevision(source, plan);
+            productOptions = ingestion;
+            admittedProduct = plan;
+        };
+        _captureProduct = (plan, state, maximumBytes, cancellationToken) =>
+        {
+            if (!ReferenceEquals(plan, admittedProduct) || productOptions is null)
+            {
+                throw new InvalidOperationException("The product must be admitted before capture.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            RequireProductRevision(source, plan);
+            int width = state.Viewport.Width;
+            int height = state.Viewport.Height;
+            SilkFrameCaptureResult result = plan.IncludeHdrColor
+                ? capturer.CaptureWithHdrColor(session, width, height, state.RenderSettings, productOptions,
+                    new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes),
+                    state.Time.TimeCode, state.Camera, cancellationToken)
+                : capturer.CaptureWithDepth(session, width, height, state.RenderSettings, productOptions,
+                    new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes),
+                    state.Time.TimeCode, state.Camera, cancellationToken);
+            RequireProductRevision(source, plan);
+            return ProductImage(result, plan);
+        };
     }
 
     internal PreviewSilkFrameSource(
@@ -249,6 +286,63 @@ internal sealed class PreviewSilkFrameSource
                 view, width, height, maximumReadbackBytes, includeDepth, cancellationToken);
         Diagnostics = result.Diagnostics;
         return result;
+    }
+
+    public void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ObjectDisposedException.ThrowIf(_teardownStarted, this);
+        (_validateProduct ?? throw new NotSupportedException("The capture source cannot execute authored products."))(
+            plan, cancellationToken);
+    }
+
+    public RenderJobImage CaptureProduct(
+        RenderProductJobPlan plan, StageRenderState state, long maximumReadbackBytes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(state);
+        ObjectDisposedException.ThrowIf(_teardownStarted, this);
+        RenderJobImage image = (_captureProduct ??
+            throw new NotSupportedException("The capture source cannot execute authored products."))(
+                plan, state, maximumReadbackBytes, cancellationToken);
+        Diagnostics = image.Diagnostics;
+        return image;
+    }
+
+    private static void RequireProductRevision(UsdStageRenderSource source, RenderProductJobPlan plan)
+    {
+        if (plan.SourceStageRevision is not { } expected)
+        {
+            throw new NotSupportedException("The MCP product adapter requires a sampled source revision.");
+        }
+        using UsdStageRenderLease lease = source.AcquireLease();
+        if (lease.ChangeSerial != expected)
+        {
+            throw new InvalidOperationException("The stage changed after authored-product preparation.");
+        }
+    }
+
+    private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
+    {
+        if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
+            plan.IncludeDeviceDepth != (result.Depth is not null))
+        {
+            throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
+        }
+        if (result.HdrColor is { Convention: not SilkHdrColorConvention.RendererWorkingCompositedBeforeExposureAndDisplay } ||
+            result.Depth is { Convention: not SilkDepthConvention.NormalizedDeviceDepthZeroToOne })
+        {
+            throw new NotSupportedException("The product capture conventions do not match the admitted variables.");
+        }
+        return new RenderJobImage(result.Width, result.Height, result.Rgba, Rgba8RowOrder.TopDown)
+        {
+            HdrColor = result.HdrColor is { } hdr
+                ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,
+            DeviceDepth = result.Depth is { } depth
+                ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
+            Diagnostics = result.Diagnostics
+        };
     }
 
     public void Dispose()

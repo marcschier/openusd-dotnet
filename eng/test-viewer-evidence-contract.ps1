@@ -163,7 +163,7 @@ try
     $stormRecorded = Get-StormRecordedBytes $stormPixels 2 2
     $stormPixel = [ordered]@{
         backend = 'Storm'
-        captureApi = 'openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)'
+        captureApi = 'openusd_storm_child_capture_framebuffer(ABI9,preserved-texture)'
         sha256 = [Convert]::ToHexString(
             [Security.Cryptography.SHA256]::HashData($stormRecorded))
         width = 2
@@ -483,10 +483,10 @@ try
                 backend = 'Storm'
                 phase = 'native-navigation-after'
                 deliveryApi =
-                    'SendMessageTimeoutW+StormChildWndProc+ABI8Poll+' +
+                    'SendMessageTimeoutW+StormChildWndProc+ABI9Poll+' +
                     'ViewerCameraNavigationUiAdapter'
-                snapshotApi = 'openusd_storm_child_get_navigation_input(ABI8,v2)'
-                stormChildAbiVersion = 8
+                snapshotApi = 'openusd_storm_child_get_navigation_input(ABI9,v2)'
+                stormChildAbiVersion = 9
                 gesture = 'Alt+Left Orbit'
                 sequenceBefore = 1
                 sequencePressed = 4
@@ -534,7 +534,7 @@ try
         schemaVersion = $ViewerEvidenceSchemaVersion
         run = 'run-1'
         artifactRoot = 'runs/run-1'
-        stormChildAbiVersion = 8
+        stormChildAbiVersion = 9
         runtimeCompositor = 'ANGLE/D3D11 (runtime-observed)'
         pixelCount = 3
         pixelHashes = @($pixel.sha256, $stormPixel.sha256, $restoredPixel.sha256)
@@ -558,11 +558,11 @@ try
                 backend = 'Storm'
                 phase = 'native-navigation-after'
                 deliveryApi =
-                    'SendMessageTimeoutW+StormChildWndProc+ABI8Poll+' +
+                    'SendMessageTimeoutW+StormChildWndProc+ABI9Poll+' +
                     'ViewerCameraNavigationUiAdapter'
                 snapshotApi =
-                    'openusd_storm_child_get_navigation_input(ABI8,v2)'
-                stormChildAbiVersion = 8
+                    'openusd_storm_child_get_navigation_input(ABI9,v2)'
+                stormChildAbiVersion = 9
                 avaloniaRoutedEvents = 0
                 beforeCameraSignature = ('1' * 64) -join ''
                 afterCameraSignature = ('2' * 64) -join ''
@@ -667,7 +667,7 @@ try
     }
     $navigationV1Snapshot = Copy-TestValue $valid
     $navigationV1Snapshot.runs[0].nativeNavigation[0].snapshotApi =
-        'openusd_storm_child_get_navigation_input(ABI8,v1)'
+        'openusd_storm_child_get_navigation_input(ABI9,v1)'
     Assert-Rejected 'aggregate navigation v1 Storm snapshot API' {
         Assert-ViewerAggregateEvidence $navigationV1Snapshot 1 $testRoot
     }

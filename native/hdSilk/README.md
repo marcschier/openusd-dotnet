@@ -78,6 +78,39 @@ already-acquired operation, and only then tear down and erase the token. Failed
 stage-access acquisition reopens the entry for retry. Destroyed/stale tokens are
 rejected, token values are never reused, and the registry keeps no tombstones.
 
+## Scene-ingestion requests
+
+Authored `UsdRender` execution needs explicit scene-ingestion choices that do
+not silently collapse to viewport defaults. The current public header describes
+session ABI 6 and page ABI 23. Managed creation requires the matching session/page
+version exports; older session-5 libraries cannot be mixed with these bindings.
+
+The version-1 request is append-only and request-scoped: one struct carries the
+standard purpose mask, one exact material-binding-purpose token, and the
+existing complexity/draw-mode choices. The implementation applies those choices
+at the `UsdImagingGLEngine` session seam, rejects masks that try to exclude the
+always-inherited `default` purpose, and treats the pre-existing
+`openusd_silk_session_sync*` overloads as an intentional return to the legacy
+viewport defaults: purpose mask `default|proxy|render` (bit mask `7`) and the
+historical empty material-binding token (`UsdShadeTokens->allPurpose`).
+Explicit request-mode material binding is currently certified only for one
+exact token, `full` or `preview`; empty/allPurpose and custom tokens are
+rejected explicitly rather than falling back silently. Identical repeated
+choices keep ordinary incremental synchronization. A changed explicit/legacy
+choice reconstructs USD imaging from the current retained stage, keeping the
+project-owned delta stream, revision and overrides. This transition can cost a
+complete native population; it is not a per-frame cache reset. There is no
+retired geometry cache, partial source fingerprint or bounds-based reconstruction.
+Material networks use the existing full resolver, and excluded volumes are
+filtered before field loading.
+
+Requested filters commit only when a page is successfully returned. Failure
+during engine reconstruction leaves the stage and owned scene state available
+for the next explicit or legacy sync to retry. Test-only failure hooks are
+excluded from production builds. The C probe covers reconstruction, render and
+page-publication failures, while managed pixel cases cover hidden primvars,
+normals, topology, ancestor transforms, deletion/redefinition and instancing.
+
 ## Wire format
 
 `openusd_silk_session_sync` returns an `openusd_silk_page_view` whose `data`

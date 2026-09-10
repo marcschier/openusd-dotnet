@@ -11,10 +11,10 @@ internal sealed partial class CompositionHostedBackendSession
     public string? GetRenderSequenceUnsupportedReason(
         StageRenderState state, ViewerRenderSequenceOutputOptions outputs)
     {
-        if (resources.Renderer.Kind != RenderBackendKind.D3D12 || !SupportsFrameCapture)
+        if (!SupportsFrameCapture)
         {
             return "The active composition device does not expose RGBA readback. " +
-                "Choose a supported hdSilk / Direct3D 12 renderer.";
+                "Wait for a completed frame from a supported hdSilk renderer.";
         }
         if (state.Display.Purposes != SceneDisplayState.Default.Purposes ||
             state.Display.Visibility != RenderVisibility.RespectAuthored)
@@ -37,10 +37,11 @@ internal sealed partial class CompositionHostedBackendSession
             throw new NotSupportedException(unsupported);
         }
         await RenderSequenceStateAsync(state, cancellationToken);
-        ViewerFrameCaptureResult capture = await await Dispatcher.UIThread.InvokeAsync(
-            async () => outputs.HasAdditionalPlanes
+        using IDisposable ownership = await control.AcquireCaptureAsync(cancellationToken);
+        ViewerFrameCaptureResult capture = await Dispatcher.UIThread.InvokeAsync(
+            () => outputs.HasAdditionalPlanes
                 ? CaptureRenderSequencePlanes(state, outputs, cancellationToken)
-                : await CaptureFrameAsync(state.Viewport.Width, state.Viewport.Height, cancellationToken),
+                : CaptureFrameCore(state.Viewport.Width, state.Viewport.Height, cancellationToken),
             DispatcherPriority.Normal, cancellationToken);
         if (state.RenderSettings.DisplayTransform is { } transform &&
             (DisplayTransformDiagnostics is not { Status: SilkDisplayTransformStatus.Applied } applied ||
@@ -57,7 +58,7 @@ internal sealed partial class CompositionHostedBackendSession
         StageRenderState state, ViewerRenderSequenceOutputOptions outputs, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (resources.Device is not ISilkGraphicsDevice device ||
+        if (resources.CaptureDevice is not { } device ||
             resources.Renderer.RetainedRenderer is not { } retained || resources.Renderer.LastSceneRevision == 0)
         {
             throw new InvalidOperationException("The renderer has no retained sequence frame to capture.");

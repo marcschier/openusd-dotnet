@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "simready-mdl-core",
+  "scope": "Optional local first-party MDL sources; no Kit/add-on code or binaries are installed or packaged.",
+  "license": "BSD-3-Clause notices are embedded in each unmodified MDL source.",
+  "files": [
+    {
+      "path": "OmniPBR.mdl",
+      "repository": "NVIDIA/simready-blender-add-on",
+      "revision": "cec4afce2c285f80942b58e4a55b14d919e8c11e",
+      "sourcePath": "CORE_ArtistTools/addon/resource/shaders/OmniPBR/OmniPBR.mdl",
+      "size": 15591,
+      "gitBlobSha1": "4193ab2af9fc7eeaad563dd1cf641a42d89eb059"
+    },
+    {
+      "path": "OmniPBR_ClearCoat.mdl",
+      "repository": "NVIDIA/simready-blender-add-on",
+      "revision": "cec4afce2c285f80942b58e4a55b14d919e8c11e",
+      "sourcePath": "CORE_ArtistTools/addon/resource/shaders/OmniPBR/OmniPBR_ClearCoat.mdl",
+      "size": 29055,
+      "gitBlobSha1": "213d44c79bb55d9285970748b07c4553de8e9107"
+    },
+    {
+      "path": "OmniPBRBase.mdl",
+      "repository": "NVIDIA/simready-blender-add-on",
+      "revision": "cec4afce2c285f80942b58e4a55b14d919e8c11e",
+      "sourcePath": "CORE_ArtistTools/addon/resource/shaders/OmniPBR/OmniPBRBase.mdl",
+      "size": 18876,
+      "gitBlobSha1": "bbd00118a78c01b38ff7e9fca92ff079da3fe5a9"
+    },
+    {
+      "path": "OmniGlass.mdl",
+      "repository": "NVIDIA/simready-blender-add-on",
+      "revision": "cec4afce2c285f80942b58e4a55b14d919e8c11e",
+      "sourcePath": "CORE_ArtistTools/addon/resource/shaders/OmniPBR/OmniGlass.mdl",
+      "size": 9945,
+      "gitBlobSha1": "f876fab656350d492a65abd56abcc3072a4b911a"
+    },
+    {
+      "path": "OmniGlass_Opacity.mdl",
+      "repository": "NVIDIA/simready-blender-add-on",
+      "revision": "cec4afce2c285f80942b58e4a55b14d919e8c11e",
+      "sourcePath": "CORE_ArtistTools/addon/resource/shaders/OmniPBR/OmniGlass_Opacity.mdl",
+      "size": 17219,
+      "gitBlobSha1": "3260c0a02e13b99e3dafe427dc6640dd5b2e09c9"
+    },
+    {
+      "path": "nvidia/core_definitions.mdl",
+      "repository": "NVIDIA/MDL-SDK",
+      "revision": "1b9592c1b086b691b44d1a30eee4827d1ff55b8c",
+      "sourcePath": "examples/mdl/nvidia/core_definitions.mdl",
+      "size": 166331,
+      "gitBlobSha1": "8861252863359266ef1d5a7f5b37e85b6bab11be"
+    }
+  ]
+}

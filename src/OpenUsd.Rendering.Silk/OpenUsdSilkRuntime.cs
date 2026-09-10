@@ -14,12 +14,14 @@ public static unsafe partial class OpenUsdSilkRuntime
 {
     private const string LibraryName = "openusd_hdsilk";
     private const int ErrorBufferSize = 4096;
+    internal const uint RequiredSilkSessionAbiVersion = RenderNativeAbiVersions.SilkSessionAbi;
 
     /// <summary>Creates an hdSilk session for a stage.</summary>
     public static OpenUsdSilkSession Create(string pluginPath, string stagePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(stagePath);
+        ValidateNativeAbi();
         Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
         fixed (byte* errorPointer = errorBytes)
         {
@@ -41,6 +43,7 @@ public static unsafe partial class OpenUsdSilkRuntime
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginPath);
         ArgumentNullException.ThrowIfNull(source);
+        ValidateNativeAbi();
 
         UsdStageRenderLease lease = source.AcquireLease();
         try
@@ -141,6 +144,106 @@ public static unsafe partial class OpenUsdSilkRuntime
         }
     }
 
+    internal static OpenUsdSilkPage Sync(
+        nint session,
+        int width,
+        int height,
+        double timeCode,
+        CameraState camera,
+        RenderComplexity complexity,
+        RenderDrawMode drawMode,
+        SilkSceneIngestionOptions ingestionOptions)
+    {
+        ArgumentNullException.ThrowIfNull(ingestionOptions);
+        ValidateComplexity(complexity);
+        ValidateDrawMode(drawMode);
+        SilkSceneIngestionOptions.ValidateIncludedPurposes(ingestionOptions.IncludedPurposes);
+        string materialBindingPurpose =
+            SilkSceneIngestionOptions.NormalizeMaterialBindingPurpose(
+                ingestionOptions.MaterialBindingPurpose);
+        if (materialBindingPurpose.Length == 0)
+        {
+            throw new NotSupportedException(
+                "Explicit hdSilk scene ingestion cannot yet request the empty/allPurpose material binding token.");
+        }
+
+        var view = new NativePageView
+        {
+            StructSize = (uint)sizeof(NativePageView)
+        };
+        byte[] materialBytes = Encoding.UTF8.GetBytes(materialBindingPurpose + '\0');
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        var nativeCamera = new NativeRenderCamera(camera);
+        fixed (byte* materialPointer = materialBytes)
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var request = new NativeSceneIngestionRequest(
+                (uint)sizeof(NativeSceneIngestionRequest),
+                1,
+                checked((uint)ingestionOptions.IncludedPurposes),
+                (uint)complexity,
+                (uint)drawMode,
+                materialPointer);
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+
+            nint page = 0;
+            OpenUsdNativeStatus status;
+            try
+            {
+                status = NativeMethods.SyncWithSceneIngestion(
+                    session,
+                    width,
+                    height,
+                    timeCode,
+                    in nativeCamera,
+                    in request,
+                    out page,
+                    ref view,
+                    ref error);
+            }
+            catch (EntryPointNotFoundException exception)
+            {
+                throw new NotSupportedException(
+                    "Explicit hdSilk scene ingestion requires a matched candidate native runtime " +
+                    "exporting openusd_silk_session_sync_with_scene_ingestion.",
+                    exception);
+            }
+
+            ThrowIfFailed(
+                status,
+                errorBytes,
+                error.Capacity,
+                error.Required);
+            if (page == 0 || view.DataSize > int.MaxValue || (view.Data == 0 && view.DataSize != 0))
+            {
+                if (page != 0)
+                {
+                    NativeMethods.PageRelease(page);
+                }
+                throw new OpenUsdSilkException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native renderer returned an invalid command page.");
+            }
+
+            try
+            {
+                SilkCommandParser.ValidatePageAbi(view.AbiVersion);
+                byte[] data = view.DataSize == 0
+                    ? []
+                    : new ReadOnlySpan<byte>((void*)view.Data, (int)view.DataSize).ToArray();
+                return new OpenUsdSilkPage(
+                    view.AbiVersion,
+                    view.Revision,
+                    data,
+                    view.CommandCount);
+            }
+            finally
+            {
+                NativeMethods.PageRelease(page);
+            }
+        }
+    }
+
     internal static OpenUsdNativeStatus InvokeSync<TCall>(
         nint session,
         int width,
@@ -215,6 +318,31 @@ public static unsafe partial class OpenUsdSilkRuntime
 
     internal static void ResetDiagnosticPeaks() => NativeMethods.ResetPeakCounts();
 
+    private static void ValidateNativeAbi()
+    {
+        uint sessionAbi;
+        uint pageAbi;
+        try
+        {
+            sessionAbi = NativeMethods.GetSessionAbiVersion();
+            pageAbi = NativeMethods.GetPageAbiVersion();
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            throw new NotSupportedException(
+                $"This build requires hdSilk session ABI {RequiredSilkSessionAbiVersion} with session/page version exports.",
+                exception);
+        }
+
+        if (sessionAbi != RequiredSilkSessionAbiVersion)
+        {
+            throw new NotSupportedException(
+                $"hdSilk session ABI mismatch: managed={RequiredSilkSessionAbiVersion}, native={sessionAbi}.");
+        }
+
+        SilkCommandParser.ValidatePageAbi(pageAbi);
+    }
+
     private static void ThrowIfFailed(
         OpenUsdNativeStatus status,
         ReadOnlySpan<byte> errorBytes,
@@ -257,6 +385,33 @@ public static unsafe partial class OpenUsdSilkRuntime
         internal nint Data;
         internal nuint DataSize;
         internal uint CommandCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly unsafe struct NativeSceneIngestionRequest
+    {
+        internal NativeSceneIngestionRequest(
+            uint structSize,
+            uint version,
+            uint includedPurposeMask,
+            uint complexity,
+            uint drawMode,
+            byte* materialBindingPurpose)
+        {
+            StructSize = structSize;
+            Version = version;
+            IncludedPurposeMask = includedPurposeMask;
+            Complexity = complexity;
+            DrawMode = drawMode;
+            MaterialBindingPurpose = materialBindingPurpose;
+        }
+
+        internal readonly uint StructSize;
+        internal readonly uint Version;
+        internal readonly uint IncludedPurposeMask;
+        internal readonly uint Complexity;
+        internal readonly uint DrawMode;
+        internal readonly byte* MaterialBindingPurpose;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -439,6 +594,21 @@ public static unsafe partial class OpenUsdSilkRuntime
             ref NativePageView view,
             ref NativeErrorBuffer error);
 
+        [LibraryImport(
+            LibraryName,
+            EntryPoint = "openusd_silk_session_sync_with_scene_ingestion")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SyncWithSceneIngestion(
+            nint session,
+            int width,
+            int height,
+            double timeCode,
+            in NativeRenderCamera camera,
+            in NativeSceneIngestionRequest request,
+            out nint page,
+            ref NativePageView view,
+            ref NativeErrorBuffer error);
+
         [LibraryImport(LibraryName, EntryPoint = "openusd_silk_page_release")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial void PageRelease(nint page);
@@ -472,5 +642,13 @@ public static unsafe partial class OpenUsdSilkRuntime
             EntryPoint = "openusd_silk_diagnostic_reset_peak_counts")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial void ResetPeakCounts();
+
+        [LibraryImport(LibraryName, EntryPoint = "openusd_silk_get_session_abi_version")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial uint GetSessionAbiVersion();
+
+        [LibraryImport(LibraryName, EntryPoint = "openusd_silk_get_page_abi_version")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial uint GetPageAbiVersion();
     }
 }

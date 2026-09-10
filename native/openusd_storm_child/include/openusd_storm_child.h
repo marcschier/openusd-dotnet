@@ -7,6 +7,7 @@
 #include "openusd_render_camera.h"
 #include "openusd_render_physics.h"
 #include "openusd_render_pick.h"
+#include "openusd_storm_aov.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -27,7 +28,7 @@ extern "C" {
 
 typedef struct openusd_storm_child openusd_storm_child;
 
-#define OPENUSD_STORM_CHILD_ABI_VERSION 8u
+#define OPENUSD_STORM_CHILD_ABI_VERSION 9u
 
 #define OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION 2u
 
@@ -321,6 +322,36 @@ OPENUSD_STORM_CHILD_API openusd_status openusd_storm_child_capture_framebuffer(
     uint32_t background_rgba,
     uint8_t tolerance,
     uint32_t flags,
+    uint8_t* rgba_buffer,
+    size_t rgba_capacity,
+    size_t* rgba_required,
+    openusd_storm_child_framebuffer_capture* capture,
+    openusd_error_buffer* error);
+
+/*
+ * Renders the requested AOVs and native viewport appearance in one synchronous
+ * render-thread command. request->framebuffer must be zero: the child owns its
+ * target. Dimensions must match the child and satisfy the direct AOV limits.
+ * The caller supplies width * height * 4 bytes for tightly packed bottom-up
+ * native RGBA8 pixels. AOV rows remain top-down. No tone mapping is substituted
+ * for the child's ordinary presentation. Concurrent stage changes or a viewport
+ * mismatch at completion refuse the complete capture. Companion rendering and
+ * readback keep the admitted request dimensions even during native resize.
+ * Selection is not changed or certified absent.
+ *
+ * Success transfers one CPU-only owner to the caller; use the direct AOV
+ * get-view/release functions, including after child destruction. Failure
+ * leaves *owner null and capture zero. BUFFER_TOO_SMALL reports rgba_required
+ * without queuing work. The request's working-byte ceiling also charges the
+ * RGBA8 copy and the allowance below, but not scene, GPU, driver or RSS memory.
+ * macOS Metal Storm does not yet implement this OpenGL AOV route.
+ */
+#define OPENUSD_STORM_CHILD_AOV_WORKING_ALLOWANCE_BYTES UINT64_C(16384)
+
+OPENUSD_STORM_CHILD_API openusd_status openusd_storm_child_capture_aovs(
+    openusd_storm_child* child,
+    const openusd_storm_aov_request* request,
+    openusd_storm_aov_owner** owner,
     uint8_t* rgba_buffer,
     size_t rgba_capacity,
     size_t* rgba_required,

@@ -759,6 +759,14 @@ public:
     void SetFrame(const HdSilkFrameState& frame);
     void SetComplexity(uint32_t complexity);
     void SetDrawMode(uint32_t drawMode);
+    void ResetForSceneIngestionChange();
+    void SetMaterialBindingPurpose(const std::string& purpose);
+    std::string GetMaterialBindingPurpose() const;
+    bool HasMaterial(const std::string& path) const;
+    bool HasMeshPath(const std::string& path) const;
+    void SetMeshMaterialPath(const std::string& path, const std::string& materialPath);
+    void NoteMaterialBindingPurposeChanged();
+    uint64_t GetMaterialBindingGeneration() const;
 
     /// Publishes or replaces one material. The path is the authoritative
     /// identity, matching MESH_UPSERT's material_path.
@@ -856,6 +864,8 @@ private:
         const HdSilkLinkTable& links) const;
 
     mutable std::mutex _mutex;
+    uint64_t _materialBindingGeneration = 0;
+    std::string _materialBindingPurpose;
     std::unordered_map<HdSilkMeshKey, _Entry, HdSilkMeshKeyHash> _meshes;
     std::unordered_map<std::string, std::vector<int32_t>> _instancesByPath;
     std::vector<HdSilkMeshKey> _pendingRemovals;

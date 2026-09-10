@@ -1,0 +1,86 @@
+<Window
+    x:Class="OpenUsd.Viewer.CompletedRenderJobWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenUsd.Viewer"
+    Classes="openusd-viewer"
+    Title="Contact sheet"
+    AutomationProperties.Name="Completed render contact sheet"
+    AutomationProperties.AutomationId="viewer.completedResults"
+    Width="940"
+    Height="780"
+    MinWidth="520"
+    MinHeight="460"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+    <Style Selector="ListBox#ResultsFrames ListBoxItem">
+      <Setter Property="Padding" Value="4" />
+      <Setter Property="Margin" Value="0,0,4,8" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ViewerControlCornerRadius}" />
+    </Style>
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="12">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Contact sheet" Classes="viewer-heading" />
+        <TextBlock x:Name="ResultsDescription" Classes="viewer-secondary" TextWrapping="Wrap" />
+        <TextBlock x:Name="ResultsJobIdentity" Classes="viewer-monospace"
+                   AutomationProperties.Name="Original completed job identity" TextWrapping="Wrap" />
+      </StackPanel>
+      <Border Grid.Column="1" VerticalAlignment="Top" Padding="10,4"
+              Background="{DynamicResource ViewerSelectionBrush}"
+              CornerRadius="{DynamicResource ViewerControlCornerRadius}">
+        <TextBlock Text="READ ONLY" Foreground="{DynamicResource ViewerTextSelectedBrush}" />
+      </Border>
+    </Grid>
+    <StackPanel Grid.Row="1" Spacing="4">
+      <TextBlock x:Name="ResultsSource" Classes="viewer-caption" TextTrimming="CharacterEllipsis"
+                 AutomationProperties.Name="Original completed stage" />
+      <TextBox x:Name="ResultsOutputLocation" IsReadOnly="True" TextWrapping="Wrap"
+               AutomationProperties.Name="Original completed output location" />
+    </StackPanel>
+    <ListBox x:Name="ResultsFrames" Grid.Row="2" Background="{DynamicResource ViewerSurfaceCanvasBrush}"
+             BorderBrush="{DynamicResource ViewerBorderBrush}" BorderThickness="1" Padding="8"
+             AutomationProperties.Name="Sampled completed frames in job order"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             ScrollViewer.VerticalScrollBarVisibility="Auto">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <WrapPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="local:CompletedRenderJobTile">
+          <Border Width="200" Padding="8" Background="{DynamicResource ViewerSurfacePanelBrush}"
+                  CornerRadius="{DynamicResource ViewerControlCornerRadius}"
+                  AutomationProperties.Name="{Binding AccessibleName}">
+            <StackPanel Spacing="6">
+              <Border Background="{DynamicResource ViewerSurfaceCanvasBrush}"
+                      CornerRadius="{DynamicResource ViewerControlCornerRadius}">
+                <Image Source="{Binding Image}" Width="184" Height="184" Stretch="Uniform"
+                       AutomationProperties.Name="{Binding AccessibleName}" />
+              </Border>
+              <TextBlock Text="{Binding FrameLabel}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding TimeLabel}" Classes="viewer-secondary" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding DimensionsLabel}" Classes="viewer-caption" />
+              <TextBlock Text="{Binding FileName}" Classes="viewer-caption viewer-monospace" />
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <StackPanel Grid.Row="3" Spacing="6">
+      <ProgressBar x:Name="ResultsLoading" IsIndeterminate="True" Height="4"
+                   AutomationProperties.Name="Verifying completed PNG files" />
+      <TextBlock x:Name="ResultsStatus" TextWrapping="Wrap" AutomationProperties.Name="Completed results status"
+                 Text="Verifying completed PNGs, one file at a time. No rendering is started." />
+      <TextBlock Classes="viewer-caption" TextWrapping="Wrap"
+                 Text="Up to 16 samples, including endpoints. Aspect and alpha are preserved; no crop or colour conversion. Close or Escape cancels loading." />
+    </StackPanel>
+    <Button x:Name="ResultsCloseButton" Grid.Row="4" HorizontalAlignment="Right" Content="_Close"
+            AutomationProperties.Name="Close completed results" />
+  </Grid>
+</Window>

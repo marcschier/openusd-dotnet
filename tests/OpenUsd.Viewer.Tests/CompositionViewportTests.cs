@@ -165,6 +165,80 @@ public sealed class CompositionViewportTests
     }
 
     [Test]
+    public async Task CaptureLeaseExcludesPresentationResizeAndDeviceTeardown()
+    {
+        var presenter = new FakePresenter();
+        var session = new CompositionViewportSession(presenter, new FakeSurface(), new FakeDispatcher());
+        await session.AttachAsync(CreateTarget(), new ViewportDimensions(32, 24));
+        IDisposable? capture = await session.AcquireCaptureAsync(CancellationToken.None);
+        try
+        {
+            Task<CompositionPresentOutcome> render = session.PresentNextFrameAsync().AsTask();
+            Task resize = session.ResizeAsync(new ViewportDimensions(48, 32)).AsTask();
+            await Task.Delay(25);
+            await Assert.That(presenter.RenderCount).IsEqualTo(0);
+            await Assert.That(presenter.Generations.Count).IsEqualTo(1);
+            capture.Dispose();
+            capture = null;
+            await render;
+            await resize;
+
+            capture = await session.AcquireCaptureAsync(CancellationToken.None);
+            Task dispose = session.DisposeAsync().AsTask();
+            await Task.Delay(25);
+            await Assert.That(dispose.IsCompleted).IsFalse();
+            await Assert.That(presenter.IsDisposed).IsFalse();
+            capture.Dispose();
+            capture = null;
+            await dispose;
+            await Assert.That(presenter.IsDisposed).IsTrue();
+            await Assert.That(presenter.MaximumConcurrentCalls).IsEqualTo(1);
+            await Assert.That(async () => await session.AcquireCaptureAsync(CancellationToken.None))
+                .Throws<ObjectDisposedException>();
+        }
+        finally
+        {
+            capture?.Dispose();
+            await session.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task CancelledCaptureAdmissionDoesNotReleaseAnotherOwnersLease()
+    {
+        var presenter = new FakePresenter();
+        await using var session = new CompositionViewportSession(presenter, new FakeSurface(), new FakeDispatcher());
+        await session.AttachAsync(CreateTarget(), new ViewportDimensions(32, 24));
+        using IDisposable held = await session.AcquireCaptureAsync(CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        Task<IDisposable> pending = session.AcquireCaptureAsync(cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await Assert.That(async () => await pending).Throws<OperationCanceledException>();
+        Task<CompositionPresentOutcome> render = session.PresentNextFrameAsync().AsTask();
+        await Task.Delay(25);
+        await Assert.That(presenter.RenderCount).IsEqualTo(0);
+        held.Dispose();
+        await render;
+        await Assert.That(presenter.RenderCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task CaptureWaitingWhenTeardownBeginsNeverAcquiresTheDisposedPresenter()
+    {
+        var presenter = new FakePresenter();
+        var session = new CompositionViewportSession(presenter, new FakeSurface(), new FakeDispatcher());
+        await session.AttachAsync(CreateTarget(), new ViewportDimensions(32, 24));
+        using IDisposable held = await session.AcquireCaptureAsync(CancellationToken.None);
+        Task<IDisposable> waiting = session.AcquireCaptureAsync(CancellationToken.None).AsTask();
+        Task disposal = session.DisposeAsync().AsTask();
+        held.Dispose();
+        await Assert.That(async () => await waiting.WaitAsync(TimeSpan.FromSeconds(5)))
+            .Throws<ObjectDisposedException>();
+        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(presenter.IsDisposed).IsTrue();
+    }
+
+    [Test]
     public async Task ResizeRetiresGenerationAfterConsumption()
     {
         var dispatcher = new FakeDispatcher();

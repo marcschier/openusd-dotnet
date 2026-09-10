@@ -60,6 +60,8 @@ internal sealed unsafe partial class WindowsContext : IDisposable
         }
     }
 
+    internal nint Window => _window;
+
     internal static string Driver =>
         Marshal.PtrToStringAnsi(GlGetString(0x1F01)) ??
         throw new InvalidOperationException("No OpenGL renderer string.");

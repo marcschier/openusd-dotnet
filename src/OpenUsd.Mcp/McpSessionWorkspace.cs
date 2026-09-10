@@ -7,7 +7,7 @@ namespace OpenUsd.Mcp;
 /// <summary>
 /// Owns one active OpenUSD overlay session with optimistic revisions and transactional editing.
 /// </summary>
-public sealed class McpSessionWorkspace : IAsyncDisposable, IPreviewRenderSourceProvider
+public sealed partial class McpSessionWorkspace : IAsyncDisposable, IPreviewRenderSourceProvider
 {
     private const int CloseJournalReserve = 3;
     private readonly IWorkspaceSessionBackendFactory _backendFactory;

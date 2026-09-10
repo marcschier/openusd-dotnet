@@ -69,7 +69,7 @@ internal sealed class WorkspaceSourceCompositionException : Exception
     }
 }
 
-internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend
+internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend, IWorkspaceRenderProductBackend
 {
     private readonly WorkspaceSessionBackendContext _context;
     private readonly object _lifetimeGate = new();
@@ -291,6 +291,13 @@ internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend
                 return cameras;
             },
             cancellationToken).ConfigureAwait(false);
+
+    public ValueTask<RenderProductJobPlan> PrepareRenderProductAsync(
+        IReadOnlyList<double> timeCodes, string? settingsPath, string? productPath,
+        RenderProductOverrides? rasterOverrides, ulong expectedStageRevision, CancellationToken cancellationToken) =>
+        RenderProductJobPlan.PrepareAsync(_scheduler, new StageIdentity($"session:{_context.SessionId}"),
+            timeCodes, RenderSettings.PresentationDefault, settingsPath, productPath, rasterOverrides,
+            expectedStageRevision, cancellationToken);
 
     public async ValueTask<UsdStageRenderSource> AcquireRenderSourceAsync(
         CancellationToken cancellationToken = default)

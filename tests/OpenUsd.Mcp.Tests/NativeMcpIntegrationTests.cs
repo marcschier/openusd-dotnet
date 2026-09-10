@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 
 namespace OpenUsd.Mcp.Tests;
 
-public sealed class NativeMcpIntegrationTests
+public sealed partial class NativeMcpIntegrationTests
 {
     [Test]
     [NotInParallel]

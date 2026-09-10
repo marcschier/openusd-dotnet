@@ -496,7 +496,7 @@ public sealed class StormPhysicsOverrideTests
         await Assert.That(hydraHeader).Contains("openusd_storm_set_transform_overrides");
         await Assert.That(hydraHeader).Contains(
             "openusd_storm_get_transform_override_diagnostics");
-        await Assert.That(childHeader).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 8u");
+        await Assert.That(childHeader).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 9u");
         await Assert.That(childHeader).Contains(
             "openusd_storm_child_set_transform_overrides");
         // The child export is additive, so the child ABI and SONAME stay put

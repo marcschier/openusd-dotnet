@@ -84,6 +84,7 @@ internal static class ViewerCommandIds
     internal const string FileReloadStage = "file.reloadStage";
     internal const string FileCaptureFrame = "file.captureFrame";
     internal const string FileRenderImageSequence = "file.renderImageSequence";
+    internal const string FileRenderAuthoredProduct = "file.renderAuthoredProduct";
     internal const string FileCompareCaptures = "file.compareCaptures";
     internal const string FileExit = "file.exit";
     internal const string FileSaveReview = "file.saveReview";
@@ -303,6 +304,8 @@ internal static class ViewerCommandCatalog
             "_Capture Frame...", "Capture current frame", Gesture: "Ctrl+Shift+C"),
         new(ViewerCommandIds.FileRenderImageSequence, ViewerCommandGroup.File,
             "Render Image _Sequence...", "Render image sequence"),
+        new(ViewerCommandIds.FileRenderAuthoredProduct, ViewerCommandGroup.File,
+            "Render Authored _Product...", "Render authored RenderProduct"),
         new(ViewerCommandIds.FileCompareCaptures, ViewerCommandGroup.File,
             "Compare _Captures...", "Compare two saved captures"),
         new(ViewerCommandIds.FileExit, ViewerCommandGroup.File,

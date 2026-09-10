@@ -3560,6 +3560,35 @@ openusd_status ValidateChild(
                 });
             }
 
+            extern "C" openusd_status openusd_storm_child_capture_aovs(
+                openusd_storm_child*,
+                const openusd_storm_aov_request*,
+                openusd_storm_aov_owner** owner,
+                uint8_t*,
+                size_t,
+                size_t* rgba_required,
+                openusd_storm_child_framebuffer_capture* capture,
+                openusd_error_buffer* error)
+            {
+                if (owner != nullptr)
+                {
+                    *owner = nullptr;
+                }
+                if (rgba_required != nullptr)
+                {
+                    *rgba_required = 0;
+                }
+                if (capture != nullptr)
+                {
+                    std::memset(capture, 0, sizeof(*capture));
+                }
+                WriteError(
+                    error,
+                    "Storm child AOV capture requires OpenGL Hgi; the macOS "
+                    "Metal Storm AOV route is not implemented.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+
             extern "C" size_t openusd_storm_child_diagnostic_get_live_count(void)
             {
                 return g_live_count.load(std::memory_order_relaxed);

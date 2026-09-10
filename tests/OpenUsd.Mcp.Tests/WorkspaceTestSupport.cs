@@ -75,7 +75,7 @@ internal sealed class RecordingWorkspaceBackendFactory : IWorkspaceSessionBacken
     }
 }
 
-internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend
+internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWorkspaceRenderProductBackend
 {
     internal Exception AcquireRenderSourceError { get; set; } =
         new NotSupportedException("The recording backend does not create native render sources.");
@@ -111,6 +111,26 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend
     internal Action<CancellationToken>? InspectSceneCallback { get; set; }
 
     internal ulong StageRevision { get; set; }
+
+    internal Func<IReadOnlyList<double>, RenderProductJobPlan>? PrepareProduct { get; set; }
+    internal string? LastProductPath { get; private set; }
+    internal string? LastSettingsPath { get; private set; }
+
+    public ValueTask<RenderProductJobPlan> PrepareRenderProductAsync(
+        IReadOnlyList<double> timeCodes, string? settingsPath, string? productPath,
+        RenderProductOverrides? rasterOverrides, ulong expectedStageRevision, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Events.Add("prepare-product");
+        LastProductPath = productPath;
+        LastSettingsPath = settingsPath;
+        if (expectedStageRevision != StageRevision)
+        {
+            throw new InvalidOperationException("The test stage revision changed.");
+        }
+        return ValueTask.FromResult((PrepareProduct ??
+            throw new NotSupportedException("The recording backend has no product preparation."))(timeCodes));
+    }
 
     public ValueTask<UsdStageRenderSource> AcquireRenderSourceAsync(
         CancellationToken cancellationToken = default)

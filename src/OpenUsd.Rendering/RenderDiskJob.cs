@@ -23,6 +23,15 @@ public static partial class RenderDiskJob
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(source);
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.ProductPlan is { } product)
+        {
+            if (source is not IRenderProductFrameSource productSource)
+            {
+                throw new NotSupportedException("The frame source cannot execute authored product semantics.");
+            }
+            productSource.ValidateProduct(product, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
         string destination = request.OutputDirectory;
         if (Directory.Exists(destination) || File.Exists(destination))
         {
@@ -57,7 +66,8 @@ public static partial class RenderDiskJob
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
             }
             total += WriteManifest(
-                staging, frames, diagnostics, request.Limits.MaximumTotalBytes - total, cancellationToken);
+                staging, frames, diagnostics, request.Limits.MaximumTotalBytes - total,
+                request.ProductPlan, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             RetryDirectorySharing(
                 () => Directory.Move(DirectoryMovePath(staging), DirectoryMovePath(destination)),
@@ -268,7 +278,7 @@ public static partial class RenderDiskJob
     private static long WriteManifest(
         string directory, IReadOnlyList<RenderDiskFrameResult> frames,
         IReadOnlyList<RenderDiagnostic> diagnostics, long maximumBytes,
-        CancellationToken cancellationToken)
+        RenderProductJobPlan? productPlan, CancellationToken cancellationToken)
     {
         using var file = new FileStream(Path.Combine(directory, "manifest.json"),
             FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -278,6 +288,10 @@ public static partial class RenderDiskJob
             json.WriteStartObject();
             json.WriteNumber("schemaVersion", 1);
             json.WriteString("kind", "rgba8-sequence");
+            if (productPlan is not null)
+            {
+                WriteProductRequest(json, productPlan);
+            }
             json.WriteStartArray("frames");
             foreach (RenderDiskFrameResult frame in frames)
             {
@@ -290,6 +304,10 @@ public static partial class RenderDiskJob
                 json.WriteNumber("timeCode", frame.State.Time.TimeCode);
                 json.WriteNumber("width", frame.State.Viewport.Width);
                 json.WriteNumber("height", frame.State.Viewport.Height);
+                if (productPlan is not null)
+                {
+                    WriteProductFrame(json, productPlan, frame);
+                }
                 if (frame.DepthFileName is { } depthName)
                 {
                     json.WriteStartObject("deviceDepth");

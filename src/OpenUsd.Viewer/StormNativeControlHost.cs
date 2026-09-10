@@ -256,6 +256,14 @@ internal sealed class StormNativeControlHost : NativeControlHost
             cancellationToken);
     }
 
+    internal Task<OpenUsdStormChildAovCapture> RenderAovsAsync(
+        StormAovRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        OpenUsdStormChildSession session = GetSession();
+        return Task.Run(() => session.RenderAovs(request, cancellationToken), cancellationToken);
+    }
+
     internal nint GetEvidenceWindow() => GetSession().Window;
 
     internal void FocusEvidenceWindow() => GetSession().Focus();

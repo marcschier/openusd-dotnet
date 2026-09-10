@@ -118,14 +118,14 @@ The current contracts are:
 
 - data ABI 24 with required capabilities `0x1FFFFFFFF`;
 - direct Storm ABI 9;
-- Storm child ABI 8;
-- hdSilk session ABI 5;
+- Storm child ABI 9;
+- hdSilk session ABI 6;
 - hdSilk command-page ABI 23;
 - retained physics world ABI 7; and
 - physics extraction page ABI 1.
 
 These are the current source contracts. Published `0.14.0-alpha` packages retain data ABI 17
-and direct Storm ABI 8; keep their managed and native assets together.
+and direct Storm ABI 9; keep their managed and native assets together.
 
 Do not work around a mismatch by suppressing initialization or editing a constant. Remove mixed native
 assets, align all managed and runtime package versions, and rebuild or republish.

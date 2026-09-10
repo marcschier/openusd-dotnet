@@ -92,8 +92,8 @@ constants, package validation, and tests must be updated together.
 | --- | ---: | --- |
 | Data shim `openusd_dotnet` | ABI 24, required capabilities `0x1FFFFFFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
-| Viewer Storm child | ABI 8 | Managed child runtime requires an exact version. |
-| hdSilk session API | ABI 5 | Kept aligned through the matched Imaging runtime. |
+| Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
+| hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
 | hdSilk command page | ABI 23 | Every managed page is validated before parsing. |
 | Retained physics `openusd_physx` | ABI 7 | Negotiated exactly, including every record size. |
 | Physics extraction page | ABI 1 | Every managed page is validated before parsing. |
@@ -104,7 +104,11 @@ mask is rejected, as is an older ABI that happens to report newer capability bit
 Direct Storm ABI 9 adds the owned bulk AOV contract in `openusd_storm_aov.h`:
 `openusd_storm_aov_capture`, `openusd_storm_aov_get_view`, and `openusd_storm_aov_release`.
 The managed `OpenUsdStormRenderer.RenderAovs` API requires the matching ABI 9 Imaging runtime.
-Storm-child ABI 8 and the hdSilk ABIs are unchanged by the AOV API. The published `0.14.0-alpha`
+That direct AOV addition left Storm-child ABI 8 unchanged. The subsequent child ABI 9 adds
+`openusd_storm_child_capture_aovs`, reusing the version-1 direct AOV owner/view and returning
+native viewport RGBA8 from the same queued operation. `OpenUsdStormChildSession.RenderAovs`
+requires this exact child version, now pinned in `eng/openusd.lock.json`; child ABI 8 cannot
+satisfy it. Neither addition changes the hdSilk contracts. The published `0.14.0-alpha`
 Storm runtime remains ABI 8 and cannot serve these unreleased APIs. Native output formats,
 snapshot-local identity, known-copy budgets and explicit unsupported outputs are described in
 [Rendering](rendering.md#native-storm-aov-snapshots).
@@ -214,10 +218,13 @@ tree is a packaging contract rather than an ABI extension point; see
 [Packaging](packaging.md#third-party-resolver-plugin-contract).
 
 The hdSilk page is a pointer-free, little-endian wire format. A page-version change must update the
-native header and writer, managed parser, tests, lock metadata, and package evidence. Session ABI 5 does
-not expose a separate managed runtime version query, so exact package alignment is especially important.
+native header and writer, managed parser, tests, lock metadata, and package evidence. Session ABI 6
+exports `openusd_silk_get_session_abi_version` and `openusd_silk_get_page_abi_version`; managed
+session creation rejects missing exports or mismatched versions before consuming scene data.
+It adds the version-1 explicit scene-ingestion request without changing page ABI 23.
+Earlier session-5 libraries do not satisfy this interface and must not be mixed with these bindings.
 
-The Storm child ABI also participates in native filename policy. Linux packages use the ABI-8 SONAME and
+The Storm child ABI also participates in native filename policy. Linux packages use the ABI-9 SONAME and
 validated symlink chain; Windows and macOS packages validate the corresponding exported contract.
 
 The physics ABI fails closed rather than degrading. The managed mirror asserts its own record sizes,

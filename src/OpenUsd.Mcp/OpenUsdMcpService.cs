@@ -38,9 +38,16 @@ internal interface IOpenUsdMcpService
         RenderSequenceRequest request,
         CancellationToken cancellationToken);
 
+    ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
+        RenderProductCaptureRequest request,
+        CancellationToken cancellationToken);
+
     ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(
         ReadSequenceFrameRequest request,
         CancellationToken cancellationToken);
+
+    ValueTask<McpSequenceSheetResultDto> ReadSequenceSheetAsync(
+        ReadSequenceSheetRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(AnalyzeSceneRequest request, CancellationToken cancellationToken);
 

@@ -58,7 +58,7 @@ public sealed class StdioProtocolTests
                 },
                 cancellationToken: cancellation.Token);
 
-            await Assert.That(tools.Count).IsEqualTo(14);
+            await Assert.That(tools.Count).IsEqualTo(16);
             await Assert.That(resources).IsEmpty();
             await Assert.That(templates).Count().IsEqualTo(1);
             await Assert.That(noSession.IsError).IsTrue();

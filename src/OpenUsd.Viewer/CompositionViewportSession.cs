@@ -425,6 +425,23 @@ internal sealed class CompositionViewportSession : IAsyncDisposable
         return generation.RetireAsync();
     }
 
+    internal async ValueTask<IDisposable> AcquireCaptureAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        await _presenterGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            cancellationToken.ThrowIfCancellationRequested();
+            return new CompositionCaptureLease(_presenterGate);
+        }
+        catch
+        {
+            _presenterGate.Release();
+            throw;
+        }
+    }
+
     private async ValueTask<T> InvokePresenterAsync<T>(
         Func<CancellationToken, ValueTask<T>> action,
         CancellationToken cancellationToken)

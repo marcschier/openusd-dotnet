@@ -1681,8 +1681,14 @@ HdSilkMesh::Sync(
     const bool subdivTagsDirty =
         (*dirtyBits & HdChangeTracker::DirtySubdivTags) != 0;
     const bool transformDirty = HdChangeTracker::IsTransformDirty(*dirtyBits, id);
+    auto* sceneStateRenderParam = static_cast<HdSilkRenderParam*>(renderParam);
+    const uint64_t materialBindingGeneration =
+        sceneStateRenderParam != nullptr
+            ? sceneStateRenderParam->GetSceneState().GetMaterialBindingGeneration()
+            : _materialBindingGeneration;
     const bool materialDirty =
-        (*dirtyBits & HdChangeTracker::DirtyMaterialId) != 0;
+        (*dirtyBits & HdChangeTracker::DirtyMaterialId) != 0 ||
+        materialBindingGeneration != _materialBindingGeneration;
     const bool cullDirty =
         (*dirtyBits & (HdChangeTracker::DirtyDoubleSided |
                       HdChangeTracker::DirtyCullStyle)) != 0;
@@ -1691,6 +1697,7 @@ HdSilkMesh::Sync(
         // Hydra resolves the binding for us; the path is the only identity the
         // wire carries, exactly as it is for mesh identity.
         SetMaterialId(sceneDelegate->GetMaterialId(id));
+        _materialBindingGeneration = materialBindingGeneration;
     }
 
     const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;

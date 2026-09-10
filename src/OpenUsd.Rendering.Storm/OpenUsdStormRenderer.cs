@@ -23,6 +23,7 @@ public sealed class OpenUsdStormRenderer : IDisposable
     private nint _handle;
     private StormFrameBinding _lastFrame;
     private bool _hasRenderedFrame;
+    private bool _hasDisplaySelection;
 
     internal OpenUsdStormRenderer(
         nint handle,
@@ -120,7 +121,7 @@ public sealed class OpenUsdStormRenderer : IDisposable
             ThrowIfWrongThread();
             ObjectDisposedException.ThrowIf(_handle == 0, this);
             _hasRenderedFrame = false;
-            StormAovSnapshot snapshot = OpenUsdStormRuntime.RenderAovs(_handle, request);
+            StormAovSnapshot snapshot = OpenUsdStormRuntime.RenderAovs(_handle, request, _hasDisplaySelection);
             _lastFrame = new StormFrameBinding(
                 request.Width,
                 request.Height,
@@ -161,7 +162,10 @@ public sealed class OpenUsdStormRenderer : IDisposable
         {
             ThrowIfWrongThread();
             ObjectDisposedException.ThrowIf(_handle == 0, this);
+            // An SDK failure may follow a partial update; only success can certify empty selection.
+            _hasDisplaySelection = true;
             OpenUsdStormRuntime.SetSelection(_handle, selection, color);
+            _hasDisplaySelection = selection.Items.Count != 0;
         }
     }
 

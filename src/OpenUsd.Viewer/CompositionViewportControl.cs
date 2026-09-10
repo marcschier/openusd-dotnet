@@ -51,6 +51,8 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
 
     internal bool ManagerControlsDeviceLoss { get; set; }
 
+    internal bool AutoContinueRendering { get; set; } = true;
+
     internal RenderBackendKind BackendKind { get; set; }
 
     internal ViewerCompositionEvidence GetRuntimeEvidence() =>
@@ -60,6 +62,25 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
         _initialization.Task.WaitAsync(cancellationToken);
 
     internal Task WaitForPresentationIdleAsync() => _pump.WaitForIdleAsync();
+
+    internal async ValueTask<IDisposable> AcquireCaptureAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            CompositionViewportSession session = _session ??
+                throw new InvalidOperationException("The composition presentation session is unavailable.");
+            IDisposable presenter = await session.AcquireCaptureAsync(cancellationToken).ConfigureAwait(false);
+            return new CompositionCaptureLease(_lifecycleGate, presenter);
+        }
+        catch
+        {
+            _lifecycleGate.Release();
+            throw;
+        }
+    }
 
     internal async Task<CompositionPresentOutcome> PresentNextFrameAsync(
         CancellationToken cancellationToken)
@@ -419,6 +440,10 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
         if (outcome.Result == CompositionPresentResult.Presented)
         {
             _recovery.Reset();
+            if (!AutoContinueRendering)
+            {
+                return outcome with { ContinueRendering = false };
+            }
         }
         return outcome;
     }

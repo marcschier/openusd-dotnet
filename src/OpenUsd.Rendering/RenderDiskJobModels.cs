@@ -48,6 +48,15 @@ public sealed class RenderDiskJobRequest
 {
     internal const int ExpandedCaptureManagedBytesPerPixel = 20;
 
+    internal RenderDiskJobRequest(
+        string outputDirectory, IReadOnlyList<StageRenderState> frames,
+        bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
+        RenderDiskJobLimits? limits, RenderProductJobPlan productPlan)
+        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits)
+    {
+        ProductPlan = productPlan;
+    }
+
     /// <summary>Copies a bounded frame list and validates output dimensions before any rendering.</summary>
     public RenderDiskJobRequest(
         string outputDirectory, IReadOnlyList<StageRenderState> frames, RenderDiskJobLimits? limits = null)
@@ -179,6 +188,8 @@ public sealed class RenderDiskJobRequest
     public bool IncludeHdrColor { get; }
     /// <summary>Gets the HDR container choice; existing overloads retain raw binary16 output.</summary>
     public RenderHdrColorFormat HdrColorFormat { get; }
+    /// <summary>Gets admitted authored-product semantics the frame adapter must honor, or null for a viewport job.</summary>
+    public RenderProductJobPlan? ProductPlan { get; }
 }
 
 /// <summary>Supplies frames on the job's executing thread while retaining renderer and stage ownership.</summary>
@@ -187,6 +198,14 @@ public interface IRenderJobFrameSource
     /// <summary>Renders the exact requested state, or throws when its semantics cannot be honored.</summary>
     /// <remarks>The image is consumed before the next call. It need not remain valid beyond that call.</remarks>
     RenderJobImage Render(StageRenderState state, CancellationToken cancellationToken);
+}
+
+/// <summary>Explicitly admits product semantics before the shared engine creates staging output.</summary>
+/// <remarks>Viewport-only sources cannot accidentally execute authored products with their legacy defaults.</remarks>
+public interface IRenderProductFrameSource : IRenderJobFrameSource
+{
+    /// <summary>Requires the adapter to honor every admitted output, scene filter and renderer setting, or throw.</summary>
+    void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken);
 }
 
 /// <summary>A renderer-owned, tightly packed RGBA8 image consumed before the next job frame.</summary>

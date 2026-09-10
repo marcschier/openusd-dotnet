@@ -5,8 +5,11 @@ param(
     [string]$NativeRuntimeRoot,
     [string]$OutputRoot,
     [ValidateSet('workspace', 'document', 'portable', 'transitions', 'retirement',
-        'physics-history', 'property-pages', 'hierarchy-pages', 'asset-relink', 'render-sequence', 'camera-bookmarks')]
+        'physics-history', 'property-pages', 'hierarchy-pages', 'asset-relink', 'render-sequence',
+        'camera-bookmarks', 'authored-product')]
     [string[]]$Scenario,
+    [ValidateSet('D3D12', 'Vulkan')]
+    [string]$CaptureRenderer = 'D3D12',
     [ValidateNotNullOrEmpty()]
     [string]$Configuration = 'Release',
     [switch]$SkipBuild,
@@ -26,7 +29,8 @@ $scenarios = @(
     @{ Id = 'hierarchy-pages'; Class = 'ViewerHierarchyPagingNativeTests'; Flag = 'OPENUSD_VIEWER_HIERARCHY_PAGING_SMOKE' },
     @{ Id = 'asset-relink'; Class = 'ViewerAssetRelinkNativeTests'; Flag = 'OPENUSD_VIEWER_ASSET_RELINK_SMOKE' },
     @{ Id = 'render-sequence'; Class = 'ViewerRenderSequenceNativeTests'; Flag = 'OPENUSD_VIEWER_RENDER_SEQUENCE_SMOKE' },
-    @{ Id = 'camera-bookmarks'; Class = 'ViewerCameraBookmarkNativeTests'; Flag = 'OPENUSD_VIEWER_CAMERA_BOOKMARKS_SMOKE' }
+    @{ Id = 'camera-bookmarks'; Class = 'ViewerCameraBookmarkNativeTests'; Flag = 'OPENUSD_VIEWER_CAMERA_BOOKMARKS_SMOKE' },
+    @{ Id = 'authored-product'; Class = 'ViewerAuthoredRenderProductNativeTests'; Flag = 'OPENUSD_VIEWER_AUTHORED_PRODUCT_SMOKE' }
 )
 if ($ListScenarios)
 {
@@ -91,7 +95,8 @@ function Get-FileRecords
 function Get-WorkflowSourcePaths
 {
     $paths = @(& git -C $repoRoot ls-files --cached --others --exclude-standard -- `
-        'src' 'native\openusd_dotnet' 'tests\OpenUsd.Viewer.Tests' `
+        'src' 'native\openusd_dotnet' 'native\openusd_storm_child' 'native\openusd_hydra' `
+        'native\include' 'native\private' 'tests\OpenUsd.Viewer.Tests' `
         'eng\run-viewer-workflow-tests.ps1' 'eng\run-managed-tests.ps1' 'eng\openusd.lock.json' `
         'Directory.Build.props' 'Directory.Build.targets' 'Directory.Packages.props' 'global.json')
     if ($LASTEXITCODE -ne 0 -or $paths.Count -eq 0)
@@ -154,7 +159,10 @@ if (Test-Path -LiteralPath $evidenceRoot)
 New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
 $workRoot = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$runId-").FullName
 $environmentNames = @('PATH', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
-    'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT') + @($scenarios | ForEach-Object { $_.Flag })
+    'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
+    'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
+    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT') +
+    @($scenarios | ForEach-Object { $_.Flag })
 $previous = @{}
 foreach ($name in $environmentNames)
 {
@@ -168,6 +176,9 @@ try
     $env:OPENUSD_PLUGIN_PATH = Join-Path $runtime 'plugin\usd'
     $env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH
     $env:OPENUSD_TEST_WORK_ROOT = $workRoot
+    $env:OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT = $evidenceRoot
+    $env:OPENUSD_VIEWER_CAPTURE_RENDERER = $CaptureRenderer
+    $env:OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT = $evidenceRoot
     foreach ($entry in $scenarios)
     {
         [Environment]::SetEnvironmentVariable($entry.Flag, '0', 'Process')
@@ -224,6 +235,11 @@ try
         runId = $runId
         completedAt = [DateTimeOffset]::UtcNow.ToString('O')
         platform = 'win-x64'
+        captureRenderer = $CaptureRenderer
+        captureEvidence = @(Get-FileRecords @(
+            @('sequence-composition.json', 'product-composition.json') |
+                ForEach-Object { Join-Path $evidenceRoot $_ } |
+                Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }))
         runtimeRoot = $runtime
         testAssembly = $target[0]
         allRegisteredScenarios = $selected.Count -eq $scenarios.Count

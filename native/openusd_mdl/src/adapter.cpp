@@ -3,8 +3,8 @@
 // The optional MDL material adapter behind the project-owned openusd_mdl C
 // ABI. It distils the authored USD input values of an accepted Omniverse MDL
 // material into the renderer-neutral, UsdPreviewSurface-compatible record
-// hdSilk publishes. It links no MDL SDK, opens no .mdl module, and evaluates
-// no MDL expression; see ../README.md for exactly what that excludes.
+// hdSilk publishes. Its optional SDK backend resolves module defaults and
+// compiler-proven OmniPBR/OmniGlass material variants behind the same C ABI.
 
 #include "openusd_mdl.h"
 
@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -145,9 +146,13 @@ public:
     /// Adds the module-default layer. The strings behind each parameter are
     /// owned by `storage`, which must outlive this table.
     void SetModuleDefaults(
-        const std::map<std::string, openusd_mdl::SdkParameterValue>* defaults)
+        const std::map<std::string, openusd_mdl::SdkParameterValue>* defaults,
+        const std::vector<std::string>* unresolved,
+        bool reportUnused)
     {
         _moduleDefaults = defaults;
+        _unresolved = unresolved;
+        _reportUnusedDefaults = reportUnused;
     }
 
     /// OPENUSD_MDL_ORIGIN_* for the entry the last successful Find returned.
@@ -166,11 +171,26 @@ public:
             if (std::memcmp(entry->name.data, name, nameLength) == 0)
             {
                 _consumed[index] = true;
+                _consumedDefaults.emplace(name);
                 _lastOrigin = OPENUSD_MDL_ORIGIN_AUTHORED;
                 return entry;
             }
         }
         return FindModuleDefault(name);
+    }
+
+    bool Has(const char* name) const
+    {
+        for (const openusd_mdl_parameter* entry : _entries)
+        {
+            if (ToString(entry->name) == name)
+            {
+                return true;
+            }
+        }
+        return (_moduleDefaults != nullptr && _moduleDefaults->count(name) != 0) ||
+            (_unresolved != nullptr &&
+             std::find(_unresolved->begin(), _unresolved->end(), name) != _unresolved->end());
     }
 
     /// Names the authored parameters no distillation rule looked at.
@@ -195,6 +215,18 @@ public:
             }
             names.push_back(std::move(name));
         }
+        if (_reportUnusedDefaults && _moduleDefaults != nullptr)
+        {
+            for (const auto& entry : *_moduleDefaults)
+            {
+                if (_consumedDefaults.count(entry.first) == 0 &&
+                    entry.first.rfind("colorSpace:", 0) != 0 &&
+                    !(entry.second.kind == OPENUSD_MDL_VALUE_ASSET && entry.second.text.empty()))
+                {
+                    names.push_back(entry.first);
+                }
+            }
+        }
         return names;
     }
 
@@ -209,6 +241,18 @@ private:
         if (entry == _moduleDefaults->end())
         {
             return nullptr;
+        }
+        _consumedDefaults.insert(entry->first);
+        for (const std::string& source : entry->second.authoredSources)
+        {
+            for (size_t index = 0; index < _entries.size(); ++index)
+            {
+                if (ToString(_entries[index]->name) == source)
+                {
+                    _consumed[index] = true;
+                    _consumedDefaults.insert(source);
+                }
+            }
         }
         // Materialized into a stable slot so the returned pointer outlives this
         // call the way an authored entry's does.
@@ -242,6 +286,9 @@ private:
     std::vector<bool> _consumed;
     const std::map<std::string, openusd_mdl::SdkParameterValue>* _moduleDefaults =
         nullptr;
+    const std::vector<std::string>* _unresolved = nullptr;
+    std::set<std::string> _consumedDefaults;
+    bool _reportUnusedDefaults = false;
     std::vector<std::unique_ptr<Materialized>> _materialized;
     uint32_t _lastOrigin = OPENUSD_MDL_ORIGIN_AUTHORED;
 };
@@ -475,6 +522,12 @@ TryAsset(
         result.currentOrigin = parameters.LastOrigin();
         return true;
     }
+    if (parameter->kind == OPENUSD_MDL_VALUE_ASSET &&
+        parameter->text.size == 0 &&
+        parameters.LastOrigin() != OPENUSD_MDL_ORIGIN_AUTHORED)
+    {
+        return false;
+    }
     result.unsupported.emplace_back(name);
     return false;
 }
@@ -535,7 +588,7 @@ ClassifyInfluence(
     {
         // OmniPBR defaults every *_texture_influence to 1.0, so an unauthored
         // influence means the authored texture drives the input outright.
-        return TextureInfluence::Full;
+        return parameters.Has(influenceName) ? TextureInfluence::Partial : TextureInfluence::Full;
     }
     if (influence <= 0.0F)
     {
@@ -576,10 +629,12 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     }
     if (TryAsset(parameters, "reflectionroughness_texture", result, &asset))
     {
+        const uint32_t textureOrigin = result.currentOrigin;
         const TextureInfluence influence = ClassifyInfluence(
             parameters, "reflection_roughness_texture_influence", result);
         if (influence == TextureInfluence::Full)
         {
+            result.currentOrigin = textureOrigin;
             result.AddTexture(
                 OPENUSD_MDL_SURFACE_ROUGHNESS,
                 1,
@@ -603,10 +658,12 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     }
     if (TryAsset(parameters, "metallic_texture", result, &asset))
     {
+        const uint32_t textureOrigin = result.currentOrigin;
         const TextureInfluence influence =
             ClassifyInfluence(parameters, "metallic_texture_influence", result);
         if (influence == TextureInfluence::Full)
         {
+            result.currentOrigin = textureOrigin;
             result.AddTexture(
                 OPENUSD_MDL_SURFACE_METALLIC,
                 1,
@@ -665,8 +722,10 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     float opacity = 0.0F;
     const bool opacityConstantAuthored =
         TryFloat(parameters, "opacity_constant", result, &opacity);
+    const uint32_t opacityOrigin = result.currentOrigin;
     const bool opacityTextureAuthored =
         TryAsset(parameters, "opacity_texture", result, &asset);
+    const uint32_t opacityTextureOrigin = result.currentOrigin;
     bool opacityTextureEnabled = false;
     const bool opacityTextureGateAuthored = TryBool(
         parameters, "enable_opacity_texture", result, &opacityTextureEnabled);
@@ -674,11 +733,13 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     {
         if (opacityConstantAuthored)
         {
+            result.currentOrigin = opacityOrigin;
             result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY, opacity);
         }
         if (opacityTextureAuthored && opacityTextureGateAuthored &&
             opacityTextureEnabled)
         {
+            result.currentOrigin = opacityTextureOrigin;
             result.AddTexture(
                 OPENUSD_MDL_SURFACE_OPACITY,
                 1,
@@ -723,8 +784,10 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     float emissive[3] = {0.0F, 0.0F, 0.0F};
     const bool emissiveAuthored =
         TryColor(parameters, "emissive_color", result, emissive);
+    const uint32_t emissiveOrigin = result.currentOrigin;
     const bool emissiveTextureAuthored =
         TryAsset(parameters, "emissive_color_texture", result, &asset);
+    const uint32_t emissiveTextureOrigin = result.currentOrigin;
     float intensity = 1.0F;
     const bool intensityAuthored =
         TryFloat(parameters, "emissive_intensity", result, &intensity);
@@ -732,10 +795,12 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     {
         if (emissiveAuthored)
         {
+            result.currentOrigin = emissiveOrigin;
             result.AddScalar(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, emissive);
         }
         if (emissiveTextureAuthored)
         {
+            result.currentOrigin = emissiveTextureOrigin;
             result.AddTexture(
                 OPENUSD_MDL_SURFACE_EMISSIVE_COLOR,
                 3,
@@ -857,8 +922,12 @@ DistillOmniSurface(ParameterTable& parameters, DistillationResult& result)
 }
 
 void
-DistillOmniGlass(ParameterTable& parameters, DistillationResult& result)
+DistillOmniGlass(
+    ParameterTable& parameters,
+    DistillationResult& result,
+    bool knownMaterial = true)
 {
+    const size_t initialScalars = result.scalars.size();
     float color[3] = {0.0F, 0.0F, 0.0F};
     if (TryColor(parameters, "glass_color", result, color))
     {
@@ -882,7 +951,10 @@ DistillOmniGlass(ParameterTable& parameters, DistillationResult& result)
     // distillation publishes rather than an opaque surface that would hide
     // whatever is behind the glass.
     const float glassOpacity = 0.2F;
-    result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY, glassOpacity);
+    if (knownMaterial || result.scalars.size() != initialScalars)
+    {
+        result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY, glassOpacity);
+    }
 }
 }
 
@@ -946,7 +1018,7 @@ ApplyOptions(
                 return OPENUSD_MDL_STATUS_INVALID_ARGUMENT;
             }
             std::string path(entry.data, entry.size);
-            if (!IsAbsolutePath(path))
+            if (!IsAbsolutePath(path) || path.find('\0') != std::string::npos)
             {
                 return OPENUSD_MDL_STATUS_INVALID_ARGUMENT;
             }
@@ -972,6 +1044,10 @@ ApplyOptions(
 const openusd_mdl_distilled_material*
 Freeze(openusd_mdl_adapter* adapter, DistillationResult& result)
 {
+    std::sort(result.unsupported.begin(), result.unsupported.end());
+    result.unsupported.erase(
+        std::unique(result.unsupported.begin(), result.unsupported.end()),
+        result.unsupported.end());
     auto storage = std::make_unique<openusd_mdl_distilled_material_storage>();
     storage->scalars = std::move(result.scalars);
     storage->textures = std::move(result.textures);
@@ -1018,6 +1094,18 @@ Freeze(openusd_mdl_adapter* adapter, DistillationResult& result)
     adapter->live.push_back(std::move(storage));
     return view;
 }
+
+bool
+ValidRequestText(const openusd_mdl_string& text, size_t* total)
+{
+    if (text.size > openusd_mdl::kMaxSdkTextBytes ||
+        (text.size != 0 && (text.data == nullptr || std::memchr(text.data, '\0', text.size) != nullptr)))
+    {
+        return false;
+    }
+    *total += text.size;
+    return *total <= openusd_mdl::kMaxSdkTotalTextBytes;
+}
 }
 
 extern "C" {
@@ -1052,7 +1140,7 @@ openusd_mdl_describe(char* buffer, uint32_t capacity)
         description = "openusd_mdl SDK-backed distiller (" +
             openusd_mdl::SdkBackend::Instance().Describe() +
             "); authored values first, then module defaults and constant "
-            "expressions";
+            "expressions; bounded SDK-proven OmniPBR/OmniGlass variants";
     }
     else
     {
@@ -1126,9 +1214,26 @@ openusd_mdl_adapter_distill(
     {
         return OPENUSD_MDL_STATUS_INVALID_ARGUMENT;
     }
-    if (request->parameter_count != 0 && request->parameters == nullptr)
+    if (request->parameter_count > openusd_mdl::kMaxSdkParameters ||
+        (request->parameter_count != 0 && request->parameters == nullptr))
     {
         return OPENUSD_MDL_STATUS_INVALID_ARGUMENT;
+    }
+    size_t textBytes = 0;
+    if (!ValidRequestText(request->module_uri, &textBytes) ||
+        !ValidRequestText(request->material_name, &textBytes) ||
+        !ValidRequestText(request->material_path, &textBytes))
+    {
+        return OPENUSD_MDL_STATUS_INVALID_ARGUMENT;
+    }
+    for (uint32_t index = 0; index < request->parameter_count; ++index)
+    {
+        const openusd_mdl_parameter& parameter = request->parameters[index];
+        if (!ValidRequestText(parameter.name, &textBytes) ||
+            !ValidRequestText(parameter.text, &textBytes) || parameter.component_count > 4)
+        {
+            return OPENUSD_MDL_STATUS_INVALID_ARGUMENT;
+        }
     }
 
     const std::string moduleUri = ToString(request->module_uri);
@@ -1136,7 +1241,7 @@ openusd_mdl_adapter_distill(
     const std::string materialPath = ToString(request->material_path);
 
     DistillationResult distilled;
-    const AcceptedMaterial accepted = ClassifyMaterial(moduleUri, materialName);
+    AcceptedMaterial accepted = ClassifyMaterial(moduleUri, materialName);
 
     // The module is compiled only when this build has an SDK backend, an
     // operator configured a search path, and the module is actually needed --
@@ -1149,9 +1254,48 @@ openusd_mdl_adapter_distill(
     bool moduleConsulted = false;
     if (openusd_mdl::SdkBackend::IsCompiledIn() && !adapter->searchPaths.empty())
     {
+        std::map<std::string, openusd_mdl::SdkParameterValue> authored;
+        for (uint32_t index = 0; index < request->parameter_count; ++index)
+        {
+            const openusd_mdl_parameter& parameter = request->parameters[index];
+            openusd_mdl::SdkParameterValue value;
+            value.kind = parameter.kind;
+            value.componentCount = parameter.component_count;
+            std::copy_n(parameter.value, 4, value.value);
+            value.integerValue = parameter.integer_value;
+            value.text = ToString(parameter.text);
+            value.origin = OPENUSD_MDL_ORIGIN_AUTHORED;
+            authored.emplace(ToString(parameter.name), std::move(value));
+        }
+        // Decoding belongs to the asset and must survive SDK aliases/copies.
+        // Keep the text intact; ResolveColorSpace retains destination precedence
+        // and the existing handling of unrecognized metadata.
+        for (auto& entry : authored)
+        {
+            if (entry.second.kind == OPENUSD_MDL_VALUE_ASSET ||
+                entry.second.kind == OPENUSD_MDL_VALUE_STRING)
+            {
+                const auto metadata = authored.find("colorSpace:" + entry.first);
+                if (metadata != authored.end())
+                {
+                    entry.second.colorSpace = metadata->second.text;
+                }
+            }
+        }
         moduleResolution = openusd_mdl::SdkBackend::Instance().ResolveMaterial(
-            moduleUri, materialName);
+            moduleUri, materialName, adapter->searchPaths, adapter->cacheGeneration, authored);
         moduleConsulted = true;
+        if (accepted == AcceptedMaterial::None && moduleResolution.status == OPENUSD_MDL_STATUS_OK)
+        {
+            if (moduleResolution.kind == openusd_mdl::SdkMaterialKind::OmniPbr)
+            {
+                accepted = AcceptedMaterial::OmniPbr;
+            }
+            else if (moduleResolution.kind == openusd_mdl::SdkMaterialKind::OmniGlass)
+            {
+                accepted = AcceptedMaterial::OmniGlass;
+            }
+        }
     }
 
     if (accepted == AcceptedMaterial::None && !moduleConsulted)
@@ -1198,7 +1342,9 @@ openusd_mdl_adapter_distill(
     ParameterTable parameters(request->parameters, request->parameter_count);
     if (moduleResolution.status == OPENUSD_MDL_STATUS_OK)
     {
-        parameters.SetModuleDefaults(&moduleResolution.defaults);
+        parameters.SetModuleDefaults(
+            &moduleResolution.defaults, &moduleResolution.unresolved, moduleResolution.isVariant);
+        distilled.diagnostic = moduleResolution.diagnostic;
     }
 
     switch (accepted)
@@ -1213,14 +1359,11 @@ openusd_mdl_adapter_distill(
             DistillOmniGlass(parameters, distilled);
             break;
         case AcceptedMaterial::None:
-            // A module the SDK read but this adapter has no module-level mapping
-            // for. Its public parameter names are matched against the same
-            // accepted name tables; the three sets are disjoint, so running all
-            // three cannot make one module's name mean another's input. A module
-            // that declares none of them distils to nothing and is reported.
+            // Legacy parameter-default projection is not wrapper admission:
+            // the SDK resolution explicitly reports the unproven body.
             DistillOmniPbr(parameters, distilled);
             DistillOmniSurface(parameters, distilled);
-            DistillOmniGlass(parameters, distilled);
+            DistillOmniGlass(parameters, distilled, false);
             break;
     }
 
@@ -1241,7 +1384,7 @@ openusd_mdl_adapter_distill(
         // An accepted material that produced nothing is a failure, not an
         // empty success: shading it would draw the renderer's own defaults
         // while the stage says something else entirely.
-        distilled.status = accepted == AcceptedMaterial::None
+        distilled.status = accepted == AcceptedMaterial::None || moduleResolution.isVariant
             ? OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED
             : OPENUSD_MDL_STATUS_DISTILLATION_FAILED;
         distilled.diagnostic = "material '" + materialPath + "' produced no MDL '" +

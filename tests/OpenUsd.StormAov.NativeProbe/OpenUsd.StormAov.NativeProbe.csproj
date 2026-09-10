@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenUsd.Rendering.Storm\OpenUsd.Rendering.Storm.csproj" />
+    <Compile Include="..\OpenUsd.Exr.NativeProbe\ExrScanlineOracle.cs" Link="ExrScanlineOracle.cs" />
   </ItemGroup>
 </Project>

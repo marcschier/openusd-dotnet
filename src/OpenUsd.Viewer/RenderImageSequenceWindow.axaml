@@ -11,6 +11,7 @@
     MinWidth="500"
     MinHeight="610"
     ShowInTaskbar="False"
+    ClosingBehavior="OwnerWindowOnly"
     WindowStartupLocation="CenterOwner">
   <Window.Styles>
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
@@ -79,6 +80,9 @@
                AutomationProperties.Name="Completed image sequence output location" />
     </StackPanel>
     <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="SequenceViewResultsButton" Content="_View results" IsEnabled="False"
+              AutomationProperties.Name="View completed image sequence results"
+              ToolTip.Tip="Preview up to 16 verified completed PNGs in a contact sheet; no rendering." />
       <Button x:Name="SequenceCancelButton" Content="Cancel job" IsEnabled="False"
               AutomationProperties.Name="Cancel image sequence" />
       <Button x:Name="SequenceCloseButton" Content="Close" AutomationProperties.Name="Close image sequence" />

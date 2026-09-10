@@ -1,0 +1,5 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+mdl 1.7;
+using ::OmniPBR import OmniPBR;
+export material missing_texture(*) = OmniPBR(
+    diffuse_texture: texture_2d("./textures/absent-on-purpose.png"));

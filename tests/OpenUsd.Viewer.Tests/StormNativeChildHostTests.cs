@@ -304,14 +304,14 @@ public sealed class StormNativeChildHostTests
             "tests",
             "storm_child_probe_linux.cpp"));
 
-        await Assert.That(targetCmake).Contains("VERSION 8.0.0");
-        await Assert.That(targetCmake).Contains("SOVERSION 8");
+        await Assert.That(targetCmake).Contains("VERSION 9.0.0");
+        await Assert.That(targetCmake).Contains("SOVERSION 9");
         await Assert.That(probeCmake)
             .Contains("$<TARGET_SONAME_FILE_NAME:openusd_storm_child>");
         await Assert.That(probeCmake)
             .Contains("$<TARGET_LINKER_FILE_NAME:openusd_storm_child>");
-        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.8.0.0");
-        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.8");
+        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.9.0.0");
+        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.9");
         await Assert.That(probeSource).Contains("libopenusd_storm_child.so");
     }
 
@@ -332,7 +332,7 @@ public sealed class StormNativeChildHostTests
             () =>
             {
                 calls.Add("GetAbiVersion");
-                return 8;
+                return 9;
             });
 
         await Assert.That(calls.Count).IsEqualTo(3);
@@ -659,7 +659,7 @@ public sealed class StormNativeChildHostTests
             "src",
             "openusd_storm_child_macos.mm"));
 
-        await Assert.That(header).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 8u");
+        await Assert.That(header).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 9u");
         await Assert.That(header).Contains(
             "OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION 2u");
         await Assert.That(header).Contains("openusd_storm_child_navigation_input");

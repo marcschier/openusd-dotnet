@@ -565,7 +565,7 @@ jobs:
           }
           & $testApp --minimum-expected-tests 26
           exit $LASTEXITCODE
-      - name: Require Linux ABI-8 SONAME topology and package-only evidence
+      - name: Require Linux ABI-9 SONAME topology and package-only evidence
         if: runner.os == 'Linux' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |

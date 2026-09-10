@@ -631,9 +631,9 @@ public sealed class ViewerSourceContractTests
         await Assert.That(evidence).Contains("ViewerNativeNavigationEvidence");
         await Assert.That(evidence).Contains("ViewerStageCameraEvidence");
         await Assert.That(evidence)
-            .Contains("openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)");
+            .Contains("openusd_storm_child_capture_framebuffer(ABI9,preserved-texture)");
         await Assert.That(evidence)
-            .Contains("openusd_storm_child_get_navigation_input(ABI8,v2)");
+            .Contains("openusd_storm_child_get_navigation_input(ABI9,v2)");
         await Assert.That(evidence).DoesNotContain("ABI4");
         await Assert.That(cameraEvidence).Contains("SHA256.HashData(payload)");
         await Assert.That(cameraEvidence).Contains("BinaryPrimitives.WriteUInt64LittleEndian");
@@ -647,7 +647,7 @@ public sealed class ViewerSourceContractTests
         await Assert.That(contract).Contains("Assert-ViewerStageCameraEvidence");
         await Assert.That(contract).Contains(
             "[string]$before[0].cameraSignature -ceq");
-        await Assert.That(runner).Contains("[int]$artifact.stormChildAbiVersion -ne 8");
+        await Assert.That(runner).Contains("[int]$artifact.stormChildAbiVersion -ne 9");
         await Assert.That(runner).Contains("cameraTransitionCount");
         await Assert.That(runner).Contains("nativeNavigationCount");
         await Assert.That(runner).Contains(
@@ -688,15 +688,15 @@ public sealed class ViewerSourceContractTests
             "run-storm-native-child-linux.sh"));
 
         const string captureApi =
-            "openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)";
+            "openusd_storm_child_capture_framebuffer(ABI9,preserved-texture)";
         const string navigationDeliveryApi =
-            "SendMessageTimeoutW+StormChildWndProc+ABI8Poll+" +
+            "SendMessageTimeoutW+StormChildWndProc+ABI9Poll+" +
             "ViewerCameraNavigationUiAdapter";
         const string navigationSnapshotApi =
-            "openusd_storm_child_get_navigation_input(ABI8,v2)";
+            "openusd_storm_child_get_navigation_input(ABI9,v2)";
 
         await Assert.That(windowsRunner).Contains(
-            "[int]$artifact.stormChildAbiVersion -ne 8");
+            "[int]$artifact.stormChildAbiVersion -ne 9");
         await Assert.That(windowsRunner).Contains(captureApi);
         await Assert.That(windowsRunner).Contains(navigationDeliveryApi);
         await Assert.That(windowsRunner).Contains(navigationSnapshotApi);
@@ -708,12 +708,12 @@ public sealed class ViewerSourceContractTests
             "stormChildAbiVersion -ne 7");
 
         await Assert.That(linuxRunner).Contains(
-            "if get(value, \"stormChildAbiVersion\") != 8:");
+            "if get(value, \"stormChildAbiVersion\") != 9:");
         await Assert.That(linuxRunner).Contains(
             "Viewer evidence Storm child ABI must be 8.");
         await Assert.That(linuxRunner).Contains(captureApi);
         await Assert.That(linuxRunner).Contains(
-            "Storm Viewer pixels did not use the ABI 8 capture label.");
+            "Storm Viewer pixels did not use the ABI 9 capture label.");
         await Assert.That(linuxRunner).DoesNotContain("ABI7");
         await Assert.That(linuxRunner).DoesNotContain("ABI 7");
         await Assert.That(linuxRunner).DoesNotContain(

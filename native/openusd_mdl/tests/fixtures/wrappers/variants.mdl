@@ -1,0 +1,55 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+// These repository-authored variants require the real, operator-supplied modules.
+mdl 1.7;
+
+using ::OmniPBR import OmniPBR;
+using ::OmniGlass import OmniGlass;
+import ::tex::*;
+import ::math::*;
+import ::state::*;
+
+export material constants(*) = OmniPBR(
+    diffuse_color_constant: color(0.12, 0.34, 0.56),
+    reflection_roughness_constant: 0.21,
+    metallic_constant: 0.84);
+
+export material textured(*) = OmniPBR(
+    diffuse_texture: texture_2d("./textures/albedo.ppm", ::tex::gamma_linear),
+    enable_ORM_texture: true,
+    ORM_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear),
+    normalmap_texture: texture_2d("./textures/normal.ppm", ::tex::gamma_linear));
+
+export material influenced(*) = OmniPBR(
+    reflection_roughness_texture_influence: 1.0,
+    reflectionroughness_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear),
+    metallic_texture_influence: 1.0,
+    metallic_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear));
+
+export material glass(*) = OmniGlass(
+    glass_color: color(0.32, 0.57, 0.81),
+    glass_ior: 1.64,
+    frosting_roughness: 0.16);
+
+export material chain_1(*) = OmniPBR(
+    diffuse_color_constant: color(0.12, 0.34, 0.56),
+    reflection_roughness_constant: 0.18);
+export material chain_2(*) = chain_1(metallic_constant: 0.31);
+export material chain_3(*) = chain_2();
+export material chain_4(*) = chain_3();
+export material chain_5(*) = chain_4();
+export material chain_6(*) = chain_5();
+export material chain_7(*) = chain_6();
+export material chain_8(*) = chain_7(reflection_roughness_constant: 0.68);
+export material chain_9(*) = chain_8(reflection_roughness_constant: 0.79);
+
+export material unsupported_call(*) = OmniPBR(
+    reflection_roughness_constant: ::math::abs(::state::position().x));
+
+export material unsupported_modifier(*) = OmniPBR(
+    diffuse_tint: color(0.4, 0.5, 0.6),
+    texture_scale: float2(2.0, 3.0));
+
+// No SDK variant/prototype link survives for this ordinary material body.
+export material unproven_body() = OmniPBR(
+    diffuse_color_constant: color(0.8, 0.1, 0.2),
+    reflection_roughness_constant: 0.13);

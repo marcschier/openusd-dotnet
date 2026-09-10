@@ -15,7 +15,8 @@ public sealed partial class MainWindow
     private bool WorkspaceOwnsKeyboard =>
         _commandPalette is { IsActive: true } || _captureComparison is { IsActive: true } ||
         _propertyEditor is { IsActive: true } || _documentChanges is { IsActive: true } ||
-        _documentAction is { IsActive: true } || _renderSequenceWindow is { IsActive: true };
+        _documentAction is { IsActive: true } || _renderSequenceWindow is { IsActive: true } ||
+        _authoredRenderProductWindow is { IsActive: true };
 
     private void InitializeWorkspaceCommands()
     {
@@ -31,6 +32,7 @@ public sealed partial class MainWindow
         CommandPaletteMenuItem.Click += (_, _) => ShowCommandPalette();
         CompareCapturesMenuItem.Click += (_, _) => ShowCaptureComparison();
         RenderImageSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence();
+        RenderAuthoredProductMenuItem.Click += (_, _) => ShowAuthoredRenderProduct();
         FindPrimMenuItem.Click += (_, _) =>
         {
             RevealWorkspacePanel(stage: true, selectedTabId: CurrentSelectedTabId());
