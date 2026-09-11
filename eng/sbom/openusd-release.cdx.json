@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "b25383f5a034241e28c5691e07cd408b6f462407b20a6d64925e50ca5e572d86"
+        "value": "6cba56bf250d7f5f1670a4ea04044fec2de68e4e67aad3004153c0f202f78ac1"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -965,6 +965,19 @@
       "name": "Avalonia.Fonts.Inter",
       "version": "12.1.1",
       "purl": "pkg:nuget/Avalonia.Fonts.Inter@12.1.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Avalonia.Headless",
+      "name": "Avalonia.Headless",
+      "version": "12.1.1",
+      "purl": "pkg:nuget/Avalonia.Headless@12.1.1",
       "properties": [
         {
           "name": "openusd:source",
@@ -2649,6 +2662,7 @@
         "nuget-dependency:Avalonia",
         "nuget-dependency:Avalonia.Desktop",
         "nuget-dependency:Avalonia.Fonts.Inter",
+        "nuget-dependency:Avalonia.Headless",
         "nuget-dependency:Avalonia.Themes.Fluent",
         "nuget-dependency:Avalonia.Wayland",
         "nuget-dependency:BenchmarkDotNet",
@@ -2880,6 +2894,10 @@
     },
     {
       "ref": "nuget-dependency:Avalonia.Fonts.Inter",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Avalonia.Headless",
       "dependsOn": []
     },
     {

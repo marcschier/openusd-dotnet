@@ -1815,6 +1815,11 @@ releases only the retiring owner's references, and serialization reads through c
 These ownership changes leave the page format and values unchanged. They do not by themselves
 make full-scene memory bounded.
 
+Native command-page allocation failure is a whole-publication refusal, not a malformed
+mesh/material omission. Published environment state and pending changes are acknowledged
+only after the page completes; an allocation failure leaves a complete retry available.
+This transaction guarantee is a prerequisite for resource admission, not its byte budget.
+
 #### Presentation topology revision
 
 `topology_revision` is a *presentation* revision, not the authored one. Draw mode and complexity

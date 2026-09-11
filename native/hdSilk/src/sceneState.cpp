@@ -14,6 +14,7 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <utility>
 
@@ -3507,6 +3508,14 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         environmentRemovals.end(),
         Utf8PathLess);
 
+    // A later allocation failure must not acknowledge environment changes from
+    // a page the caller never received.
+    const bool environmentsChanged = !environmentUpserts.empty() || !environmentRemovals.empty();
+    std::unordered_map<std::string, HdSilkEnvironmentSnapshot> publishedEnvironments;
+    if (environmentsChanged)
+    {
+        publishedEnvironments = _publishedEnvironments;
+    }
     for (const std::string* path : environmentUpserts)
     {
         const size_t bufferSize = buffer.size();
@@ -3514,7 +3523,11 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         {
             AppendEnvironmentUpsert(buffer, *path, environments.at(*path));
             ++appendedCommands;
-            _publishedEnvironments[*path] = environments.at(*path);
+            publishedEnvironments[*path] = environments.at(*path);
+        }
+        catch (const std::bad_alloc&)
+        {
+            throw;
         }
         catch (const std::exception& error)
         {
@@ -3536,7 +3549,11 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         {
             AppendEnvironmentRemove(buffer, path);
             ++appendedCommands;
-            _publishedEnvironments.erase(path);
+            publishedEnvironments.erase(path);
+        }
+        catch (const std::bad_alloc&)
+        {
+            throw;
         }
         catch (const std::exception& error)
         {
@@ -3581,6 +3598,10 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
             AppendMaterialUpsert(buffer, entry->record);
             ++appendedCommands;
         }
+        catch (const std::bad_alloc&)
+        {
+            throw;
+        }
         catch (const std::exception& error)
         {
             buffer.resize(bufferSize);
@@ -3599,6 +3620,10 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         {
             AppendMaterialRemove(buffer, path);
             ++appendedCommands;
+        }
+        catch (const std::bad_alloc&)
+        {
+            throw;
         }
         catch (const std::exception& error)
         {
@@ -3649,6 +3674,10 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
                     entry->record.topologyKind);
                 ++appendedCommands;
             }
+            catch (const std::bad_alloc&)
+            {
+                throw;
+            }
             catch (const std::exception& error)
             {
                 buffer.resize(pathBufferSize);
@@ -3675,6 +3704,10 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
             AppendMeshRemove(buffer, key);
             ++appendedCommands;
         }
+        catch (const std::bad_alloc&)
+        {
+            throw;
+        }
         catch (const std::exception& error)
         {
             buffer.resize(bufferSize);
@@ -3688,6 +3721,10 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     const uint32_t commandCount =
         CheckedCount(appendedCommands, "page command count");
 
+    if (environmentsChanged)
+    {
+        _publishedEnvironments.swap(publishedEnvironments);
+    }
     for (_Entry* entry : dirtyEntries)
     {
         entry->dirty = false;

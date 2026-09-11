@@ -146,6 +146,12 @@ only the arrays they write. Read-only traversal, including serialization, must u
 views so it neither changes earlier records nor duplicates their payloads.
 The wire format and native ABI are unchanged.
 
+Command-page allocation failures abort the whole publication instead of being treated
+as malformed scene records. Environment acknowledgements, dirty flags and removals
+advance only after a complete page is built, so a retry still publishes every pending
+change. Invalid authored records retain their existing diagnostic behavior. This is
+failure atomicity, not a total-process memory limit or pre-allocation admission policy.
+
 `openusd_silk_session_sync` returns an `openusd_silk_page_view` whose `data`
 buffer is a sequence of little-endian commands. Every command starts with a
 `uint32 type` and a `uint32 byte_size` (the 8-byte header plus all payload

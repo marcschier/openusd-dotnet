@@ -289,24 +289,30 @@ add_executable(
     hdsilk_direct_lights_probe.cpp
     ../src/sceneState.cpp
     ../src/instanceLinking.cpp)
-target_compile_features(hdsilk_direct_lights_probe PRIVATE cxx_std_17)
-target_link_libraries(hdsilk_direct_lights_probe PRIVATE usd_m)
-target_include_directories(
-    hdsilk_direct_lights_probe
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_dotnet/include)
-if(MSVC)
-    target_compile_options(
-        hdsilk_direct_lights_probe PRIVATE /W4 /WX /permissive- /EHsc)
-else()
-    target_compile_options(
-        hdsilk_direct_lights_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
-endif()
-add_dependencies(hdsilk_direct_lights_probe hdsilk_probe_runtime)
+add_executable(
+    hdsilk_publication_allocation_probe
+    hdsilk_publication_allocation_probe.cpp
+    ../src/sceneState.cpp
+    ../src/instanceLinking.cpp)
+foreach(probe hdsilk_direct_lights_probe hdsilk_publication_allocation_probe)
+    target_compile_features(${probe} PRIVATE cxx_std_17)
+    target_link_libraries(${probe} PRIVATE usd_m)
+    target_include_directories(${probe}
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_dotnet/include)
+    if(MSVC)
+        target_compile_options(${probe} PRIVATE /W4 /WX /permissive- /EHsc)
+    else()
+        target_compile_options(${probe} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    add_dependencies(${probe} hdsilk_probe_runtime)
+endforeach()
 
+add_test(NAME hdsilk_publication_allocation COMMAND hdsilk_publication_allocation_probe)
+set_tests_properties(hdsilk_publication_allocation PROPERTIES TIMEOUT 60)
 add_test(NAME hdsilk_direct_light_masks
     COMMAND hdsilk_direct_lights_probe masks)
 add_test(NAME hdsilk_direct_light_wire
@@ -320,6 +326,7 @@ add_test(NAME hdsilk_direct_light_links
 add_test(NAME hdsilk_direct_light_domes_shadows
     COMMAND hdsilk_direct_lights_probe domes-shadows)
 set_tests_properties(
+    hdsilk_publication_allocation
     hdsilk_direct_light_masks
     hdsilk_direct_light_wire
     hdsilk_direct_light_selection

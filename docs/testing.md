@@ -453,6 +453,13 @@ scope and assert them after it.
 It asserts page ABI 24 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
+`hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable
+and fails each ordinary C++ allocation in turn; it does not add hooks to the shipped library.
+`EveryAllocationFailurePreservesTheCompleteRetry` requires `bad_alloc` to escape without
+changing output sentinels or malformed-record counters. It compares the retry byte-for-byte
+with a clean control, covering environment updates/removal, material and mesh updates/removal,
+light links and shadows, then requires the next quiet page to contain no replayed changes.
+
 `hdsilk_vertex_layout` checks exact corner sharing, all-attribute equality, original point
 identity, signed zero, invalid-input preservation and deterministic ordering.
 `RecordCopiesShareAttributeStorage` checks actual shared allocation identity rather than only
