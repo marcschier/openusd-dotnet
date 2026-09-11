@@ -73,7 +73,8 @@ internal sealed class ViewerProductResourceRegistry : IDisposable
             }
             if (failures is not null)
             {
-                throw new AggregateException("Product capture cleanup failed; failed resources remain registered.", failures);
+                throw new AggregateException(
+                    "Product capture cleanup failed; failed resources remain registered.", failures);
             }
             registry._leases.Remove(this);
             _disposed = true;

@@ -148,22 +148,22 @@ internal sealed class ViewerCameraBookmarkCatalog(ViewerAuthoredEditController e
     {
         ArgumentNullException.ThrowIfNull(binding);
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Append("OpenUsd.Viewer.saved-views.source.v1");
-        Append(Normalize(binding.SourceRootPath));
-        Append(binding.SourceFingerprint);
-        Append(Normalize(binding.AssetAnchor));
+        append("OpenUsd.Viewer.saved-views.source.v1");
+        append(normalize(binding.SourceRootPath));
+        append(binding.SourceFingerprint);
+        append(normalize(binding.AssetAnchor));
         Span<byte> numbers = stackalloc byte[12];
         foreach (UsdReviewDependency dependency in binding.Dependencies)
         {
-            Append(Normalize(dependency.Path));
-            Append(dependency.Sha256);
+            append(normalize(dependency.Path));
+            append(dependency.Sha256);
             BinaryPrimitives.WriteUInt64LittleEndian(numbers, dependency.ByteLength);
             BinaryPrimitives.WriteInt32LittleEndian(numbers[8..], (int)dependency.Kind);
             hash.AppendData(numbers);
         }
         return Convert.ToHexString(hash.GetHashAndReset());
 
-        void Append(string text)
+        void append(string text)
         {
             byte[] bytes = ViewerCameraBookmarkCodec.Utf8.GetBytes(text);
             Span<byte> length = stackalloc byte[4];
@@ -172,6 +172,6 @@ internal sealed class ViewerCameraBookmarkCatalog(ViewerAuthoredEditController e
             hash.AppendData(bytes);
         }
 
-        static string Normalize(string path) => Path.GetFullPath(path).ToUpperInvariant();
+        static string normalize(string path) => Path.GetFullPath(path).ToUpperInvariant();
     }
 }

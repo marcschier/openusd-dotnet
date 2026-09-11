@@ -93,7 +93,8 @@ internal sealed partial class CaptureComparisonWindow : Window
             string? path = files[0].TryGetLocalPath();
             if (path is null)
             {
-                SetStatus("Choose a local PNG or BMP file; remote storage-provider items cannot be compared.", error: true);
+                SetStatus(
+                    "Choose a local PNG or BMP file; remote storage-provider items cannot be compared.", error: true);
                 return;
             }
             if (before)

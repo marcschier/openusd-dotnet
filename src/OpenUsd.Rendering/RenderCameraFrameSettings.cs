@@ -88,17 +88,21 @@ public sealed class RenderCameraFrameSettings : IUsdDetachedResult
             }
             if (property is not UsdAttributePropertySnapshot attribute || attribute.TypeName != type ||
                 attribute.ValueState != UsdPropertyValueState.Value ||
-                attribute.Value is not { IsArray: false, Status: UsdPropertyPreviewStatus.Complete, ElementCount: 1 } value ||
+                attribute.Value is not
+                { IsArray: false, Status: UsdPropertyPreviewStatus.Complete, ElementCount: 1 } value ||
                 value.Elements is not [string text])
             {
-                throw new NotSupportedException($"Camera attribute '{name}' requires a complete native '{type}' sample.");
+                throw new NotSupportedException(
+                    $"Camera attribute '{name}' requires a complete native '{type}' sample.");
             }
             // These are full invariant numeric values, not shortened Viewer labels or diagnostic text.
-            if (type == "float" && float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float single))
+            if (type == "float" &&
+                float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float single))
             {
                 return single;
             }
-            if (type == "double" && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+            if (type == "double" &&
+                double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
             {
                 return number;
             }

@@ -153,7 +153,8 @@ internal static class ReviewDocumentProbe
         }
         VerifyOriginals(directory);
         Console.WriteLine(
-            "PORTABLE_REVIEW_IMPORT_OK: exact typed opinions, asset anchor, new history, original root metadata and files");
+            "PORTABLE_REVIEW_IMPORT_OK: exact typed opinions, asset anchor, new history, " +
+            "original root metadata and files");
     }
 
     private static void AuthorReview(UsdLayer review)

@@ -46,5 +46,6 @@ internal sealed record McpSequenceSheetResultDto(
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
 {
     [Description("Bounded contact-sheet completion summary.")]
-    public string Summary => $"Contact sheet of {Tiles.Count} completed frames from job {JobId}; no scene was rendered.";
+    public string Summary =>
+        $"Contact sheet of {Tiles.Count} completed frames from job {JobId}; no scene was rendered.";
 }

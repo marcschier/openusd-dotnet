@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 
 namespace OpenUsd.Viewer;
 

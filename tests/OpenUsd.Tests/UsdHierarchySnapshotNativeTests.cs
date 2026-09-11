@@ -71,7 +71,8 @@ public sealed partial class UsdHierarchySnapshotNativeTests
             await Assert.That(nestedPrototypeInstance.IsInstance).IsTrue();
             await Assert.That(nestedPrototypeInstance.PrototypePath).IsEqualTo(entries["/Model/Nested"].PrototypePath);
             await Assert.That(entries.Values.Any(entry => entry.IsInstanceProxy)).IsFalse();
-            await Assert.That(entries.Values.Any(entry => entry.Path.StartsWith("/InstanceA/", StringComparison.Ordinal)))
+            await Assert.That(
+                entries.Values.Any(entry => entry.Path.StartsWith("/InstanceA/", StringComparison.Ordinal)))
                 .IsFalse();
             await Assert.That(snapshot.Entries[0].Path).IsEqualTo("/Inactive");
             await Assert.That(snapshot.Entries[1].Path).IsEqualTo("/OnlyOver");

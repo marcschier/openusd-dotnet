@@ -249,6 +249,35 @@ with the corrected adapter preserves every result record and module hash. This a
 the bounded wrapper implementation only; no full-warehouse runtime promotion or fidelity
 claim follows from it.
 
+### Actual authored material values
+
+The native audit now records each shader input's typed composed value at default time,
+its `colorSpace` metadata, and whether the value and metadata were authored. `valueStatus`
+is `resolved`, `unresolved`, or `unsupported`; unresolved and unsupported counts are
+explicit. Non-finite numeric values refuse the audit by attribute path rather than
+producing invalid JSON. Connected inputs remain marked as connected: reading their
+attribute value is not shader-graph evaluation.
+
+The full warehouse has **29,337 resolved authored input values** and 154 unassigned asset
+slots with no authored value. All observed value types are supported by this audit.
+Among the declarations are 1,263 texture scales (many are 2x, 3x or 12x), 75 texture
+rotations (seven are 90 degrees), 1,557 diffuse tints and 523 opacity-enable values.
+These are actual source opinions, not inferred module defaults or a count of visible
+material placements.
+
+Passing those authored values and texture metadata to the existing adapter produces
+**882 distinct requests across the 3,701 shader definitions**: 875 partial successes and
+seven refusals. The refusals still represent the same nine legacy signature-qualified
+OmniPBR definitions and three OmniSurface definitions. Named unprojected authored inputs
+include texture influence/scale, tint and normal/detail controls. Some controls are
+inactive or neutral, so their presence alone does not prove a visible defect; each active
+semantic still needs projection and pixel qualification.
+
+This is a stronger material inventory, not complete material fidelity, a bound/visible
+material census or a warehouse render. The `openusd_warehouse_audit_contract` regression
+checks exact scalar/vector/bool/int/string/token/asset values, source color-space metadata,
+unassigned/blocked/unsupported values, connected authored fallbacks and non-finite refusal.
+
 ### Actual physics capacity gap
 
 `tests\OpenUsd.SimReadyWarehouse.NativeProbe` exercises the existing public hierarchy and
@@ -273,14 +302,45 @@ MDL wrappers importing OmniPBR/OmniGlass require qualified material handling; an
 empty/default material is not full warehouse rendering. Effective intensity, exposure,
 color and inherited-visibility inspection reduces the 553 light prims to **98 visible,
 nonzero lights: 96 rectangle, one distant and one dome**. The 97 contributing direct lights
-still exceed the current eight-light transport/shader profile; hidden lights must not be
-counted as a requirement, nor may the first eight be treated as the whole scene.
+fit the bounded 128-direct-light profile in hdSilk page ABI 24. Native selection filters
+inherited-hidden and zero-output direct lights before admission, and refuses the complete
+sync above the limit rather than returning a prefix. Real RTX 5070, WARP and Vulkan
+fixtures preserve high light-link bits on meshes and instances at 97 and 128 lights.
+Overflow recovery also retires departed link, shadow and dome-environment state even
+when the replacement scene has the same number of lights. This qualifies that bounded
+lighting transport, not full-warehouse pixels or the previously unsupported shadow models.
+
+The first full-root MCP preview attempt opened the prepared scene successfully, but did
+not produce a frame. An external eight-GiB private-memory guard stopped only that owned
+host process during `render_preview`; its sampled peak was 8.57 GiB private memory and
+9.13 GiB working set. This is a failed resource admission, not an image or an in-renderer
+memory-bound guarantee. All 8,804 original files were reverified afterward.
+Subsequent native-only isolation reproduces the growth without MCP, GPU resources or
+MDL evaluation. It occurs during Hydra synchronization, before page construction or
+managed copying. Prototype payload sharing already exists.
+
+The shared-corner candidate compacts byte-identical vertex attributes with their original
+point identities when normals are available, without dropping geometry or smoothing an
+implicit normal fallback. A 128x128 grid drops from 98,304 emitted vertices to 16,641,
+while retaining all 98,304 indices and identical textured pixels. Full-root synchronization
+still exceeds the diagnostic memory guard, so this is a verified representation improvement,
+not complete resource admission or a warehouse image.
+
+Further private instrumentation attributes roughly 3.1 GB of a 4.3 GB full-root sample
+to retained Rprim/scene-record arrays; the temporary corner hash peaks at about 28 MB
+in that run. Rprims now borrow active coarse/refined topology tables, and published
+attributes share copy-on-write storage instead of duplicating every attribute buffer.
+Mutation detaches the writer so earlier records remain unchanged. The controlled grid's
+complete 1,340,590-byte command page is byte-identical across these ownership changes.
+These are measured representation/lifetime improvements, not a complete warehouse memory
+budget. Remaining retained arrays, USD/Hydra caches and later publication peaks still
+need admission. Raising the guard or dropping scene content is not a full-scene fix.
 
 For Windows MCP work, explicitly use `OPENUSD_MCP_USE_WARP=false` instead of its
 deterministic software default. This does not choose a named GPU. D3D12 capabilities now
-report the observed DXGI name and software flag, and the small HDR wrapper fixture
-exercised the RTX 5070. Full-warehouse
-resource admission and rendering still require their own device-specific evidence.
+report the observed DXGI name and software flag. The small HDR wrapper and high-light
+fixtures exercised the RTX 5070. Full-warehouse resource admission and rendering still
+require their own device-specific evidence.
 
 The original warehouse will remain unchanged. A separate scenario will add dynamics only
 to selected movable asset placements, with explicit masses, inputs and any necessary
@@ -303,6 +363,9 @@ These tests require no dataset or native runtime. They cover exact inventory and
 admission, path/metadata refusals, interrupted/resumed transfers, source preservation,
 create-only publication, Git/LFS hashes and snapshot locking. They run through the existing
 `eng\tests` discovery in `ci.yml`. They are not full-warehouse rendering evidence.
+Fixtures resolve their OS-created temporary directories to physical paths before using
+the acquisition interface, including macOS's `/var` alias. Caller-supplied data roots
+still reject symlink/reparse ancestors; fixture normalization does not relax that policy.
 
 The native `openusd_warehouse_audit_contract` and
 `openusd_warehouse_localization_contract` CTests use repository-owned fixtures. They cover

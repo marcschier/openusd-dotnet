@@ -94,7 +94,7 @@ constants, package validation, and tests must be updated together.
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
-| hdSilk command page | ABI 23 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 24 | Every managed page is validated before parsing. |
 | Retained physics `openusd_physx` | ABI 7 | Negotiated exactly, including every record size. |
 | Physics extraction page | ABI 1 | Every managed page is validated before parsing. |
 
@@ -221,7 +221,9 @@ The hdSilk page is a pointer-free, little-endian wire format. A page-version cha
 native header and writer, managed parser, tests, lock metadata, and package evidence. Session ABI 6
 exports `openusd_silk_get_session_abi_version` and `openusd_silk_get_page_abi_version`; managed
 session creation rejects missing exports or mismatched versions before consuming scene data.
-It adds the version-1 explicit scene-ingestion request without changing page ABI 23.
+The version-1 explicit scene-ingestion request and page ABI 24 are independent extensions of that
+session interface. Page ABI 24 expands direct lighting to 128 entries and four-word direct/shadow
+masks without changing session ABI 6.
 Earlier session-5 libraries do not satisfy this interface and must not be mixed with these bindings.
 
 The Storm child ABI also participates in native filename policy. Linux packages use the ABI-9 SONAME and

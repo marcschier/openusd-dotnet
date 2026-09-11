@@ -103,7 +103,8 @@ internal static class ReviewMetadataPackets
     }
 
     private static void Metadata(
-        BinaryWriter writer, string corruption, bool document, string? originalIdentifier = null, int dependencyCount = 2)
+        BinaryWriter writer, string corruption, bool document,
+        string? originalIdentifier = null, int dependencyCount = 2)
     {
         switch (corruption)
         {

@@ -62,7 +62,9 @@ public static class ExrRgba16FloatWriter
     /// </remarks>
     /// <returns>The encoded file extent in bytes on success.</returns>
     /// <exception cref="PlatformNotSupportedException">The host has no implemented file-handle profile.</exception>
-    /// <exception cref="ArgumentException">Input extent, samples, enum values or output profile are invalid.</exception>
+    /// <exception cref="ArgumentException">
+    /// Input extent, samples, enum values or output profile are invalid.
+    /// </exception>
     /// <exception cref="NotSupportedException">The native file-handle profile is unsupported.</exception>
     /// <exception cref="RenderOutputQuotaExceededException">The encoded-byte quota would be exceeded.</exception>
     /// <exception cref="OperationCanceledException">Encoding was cancelled.</exception>
@@ -79,7 +81,8 @@ public static class ExrRgba16FloatWriter
     {
         if (!IsSupported)
         {
-            throw new PlatformNotSupportedException("The EXR output file-handle profile currently requires Windows x64.");
+            throw new PlatformNotSupportedException(
+                "The EXR output file-handle profile currently requires Windows x64.");
         }
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -91,19 +94,22 @@ public static class ExrRgba16FloatWriter
         long required = pixels * 8;
         if (rgba16Float.Length != required)
         {
-            throw new ArgumentException($"RGBA16Float data must contain exactly {required} bytes.", nameof(rgba16Float));
+            throw new ArgumentException(
+                $"RGBA16Float data must contain exactly {required} bytes.", nameof(rgba16Float));
         }
         if (rowOrder is not (Rgba16FloatRowOrder.TopDown or Rgba16FloatRowOrder.BottomUp))
         {
             throw new ArgumentOutOfRangeException(nameof(rowOrder));
         }
-        if (alphaPolicy is not (ExrStoredAlphaPolicy.Unspecified or ExrStoredAlphaPolicy.Associated or ExrStoredAlphaPolicy.Unassociated))
+        if (alphaPolicy is not (ExrStoredAlphaPolicy.Unspecified or
+            ExrStoredAlphaPolicy.Associated or ExrStoredAlphaPolicy.Unassociated))
         {
             throw new ArgumentOutOfRangeException(nameof(alphaPolicy));
         }
         if (!destination.CanWrite || !destination.CanSeek || destination.IsAsync)
         {
-            throw new ArgumentException("EXR output requires a writable, seekable synchronous FileStream.", nameof(destination));
+            throw new ArgumentException(
+                "EXR output requires a writable, seekable synchronous FileStream.", nameof(destination));
         }
         if (destination.Length != 0 || destination.Position != 0)
         {
@@ -135,15 +141,18 @@ public static class ExrRgba16FloatWriter
         {
             OpenUsdImageEncodeStatus.Ok => checked((long)result.EncodedBytes),
             OpenUsdImageEncodeStatus.InvalidInput => throw new ArgumentException(
-                "The native encoder rejected the finite, aligned half input or the empty regular-file profile.", nameof(rgba16Float)),
+                "The native encoder rejected the finite, aligned half input or the empty regular-file profile.",
+                nameof(rgba16Float)),
             OpenUsdImageEncodeStatus.Unsupported => throw new NotSupportedException(
                 "The native encoder does not support this file-handle profile."),
             OpenUsdImageEncodeStatus.QuotaExceeded => throw new RenderOutputQuotaExceededException(
                 "EXR output would exceed its admitted encoded-byte quota."),
             OpenUsdImageEncodeStatus.Cancelled => throw new OperationCanceledException(cancellationToken),
             OpenUsdImageEncodeStatus.IoError => throw new IOException(
-                $"Native EXR I/O failed with Win32 error {result.Win32Error}.", new Win32Exception((int)result.Win32Error)),
-            OpenUsdImageEncodeStatus.OutOfMemory => throw new IOException("The native EXR codec could not allocate its working storage."),
+                $"Native EXR I/O failed with Win32 error {result.Win32Error}.",
+                new Win32Exception((int)result.Win32Error)),
+            OpenUsdImageEncodeStatus.OutOfMemory => throw new IOException(
+                "The native EXR codec could not allocate its working storage."),
             _ => throw new IOException("The native EXR codec failed.")
         };
     }

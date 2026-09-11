@@ -1873,4 +1873,68 @@ public sealed class D3D12DeviceTests
             return new SilkPresentationRenderResult(42, 7);
         }
     }
+
+    [Test]
+    [Arguments(32)]
+    [Arguments(64)]
+    [Arguments(96)]
+    [Arguments(127)]
+    public async Task WarpBindsHighWordUsdLuxLightMasks(int index)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.D3D12);
+        await Assert.That(device.Capabilities.IsSoftware).IsTrue()
+            .Because($"This synthetic offscreen case requires WARP; selected {device.Capabilities.DeviceName}.");
+        await SilkLightLinkConformance.HighWordMasksUseDistinctSurfaceBindings(device, index);
+    }
+
+    [Test]
+    [Arguments(96)]
+    [Arguments(127)]
+    public async Task WarpKeepsHighShadowMasksIndependentOfIllumination(int index)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.D3D12);
+        await Assert.That(device.Capabilities.IsSoftware).IsTrue()
+            .Because($"This synthetic offscreen case requires WARP; selected {device.Capabilities.DeviceName}.");
+        await SilkLightLinkConformance.HighShadowOnlyChangePreservesIllumination(device, index);
+    }
+
+    [Test]
+    [Arguments(96, "light")]
+    [Arguments(127, "light")]
+    [Arguments(96, "shadow")]
+    [Arguments(127, "shadow")]
+    [Arguments(96, "dome")]
+    [Arguments(127, "dome")]
+    public async Task WarpSplitsAndRecombinesHighWordInstanceMasks(int index, string difference)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.D3D12);
+        await Assert.That(device.Capabilities.IsSoftware).IsTrue()
+            .Because($"This synthetic offscreen case requires WARP; selected {device.Capabilities.DeviceName}.");
+        await SilkNestedInstanceLinkConformance.HighWordMasksSplitAndRecombineBatches(
+            device, index, difference);
+    }
 }

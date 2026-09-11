@@ -47,7 +47,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
     {
         using ViewerCompletedJobPreview delayed = await ViewerCompletedJobPreview.LoadAsync(job, default);
         ViewerCompletedFramePreview[] frames = delayed.Frames.ToArray();
-        var release = new TaskCompletionSource<ViewerCompletedJobPreview>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<ViewerCompletedJobPreview>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
         CompletedRenderJobWindow? window = null;
         window = new CompletedRenderJobWindow(job, "Delayed completed output", (_, token) =>
@@ -103,8 +104,9 @@ internal static partial class ViewerCompletedJobPreviewJourney
     {
         int renders = 0;
         var next = new TaskCompletionSource<RenderDiskJobResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelled = new TaskCompletionSource<RenderDiskJobResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<RenderDiskJobResult> Render(CancellationToken _)
+        var cancelled = new TaskCompletionSource<RenderDiskJobResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<RenderDiskJobResult> renderJobAsync(CancellationToken _)
         {
             renders++;
             return renders switch
@@ -116,13 +118,13 @@ internal static partial class ViewerCompletedJobPreviewJourney
                 _ => Task.FromResult(second)
             };
         }
-        Window window = CreateCaller(product, Render);
+        Window window = CreateCaller(product, renderJobAsync);
         string prefix = product ? "Product" : "Sequence";
         string action = prefix + "ViewResultsButton";
         Button render = Required<Button>(window, prefix + "RenderButton");
         Button resultsAction = Required<Button>(window, action);
         TextBox output = Required<TextBox>(window, prefix + "OutputLocation");
-        bool IsRunning() => window is RenderImageSequenceWindow sequence
+        bool isRunning() => window is RenderImageSequenceWindow sequence
             ? sequence.IsRunning : ((AuthoredRenderProductWindow)window).IsRunning;
         try
         {
@@ -142,7 +144,7 @@ internal static partial class ViewerCompletedJobPreviewJourney
             await old.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
             await Assert.That(Required<ListBox>(old, "ResultsFrames").ItemCount).IsEqualTo(0);
             next.SetResult(second);
-            await WaitUntilAsync(() => !IsRunning() && resultsAction.IsEnabled);
+            await WaitUntilAsync(() => !isRunning() && resultsAction.IsEnabled);
             await Assert.That(output.Text).IsEqualTo(second.OutputDirectory);
             CompletedRenderJobWindow current = await OpenAsync(window, action, second.OutputDirectory, [0, 1], [0, 1]);
             await Assert.That(current).IsNotSameReferenceAs(old);
@@ -177,14 +179,14 @@ internal static partial class ViewerCompletedJobPreviewJourney
             await CloseAsync(current, window, action);
 
             render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await WaitUntilAsync(() => !IsRunning());
+            await WaitUntilAsync(() => !isRunning());
             await Assert.That(resultsAction.IsEnabled).IsFalse();
             await Assert.That(output.Text).IsNullOrEmpty();
             await Assert.That(Required<TextBlock>(window, prefix + "Status").Text).Contains("The newer job failed.");
             render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Required<Button>(window, prefix + "CancelButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             cancelled.SetResult(first);
-            await WaitUntilAsync(() => !IsRunning());
+            await WaitUntilAsync(() => !isRunning());
             await Assert.That(resultsAction.IsEnabled).IsFalse();
             await Assert.That(output.Text).IsNullOrEmpty();
             await Assert.That(Required<TextBlock>(window, prefix + "Status").Text).StartsWith("Cancelled.");
@@ -264,7 +266,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
         {
             window.Show(owner);
             await WaitUntilAsync(() => !Required<ProgressBar>(window, "ResultsLoading").IsVisible);
-            await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text).StartsWith("Could not preview results:");
+            await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text)
+                .StartsWith("Could not preview results:");
             await Assert.That(Required<TextBlock>(window, "ResultsStatus").Classes.Contains("viewer-error")).IsTrue();
             await Assert.That(Required<ListBox>(window, "ResultsFrames").ItemCount).IsEqualTo(0);
         }

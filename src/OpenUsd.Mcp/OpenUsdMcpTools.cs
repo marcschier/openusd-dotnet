@@ -150,7 +150,8 @@ internal static class OpenUsdMcpDescriptions
 
     internal const string ReadSequenceFrame =
         "Expose one completed disk-sequence PNG through the bounded immutable artifact store. " +
-        "Preconditions: jobId came from render_sequence or render_product in this process and frameIndex is within that job. " +
+        "Preconditions: jobId came from render_sequence or render_product in this process and frameIndex is " +
+        "within that job. " +
         "A completed historical job remains readable after scene edits; returned revision is the captured revision. " +
         "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +
         "registers all uncached planes; failures do not charge a partial frame. " +
@@ -169,19 +170,23 @@ internal static class OpenUsdMcpDescriptions
         "optional settingsPath selects authored settings, and productPath is required unless there is one product. " +
         "The initial profile accepts raw half4 color and/or float normalized depth, one material-binding purpose, " +
         "standard scene purposes, unit camera exposure and no active motion blur or depth of field. " +
-        "Unsupported variables, named rendering color spaces and unevaluated settings are refused, never replaced by beauty. " +
+        "Unsupported variables, named rendering color spaces and unevaluated settings are refused, " +
+        "never replaced by beauty. " +
         "Effects: samples the camera in bounded scheduler batches and applies exact admitted scene filters; " +
         "writes generated raw or supported Windows EXR data planes, a display-companion PNG and manifest atomically. " +
         "No source opinions, authored product filename authority or RenderPass commands are used. " +
-        "Result bounds: one job descriptor and at most two variable bindings; read_sequence_frame exposes selected planes. " +
+        "Result bounds: one job descriptor and at most two variable bindings; " +
+        "read_sequence_frame exposes selected planes. " +
         "Shares the 8-job/4-GiB process quota and 64-MiB per-frame policy with render_sequence. " +
-        "Errors: invalid_argument, no_session, stale_session, stale_revision, quota_exceeded, path_denied, render_failure. " +
+        "Errors: invalid_argument, no_session, stale_session, stale_revision, quota_exceeded, " +
+        "path_denied, render_failure. " +
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":0,\"stageRevision\":1," +
         "\"settingsPath\":\"/Render/Settings\",\"productPath\":\"/Render/Product\"," +
         "\"frameCount\":3,\"startTimeCode\":0,\"timeStep\":1}}.";
 
     internal const string ReadSequenceSheet =
-        "Create a contact-sheet PNG from completed render_sequence or render_product files without rendering the scene. " +
+        "Create a contact-sheet PNG from completed render_sequence or render_product files " +
+        "without rendering the scene. " +
         "Preconditions: jobId belongs to this process; optional frameIndices contains 1-16 unique valid indices, " +
         "or omit it to sample at most 16 evenly spaced frames including endpoints. Width/height are 4-1024 pixels. " +
         "Each PNG is length/hash/dimension verified and loaded one at a time; sources are fitted without cropping " +
@@ -191,7 +196,8 @@ internal static class OpenUsdMcpDescriptions
         "Result bounds: one artifact link, captured job revision and up to 16 ordered cell/index/time records. " +
         "Only original display PNGs are used, not HDR/depth conversions. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
-        "Example arguments: {\"request\":{\"jobId\":\"<job>\",\"frameIndices\":[0,12,24],\"width\":768,\"height\":512}}.";
+        "Example arguments: {\"request\":{\"jobId\":\"<job>\",\"frameIndices\":[0,12,24]," +
+        "\"width\":768,\"height\":512}}.";
 
     internal const string ApplyProposals =
         "Atomically apply selected overlay-applicable proposals from the latest analysis. " +

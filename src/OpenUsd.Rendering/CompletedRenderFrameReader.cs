@@ -18,7 +18,8 @@ internal static class CompletedRenderFrameReader
         cancellationToken.ThrowIfCancellationRequested();
         if (!input.CanRead || !input.CanSeek)
         {
-            throw new ArgumentException("A completed PNG requires a readable stream with an exact extent.", nameof(input));
+            throw new ArgumentException(
+                "A completed PNG requires a readable stream with an exact extent.", nameof(input));
         }
         int sourceWidth = frame.State.Viewport.Width;
         int sourceHeight = frame.State.Viewport.Height;

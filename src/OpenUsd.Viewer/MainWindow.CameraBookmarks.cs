@@ -32,7 +32,8 @@ public sealed partial class MainWindow
         bool ready = editor is not null && _coordinator is not null && _documentObservation is not null &&
             !_documentBusy && !_documentEditBusy && !_savedViewOperationBusy && !_sequenceJobRunning &&
             !_workspaceCaptureBusy && !_physicsAuthoringBusy && !_closeDecisionPending && !_shutdownStarted &&
-            !_playbackStopping && !editor.IsSuspended && _savedViewRecallCancellation is null && !IsAutomatedViewerRun();
+            !_playbackStopping && !editor.IsSuspended && _savedViewRecallCancellation is null &&
+            !IsAutomatedViewerRun();
         bool editable = ready && editor is { CanSaveReview: true };
         string source = editor is { CanSaveReview: true }
             ? $"Source: {editor.CameraBookmarkSourceBinding.SourceRootPath}\n" +

@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Collections;
 using System.Buffers.Binary;
+using System.Collections;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -56,46 +56,46 @@ using (OpenUsdStormRenderer renderer =
     OpenUsdStormRuntime.Create(pluginPath, stagePath))
 {
     retained = renderer.RenderAovs(request);
-    Require(retained.CallerStateRevision == 17 && retained.CallerSceneRevision == 23, "Caller claim binding.");
+    require(retained.CallerStateRevision == 17 && retained.CallerSceneRevision == 23, "Caller claim binding.");
     StormAovOutput<float> depth = retained.GetOutput<float>(StormAovKind.Depth);
-    Require(Math.Abs(depth.GetPixel(16, 31) - 0.2f) < 0.00001f, "Literal near depth.");
-    Require(Math.Abs(depth.GetPixel(48, 31) - 0.6f) < 0.00001f, "Literal far depth.");
-    Require(depth.GetPixel(0, 0) == 1, "Literal background depth.");
-    Require(retained.GetIdentity(0, 0) is null, "Background is explicit.");
-    Require(retained.GetIdentity(16, 31)?.PrimPath == "/World/Near", "Canonical near identity.");
+    require(Math.Abs(depth.GetPixel(16, 31) - 0.2f) < 0.00001f, "Literal near depth.");
+    require(Math.Abs(depth.GetPixel(48, 31) - 0.6f) < 0.00001f, "Literal far depth.");
+    require(depth.GetPixel(0, 0) == 1, "Literal background depth.");
+    require(retained.GetIdentity(0, 0) is null, "Background is explicit.");
+    require(retained.GetIdentity(16, 31)?.PrimPath == "/World/Near", "Canonical near identity.");
     StormAovIdentity left = retained.GetIdentity(24, 15) ?? throw new InvalidOperationException();
     StormAovIdentity right = retained.GetIdentity(40, 15) ?? throw new InvalidOperationException();
-    Require(left.PrimPath == "/World/Instances/Prototype" &&
+    require(left.PrimPath == "/World/Instances/Prototype" &&
         right.PrimPath == left.PrimPath &&
         left.RawInstanceId != right.RawInstanceId &&
         left.InstancerContext.Count == 1 && right.InstancerContext.Count == 1 &&
         left.InstancerContext[0].InstanceIndex == 0 &&
         right.InstancerContext[0].InstanceIndex == 1, "Distinct decoded point instances.");
-    Require(retained.GetOutput(StormAovKind.ElementId).Status == StormAovStatus.Absent, "Element ID gap.");
-    Require(retained.GetOutput(StormAovKind.Normal).Status == StormAovStatus.Unsupported, "Plain normal gap.");
-    Require(retained.GetOutput<StormAovNeye>(StormAovKind.Neye).GetPixel(16, 31) ==
+    require(retained.GetOutput(StormAovKind.ElementId).Status == StormAovStatus.Absent, "Element ID gap.");
+    require(retained.GetOutput(StormAovKind.Normal).Status == StormAovStatus.Unsupported, "Plain normal gap.");
+    require(retained.GetOutput<StormAovNeye>(StormAovKind.Neye).GetPixel(16, 31) ==
         new StormAovNeye(0, 0, 255, 255), "Raw quantized Neye.");
-    Require(retained.Outputs is not ICollection && depth.Pixels is not ICollection &&
+    require(retained.Outputs is not ICollection && depth.Pixels is not ICollection &&
         left.InstancerContext is not ICollection, "Deep immutable collections.");
     StormAovSnapshot second = renderer.RenderAovs(request);
-    Require(second.CaptureSequence > retained.CaptureSequence, "First native owner was released.");
-    Require(retained.GetOutput<StormAovColor>(StormAovKind.Color).Pixels.Count == 4096, "Typed color payload.");
+    require(second.CaptureSequence > retained.CaptureSequence, "First native owner was released.");
+    require(retained.GetOutput<StormAovColor>(StormAovKind.Color).Pixels.Count == 4096, "Typed color payload.");
     StormAovSnapshot maximum = renderer.RenderAovs(new StormAovRequest(
         1024, 1024, 0, request.Outputs, camera, includeIdentities: true));
-    Require(maximum.IdentityIndices.Count == StormAovLimits.MaximumPixels &&
+    require(maximum.IdentityIndices.Count == StormAovLimits.MaximumPixels &&
         maximum.Identities.Count == 4 &&
         Math.Abs(maximum.GetOutput<float>(StormAovKind.Depth).GetPixel(256, 511) - 0.2f) < 0.00001f &&
         maximum.ManagedStorageUpperBound <= StormAovLimits.MaximumManagedBytes,
         "Exact public million-pixel admission and typed decoder.");
     RenderJobImage maximumImage = maximum.CreateJobImage(true, true, RenderOutputTransform.Reinhard, -6);
-    Require(maximumImage.Rgba.Length == StormAovLimits.MaximumPixels * 4 &&
+    require(maximumImage.Rgba.Length == StormAovLimits.MaximumPixels * 4 &&
         maximumImage.HdrColor!.Rgba16Float.Length == StormAovLimits.MaximumPixels * 8 &&
         maximumImage.DeviceDepth!.Values.Length == StormAovLimits.MaximumPixels,
         "Exact public million-pixel job conversion.");
     Console.WriteLine("PUBLIC_AOV_JOB_EXACT_LIMIT=1048576");
     renderer.SetSelection(new SelectionState([new SelectionItem("/World/Near")]), new Vector4(1, 1, 0, 1));
     StormAovSnapshot selected = renderer.RenderAovs(request);
-    Require(!selected.GetOutput<StormAovColor>(StormAovKind.Color).Pixels
+    require(!selected.GetOutput<StormAovColor>(StormAovKind.Color).Pixels
         .SequenceEqual(retained.GetOutput<StormAovColor>(StormAovKind.Color).Pixels),
         "This selection fixture must detect highlights in native color.");
     bool selectedHdrRefused = false;
@@ -107,12 +107,12 @@ using (OpenUsdStormRenderer renderer =
     {
         selectedHdrRefused = true;
     }
-    Require(selectedHdrRefused && selected.CreateJobImage().HdrColor is null,
+    require(selectedHdrRefused && selected.CreateJobImage().HdrColor is null,
         "Selected color remains displayable but cannot be mislabeled pre-selection HDR.");
     renderer.SetSelection(SelectionState.Empty, Vector4.One);
     _ = renderer.RenderAovs(request).CreateJobImage(includeHdrColor: true);
     Console.WriteLine("PUBLIC_AOV_JOB_SELECTION_REFUSAL=passed");
-    VerifyDiskJobs(renderer, camera, retained);
+    verifyDiskJobs(renderer, camera, retained);
     Console.WriteLine(
         $"PUBLIC_AOV_CAPTURE=passed; pixels=4096; identities={retained.Identities.Count}; " +
         $"near={depth.GetPixel(16, 31)}; far={depth.GetPixel(48, 31)}; " +
@@ -121,22 +121,22 @@ using (OpenUsdStormRenderer renderer =
         $"PUBLIC_AOV_EXACT_LIMIT={maximum.IdentityIndices.Count}; identities={maximum.Identities.Count}; " +
         $"managedBound={maximum.ManagedStorageUpperBound}");
 }
-Require(retained.GetIdentity(16, 31)?.PrimPath == "/World/Near", "Snapshot survives renderer teardown.");
-Require(retained.GetOutput<float>(StormAovKind.Depth).GetPixel(0, 0) == 1, "Detached pixel lifetime.");
+require(retained.GetIdentity(16, 31)?.PrimPath == "/World/Near", "Snapshot survives renderer teardown.");
+require(retained.GetOutput<float>(StormAovKind.Depth).GetPixel(0, 0) == 1, "Detached pixel lifetime.");
 RenderJobImage detachedImage = Task.Run(() => retained.CreateJobImage(true, true)).GetAwaiter().GetResult();
-Require(detachedImage.DeviceDepth!.Values.Span[0] == 1 && detachedImage.HdrColor is not null,
+require(detachedImage.DeviceDepth!.Values.Span[0] == 1 && detachedImage.HdrColor is not null,
     "Job conversion survives renderer disposal and needs no GL-owner thread.");
 Console.WriteLine("PUBLIC_AOV_MANAGED_NATIVE_EXECUTION=passed");
 StormChildAovProbe.Run(context.Window, pluginPath, stagePath, camera);
 if (packageOnly)
 {
-    Require(!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported,
+    require(!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported,
         "The package-only proof must execute native AOT, not a managed fallback.");
     Console.WriteLine("PUBLIC_AOV_PACKAGE_ONLY=passed");
     Console.WriteLine("PUBLIC_AOV_NATIVE_AOT=true");
 }
 
-static void Require(bool condition, string message)
+static void require(bool condition, string message)
 {
     if (!condition)
     {
@@ -144,7 +144,7 @@ static void Require(bool condition, string message)
     }
 }
 
-static void VerifyDiskJobs(OpenUsdStormRenderer renderer, CameraState camera, StormAovSnapshot reference)
+static void verifyDiskJobs(OpenUsdStormRenderer renderer, CameraState camera, StormAovSnapshot reference)
 {
     string root = Directory.CreateTempSubdirectory("storm-aov-job-image-").FullName;
     try
@@ -156,39 +156,43 @@ static void VerifyDiskJobs(OpenUsdStormRenderer renderer, CameraState camera, St
         var source = new AovJobSource(renderer);
         RenderDiskJobResult raw = RenderDiskJob.Execute(
             new RenderDiskJobRequest(Path.Combine(root, "raw"), [first, second], true, true), source);
-        Require(raw.Frames.Count == 2 && source.Calls == 2, "Ordered direct Storm disk captures.");
+        require(raw.Frames.Count == 2 && source.Calls == 2, "Ordered direct Storm disk captures.");
         RenderJobImage expected = reference.CreateJobImage(true, true, RenderOutputTransform.Reinhard, -6);
         foreach (RenderDiskFrameResult frame in raw.Frames)
         {
             byte[] hdr = File.ReadAllBytes(Path.Combine(raw.OutputDirectory, frame.HdrColorFileName!));
-            Require(hdr.AsSpan().SequenceEqual(expected.HdrColor!.Rgba16Float.Span), "Exact native half bits in raw disk output.");
-            Require(Convert.ToHexString(SHA256.HashData(hdr)).Equals(
+            require(hdr.AsSpan().SequenceEqual(expected.HdrColor!.Rgba16Float.Span),
+                "Exact native half bits in raw disk output.");
+            require(Convert.ToHexString(SHA256.HashData(hdr)).Equals(
                 frame.HdrColorSha256, StringComparison.OrdinalIgnoreCase), "Raw output hash.");
             byte[] depth = File.ReadAllBytes(Path.Combine(raw.OutputDirectory, frame.DepthFileName!));
             float near = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(
                 depth.AsSpan((31 * 64 + 16) * 4, 4)));
-            Require(Math.Abs(near - 0.2f) < 0.00001f, "Unchanged normalized native depth in disk job.");
+            require(Math.Abs(near - 0.2f) < 0.00001f, "Unchanged normalized native depth in disk job.");
         }
-        using (JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(raw.OutputDirectory, "manifest.json"))))
+        using (JsonDocument manifest = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(raw.OutputDirectory, "manifest.json"))))
         {
-            Require(manifest.RootElement.GetProperty("frames")[1].GetProperty("timeCode").GetDouble() == 2,
+            require(manifest.RootElement.GetProperty("frames")[1].GetProperty("timeCode").GetDouble() == 2,
                 "Disk job preserves captured time.");
-            Require(manifest.RootElement.GetProperty("diagnostics").ToString().Contains("STORM_AOV_JOB_IMAGE", StringComparison.Ordinal),
+            require(manifest.RootElement.GetProperty("diagnostics").ToString()
+                .Contains("STORM_AOV_JOB_IMAGE", StringComparison.Ordinal),
                 "Native output conversion provenance is retained.");
         }
         Console.WriteLine("PUBLIC_AOV_JOB_IMAGE=passed");
         RenderDiskJobResult exr = RenderDiskJob.Execute(
             new RenderDiskJobRequest(Path.Combine(root, "exr"), [first, second], true, true, RenderHdrColorFormat.Exr),
             source);
-        Require(source.Calls == 4, "EXR jobs render their own current frames.");
+        require(source.Calls == 4, "EXR jobs render their own current frames.");
         for (int index = 0; index < exr.Frames.Count; index++)
         {
             byte[] decoded = ExrScanlineOracle.Read(File.ReadAllBytes(Path.Combine(
                 exr.OutputDirectory, exr.Frames[index].HdrColorFileName!)), 64, 64);
-            Require(decoded.AsSpan().SequenceEqual(expected.HdrColor!.Rgba16Float.Span),
+            require(decoded.AsSpan().SequenceEqual(expected.HdrColor!.Rgba16Float.Span),
                 "EXR independently decodes to the native Storm half-color plane.");
-            Require(File.ReadAllBytes(Path.Combine(exr.OutputDirectory, exr.Frames[index].FileName))
-                .AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(raw.OutputDirectory, raw.Frames[index].FileName))),
+            require(File.ReadAllBytes(Path.Combine(exr.OutputDirectory, exr.Frames[index].FileName))
+                .AsSpan().SequenceEqual(
+                    File.ReadAllBytes(Path.Combine(raw.OutputDirectory, raw.Frames[index].FileName))),
                 "Switching raw HDR to EXR preserves the display PNG.");
         }
         Console.WriteLine("PUBLIC_AOV_JOB_EXR=passed");

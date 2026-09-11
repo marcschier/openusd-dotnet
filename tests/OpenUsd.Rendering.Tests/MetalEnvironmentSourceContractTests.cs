@@ -62,7 +62,7 @@ public sealed class MetalEnvironmentSourceContractTests
             await Assert.That(source).Contains("environmentIrradiance");
             await Assert.That(source).Contains("environmentSpecular");
             await Assert.That(source).Contains("environmentSampler");
-            await Assert.That(source).Contains("environmentControls");
+            await AssertFrameBlockLoads(source, 15008, 4, "environment controls");
             await Assert.That(source).Contains("environmentBrdf");
 
             // The argument indices Slang derived, compared against the table the
@@ -155,15 +155,15 @@ public sealed class MetalEnvironmentSourceContractTests
             string path = Path.Combine(root, artifact);
             string source = await File.ReadAllTextAsync(path);
 
-            await Assert.That(source)
-                .Contains("domeControls")
-                .Because($"{artifact} must carry the frame dome table controls.");
+            await AssertFrameBlockLoads(source, 15024, 4, "dome controls");
+            await AssertFrameBlockLoads(source, 15040, 32, "eight dome ambient entries");
+            await AssertFrameBlockLoads(source, 15168, 32, "eight dome environment entries");
             await Assert.That(source)
                 .Contains("domeAmbient")
-                .Because($"{artifact} must carry the per-dome ambient table.");
+                .Because($"{artifact} must retain the per-dome ambient accumulation.");
             await Assert.That(source)
-                .Contains("domeEnvironment")
-                .Because($"{artifact} must carry the per-dome environment group table.");
+                .Contains("allDomesLinked")
+                .Because($"{artifact} must retain the per-draw dome membership decision.");
             await Assert.That(source)
                 .Contains("domeLinkControls")
                 .Because($"{artifact} must carry the per-draw dome link mask.");
@@ -206,6 +206,25 @@ public sealed class MetalEnvironmentSourceContractTests
             .IsNotEqualTo(MetalShaderResourceIndices.Map(
                 SilkBindingKind.SampledTexture,
                 SilkBindingLayoutDescriptor.ShadowAtlasTextureBinding));
+    }
+
+    private static async Task AssertFrameBlockLoads(string source, int start, int scalarCount, string block)
+    {
+        // The larger Slang frame translates to raw Metal buffer loads, not
+        // named struct fields. Pin every scalar's independent byte address.
+        HashSet<int> offsets = Regex.Matches(
+                source,
+                @"\bframeParameters_\d+\[\((?<offset>\d+)U\)>>2\]",
+                RegexOptions.CultureInvariant)
+            .Select(static match => int.Parse(
+                match.Groups["offset"].Value, System.Globalization.CultureInfo.InvariantCulture))
+            .ToHashSet();
+        for (int scalar = 0; scalar < scalarCount; scalar++)
+        {
+            int offset = start + (scalar * sizeof(float));
+            await Assert.That(offsets.Contains(offset)).IsTrue()
+                .Because($"The translated {block} must load the frame scalar at byte {offset}.");
+        }
     }
 
     private static uint FindTextureIndex(string source, string resource) =>

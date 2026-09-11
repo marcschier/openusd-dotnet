@@ -100,7 +100,8 @@ public sealed class RenderProductJobPlanTests
         await Assert.That(settings.ShutterOpen).IsEqualTo(0d);
         await Assert.That(settings.ShutterClose).IsEqualTo(0d);
         await Assert.That(() => new RenderCameraFrameSettings(exposureFStop: 0)).Throws<ArgumentException>();
-        await Assert.That(() => new RenderCameraFrameSettings(shutterOpen: 1, shutterClose: 0)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderCameraFrameSettings(shutterOpen: 1, shutterClose: 0))
+            .Throws<ArgumentException>();
         await Assert.That(() => new RenderCameraFrameSettings(exposure: double.NaN)).Throws<ArgumentException>();
         await Assert.That(() => new RenderCameraFrameSettings(exposure: 1024)).Throws<ArgumentException>();
     }
@@ -122,7 +123,8 @@ public sealed class RenderProductJobPlanTests
     [Test]
     public async Task ProductAdmissionRetainsTheCombinedRasterAndEncodedByteLimits()
     {
-        var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(Request())], RenderSettings.Default);
+        var plan = new RenderProductJobPlan(
+            new StageIdentity("scene.usda"), [Frame(Request())], RenderSettings.Default);
         string output = Path.Combine(Path.GetTempPath(), $"product-quota-{Guid.NewGuid():N}");
         await Assert.That(() => plan.CreateJob(output, limits: new RenderDiskJobLimits(maximumFrameBytes: 79)))
             .Throws<ArgumentOutOfRangeException>();
@@ -137,7 +139,8 @@ public sealed class RenderProductJobPlanTests
         string root = Directory.CreateTempSubdirectory("product-source-refusal-").FullName;
         try
         {
-            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(Request())], RenderSettings.Default);
+            var plan = new RenderProductJobPlan(
+                new StageIdentity("scene.usda"), [Frame(Request())], RenderSettings.Default);
             RenderDiskJobRequest job = plan.CreateJob(Path.Combine(root, "output"));
             var legacy = new LegacySource();
             await Assert.That(() => RenderDiskJob.Execute(job, legacy)).Throws<NotSupportedException>();
@@ -173,11 +176,13 @@ public sealed class RenderProductJobPlanTests
             using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
                 Path.Combine(result.OutputDirectory, "manifest.json")));
             JsonElement product = manifest.RootElement.GetProperty("authoredProduct");
-            await Assert.That(product.GetProperty("requestedProductName").GetString()).IsEqualTo("../not-authorized.exr");
+            await Assert.That(product.GetProperty("requestedProductName").GetString())
+                .IsEqualTo("../not-authorized.exr");
             await Assert.That(product.GetProperty("productNameUsedAsWriteAuthority").GetBoolean()).IsFalse();
             await Assert.That(product.GetProperty("materialBindingPurpose").GetString()).IsEqualTo("full");
             await Assert.That(product.GetProperty("callerSourceStageRevision").GetUInt64()).IsEqualTo(42UL);
-            await Assert.That(product.GetProperty("pngRole").GetString()).IsEqualTo("display-companion-not-authored-render-variable");
+            await Assert.That(product.GetProperty("pngRole").GetString())
+                .IsEqualTo("display-companion-not-authored-render-variable");
             JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
             JsonElement outputs = frame.GetProperty("productOutputs");
             await Assert.That(outputs.GetArrayLength()).IsEqualTo(2);
@@ -207,10 +212,12 @@ public sealed class RenderProductJobPlanTests
         {
             var request = new RenderProductRequest(Request().Specification, 0, new RenderProductOverrides(
                 resolution: new ViewportDimensions(4, 4), dataWindowNdc: new UsdVec4f(0.25f, 0, 0.75f, 1)));
-            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(request)], RenderSettings.Default);
+            var plan = new RenderProductJobPlan(
+                new StageIdentity("scene.usda"), [Frame(request)], RenderSettings.Default);
             await Assert.That(() => plan.CreateJob(Path.Combine(root, "exr"), RenderHdrColorFormat.Exr))
                 .Throws<NotSupportedException>();
-            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "raw")), new ProductSource());
+            RenderDiskJobResult result = RenderDiskJob.Execute(
+                plan.CreateJob(Path.Combine(root, "raw")), new ProductSource());
             using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
                 Path.Combine(result.OutputDirectory, "manifest.json")));
             JsonElement raster = manifest.RootElement.GetProperty("frames")[0].GetProperty("productRaster");
@@ -232,7 +239,8 @@ public sealed class RenderProductJobPlanTests
     private static UsdGeomCameraState Optics(double fStop = 0) => new(
         UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 10, fStop);
 
-    private static RenderProductRequest Request(string? failure = null, bool depthFirst = false, bool disableOptics = true)
+    private static RenderProductRequest Request(
+        string? failure = null, bool depthFirst = false, bool disableOptics = true)
     {
         var color = new UsdRenderVariableSpecification("/Render/Color",
             failure == "variable-type" ? "color3f" : "half4",
@@ -274,7 +282,8 @@ public sealed class RenderProductJobPlanTests
             cancellationToken.ThrowIfCancellationRequested();
             Calls++;
             int count = state.Viewport.Width * state.Viewport.Height;
-            return new RenderJobImage(state.Viewport.Width, state.Viewport.Height, new byte[count * 4], Rgba8RowOrder.TopDown)
+            return new RenderJobImage(
+                state.Viewport.Width, state.Viewport.Height, new byte[count * 4], Rgba8RowOrder.TopDown)
             {
                 HdrColor = new RenderJobHdrColor(state.Viewport.Width, state.Viewport.Height, new byte[count * 8]),
                 DeviceDepth = new RenderJobDeviceDepth(state.Viewport.Width, state.Viewport.Height, new float[count])

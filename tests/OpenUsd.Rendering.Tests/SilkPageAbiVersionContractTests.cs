@@ -283,4 +283,60 @@ public sealed class SilkPageAbiVersionContractTests
         return directory?.FullName ??
             throw new InvalidOperationException("Could not locate repository root.");
     }
+
+    [Test]
+    public async Task DeclaredPageAndSessionAbiContractsAre24And6()
+    {
+        uint page = SilkCommandParser.PageAbiVersion;
+        uint session = RenderNativeAbiVersions.SilkSessionAbi;
+        uint loader = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
+        await Assert.That(page).IsEqualTo(24u);
+        await Assert.That(session).IsEqualTo(6u);
+        await Assert.That(loader).IsEqualTo(6u);
+    }
+
+    [Test]
+    [Arguments(22u)]
+    [Arguments(23u)]
+    [Arguments(25u)]
+    public async Task ParserRejectsAdjacentAndStalePageAbiVersions(uint rejectedVersion)
+    {
+        byte[] page = new byte[272];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(
+            page, (uint)SilkCommandType.Frame);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(page.AsSpan(4), 272u);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(page.AsSpan(8), 123);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(page.AsSpan(12), 47);
+        for (int element = 0; element < 16; element++)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(
+                page.AsSpan(16 + (element * 8)), element % 5 == 0 ? 1d : 0d);
+            System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(
+                page.AsSpan(144 + (element * 8)), element % 5 == 0 ? 1d : 0d);
+        }
+
+        (int width, int height, double viewDiagonal, bool finished) =
+            ReadVersionedFrame(page, 24u);
+        await Assert.That(width).IsEqualTo(123);
+        await Assert.That(height).IsEqualTo(47);
+        await Assert.That(viewDiagonal).IsEqualTo(1d);
+        await Assert.That(finished).IsTrue();
+        await Assert.That(() => ReadVersionedFrame(page, rejectedVersion))
+            .Throws<InvalidDataException>();
+    }
+
+    private static (int Width, int Height, double ViewDiagonal, bool Finished)
+        ReadVersionedFrame(byte[] page, uint version)
+    {
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, version);
+        if (!commands.MoveNext())
+        {
+            throw new InvalidDataException("The versioned page contains no frame.");
+        }
+        SilkFrameCommand frame = commands.Current.AsFrame();
+        int width = frame.Width;
+        int height = frame.Height;
+        double viewDiagonal = frame.GetViewElement(15);
+        return (width, height, viewDiagonal, !commands.MoveNext());
+    }
 }

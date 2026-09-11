@@ -98,7 +98,8 @@ public sealed class SilkSceneIngestionOptions
             !string.Equals(materialBindingPurpose, "preview", StringComparison.Ordinal))
         {
             throw new NotSupportedException(
-                    "Explicit hdSilk scene ingestion currently supports only the 'full' and 'preview' material-binding purpose tokens.");
+                "Explicit hdSilk scene ingestion currently supports only the 'full' and 'preview' " +
+                "material-binding purpose tokens.");
         }
 
         return materialBindingPurpose;

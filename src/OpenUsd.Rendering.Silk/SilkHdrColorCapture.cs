@@ -68,8 +68,8 @@ public sealed class SilkHdrColorCaptureResult
 /// raster bounds are 16,384 pixels per dimension and 16,777,216 pixels in total.
 /// The default 256 MiB managed pixel-array budget rejects a 4096-square capture,
 /// which requires 320 MiB. GPU/native staging, native OCIO scratch, allocation
-/// alignment, display-transform lattice baking/caches, and existing scene, texture, shadow, and selection infrastructure
-/// are not charged to this budget.
+/// alignment, display-transform lattice baking/caches, and existing scene, texture, shadow,
+/// and selection infrastructure are not charged to this budget.
 /// </remarks>
 public sealed class SilkHdrColorCaptureOptions
 {

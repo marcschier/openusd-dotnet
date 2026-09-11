@@ -80,7 +80,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
             Required<Button>(owner, action).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             window = owner.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
             await WaitUntilAsync(() => !Required<ProgressBar>(window, "ResultsLoading").IsVisible);
-            await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text).StartsWith("Could not preview results:");
+            await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text)
+                .StartsWith("Could not preview results:");
             await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text).Contains("SHA256");
             await Assert.That(Required<ListBox>(window, "ResultsFrames").ItemCount).IsEqualTo(0);
         }

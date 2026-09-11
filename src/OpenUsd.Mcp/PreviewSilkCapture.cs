@@ -117,7 +117,8 @@ internal sealed class PreviewSilkFrameSource
     private readonly Func<CaptureView, int, int, long, CancellationToken, RenderJobImage>? _captureDepth;
     private readonly Func<CaptureView, int, int, long, bool, CancellationToken, RenderJobImage>? _captureHdr;
     private readonly Action<RenderProductJobPlan, CancellationToken>? _validateProduct;
-    private readonly Func<RenderProductJobPlan, StageRenderState, long, CancellationToken, RenderJobImage>? _captureProduct;
+    private readonly Func<RenderProductJobPlan, StageRenderState, long, CancellationToken, RenderJobImage>?
+        _captureProduct;
     private IDisposable? _capturer;
     private IDisposable? _device;
     private IDisposable? _session;
@@ -330,7 +331,8 @@ internal sealed class PreviewSilkFrameSource
         {
             throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
         }
-        if (result.HdrColor is { Convention: not SilkHdrColorConvention.RendererWorkingCompositedBeforeExposureAndDisplay } ||
+        if (result.HdrColor is
+            { Convention: not SilkHdrColorConvention.RendererWorkingCompositedBeforeExposureAndDisplay } ||
             result.Depth is { Convention: not SilkDepthConvention.NormalizedDeviceDepthZeroToOne })
         {
             throw new NotSupportedException("The product capture conventions do not match the admitted variables.");

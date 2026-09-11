@@ -449,14 +449,12 @@ bool VerifyLowIsUnrefined(const ParsedPage& page)
         RequireCounts(page, AnimatedCubePath, 12, 8) &&
         // The hole quad is dropped by the coarse triangulation too.
         RequireCounts(page, HoleCubePath, 10, 8) &&
-        // A uniform primvar resolves onto corners, so the record is expanded.
+        // Without authored normals, preserve the triangle-local normal fallback.
         RequireCounts(page, UniformCubePath, 12, 36) &&
         RequireCounts(page, LoopTetrahedronPath, 4, 4) &&
         RequireCounts(page, NoneQuadPath, 2, 4) &&
-        // The face-varying UV expands the quad's two triangles onto corners.
         RequireCounts(page, UvQuadPath, 2, 6) &&
-        // So do the authored face-varying normals.
-        RequireCounts(page, FaceVaryingNormalQuadPath, 2, 6) &&
+        RequireCounts(page, FaceVaryingNormalQuadPath, 2, 4) &&
         // The malformed face-varying index array is flattened by USD before it
         // reaches this delegate, so the coarse expansion it produces is USD's
         // business rather than a claim this probe makes; only the two emitted
@@ -590,8 +588,7 @@ bool VerifyHoles(const ParsedPage& page)
 /// and a uniform primvar keyed by that face must resolve onto its corners.
 bool VerifySubsetMapping(const ParsedPage& page)
 {
-    // 6 coarse quads -> 24 refined quads -> 48 triangles, expanded onto corners
-    // because a uniform primvar cannot be indexed per refined vertex.
+    // Missing normals retain the existing triangle-local fallback.
     if (!RequireCounts(page, UniformCubePath, 48, 144))
     {
         return false;
@@ -625,7 +622,7 @@ bool VerifySubsetMapping(const ParsedPage& page)
     {
         for (uint32_t corner = 0; corner < 3; ++corner)
         {
-            const float value = face->values[(triangle * 3) + corner];
+            const float value = face->values[mesh.indices[(triangle * 3) + corner]];
             if (!Close(value, static_cast<float>(mesh.subprims[triangle])))
             {
                 return Fail(
@@ -643,7 +640,7 @@ bool VerifySubsetMapping(const ParsedPage& page)
 /// through an OpenSubdiv channel fails this by construction.
 bool VerifyFaceVaryingAndVertexPrimvars(const ParsedPage& page)
 {
-    // 4 refined quads -> 8 triangles, expanded onto 24 corners by the UV.
+    // Missing normals retain the existing triangle-local fallback.
     if (!RequireCounts(page, UvQuadPath, 8, 24))
     {
         return false;
@@ -695,8 +692,8 @@ bool VerifyFaceVaryingAndVertexPrimvars(const ParsedPage& page)
 /// the position carrying it rather than against the set as a whole.
 bool VerifyFaceVaryingNormalsAreRenormalized(const ParsedPage& page)
 {
-    // 4 refined quads -> 8 triangles, expanded onto 24 corners by the normals.
-    if (!RequireCounts(page, FaceVaryingNormalQuadPath, 8, 24))
+    // Continuous refined normals retain the nine vertices of the refined grid.
+    if (!RequireCounts(page, FaceVaryingNormalQuadPath, 8, 9))
     {
         return false;
     }

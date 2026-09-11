@@ -144,7 +144,8 @@ public static partial class SilkFrameCapture
     /// <summary>Synchronizes, renders, and captures one RGBA8 frame.</summary>
     /// <remarks>
     /// This is a one-shot helper: it builds a renderer per call, while
-    /// <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/> reports only what changed since the previous
+    /// <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/>
+    /// reports only what changed since the previous
     /// synchronization. A session that has already been synchronized therefore yields a page
     /// with no geometry, which would render an empty frame. Use <see cref="SilkFrameCapturer"/>
     /// to capture repeatedly from one session.
@@ -206,7 +207,9 @@ public static partial class SilkFrameCapture
     /// </summary>
     /// <remarks>
     /// A live renderer - a viewer's presentation renderer, say - synchronizes its session on
-    /// every presented frame, and <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/> reports only what changed
+    /// every presented frame, and
+    /// <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/>
+    /// reports only what changed
     /// since the previous synchronization. Capturing such a session through
     /// <see cref="Capture(OpenUsdSilkSession, ISilkGraphicsDevice, int, int, double, CameraState)"/>
     /// or <see cref="SilkFrameCapturer"/> would synchronize a session with nothing left to report,

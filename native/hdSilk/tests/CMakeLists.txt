@@ -1,3 +1,15 @@
+add_executable(hdsilk_vertex_layout_probe hdsilk_vertex_layout_probe.cpp)
+target_compile_features(hdsilk_vertex_layout_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_vertex_layout_probe PRIVATE usd_m)
+target_include_directories(hdsilk_vertex_layout_probe PRIVATE ../include ../../include)
+target_include_directories(hdsilk_vertex_layout_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_vertex_layout_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_vertex_layout_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_vertex_layout COMMAND hdsilk_vertex_layout_probe)
+
 add_executable(
     hdsilk_probe
     hdsilk_probe.cpp
@@ -186,10 +198,12 @@ if(WIN32)
     # its value as a plain CMake list split on ';', which corrupts a
     # semicolon-delimited Windows PATH string built via string
     # concatenation.
+    # CTest applies prepends sequentially. Stage LAST so the current shim wins
+    # over older SDK bin/lib copies for both imports and plugin loading.
     set(HDSILK_PROBE_ENV_MODS
-        "PATH=path_list_prepend:${HDSILK_PROBE_RUNTIME_DIR}/bin"
         "PATH=path_list_prepend:${pxr_DIR}/lib"
-        "PATH=path_list_prepend:${pxr_DIR}/bin")
+        "PATH=path_list_prepend:${pxr_DIR}/bin"
+        "PATH=path_list_prepend:${HDSILK_PROBE_RUNTIME_DIR}/bin")
 elseif(APPLE)
     # The same double-load hazard as the Windows branch above. The probe links
     # openusd_hdsilk_test through @rpath while the Plug system separately
@@ -208,7 +222,8 @@ endif()
 
 add_test(NAME hdsilk_probe
     COMMAND hdsilk_probe ${HDSILK_PROBE_PLUGIN_DIR} ${HDSILK_PROBE_STAGE})
-set_tests_properties(hdsilk_probe PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
+set_tests_properties(hdsilk_probe hdsilk_vertex_layout
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
 
 # The subdivision probe is a separate executable rather than another case inside
 # hdsilk_probe: every claim it makes is closed-form arithmetic about a control
@@ -265,4 +280,81 @@ add_dependencies(hdsilk_scene_ingestion_probe hdsilk_probe_runtime)
 add_test(NAME hdsilk_scene_ingestion_probe
     COMMAND hdsilk_scene_ingestion_probe ${HDSILK_PROBE_PLUGIN_DIR})
 set_tests_properties(hdsilk_scene_ingestion_probe
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
+
+# Retained direct-light publication has no material/MDL or render-delegate
+# factory dependency. Compile the public retained/composition seams separately.
+add_executable(
+    hdsilk_direct_lights_probe
+    hdsilk_direct_lights_probe.cpp
+    ../src/sceneState.cpp
+    ../src/instanceLinking.cpp)
+target_compile_features(hdsilk_direct_lights_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_direct_lights_probe PRIVATE usd_m)
+target_include_directories(
+    hdsilk_direct_lights_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../openusd_dotnet/include)
+if(MSVC)
+    target_compile_options(
+        hdsilk_direct_lights_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_direct_lights_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_direct_lights_probe hdsilk_probe_runtime)
+
+add_test(NAME hdsilk_direct_light_masks
+    COMMAND hdsilk_direct_lights_probe masks)
+add_test(NAME hdsilk_direct_light_wire
+    COMMAND hdsilk_direct_lights_probe wire)
+add_test(NAME hdsilk_direct_light_selection
+    COMMAND hdsilk_direct_lights_probe selection)
+add_test(NAME hdsilk_direct_light_transaction
+    COMMAND hdsilk_direct_lights_probe transaction)
+add_test(NAME hdsilk_direct_light_links
+    COMMAND hdsilk_direct_lights_probe links)
+add_test(NAME hdsilk_direct_light_domes_shadows
+    COMMAND hdsilk_direct_lights_probe domes-shadows)
+set_tests_properties(
+    hdsilk_direct_light_masks
+    hdsilk_direct_light_wire
+    hdsilk_direct_light_selection
+    hdsilk_direct_light_transaction
+    hdsilk_direct_light_links
+    hdsilk_direct_light_domes_shadows
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
+
+# Real shared-stage visibility and capacity recovery, through USD imaging and
+# the C API, rather than a retained-record or render-delegate factory seam.
+add_executable(
+    hdsilk_direct_lights_session_probe
+    hdsilk_direct_lights_session_probe.cpp)
+target_compile_features(hdsilk_direct_lights_session_probe PRIVATE cxx_std_17)
+target_link_libraries(
+    hdsilk_direct_lights_session_probe
+    PRIVATE
+        openusd_hdsilk_test
+        openusd_dotnet_renderer_test)
+target_include_directories(
+    hdsilk_direct_lights_session_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    target_compile_options(
+        hdsilk_direct_lights_session_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_direct_lights_session_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_direct_lights_session_probe hdsilk_probe_runtime)
+add_test(NAME hdsilk_direct_light_session
+    COMMAND
+        hdsilk_direct_lights_session_probe
+        ${HDSILK_PROBE_PLUGIN_DIR}
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/minimal.usda")
+set_tests_properties(hdsilk_direct_light_session
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")

@@ -1,8 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Avalonia.Threading;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
-using Avalonia.Threading;
 
 namespace OpenUsd.Viewer;
 
@@ -21,7 +21,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
         }
         if (resources.CaptureDevice is null)
         {
-            return "The active hdSilk renderer does not expose the managed graphics device needed for product readback.";
+            return "The active hdSilk renderer does not expose the managed graphics device " +
+                "needed for product readback.";
         }
         try
         {
@@ -113,7 +114,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
         {
             Dispatcher.UIThread.VerifyAccess();
             cancellationToken.ThrowIfCancellationRequested();
-            ObjectDisposedException.ThrowIf(Volatile.Read(ref _closing) != 0 || Volatile.Read(ref _disposed) != 0, this);
+            ObjectDisposedException.ThrowIf(
+                Volatile.Read(ref _closing) != 0 || Volatile.Read(ref _disposed) != 0, this);
             SilkFrameCaptureResult capture = plan.IncludeHdrColor
                 ? capturer.CaptureWithHdrColor(
                     session,

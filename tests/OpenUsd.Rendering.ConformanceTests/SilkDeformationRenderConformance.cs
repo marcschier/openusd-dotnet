@@ -699,12 +699,12 @@ public static class SilkDeformationRenderConformance
     private static byte[] CreateFrame() => CreateShadowLightFrame();
 
     /// <summary>
-    /// Builds the 1976-byte lighting frame carrying one shadow-casting distant
+    /// Builds the 23096-byte lighting frame carrying one shadow-casting distant
     /// light, in the same encoding <see cref="SilkShadowConformance"/> uses.
     /// </summary>
     private static byte[] CreateShadowLightFrame()
     {
-        const int lightingSize = 1976;
+        const int lightingSize = 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         byte[] bytes = new byte[lightingSize];

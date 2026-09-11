@@ -428,8 +428,44 @@ scope and assert them after it.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 23 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 24 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
+
+`hdsilk_vertex_layout` checks exact corner sharing, all-attribute equality, original point
+identity, signed zero, invalid-input preservation and deterministic ordering.
+`RecordCopiesShareAttributeStorage` checks actual shared allocation identity rather than only
+equal values. `AttributeWritesDetachWithoutChangingPublishedRecords` and
+`CompactionPreservesAnEarlierAttributeSnapshot` prove that edits, cache refresh and compaction
+preserve earlier records. The probe links the pinned native SDK for its copy-on-write array.
+`SilkVertexCompactionNativeTests` follows actual Hydra publication through continuous UVs,
+UV seams, layout-changing edits and the unchanged missing-normal fallback. Its D3D12/Vulkan
+pixel cases compare against an independently vertex-indexed textured scene.
+Run it with `OPENUSD_VERTEX_COMPACTION_REQUIRED=1` and matching native plugin paths.
+
+The `hdsilk_direct_light_*` CTests exercise effective admission, all four direct/shadow mask words,
+128/129 refusal and retry, inherited visibility, reordered links and unchanged dome/shadow bounds.
+`SilkDirectLightNativeConformanceTests` renders small shared-stage fixtures through the actual native
+page on offscreen D3D12 and Vulkan. It proves index 96/127 affects only linked meshes or instances,
+then removes and restores that light. Set `OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED=1` and supply
+the matched ABI-24 native library/plugin paths; missing prerequisites fail rather than skip in this
+profile. These fixtures qualify the bounded profile, not full-warehouse material fidelity or rendering.
+
+The default D3D12 cases continue to require WARP. Set
+`OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED=1` to additionally run
+`NativeHighLightLinkingSurvivesRemovalAndRestorationOnHardware` for 97/128 lights
+on ordinary meshes and instances. That profile requests the first D3D12 adapter
+and refuses software fallback using its actual DXGI identity. It applies the
+same native-page, high-mask-bit, pixel-removal/restoration and source-preservation
+assertions as the deterministic cases. `OPENUSD_DIRECT_LIGHT_EVIDENCE_ROOT`
+retains the actual device description, mask words, frame buffers and PNGs.
+
+`NativeOverflowRecoveryRetiresDepartedLightLinksAndShadows` specifically replaces
+a previously linked, shadow-casting light after an overflow refusal. The recovered
+count remains 128, so this cannot pass merely because count validation succeeds.
+It requires native retirement commands and cleared retained link/shadow tables,
+with optional dome-environment removal and both single and repeated refusals.
+The unfixed native library fails all four cases; the corrected library preserves
+the consumer's publication snapshots across imaging reconstruction.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
 requires one record per resolved instance, each with the shared prototype path, its own

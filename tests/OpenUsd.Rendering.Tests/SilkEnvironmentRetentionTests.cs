@@ -818,17 +818,16 @@ public sealed class SilkEnvironmentRetentionTests
     private static byte[] TruncatedLightLink(uint domeCount)
     {
         byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(MeshPath);
+        byte[] prefix = new byte[44];
+        BinaryPrimitives.WriteInt32LittleEndian(prefix.AsSpan(36), SilkLightLinkCommand.AllInstances);
+        BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(40), (uint)pathBytes.Length);
         List<byte> payload =
         [
             .. BitConverter.GetBytes(1u),
             .. BitConverter.GetBytes(0u),
             .. BitConverter.GetBytes((uint)SilkLightLinkUnsupportedFeatures.Truncated),
             .. BitConverter.GetBytes(domeCount),
-            .. BitConverter.GetBytes(0u),
-            .. BitConverter.GetBytes(0u),
-            .. BitConverter.GetBytes(0u),
-            .. BitConverter.GetBytes(SilkLightLinkCommand.AllInstances),
-            .. BitConverter.GetBytes((uint)pathBytes.Length),
+            .. prefix,
             .. pathBytes,
         ];
         List<byte> command =
@@ -849,9 +848,9 @@ public sealed class SilkEnvironmentRetentionTests
     /// </summary>
     private static byte[] DomeFrame(int domeCount, int textured = int.MaxValue)
     {
-        const int frameSize = 2248;
-        const int domeCountOffset = 1976;
-        const int domeTableOffset = 1992;
+        const int frameSize = 23368;
+        const int domeCountOffset = 23096;
+        const int domeTableOffset = 23112;
         var bytes = new byte[frameSize];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)frameSize);
@@ -892,11 +891,11 @@ public sealed class SilkEnvironmentRetentionTests
         foreach ((string path, uint domeMask) in entries)
         {
             byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(path);
-            payload.AddRange(BitConverter.GetBytes(0u));
-            payload.AddRange(BitConverter.GetBytes(0u));
-            payload.AddRange(BitConverter.GetBytes(domeMask));
-            payload.AddRange(BitConverter.GetBytes(SilkLightLinkCommand.AllInstances));
-            payload.AddRange(BitConverter.GetBytes((uint)pathBytes.Length));
+            byte[] prefix = new byte[44];
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(32), domeMask);
+            BinaryPrimitives.WriteInt32LittleEndian(prefix.AsSpan(36), SilkLightLinkCommand.AllInstances);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(40), (uint)pathBytes.Length);
+            payload.AddRange(prefix);
             payload.AddRange(pathBytes);
         }
         List<byte> command =
@@ -2308,11 +2307,16 @@ public sealed class SilkEnvironmentRetentionTests
 
         public void Dispose()
         {
+            DisposeCount++;
         }
+
+        internal int DisposeCount { get; private set; }
     }
 
     private sealed class EnvironmentCommandList : ISilkGraphicsCommandList
     {
+        internal List<(uint SetIndex, uint Binding, ISilkGraphicsBuffer Buffer)> StorageBindings { get; } = [];
+
         internal List<(ISilkGraphicsTexture Texture, int ByteCount)> Uploads { get; } = [];
 
         internal Dictionary<uint, ISilkGraphicsTexture> Textures { get; } = [];
@@ -2382,6 +2386,7 @@ public sealed class SilkEnvironmentRetentionTests
 
         public void SetStorageBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer)
         {
+            StorageBindings.Add((setIndex, binding, buffer));
         }
 
         public void SetComputeUniformBuffer(
@@ -2401,6 +2406,533 @@ public sealed class SilkEnvironmentRetentionTests
 
         public void Dispose()
         {
+        }
+    }
+
+    [Test]
+    [Arguments("light")]
+    [Arguments("shadow")]
+    [Arguments("dome")]
+    public async Task HighWordMasksDoNotAliasSurfaceBuffers(string space)
+    {
+        using var device = new EnvironmentDevice();
+        using SilkSceneGpuResources resources = CreateResources(device);
+        var scene = new SilkSceneState();
+        string[] paths =
+        [
+            "/World/Geom/MaskA", "/World/Geom/MaskB", "/World/Geom/MaskC",
+            "/World/Geom/EqualA", "/World/Geom/Fallback", "/World/Geom/None",
+        ];
+        SilkLightLinkMasks[] masks =
+        [
+            RetentionMasks(space, 64), RetentionMasks(space, 96), RetentionMasks(space, 127),
+            RetentionMasks(space, 64), // Independently constructed equal complete value.
+            new(UInt128.MaxValue, UInt128.MaxValue, 255), new(0, 0, 0),
+        ];
+        var commands = new List<byte[]> { RetentionFrame(128, domeCount: 8) };
+        for (int index = 0; index < paths.Length; index++)
+        {
+            commands.Add(SilkTransactionalApplyTests.Mesh(paths[index], index + 1, x: index * 3));
+        }
+        commands.Add(RetentionLinks(128, 8, false,
+            (paths[0], -1, masks[0]), (paths[1], -1, masks[1]),
+            (paths[2], -1, masks[2]), (paths[3], -1, masks[3]), (paths[5], -1, masks[5])));
+        SilkSceneDelta delta = scene.Apply(
+            commands.SelectMany(command => command).ToArray(), (uint)commands.Count, 1);
+        resources.Apply(scene, delta);
+        SilkSceneGpuStatistics before = resources.Statistics;
+        var buffers = new ISilkGraphicsBuffer[paths.Length];
+        for (int index = 0; index < paths.Length; index++)
+        {
+            SilkSceneGpuStatistics previous = resources.Statistics;
+            buffers[index] = resources.RequireSurfaceBuffer(
+                scene, scene.MeshesByPath[(paths[index], 0)], RenderHeadlight.Deterministic);
+            await AssertRetentionSurface(buffers[index], masks[index]);
+            await Assert.That(resources.Statistics.BufferAllocationBytes - previous.BufferAllocationBytes)
+                .IsEqualTo(index == 3 ? 0UL : 240UL);
+            await Assert.That(resources.Statistics.BufferWriteBytes - previous.BufferWriteBytes)
+                .IsEqualTo(index == 3 ? 0UL : 240UL);
+        }
+
+        await Assert.That(buffers[3]).IsSameReferenceAs(buffers[0]);
+        int[] distinctIndices = [0, 1, 2, 4, 5];
+        foreach (int left in distinctIndices)
+        {
+            foreach (int right in distinctIndices.Where(right => right > left))
+            {
+                await Assert.That(ReferenceEquals(buffers[left], buffers[right])).IsFalse();
+            }
+        }
+        await Assert.That(resources.SurfaceBufferCount).IsEqualTo(5);
+        await Assert.That(resources.Statistics.BufferAllocationBytes - before.BufferAllocationBytes)
+            .IsEqualTo(5UL * 240);
+        await Assert.That(resources.Statistics.BufferWriteBytes - before.BufferWriteBytes)
+            .IsEqualTo(5UL * 240);
+        await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(before.GeometryBuilds);
+        await Assert.That(resources.Statistics.VertexUploads).IsEqualTo(before.VertexUploads);
+        await Assert.That(resources.Statistics.IndexUploads).IsEqualTo(before.IndexUploads);
+        byte[] first = RetentionReadback(buffers[0]);
+        byte[] second = RetentionReadback(buffers[1]);
+        int unchangedPrefix = space == "dome" ? 192 : 208;
+        await Assert.That(first.AsSpan(0, unchangedPrefix).SequenceEqual(second.AsSpan(0, unchangedPrefix)))
+            .IsTrue().Because("only the selected mask space differs, not material/headlight constants");
+        await Assert.That(first.SequenceEqual(second)).IsFalse();
+        await Assert.That(scene.LightLinks.Resolve(paths[4], 0))
+            .IsEqualTo(new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255));
+        await Assert.That(scene.LightLinks.Resolve(paths[5], 0)).IsEqualTo(new SilkLightLinkMasks(0, 0, 0));
+    }
+
+    [Test]
+    public async Task LightEditsRefreshFrameBytesWithoutGeometryChurn()
+    {
+        using var device = new EnvironmentDevice();
+        using SilkSceneGpuResources resources = CreateResources(device);
+        var scene = new SilkSceneState();
+        UInt128 originalMask = (UInt128.One << 127) | (UInt128.One << 96) | 3;
+        UInt128 shadowMask = (UInt128.One << 64) | 5;
+        byte[] originalFrame = RetentionFrame(128);
+        // Candidate HAS_AUTHORED_DIRECT_LIGHTS = numeric 0x1, pending confirmation.
+        BinaryPrimitives.WriteUInt32LittleEndian(originalFrame.AsSpan(540), 0x1u);
+        resources.Apply(scene, scene.Apply(
+            [
+                .. originalFrame, .. LinkedMesh(),
+                .. RetentionLinks(128, 0, false,
+                    (MeshPath, -1, new SilkLightLinkMasks(originalMask, shadowMask, 0))),
+            ], 3, 1));
+        SilkMeshData mesh = scene.MeshesByPath[(MeshPath, 0)];
+        ISilkGraphicsBuffer frameBuffer = resources.RequireFrameBuffer(
+            scene, RenderOutputTransform.Identity, 0);
+        ISilkGraphicsBuffer surface = resources.RequireSurfaceBuffer(
+            scene, mesh, RenderHeadlight.Deterministic);
+        byte[] baselineBytes = RetentionReadback(frameBuffer);
+        SilkSceneGpuStatistics geometry = resources.Statistics;
+        ulong geometryRevision = scene.GeometryRevision;
+        ulong resourceRevision = resources.Revision;
+        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)15296);
+        await Assert.That(geometry.GeometryBuilds).IsEqualTo(1UL);
+        await Assert.That(geometry.VertexUploads).IsEqualTo(1UL);
+        await Assert.That(geometry.IndexUploads).IsEqualTo(1UL);
+        await Assert.That(RetentionVector(baselineBytes, 224 + (96 * 16)))
+            .IsEqualTo(new System.Numerics.Vector4(97, -97, 194, 2));
+        await Assert.That(RetentionVector(baselineBytes, 224 + (127 * 16)))
+            .IsEqualTo(new System.Numerics.Vector4(128, -128, 256, 3));
+        await Assert.That(RetentionVector(baselineBytes, 4320 + (127 * 16)))
+            .IsEqualTo(new System.Numerics.Vector4(1, 2, 4, 128));
+
+        byte[] edited = (byte[])originalFrame.Clone();
+        int entry127 = 552 + (127 * 176);
+        BinaryPrimitives.WriteUInt32LittleEndian(edited.AsSpan(entry127 + 4), 1u);
+        RetentionFloats(edited, entry127 + 8, 6, 7, 0.25f, 0.5f, 0.75f, 3);
+        double[] transform = [0, 2, 0, 0, 0, 0, -3, 0, -4, 0, 0, 0, 9, -7, 5, 1];
+        for (int index = 0; index < transform.Length; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                edited.AsSpan(entry127 + 32 + (index * 8)), transform[index]);
+        }
+        RetentionFloats(edited, entry127 + 160, 2, 0.25f, 0.875f, 2);
+        byte[] editedExpected = (byte[])baselineBytes.Clone();
+        RetentionFloats(editedExpected, 224 + (127 * 16), 9, -7, 5, 3);
+        RetentionFloats(editedExpected, 2272 + (127 * 16), -1, 0, 0, 2);
+        RetentionFloats(editedExpected, 4320 + (127 * 16), 0.25f, 0.5f, 0.75f, 12);
+        RetentionFloats(editedExpected, 6368 + (127 * 16), 0.25f, 0.875f, 1, 0);
+        RetentionFloats(editedExpected, 8416 + (127 * 16), 0, 1, 0, 6);
+        RetentionFloats(editedExpected, 10464 + (127 * 16), 0, 0, -1, 7);
+
+        byte[] removed = (byte[])edited.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(removed.AsSpan(536), 127u);
+        removed.AsSpan(entry127, 176).Clear();
+        UInt128 removedMask = (UInt128.One << 96) | 3;
+        byte[] removedExpected = (byte[])editedExpected.Clone();
+        RetentionFloats(removedExpected, 220, 127);
+        RetentionFloats(removedExpected, 224 + (127 * 16), 0, 0, 0, 0);
+        RetentionFloats(removedExpected, 2272 + (127 * 16), 0, 0, 1, 0);
+        RetentionFloats(removedExpected, 4320 + (127 * 16), 0, 0, 0, 0);
+        RetentionFloats(removedExpected, 6368 + (127 * 16), 0, 0, 0, 0);
+        RetentionFloats(removedExpected, 8416 + (127 * 16), 1, 0, 0, 0);
+        RetentionFloats(removedExpected, 10464 + (127 * 16), 0, 1, 0, 0);
+
+        byte[] reordered = (byte[])removed.Clone();
+        byte[] previous96 = removed.AsSpan(552 + (96 * 176), 176).ToArray();
+        removed.AsSpan(552 + (126 * 176), 176).CopyTo(reordered.AsSpan(552 + (96 * 176)));
+        previous96.CopyTo(reordered, 552 + (126 * 176));
+        UInt128 reorderedMask = (UInt128.One << 126) | 3;
+        byte[] reorderedExpected = (byte[])removedExpected.Clone();
+        foreach (int offset in new[] { 224, 2272, 4320, 6368, 8416, 10464 })
+        {
+            removedExpected.AsSpan(offset + (126 * 16), 16)
+                .CopyTo(reorderedExpected.AsSpan(offset + (96 * 16)));
+            removedExpected.AsSpan(offset + (96 * 16), 16)
+                .CopyTo(reorderedExpected.AsSpan(offset + (126 * 16)));
+        }
+
+        byte[] noAuthored = RetentionFrame(0);
+        byte[] noAuthoredExpected = (byte[])reorderedExpected.Clone();
+        RetentionFloats(noAuthoredExpected, 220, 0);
+        RetentionFloats(noAuthoredExpected, 15020, 0);
+        for (int light = 0; light < 128; light++)
+        {
+            RetentionFloats(noAuthoredExpected, 224 + (light * 16), 0, 0, 0, 0);
+            RetentionFloats(noAuthoredExpected, 2272 + (light * 16), 0, 0, 1, 0);
+            RetentionFloats(noAuthoredExpected, 4320 + (light * 16), 0, 0, 0, 0);
+            RetentionFloats(noAuthoredExpected, 6368 + (light * 16), 0, 0, 0, 0);
+            RetentionFloats(noAuthoredExpected, 8416 + (light * 16), 1, 0, 0, 0);
+            RetentionFloats(noAuthoredExpected, 10464 + (light * 16), 0, 1, 0, 0);
+        }
+        byte[] authoredDark = (byte[])noAuthored.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(authoredDark.AsSpan(540), 0x1u);
+        byte[] authoredDarkExpected = (byte[])noAuthoredExpected.Clone();
+        RetentionFloats(authoredDarkExpected, 15020, 1);
+        var allMasks = new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255);
+
+        (string Name, byte[] Frame, byte[]? Links, byte[] Expected, SilkLightLinkMasks Masks, bool Changed)[] edits =
+        [
+            ("values", edited, null, editedExpected, new(originalMask, shadowMask, 0), true),
+            ("remove 127", removed, RetentionLinks(127, 0, false,
+                (MeshPath, -1, new SilkLightLinkMasks(removedMask, shadowMask, 0))),
+                removedExpected, new(removedMask, shadowMask, 0), true),
+            ("reorder 96 and 126", reordered, RetentionLinks(127, 0, false,
+                (MeshPath, -1, new SilkLightLinkMasks(reorderedMask, shadowMask, 0))),
+                reorderedExpected, new(reorderedMask, shadowMask, 0), true),
+            ("no authored lights", noAuthored, RetentionLinks(0, 0, false),
+                noAuthoredExpected, allMasks, true),
+            ("flag only at count zero", authoredDark, null, authoredDarkExpected, allMasks, true),
+            ("unchanged", authoredDark, null, authoredDarkExpected, allMasks, false),
+        ];
+        ulong acceptedRevision = 1;
+        foreach (var edit in edits)
+        {
+            ulong previousFrameRevision = scene.Frame.Revision;
+            ulong previousLinksRevision = scene.LightLinks.Revision;
+            ulong previousShadowsRevision = scene.Shadows.Revision;
+            byte[] page = edit.Links is { } links ? [.. edit.Frame, .. links] : edit.Frame;
+            resources.Apply(scene, scene.Apply(page, edit.Links is null ? 1u : 2u, ++acceptedRevision));
+            SilkSceneGpuStatistics beforeWrite = resources.Statistics;
+            ISilkGraphicsBuffer next = resources.RequireFrameBuffer(
+                scene, RenderOutputTransform.Identity, 0);
+            await Assert.That(next).IsSameReferenceAs(frameBuffer);
+            await Assert.That(RetentionReadback(next).SequenceEqual(edit.Expected))
+                .IsTrue().Because($"the {edit.Name} transition must change exactly its frame bytes");
+            await Assert.That(resources.Statistics.BufferWriteBytes - beforeWrite.BufferWriteBytes)
+                .IsEqualTo(edit.Changed ? 15296UL : 0UL);
+            await Assert.That(resources.Statistics.BufferAllocationBytes)
+                .IsEqualTo(beforeWrite.BufferAllocationBytes);
+            await Assert.That(scene.Frame.Revision)
+                .IsEqualTo(previousFrameRevision + (edit.Changed ? 1UL : 0UL));
+            await Assert.That(scene.LightLinks.Revision)
+                .IsEqualTo(previousLinksRevision + (edit.Links is null ? 0UL : 1UL));
+            await Assert.That(scene.Shadows.Revision).IsEqualTo(previousShadowsRevision);
+            await Assert.That(scene.Revision).IsEqualTo(acceptedRevision);
+            await Assert.That(scene.GeometryRevision).IsEqualTo(geometryRevision);
+            await Assert.That(resources.Revision).IsEqualTo(resourceRevision);
+            await Assert.That(scene.MeshesByPath[(MeshPath, 0)]).IsSameReferenceAs(mesh);
+            await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(geometry.GeometryBuilds);
+            await Assert.That(resources.Statistics.VertexUploads).IsEqualTo(geometry.VertexUploads);
+            await Assert.That(resources.Statistics.IndexUploads).IsEqualTo(geometry.IndexUploads);
+
+            ISilkGraphicsBuffer nextSurface = resources.RequireSurfaceBuffer(
+                scene, mesh, RenderHeadlight.Deterministic);
+            if (edit.Links is null)
+            {
+                await Assert.That(nextSurface).IsSameReferenceAs(surface);
+            }
+            else
+            {
+                await Assert.That(ReferenceEquals(nextSurface, surface)).IsFalse();
+                await Assert.That(((EnvironmentBuffer)surface).DisposeCount).IsEqualTo(1);
+            }
+            surface = nextSurface;
+            await AssertRetentionSurface(surface, edit.Masks);
+            if (edit.Name == "reorder 96 and 126")
+            {
+                await Assert.That(scene.Frame.Lights[96].Transform.M41).IsEqualTo(127f);
+                await Assert.That(scene.Frame.Lights[126].Transform.M41).IsEqualTo(97f);
+                await Assert.That(scene.LightLinks.Resolve(MeshPath, 0).CastsShadow(64)).IsTrue();
+                await Assert.That(scene.LightLinks.Resolve(MeshPath, 0).IsLit(64)).IsFalse();
+            }
+        }
+        await Assert.That(scene.Frame.Lights[127].Type).IsEqualTo(0u);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(0u);
+        await Assert.That(RetentionVector(RetentionReadback(frameBuffer), 15008).W).IsEqualTo(1f);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task RetiredHighMasksEvictWithoutDraws(bool emptyScene)
+    {
+        using var device = new EnvironmentDevice();
+        using SilkSceneGpuResources resources = CreateResources(device);
+        var scene = new SilkSceneState();
+        const string keptPath = "/World/Geom/Kept";
+        const string fallbackPath = "/World/Geom/Fallback";
+        var oldMasks = new SilkLightLinkMasks((UInt128.One << 64) | 3, (UInt128.One << 96) | 5, 1);
+        var keptMasks = new SilkLightLinkMasks((UInt128.One << 127) | 3, (UInt128.One << 96) | 5, 1);
+        var replacementMasks = new SilkLightLinkMasks((UInt128.One << 96) | 3, (UInt128.One << 96) | 5, 1);
+        resources.Apply(scene, scene.Apply(
+            [
+                .. RetentionFrame(128, domeCount: 8), .. LinkedMesh(),
+                .. SilkTransactionalApplyTests.Mesh(keptPath, 2, x: 3),
+                .. SilkTransactionalApplyTests.Mesh(fallbackPath, 3, x: 6),
+                .. RetentionLinks(128, 8, true,
+                    (MeshPath, -1, oldMasks), (keptPath, 0, keptMasks)),
+            ], 5, 1));
+        SilkMeshData mesh = scene.MeshesByPath[(MeshPath, 0)];
+        SilkMeshData keptMesh = scene.MeshesByPath[(keptPath, 0)];
+        SilkMeshData fallbackMesh = scene.MeshesByPath[(fallbackPath, 0)];
+        var retired = (EnvironmentBuffer)resources.RequireSurfaceBuffer(scene, mesh, RenderHeadlight.Deterministic);
+        var kept = (EnvironmentBuffer)resources.RequireSurfaceBuffer(scene, keptMesh, RenderHeadlight.Deterministic);
+        var fallback = (EnvironmentBuffer)resources.RequireSurfaceBuffer(
+            scene, fallbackMesh, RenderHeadlight.Deterministic);
+        byte[] keptBytes = RetentionReadback(kept);
+        SilkSceneGpuStatistics warm = resources.Statistics;
+        await Assert.That(resources.SurfaceBufferCount).IsEqualTo(3);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.LightLinkTruncated);
+
+        _ = scene.Apply(RetentionLinks(128, 8, false,
+            (MeshPath, -1, replacementMasks), (keptPath, 0, keptMasks)), 1, 2);
+        resources.ObserveLightLinks(scene); // No RequireSurfaceBuffer or draw initiates eviction.
+        await Assert.That(resources.SurfaceBufferCount).IsEqualTo(2);
+        await Assert.That(retired.DisposeCount).IsEqualTo(1);
+        await Assert.That(kept.DisposeCount).IsEqualTo(0);
+        await Assert.That(fallback.DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.BufferWriteBytes).IsEqualTo(warm.BufferWriteBytes);
+        await Assert.That(resources.Statistics.BufferAllocationBytes).IsEqualTo(warm.BufferAllocationBytes);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.LightLinkTruncated);
+        await Assert.That(scene.LightLinks.Resolve(MeshPath, 19)).IsEqualTo(replacementMasks);
+        await Assert.That(scene.LightLinks.Resolve(keptPath, 0)).IsEqualTo(keptMasks);
+        await Assert.That(scene.LightLinks.Resolve(keptPath, 1))
+            .IsEqualTo(new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255));
+        await Assert.That(resources.RequireSurfaceBuffer(scene, keptMesh, RenderHeadlight.Deterministic))
+            .IsSameReferenceAs(kept);
+        await Assert.That(RetentionReadback(kept).SequenceEqual(keptBytes)).IsTrue();
+        var replacement = (EnvironmentBuffer)resources.RequireSurfaceBuffer(scene, mesh, RenderHeadlight.Deterministic);
+        await Assert.That(ReferenceEquals(replacement, retired)).IsFalse();
+        await AssertRetentionSurface(replacement, replacementMasks);
+        await AssertRetentionSurface(kept, keptMasks);
+        await AssertRetentionSurface(fallback, new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255));
+        await Assert.That(resources.SurfaceBufferCount).IsEqualTo(3);
+
+        _ = scene.Apply(RetentionLinks(128, 8, true,
+            (MeshPath, -1, replacementMasks), (keptPath, 0, keptMasks)), 1, 3);
+        _ = resources.RequireSurfaceBuffer(scene, mesh, RenderHeadlight.Deterministic);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.LightLinkTruncated);
+        var retirement = new List<byte[]> { RetentionLinks(0, 0, false) };
+        if (emptyScene)
+        {
+            retirement.Add(MeshRemoval());
+            retirement.Add(RetentionMeshRemoval(keptPath));
+            retirement.Add(RetentionMeshRemoval(fallbackPath));
+        }
+        SilkSceneGpuStatistics beforeRetirement = resources.Statistics;
+        resources.Apply(scene, scene.Apply(retirement.SelectMany(command => command).ToArray(),
+            (uint)retirement.Count, 4));
+        await Assert.That(scene.Meshes.Count).IsEqualTo(emptyScene ? 0 : 3);
+        await Assert.That(resources.MeshValues.Count).IsEqualTo(emptyScene ? 0 : 3);
+        await Assert.That(resources.SurfaceBufferCount).IsEqualTo(1)
+            .Because("canonical retirement still resolves All, even with no drawable mesh");
+        await Assert.That(replacement.DisposeCount).IsEqualTo(1);
+        await Assert.That(kept.DisposeCount).IsEqualTo(1);
+        await Assert.That(fallback.DisposeCount).IsEqualTo(0);
+        await Assert.That(scene.LightLinks.Count).IsEqualTo(0);
+        await Assert.That(scene.LightLinks.Resolve(MeshPath, 0))
+            .IsEqualTo(new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255));
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.LightLinkTruncated);
+        await Assert.That(resources.Statistics.BufferWriteBytes).IsEqualTo(beforeRetirement.BufferWriteBytes);
+        await Assert.That(resources.Statistics.BufferAllocationBytes).IsEqualTo(beforeRetirement.BufferAllocationBytes);
+
+        resources.Dispose();
+        await Assert.That(retired.DisposeCount).IsEqualTo(1);
+        await Assert.That(replacement.DisposeCount).IsEqualTo(1);
+        await Assert.That(kept.DisposeCount).IsEqualTo(1);
+        await Assert.That(fallback.DisposeCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ConsecutiveSurfaceBindingsObserveEveryMaskWord()
+    {
+        using var device = new EnvironmentDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var commands = new EnvironmentCommandList();
+        string[] paths =
+        [
+            "/World/Bind/First", "/World/Bind/Equal", "/World/Bind/Shadow",
+            "/World/Bind/Dome", "/World/Bind/Light",
+        ];
+        var first = new SilkLightLinkMasks(
+            (UInt128.One << 96) | 3, (UInt128.One << 64) | 5, 1);
+        var shadow = first with { ShadowMask = (UInt128.One << 127) | 5 };
+        var dome = shadow with { DomeMask = 0x80 };
+        var light = dome with { LightMask = (UInt128.One << 127) | 3 };
+        SilkLightLinkMasks[] masks =
+        [
+            first, new(first.LightMask, first.ShadowMask, first.DomeMask), shadow, dome, light,
+        ];
+        var page = new List<byte[]> { RetentionFrame(128, 8) };
+        for (int index = 0; index < paths.Length; index++)
+        {
+            page.Add(SilkTransactionalApplyTests.Mesh(paths[index], index + 1, x: index * 3));
+        }
+        page.Add(RetentionLinks(128, 8, false,
+            paths.Select((path, index) => (path, -1, masks[index])).ToArray()));
+        SilkSceneState scene = renderer.Scene;
+        renderer.GpuResources.Apply(scene, scene.Apply(
+            page.SelectMany(command => command).ToArray(), (uint)page.Count, 1));
+
+        // Forward RGB intentionally cannot observe a shadow-only surface change.
+        // Record the real renderer binding operation instead: no cloned algorithm,
+        // production hook, command-list factory, or synthetic pixel claim.
+        System.Reflection.MethodInfo bind = typeof(SilkMeshRenderer).GetMethod(
+            "BindSurfaceBufferIfChanged",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("The per-draw surface binding seam changed.");
+        object?[] arguments = [commands, null, null];
+        (int Mesh, int BindCount)[] sequence =
+        [
+            (0, 1), (1, 1), (2, 2), (2, 2), (3, 3), (4, 4), (0, 5),
+        ];
+        foreach ((int meshIndex, int bindCount) in sequence)
+        {
+            SilkMeshData mesh = scene.MeshesByPath[(paths[meshIndex], 0)];
+            arguments[1] = renderer.GpuResources.Meshes[mesh.Id];
+            _ = bind.Invoke(renderer, arguments);
+
+            await Assert.That(commands.StorageBindings.Count).IsEqualTo(bindCount);
+            var call = commands.StorageBindings[^1];
+            await Assert.That(call.SetIndex).IsEqualTo(0u);
+            await Assert.That(call.Binding).IsEqualTo(SilkBindingLayoutDescriptor.SurfaceParametersBinding);
+            await AssertRetentionSurface(call.Buffer, masks[meshIndex]);
+        }
+        await Assert.That(commands.StorageBindings[0].Buffer)
+            .IsSameReferenceAs(commands.StorageBindings[4].Buffer);
+        await Assert.That(ReferenceEquals(
+            commands.StorageBindings[0].Buffer, commands.StorageBindings[1].Buffer)).IsFalse();
+        await Assert.That(renderer.GpuResources.SurfaceBufferCount).IsEqualTo(4);
+        await Assert.That(scene.LightLinks.Revision).IsEqualTo(1UL);
+        await Assert.That(scene.GeometryRevision).IsEqualTo(5UL);
+    }
+
+    private static SilkLightLinkMasks RetentionMasks(string space, int bit) => space switch
+    {
+        "light" => new((UInt128.One << bit) | 3, (UInt128.One << 95) | 5, 255),
+        "shadow" => new((UInt128.One << 95) | 3, (UInt128.One << bit) | 5, 255),
+        "dome" => new((UInt128.One << 127) | 3, (UInt128.One << 96) | 5,
+            bit == 64 ? 1u : bit == 96 ? 64u : 128u),
+        _ => throw new ArgumentOutOfRangeException(nameof(space)),
+    };
+
+    private static async Task AssertRetentionSurface(ISilkGraphicsBuffer buffer, SilkLightLinkMasks masks)
+    {
+        byte[] bytes = RetentionReadback(buffer);
+        await Assert.That(buffer.Size).IsEqualTo((nuint)240);
+        await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208)))
+            .IsEqualTo(masks.LightMask);
+        await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(224)))
+            .IsEqualTo(masks.ShadowMask);
+        await Assert.That(RetentionVector(bytes, 192))
+            .IsEqualTo(new System.Numerics.Vector4(masks.DomeMask, 0, 0, 0));
+        await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(76))).IsEqualTo(0u);
+        await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(140))).IsEqualTo(0u);
+        await Assert.That(RetentionVector(bytes, 0))
+            .IsEqualTo(new System.Numerics.Vector4(0.18f, 0.18f, 0.18f, 1));
+    }
+
+    private static byte[] RetentionReadback(ISilkGraphicsBuffer buffer)
+    {
+        var bytes = new byte[checked((int)buffer.Size)];
+        buffer.ReadbackForTesting(bytes);
+        return bytes;
+    }
+
+    private static System.Numerics.Vector4 RetentionVector(byte[] bytes, int offset) => new(
+        BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(offset)),
+        BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(offset + 4)),
+        BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(offset + 8)),
+        BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(offset + 12)));
+
+    private static byte[] RetentionFrame(int count, int domeCount = 0)
+    {
+        var bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 23368u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), 64);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), 64);
+        for (int element = 0; element < 16; element++)
+        {
+            double identity = element % 5 == 0 ? 1 : 0;
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), identity);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), identity);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), (uint)count);
+        for (int light = 0; light < count; light++)
+        {
+            float t = light + 1;
+            int entry = 552 + (light * 176);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), (uint)((light % 5) + 1));
+            RetentionFloats(bytes, entry + 8, t / 4, t / 2, t / 128, t / 64, t / 32, t / 2);
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(entry + 32 + (element * 8)),
+                    element switch { 12 => t, 13 => -t, 14 => 2 * t, _ => element % 5 == 0 ? 1 : 0 });
+            }
+            RetentionFloats(bytes, entry + 160, 1, 0.5f, 0.75f, t / 16);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23096), (uint)domeCount);
+        for (int dome = 0; dome < domeCount; dome++)
+        {
+            RetentionFloats(bytes, 23112 + (dome * 32), (dome + 1) / 16f, 0.25f, 0.5f);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23128 + (dome * 32)), 1u);
+        }
+        return bytes;
+    }
+
+    private static byte[] RetentionLinks(
+        uint count, uint domes, bool truncated,
+        params (string Path, int Instance, SilkLightLinkMasks Masks)[] entries)
+    {
+        var bytes = new byte[24 + entries.Sum(entry => 44 + System.Text.Encoding.UTF8.GetByteCount(entry.Path))];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.LightLink);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)entries.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), count);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), truncated ? 1u : 0u);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), domes);
+        int offset = 24;
+        foreach ((string path, int instance, SilkLightLinkMasks masks) in entries)
+        {
+            byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(path);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(offset), masks.LightMask);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(offset + 16), masks.ShadowMask);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 32), masks.DomeMask);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(offset + 36), instance);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 40), (uint)pathBytes.Length);
+            pathBytes.CopyTo(bytes, offset + 44);
+            offset += 44 + pathBytes.Length;
+        }
+        return bytes;
+    }
+
+    private static byte[] RetentionMeshRemoval(string path)
+    {
+        byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(path);
+        var bytes = new byte[24 + pathBytes.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshRemove);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8),
+            SilkEnvironmentLightingTests.ComputeStableHash(path));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)pathBytes.Length);
+        pathBytes.CopyTo(bytes, 24);
+        return bytes;
+    }
+
+    private static void RetentionFloats(byte[] bytes, int offset, params float[] values)
+    {
+        for (int index = 0; index < values.Length; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + (index * 4)), values[index]);
         }
     }
 }

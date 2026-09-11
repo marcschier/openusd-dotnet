@@ -87,7 +87,8 @@ public sealed partial class SilkGpuHdrColorCaptureTests
 
         await Assert.That(initial.RenderResult.DrawCount).IsEqualTo(2);
         await Assert.That(initial.HdrColor!.Rgba16Float.Length).IsEqualTo(10_240);
-        await Assert.That(selected.HdrColor!.Rgba16Float.Span.SequenceEqual(initial.HdrColor.Rgba16Float.Span)).IsTrue();
+        await Assert.That(selected.HdrColor!.Rgba16Float.Span.SequenceEqual(initial.HdrColor.Rgba16Float.Span))
+            .IsTrue();
         await Assert.That(selected.Rgba.Span.SequenceEqual(initial.Rgba.Span)).IsFalse();
         await Assert.That(selected.Depth is not null).IsEqualTo(includeDepth);
         await Assert.That(initial.Depth is not null).IsEqualTo(includeDepth);

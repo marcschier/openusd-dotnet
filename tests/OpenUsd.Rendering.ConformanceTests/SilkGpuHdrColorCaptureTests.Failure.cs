@@ -31,7 +31,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         {
             _ = SilkHdrColorCaptureFixture.RetainScene(device, renderer, session);
         }
-        SilkFrameCaptureResult? first = seedCachedFrame ? Capture(GpuSettings(), 0) : null;
+        SilkFrameCaptureResult? first = seedCachedFrame ? capture(GpuSettings(), 0) : null;
         if (retained)
         {
             _ = SilkHdrColorCaptureFixture.RetainScene(device, renderer, session, timeCode: 1);
@@ -41,7 +41,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         InvalidOperationException? refusal = null;
         try
         {
-            _ = Capture(invalid, 1);
+            _ = capture(invalid, 1);
         }
         catch (InvalidOperationException exception)
         {
@@ -50,7 +50,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         int after = device.Submissions;
         int scenePasses = device.ScenePasses;
         int drained = device.CompletedSubmissions;
-        SilkFrameCaptureResult retry = Capture(GpuSettings(), 1);
+        SilkFrameCaptureResult retry = capture(GpuSettings(), 1);
         SilkFrameCaptureResult fallback = retained
             ? SilkFrameCapture.CaptureRetained(renderer, device, 40, 32, invalid)
             : capturer.Capture(session, 40, 32, invalid, timeCode: 1, camera: SilkHdrColorCaptureFixture.Camera);
@@ -74,7 +74,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
             await Assert.That(first.HdrColor.Rgba16Float.Span.SequenceEqual(retry.HdrColor.Rgba16Float.Span)).IsFalse();
         }
 
-        SilkFrameCaptureResult Capture(RenderSettings settings, double time) => retained
+        SilkFrameCaptureResult capture(RenderSettings settings, double time) => retained
             ? SilkFrameCapture.CaptureRetainedWithHdrColor(
                 renderer, device, 40, 32, settings, new SilkHdrColorCaptureOptions(includeDeviceDepth: true))
             : capturer.CaptureWithHdrColor(
@@ -101,7 +101,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         {
             _ = SilkHdrColorCaptureFixture.RetainScene(device, renderer, session);
         }
-        SilkFrameCaptureResult first = Capture(40, 32, 0);
+        SilkFrameCaptureResult first = capture(40, 32, 0);
         if (retained)
         {
             _ = SilkHdrColorCaptureFixture.RetainScene(device, renderer, session, timeCode: 1);
@@ -110,7 +110,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         InvalidOperationException? refusal = null;
         try
         {
-            _ = Capture(44, 36, 1);
+            _ = capture(44, 36, 1);
         }
         catch (InvalidOperationException exception)
         {
@@ -118,7 +118,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         }
         int submitted = device.Submissions;
         int completed = device.CompletedSubmissions;
-        SilkFrameCaptureResult retry = Capture(44, 36, 1);
+        SilkFrameCaptureResult retry = capture(44, 36, 1);
 
         await Assert.That(refusal!.Message).Contains("Injected HDR target preparation failure");
         await Assert.That(completed).IsEqualTo(submitted);
@@ -130,7 +130,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         await Assert.That(first.HdrColor!.Rgba16Float.Span.Slice(((8 * 40) + 10) * 8, 8)
             .SequenceEqual<byte>([0x00, 0x30, 0x00, 0x38, 0x00, 0x40, 0x00, 0x3C])).IsTrue();
 
-        SilkFrameCaptureResult Capture(int width, int height, double time) => retained
+        SilkFrameCaptureResult capture(int width, int height, double time) => retained
             ? SilkFrameCapture.CaptureRetainedWithHdrColor(renderer, device, width, height, GpuSettings())
             : capturer.CaptureWithHdrColor(
                 session, width, height, GpuSettings(), timeCode: time, camera: SilkHdrColorCaptureFixture.Camera);

@@ -13,8 +13,8 @@ namespace OpenUsd.Rendering.Silk;
 /// Deliberately separate from the scene constants. Those are pinned at exactly 80
 /// bytes by contract and their layout is mirrored by the instance table, so
 /// widening them to carry material values would change the instancing wire format
-/// for no benefit. The light rides here rather than in its own binding because it
-/// is four floats and a second slot would cost a second upload path everywhere.
+/// for no benefit. Per-draw linking travels here as two integer uint4 values,
+/// without changing the per-instance geometry buffer or adding a binding.
 /// </remarks>
 internal static class SilkSurfaceUniformWriter
 {
@@ -22,17 +22,17 @@ internal static class SilkSurfaceUniformWriter
     /// <remarks>
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
-    /// (clearcoat, clearcoatRoughness, shaded, lightLinkMask),
+    /// (clearcoat, clearcoatRoughness, shaded, 0),
     /// lightDirection+intensity,
     /// lightColor+ambient, volume values,
-    /// (textureMask, udimMask, volumeVoxelDepth, shadowLinkMask),
+    /// (textureMask, udimMask, volumeVoxelDepth, 0),
     /// the
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
     /// (m10, m11, ty, 0), the two-image composite controls
     /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
-    /// (domeLinkMask, 0, 0, 0).
+    /// (domeLinkMask, 0, 0, 0), followed by uint4 direct and shadow link masks.
     /// </remarks>
-    internal const int ByteSize = 208;
+    internal const int ByteSize = 240;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -115,12 +115,7 @@ internal static class SilkSurfaceUniformWriter
             clearcoat,
             clearcoatRoughness,
             unlit ? 2 : shaded is null ? 0 : 1,
-            // The UsdLux light-link mask for the prim this block is drawn for.
-            // It rides in the surface block rather than in a binding of its own
-            // because the block is already bound per draw and has an unused
-            // component here; a mask of eight bits is exactly representable as a
-            // float, so the shader reads it back without rounding.
-            masks.LightMask & SilkLightLinkMasks.AllBits);
+            0);
 
         Vector3 direction = Normalize(light.Direction);
         WriteVector4(
@@ -159,12 +154,7 @@ internal static class SilkSurfaceUniformWriter
             volumeDensity ? 0 : (float)(uint)(shaded?.GetTextureFeatures() ?? SilkShaderFeatures.None),
             udimMask,
             volumeDepth,
-            // The UsdLux shadow-link mask for the prim. It is resolved and packed
-            // even though no raster shadow pass consumes it yet, so the value a
-            // shadow pass will read is produced and regression-gated by exactly
-            // the path that produces the light mask, rather than being invented
-            // when that pass lands.
-            masks.ShadowMask & SilkLightLinkMasks.AllBits);
+            0);
 
         // hdSilk publishes one folded MaterialX place2d affine per material, so the
         // shader applies it once to the interpolated coordinate rather than
@@ -217,6 +207,8 @@ internal static class SilkSurfaceUniformWriter
             0,
             0,
             0);
+        BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(208, 16), masks.LightMask);
+        BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(224, 16), masks.ShadowMask);
     }
 
     private static bool IsUdim(SilkMaterialTexture texture) =>

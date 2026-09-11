@@ -69,7 +69,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
             {
                 _ = SilkHdrColorCaptureFixture.RetainScene(device, renderer, session);
             }
-            first = Capture(40, 32, GpuSettings(), 0, default);
+            first = capture(40, 32, GpuSettings(), 0, default);
             firstHdr = first.HdrColor!.Rgba16Float.ToArray();
             firstRgba = first.Rgba.ToArray();
             firstDepth = first.Depth!.Values.ToArray();
@@ -80,7 +80,7 @@ public sealed partial class SilkGpuHdrColorCaptureTests
             device.AfterCompletedWait = cancellation.Cancel;
             try
             {
-                _ = Capture(
+                _ = capture(
                     40, 32, cancelDuringLatticeUpload ? GpuSettings(view: "IdentityView") : GpuSettings(),
                     1, cancellation.Token);
             }
@@ -90,9 +90,9 @@ public sealed partial class SilkGpuHdrColorCaptureTests
             }
             submitted = device.Submissions;
             completed = device.CompletedSubmissions;
-            retry = Capture(44, 36, GpuSettings(), 1, default);
+            retry = capture(44, 36, GpuSettings(), 1, default);
 
-            SilkFrameCaptureResult Capture(
+            SilkFrameCaptureResult capture(
                 int width, int height, RenderSettings settings, double time, CancellationToken token) => retained
                 ? SilkFrameCapture.CaptureRetainedWithHdrColor(
                     renderer, device, width, height, settings, options, cancellationToken: token)
@@ -127,7 +127,8 @@ public sealed partial class SilkGpuHdrColorCaptureTests
         using OpenUsdSilkSession session = fixture.CreateSession();
         using var capturer = new SilkFrameCapturer(device);
         using var renderer = new SilkMeshRenderer(device);
-        RenderSettings invalid = SilkHdrColorCaptureFixture.Settings(outputTransform: RenderOutputTransform.Reinhard) with
+        RenderSettings invalid = SilkHdrColorCaptureFixture.Settings(
+            outputTransform: RenderOutputTransform.Reinhard) with
         {
             DisplayTransform = GpuSettings().DisplayTransform
         };
@@ -155,7 +156,8 @@ public sealed partial class SilkGpuHdrColorCaptureTests
     [Test]
     public async Task SwiftShaderNonfiniteSceneHdrIsRefusedAfterGpuDisplayCompletes()
     {
-        using var device = new SilkGpuHdrObservedDevice(SilkDepthCaptureConformance.CreateDevice(SilkGraphicsBackend.Vulkan));
+        using var device = new SilkGpuHdrObservedDevice(
+            SilkDepthCaptureConformance.CreateDevice(SilkGraphicsBackend.Vulkan));
         using var fixture = new SilkHdrColorCaptureFixture(emissionA: "(70000, 0.5, 2)");
         using OpenUsdSilkSession session = fixture.CreateSession();
         using var capturer = new SilkFrameCapturer(device);

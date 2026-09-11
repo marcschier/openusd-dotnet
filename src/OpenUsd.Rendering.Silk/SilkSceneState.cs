@@ -427,6 +427,8 @@ public sealed class SilkSceneState
         bool linkIsCanonicalEmpty = LightLinks.IsCanonicalEmpty;
         uint linkDomeCount = LightLinks.DomeCount;
         uint linkLightCount = LightLinks.LightCount;
+        uint shadowLightCount = Shadows.LightCount;
+        bool shadowIsCanonicalEmpty = Shadows.Count == 0 && shadowLightCount == 0;
 
         // The environment records this page leaves behind, keyed by path, built
         // by replaying the page's upserts and removals in order over the retained
@@ -494,7 +496,9 @@ public sealed class SilkSceneState
                             links.DomeCount == 0;
                         break;
                     case SilkCommandType.Shadow:
-                        _ = commands.Current.AsShadow();
+                        SilkShadowCommand shadows = commands.Current.AsShadow();
+                        shadowLightCount = shadows.LightCount;
+                        shadowIsCanonicalEmpty = shadows.DescriptorCount == 0 && shadowLightCount == 0;
                         requiresJournal = true;
                         break;
                     default:
@@ -577,6 +581,11 @@ public sealed class SilkSceneState
                     $"The light link table indexes {linkDomeCount} domes while the frame " +
                     $"publishes {domeCount}.");
             }
+        }
+        if (!shadowIsCanonicalEmpty && shadowLightCount != lightCount)
+        {
+            throw new InvalidDataException(
+                $"The shadow table indexes {shadowLightCount} lights while the frame publishes {lightCount}.");
         }
 
         return requiresJournal;
@@ -1406,8 +1415,8 @@ public sealed class SilkSceneState
 /// </summary>
 public sealed class SilkFrameState
 {
-    internal const int MaximumLights = 8;
-    internal const int MaximumDomes = 8;
+    internal const int MaximumLights = (int)SilkFrameCommand.MaximumLights;
+    internal const int MaximumDomes = (int)SilkFrameCommand.MaximumDomes;
     private readonly double[] _view = new double[16];
     private readonly double[] _projection = new double[16];
     private readonly double[] _clipPlanes = new double[32];
@@ -1458,6 +1467,8 @@ public sealed class SilkFrameState
 
     internal uint LightCount { get; private set; }
 
+    internal bool HasAuthoredDirectLights { get; private set; }
+
     /// <summary>Gets the revision of the retained camera or viewport state.</summary>
     public ulong Revision { get; private set; }
 
@@ -1479,6 +1490,7 @@ public sealed class SilkFrameState
         Height = other.Height;
         ClipPlaneCount = other.ClipPlaneCount;
         LightCount = other.LightCount;
+        HasAuthoredDirectLights = other.HasAuthoredDirectLights;
         DomeCount = other.DomeCount;
         Revision = other.Revision;
         _ambientLight = other._ambientLight;
@@ -1494,11 +1506,13 @@ public sealed class SilkFrameState
         bool changed = Width != command.Width ||
             Height != command.Height ||
             ClipPlaneCount != command.ClipPlaneCount ||
-            LightCount != command.LightCount;
+            LightCount != command.LightCount ||
+            HasAuthoredDirectLights != command.HasAuthoredDirectLights;
         Width = command.Width;
         Height = command.Height;
         ClipPlaneCount = command.ClipPlaneCount;
         LightCount = command.LightCount;
+        HasAuthoredDirectLights = command.HasAuthoredDirectLights;
         for (int i = 0; i < 16; i++)
         {
             double view = command.GetViewElement(i);
@@ -1616,21 +1630,36 @@ internal readonly record struct SilkFrameLight(
             ToSingle(command.GetLightTransformElement(light, 14)),
             ToSingle(command.GetLightTransformElement(light, 15)));
 
-    private static float ToSingle(double value) =>
-        double.IsFinite(value) ? (float)value : 0;
+    private static float ToSingle(double value)
+    {
+        if (!double.IsFinite(value) || value > float.MaxValue || value < -float.MaxValue)
+        {
+            throw new InvalidDataException(
+                "A frame light transform is not representable as a finite GPU value.");
+        }
+        return (float)value;
+    }
 }
 
 internal static class SilkFrameUniformWriter
 {
-    internal const int ByteSize = 1856;
-    private const int ShadowMatrixOffset = 1056;
-    private const int ShadowTileOffset = 1312;
-    private const int ShadowControlOffset = 1376;
-    private const int ShadowSlotOffset = 1440;
-    private const int EnvironmentControlOffset = 1568;
-    private const int DomeControlOffset = 1584;
-    private const int DomeAmbientOffset = 1600;
-    private const int DomeEnvironmentOffset = 1728;
+    private const int LightArraySize = SilkFrameState.MaximumLights * 16;
+    private const int LightPositionOffset = 224;
+    private const int LightDirectionOffset = LightPositionOffset + LightArraySize;
+    private const int LightColorOffset = LightDirectionOffset + LightArraySize;
+    private const int LightControlOffset = LightColorOffset + LightArraySize;
+    private const int LightTangentOffset = LightControlOffset + LightArraySize;
+    private const int LightBitangentOffset = LightTangentOffset + LightArraySize;
+    private const int EyeToWorldOffset = LightBitangentOffset + LightArraySize;
+    private const int ShadowMatrixOffset = EyeToWorldOffset + 64;
+    private const int ShadowTileOffset = ShadowMatrixOffset + ((int)SilkShadowCommand.MaximumMaps * 64);
+    private const int ShadowControlOffset = ShadowTileOffset + ((int)SilkShadowCommand.MaximumMaps * 16);
+    private const int ShadowSlotOffset = ShadowControlOffset + ((int)SilkShadowCommand.MaximumMaps * 16);
+    private const int EnvironmentControlOffset = ShadowSlotOffset + LightArraySize;
+    private const int DomeControlOffset = EnvironmentControlOffset + 16;
+    private const int DomeAmbientOffset = DomeControlOffset + 16;
+    private const int DomeEnvironmentOffset = DomeAmbientOffset + (SilkFrameState.MaximumDomes * 16);
+    internal const int ByteSize = DomeEnvironmentOffset + (SilkFrameState.MaximumDomes * 16);
 
     internal static void Write(
         SilkFrameState frame,
@@ -1705,13 +1734,13 @@ internal static class SilkFrameUniformWriter
             Finite(aggregate.X, "ambient red"),
             Finite(aggregate.Y, "ambient green"),
             Finite(aggregate.Z, "ambient blue"),
-            (float)Math.Min(frame.LightCount, (uint)SilkFrameState.MaximumLights));
+            frame.LightCount);
         ReadOnlySpan<SilkFrameLight> lights = frame.Lights;
         for (int i = 0; i < SilkFrameState.MaximumLights; i++)
         {
             WriteLight(destination, i, lights[i]);
         }
-        WriteMatrixTranspose(destination, 992, eyeToWorld);
+        WriteMatrixTranspose(destination, EyeToWorldOffset, eyeToWorld);
         WriteShadows(destination, shadows ?? SilkShadowFrameBinding.None);
 
         // hdSilk sets the ambient intensity to one when the scene authors an
@@ -1723,7 +1752,7 @@ internal static class SilkFrameUniformWriter
         WriteEnvironment(
             destination,
             environment,
-            authoredAmbientDome: ambient.W > 0.5f);
+            authoredSceneLighting: frame.HasAuthoredDirectLights || ambient.W > 0.5f);
         WriteDomes(destination, frame, environment, domeAmbient);
     }
 
@@ -1857,7 +1886,7 @@ internal static class SilkFrameUniformWriter
     private static void WriteEnvironment(
         Span<byte> destination,
         SilkEnvironmentFrameBinding environment,
-        bool authoredAmbientDome)
+        bool authoredSceneLighting)
     {
         WriteVector4(
             destination,
@@ -1865,7 +1894,7 @@ internal static class SilkFrameUniformWriter
             environment.Enabled ? 1f : 0f,
             environment.SpecularSliceCount,
             environment.SpecularSliceHeight,
-            environment.AuthoredSceneLighting || authoredAmbientDome ? 1f : 0f);
+            environment.AuthoredSceneLighting || authoredSceneLighting ? 1f : 0f);
     }
 
     /// <summary>
@@ -1921,12 +1950,12 @@ internal static class SilkFrameUniformWriter
         int index,
         SilkFrameLight light)
     {
-        int positionOffset = 224 + (index * 16);
-        int directionOffset = 352 + (index * 16);
-        int colorOffset = 480 + (index * 16);
-        int controlOffset = 608 + (index * 16);
-        int tangentOffset = 736 + (index * 16);
-        int bitangentOffset = 864 + (index * 16);
+        int positionOffset = LightPositionOffset + (index * 16);
+        int directionOffset = LightDirectionOffset + (index * 16);
+        int colorOffset = LightColorOffset + (index * 16);
+        int controlOffset = LightControlOffset + (index * 16);
+        int tangentOffset = LightTangentOffset + (index * 16);
+        int bitangentOffset = LightBitangentOffset + (index * 16);
         if (light.Type == 0)
         {
             WriteVector4(destination, positionOffset, 0, 0, 0, 0);
@@ -2993,7 +3022,7 @@ public sealed class SilkSceneGpuResources : IDisposable
     // its revision moves. It is the set a cached per-mask surface block has to be
     // in to survive: a live-edited collection walks through many masks, and
     // nothing else ever drops the blocks it leaves behind.
-    private readonly HashSet<uint> _liveLinkMasks = [];
+    private readonly HashSet<SilkLightLinkMasks> _liveLinkMasks = [];
     private ulong _surfaceLinkRevision = ulong.MaxValue;
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _textures = [];
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _failedTextures = [];
@@ -3129,7 +3158,7 @@ public sealed class SilkSceneGpuResources : IDisposable
     /// scene allocates one block per distinct mask the material is drawn with.
     /// The material path is empty for the shared default block.
     /// </remarks>
-    private readonly record struct SurfaceBufferKey(string MaterialPath, uint Masks);
+    private readonly record struct SurfaceBufferKey(string MaterialPath, SilkLightLinkMasks Masks);
 
     /// <summary>
     /// A retained texture and its decoded-CPU/GPU-resident accounting. <see cref="Pixels"/> stays
@@ -3867,7 +3896,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         _shadowDiagnosticTableRevision = shadows.Revision;
         bool deviceSupportsShadows = _device.Capabilities.SupportsRasterShadows;
         ReadOnlySpan<SilkFrameLight> lights = frame.Lights;
-        uint count = Math.Min(frame.LightCount, (uint)SilkFrameState.MaximumLights);
+        uint count = frame.LightCount;
         for (int index = 0; index < count; index++)
         {
             SilkFrameLight light = lights[index];
@@ -5568,7 +5597,7 @@ public sealed class SilkSceneGpuResources : IDisposable
                 SilkRenderDiagnosticCodes.LightLinkDomeBudget or
                 SilkRenderDiagnosticCodes.LightLinkGeneratedShaderUnsupported);
 
-        scene.LightLinks.CollectPackedMasks(_liveLinkMasks);
+        scene.LightLinks.CollectMasks(_liveLinkMasks);
         List<SurfaceBufferKey>? stale = null;
         foreach (SurfaceBufferKey key in _surfaceBuffers.Keys)
         {
@@ -5612,7 +5641,6 @@ public sealed class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(mesh);
         ObserveLightLinkRevision(scene);
         SilkLightLinkMasks masks = scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex);
-        uint packedMasks = PackLinkMasks(masks);
         if (scene.LightLinks.UnsupportedFeatures.HasFlag(SilkLightLinkUnsupportedFeatures.Truncated))
         {
             AddDiagnostic(
@@ -5677,7 +5705,7 @@ public sealed class SilkSceneGpuResources : IDisposable
                 }
             }
 
-            var defaultKey = new SurfaceBufferKey(string.Empty, packedMasks);
+            var defaultKey = new SurfaceBufferKey(string.Empty, masks);
             if (_surfaceBuffers.TryGetValue(defaultKey, out SurfaceBuffer defaultSurface) &&
                 defaultSurface.Buffer is { } retainedDefault)
             {
@@ -5689,7 +5717,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             return createdDefault;
         }
 
-        var key = new SurfaceBufferKey(material.Path, packedMasks);
+        var key = new SurfaceBufferKey(material.Path, masks);
         if (masks != SilkLightLinkMasks.All &&
             material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated)
         {
@@ -5724,18 +5752,6 @@ public sealed class SilkSceneGpuResources : IDisposable
         _surfaceBuffers[key] = new SurfaceBuffer(created, material.StableHash);
         return created;
     }
-
-    /// <summary>
-    /// Folds the three link masks into the single key the surface block cache and
-    /// the per-draw batch key both compare.
-    /// </summary>
-    /// <remarks>
-    /// The dome mask is in the key, not merely in the block. Two prims that share
-    /// a material but link different domes must not share a surface buffer or a
-    /// draw: the dome mask is a per-draw constant, and batching them together
-    /// would give both of them whichever mask was written last.
-    /// </remarks>
-    internal static uint PackLinkMasks(SilkLightLinkMasks masks) => masks.Packed;
 
     /// <summary>
     /// Drops every packed block one material owns, across every link mask it was

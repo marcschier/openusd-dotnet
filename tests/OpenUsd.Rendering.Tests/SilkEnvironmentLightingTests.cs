@@ -1367,7 +1367,7 @@ public sealed class SilkEnvironmentLightingTests
 
     internal static byte[] ReadFrameConstants(ISilkGraphicsBuffer buffer)
     {
-        byte[] constants = new byte[1584];
+        byte[] constants = new byte[15296];
         buffer.ReadbackForTesting(constants);
         return constants;
     }
@@ -1386,9 +1386,9 @@ public sealed class SilkEnvironmentLightingTests
     {
         byte[] constants = ReadFrameConstants(buffer);
         return (
-            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(1568, 4)),
-            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(1572, 4)),
-            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(1576, 4)));
+            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(15008, 4)),
+            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(15012, 4)),
+            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(15016, 4)));
     }
 
     /// <summary>
@@ -1397,7 +1397,7 @@ public sealed class SilkEnvironmentLightingTests
     /// </summary>
     internal static float ReadAuthoredSceneLighting(ISilkGraphicsBuffer buffer) =>
         BinaryPrimitives.ReadSingleLittleEndian(
-            ReadFrameConstants(buffer).AsSpan(1580, 4));
+            ReadFrameConstants(buffer).AsSpan(15020, 4));
 
     /// <summary>Reads the packed frame constants verbatim.</summary>
     internal static byte[] ReadFrameBytes(ISilkGraphicsBuffer buffer) =>
@@ -1420,8 +1420,8 @@ public sealed class SilkEnvironmentLightingTests
         float blue,
         float intensity)
     {
-        const int lightingSize = 1976;
-        const int ambientOffset = 536 + 16 + (8 * 176);
+        const int lightingSize = 23096;
+        const int ambientOffset = 23080;
         byte[] bytes = new byte[lightingSize];
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(0, 4),

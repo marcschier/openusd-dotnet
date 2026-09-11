@@ -42,7 +42,9 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private readonly IReadOnlyList<StageRenderState> _states;
 
-    /// <summary>Copies and validates samples from one immutable product request before rendering or file creation.</summary>
+    /// <summary>
+    /// Copies and validates samples from one immutable product request before rendering or file creation.
+    /// </summary>
     /// <remarks>
     /// Renderer settings are explicit caller choices. Their display transform/exposure affect the PNG
     /// companion, not the raw HDR variable; scene lighting/material/quality choices affect the render.
@@ -58,7 +60,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         {
             throw new ArgumentOutOfRangeException(nameof(frames), "A product job requires 1-4096 prepared samples.");
         }
-        RenderPreparedFrame first = frames[0] ?? throw new ArgumentException("A sample cannot be null.", nameof(frames));
+        RenderPreparedFrame first = frames[0] ??
+            throw new ArgumentException("A sample cannot be null.", nameof(frames));
         Request = first.Request;
         (IncludedPurposes, Outputs) = ValidateStaticRequest(Request);
         MaterialBindingPurpose = Request.Specification.MaterialBindingPurposes[0];
@@ -69,7 +72,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         var samples = new RenderPreparedFrame[count];
         var states = new StageRenderState[count];
         StageRenderState state = StageRenderState.Create(stage)
-            .WithDisplay(new SceneDisplayState(IncludedPurposes, RenderVisibility.RespectAuthored, RenderDrawMode.SmoothShaded))
+            .WithDisplay(new SceneDisplayState(
+                IncludedPurposes, RenderVisibility.RespectAuthored, RenderDrawMode.SmoothShaded))
             .WithRenderSettings(renderSettings);
         for (int index = 0; index < count; index++)
         {
@@ -77,7 +81,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 throw new ArgumentException("A prepared sample cannot be null.", nameof(frames));
             if (!ReferenceEquals(frame.Request, Request))
             {
-                throw new ArgumentException("All samples must belong to the same immutable product request.", nameof(frames));
+                throw new ArgumentException(
+                    "All samples must belong to the same immutable product request.", nameof(frames));
             }
             ValidateCamera(frame);
             samples[index] = frame;
@@ -107,7 +112,9 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     /// <summary>Gets whether the product requires actual normalized device depth.</summary>
     public bool IncludeDeviceDepth { get; }
 
-    /// <summary>Creates a bounded job with caller-authorized output and generated filenames, never product-name authority.</summary>
+    /// <summary>
+    /// Creates a bounded job with caller-authorized output and generated filenames, never product-name authority.
+    /// </summary>
     /// <remarks>
     /// Raw split planes preserve crop/overscan and pixel aspect in the manifest. The initial EXR encoder
     /// requires a complete origin-zero square-pixel color raster; it does not silently discard authored windows.
@@ -124,7 +131,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             if (Frames.Any(frame => frame.DataWindowMinX != 0 || frame.DataWindowMinY != 0 ||
                 frame.OutputDimensions != full || frame.PixelAspectRatio != 1))
             {
-                throw new NotSupportedException("The EXR encoder cannot omit a product's crop, overscan or non-square pixels.");
+                throw new NotSupportedException(
+                    "The EXR encoder cannot omit a product's crop, overscan or non-square pixels.");
             }
         }
         return new RenderDiskJobRequest(outputDirectory, _states, IncludeDeviceDepth, IncludeHdrColor,
@@ -153,7 +161,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         }
         if (specification.RenderingColorSpace.Length != 0)
         {
-            throw new NotSupportedException("The capture adapters cannot certify the requested named rendering color space.");
+            throw new NotSupportedException(
+                "The capture adapters cannot certify the requested named rendering color space.");
         }
         if (specification.MaterialBindingPurposes.Count != 1)
         {
@@ -162,7 +171,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         RequireText(specification.MaterialBindingPurposes[0]);
         if (specification.MaterialBindingPurposes[0].Length > 128)
         {
-            throw new ArgumentOutOfRangeException(nameof(request), "The material-binding purpose exceeds 128 characters.");
+            throw new ArgumentOutOfRangeException(
+                nameof(request), "The material-binding purpose exceeds 128 characters.");
         }
     }
 
@@ -191,7 +201,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     {
         if (request.Outputs.Count is < 1 or > 2)
         {
-            throw new NotSupportedException("The current product profile accepts one color variable and/or one depth variable.");
+            throw new NotSupportedException(
+                "The current product profile accepts one color variable and/or one depth variable.");
         }
         var outputs = new RenderProductOutputBinding[request.Outputs.Count];
         var seen = new HashSet<RenderProductPlane>();
@@ -201,7 +212,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             RequireText(variable.Path);
             if (variable.SourceType != "raw" || variable.NamespacedSettingNames.Count != 0)
             {
-                throw new NotSupportedException($"Variable '{variable.Path}' has an unsupported source or unevaluated settings.");
+                throw new NotSupportedException(
+                    $"Variable '{variable.Path}' has an unsupported source or unevaluated settings.");
             }
             RenderProductPlane plane = (variable.SourceName, variable.DataType) switch
             {
@@ -222,18 +234,21 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     private static void ValidateCamera(RenderPreparedFrame frame)
     {
         RenderCameraFrameSettings settings = frame.CameraSettings ??
-            throw new NotSupportedException("Executing a product requires sampled camera shutter and exposure, not geometry alone.");
+            throw new NotSupportedException(
+                "Executing a product requires sampled camera shutter and exposure, not geometry alone.");
         if (settings.LinearExposureScale != 1)
         {
             throw new NotSupportedException("The current raw-output profile cannot omit non-unit camera exposure.");
         }
         if (!frame.Request.Product.DisableMotionBlur && (settings.ShutterOpen != 0 || settings.ShutterClose != 0))
         {
-            throw new NotSupportedException("The current capture profile cannot omit the active camera shutter interval.");
+            throw new NotSupportedException(
+                "The current capture profile cannot omit the active camera shutter interval.");
         }
         if (!frame.Request.Product.DisableDepthOfField && frame.SampledCamera.FStop != 0)
         {
-            throw new NotSupportedException("The current capture profile cannot omit the active depth-of-field aperture.");
+            throw new NotSupportedException(
+                "The current capture profile cannot omit the active depth-of-field aperture.");
         }
     }
 

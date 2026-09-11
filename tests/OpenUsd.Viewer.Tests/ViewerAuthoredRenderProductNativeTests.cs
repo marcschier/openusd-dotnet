@@ -22,7 +22,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_AUTHORED_PRODUCT_SMOKE") != "1")
         {
             Skip.Test(
-                "Run through eng\\run-viewer-workflow-tests.ps1 -Scenario authored-product with OPENUSD_VIEWER_TEST_NATIVE_ROOT.");
+                "Run through eng\\run-viewer-workflow-tests.ps1 -Scenario authored-product " +
+                "with OPENUSD_VIEWER_TEST_NATIVE_ROOT.");
         }
 
         string runtime = Environment.GetEnvironmentVariable("OPENUSD_VIEWER_TEST_NATIVE_ROOT") ??
@@ -30,7 +31,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
         if (!Path.IsPathFullyQualified(runtime) ||
             !File.Exists(Path.Combine(runtime, "bin", "openusd_hdsilk.dll")))
         {
-            throw new InvalidOperationException("OPENUSD_VIEWER_TEST_NATIVE_ROOT must be the matched session-6 runtime root.");
+            throw new InvalidOperationException(
+                "OPENUSD_VIEWER_TEST_NATIVE_ROOT must be the matched session-6 runtime root.");
         }
         string evidenceRoot = Environment.GetEnvironmentVariable("OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT") ??
             Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ??
@@ -176,7 +178,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
                 Required<ListBox>(palette, "CommandResults").SelectedItem is
                     ListBoxItem { Tag: ViewerCommandIds.FileRenderAuthoredProduct });
             palette.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
-            await WaitUntilAsync(() => window.OwnedWindows.Any(child => child.Title == "Render authored RenderProduct"));
+            await WaitUntilAsync(
+                () => window.OwnedWindows.Any(child => child.Title == "Render authored RenderProduct"));
             Window product = window.OwnedWindows.Single(child => child.Title == "Render authored RenderProduct");
             await WaitUntilAsync(() => Required<ComboBox>(product, "ProductSelector").SelectedItem is not null);
             await Assert.That(product.Owner).IsSameReferenceAs(window);
@@ -212,7 +215,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             byte[] previewHalf = await File.ReadAllBytesAsync(Path.Combine(previewOutput, "frame-000000.hdr.rgba16f"));
             byte[] fullHalf = await File.ReadAllBytesAsync(Path.Combine(fullOutput, "frame-000000.hdr.rgba16f"));
             await Assert.That(previewHalf.SequenceEqual(fullHalf)).IsFalse();
-            ViewerNativeCaptureBackend.RecordComposition(window, session, Path.Combine(root, "product-composition.json"));
+            ViewerNativeCaptureBackend.RecordComposition(
+                window, session, Path.Combine(root, "product-composition.json"));
             await AssertHalf(previewHalf, 4, 4, "000000540000003C");
             Required<TextBox>(product, "ProductSettingsPath").Text = "/SettingsFull";
             await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
@@ -220,7 +224,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await WaitUntilAsync(() => Required<Button>(product, "ProductRenderButton").IsEnabled);
             Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = 1;
             await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsFalse();
-            await Assert.That(Required<TextBlock>(product, "ProductStatus").Text).Contains("EXR output currently refuses");
+            await Assert.That(Required<TextBlock>(product, "ProductStatus").Text)
+                .Contains("EXR output currently refuses");
             int outputsBeforeUnsupported = Directory.GetDirectories(outputParent).Length;
             selector.SelectedIndex = 1;
             await WaitUntilAsync(() => !Required<Button>(product, "ProductRenderButton").IsEnabled);
@@ -251,7 +256,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await ExerciseRunningProductTransitionsAsync(window, session, (AuthoredRenderProductWindow)product,
                 outputParent, () =>
                 {
-                    opened = new TaskCompletionSource<ViewerStageSession>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    opened = new TaskCompletionSource<ViewerStageSession>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
                     return opened.Task;
                 }, closed.Task);
             await Assert.That((await File.ReadAllBytesAsync(stagePath)).SequenceEqual(sourceBytes)).IsTrue();

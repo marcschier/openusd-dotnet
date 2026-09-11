@@ -147,7 +147,8 @@ public sealed partial class ViewerCompletedJobPreviewTests
         {
             File.Delete(link);
         }
-        await ViewerPortableReviewFixture.CreateJunctionAsync(link, kind == "ancestor" ? files.Root : job.OutputDirectory);
+        await ViewerPortableReviewFixture.CreateJunctionAsync(
+            link, kind == "ancestor" ? files.Root : job.OutputDirectory);
         try
         {
             string output = kind switch
@@ -238,7 +239,8 @@ public sealed partial class ViewerCompletedJobPreviewTests
         byte[] png = await File.ReadAllBytesAsync(Path.Combine(job.OutputDirectory, job.Frames[0].FileName));
         using var cancellation = new CancellationTokenSource();
         using var input = new ChangedStream(png, "cancel", cancellation);
-        await Assert.That(() => CompletedRenderFrameReader.ReadThumbnail(input, job.Frames[0], 256, 256, cancellation.Token))
+        await Assert.That(
+            () => CompletedRenderFrameReader.ReadThumbnail(input, job.Frames[0], 256, 256, cancellation.Token))
             .Throws<OperationCanceledException>();
         using var unbounded = new ChangedStream(png, "unbounded");
         await Assert.That(() => CompletedRenderFrameReader.ReadThumbnail(unbounded, job.Frames[0], 256, 256, default))

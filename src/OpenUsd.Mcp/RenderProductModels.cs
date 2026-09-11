@@ -21,7 +21,8 @@ internal sealed class RenderProductCaptureRequest : SceneRevisionRequestBase
     public string? CameraPath { get; init; }
 
     [JsonPropertyName("frameCount"), Range(1, 4096), DefaultValue(1)]
-    [Description("Number of explicit time samples, 1-4096. Product variables, not viewport output toggles, choose data planes.")]
+    [Description(
+        "Number of explicit time samples, 1-4096. Product variables, not viewport output toggles, choose data planes.")]
     public int FrameCount { get; init; } = 1;
 
     [JsonPropertyName("startTimeCode")]
@@ -43,7 +44,8 @@ internal sealed record McpAuthoredProductDto(
     [property: Description("Selected authored RenderSettings path.")] string SettingsPath,
     [property: Description("Selected authored RenderProduct path.")] string ProductPath,
     [property: Description("Effective camera path after any explicit override.")] string CameraPath,
-    [property: Description("Explicit bounded execution profile, not a claim of arbitrary UsdRender support.")] string Profile,
+    [property: Description("Explicit bounded execution profile, not a claim of arbitrary UsdRender support.")]
+    string Profile,
     [property: Description("Exact material-binding purpose applied to ingestion.")] string MaterialBindingPurpose,
     [property: Description("Requested render variables in authored order, at most two in the initial profile.")]
     IReadOnlyList<McpProductVariableDto> Outputs);

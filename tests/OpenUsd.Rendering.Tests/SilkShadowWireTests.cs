@@ -101,6 +101,7 @@ public sealed class SilkShadowWireTests
     public async Task AnEmptyShadowTableRetiresEveryRetainedMap()
     {
         var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(1), 1, 0);
         _ = scene.Apply(
             CreateShadow(
                 lightCount: 1,
@@ -123,6 +124,7 @@ public sealed class SilkShadowWireTests
     public async Task EveryLightResolvesToItsOwnMapSlot()
     {
         var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(4), 1, 0);
         _ = scene.Apply(
             CreateShadow(
                 lightCount: 4,
@@ -142,7 +144,7 @@ public sealed class SilkShadowWireTests
         // A light index outside the fixed frame table resolves to no map rather
         // than reading past the slot array.
         await Assert.That(scene.Shadows.ResolveSlot(-1)).IsEqualTo(-1);
-        await Assert.That(scene.Shadows.ResolveSlot(64)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(128)).IsEqualTo(-1);
     }
 
     [Test]
@@ -151,7 +153,7 @@ public sealed class SilkShadowWireTests
         byte[] page = CreateShadow(
             lightCount: 1,
             descriptors: [new Descriptor(1, 0, 1024, SilkShadowDescriptorOptions.Orthographic)]);
-        await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+        await Assert.That(() => ValidateShadow(page))
             .Throws<InvalidDataException>();
     }
 
@@ -165,7 +167,7 @@ public sealed class SilkShadowWireTests
                 new Descriptor(0, 1, 1024, SilkShadowDescriptorOptions.Orthographic),
                 new Descriptor(1, 0, 1024, SilkShadowDescriptorOptions.Orthographic),
             ]);
-        await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+        await Assert.That(() => ValidateShadow(page))
             .Throws<InvalidDataException>();
     }
 
@@ -180,7 +182,7 @@ public sealed class SilkShadowWireTests
                 [
                     new Descriptor(0, 0, resolution, SilkShadowDescriptorOptions.Orthographic),
                 ]);
-            await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+            await Assert.That(() => ValidateShadow(page))
                 .Throws<InvalidDataException>();
         }
     }
@@ -199,7 +201,7 @@ public sealed class SilkShadowWireTests
         }
 
         byte[] page = CreateShadow(lightCount: 1, descriptors: descriptors);
-        await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+        await Assert.That(() => ValidateShadow(page))
             .Throws<InvalidDataException>();
     }
 
@@ -212,12 +214,12 @@ public sealed class SilkShadowWireTests
 
         byte[] truncated = page[..^1];
         BinaryPrimitives.WriteUInt32LittleEndian(truncated.AsSpan(4), (uint)truncated.Length);
-        await Assert.That(() => new SilkSceneState().Apply(truncated, 1, 1))
+        await Assert.That(() => ValidateShadow(truncated))
             .Throws<InvalidDataException>();
 
         byte[] padded = [.. page, 0];
         BinaryPrimitives.WriteUInt32LittleEndian(padded.AsSpan(4), (uint)padded.Length);
-        await Assert.That(() => new SilkSceneState().Apply(padded, 1, 1))
+        await Assert.That(() => ValidateShadow(padded))
             .Throws<InvalidDataException>();
     }
 
@@ -227,14 +229,14 @@ public sealed class SilkShadowWireTests
         byte[] flagged = CreateShadow(
             lightCount: 1,
             descriptors: [new Descriptor(0, 0, 1024, (SilkShadowDescriptorOptions)0x8u)]);
-        await Assert.That(() => new SilkSceneState().Apply(flagged, 1, 1))
+        await Assert.That(() => ValidateShadow(flagged))
             .Throws<InvalidDataException>();
 
         byte[] unsupported = CreateShadow(
             lightCount: 1,
             descriptors: [new Descriptor(0, 0, 1024, SilkShadowDescriptorOptions.Orthographic)]);
         BinaryPrimitives.WriteUInt32LittleEndian(unsupported.AsSpan(16), 0xFFu);
-        await Assert.That(() => new SilkSceneState().Apply(unsupported, 1, 1))
+        await Assert.That(() => ValidateShadow(unsupported))
             .Throws<InvalidDataException>();
     }
 
@@ -247,7 +249,7 @@ public sealed class SilkShadowWireTests
         BinaryPrimitives.WriteDoubleLittleEndian(
             nonFinite.AsSpan(FixedSize + 16),
             double.NaN);
-        await Assert.That(() => new SilkSceneState().Apply(nonFinite, 1, 1))
+        await Assert.That(() => ValidateShadow(nonFinite))
             .Throws<InvalidDataException>();
 
         byte[] negativeBias = CreateShadow(
@@ -256,7 +258,7 @@ public sealed class SilkShadowWireTests
         BinaryPrimitives.WriteSingleLittleEndian(
             negativeBias.AsSpan(FixedSize + 272),
             -0.001f);
-        await Assert.That(() => new SilkSceneState().Apply(negativeBias, 1, 1))
+        await Assert.That(() => ValidateShadow(negativeBias))
             .Throws<InvalidDataException>();
     }
 
@@ -267,7 +269,7 @@ public sealed class SilkShadowWireTests
             lightCount: 1,
             descriptors: [new Descriptor(0, 0, 1024, SilkShadowDescriptorOptions.Orthographic)]);
         BinaryPrimitives.WriteUInt32LittleEndian(page.AsSpan(FixedSize + 284), 1u);
-        await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+        await Assert.That(() => ValidateShadow(page))
             .Throws<InvalidDataException>();
     }
 
@@ -287,7 +289,7 @@ public sealed class SilkShadowWireTests
                     new Descriptor(0, 0, 1024, SilkShadowDescriptorOptions.Orthographic),
                 ]);
             BinaryPrimitives.WriteUInt32LittleEndian(page.AsSpan(20), reserved);
-            await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+            await Assert.That(() => ValidateShadow(page))
                 .Throws<InvalidDataException>();
         }
 
@@ -296,6 +298,7 @@ public sealed class SilkShadowWireTests
             lightCount: 1,
             descriptors: [new Descriptor(0, 0, 1024, SilkShadowDescriptorOptions.Orthographic)]);
         var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(1), 1, 0);
         _ = scene.Apply(valid, 1, 1);
         await Assert.That(scene.Shadows.HasShadows).IsTrue();
     }
@@ -307,8 +310,22 @@ public sealed class SilkShadowWireTests
         // validate, so its header is the only thing left to check.
         byte[] page = CreateShadow(lightCount: 0, descriptors: []);
         BinaryPrimitives.WriteUInt32LittleEndian(page.AsSpan(20), 7u);
-        await Assert.That(() => new SilkSceneState().Apply(page, 1, 1))
+        await Assert.That(() => ValidateShadow(page))
             .Throws<InvalidDataException>();
+    }
+
+    private static void ValidateShadow(byte[] bytes)
+    {
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(bytes, 1);
+        if (!commands.MoveNext())
+        {
+            throw new InvalidDataException("The shadow command is missing.");
+        }
+        _ = commands.Current.AsShadow();
+        if (commands.MoveNext())
+        {
+            throw new InvalidDataException("The shadow fixture contains another command.");
+        }
     }
 
     [Test]
@@ -646,6 +663,195 @@ public sealed class SilkShadowWireTests
             BinaryPrimitives.WriteSingleLittleEndian(
                 bytes.AsSpan(entry + 280),
                 descriptor.PcfRadius);
+        }
+        return bytes;
+    }
+
+    [Test]
+    [Arguments(97, 96)]
+    [Arguments(128, 127)]
+    public async Task ShadowDescriptorsAcceptPublishedHighLightIndices(int lightCount, int lightIndex)
+    {
+        byte[] shadow = CreateShadow(
+            (uint)lightCount,
+            [
+                new Descriptor((uint)lightIndex, 0, 512,
+                    SilkShadowDescriptorOptions.Orthographic |
+                        SilkShadowDescriptorOptions.CasterLinked, 0.25f, 0.5f, 2f),
+                new Descriptor(31, 1, 2048, SilkShadowDescriptorOptions.Orthographic,
+                    0.125f, 0.75f, 0f),
+            ]);
+        var scene = new SilkSceneState();
+        _ = scene.Apply([.. CreateWideShadowFrame(lightCount), .. shadow], 2, 41);
+        (uint count, uint lights, SilkShadowUnsupportedFeatures unsupported,
+            SilkShadowDescriptor first, SilkShadowDescriptor second) = Read(shadow);
+
+        await Assert.That(shadow.Length).IsEqualTo(24 + (2 * 288));
+        await Assert.That(count).IsEqualTo(2u);
+        await Assert.That(lights).IsEqualTo((uint)lightCount);
+        await Assert.That(unsupported).IsEqualTo(SilkShadowUnsupportedFeatures.None);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo((uint)lightCount);
+        await Assert.That(scene.Shadows.LightCount).IsEqualTo((uint)lightCount);
+        await Assert.That(first.LightIndex).IsEqualTo((uint)lightIndex);
+        await Assert.That(first.MapIndex).IsEqualTo(0u);
+        await Assert.That(first.Resolution).IsEqualTo(512u);
+        await Assert.That(first.Flags).IsEqualTo(
+            SilkShadowDescriptorOptions.Orthographic | SilkShadowDescriptorOptions.CasterLinked);
+        await Assert.That(first.DepthBias).IsEqualTo(0.25f);
+        await Assert.That(first.NormalBias).IsEqualTo(0.5f);
+        await Assert.That(first.PcfRadius).IsEqualTo(2f);
+        await Assert.That(second.LightIndex).IsEqualTo(31u);
+        await Assert.That(second.MapIndex).IsEqualTo(1u);
+        await Assert.That(second.Resolution).IsEqualTo(2048u);
+        for (int element = 0; element < 16; element++)
+        {
+            await Assert.That(first.View[element]).IsEqualTo(element + 1d);
+            await Assert.That(first.Projection[element]).IsEqualTo(100d + element);
+        }
+        await Assert.That(scene.Shadows.ResolveSlot(lightIndex)).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(31)).IsEqualTo(1);
+        await Assert.That(scene.Shadows.ResolveSlot(0)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(lightIndex - 1)).IsEqualTo(-1);
+        await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(shadow.AsSpan(24)))
+            .IsEqualTo((uint)lightIndex);
+        await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(shadow.AsSpan(24 + 284)))
+            .IsEqualTo(0u);
+        await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(shadow.AsSpan(20)))
+            .IsEqualTo(0u);
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(4)]
+    [Arguments(5)]
+    public async Task ShadowMapBudgetRemainsFourAt128Lights(int mapCount)
+    {
+        int[] indices = [127, 96, 31, 64, 95];
+        Descriptor[] descriptors = new Descriptor[mapCount];
+        for (int map = 0; map < mapCount; map++)
+        {
+            descriptors[map] = new Descriptor(
+                (uint)indices[map], (uint)map, 512, SilkShadowDescriptorOptions.Orthographic);
+        }
+        byte[] shadow = CreateShadow(128, descriptors);
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(128), 1, 1);
+
+        uint maximumMaps = SilkShadowCommand.MaximumMaps;
+        await Assert.That(maximumMaps).IsEqualTo(4u);
+        await Assert.That(shadow.Length).IsEqualTo(24 + (mapCount * 288));
+        if (mapCount == 5)
+        {
+            await Assert.That(() => scene.Apply(shadow, 1, 2)).Throws<InvalidDataException>();
+            await Assert.That(scene.Shadows.Count).IsEqualTo(0);
+            await Assert.That(scene.Frame.LightCount).IsEqualTo(128u);
+            return;
+        }
+
+        _ = scene.Apply(shadow, 1, 2);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(mapCount);
+        await Assert.That(scene.Shadows.LightCount).IsEqualTo(128u);
+        await Assert.That(scene.Shadows.HasShadows).IsEqualTo(mapCount != 0);
+        await Assert.That(scene.Shadows.Revision).IsGreaterThan(0ul);
+        for (int light = 0; light < 128; light++)
+        {
+            int slot = Array.IndexOf(indices, light, 0, mapCount);
+            await Assert.That(scene.Shadows.ResolveSlot(light)).IsEqualTo(slot);
+        }
+    }
+
+    [Test]
+    public async Task ShadowLightIndexBoundsDoNotTreat64AsOutOfRange()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(
+            [
+                .. CreateWideShadowFrame(128),
+                .. CreateShadow(128,
+                [
+                    new Descriptor(96, 0, 512, SilkShadowDescriptorOptions.Orthographic),
+                    new Descriptor(127, 1, 1024, SilkShadowDescriptorOptions.Orthographic),
+                ]),
+            ], 2, 1);
+        await Assert.That(scene.Shadows.ResolveSlot(64)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(1);
+        ulong revision = scene.Shadows.Revision;
+
+        _ = scene.Apply(CreateShadow(128,
+        [
+            new Descriptor(64, 0, 512, SilkShadowDescriptorOptions.Orthographic),
+            new Descriptor(127, 1, 1024, SilkShadowDescriptorOptions.Orthographic),
+        ]), 1, 2);
+
+        await Assert.That(scene.Shadows.ResolveSlot(64)).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(96)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(1);
+        await Assert.That(scene.Shadows.Revision).IsGreaterThan(revision);
+        foreach (int index in new[] { -1, int.MinValue, 128, int.MaxValue })
+        {
+            await Assert.That(scene.Shadows.ResolveSlot(index)).IsEqualTo(-1);
+        }
+        await Assert.That(scene.Shadows.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(96, 96)]
+    [Arguments(97, 97)]
+    [Arguments(127, 127)]
+    [Arguments(128, 128)]
+    [Arguments(129, 127)]
+    public async Task ShadowDescriptorsRejectUnpublishedHighIndices(int lightCount, int lightIndex)
+    {
+        byte[] invalid = CreateShadow((uint)lightCount,
+        [
+            new Descriptor((uint)lightIndex, 0, 512, SilkShadowDescriptorOptions.Orthographic),
+        ]);
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(Math.Min(lightCount, 128)), 1, 1);
+        await Assert.That(() => scene.Apply(invalid, 1, 2)).Throws<InvalidDataException>();
+        await Assert.That(scene.Shadows.Count).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
+
+        int lastPublished = Math.Min(lightCount, 128) - 1;
+        _ = scene.Apply(CreateShadow((uint)Math.Min(lightCount, 128),
+        [
+            new Descriptor((uint)lastPublished, 0, 512, SilkShadowDescriptorOptions.Orthographic),
+        ]), 1, 3);
+        await Assert.That(scene.Shadows.ResolveSlot(lastPublished)).IsEqualTo(0);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(1);
+    }
+
+    private static byte[] CreateWideShadowFrame(int lightCount)
+    {
+        byte[] bytes = new byte[23096];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 23096u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), 96);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), 64);
+        for (int element = 0; element < 16; element++)
+        {
+            double value = element % 5 == 0 ? 1d : 0d;
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), value);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), value);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), (uint)lightCount);
+        for (int light = 0; light < lightCount; light++)
+        {
+            int entry = 552 + (light * 176);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), 1u);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 4), 1u);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 16), 0.25f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 20), 0.5f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 24), 0.75f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 28), 2f);
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(entry + 32 + (element * 8)), element % 5 == 0 ? 1d : 0d);
+            }
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 164), 1f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 168), 1f);
         }
         return bytes;
     }

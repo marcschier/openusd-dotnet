@@ -31,7 +31,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
         {
             SilkSingleMeshHdrFixture.Retain(device, renderer, session);
         }
-        SilkFrameCaptureResult? first = seedCachedTarget ? Capture(SilkSingleMeshHdrFixture.GpuSettings(), 0) : null;
+        SilkFrameCaptureResult? first = seedCachedTarget ? capture(SilkSingleMeshHdrFixture.GpuSettings(), 0) : null;
         if (retained)
         {
             SilkSingleMeshHdrFixture.Retain(device, renderer, session, time: 1);
@@ -41,7 +41,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
         InvalidOperationException? refusal = null;
         try
         {
-            _ = Capture(missing, 1);
+            _ = capture(missing, 1);
         }
         catch (InvalidOperationException exception)
         {
@@ -50,7 +50,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
         int renderedPasses = device.ScenePasses - before;
         int submitted = device.Submissions;
         int completed = device.CompletedSubmissions;
-        SilkFrameCaptureResult retry = Capture(SilkSingleMeshHdrFixture.GpuSettings(), 1);
+        SilkFrameCaptureResult retry = capture(SilkSingleMeshHdrFixture.GpuSettings(), 1);
         SilkFrameCaptureResult fallback = retained
             ? SilkFrameCapture.CaptureRetained(renderer, device, 16, 16, missing)
             : capturer.Capture(session, 16, 16, missing, timeCode: 1, camera: SilkHdrColorCaptureFixture.Camera);
@@ -72,7 +72,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
                 .SequenceEqual<byte>([0x00, 0x54, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3C])).IsTrue();
         }
 
-        SilkFrameCaptureResult Capture(RenderSettings settings, double time) => retained
+        SilkFrameCaptureResult capture(RenderSettings settings, double time) => retained
             ? SilkFrameCapture.CaptureRetainedWithHdrColor(
                 renderer, device, 16, 16, settings, new SilkHdrColorCaptureOptions(includeDeviceDepth: true))
             : capturer.CaptureWithHdrColor(
@@ -110,7 +110,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
             {
                 SilkSingleMeshHdrFixture.Retain(device, renderer, session);
             }
-            first = Capture(0, default);
+            first = capture(0, default);
             firstHdr = first.HdrColor!.Rgba16Float.ToArray();
             firstDisplay = first.Rgba.ToArray();
             firstDepth = first.Depth!.Values.ToArray();
@@ -122,7 +122,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
             device.AfterCompletedWait = cancellation.Cancel;
             try
             {
-                _ = Capture(1, cancellation.Token);
+                _ = capture(1, cancellation.Token);
             }
             catch (OperationCanceledException)
             {
@@ -131,9 +131,9 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
             renderedPasses = device.ScenePasses - before;
             submitted = device.Submissions;
             completed = device.CompletedSubmissions;
-            retry = Capture(1, default);
+            retry = capture(1, default);
 
-            SilkFrameCaptureResult Capture(double time, CancellationToken token) => retained
+            SilkFrameCaptureResult capture(double time, CancellationToken token) => retained
                 ? SilkFrameCapture.CaptureRetainedWithHdrColor(
                     renderer, device, 16, 16, SilkSingleMeshHdrFixture.GpuSettings(),
                     new SilkHdrColorCaptureOptions(includeDeviceDepth: true), cancellationToken: token)

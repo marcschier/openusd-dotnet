@@ -688,11 +688,11 @@ internal static class SilkDomeLinkConformance
         foreach ((string path, int instanceIndex, uint domeMask) in entries)
         {
             byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-            payload.AddRange(BitConverter.GetBytes(0u));
-            payload.AddRange(BitConverter.GetBytes(0u));
-            payload.AddRange(BitConverter.GetBytes(domeMask));
-            payload.AddRange(BitConverter.GetBytes(instanceIndex));
-            payload.AddRange(BitConverter.GetBytes((uint)pathBytes.Length));
+            byte[] prefix = new byte[44];
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(32), domeMask);
+            BinaryPrimitives.WriteInt32LittleEndian(prefix.AsSpan(36), instanceIndex);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(40), (uint)pathBytes.Length);
+            payload.AddRange(prefix);
             payload.AddRange(pathBytes);
         }
 
@@ -805,10 +805,10 @@ internal static class SilkDomeLinkConformance
     /// </summary>
     private static byte[] Frame(uint domeCount, uint textured, Vector3 ambient = default)
     {
-        const int frameSize = 2248;
-        const int ambientOffset = 536 + 16 + (8 * 176);
-        const int domeCountOffset = 1976;
-        const int domeTableOffset = 1992;
+        const int frameSize = 23368;
+        const int ambientOffset = 23080;
+        const int domeCountOffset = 23096;
+        const int domeTableOffset = 23112;
         var bytes = new byte[frameSize];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
@@ -995,11 +995,11 @@ internal static class SilkDomeLinkConformance
         foreach ((string path, uint domeMask) in entries)
         {
             byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-            payload.AddRange(BitConverter.GetBytes(0u));
-            payload.AddRange(BitConverter.GetBytes(0u));
-            payload.AddRange(BitConverter.GetBytes(domeMask));
-            payload.AddRange(BitConverter.GetBytes(SilkLightLinkCommand.AllInstances));
-            payload.AddRange(BitConverter.GetBytes((uint)pathBytes.Length));
+            byte[] prefix = new byte[44];
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(32), domeMask);
+            BinaryPrimitives.WriteInt32LittleEndian(prefix.AsSpan(36), SilkLightLinkCommand.AllInstances);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(40), (uint)pathBytes.Length);
+            payload.AddRange(prefix);
             payload.AddRange(pathBytes);
         }
 

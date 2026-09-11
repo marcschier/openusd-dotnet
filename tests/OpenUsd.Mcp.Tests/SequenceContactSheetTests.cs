@@ -121,7 +121,8 @@ public sealed class SequenceContactSheetTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.That(async () => await fixture.Service.ReadSequenceSheetAsync(
-            new ReadSequenceSheetRequest { JobId = "unknown" }, cancellation.Token)).Throws<OperationCanceledException>();
+            new ReadSequenceSheetRequest { JobId = "unknown" }, cancellation.Token))
+            .Throws<OperationCanceledException>();
         await Assert.That(async () => await fixture.Service.ReadSequenceSheetAsync(
             new ReadSequenceSheetRequest { JobId = "unknown" }, default)).Throws<OpenUsdMcpFailureException>();
         await Assert.That(fixture.Source.Calls).IsEqualTo(0);
@@ -210,7 +211,8 @@ public sealed class SequenceContactSheetTests
     private sealed class SourceFactory : IPreviewFrameSourceFactory, IPreviewFrameSource
     {
         internal int Calls { get; private set; }
-        public IPreviewFrameSource Create(PreviewCaptureRequest request, CancellationToken cancellationToken = default) => this;
+        public IPreviewFrameSource Create(
+            PreviewCaptureRequest request, CancellationToken cancellationToken = default) => this;
         public ImageRgba8 Capture(CaptureView view, int width, int height)
         {
             Calls++;

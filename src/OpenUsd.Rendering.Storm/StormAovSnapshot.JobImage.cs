@@ -24,11 +24,17 @@ public sealed partial class StormAovSnapshot
     ]);
 
     /// <summary>Converts detached native color and optional depth into the shared disk-job image shape.</summary>
-    /// <param name="includeDeviceDepth">Copy the available normalized OpenGL depth plane without linearizing it.</param>
+    /// <param name="includeDeviceDepth">
+    /// Copy the available normalized OpenGL depth plane without linearizing it.
+    /// </param>
     /// <param name="includeHdrColor">Copy raw little-endian half RGBA, preserving all finite bits and alpha.</param>
     /// <param name="outputTransform">Explicit display-only transform; raw planes are unaffected.</param>
-    /// <param name="exposure">Finite display-only RGB exposure in stops; alpha is not exposure-adjusted or tone-mapped.</param>
-    /// <param name="maximumManagedBytes">Combined existing snapshot upper bound and new pixel storage, at most 64 MiB.</param>
+    /// <param name="exposure">
+    /// Finite display-only RGB exposure in stops; alpha is not exposure-adjusted or tone-mapped.
+    /// </param>
+    /// <param name="maximumManagedBytes">
+    /// Combined existing snapshot upper bound and new pixel storage, at most 64 MiB.
+    /// </param>
     /// <param name="cancellationToken">Cancels before allocation or between bounded pixel batches.</param>
     /// <returns>An independent top-down display image and exactly the requested additional planes.</returns>
     /// <remarks>
@@ -58,7 +64,8 @@ public sealed partial class StormAovSnapshot
     {
         if (presentation.Length != checked(Width * Height * 4))
         {
-            throw new ArgumentException("Native presentation storage does not match the AOV dimensions.", nameof(presentation));
+            throw new ArgumentException(
+                "Native presentation storage does not match the AOV dimensions.", nameof(presentation));
         }
         return CreateJobImageCore(includeDeviceDepth, includeHdrColor, RenderOutputTransform.Identity, 0,
             maximumManagedBytes, presentation, cancellationToken);
@@ -79,7 +86,8 @@ public sealed partial class StormAovSnapshot
         if (includeHdrColor && _hasDisplaySelection)
         {
             throw new NotSupportedException(
-                "Raw HDR requires a Storm capture without display selection; native highlights cannot be removed from the color AOV.");
+                "Raw HDR requires a Storm capture without display selection; " +
+                "native highlights cannot be removed from the color AOV.");
         }
         float scale = Rgba16FloatDisplayConverter.GetExposureScale(outputTransform, exposure);
         int count = checked(Width * Height);
@@ -90,7 +98,8 @@ public sealed partial class StormAovSnapshot
         ulong storage = checked(ManagedStorageUpperBound + companionStorage + 512 + (ulong)count * bytesPerPixel);
         if (storage > (ulong)maximumManagedBytes)
         {
-            throw new RenderOutputQuotaExceededException("The Storm snapshot and requested job planes exceed the managed conversion budget.");
+            throw new RenderOutputQuotaExceededException(
+                "The Storm snapshot and requested job planes exceed the managed conversion budget.");
         }
         StormAovOutput<StormAovColor>? color = !nativeAppearance || includeHdrColor
             ? RequireImageOutput<StormAovColor>(StormAovKind.Color, StormAovFormat.Float16Vec4, count) : null;
@@ -143,7 +152,8 @@ public sealed partial class StormAovSnapshot
                 float value = depth.Pixels[index];
                 if (!float.IsFinite(value) || value is < 0 or > 1)
                 {
-                    throw new InvalidDataException("The Storm depth AOV contains a value outside normalized window depth.");
+                    throw new InvalidDataException(
+                        "The Storm depth AOV contains a value outside normalized window depth.");
                 }
                 depthValues[index] = value;
             }
@@ -175,6 +185,7 @@ public sealed partial class StormAovSnapshot
                 break;
             }
         }
-        throw new InvalidDataException($"The snapshot does not contain an available {kind} output in its required representation.");
+        throw new InvalidDataException(
+            $"The snapshot does not contain an available {kind} output in its required representation.");
     }
 }

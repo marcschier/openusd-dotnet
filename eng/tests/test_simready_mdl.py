@@ -22,7 +22,8 @@ class SimReadyMdlTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="openusd-mdl-acquisition-")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        # Match the acquisition interface's physical-root requirement.
+        self.root = Path(self.temporary.name).resolve(strict=True)
         self.content = (
             b"// Redistribution and use in source and binary forms\n"
             b"// Neither the name of NVIDIA\n"

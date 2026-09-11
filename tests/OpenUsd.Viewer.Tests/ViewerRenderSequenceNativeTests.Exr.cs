@@ -33,7 +33,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 Required<CheckBox>(sequence, "SequenceDepthData").IsChecked = depth;
                 await Assert.That(Required<TextBlock>(sequence, "SequenceOutputScope").Text).Contains(".hdr.exr");
                 await Assert.That(Required<TextBlock>(sequence, "SequenceLimits").Text).Contains("20 bytes/pixel");
-                await Assert.That(Required<TextBlock>(sequence, "SequenceLimits").Text).Contains("outside these quotas");
+                await Assert.That(Required<TextBlock>(sequence, "SequenceLimits").Text)
+                    .Contains("outside these quotas");
 
                 TextBlock status = Required<TextBlock>(sequence, "SequenceStatus");
                 bool locked = false;
@@ -50,7 +51,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 try
                 {
                     await Assert.That(Required<Button>(sequence, "SequenceRenderButton").IsEnabled).IsTrue();
-                    Required<Button>(sequence, "SequenceRenderButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Required<Button>(sequence, "SequenceRenderButton")
+                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     await WaitUntilAsync(() => !((RenderImageSequenceWindow)sequence).IsRunning);
                 }
                 finally
@@ -74,8 +76,10 @@ public sealed partial class ViewerRenderSequenceNativeTests
 
     private static async Task AssertExrMatchesRawAsync(string raw, string exr, bool depth)
     {
-        using JsonDocument reference = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(raw, "manifest.json")));
-        using JsonDocument actual = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(exr, "manifest.json")));
+        using JsonDocument reference = JsonDocument.Parse(
+            await File.ReadAllBytesAsync(Path.Combine(raw, "manifest.json")));
+        using JsonDocument actual = JsonDocument.Parse(
+            await File.ReadAllBytesAsync(Path.Combine(exr, "manifest.json")));
         JsonElement expectedFrames = reference.RootElement.GetProperty("frames");
         JsonElement frames = actual.RootElement.GetProperty("frames");
         await Assert.That(frames.GetArrayLength()).IsEqualTo(3);
@@ -90,7 +94,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 .IsEqualTo(expected.GetProperty("timeCode").GetDouble());
             foreach (string field in new[] { "camera", "display", "settings", "selection" })
             {
-                await Assert.That(frame.GetProperty(field).GetRawText()).IsEqualTo(expected.GetProperty(field).GetRawText());
+                await Assert.That(frame.GetProperty(field).GetRawText())
+                    .IsEqualTo(expected.GetProperty(field).GetRawText());
             }
             JsonElement hdr = frame.GetProperty("hdrColor");
             _ = await AssertPlaneFileAsync(exr, hdr, null);

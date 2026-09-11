@@ -10,16 +10,19 @@
 
 #include "pxr/pxr.h"
 #include "pxr/base/gf/matrix4d.h"
+#include "pxr/base/vt/array.h"
 
 // The ABI constants the retained records are described in terms of. The header
 // is the authority for the wire format, and this file's records are what is
 // serialized into it, so naming the constants here keeps the two from drifting.
 #include "openusd_hdsilk.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -68,6 +71,10 @@ struct HdSilkMeshAttribute
     uint32_t interpolation = 1;
     std::vector<float> data;
 };
+
+/// Rprim caches and published records share attributes until a writer detaches.
+/// Read through const views so inspection never copies the per-attribute payloads.
+using HdSilkMeshAttributes = VtArray<HdSilkMeshAttribute>;
 
 /// One resolved sub-shape of a published deformation block: the sparse deltas
 /// [firstDelta, firstDelta + deltaCount) of the block's delta table, scaled by
@@ -229,7 +236,7 @@ struct HdSilkMeshRecord
     uint32_t subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE;
     float displayColor[4] = {0.7f, 0.7f, 0.7f, 1.0f};
     std::string materialPath;       // Empty when the mesh has no binding.
-    std::vector<HdSilkMeshAttribute> attributes;
+    HdSilkMeshAttributes attributes;
     HdSilkMeshDeformation deformation;
 
     /// Drops both subprim-identity tables and names the reason. Used by every
@@ -391,6 +398,7 @@ struct HdSilkLightRecord
     float diffuse = 1.0f;
     float specular = 1.0f;
     float radius = 0.5f;
+    bool visible = true;
     bool ambientOnly = false;
     // The resolved dome texture:file, empty for every light that is not a
     // textured dome. A non-empty value moves the record out of the frame
@@ -423,14 +431,67 @@ struct HdSilkCategoryMembership
     std::vector<std::string> categories;
 };
 
+/// The four little-endian words of one bounded direct-light membership.
+struct HdSilkLightMask
+{
+    std::array<uint32_t, OPENUSD_SILK_LIGHT_MASK_WORDS> words = {};
+
+    HdSilkLightMask(uint32_t lowWord = 0) : words{lowWord, 0, 0, 0}
+    {
+    }
+
+    static HdSilkLightMask First(uint32_t count)
+    {
+        if (count > OPENUSD_SILK_MAX_FRAME_LIGHTS)
+        {
+            throw std::out_of_range("The hdSilk direct-light mask exceeds 128 lights.");
+        }
+        HdSilkLightMask mask;
+        for (uint32_t index = 0; index < count; ++index)
+        {
+            mask.Set(index);
+        }
+        return mask;
+    }
+
+    void Set(size_t index)
+    {
+        if (index >= OPENUSD_SILK_MAX_FRAME_LIGHTS)
+        {
+            throw std::out_of_range("The hdSilk direct-light mask index exceeds 127.");
+        }
+        words[index / 32] |= uint32_t{1} << (index % 32);
+    }
+
+    bool Contains(size_t index) const
+    {
+        return index < OPENUSD_SILK_MAX_FRAME_LIGHTS &&
+            (words[index / 32] & (uint32_t{1} << (index % 32))) != 0;
+    }
+
+    bool operator==(const HdSilkLightMask& other) const
+    {
+        return words == other.words;
+    }
+
+    bool operator!=(const HdSilkLightMask& other) const
+    {
+        return !(*this == other);
+    }
+};
+
+static_assert(
+    OPENUSD_SILK_MAX_FRAME_LIGHTS == OPENUSD_SILK_LIGHT_MASK_WORDS * 32u,
+    "The direct-light table and membership width must agree.");
+
 /// One resolved LIGHT_LINK entry: the direct lights that illuminate a prim, the
 /// direct lights whose shadows it casts, and the dome lights that illuminate it.
 struct HdSilkLinkEntry
 {
     std::string path;
     int32_t instanceIndex = -1;
-    uint32_t lightMask = 0;
-    uint32_t shadowMask = 0;
+    HdSilkLightMask lightMask;
+    HdSilkLightMask shadowMask;
     // Bit i is set when the dome light at index i of the page's bounded dome
     // table illuminates this prim. There is no matching dome shadow mask: a dome
     // casts no shadow map here, so collection:shadowLink on a dome is diagnosed

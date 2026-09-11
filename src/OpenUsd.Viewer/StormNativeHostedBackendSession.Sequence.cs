@@ -42,7 +42,8 @@ internal sealed partial class StormNativeHostedBackendSession
         }
         if (outputs.IncludeHdrColor && state.Selection.Items.Count != 0)
         {
-            return "Clear display selection before exporting native Storm HDR; highlights can be baked into its color AOV.";
+            return "Clear display selection before exporting native Storm HDR; " +
+                "highlights can be baked into its color AOV.";
         }
         if (outputs.HasAdditionalPlanes &&
             (state.Viewport.Width > StormAovLimits.MaximumDimension ||
@@ -90,7 +91,8 @@ internal sealed partial class StormNativeHostedBackendSession
             capture.FrameCount < rendered.FrameCount || current.LatestRequestedRevision != state.Revision ||
             current.LatestRenderedCameraSignature != rendered.LatestRenderedCameraSignature)
         {
-            throw new InvalidOperationException("The native Storm framebuffer no longer matches the requested sequence frame.");
+            throw new InvalidOperationException(
+                "The native Storm framebuffer no longer matches the requested sequence frame.");
         }
         return new ViewerFrameCaptureResult(
             capture.Width, capture.Height, capture.RgbaPixels, ViewerFrameRowOrder.BottomUp, SequenceDiagnostics);
@@ -115,7 +117,8 @@ internal sealed partial class StormNativeHostedBackendSession
             capture.Aovs.CallerStateRevision != state.Revision ||
             capture.Framebuffer.FrameCount < rendered.FrameCount)
         {
-            throw new InvalidOperationException("The native Storm AOV capture no longer matches the requested sequence frame.");
+            throw new InvalidOperationException(
+                "The native Storm AOV capture no longer matches the requested sequence frame.");
         }
         RenderJobImage image = await Task.Run(() => capture.CreateJobImage(
             outputs.IncludeDeviceDepth, outputs.IncludeHdrColor, cancellationToken: cancellationToken),
@@ -129,7 +132,8 @@ internal sealed partial class StormNativeHostedBackendSession
         };
     }
 
-    public async ValueTask RestoreRenderSequenceFrameAsync(StageRenderState state, CancellationToken cancellationToken) =>
+    public async ValueTask RestoreRenderSequenceFrameAsync(
+        StageRenderState state, CancellationToken cancellationToken) =>
         _ = await RenderSequenceNativeFrameAsync(state, cancellationToken);
 
     private async Task<OpenUsdStormChildDiagnostics> RenderSequenceNativeFrameAsync(
@@ -156,7 +160,8 @@ internal sealed partial class StormNativeHostedBackendSession
         catch (OperationCanceledException) when (
             !cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
-            throw new TimeoutException("The native Storm renderer did not converge on the requested sequence frame within 30 seconds.");
+            throw new TimeoutException(
+                "The native Storm renderer did not converge on the requested sequence frame within 30 seconds.");
         }
     }
 }

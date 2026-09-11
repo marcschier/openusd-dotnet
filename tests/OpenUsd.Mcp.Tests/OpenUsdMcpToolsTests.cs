@@ -438,7 +438,8 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheet.StructuredContent.Value.GetProperty("tiles")[0]
             .GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
-        await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri).IsEqualTo("openusd://artifact/sheet-0");
+        await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
+            .IsEqualTo("openusd://artifact/sheet-0");
 
         CallToolResult hdrFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>

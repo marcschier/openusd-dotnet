@@ -179,7 +179,8 @@ internal sealed class CompletedRenderJobTile : IDisposable
         TimeLabel = $"t = {ViewerTimelineMath.Format(TimeCode)}";
         DimensionsLabel = $"{frame.SourceDimensions.Width} x {frame.SourceDimensions.Height} original";
         FileName = frame.FileName;
-        AccessibleName = $"{FrameLabel}, time code {ViewerTimelineMath.Format(TimeCode)}, {DimensionsLabel}, {FileName}";
+        AccessibleName =
+            $"{FrameLabel}, time code {ViewerTimelineMath.Format(TimeCode)}, {DimensionsLabel}, {FileName}";
         Image = CreateBitmap(frame);
     }
 

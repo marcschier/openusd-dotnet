@@ -815,7 +815,7 @@ internal static class SilkShadowConformance
 
     private static byte[] CreateShadowLightFrame(float tiltX, float tiltY)
     {
-        const int lightingSize = 1976;
+        const int lightingSize = 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         var bytes = new byte[lightingSize];
@@ -1020,13 +1020,13 @@ internal static class SilkShadowConformance
 
     private static byte[] CreateLightLink(
         uint lightCount,
-        params (string Path, int InstanceIndex, uint LightMask, uint ShadowMask)[] entries) =>
+        params (string Path, int InstanceIndex, UInt128 LightMask, UInt128 ShadowMask)[] entries) =>
         CreateLightLink(lightCount, domeCount: 0, entries);
 
     private static byte[] CreateLightLink(
         uint lightCount,
         uint domeCount,
-        params (string Path, int InstanceIndex, uint LightMask, uint ShadowMask)[] entries)
+        params (string Path, int InstanceIndex, UInt128 LightMask, UInt128 ShadowMask)[] entries)
     {
         uint allDomes = domeCount >= 32 ? uint.MaxValue : (1u << (int)domeCount) - 1;
         List<byte> payload =
@@ -1036,14 +1036,16 @@ internal static class SilkShadowConformance
             .. BitConverter.GetBytes((uint)SilkLightLinkUnsupportedFeatures.None),
             .. BitConverter.GetBytes(domeCount),
         ];
-        foreach ((string path, int instanceIndex, uint lightMask, uint shadowMask) in entries)
+        foreach ((string path, int instanceIndex, UInt128 lightMask, UInt128 shadowMask) in entries)
         {
             byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-            payload.AddRange(BitConverter.GetBytes(lightMask));
-            payload.AddRange(BitConverter.GetBytes(shadowMask));
-            payload.AddRange(BitConverter.GetBytes(allDomes));
-            payload.AddRange(BitConverter.GetBytes(instanceIndex));
-            payload.AddRange(BitConverter.GetBytes((uint)pathBytes.Length));
+            byte[] prefix = new byte[44];
+            BinaryPrimitives.WriteUInt128LittleEndian(prefix, lightMask);
+            BinaryPrimitives.WriteUInt128LittleEndian(prefix.AsSpan(16), shadowMask);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(32), allDomes);
+            BinaryPrimitives.WriteInt32LittleEndian(prefix.AsSpan(36), instanceIndex);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(40), (uint)pathBytes.Length);
+            payload.AddRange(prefix);
             payload.AddRange(pathBytes);
         }
 

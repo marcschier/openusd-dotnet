@@ -611,7 +611,8 @@ public sealed class ViewerSplineModelTests
         await Assert.That(properties).Contains("int splineBudget = MaxReadSplinesPerInspector;")
             .Because("native spline work must be bounded per inspector snapshot");
         await Assert.That(models).Contains("ViewerSplineSnapshot.CreateNotRead(");
-        await Assert.That(properties.IndexOf("BuildSpline(prim, attribute.Name, ref splineBudget)", StringComparison.Ordinal))
+        await Assert.That(
+            properties.IndexOf("BuildSpline(prim, attribute.Name, ref splineBudget)", StringComparison.Ordinal))
             .IsGreaterThan(0)
             .Because("the attribute projection must carry the spline snapshot");
     }

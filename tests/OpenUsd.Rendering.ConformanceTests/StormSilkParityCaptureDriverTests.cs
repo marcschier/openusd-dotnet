@@ -5445,7 +5445,7 @@ def Xform "World"
 
     private static byte[] CreateAreaLightFrameCommand(AreaLightGate gate)
     {
-        const int lightingSize = 1976;
+        const int lightingSize = 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         const int lightEntrySize = 176;
@@ -5465,7 +5465,7 @@ def Xform "World"
 
     private static byte[] CreateFifthDirectLightFrameCommand()
     {
-        const int lightingSize = 1976;
+        const int lightingSize = 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         const int lightEntrySize = 176;

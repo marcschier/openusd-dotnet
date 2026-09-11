@@ -68,9 +68,11 @@ internal sealed class ViewerCompletedJobPreview : IDisposable
                 int selected = count == 1 ? 0 : index * (total - 1) / (count - 1);
                 RenderDiskFrameResult frame = job.Frames[selected];
                 string expectedName = $"frame-{selected.ToString("D6", CultureInfo.InvariantCulture)}.png";
-                if (frame.Index != selected || frame.FileName != expectedName || !double.IsFinite(frame.State.Time.TimeCode))
+                if (frame.Index != selected || frame.FileName != expectedName ||
+                    !double.IsFinite(frame.State.Time.TimeCode))
                 {
-                    throw new InvalidDataException("The completed frame identity, time or generated PNG name is invalid.");
+                    throw new InvalidDataException(
+                        "The completed frame identity, time or generated PNG name is invalid.");
                 }
                 string path = Path.Combine(directory, expectedName);
                 RejectReparsePoints(path);
@@ -102,7 +104,8 @@ internal sealed class ViewerCompletedJobPreview : IDisposable
         {
             if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
             {
-                throw new NotSupportedException("Completed previews do not follow reparse points or filesystem aliases.");
+                throw new NotSupportedException(
+                    "Completed previews do not follow reparse points or filesystem aliases.");
             }
         }
     }

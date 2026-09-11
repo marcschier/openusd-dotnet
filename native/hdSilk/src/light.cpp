@@ -151,6 +151,7 @@ HdSilkLight::Sync(
 
     HdSilkLightRecord record;
     record.path = GetId().GetString();
+    record.visible = sceneDelegate->GetVisible(GetId());
     if (_typeId == HdPrimTypeTokens->distantLight)
     {
         record.type = OPENUSD_SILK_LIGHT_DISTANT;

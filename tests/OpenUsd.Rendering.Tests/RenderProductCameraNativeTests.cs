@@ -143,7 +143,8 @@ public sealed class RenderProductCameraNativeTests
                 {
                     throw new InvalidDataException("Execution preparation mutated the stage.");
                 }
-                return new RenderProductJobPlan(new StageIdentity("scene.usda"), [second], RenderSettings.PresentationDefault, before);
+                return new RenderProductJobPlan(
+                    new StageIdentity("scene.usda"), [second], RenderSettings.PresentationDefault, before);
             });
             RenderCameraFrameSettings camera = plan.Frames[0].CameraSettings!;
             await Assert.That(camera.ShutterOpen).IsEqualTo(-0.25);

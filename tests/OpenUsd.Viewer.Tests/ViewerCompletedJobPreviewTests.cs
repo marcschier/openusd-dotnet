@@ -114,7 +114,8 @@ public sealed partial class ViewerCompletedJobPreviewTests
     public async Task DisposingThePreviewReleasesEveryTileRasterAndIsIdempotent()
     {
         using var files = new ViewerCompletedJobTestFiles();
-        using ViewerCompletedJobPreview preview = await ViewerCompletedJobPreview.LoadAsync(files.CreateJob(16), default);
+        using ViewerCompletedJobPreview preview =
+            await ViewerCompletedJobPreview.LoadAsync(files.CreateJob(16), default);
         ViewerCompletedFramePreview[] frames = preview.Frames.ToArray();
 
         preview.Dispose();

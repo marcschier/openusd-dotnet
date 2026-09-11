@@ -152,7 +152,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
             _unsupportedReason = _getUnsupportedReason(outputs);
             SequenceOutputScope.Text = "PNG" +
                 (outputs.IncludeHdrColor
-                    ? outputs.HdrColorFormat == RenderHdrColorFormat.Exr ? " + HDR EXR (.hdr.exr)" : " + raw HDR (.hdr.rgba16f)"
+                    ? outputs.HdrColorFormat == RenderHdrColorFormat.Exr
+                        ? " + HDR EXR (.hdr.exr)" : " + raw HDR (.hdr.rgba16f)"
                     : string.Empty) +
                 (outputs.IncludeDeviceDepth ? " + device depth (.device-depth.f32)" : string.Empty);
             SequenceLimits.Text = "Limits: 4096 frames; 8192 pixels/side; 64 MiB capture " +
@@ -235,7 +236,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
             InvalidOperationException or InvalidDataException or NotSupportedException or ArgumentException or
-            OpenUsdNativeException or OpenUsdSilkException or OpenUsdStormException or TimeoutException or OverflowException)
+            OpenUsdNativeException or OpenUsdSilkException or OpenUsdStormException or
+            TimeoutException or OverflowException)
         {
             SequenceStatus.Text = $"Sequence failed: {ViewerPackageErrorFormatter.Format(exception)}";
             ViewerStartupOptions.WriteStatus(SequenceStatus.Text);

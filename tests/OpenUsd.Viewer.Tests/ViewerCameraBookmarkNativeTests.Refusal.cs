@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using OpenUsd.Rendering;
 using OpenUsd.Geom;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
 

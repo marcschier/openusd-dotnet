@@ -172,7 +172,8 @@ public sealed class UsdReviewDocumentNativeTests
         }
         using (UsdStage stage = UsdStage.OpenForReview(files.SourcePath))
         {
-            UsdReviewDocumentImportResult result = stage.ImportReviewDocument(document, stage.CaptureReviewSourceBinding());
+            UsdReviewDocumentImportResult result = stage.ImportReviewDocument(
+                document, stage.CaptureReviewSourceBinding());
             await Assert.That(result.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             await Assert.That(stage.HasPrim("/Referenced/ReferenceChild")).IsTrue();
             await Assert.That(stage.HasPrim("/Payload/PayloadChild")).IsTrue();
@@ -436,7 +437,8 @@ public sealed class UsdReviewDocumentNativeTests
         ]);
         if (result.Outcome != UsdLayerEditOutcome.Applied || result.AfterSnapshot is null)
         {
-            throw new InvalidOperationException($"Review fixture authoring failed: {result.Outcome}: {result.Diagnostic}");
+            throw new InvalidOperationException(
+                $"Review fixture authoring failed: {result.Outcome}: {result.Diagnostic}");
         }
         return result.AfterSnapshot;
     }

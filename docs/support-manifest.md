@@ -453,6 +453,7 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `cpu-skinning` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `basis-curve-width-interpolation` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `point-instancer-instance-identity` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| `bounded-128-direct-lights` | Implemented | `win-x64` |
 | `usdlux-light-linking` | Workflow-gated | `win-x64`, `linux-x64` |
 | `nested-instance-light-linking` | Workflow-gated | `win-x64`, `linux-x64` |
 | `shadow-map-depth-resource-path` | Workflow-gated | `win-x64`, `linux-x64` |
@@ -644,17 +645,34 @@ with a diagnostic any index that count cannot explain; that composition is an hd
 can decode. This is a page-level identity claim only: there is no Storm parity scene, because Storm publishes no
 per-instance page to compare against, and instanced shadows remain ungated
 
+### `bounded-128-direct-lights`
+
+A bounded 128-effective-direct-light profile across native page ABI24, retained managed state, full 128-bit light/shadow
+membership, per-instance batching and checked GPU layouts. Native admission excludes inherited-hidden and genuinely
+zero-output direct lights, preserves authored-dark headlight suppression, and refuses the whole sync at 129 rather than
+publishing a prefix. Recovery preserves published table snapshots, so a same-count replacement can explicitly retire
+departed links, shadows and dome environments. Four integer words carry each direct/shadow mask without float conversion
+or high-word alias. Shared-stage 97/128-light fixtures prove light indices 96/127 affect only linked meshes or instances
+and that removal/restoration changes/restores real RTX 5070, D3D12 WARP and Vulkan SwiftShader pixels. The raw frame
+binding avoids D3D12's 2048-byte structured-element limit. This does not qualify full-warehouse rendering or new shadow
+models.
+
+**Limits:** The eight-dome profile, four distant-shadow-map budget, area/dome shadow exclusions and deeper nested
+category limitations are unchanged. This is small-fixture native-to-pixel evidence, not complete SimReady Warehouse
+rendering or material fidelity. Metal translation is checked but Metal/Linux execution and real package-only NativeAOT
+execution of this expanded profile are not claimed.
+
 ### `usdlux-light-linking`
 
 UsdLux light linking applied per draw: hdSilk registers HdsiLightLinkingSceneIndex for its own renderer, so collection
 membership -- includes, excludes, includeRoot, expansion rules, nested collections and membership expressions -- is
-collapsed to category identities by UsdImaging before hdSilk sees it. Page ABI v21 carries sparse light, shadow-caster,
-and dome receiver masks on LIGHT_LINK entries. A prim every light reaches is omitted; path-wide entries apply to every
-instance and explicit instance entries override them. Prototype-specific category rows are intersected with the actual
-published point-instancer indices, including hidden and multi-prototype filtering. Managed Silk retains all three masks,
-includes them in draw batching and surface-buffer cache identity, and uses immutable per-batch instance tables when one
-prototype splits across masks. Tables over OPENUSD_SILK_MAX_LINK_ENTRIES are diagnosed and omitted prims remain linked
-to every light
+collapsed to category identities by UsdImaging before hdSilk sees it. Page ABI v24 carries sparse 128-bit direct-light
+and shadow-caster masks alongside independent eight-bit dome receiver masks on LIGHT_LINK entries. A prim every light
+reaches is omitted; path-wide entries apply to every instance and explicit instance entries override them.
+Prototype-specific category rows are intersected with the actual published point-instancer indices, including hidden and
+multi-prototype filtering. Managed Silk retains all three masks, includes their complete values in draw batching and
+surface-buffer cache identity, and uses immutable per-batch instance tables when one prototype splits across masks.
+Tables over OPENUSD_SILK_MAX_LINK_ENTRIES are diagnosed and omitted prims remain linked to every light
 
 ### `nested-instance-light-linking`
 

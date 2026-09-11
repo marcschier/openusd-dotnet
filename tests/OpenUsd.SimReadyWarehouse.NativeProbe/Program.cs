@@ -61,8 +61,8 @@ try
     for (int index = 0; index < page.ObjectCount; index++)
     {
         UsdPhysicsExtractionObject item = page.GetObject(index);
-        Add(report.PhysicsKinds, item.Kind.ToString());
-        Add(report.PhysicsGeometries, item.Geometry.ToString());
+        add(report.PhysicsKinds, item.Kind.ToString());
+        add(report.PhysicsGeometries, item.Geometry.ToString());
         if (!item.IsEnabled)
         {
             report.DisabledPhysicsObjects++;
@@ -71,13 +71,13 @@ try
     for (int index = 0; index < page.PropertyCount; index++)
     {
         UsdPhysicsExtractionProperty property = page.GetProperty(index);
-        Add(report.PhysicsProperties, property.Key.ToString());
-        Add(report.PhysicsAuthoredProperties, property.Name);
+        add(report.PhysicsProperties, property.Key.ToString());
+        add(report.PhysicsAuthoredProperties, property.Name);
     }
     for (int index = 0; index < page.DiagnosticCount; index++)
     {
         UsdPhysicsExtractionDiagnostic diagnostic = page.GetDiagnostic(index);
-        Add(report.PhysicsDiagnosticCounts, $"{diagnostic.Severity}:{diagnostic.Code}");
+        add(report.PhysicsDiagnosticCounts, $"{diagnostic.Severity}:{diagnostic.Code}");
         if (report.PhysicsDiagnostics.Count < 256)
         {
             report.PhysicsDiagnostics.Add(new WarehouseDiagnostic(
@@ -99,7 +99,7 @@ return report.SourceUnchanged && report.HierarchyError is null &&
     report.PhysicsError is null && report.PhysicsTruncationFlags == 0
     ? 0 : 1;
 
-static void Add(Dictionary<string, int> counts, string name)
+static void add(Dictionary<string, int> counts, string name)
 {
     counts.TryGetValue(name, out int count);
     counts[name] = count + 1;
@@ -108,7 +108,8 @@ static void Add(Dictionary<string, int> counts, string name)
 internal sealed class WarehouseAuditReport
 {
     public int SchemaVersion { get; } = 1;
-    public string Scope { get; } = "Managed hierarchy and physics extraction only; not rendering or simulation readiness.";
+    public string Scope { get; } =
+        "Managed hierarchy and physics extraction only; not rendering or simulation readiness.";
     public string Root { get; init; } = string.Empty;
     public string OpenUsdVersion { get; init; } = string.Empty;
     public uint DataAbi { get; init; }

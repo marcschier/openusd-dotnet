@@ -53,7 +53,8 @@ internal sealed partial class OpenUsdMcpService
             }
             if (indices.Any(index => index >= totalFrames))
             {
-                throw new ArgumentOutOfRangeException(nameof(request), "A selected frame is outside this completed job.");
+                throw new ArgumentOutOfRangeException(
+                    nameof(request), "A selected frame is outside this completed job.");
             }
             int columns = (int)Math.Ceiling(Math.Sqrt(indices.Length));
             int rows = (indices.Length + columns - 1) / columns;

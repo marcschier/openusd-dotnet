@@ -39,7 +39,8 @@ public sealed partial class SilkHdrColorCaptureNativeTests
             var options = new SilkHdrColorCaptureOptions(includeDeviceDepth: true);
             _ = capturer.Capture(session, 40, 32, RenderSettings.Default, camera: camera);
             first = cpuOcio
-                ? capturer.CaptureWithHdrColor(session, 40, 32, RenderSettings.Default, processor, options, camera: camera)
+                ? capturer.CaptureWithHdrColor(
+                    session, 40, 32, RenderSettings.Default, processor, options, camera: camera)
                 : capturer.CaptureWithHdrColor(session, 40, 32, RenderSettings.Default, options, camera: camera);
             originalHdr = first.HdrColor!.Rgba16Float.ToArray();
             originalRgba = first.Rgba.ToArray();

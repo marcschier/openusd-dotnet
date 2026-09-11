@@ -22,8 +22,8 @@ public sealed partial class RenderDiskJobPublicationTests
         }
         string root = Directory.CreateTempSubdirectory("openusd-publication-sharing-").FullName;
         using var cancellation = new CancellationTokenSource();
+        var clock = new ManualRetryTimeProvider();
         SafeFileHandle? heldLease = null;
-        Task release = Task.CompletedTask;
         var source = new FrameSource(() =>
         {
             string staging = Directory.GetDirectories(root).Single();
@@ -34,65 +34,91 @@ public sealed partial class RenderDiskJobPublicationTests
                 handle.Dispose();
                 throw new Win32Exception(error, "Could not acquire the controlled directory-sharing lease.");
             }
-            if (outcome == "held")
-            {
-                heldLease = handle;
-                return;
-            }
-            release = Task.Run(async () =>
-            {
-                if (outcome == "canceled")
-                {
-                    await Task.Delay(50);
-                    cancellation.Cancel();
-                }
-                await Task.Delay(100);
-                if (outcome == "collision")
-                {
-                    string destination = Directory.CreateDirectory(Path.Combine(root, "complete")).FullName;
-                    await File.WriteAllTextAsync(Path.Combine(destination, "original.txt"), "preserved");
-                }
-                handle.Dispose();
-            });
+            heldLease = handle;
         });
         StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
             .WithViewport(new ViewportDimensions(1, 1));
+        var request = new RenderDiskJobRequest(Path.Combine(root, "complete"), [state]);
+        Task<RenderDiskJobResult> operation = Task.Factory.StartNew(
+            () => RenderDiskJob.Execute(request, source, clock, cancellation.Token),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            var request = new RenderDiskJobRequest(Path.Combine(root, "complete"), [state]);
+            TimeSpan firstDelay = await clock.NextDelayAsync();
+            await Assert.That(firstDelay).IsEqualTo(TimeSpan.FromMilliseconds(20));
+            clock.Advance(firstDelay - TimeSpan.FromMilliseconds(1));
+            await Assert.That(operation.IsCompleted).IsFalse();
+            await Assert.That(Directory.Exists(request.OutputDirectory)).IsFalse();
             if (outcome == "canceled")
             {
-                await Assert.That(() => RenderDiskJob.Execute(request, source, cancellation.Token))
-                    .Throws<OperationCanceledException>();
-                await release;
+                cancellation.Cancel();
+                TimeSpan cleanupDelay = await clock.NextDelayAsync();
+                await Assert.That(cleanupDelay).IsEqualTo(TimeSpan.FromMilliseconds(20));
+                await Assert.That(operation.IsCompleted).IsFalse();
+                heldLease!.Dispose();
+                clock.Advance(cleanupDelay);
+                OperationCanceledException? exception =
+                    await Assert.ThrowsAsync<OperationCanceledException>(() => operation);
+                await Assert.That(exception).IsNotNull();
+                await Assert.That(exception!.CancellationToken).IsEqualTo(cancellation.Token);
+                await Assert.That(clock.CreatedTimers).IsEqualTo(2);
                 await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
             }
             else if (outcome == "held")
             {
-                await Assert.That(() => RenderDiskJob.Execute(request, source)).Throws<IOException>();
+                clock.Advance(TimeSpan.FromMilliseconds(1));
+                foreach (int milliseconds in new[] { 40, 80, 160, 20, 40, 80, 160 })
+                {
+                    TimeSpan delay = await clock.NextDelayAsync();
+                    await Assert.That(delay).IsEqualTo(TimeSpan.FromMilliseconds(milliseconds));
+                    clock.Advance(delay - TimeSpan.FromMilliseconds(1));
+                    await Assert.That(operation.IsCompleted).IsFalse();
+                    clock.Advance(TimeSpan.FromMilliseconds(1));
+                }
+                _ = await Assert.ThrowsAsync<IOException>(() => operation);
                 await Assert.That(Directory.Exists(request.OutputDirectory)).IsFalse();
+                await Assert.That(clock.CreatedTimers).IsEqualTo(8);
             }
             else if (outcome == "collision")
             {
-                await Assert.That(() => RenderDiskJob.Execute(request, source)).Throws<IOException>();
+                Directory.CreateDirectory(request.OutputDirectory);
+                await File.WriteAllTextAsync(Path.Combine(request.OutputDirectory, "original.txt"), "preserved");
+                heldLease!.Dispose();
+                clock.Advance(TimeSpan.FromMilliseconds(1));
+                _ = await Assert.ThrowsAsync<IOException>(() => operation);
                 await Assert.That(await File.ReadAllTextAsync(
                     Path.Combine(request.OutputDirectory, "original.txt"))).IsEqualTo("preserved");
                 await Assert.That(Directory.GetDirectories(root)).IsEquivalentTo([request.OutputDirectory]);
+                await Assert.That(clock.CreatedTimers).IsEqualTo(1);
             }
             else
             {
-                RenderDiskJobResult result = RenderDiskJob.Execute(request, source);
+                heldLease!.Dispose();
+                clock.Advance(TimeSpan.FromMilliseconds(1));
+                RenderDiskJobResult result = await operation;
                 await Assert.That(result.Frames.Count).IsEqualTo(1);
                 await Assert.That(File.Exists(Path.Combine(result.OutputDirectory, "frame-000000.png"))).IsTrue();
                 await Assert.That(File.Exists(Path.Combine(result.OutputDirectory, "manifest.json"))).IsTrue();
                 await Assert.That(Directory.GetDirectories(root)).IsEquivalentTo([result.OutputDirectory]);
+                await Assert.That(clock.CreatedTimers).IsEqualTo(1);
             }
-            await release;
+            await Assert.That(clock.ActiveTimers).IsEqualTo(0);
         }
         finally
         {
-            await release;
             heldLease?.Dispose();
+            cancellation.Cancel();
+            clock.Advance(TimeSpan.FromDays(1));
+            try
+            {
+                await operation;
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+            catch (IOException) when (outcome is "held" or "collision")
+            {
+            }
             Directory.Delete(root, recursive: true);
         }
     }

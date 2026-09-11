@@ -47,7 +47,8 @@ internal sealed partial class SilkGpuHdrObservedDevice(ISilkGraphicsDevice devic
         SilkDisplayTransformPipelineDescriptor descriptor) =>
         DisplayDevice.CreateDisplayTransformGraphicsPipeline(descriptor);
 
-    public ISilkDisplayTransformBinding CreateDisplayTransformBinding(SilkDisplayTransformBindingDescriptor descriptor) =>
+    public ISilkDisplayTransformBinding CreateDisplayTransformBinding(
+        SilkDisplayTransformBindingDescriptor descriptor) =>
         DisplayDevice.CreateDisplayTransformBinding(descriptor);
 
     public ISilkSelectionMaskGraphicsPipeline CreateSelectionMaskGraphicsPipeline(
@@ -58,14 +59,16 @@ internal sealed partial class SilkGpuHdrObservedDevice(ISilkGraphicsDevice devic
         SilkSelectionOutlinePipelineDescriptor descriptor) =>
         SelectionDevice.CreateSelectionOutlineGraphicsPipeline(descriptor);
 
-    public ISilkSelectionOutlineBinding CreateSelectionOutlineBinding(SilkSelectionOutlineBindingDescriptor descriptor) =>
+    public ISilkSelectionOutlineBinding CreateSelectionOutlineBinding(
+        SilkSelectionOutlineBindingDescriptor descriptor) =>
         SelectionDevice.CreateSelectionOutlineBinding(descriptor);
 
     public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) => _device.CreateBuffer(size, usage);
 
     public ISilkGraphicsTexture CreateTexture2D(
         uint width, uint height, SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) =>
-        CreateTexture2D(new SilkTextureDescriptor(width, height, format, SilkTextureDescriptor.GetDefaultUsage(format)));
+        CreateTexture2D(
+            new SilkTextureDescriptor(width, height, format, SilkTextureDescriptor.GetDefaultUsage(format)));
 
     public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
     {

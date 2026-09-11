@@ -23,6 +23,9 @@
 
   <ItemGroup>
     <Compile Include="..\OpenUsd.Exr.NativeProbe\ExrScanlineOracle.cs" Link="ExrScanlineOracle.cs" />
+    <None Include="..\..\test-assets\ocio-test-config.ocio"
+          Link="test-assets\ocio-test-config.ocio"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

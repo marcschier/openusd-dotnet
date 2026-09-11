@@ -136,7 +136,7 @@ public sealed class UsdStageSchedulerRetirementTests
             return false;
         }, cancellation.Token).AsTask();
 
-        async Task ConsumeUnexpectedLeaseAsync()
+        async Task consumeUnexpectedLeaseAsync()
         {
             await using UsdStageRetirementLease? unexpected = await pending;
             await Assert.That(unexpected).IsNull();
@@ -144,15 +144,15 @@ public sealed class UsdStageSchedulerRetirementTests
 
         if (outcome == "throw")
         {
-            await Assert.That(ConsumeUnexpectedLeaseAsync).Throws<InvalidDataException>();
+            await Assert.That(consumeUnexpectedLeaseAsync).Throws<InvalidDataException>();
         }
         else if (outcome == "cancel")
         {
-            await Assert.That(ConsumeUnexpectedLeaseAsync).Throws<OperationCanceledException>();
+            await Assert.That(consumeUnexpectedLeaseAsync).Throws<OperationCanceledException>();
         }
         else
         {
-            await ConsumeUnexpectedLeaseAsync();
+            await consumeUnexpectedLeaseAsync();
         }
         await scheduler.EditAsync(
             static stage => stage.GetPrim("/World").SetDouble("weight", 11),

@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using OpenUsd.Rendering.Silk;
 
@@ -1409,8 +1410,8 @@ internal static class OffscreenRhiConformance
     /// are not optional padding: the buffer is allocated at
     /// <see cref="SilkSurfaceUniformWriter.ByteSize"/>, so leaving them unwritten
     /// hands the shader an all-zero affine that collapses every texture
-    /// coordinate onto one texel. The ABI 18 light-link mask in the fifth row and
-    /// the shadow-link mask in the ninth are written with every bit set for the
+    /// coordinate onto one texel. The ABI 24 raw UInt128 light-link and
+    /// shadow-link masks are written with every bit set for the
     /// same reason: a zero mask means "linked to no light", which would render
     /// black the moment a probe bound a frame light table.
     /// </remarks>
@@ -1419,22 +1420,26 @@ internal static class OffscreenRhiConformance
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             SilkSurfaceUniformWriter.ByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        buffer.Write(MemoryMarshal.AsBytes<float>(
+        byte[] values = new byte[SilkSurfaceUniformWriter.ByteSize];
+        MemoryMarshal.AsBytes<float>(
         [
             0.18f, 0.18f, 0.18f, 1,
             0, 0, 0, 1,
             0, 0, 0, 1.5f,
             0, 0.5f, 0, 0,
-            0, 0.01f, 0, 255,
+            0, 0.01f, 0, 0,
             0, 0, 1, 1,
             1, 1, 1, 1,
             0, 0, 0, 0,
-            0, 0, 0, 255,
+            0, 0, 0, 0,
             1, 0, 0, 0,
             0, 1, 0, 0,
             0, 0, 0, 0,
             255, 0, 0, 0
-        ]));
+        ]).CopyTo(values);
+        BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(208), UInt128.MaxValue);
+        BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(224), UInt128.MaxValue);
+        buffer.Write(values);
         return buffer;
     }
 
@@ -1451,7 +1456,7 @@ internal static class OffscreenRhiConformance
     /// render correctly; SwiftShader on Linux returned zeros, so the triangle
     /// came back unlit and only the Linux leg of CI failed.
     /// </remarks>
-    private const int FrameConstantsByteSize = 1856;
+    private const int FrameConstantsByteSize = 15296;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {
@@ -1460,7 +1465,7 @@ internal static class OffscreenRhiConformance
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         var values = new byte[FrameConstantsByteSize];
         Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
-        // clipToEye at 0 and eyeToWorld at 992 must both be identity. The light
+        // clipToEye at 0 and eyeToWorld at 12512 must both be identity. The light
         // block stays zero on purpose: the shader treats that as "no scene
         // lighting" and falls back to the deterministic headlight carried in the
         // surface constants, which is what these RHI cases are asserting.
@@ -1468,10 +1473,10 @@ internal static class OffscreenRhiConformance
         floats[5] = 1;
         floats[10] = 1;
         floats[15] = 1;
-        floats[248] = 1;
-        floats[253] = 1;
-        floats[258] = 1;
-        floats[263] = 1;
+        floats[3128] = 1;
+        floats[3133] = 1;
+        floats[3138] = 1;
+        floats[3143] = 1;
         buffer.Write(values);
         return buffer;
     }

@@ -27,7 +27,9 @@ public sealed class UsdReviewSourceBinding : IUsdDetachedResult
     /// <summary>Gets the original, verified absolute source-root path.</summary>
     public string SourceRootPath { get; }
     /// <summary>Gets the SHA-256 fingerprint of the admitted source-root bytes.</summary>
-    /// <remarks>Dependency identities are carried separately in <see cref="Dependencies"/> and revalidated natively.</remarks>
+    /// <remarks>
+    /// Dependency identities are carried separately in <see cref="Dependencies"/> and revalidated natively.
+    /// </remarks>
     public string SourceFingerprint { get; }
     /// <summary>Gets the native-verified filesystem anchor for review asset resolution.</summary>
     public string AssetAnchor { get; }

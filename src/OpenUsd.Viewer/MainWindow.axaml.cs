@@ -10,9 +10,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
-using Avalonia.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using OpenUsd.Geom;
@@ -5563,7 +5563,8 @@ public sealed partial class MainWindow : Window, IDisposable
             if (inspector.PropertySnapshot is { IsComplete: false })
             {
                 AddValueRow("Bounded inspection",
-                    "Some values, samples or targets are truncated, deferred or unsupported. See each preview's reason.");
+                    "Some values, samples or targets are truncated, deferred or unsupported. " +
+                    "See each preview's reason.");
             }
             if (properties.Attributes.Count == 0)
             {

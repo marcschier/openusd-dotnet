@@ -176,6 +176,9 @@ and maintaining their scene/revision authority and renderer lifetime.
 On Windows, publication and staging cleanup tolerate short directory-sharing conflicts with four
 bounded waits totaling 300 ms. Publication remains cancellation-aware and create-only; other errors
 and persistent conflicts still fail. Cleanup drains its bounded sharing retry even after cancellation.
+The production default uses system time. Internal retry-clock injection lets the unit tests advance
+to each 20/40/80/160-ms boundary without sleeping; Windows integration cases retain actual directory
+leases while controlling release, cancellation and destination collisions at those boundaries.
 
 This sequence API is an execution foundation, not implicit support for arbitrary authored
 render variables, arbitrary HDR containers, depth of field, motion blur or scene-supplied RenderPass commands. Product
@@ -458,7 +461,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v6; the hdSilk page ABI is v23. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v6; the hdSilk page ABI is v24. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -1614,9 +1617,9 @@ identity.
 authored face a triangle was triangulated from. ABI v22 adds the two tables that recover the other
 two identities, because nothing on the wire before it could:
 
-- `points` is the emitted vertex array. A mesh that authors a face-varying primvar has its topology
-  expanded so every corner owns its own vertex, so emitted vertex *i* is not authored point *i* and
-  several emitted vertices name one authored point.
+- `points` is the emitted vertex array. Corner-valued primvars can remap vertices or split them
+  at seams, so emitted vertex *i* is not necessarily authored point *i* and several emitted
+  vertices can name one authored point.
 - `indices` is a triangle list. An n-gon is triangulated, and the triangulation introduces interior
   diagonals the scene never authored. Treating every triangle edge as a mesh edge would report a
   diagonal as an authored edge, which no round trip can resolve back to the stage.
@@ -1797,9 +1800,18 @@ references. USD lets a mesh carry such stray points; while the mesh is shaded no
 them, so they publish `OPENUSD_SILK_SUBPRIM_NONE` and stay outside `authored_point_count`. Drawn as
 points they are on screen and pickable, so the record published for that mode names each of them with
 its authored index and grows `authored_point_count` to cover them. The sentinel survives only where
-it still means what it says: a face-varying record whose topology was expanded emits one vertex per
-corner, so a sentinel there marks a vertex the mesh generated rather than an authored point that went
-undrawn, and nothing in such a table is renumbered.
+it still means what it says: a corner-remapped record carries explicit point origins, so a sentinel
+there marks a generated vertex rather than an authored point that went undrawn. Nothing in such a
+table is renumbered.
+
+When valid normals are published, byte-identical corner attributes referring to the same source
+point share an indexed vertex. Different authored point identities, UVs, normals, other primvars
+and signed-zero values remain distinct. Triangle order and corner-edge identities do not change.
+Without published normals, the prior triangle-local generated-normal behavior is preserved.
+The Rprim borrows the active coarse/refined triangle tables rather than retaining another copy.
+Its attribute collection shares native copy-on-write storage with published records; edits detach
+the writer, and serialization reads through const views. These ownership changes leave the page
+format and values unchanged. They do not by themselves make full-scene memory bounded.
 
 #### Presentation topology revision
 
@@ -2622,7 +2634,7 @@ a non-default collection, so a scene that links nothing never walks the index at
 resolved at page-build time against the same ordered tables the `FRAME` command publishes, because a
 mask resolved against a different light ordering would name the wrong lights.
 
-Page ABI 21 carries the result as the `LIGHT_LINK` command: a sparse, default-free table of
+Page ABI 24 carries the result as the `LIGHT_LINK` command: a sparse, default-free table of
 `(path, instance_index, light_mask, shadow_mask, dome_mask)` entries, published only when it differs
 from the previously published table. A prim every light reaches is omitted, so an unlinked scene adds
 no command and no bytes; an entry with instance index `-1` applies to every instance of a path and a
@@ -2647,9 +2659,9 @@ silently; the managed renderer reports it as `OPENUSD_SILK_LIGHT_LINK_TRUNCATED`
 ascending composed order within a path, so an unchanged scene produces byte-identical pages.
 
 Managed Silk retains the table in `SilkLightLinkTable`, resolves each draw's masks from it, and packs
-the light mask into the surface constants the checked mesh fragment shader already binds per draw
-(`clearcoatShaded.w`); the fragment loop skips a light whose bit is clear. Eight bits are exactly
-representable as a float, so the mask survives the conversion the shader performs. Two prims with
+each 128-bit direct and shadow mask as four little-endian integer words in the 240-byte surface block
+at offsets 208 and 224. Direct bit `i` is word `i / 32`, bit `i % 32`; there is no float conversion,
+32-bit truncation or high-word alias. The fragment skips a light whose bit is clear. Two prims with
 different masks cannot share an instanced draw, so the mask is part of the batch key and of the surface
 constant-block cache key; a scene with no linking resolves every prim to the same mask and batches
 exactly as before. The cross-backend evidence is
@@ -2664,7 +2676,7 @@ keeping its own transform and its own three masks.
 What linking does **not** cover is named rather than approximated:
 
 - **Shadow links restrict casters, and are applied there.** The shadow mask is published, retained,
-  packed into the surface constants (`textureControls.w`), and consumed by the depth-only shadow pass:
+  packed into the surface constants as `uint4`, and consumed by the depth-only shadow pass:
   a prim a light's shadow collection excludes is not drawn into that light's map. It is produced by
   exactly the code path that produces the light mask, so the shadow pass consumes a regression-gated
   value rather than a new one. The two masks are resolved **independently**, because UsdLux defines
@@ -2730,10 +2742,11 @@ What linking does **not** cover is named rather than approximated:
 for a direct light, and hdSilk applies it per draw for a textured dome and an untextured one alike.
 
 **Why it is a separate bit space.** The frame publishes two orderings: the fixed direct-light table and
-a bounded dome table, both path-sorted and both bounded at eight entries. Direct light 0 and dome 0 are
-different lights, so folding them into one mask would have made every existing `light_mask` depend on
-how many domes a scene happens to author. Page ABI 21 therefore adds `dome_mask` to each `LIGHT_LINK`
-entry and a `dome_count` to its header, and appends the dome table to `FRAME`. Each dome entry carries
+a bounded dome table, both path-sorted but bounded independently at 128 and eight entries.
+Direct light 0 and dome 0 are different lights. Folding them into one mask would make
+`light_mask` depend on how many domes a scene authors. Page ABI 21 therefore adds
+`dome_mask` to each `LIGHT_LINK` entry and a `dome_count` to its header, and appends
+the dome table to `FRAME`. Each dome entry carries
 the ambient colour that dome contributes **on its own**, accumulated by the producer from exactly those
 summands in exactly that order — so summing every published dome reproduces the scene-wide
 `ambient_color` bit for bit, and a masked prim and an unmasked one cannot drift apart. A textured dome's
@@ -3479,11 +3492,32 @@ through into a line list unchanged, and complexity then dereferences both endpoi
 array and into every `VERTEX` attribute, so an out-of-range index would read past the end of both on its way to
 being rejected.
 
-Page ABI v9 extended `FRAME` with a fixed light table and ambient vector; page ABI v12 expands
-that bounded table from four to eight direct lights. Lights are frame-local rather than
+Page ABI v9 extended `FRAME` with a fixed light table and ambient vector; page ABI v24 expands
+that bounded table from eight to 128 direct lights. Lights are frame-local rather than
 material-local: the managed renderer converts world-space light transforms to eye space alongside
 the camera, and every draw path already binds slot 8. Keeping light data there avoids widening
 `SceneParameters`, which remains pinned at 80 bytes and mirrored by the instance table.
+
+Admission counts **effective** direct lights, not authored prims: inherited-hidden lights, zero intensity,
+all-zero colour, zero diffuse and specular together, or an exposed intensity that rounds to zero consume
+no direct slot. Other meaningful controls, shapes and orientations keep their existing interpretation.
+Non-finite direct-light controls and transforms are refused explicitly. At 128 the full table is admitted;
+at 129 the entire native sync refuses with the observed count and bound before publication, rather than
+returning the first 128 as success. Correcting the scene permits a retry on the same session.
+Imaging reconstruction preserves the published link, shadow and environment snapshots
+that the consumer still retains. If recovery replaces a linked light while keeping the same
+light count, the next page explicitly retires its old tables and any removed dome environment.
+Count equality alone cannot establish that those retained identities are still valid.
+An authored-direct-light flag preserves authored darkness even with zero effective entries; a scene with
+no authored lighting keeps its deterministic camera headlight.
+
+The full native frame is 23368 bytes (23096 without the dome extension); direct entries remain 176 bytes.
+The GPU frame is 15296 bytes at existing binding 8, addressed as a raw buffer because D3D12 restricts
+a structured-buffer **element** to 2048 bytes. Checked D3D12, Vulkan and Metal shader sources share
+this layout; no additional slot or per-element P/Invoke is introduced. Light and shadow masks, batch keys,
+surface cache keys, instance inheritance and shadow slots preserve all 128 indices. The separate eight-dome
+profile and four-map distant-shadow budget are unchanged; area-light shadows, dome shadows and previously
+unsupported nested category semantics are not made complete by increasing direct-light capacity.
 
 Page ABI v4 adds the vertex attribute table and the material binding, and is the transport every material
 feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(semantic, component_count,

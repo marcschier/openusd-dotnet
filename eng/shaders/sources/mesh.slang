@@ -25,6 +25,8 @@
 #define VOLUME_DENSITY_TEXTURES 0
 #endif
 
+static const uint MaximumDirectLights = 128;
+
 struct VertexInput
 {
     float3 position : POSITION;
@@ -82,12 +84,12 @@ struct FrameParameters
     uint4 clipPlaneCount;
     float4 clipPlanes[8];
     float4 ambientLight;
-    float4 lightPositionType[8];
-    float4 lightDirectionRadius[8];
-    float4 lightColorIntensity[8];
-    float4 lightControls[8];
-    float4 lightTangentShapeX[8];
-    float4 lightBitangentShapeY[8];
+    float4 lightPositionType[MaximumDirectLights];
+    float4 lightDirectionRadius[MaximumDirectLights];
+    float4 lightColorIntensity[MaximumDirectLights];
+    float4 lightControls[MaximumDirectLights];
+    float4 lightTangentShapeX[MaximumDirectLights];
+    float4 lightBitangentShapeY[MaximumDirectLights];
     float4x4 eyeToWorld;
     // Raster shadow state. shadowWorldToLightClip[slot] projects a world-space
     // position into the slot's light clip space with [0,1] depth; shadowTile[slot]
@@ -98,13 +100,13 @@ struct FrameParameters
     float4x4 shadowWorldToLightClip[4];
     float4 shadowTile[4];
     float4 shadowControls[4];
-    float4 shadowSlots[8];
+    float4 shadowSlots[MaximumDirectLights];
     // Prefiltered image-based environment lighting.
     //   x: non-zero when the environment resources are live for this frame.
     //   y: the number of prefiltered roughness slices in the specular atlas.
     //   z: the height in texels of one slice, which fixes the half-texel inset
     //      that keeps a slice's bilinear taps out of its neighbours.
-    //   w: non-zero when the scene authors at least one dome light, whether or
+    //   w: non-zero when the scene authors a direct or dome light, whether or
     //      not this renderer resolved it into an environment. Separate from x so
     //      that a dome which is authored black, authored specular-only, or fell
     //      back to a zero ambient still counts as scene lighting and still
@@ -137,7 +139,9 @@ struct FrameParameters
 };
 
 [[vk::binding(8, 0)]]
-StructuredBuffer<FrameParameters> frameParameters : register(t8);
+// A raw buffer avoids structured-element stride limits: D3D12 caps an element
+// at 2048 bytes, while the bounded frame occupies 15296 bytes.
+ByteAddressBuffer frameParameters : register(t8);
 #endif
 
 #if VERTEX_STAGE
@@ -321,7 +325,7 @@ Texture2D<float4> environmentBrdf : register(t19);
 VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_InstanceID)
 {
     InstanceParameters instance = instanceParameters[instanceId];
-    FrameParameters frame = frameParameters[0];
+    FrameParameters frame = frameParameters.Load<FrameParameters>(0);
     VertexOutput output;
     float4 clipPosition = mul(instance.objectToClip, float4(input.position, 1.0));
     float4 eyePosition = mul(frame.clipToEye, clipPosition);
@@ -377,19 +381,12 @@ struct SurfaceParameters
     float4 emissiveOcclusion;
     float4 specularIor;
     float4 metallicRoughnessThresholdWorkflow;
-    // (clearcoat, clearcoatRoughness, shaded, lightLinkMask). lightLinkMask is
-    // the UsdLux light-link mask of the prim this draw covers: bit i is set when
-    // direct light i of the frame table illuminates it. It is packed here rather
-    // than in a binding of its own because this block is already bound per draw,
-    // and eight bits are exactly representable as a float.
+    // (clearcoat, clearcoatRoughness, shaded, 0).
     float4 clearcoatShaded;
     float4 lightDirectionIntensity;
     float4 lightColorAmbient;
     float4 reserved;
-    // (textureMask, udimMask, volumeVoxelDepth, shadowLinkMask). shadowLinkMask
-    // is the resolved UsdLux shadow-link mask. No raster shadow pass reads it
-    // yet; it travels with the light mask so a shadow pass consumes exactly the
-    // value the same resolution produced.
+    // (textureMask, udimMask, volumeVoxelDepth, 0).
     float4 textureControls;
     // The one constant texture-coordinate transform this material samples every
     // texture through, as (m00, m01, tx, 0) and (m10, m11, ty, 0). Identity
@@ -408,6 +405,9 @@ struct SurfaceParameters
     // clearcoatShaded.w because the dome table and the direct-light table are two
     // orderings -- dome 0 and direct light 0 are different lights.
     float4 domeLinkControls;
+    // Bit i is in word i/32, bit i%32. Never convert direct membership to float.
+    uint4 lightLinkMask;
+    uint4 shadowLinkMask;
 };
 
 [[vk::binding(7, 0)]]
@@ -938,7 +938,7 @@ float4 FRAGMENT_ENTRY_POINT(
 {
 #if FRAGMENT_STAGE
     SurfaceParameters surface = surfaceParameters[0];
-    FrameParameters frame = frameParameters[0];
+    FrameParameters frame = frameParameters.Load<FrameParameters>(0);
     DiscardClippedFragment(input.eyePosition, frame);
 
     // clearcoatShaded.z carries three states, not a flag. 0 is the shared default
@@ -1250,7 +1250,7 @@ float4 FRAGMENT_ENTRY_POINT(
         dot(frame.ambientLight.rgb, frame.ambientLight.rgb) > 0.0 ||
         frame.environmentControls.x >= 0.5 ||
         frame.environmentControls.w >= 0.5;
-    uint lightCount = min((uint)frame.ambientLight.w, 8u);
+    uint lightCount = min((uint)frame.ambientLight.w, MaximumDirectLights);
     float3 sceneEye = normalize(mul(frame.eyeToWorld, float4(eye, 0.0)).xyz);
     float3 worldPosition = mul(frame.eyeToWorld, float4(input.eyePosition, 1.0)).xyz;
 
@@ -1308,10 +1308,10 @@ float4 FRAGMENT_ENTRY_POINT(
     // clear contributes nothing to this surface while still lighting the rest of
     // the scene. A prim with no authored linking carries every bit, so the
     // branch below is taken for every light exactly as it was before linking.
-    uint lightLinkMask = (uint)max(surface.clearcoatShaded.w, 0.0);
     for (uint lightIndex = 0u; lightIndex < lightCount; lightIndex++)
     {
-        if (hasSceneLighting && (lightLinkMask & (1u << lightIndex)) == 0u)
+        if (hasSceneLighting &&
+            (surface.lightLinkMask[lightIndex / 32u] & (1u << (lightIndex % 32u))) == 0u)
         {
             continue;
         }

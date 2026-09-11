@@ -205,7 +205,8 @@ public sealed class StormPickingSourceContractTests
 
         await Assert.That(renderer).Contains("RenderPickResult Pick(");
         await Assert.That(renderer).Contains("void SetSelection(");
-        await Assert.That(child).Contains("private const uint ExpectedAbiVersion = RenderNativeAbiVersions.StormChildAbi");
+        await Assert.That(child)
+            .Contains("private const uint ExpectedAbiVersion = RenderNativeAbiVersions.StormChildAbi");
         await Assert.That(child).Contains("RenderPickResult Pick(");
         await Assert.That(child).Contains("void SetSelection(");
         await Assert.That(pickingContract).Contains("public Vector3? WorldPosition");

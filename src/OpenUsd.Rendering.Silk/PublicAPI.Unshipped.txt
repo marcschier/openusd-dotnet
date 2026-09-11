@@ -819,34 +819,34 @@ OpenUsd.Rendering.Silk.SilkLightLinkCommand.LightCount.get -> uint
 OpenUsd.Rendering.Silk.SilkLightLinkCommand.SilkLightLinkCommand() -> void
 OpenUsd.Rendering.Silk.SilkLightLinkCommand.UnsupportedFeatures.get -> OpenUsd.Rendering.Silk.SilkLightLinkUnsupportedFeatures
 OpenUsd.Rendering.Silk.SilkLightLinkEntry
-OpenUsd.Rendering.Silk.SilkLightLinkEntry.Deconstruct(out string! Path, out int InstanceIndex, out uint LightMask, out uint ShadowMask, out uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.Deconstruct(out string! Path, out int InstanceIndex, out System.UInt128 LightMask, out System.UInt128 ShadowMask, out uint DomeMask) -> void
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.DomeMask.get -> uint
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.DomeMask.init -> void
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.Equals(OpenUsd.Rendering.Silk.SilkLightLinkEntry other) -> bool
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.InstanceIndex.get -> int
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.InstanceIndex.init -> void
-OpenUsd.Rendering.Silk.SilkLightLinkEntry.LightMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.LightMask.get -> System.UInt128
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.LightMask.init -> void
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.Path.init -> void
-OpenUsd.Rendering.Silk.SilkLightLinkEntry.ShadowMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.ShadowMask.get -> System.UInt128
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.ShadowMask.init -> void
 OpenUsd.Rendering.Silk.SilkLightLinkEntry.SilkLightLinkEntry() -> void
-OpenUsd.Rendering.Silk.SilkLightLinkEntry.SilkLightLinkEntry(string! Path, int InstanceIndex, uint LightMask, uint ShadowMask, uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkEntry.SilkLightLinkEntry(string! Path, int InstanceIndex, System.UInt128 LightMask, System.UInt128 ShadowMask, uint DomeMask) -> void
 OpenUsd.Rendering.Silk.SilkLightLinkMasks
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.CastsShadow(int index) -> bool
-OpenUsd.Rendering.Silk.SilkLightLinkMasks.Deconstruct(out uint LightMask, out uint ShadowMask, out uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.Deconstruct(out System.UInt128 LightMask, out System.UInt128 ShadowMask, out uint DomeMask) -> void
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.DomeMask.get -> uint
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.DomeMask.init -> void
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.Equals(OpenUsd.Rendering.Silk.SilkLightLinkMasks other) -> bool
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.IsDomeLit(int index) -> bool
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.IsLit(int index) -> bool
-OpenUsd.Rendering.Silk.SilkLightLinkMasks.LightMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.LightMask.get -> System.UInt128
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.LightMask.init -> void
-OpenUsd.Rendering.Silk.SilkLightLinkMasks.ShadowMask.get -> uint
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.ShadowMask.get -> System.UInt128
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.ShadowMask.init -> void
 OpenUsd.Rendering.Silk.SilkLightLinkMasks.SilkLightLinkMasks() -> void
-OpenUsd.Rendering.Silk.SilkLightLinkMasks.SilkLightLinkMasks(uint LightMask, uint ShadowMask, uint DomeMask) -> void
+OpenUsd.Rendering.Silk.SilkLightLinkMasks.SilkLightLinkMasks(System.UInt128 LightMask, System.UInt128 ShadowMask, uint DomeMask) -> void
 OpenUsd.Rendering.Silk.SilkLightLinkTable
 OpenUsd.Rendering.Silk.SilkLightLinkTable.AllDomesMask.get -> uint
 OpenUsd.Rendering.Silk.SilkLightLinkTable.Count.get -> int
@@ -2117,7 +2117,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 23 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 24 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint
@@ -2145,10 +2145,9 @@ const OpenUsd.Rendering.Silk.SilkDisplayTransformLatticeCache.MaximumFailureEntr
 const OpenUsd.Rendering.Silk.SilkDisplayTransformUniformWriter.ByteSize = 32 -> int
 const OpenUsd.Rendering.Silk.SilkEnvironmentUpsertCommand.NoDomeIndex = 4294967295 -> uint
 const OpenUsd.Rendering.Silk.SilkFrameCommand.MaximumDomes = 8 -> uint
-const OpenUsd.Rendering.Silk.SilkFrameCommand.MaximumLights = 8 -> uint
+const OpenUsd.Rendering.Silk.SilkFrameCommand.MaximumLights = 128 -> uint
 const OpenUsd.Rendering.Silk.SilkLightLinkCommand.AllInstances = -1 -> int
 const OpenUsd.Rendering.Silk.SilkLightLinkCommand.MaximumEntries = 4096 -> uint
-const OpenUsd.Rendering.Silk.SilkLightLinkMasks.AllBits = 255 -> uint
 const OpenUsd.Rendering.Silk.SilkLightLinkMasks.AllDomeBits = 255 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.CapacityExceeded = "OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED" -> string!
@@ -2389,6 +2388,7 @@ static OpenUsd.Rendering.Silk.SilkInstancerContextEntry.operator ==(OpenUsd.Rend
 static OpenUsd.Rendering.Silk.SilkLightLinkEntry.operator !=(OpenUsd.Rendering.Silk.SilkLightLinkEntry left, OpenUsd.Rendering.Silk.SilkLightLinkEntry right) -> bool
 static OpenUsd.Rendering.Silk.SilkLightLinkEntry.operator ==(OpenUsd.Rendering.Silk.SilkLightLinkEntry left, OpenUsd.Rendering.Silk.SilkLightLinkEntry right) -> bool
 static OpenUsd.Rendering.Silk.SilkLightLinkMasks.All.get -> OpenUsd.Rendering.Silk.SilkLightLinkMasks
+static OpenUsd.Rendering.Silk.SilkLightLinkMasks.AllBits.get -> System.UInt128
 static OpenUsd.Rendering.Silk.SilkLightLinkMasks.operator !=(OpenUsd.Rendering.Silk.SilkLightLinkMasks left, OpenUsd.Rendering.Silk.SilkLightLinkMasks right) -> bool
 static OpenUsd.Rendering.Silk.SilkLightLinkMasks.operator ==(OpenUsd.Rendering.Silk.SilkLightLinkMasks left, OpenUsd.Rendering.Silk.SilkLightLinkMasks right) -> bool
 static OpenUsd.Rendering.Silk.SilkMaterialData.CopyFrom(OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand command) -> OpenUsd.Rendering.Silk.SilkMaterialData!

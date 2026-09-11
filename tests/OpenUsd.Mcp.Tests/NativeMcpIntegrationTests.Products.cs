@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -29,10 +29,12 @@ public sealed partial class NativeMcpIntegrationTests
                 "double3 xformOp:translate.timeSamples = { 0: (-1, -1, -4), 2: (1, -1, -4) }",
                 StringComparison.Ordinal),
             "axis" => ProductScene.Replace("def Cube \"InheritedProxy\" {",
-                "def Cylinder \"InheritedProxy\" {\n double radius = 0.75\n double height = 1.5\n uniform token axis = \"Z\"",
+                "def Cylinder \"InheritedProxy\" {\n double radius = 0.75\n" +
+                " double height = 1.5\n uniform token axis = \"Z\"",
                 StringComparison.Ordinal)
                 .Replace("def Cube \"Guide\" {",
-                    "def Cylinder \"ReferenceCylinder\" {\n double radius = 0.75\n double height = 1.5\n uniform token axis = \"X\"",
+                    "def Cylinder \"ReferenceCylinder\" {\n double radius = 0.75\n" +
+                    " double height = 1.5\n uniform token axis = \"X\"",
                     StringComparison.Ordinal)
                 .Replace("uniform token purpose = \"guide\"", "uniform token purpose = \"default\"",
                     StringComparison.Ordinal),
@@ -46,17 +48,18 @@ public sealed partial class NativeMcpIntegrationTests
             .BuildServiceProvider();
         IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
         IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
-        McpSessionDto session = await service.OpenSceneAsync(new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
         long generation = session.Generation;
         ulong revision = session.StageRevision;
-        byte[] initial = await Legacy(0);
+        byte[] initial = await legacy(0);
         await AssertHalf(initial, 4, 12, "000000000054003C");
         if (change == "axis")
         {
             await AssertHalf(initial, 1, 9, "000000000000003C");
             await AssertHalf(initial, 9, 9, "000000000054003C");
         }
-        _ = await Product(0);
+        _ = await product(0);
         if (!animated)
         {
             WorkspaceEditDto mutation = change == "axis"
@@ -84,8 +87,8 @@ public sealed partial class NativeMcpIntegrationTests
             generation = edit.Generation;
             revision = edit.StageRevision;
         }
-        _ = await Product(2);
-        byte[] restored = await Legacy(2);
+        _ = await product(2);
+        byte[] restored = await legacy(2);
         await AssertHalf(restored, 4, 12, change is "grow" or "axis" ? "000000000054003C" : "000000000000003C");
         if (change is "grow" or "axis")
         {
@@ -98,7 +101,7 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
         return;
 
-        async ValueTask<McpRenderSequenceResultDto> Product(double time) =>
+        async ValueTask<McpRenderSequenceResultDto> product(double time) =>
             await service.RenderProductAsync(new RenderProductCaptureRequest
             {
                 SessionId = session.SessionId,
@@ -109,7 +112,7 @@ public sealed partial class NativeMcpIntegrationTests
                 StartTimeCode = time
             }, default);
 
-        async Task<byte[]> Legacy(double time)
+        async Task<byte[]> legacy(double time)
         {
             McpRenderSequenceResultDto job = await service.RenderSequenceAsync(new RenderSequenceRequest
             {
@@ -157,7 +160,8 @@ public sealed partial class NativeMcpIntegrationTests
             .BuildServiceProvider();
         IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
         IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
-        McpSessionDto session = await service.OpenSceneAsync(new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
         var request = new RenderProductCaptureRequest
         {
             SessionId = session.SessionId,
@@ -238,16 +242,17 @@ public sealed partial class NativeMcpIntegrationTests
             .BuildServiceProvider();
         IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
         IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
-        McpSessionDto session = await service.OpenSceneAsync(new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
 
-        McpRenderSequenceResultDto full = await Product("/SettingsFull");
-        byte[] fullPixels = await ReadHalf(full);
+        McpRenderSequenceResultDto full = await product("/SettingsFull");
+        byte[] fullPixels = await readHalf(full);
         await AssertHalf(fullPixels, 4, 4, "005400000000003C");
         await AssertHalf(fullPixels, 12, 4, "005400000000003C");
         await AssertHalf(fullPixels, 4, 12, "000000000000003C");
         await AssertHalf(fullPixels, 12, 12, "000000000000003C");
-        McpRenderSequenceResultDto preview = await Product("/SettingsPreview");
-        byte[] previewPixels = await ReadHalf(preview);
+        McpRenderSequenceResultDto preview = await product("/SettingsPreview");
+        byte[] previewPixels = await readHalf(preview);
         await AssertHalf(previewPixels, 4, 4, "000000540000003C");
         await AssertHalf(previewPixels, 12, 4, "000000000000003C");
         await AssertHalf(previewPixels, 4, 12, "000000540000003C");
@@ -264,13 +269,13 @@ public sealed partial class NativeMcpIntegrationTests
             FrameCount = 1,
             IncludeHdrColor = true
         }, default);
-        byte[] legacyPixels = await ReadHalf(legacy);
+        byte[] legacyPixels = await readHalf(legacy);
         await AssertHalf(legacyPixels, 4, 4, "000000000054003C");
         await AssertHalf(legacyPixels, 12, 4, "000000000054003C");
         await AssertHalf(legacyPixels, 4, 12, "000000000054003C");
         await AssertHalf(legacyPixels, 12, 12, "000000000000003C");
-        McpRenderSequenceResultDto restored = await Product("/SettingsFull");
-        await Assert.That((await ReadHalf(restored)).SequenceEqual(fullPixels)).IsTrue();
+        McpRenderSequenceResultDto restored = await product("/SettingsFull");
+        await Assert.That((await readHalf(restored)).SequenceEqual(fullPixels)).IsTrue();
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(ProductScene);
         McpSessionDto unchanged = await service.GetSceneAsync(new SceneRevisionRequest
         {
@@ -281,7 +286,7 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(unchanged.StageRevision).IsEqualTo(session.StageRevision);
         return;
 
-        async ValueTask<McpRenderSequenceResultDto> Product(string settings) =>
+        async ValueTask<McpRenderSequenceResultDto> product(string settings) =>
             await service.RenderProductAsync(new RenderProductCaptureRequest
             {
                 SessionId = session.SessionId,
@@ -291,7 +296,7 @@ public sealed partial class NativeMcpIntegrationTests
                 ProductPath = "/Product"
             }, default);
 
-        async Task<byte[]> ReadHalf(McpRenderSequenceResultDto job)
+        async Task<byte[]> readHalf(McpRenderSequenceResultDto job)
         {
             McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
                 new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);

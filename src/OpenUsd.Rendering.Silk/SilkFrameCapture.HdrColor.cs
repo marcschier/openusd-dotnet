@@ -91,7 +91,8 @@ public static partial class SilkFrameCapture
         {
             if (device is not ISilkDisplayTransformGraphicsDevice)
             {
-                throw new NotSupportedException("The graphics device cannot apply GPU display transforms for HDR capture.");
+                throw new NotSupportedException(
+                    "The graphics device cannot apply GPU display transforms for HDR capture.");
             }
             SilkMeshRenderer.ValidateOptions(CreateDisplayTransformRenderOptions(renderSettings));
         }

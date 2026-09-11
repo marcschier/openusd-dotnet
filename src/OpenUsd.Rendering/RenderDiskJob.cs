@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Globalization;
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -19,9 +19,15 @@ public static partial class RenderDiskJob
     /// </remarks>
     public static RenderDiskJobResult Execute(
         RenderDiskJobRequest request, IRenderJobFrameSource source, CancellationToken cancellationToken = default)
+        => Execute(request, source, TimeProvider.System, cancellationToken);
+
+    internal static RenderDiskJobResult Execute(
+        RenderDiskJobRequest request, IRenderJobFrameSource source,
+        TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         cancellationToken.ThrowIfCancellationRequested();
         if (request.ProductPlan is { } product)
         {
@@ -71,7 +77,7 @@ public static partial class RenderDiskJob
             cancellationToken.ThrowIfCancellationRequested();
             RetryDirectorySharing(
                 () => Directory.Move(DirectoryMovePath(staging), DirectoryMovePath(destination)),
-                cancellationToken);
+                timeProvider, cancellationToken);
             published = true;
             return new RenderDiskJobResult(destination, frames, total, diagnostics.ToArray());
         }
@@ -79,13 +85,17 @@ public static partial class RenderDiskJob
         {
             if (owned && !published)
             {
-                RetryDirectorySharing(() => Directory.Delete(staging, recursive: true), CancellationToken.None);
+                RetryDirectorySharing(
+                    () => Directory.Delete(staging, recursive: true), timeProvider, CancellationToken.None);
             }
         }
     }
 
-    private static void RetryDirectorySharing(Action operation, CancellationToken cancellationToken)
+    internal static void RetryDirectorySharing(
+        Action operation, TimeProvider timeProvider, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         for (int attempt = 0; ; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -99,7 +109,8 @@ public static partial class RenderDiskJob
                 (exception.HResult & 0xFFFF) is 5 or 32 or 33)
             {
                 // Short-lived readers without delete sharing can delay an otherwise valid rename or cleanup.
-                Task.Delay(20 << attempt, cancellationToken).GetAwaiter().GetResult();
+                Task.Delay(TimeSpan.FromMilliseconds(20 << attempt), timeProvider, cancellationToken)
+                    .GetAwaiter().GetResult();
             }
         }
     }

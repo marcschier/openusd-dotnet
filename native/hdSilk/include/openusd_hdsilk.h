@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 23u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 24u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 6u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 
@@ -410,11 +410,12 @@ extern "C" {
 /// ENVIRONMENT record instead of contributing to that ambient term. An
 /// untextured DomeLight is unchanged.
 ///
-/// FRAME v9 appends after clip_planes. ABI v12 expands the fixed direct-light
-/// table from four to eight entries without changing an entry's layout:
-///   uint32 light_count (0..8 direct lights)
-///   uint32 reserved[3] (0)
-///   repeated 8 times:
+/// FRAME v9 appends after clip_planes. ABI v24 expands the fixed direct-light
+/// table from eight to 128 entries without changing an entry's layout:
+///   uint32 light_count (0..OPENUSD_SILK_MAX_FRAME_LIGHTS effective direct lights)
+///   uint32 lighting_flags (OPENUSD_SILK_FRAME_LIGHTING_*)
+///   uint32 reserved[2] (0)
+///   repeated OPENUSD_SILK_MAX_FRAME_LIGHTS times:
 ///     uint32 light_type (OPENUSD_SILK_LIGHT_*)
 ///     uint32 shadow_enabled (drives the ABI v19 SHADOW command)
 ///     float shape_x
@@ -428,6 +429,20 @@ extern "C" {
 ///     float radius
 ///   float ambient_color[3]
 ///   float ambient_intensity
+///
+/// Direct lights are path-sorted after inherited visibility and zero-output
+/// filtering. A light whose exposed intensity, colour, or both diffuse and
+/// specular contributions are zero consumes no entry. More than 128 effective
+/// direct lights refuses the entire sync before any page or retained publication
+/// state changes; the error names the count and bound, and a later sync retries.
+/// HAS_AUTHORED_DIRECT_LIGHTS preserves authored-dark lighting: omitting zero-
+/// output entries must not introduce a camera headlight into an authored scene.
+/// The no-light scene keeps the deterministic headlight default.
+///
+/// The four supported FRAME sizes are 272, 536, 23096 (lighting) and 23368
+/// (lighting plus domes) bytes, including the command header. The direct count
+/// is at 536, lighting_flags at 540, the 176-byte entries at 552, ambient at
+/// 23080, dome count at 23096 and the 32-byte dome entries at 23112.
 ///
 /// ABI v21 appends the bounded dome table after ambient_intensity. It exists so
 /// that a dome light can be addressed by a per-prim UsdLux collection, which the
@@ -444,7 +459,8 @@ extern "C" {
 /// the ordering an ENVIRONMENT record's dome_index names. It is the page's own
 /// path-sorted light ordering restricted to DomeLight prims, so dome bit i is
 /// stable across pages for an unchanged scene exactly as direct light bit i is,
-/// and both bit spaces are bounded at the same eight entries.
+/// but the dome bit space remains bounded at eight entries independently of the
+/// 128-entry direct-light table.
 ///
 /// Entry i is meaningful only when OPENUSD_SILK_DOME_FLAG_PRESENT is set.
 /// ambient_color is that dome's own summand of the scene-wide ambient_color
@@ -784,18 +800,18 @@ extern "C" {
 /// LIGHT_LINK (type = 8), added by ABI v18:
 ///   Offset Size Type     Field
 ///        8    4 uint32   entry_count
-///       12    4 uint32   light_count (0..8; the lights the masks index)
+///       12    4 uint32   light_count (0..128; the lights the masks index)
 ///       16    4 uint32   unsupported_features (OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_*)
 ///       20    4 uint32   dome_count (ABI v21; 0..8, the domes dome_mask indexes)
 ///       24    * entries[entry_count]
 ///
-/// Each entry is (20 bytes plus the path since ABI v21):
-///        0    4 uint32   light_mask
-///        4    4 uint32   shadow_mask
-///        8    4 uint32   dome_mask (ABI v21)
-///       12    4 int32    instance_index (-1 = every instance of path)
-///       16    4 uint32   path_byte_count
-///       20    * uint8    path[path_byte_count] (UTF-8, no NUL)
+/// Each entry is (44 bytes plus the path since ABI v24):
+///        0   16 uint32   light_mask[4] (least-significant word first)
+///       16   16 uint32   shadow_mask[4] (least-significant word first)
+///       32    4 uint32   dome_mask (unchanged eight-bit space)
+///       36    4 int32    instance_index (-1 = every instance of path)
+///       40    4 uint32   path_byte_count
+///       44    * uint8    path[path_byte_count] (UTF-8, no NUL)
 ///
 /// LIGHT_LINK carries UsdLux light and shadow linking. Bit i of light_mask is
 /// set when the direct light at index i of the FRAME light table illuminates the
@@ -805,7 +821,8 @@ extern "C" {
 /// prim that casts a light's shadow without being lit by it -- an unlit or
 /// off-screen blocker that must still occlude other receivers -- is a valid,
 /// published combination and must not be rejected or intersected by a consumer.
-/// Bits at or above light_count are always zero. The masks index the
+/// Direct bit i is bit (i % 32) of word (i / 32); no word is encoded as a
+/// floating-point value. Bits at or above light_count are always zero. The masks index the
 /// FRAME table of the same page, which is why the command is published together
 /// with the frame it belongs to and never on its own: a mask resolved against a
 /// different light ordering would name the wrong lights.
@@ -896,7 +913,7 @@ extern "C" {
 /// SHADOW (type = 9), added by ABI v19:
 ///   Offset Size Type     Field
 ///        8    4 uint32   descriptor_count (0..OPENUSD_SILK_MAX_SHADOW_MAPS)
-///       12    4 uint32   light_count (0..8; the lights light_index names)
+///       12    4 uint32   light_count (0..128; the lights light_index names)
 ///       16    4 uint32   unsupported_features (OPENUSD_SILK_SHADOW_UNSUPPORTED_*)
 ///       20    4 uint32   reserved (0)
 ///       24    * descriptors[descriptor_count]
@@ -1163,11 +1180,12 @@ extern "C" {
 /// here rather than reinterpreted as a receiver restriction, which is what
 /// folding it into dome_mask would silently have made it.
 #define OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION 8u
-#define OPENUSD_SILK_MAX_FRAME_LIGHTS 8u
+#define OPENUSD_SILK_MAX_FRAME_LIGHTS 128u
+#define OPENUSD_SILK_LIGHT_MASK_WORDS 4u
+#define OPENUSD_SILK_FRAME_LIGHTING_NONE 0u
+#define OPENUSD_SILK_FRAME_LIGHTING_HAS_AUTHORED_DIRECT_LIGHTS 1u
 /// The bounded dome table the ABI v21 FRAME command publishes and the LIGHT_LINK
-/// dome_mask indexes. Eight, exactly as OPENUSD_SILK_MAX_FRAME_LIGHTS is, so a
-/// dome bit and a direct light bit are bounded the same way and a consumer sizes
-/// one constant for both.
+/// dome_mask indexes. Its independent eight-entry bound is unchanged by ABI v24.
 #define OPENUSD_SILK_MAX_DOME_LIGHTS 8u
 /// Flags on one ABI v21 FRAME dome entry. PRESENT distinguishes a published dome
 /// from the zeroed tail of the fixed table; TEXTURED marks the dome that

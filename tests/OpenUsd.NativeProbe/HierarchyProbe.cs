@@ -75,7 +75,8 @@ internal static class HierarchyProbe
                 snapshot.Entries is UsdHierarchyEntry[] || variant.VariantNames is string[] ||
                 await File.ReadAllTextAsync(path).ConfigureAwait(false) != source)
             {
-                throw new InvalidOperationException("A detached native hierarchy snapshot lost data or changed its source.");
+                throw new InvalidOperationException(
+                    "A detached native hierarchy snapshot lost data or changed its source.");
             }
             Console.WriteLine("HIERARCHY_MANAGED_OK: bulk all-prim hierarchy, variants, quotas, scheduler lifetime");
         }

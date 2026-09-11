@@ -812,7 +812,7 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 24 and
-capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 6/23, and Storm child
+capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 6/24, and Storm child
 ABI 9. Metadata schema 3 records camera-state and EXR request version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

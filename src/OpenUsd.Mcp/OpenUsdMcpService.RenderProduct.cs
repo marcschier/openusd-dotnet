@@ -53,7 +53,8 @@ internal sealed partial class OpenUsdMcpService
             {
                 plan = await workspace.PrepareRenderProductAsync(
                     revision, times, request.SettingsPath, request.ProductPath,
-                    new RenderProductOverrides(cameraPath: request.CameraPath), cancellationToken).ConfigureAwait(false);
+                    new RenderProductOverrides(cameraPath: request.CameraPath),
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (NotSupportedException exception)
             {

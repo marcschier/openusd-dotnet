@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "mesh.h"
+#include "meshVertexLayout.h"
 
 #include "openusd_hdsilk.h"
 
@@ -1940,16 +1941,13 @@ HdSilkMesh::Sync(
                 id.GetText());
             _subdivision.Clear();
             _refinedPoints = VtVec3fArray();
-            _triangleIndices = _coarseTriangleIndices;
-            _triangleSubprims = _coarseTriangleSubprims;
         }
     }
 
     if (normalsDirty || primvarsDirty || topologyRefreshed ||
         deformationRefreshed || subdivisionRefreshed)
     {
-        const bool expandedBefore = _attributesRequireExpandedTopology;
-        _RefreshAttributes(sceneDelegate, id);
+        const bool layoutChanged = _RefreshAttributes(sceneDelegate, id);
 
         // Expanding the topology so a face-varying primvar can be resolved onto
         // corners, or collapsing it again when that primvar goes away, changes
@@ -1958,8 +1956,7 @@ HdSilkMesh::Sync(
         // Consumers key retained geometry on the topology revision, so it has
         // to advance in both directions or a stale vertex buffer survives a
         // toggle that invalidated it.
-        if (_attributesRequireExpandedTopology != expandedBefore &&
-            !topologyRefreshed)
+        if (layoutChanged && !topologyRefreshed)
         {
             if (_topologyRevision == std::numeric_limits<uint64_t>::max())
             {
@@ -1995,13 +1992,14 @@ HdSilkMesh::Sync(
         materialDirty || cullDirty || subdivisionRefreshed)
     {
         const VtVec3fArray& emittedPoints = _EmittedPoints();
+        const std::vector<uint32_t>& triangleIndices = _EmittedTriangleIndices();
         // An empty mesh is retired rather than published. A record with no
         // points and no indices is byte-identical on the wire to an ABI v8
         // instance reference, so publishing one as a point-instanced prototype
         // would make the payload record itself look like a record that reuses
         // a payload, and every instance of the path would be unresolvable.
         // Points and basisCurves already refuse to publish empty geometry.
-        if (emittedPoints.empty() || _triangleIndices.empty())
+        if (emittedPoints.empty() || triangleIndices.empty())
         {
             TF_WARN(
                 "hdSilk skipped mesh '%s': empty points or triangle indices",
@@ -2032,11 +2030,23 @@ HdSilkMesh::Sync(
         }
         if (_attributesRequireExpandedTopology)
         {
-            record.points.reserve(_triangleIndices.size() * 3);
-            record.indices.reserve(_triangleIndices.size());
-            for (size_t vertex = 0; vertex < _triangleIndices.size(); ++vertex)
+            const std::vector<uint32_t>& pointIndices = _attributePointIndices.empty()
+                ? triangleIndices : _attributePointIndices;
+            record.points.reserve(pointIndices.size() * 3);
+            if (_attributeTriangleIndices.empty())
             {
-                const uint32_t pointIndex = _triangleIndices[vertex];
+                record.indices.reserve(triangleIndices.size());
+                for (size_t corner = 0; corner < triangleIndices.size(); ++corner)
+                {
+                    record.indices.push_back(static_cast<uint32_t>(corner));
+                }
+            }
+            else
+            {
+                record.indices = _attributeTriangleIndices;
+            }
+            for (uint32_t pointIndex : pointIndices)
+            {
                 if (pointIndex >= emittedPoints.size())
                 {
                     throw std::runtime_error(
@@ -2046,7 +2056,6 @@ HdSilkMesh::Sync(
                 record.points.push_back(point[0]);
                 record.points.push_back(point[1]);
                 record.points.push_back(point[2]);
-                record.indices.push_back(static_cast<uint32_t>(vertex));
             }
         }
         else
@@ -2058,10 +2067,10 @@ HdSilkMesh::Sync(
                 record.points.push_back(point[1]);
                 record.points.push_back(point[2]);
             }
-            record.indices = _triangleIndices;
+            record.indices = triangleIndices;
         }
 
-        record.triangleSubprims = _triangleSubprims;
+        record.triangleSubprims = _EmittedTriangleSubprims();
         record.attributes = _attributes;
 
         // ABI v22 subprim identity. Authored face identity always travels with
@@ -2097,7 +2106,7 @@ HdSilkMesh::Sync(
             // stage would impose.
             const size_t plannedCornerEdgeCount =
                 (!_coarseCornerEdges.empty() &&
-                 _coarseCornerEdges.size() == _triangleIndices.size())
+                 _coarseCornerEdges.size() == triangleIndices.size())
                     ? _coarseCornerEdges.size()
                     : 0;
             if (HdSilkSubprimIdentityExceedsBudget(
@@ -2109,9 +2118,8 @@ HdSilkMesh::Sync(
             }
             else
             {
-                // An expanded topology emits one vertex per triangle corner, so
-                // emitted vertex v came from the authored point the coarse
-                // triangulation named at that corner. An unexpanded record
+                // A corner-derived layout shares vertices only when their
+                // authored point and every attribute agree. An unexpanded record
                 // emits the authored points themselves, so the mapping is the
                 // identity for every point the topology actually references.
                 // A face-varying mesh that duplicates one authored point across
@@ -2129,13 +2137,15 @@ HdSilkMesh::Sync(
                 bool pointOriginsResolved = true;
                 if (_attributesRequireExpandedTopology)
                 {
-                    if (_triangleIndices.size() != emittedPointCount)
+                    const std::vector<uint32_t>& origins = _attributePointIndices.empty()
+                        ? triangleIndices : _attributePointIndices;
+                    if (origins.size() != emittedPointCount)
                     {
                         pointOriginsResolved = false;
                     }
                     else
                     {
-                        for (uint32_t origin : _triangleIndices)
+                        for (uint32_t origin : origins)
                         {
                             record.pointOrigins.push_back(origin);
                         }
@@ -2144,7 +2154,7 @@ HdSilkMesh::Sync(
                 else
                 {
                     std::vector<bool> referenced(emittedPointCount, false);
-                    for (uint32_t index : _triangleIndices)
+                    for (uint32_t index : triangleIndices)
                     {
                         if (index < emittedPointCount)
                         {
@@ -2246,9 +2256,16 @@ HdSilkMesh::Sync(
     *dirtyBits = HdChangeTracker::Clean;
 }
 
-void
+bool
 HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id)
 {
+    const std::vector<uint32_t>& triangleIndices = _EmittedTriangleIndices();
+    const std::vector<uint32_t>& triangleSubprims = _EmittedTriangleSubprims();
+    const bool expandedBefore = _attributesRequireExpandedTopology;
+    std::vector<uint32_t> previousPoints = std::move(_attributePointIndices);
+    std::vector<uint32_t> previousIndices = std::move(_attributeTriangleIndices);
+    _attributePointIndices.clear();
+    _attributeTriangleIndices.clear();
     _attributes.clear();
     _attributesRequireExpandedTopology = false;
     HdMeshUtil meshUtil(&_topology, id);
@@ -2354,13 +2371,13 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
                         &attribute.data,
                         &attribute.componentCount) ||
                     attribute.data.size() !=
-                        _triangleIndices.size() * attribute.componentCount)
+                        triangleIndices.size() * attribute.componentCount)
                 {
                     continue;
                 }
                 // Face-varying data is one element per triangulated corner in
                 // HdMeshUtil's order, which already reflects the authored
-                // orientation, so it lines up with _triangleIndices as-is.
+                // orientation, so it lines up with triangleIndices as-is.
                 _attributesRequireExpandedTopology = true;
             }
             else
@@ -2380,7 +2397,7 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
                     if (!ExpandUniformElements(
                             attribute.data,
                             attribute.componentCount,
-                            _triangleSubprims,
+                            triangleSubprims,
                             &expanded))
                     {
                         continue;
@@ -2466,7 +2483,7 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
                     !ExpandIndexedElements(
                         data,
                         componentCount,
-                        _triangleIndices,
+                        triangleIndices,
                         &expanded))
                 {
                     continue;
@@ -2475,7 +2492,7 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
             }
             if (data.size() / componentCount !=
                 (_attributesRequireExpandedTopology
-                    ? _triangleIndices.size()
+                    ? triangleIndices.size()
                     : emittedPointCount))
             {
                 // An element count that matches neither one nor the point count
@@ -2507,6 +2524,23 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
         {
             return left.name < right.name;
         });
+    const bool hasNormals = std::any_of(_attributes.begin(), _attributes.end(),
+        [](const HdSilkMeshAttribute& attribute)
+        {
+            return attribute.semantic == OPENUSD_SILK_ATTRIBUTE_NORMAL && attribute.componentCount == 3;
+        });
+    // Without published normals the consumer derives them from the emitted
+    // topology. Keep its existing triangle-local fallback instead of smoothing
+    // across edges as an accidental consequence of sharing vertices.
+    if (_attributesRequireExpandedTopology && hasNormals)
+    {
+        HdSilkMeshVertexLayout layout = HdSilkBuildSharedVertexLayout(
+            triangleIndices, emittedPointCount, _attributes);
+        _attributePointIndices = std::move(layout.pointIndices);
+        _attributeTriangleIndices = std::move(layout.triangleIndices);
+    }
+    return expandedBefore != _attributesRequireExpandedTopology ||
+        previousPoints != _attributePointIndices || previousIndices != _attributeTriangleIndices;
 }
 
 std::vector<HdSilkSubdivisionChannel>
@@ -2626,28 +2660,19 @@ HdSilkMesh::_RefreshSubdivision(
         _subdivision.Clear();
     }
 
-    if (status == HdSilkSubdivisionStatus::Refined)
-    {
-        _triangleIndices = _subdivision.GetTriangleIndices();
-        _triangleSubprims = _subdivision.GetTriangleSubprims();
-    }
-    else
+    if (status != HdSilkSubdivisionStatus::Refined &&
+        status != HdSilkSubdivisionStatus::NotRequested)
     {
         // Every refusal publishes the whole control cage rather than a partly
         // refined surface: a mesh that is one level short of what was asked for
         // is a different shape, while the cage is at least the shape the scene
         // authored.
-        if (status != HdSilkSubdivisionStatus::NotRequested)
-        {
-            TF_WARN(
-                "hdSilk did not refine mesh '%s' at level %d (%s): %s",
-                id.GetText(),
-                refineLevel,
-                HdSilkSubdivisionStatusName(status),
-                diagnostic.c_str());
-        }
-        _triangleIndices = _coarseTriangleIndices;
-        _triangleSubprims = _coarseTriangleSubprims;
+        TF_WARN(
+            "hdSilk did not refine mesh '%s' at level %d (%s): %s",
+            id.GetText(),
+            refineLevel,
+            HdSilkSubdivisionStatusName(status),
+            diagnostic.c_str());
     }
 
     // The emitted triangle table is what a consumer keys its retained geometry

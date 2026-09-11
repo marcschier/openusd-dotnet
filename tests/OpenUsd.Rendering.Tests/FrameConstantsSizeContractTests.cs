@@ -101,14 +101,24 @@ public sealed class FrameConstantsSizeContractTests
                 "FrameParameters was not found in mesh.slang.");
         }
 
+        Match directBound = Regex.Match(
+            source, @"static\s+const\s+uint\s+MaximumDirectLights\s*=\s*(?<count>\d+);",
+            RegexOptions.CultureInvariant);
+        if (!directBound.Success)
+        {
+            throw new InvalidOperationException("MaximumDirectLights was not found in mesh.slang.");
+        }
+        int directCount = int.Parse(directBound.Groups["count"].Value, CultureInfo.InvariantCulture);
         int total = 0;
         foreach (Match field in Regex.Matches(
             block.Groups["body"].Value,
-            @"(?<type>float4x4|float4|uint4)\s+\w+(\[(?<count>\d+)\])?\s*;",
+            @"(?<type>float4x4|float4|uint4)\s+\w+(\[(?<count>\d+|MaximumDirectLights)\])?\s*;",
             RegexOptions.CultureInvariant))
         {
             int elementSize = field.Groups["type"].Value == "float4x4" ? 64 : 16;
-            int count = field.Groups["count"].Success
+            int count = field.Groups["count"].Value == "MaximumDirectLights"
+                ? directCount
+                : field.Groups["count"].Success
                 ? int.Parse(field.Groups["count"].Value, CultureInfo.InvariantCulture)
                 : 1;
             total += elementSize * count;
@@ -128,5 +138,14 @@ public sealed class FrameConstantsSizeContractTests
             directory = directory.Parent;
         }
         throw new InvalidOperationException("The repository root was not found.");
+    }
+
+    [Test]
+    public async Task FrameWriterAndShaderDeclareTheExpandedBlockSize()
+    {
+        int shaderSize = ReadShaderFrameParametersByteSize(FindRepositoryRoot());
+        int writerSize = OpenUsd.Rendering.Silk.SilkFrameUniformWriter.ByteSize;
+        await Assert.That(shaderSize).IsEqualTo(15296);
+        await Assert.That(writerSize).IsEqualTo(15296);
     }
 }

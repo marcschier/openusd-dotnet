@@ -49,7 +49,9 @@ public sealed class UsdReviewDocument : IUsdDetachedResult
     public string AssetAnchor { get; }
     /// <summary>Gets immutable verified dependency identities.</summary>
     public IReadOnlyList<UsdReviewDependency> Dependencies { get; }
-    /// <summary>Gets the portable byte length without copying; excludes the private save receipt and metadata.</summary>
+    /// <summary>
+    /// Gets the portable byte length without copying; excludes the private save receipt and metadata.
+    /// </summary>
     public int ByteLength => _bytes.Length;
 
     /// <summary>Returns independent portable bytes, without the private same-process save receipt.</summary>

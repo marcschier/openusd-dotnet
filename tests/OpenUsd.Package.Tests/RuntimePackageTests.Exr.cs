@@ -25,7 +25,8 @@ public sealed partial class RuntimePackageTests
         if (RequiredDataAbiVersion < 24 || (RequiredDataCapabilities & (1UL << 32)) == 0)
         {
             throw new InvalidOperationException(
-                "Required Core EXR execution needs the ABI24-or-later guarded EXR contract; no execution was attempted.");
+                "Required Core EXR execution needs the ABI24-or-later guarded EXR contract; " +
+                "no execution was attempted.");
         }
         string repositoryRoot = FindRepositoryRoot();
         if (!TryGetExecutionInputs(repositoryRoot, out NativeExecutionInputs inputs, out string reason))

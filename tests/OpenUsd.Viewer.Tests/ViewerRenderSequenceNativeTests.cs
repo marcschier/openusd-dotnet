@@ -211,7 +211,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 await Assert.That(frames[index].TryGetProperty("deviceDepth", out _)).IsFalse();
             }
             await Assert.That(Directory.GetFiles(output).Length).IsEqualTo(4);
-            ViewerNativeCaptureBackend.RecordComposition(window, session, Path.Combine(root, "sequence-composition.json"));
+            ViewerNativeCaptureBackend.RecordComposition(
+                window, session, Path.Combine(root, "sequence-composition.json"));
             await Assert.That(frames[0].GetProperty("sha256").GetString())
                 .IsNotEqualTo(frames[1].GetProperty("sha256").GetString());
             await Assert.That(frames[1].GetProperty("sha256").GetString())

@@ -73,10 +73,12 @@ public sealed partial class UsdLayerEditingNativeTests
         var address = Default("/World.zero");
         UsdLayerAuthoredSnapshot plus = ApplyDouble(review, review.CaptureAuthored([address]), 0.0);
         UsdLayerAuthoredSnapshot minus = ApplyDouble(review, plus, -0.0);
-        await Assert.That(BitConverter.DoubleToUInt64Bits(review.CaptureAuthored([address]).Opinions[0].Value.AsDouble()))
+        await Assert.That(
+            BitConverter.DoubleToUInt64Bits(review.CaptureAuthored([address]).Opinions[0].Value.AsDouble()))
             .IsEqualTo(0x8000000000000000ul);
         await Assert.That(review.CompareAndRestore(minus, plus).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
-        await Assert.That(BitConverter.DoubleToUInt64Bits(review.CaptureAuthored([address]).Opinions[0].Value.AsDouble()))
+        await Assert.That(
+            BitConverter.DoubleToUInt64Bits(review.CaptureAuthored([address]).Opinions[0].Value.AsDouble()))
             .IsEqualTo(0ul);
         var sample = new UsdLayerEditAddress("/World.zero", UsdLayerEditField.TimeSample, 1);
         plus = ApplyDouble(review, review.CaptureAuthored([sample]), 0.0);

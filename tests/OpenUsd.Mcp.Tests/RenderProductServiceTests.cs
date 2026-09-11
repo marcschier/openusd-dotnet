@@ -24,7 +24,8 @@ public sealed class RenderProductServiceTests
         using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
             .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
         using var service = new OpenUsdMcpService(workspace, provider, Options(files));
-        McpSessionDto session = await service.OpenSceneAsync(new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
         McpRenderSequenceResultDto job = await service.RenderProductAsync(Request(session, 3), default);
         await Assert.That(job.AuthoredProduct!.ProductPath).IsEqualTo("/Render/Product");
         await Assert.That(job.AuthoredProduct.MaterialBindingPurpose).IsEqualTo("full");
@@ -62,7 +63,8 @@ public sealed class RenderProductServiceTests
         using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
             .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
         using var service = new OpenUsdMcpService(workspace, provider, Options(files));
-        McpSessionDto session = await service.OpenSceneAsync(new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
         await Assert.That(async () => await service.RenderProductAsync(Request(session, 1), default))
             .Throws<OpenUsdMcpFailureException>();
         await Assert.That(factory.Source.Times).IsEmpty();
@@ -151,7 +153,8 @@ public sealed class RenderProductServiceTests
     private sealed class ProductFactory : IPreviewFrameSourceFactory
     {
         internal ProductSource Source { get; } = new();
-        public IPreviewFrameSource Create(PreviewCaptureRequest request, CancellationToken cancellationToken = default) => Source;
+        public IPreviewFrameSource Create(
+            PreviewCaptureRequest request, CancellationToken cancellationToken = default) => Source;
     }
 
     private sealed class ProductSource : IPreviewFrameSource, IPreviewProductFrameSource

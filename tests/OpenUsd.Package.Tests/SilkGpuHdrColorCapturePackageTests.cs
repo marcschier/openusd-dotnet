@@ -28,9 +28,11 @@ public sealed class SilkGpuHdrColorCapturePackageTests
                 {
                     string name = member.Attribute("name")?.Value ?? string.Empty;
                     return (name.StartsWith(
-                        "M:OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetainedWithHdrColor(", StringComparison.Ordinal) ||
+                        "M:OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetainedWithHdrColor(",
+                        StringComparison.Ordinal) ||
                         name.StartsWith(
-                            "M:OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(", StringComparison.Ordinal)) &&
+                            "M:OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(",
+                            StringComparison.Ordinal)) &&
                         !name.Contains("SilkOpenColorIoProcessor", StringComparison.Ordinal);
                 })
             ];
@@ -54,7 +56,8 @@ public sealed class SilkGpuHdrColorCapturePackageTests
             await Assert.That(options).Contains("lattice");
             string quota = Normalize(documentation.Descendants("member").Single(member =>
                 member.Attribute("name")?.Value ==
-                    "M:OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.#ctor(System.Boolean,System.Int32,System.Int64)").Value);
+                    "M:OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.#ctor(" +
+                    "System.Boolean,System.Int32,System.Int64)").Value);
             await Assert.That(quota).Contains("20 bytes per pixel");
             await Assert.That(quota).Contains("unchanged when depth or selection is disabled");
         }

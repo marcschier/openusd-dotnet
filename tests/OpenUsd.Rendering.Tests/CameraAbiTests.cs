@@ -170,26 +170,40 @@ public sealed class CameraAbiTests
         ParameterInfo stormCamera = GetParameter(
             typeof(OpenUsdStormRenderer),
             nameof(OpenUsdStormRenderer.Render),
-            4);
+            4,
+            typeof(int), typeof(int), typeof(uint), typeof(double), typeof(CameraState),
+            typeof(ulong), typeof(ulong?), typeof(bool));
         ParameterInfo silkCamera = GetParameter(
             typeof(OpenUsdSilkSession),
             nameof(OpenUsdSilkSession.Sync),
-            3);
+            3,
+            typeof(int), typeof(int), typeof(double), typeof(CameraState),
+            typeof(RenderComplexity), typeof(RenderDrawMode));
+        ParameterInfo silkProductCamera = GetParameter(
+            typeof(OpenUsdSilkSession),
+            nameof(OpenUsdSilkSession.Sync),
+            4,
+            typeof(int), typeof(int), typeof(SilkSceneIngestionOptions), typeof(double),
+            typeof(CameraState), typeof(RenderComplexity), typeof(RenderDrawMode));
         ParameterInfo childRenderCamera = GetParameter(
             typeof(OpenUsdStormChildSession),
             nameof(OpenUsdStormChildSession.Render),
-            1);
+            1,
+            typeof(double), typeof(CameraState), typeof(ulong), typeof(ulong?));
         ParameterInfo childRequestCamera = GetParameter(
             typeof(OpenUsdStormChildSession),
             nameof(OpenUsdStormChildSession.RequestFrame),
-            2);
+            2,
+            typeof(double), typeof(ulong), typeof(CameraState), typeof(ulong?));
 
         await Assert.That(stormCamera.ParameterType).IsEqualTo(typeof(CameraState));
         await Assert.That(silkCamera.ParameterType).IsEqualTo(typeof(CameraState));
+        await Assert.That(silkProductCamera.ParameterType).IsEqualTo(typeof(CameraState));
         await Assert.That(childRenderCamera.ParameterType).IsEqualTo(typeof(CameraState));
         await Assert.That(childRequestCamera.ParameterType).IsEqualTo(typeof(CameraState));
         await Assert.That(stormCamera.HasDefaultValue).IsTrue();
         await Assert.That(silkCamera.HasDefaultValue).IsTrue();
+        await Assert.That(silkProductCamera.HasDefaultValue).IsTrue();
         await Assert.That(childRenderCamera.HasDefaultValue).IsTrue();
         await Assert.That(childRequestCamera.HasDefaultValue).IsTrue();
     }
@@ -271,11 +285,13 @@ public sealed class CameraAbiTests
     private static ParameterInfo GetParameter(
         Type declaringType,
         string methodName,
-        int parameterIndex)
+        int parameterIndex,
+        params Type[] parameterTypes)
     {
-        MethodInfo method = declaringType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Single(candidate => candidate.Name == methodName);
+        MethodInfo method = declaringType.GetMethod(
+            methodName, BindingFlags.Instance | BindingFlags.Public, null, parameterTypes, null)
+            ?? throw new InvalidOperationException(
+                $"The expected {declaringType.Name}.{methodName} overload is missing.");
         return method.GetParameters()[parameterIndex];
     }
 }

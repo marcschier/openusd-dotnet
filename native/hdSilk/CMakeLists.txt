@@ -28,6 +28,7 @@ set(OPENUSD_HDSILK_SOURCES
     src/mdlMaterialSceneIndexPlugin.cpp
     src/mesh.h
     src/mesh.cpp
+    src/meshVertexLayout.h
     src/points.h
     src/points.cpp
     src/renderDelegate.h

@@ -50,7 +50,8 @@ public sealed class SurfaceConstantsSizeContractTests
     {
         string root = FindRepositoryRoot();
         int shaderSize = ReadShaderSurfaceParametersByteSize(root);
-        int expectedFloats = shaderSize / sizeof(float);
+        const int expectedPrefixFloats = 208 / sizeof(float);
+        const int wideMaskBytes = 2 * 16;
 
         List<string> mismatches = [];
         foreach (string relative in HandWrittenCopies)
@@ -82,13 +83,29 @@ public sealed class SurfaceConstantsSizeContractTests
                 continue;
             }
 
-            int written = literal.Groups["values"].Value
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Length;
-            if (written != expectedFloats)
+            string[] values = literal.Groups["values"].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            int written = values.Length;
+            if (written != expectedPrefixFloats || written * sizeof(float) + wideMaskBytes != shaderSize)
             {
                 mismatches.Add(
-                    $"{relative} writes {written} floats, the shader block holds {expectedFloats}");
+                    $"{relative} writes {written} prefix floats plus two UInt128 masks, " +
+                    $"the shader block holds {shaderSize} bytes");
+            }
+            if (written > 35 && (values[19] != "0" || values[35] != "0"))
+            {
+                mismatches.Add($"{relative} does not reserve the former float mask slots as zero");
+            }
+            foreach (int offset in new[] { 208, 224 })
+            {
+                if (!Regex.IsMatch(
+                    body,
+                    $@"BinaryPrimitives\.WriteUInt128LittleEndian\(\s*\w+\.AsSpan\({offset}(?:,\s*16)?\)," +
+                    @"\s*UInt128\.MaxValue\s*\)",
+                    RegexOptions.CultureInvariant))
+                {
+                    mismatches.Add($"{relative} does not write the full raw UInt128 mask at {offset}");
+                }
             }
 
             // The probe cannot reference the internal writer, so it restates the
@@ -162,5 +179,14 @@ public sealed class SurfaceConstantsSizeContractTests
             directory = directory.Parent;
         }
         throw new InvalidOperationException("The repository root was not found.");
+    }
+
+    [Test]
+    public async Task SurfaceWriterAndShaderDeclareTheWideMaskBlockSize()
+    {
+        int shaderSize = ReadShaderSurfaceParametersByteSize(FindRepositoryRoot());
+        int writerSize = SilkSurfaceUniformWriter.ByteSize;
+        await Assert.That(shaderSize).IsEqualTo(240);
+        await Assert.That(writerSize).IsEqualTo(240);
     }
 }

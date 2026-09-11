@@ -365,7 +365,8 @@ public sealed class UsdReviewDocumentCodecTests
         for (int index = 0; index < 1000; index++)
         {
             matches += binding.ByteLength == otherBinding.ByteLength && binding.HasSamePayload(otherBinding) ? 1 : 0;
-            matches += document.ByteLength == otherDocument.ByteLength && document.HasSamePayload(otherDocument) ? 1 : 0;
+            matches += document.ByteLength == otherDocument.ByteLength &&
+                document.HasSamePayload(otherDocument) ? 1 : 0;
         }
         return matches;
     }

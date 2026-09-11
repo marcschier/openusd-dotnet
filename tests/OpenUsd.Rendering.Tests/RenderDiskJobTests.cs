@@ -1,8 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Text.Json;
-using System.Numerics;
 using System.Buffers.Binary;
+using System.Numerics;
+using System.Text.Json;
 
 namespace OpenUsd.Rendering.Tests;
 

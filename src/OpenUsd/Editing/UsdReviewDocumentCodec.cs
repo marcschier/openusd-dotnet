@@ -102,7 +102,8 @@ internal static class UsdReviewDocumentCodec
     {
         if (bytes.Length is < 1 or > MaximumDocumentBytes)
         {
-            throw new ArgumentException("A portable review document must contain 1 byte through 16 MiB.", nameof(bytes));
+            throw new ArgumentException(
+                "A portable review document must contain 1 byte through 16 MiB.", nameof(bytes));
         }
     }
 
@@ -150,7 +151,8 @@ internal static class UsdReviewDocumentCodec
         {
             throw InvalidPacket("read returned different portable bytes");
         }
-        return new UsdReviewDocument(id, root, fingerprint, identifier, target, anchor, dependencies, document, receipt);
+        return new UsdReviewDocument(
+            id, root, fingerprint, identifier, target, anchor, dependencies, document, receipt);
     }
 
     private static string ReadDocumentId(ref ReviewReader reader)

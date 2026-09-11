@@ -29,13 +29,13 @@ namespace OpenUsd.Rendering.Tests;
 /// </remarks>
 public sealed class SilkDomeFrameWireTests
 {
-    private const int FrameSize = 2248;
-    private const int AmbientOffset = 536 + 16 + (8 * 176);
-    private const int DomeCountOffset = 1976;
-    private const int DomeTableOffset = 1992;
-    private const int DomeControlOffset = 1584;
-    private const int DomeAmbientOffset = 1600;
-    private const int DomeEnvironmentOffset = 1728;
+    private const int FrameSize = 23368;
+    private const int AmbientOffset = 23080;
+    private const int DomeCountOffset = 23096;
+    private const int DomeTableOffset = 23112;
+    private const int DomeControlOffset = 15024;
+    private const int DomeAmbientOffset = 15040;
+    private const int DomeEnvironmentOffset = 15168;
 
     [Test]
     public async Task TheDomeTableRoundTripsEveryEntryAtItsOwnOffset()
@@ -334,7 +334,7 @@ public sealed class SilkDomeFrameWireTests
         (Vector3 Ambient, bool Present, bool Textured)[] domes,
         bool legacy = false)
     {
-        int size = legacy ? 1976 : FrameSize;
+        int size = legacy ? 23096 : FrameSize;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -386,6 +386,229 @@ public sealed class SilkDomeFrameWireTests
                 flags |= 2u;
             }
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 16), flags);
+        }
+        return bytes;
+    }
+
+    [Test]
+    [Arguments(0, 0)]
+    [Arguments(0, 1)]
+    [Arguments(0, 7)]
+    [Arguments(0, 8)]
+    [Arguments(0, 9)]
+    [Arguments(0, 10)]
+    [Arguments(128, 0)]
+    [Arguments(128, 1)]
+    [Arguments(128, 7)]
+    [Arguments(128, 8)]
+    [Arguments(128, 9)]
+    [Arguments(128, 10)]
+    public async Task DomeFrameOffsetsAndEightDomeLimitRemainIndependent(
+        int directCount, int domeCount)
+    {
+        byte[] page = CreateWideDomeFrame(directCount, domeCount);
+        if (domeCount > 8)
+        {
+            await Assert.That(() => ReadWideDomeFrame(page)).Throws<InvalidDataException>();
+            SilkFrameState control = ReadWideDomeFrame(CreateWideDomeFrame(directCount, 8));
+            await Assert.That(control.DomeCount).IsEqualTo(8u);
+            await Assert.That(control.LightCount).IsEqualTo((uint)directCount);
+            return;
+        }
+
+        SilkFrameState frame = ReadWideDomeFrame(page);
+        SilkFrameDome[] domes = frame.Domes.ToArray();
+        await Assert.That(page.Length).IsEqualTo(23368);
+        uint maximumLights = SilkFrameCommand.MaximumLights;
+        uint maximumDomes = SilkFrameCommand.MaximumDomes;
+        await Assert.That(maximumLights).IsEqualTo(128u);
+        await Assert.That(maximumDomes).IsEqualTo(8u);
+        await Assert.That(frame.LightCount).IsEqualTo((uint)directCount);
+        await Assert.That(frame.DomeCount).IsEqualTo((uint)domeCount);
+        await Assert.That(domes.Length).IsEqualTo(8);
+        await Assert.That(frame.Width).IsEqualTo(96);
+        await Assert.That(frame.Height).IsEqualTo(64);
+        await Assert.That(frame.AmbientLight).IsEqualTo(new Vector4(0.375f, 0.625f, 0.875f, 0.75f));
+        await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(23096)))
+            .IsEqualTo((uint)domeCount);
+        foreach (int offset in new[] { 23100, 23104, 23108 })
+        {
+            await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(offset)))
+                .IsEqualTo(0u);
+        }
+        for (int dome = 0; dome < 8; dome++)
+        {
+            bool present = dome < domeCount;
+            bool textured = present && dome % 2 == 1;
+            Vector3 expectedAmbient = present && !textured
+                ? new Vector3(dome + 0.125f, dome + 0.25f, dome + 0.5f)
+                : Vector3.Zero;
+            await Assert.That(domes[dome].IsPresent).IsEqualTo(present);
+            await Assert.That(domes[dome].IsTextured).IsEqualTo(textured);
+            await Assert.That(domes[dome].AmbientColor).IsEqualTo(expectedAmbient);
+            int entry = 23112 + (dome * 32);
+            await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(entry + 16)))
+                .IsEqualTo(present ? textured ? 3u : 1u : 0u);
+            foreach (int reserved in new[] { 12, 20, 24, 28 })
+            {
+                await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(
+                    page.AsSpan(entry + reserved))).IsEqualTo(0u);
+            }
+        }
+        if (directCount == 128)
+        {
+            SilkFrameLight last = frame.Lights.ToArray()[127];
+            await Assert.That(last.Type).IsEqualTo(1u);
+            await Assert.That(last.Intensity).IsEqualTo(129f);
+        }
+    }
+
+    [Test]
+    public async Task WideDomeFrameWithoutDomeTablePreservesAmbientAndDirectTail()
+    {
+        byte[] page = CreateWideDomeFrame(128, 0)[..23096];
+        BinaryPrimitives.WriteUInt32LittleEndian(page.AsSpan(4), 23096u);
+        SilkFrameState frame = ReadWideDomeFrame(page);
+
+        await Assert.That(frame.LightCount).IsEqualTo(128u);
+        await Assert.That(frame.Lights.ToArray()[127].Intensity).IsEqualTo(129f);
+        await Assert.That(frame.DomeCount).IsEqualTo(0u);
+        await Assert.That(frame.AmbientLight).IsEqualTo(new Vector4(0.375f, 0.625f, 0.875f, 0.75f));
+        foreach (SilkFrameDome dome in frame.Domes.ToArray())
+        {
+            await Assert.That(dome.IsPresent).IsFalse();
+            await Assert.That(dome.IsTextured).IsFalse();
+            await Assert.That(dome.AmbientColor).IsEqualTo(Vector3.Zero);
+        }
+    }
+
+    [Test]
+    [Arguments(0, 12, 1u)]
+    [Arguments(0, 20, 1u)]
+    [Arguments(0, 24, 1u)]
+    [Arguments(0, 28, 1u)]
+    [Arguments(7, 12, 0x8000_0000u)]
+    [Arguments(7, 20, 0x8000_0000u)]
+    [Arguments(7, 24, 0x8000_0000u)]
+    [Arguments(7, 28, 0x8000_0000u)]
+    [Arguments(0, 16, 5u)]
+    [Arguments(0, 16, 2u)]
+    [Arguments(0, 16, 0u)]
+    [Arguments(0, 0, 0x7FC0_0000u)]
+    [Arguments(7, 4, 0x7F80_0000u)]
+    [Arguments(7, 8, 0xFF80_0000u)]
+    public async Task WideDomeEntriesRejectReservedFlagsAndNonFiniteAmbient(
+        int dome, int relativeOffset, uint bits)
+    {
+        byte[] page = CreateWideDomeFrame(128, 8);
+        SilkFrameState control = ReadWideDomeFrame(page);
+        await Assert.That(control.DomeCount).IsEqualTo(8u);
+        await Assert.That(control.Domes.ToArray()[7].IsTextured).IsTrue();
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            page.AsSpan(23112 + (dome * 32) + relativeOffset), bits);
+
+        await Assert.That(() => ReadWideDomeFrame(page)).Throws<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(7)]
+    public async Task WideDomeTailCannotPublishFlagsPastItsCount(int domeCount)
+    {
+        byte[] page = CreateWideDomeFrame(128, domeCount);
+        SilkFrameState control = ReadWideDomeFrame(page);
+        await Assert.That(control.DomeCount).IsEqualTo((uint)domeCount);
+        await Assert.That(control.Domes.ToArray()[domeCount].IsPresent).IsFalse();
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            page.AsSpan(23112 + (domeCount * 32) + 16), 1u);
+
+        await Assert.That(() => ReadWideDomeFrame(page)).Throws<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments(-1, 0)]
+    [Arguments(8, 0)]
+    [Arguments(int.MaxValue, 0)]
+    [Arguments(0, -1)]
+    [Arguments(0, 3)]
+    public async Task WideDomeAccessorsGuardDomeAndComponentBounds(int dome, int component)
+    {
+        byte[] page = CreateWideDomeFrame(128, 8);
+        await Assert.That(ReadWideDomeComponent(page, 6, 2)).IsEqualTo(6.5f);
+        await Assert.That(() => ReadWideDomeComponent(page, dome, component))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    private static float ReadWideDomeComponent(byte[] page, int dome, int component)
+    {
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+        _ = commands.MoveNext();
+        return commands.Current.AsFrame().GetDomeAmbientColor(dome, component);
+    }
+
+    private static SilkFrameState ReadWideDomeFrame(byte[] page)
+    {
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+        if (!commands.MoveNext())
+        {
+            throw new InvalidDataException("The wide dome frame is missing.");
+        }
+        var frame = new SilkFrameState();
+        frame.Update(commands.Current.AsFrame());
+        if (commands.MoveNext())
+        {
+            throw new InvalidDataException("The dome fixture contains an extra command.");
+        }
+        return frame;
+    }
+
+    private static byte[] CreateWideDomeFrame(int directCount, int domeCount)
+    {
+        byte[] bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 23368u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), 96);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), 64);
+        for (int element = 0; element < 16; element++)
+        {
+            double value = element % 5 == 0 ? 1d : 0d;
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), value);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), value);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), (uint)directCount);
+        for (int light = 0; light < directCount; light++)
+        {
+            int entry = 552 + (light * 176);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), 1u);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 16), 0.25f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 20), 0.5f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 24), 0.75f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 28), light + 2f);
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(entry + 32 + (element * 8)), element % 5 == 0 ? 1d : 0d);
+            }
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 164), 1f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 168), 1f);
+        }
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23080), 0.375f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23084), 0.625f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23088), 0.875f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23092), 0.75f);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23096), (uint)domeCount);
+        for (int dome = 0; dome < Math.Min(domeCount, 8); dome++)
+        {
+            int entry = 23112 + (dome * 32);
+            bool textured = dome % 2 == 1;
+            if (!textured)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry), dome + 0.125f);
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 4), dome + 0.25f);
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 8), dome + 0.5f);
+            }
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 16), textured ? 3u : 1u);
         }
         return bytes;
     }

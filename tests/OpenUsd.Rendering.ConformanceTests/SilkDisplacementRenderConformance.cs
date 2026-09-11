@@ -701,7 +701,7 @@ internal static class SilkDisplacementRenderConformance
 
     private static byte[] Frame()
     {
-        const int lightingSize = 1976;
+        const int lightingSize = 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         byte[] bytes = new byte[lightingSize];

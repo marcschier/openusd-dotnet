@@ -120,8 +120,8 @@ private:
         HdSceneDelegate* sceneDelegate,
         HdSilkMeshRecord record);
 
-    /// Rebuilds the vertex attribute table from authored primvars.
-    void _RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id);
+    /// Rebuilds authored attributes and reports whether the emitted vertex layout changed.
+    bool _RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id);
 
     /// Rebuilds the OpenSubdiv refiner and the emitted triangle tables for the
     /// requested refinement level, then republishes either the refined or the
@@ -163,15 +163,24 @@ private:
         return _subdivision.IsRefined() ? _refinedPoints : _points;
     }
 
+    const std::vector<uint32_t>& _EmittedTriangleIndices() const
+    {
+        return _subdivision.IsRefined()
+            ? _subdivision.GetTriangleIndices() : _coarseTriangleIndices;
+    }
+
+    const std::vector<uint32_t>& _EmittedTriangleSubprims() const
+    {
+        return _subdivision.IsRefined()
+            ? _subdivision.GetTriangleSubprims() : _coarseTriangleSubprims;
+    }
+
     HdMeshTopology _topology;
     GfMatrix4d _transform;
     VtVec3fArray _points;
-    // The emitted triangle list: the refined tables while a subdivision surface
-    // is refined, and the HdMeshUtil triangulation of the control cage
-    // otherwise. The coarse tables are retained separately so switching
-    // refinement off does not need a topology resync to restore them.
-    std::vector<uint32_t> _triangleIndices;
-    std::vector<uint32_t> _triangleSubprims;
+    // Emission borrows either these coarse tables or the refiner's tables.
+    // Keeping the control cage does not require another copy of the active
+    // triangulation, and switching refinement off needs no topology resync.
     std::vector<uint32_t> _coarseTriangleIndices;
     std::vector<uint32_t> _coarseTriangleSubprims;
     // The ABI v22 authored-edge table of the control cage: one entry per coarse
@@ -202,7 +211,9 @@ private:
     // coordinates and arbitrary primvars. Only interpolations resolvable onto
     // emitted triangle-list vertices appear here; anything else is omitted so
     // the consumer falls back rather than receiving data this delegate guessed.
-    std::vector<HdSilkMeshAttribute> _attributes;
+    HdSilkMeshAttributes _attributes;
+    std::vector<uint32_t> _attributePointIndices;
+    std::vector<uint32_t> _attributeTriangleIndices;
     bool _attributesRequireExpandedTopology = false;
 
     HdSilkMesh(const HdSilkMesh&) = delete;

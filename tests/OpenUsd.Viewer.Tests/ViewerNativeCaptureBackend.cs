@@ -1,8 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using OpenUsd.Rendering;
-using Avalonia.Controls;
 using System.Text.Json;
+using Avalonia.Controls;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
 
@@ -33,7 +33,8 @@ internal static class ViewerNativeCaptureBackend
         ViewerCompositionEvidence evidence = viewport.GetCompositionRuntimeEvidence(Kind);
         if (!evidence.CompositionHostVisible || evidence.SuccessfulImports == 0 || evidence.SuccessfulPresents == 0)
         {
-            throw new InvalidOperationException("The requested capture renderer has not actually imported and presented a frame.");
+            throw new InvalidOperationException(
+                "The requested capture renderer has not actually imported and presented a frame.");
         }
         if (Environment.GetEnvironmentVariable("OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT") is { } evidenceRoot)
         {

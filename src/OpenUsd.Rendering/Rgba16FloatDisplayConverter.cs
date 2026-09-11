@@ -16,7 +16,8 @@ internal static class Rgba16FloatDisplayConverter
         }
         if (destination.Length != source.Length / 2)
         {
-            throw new ArgumentException("RGBA8 destination data must contain one byte per source channel.", nameof(destination));
+            throw new ArgumentException(
+                "RGBA8 destination data must contain one byte per source channel.", nameof(destination));
         }
         float scale = GetExposureScale(outputTransform, exposure);
         ReadOnlySpan<Half> channels = MemoryMarshal.Cast<byte, Half>(source);

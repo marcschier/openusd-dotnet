@@ -21,8 +21,8 @@ namespace OpenUsd.Rendering.Silk;
 /// pass exists to restrict.
 /// </param>
 public readonly record struct SilkLightLinkMasks(
-    uint LightMask,
-    uint ShadowMask,
+    UInt128 LightMask,
+    UInt128 ShadowMask,
     uint DomeMask)
 {
     /// <summary>
@@ -37,37 +37,23 @@ public readonly record struct SilkLightLinkMasks(
     public static SilkLightLinkMasks All { get; } = new(AllBits, AllBits, AllDomeBits);
 
     /// <summary>Gets every bit the fixed frame light table can address.</summary>
-    public const uint AllBits = (1u << (int)SilkFrameCommand.MaximumLights) - 1;
+    public static UInt128 AllBits => UInt128.MaxValue;
 
     /// <summary>Gets every bit the fixed frame dome table can address.</summary>
     public const uint AllDomeBits = (1u << (int)SilkFrameCommand.MaximumDomes) - 1;
 
     /// <summary>Reports whether direct light <paramref name="index"/> illuminates the prim.</summary>
     public bool IsLit(int index) =>
-        (uint)index < SilkFrameCommand.MaximumLights && (LightMask & (1u << index)) != 0;
+        (uint)index < SilkFrameCommand.MaximumLights && (LightMask & (UInt128.One << index)) != 0;
 
     /// <summary>Reports whether the prim casts direct light <paramref name="index"/>'s shadow.</summary>
     public bool CastsShadow(int index) =>
-        (uint)index < SilkFrameCommand.MaximumLights && (ShadowMask & (1u << index)) != 0;
+        (uint)index < SilkFrameCommand.MaximumLights && (ShadowMask & (UInt128.One << index)) != 0;
 
     /// <summary>Reports whether dome light <paramref name="index"/> illuminates the prim.</summary>
     public bool IsDomeLit(int index) =>
         (uint)index < SilkFrameCommand.MaximumDomes && (DomeMask & (1u << index)) != 0;
 
-    /// <summary>
-    /// Gets the three masks folded into the single key a surface block cache and a
-    /// per-draw batch key both compare.
-    /// </summary>
-    /// <remarks>
-    /// The dome mask is in the key, not merely in the block. Two prims that share
-    /// a material but link different domes must not share a surface buffer or a
-    /// draw: the dome mask is a per-draw constant, and batching them together
-    /// would give both of them whichever mask was written last.
-    /// </remarks>
-    internal uint Packed =>
-        (LightMask & AllBits) |
-        ((ShadowMask & AllBits) << 8) |
-        ((DomeMask & AllDomeBits) << 16);
 }
 
 /// <summary>
@@ -257,7 +243,7 @@ public sealed class SilkLightLinkTable
         DomeCount >= 32 ? uint.MaxValue : (1u << (int)DomeCount) - 1;
 
     /// <summary>
-    /// Collects every packed mask a lookup against this table can return.
+    /// Collects every complete mask tuple a lookup against this table can return.
     /// </summary>
     /// <remarks>
     /// The default masks are always included, because every prim the sparse table
@@ -267,18 +253,18 @@ public sealed class SilkLightLinkTable
     /// otherwise accumulate one retained resource per mask it ever resolved.
     /// </remarks>
     /// <param name="destination">Receives the masks, replacing its contents.</param>
-    internal void CollectPackedMasks(HashSet<uint> destination)
+    internal void CollectMasks(HashSet<SilkLightLinkMasks> destination)
     {
         ArgumentNullException.ThrowIfNull(destination);
         destination.Clear();
-        _ = destination.Add(SilkLightLinkMasks.All.Packed);
+        _ = destination.Add(SilkLightLinkMasks.All);
         foreach (SilkLightLinkMasks masks in _pathEntries.Values)
         {
-            _ = destination.Add(masks.Packed);
+            _ = destination.Add(masks);
         }
         foreach (SilkLightLinkMasks masks in _entries.Values)
         {
-            _ = destination.Add(masks.Packed);
+            _ = destination.Add(masks);
         }
     }
 

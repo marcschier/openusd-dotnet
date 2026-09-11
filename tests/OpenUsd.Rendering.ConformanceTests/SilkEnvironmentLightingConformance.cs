@@ -820,8 +820,8 @@ internal static class SilkEnvironmentLightingConformance
         float lightIntensity = 1f,
         double eyeDistance = 0d)
     {
-        const int lightingSize = 1976;
-        const int ambientOffset = 536 + 16 + (8 * 176);
+        const int lightingSize = 23096;
+        const int ambientOffset = 23080;
         var bytes = new byte[lightingSize];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);

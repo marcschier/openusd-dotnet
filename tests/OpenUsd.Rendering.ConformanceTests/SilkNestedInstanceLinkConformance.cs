@@ -370,13 +370,13 @@ internal static class SilkNestedInstanceLinkConformance
     /// </summary>
     private static byte[] Frame()
     {
-        const int frameSize = 2248;
+        const int frameSize = 23368;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         const int lightEntrySize = 176;
-        const int ambientOffset = 536 + 16 + (8 * lightEntrySize);
-        const int domeCountOffset = 1976;
-        const int domeTableOffset = 1992;
+        const int ambientOffset = 23080;
+        const int domeCountOffset = 23096;
+        const int domeTableOffset = 23112;
         var bytes = new byte[frameSize];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
@@ -513,7 +513,7 @@ internal static class SilkNestedInstanceLinkConformance
     private static byte[] LightLink(
         uint lightCount,
         uint domeCount,
-        params (string Path, int InstanceIndex, uint LightMask, uint ShadowMask, uint DomeMask)[] entries)
+        params (string Path, int InstanceIndex, UInt128 LightMask, UInt128 ShadowMask, uint DomeMask)[] entries)
     {
         List<byte> payload =
         [
@@ -522,15 +522,17 @@ internal static class SilkNestedInstanceLinkConformance
             .. BitConverter.GetBytes((uint)SilkLightLinkUnsupportedFeatures.None),
             .. BitConverter.GetBytes(domeCount),
         ];
-        foreach ((string path, int instanceIndex, uint lightMask, uint shadowMask, uint domeMask)
+        foreach ((string path, int instanceIndex, UInt128 lightMask, UInt128 shadowMask, uint domeMask)
             in entries)
         {
             byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-            payload.AddRange(BitConverter.GetBytes(lightMask));
-            payload.AddRange(BitConverter.GetBytes(shadowMask));
-            payload.AddRange(BitConverter.GetBytes(domeMask));
-            payload.AddRange(BitConverter.GetBytes(instanceIndex));
-            payload.AddRange(BitConverter.GetBytes((uint)pathBytes.Length));
+            byte[] prefix = new byte[44];
+            BinaryPrimitives.WriteUInt128LittleEndian(prefix, lightMask);
+            BinaryPrimitives.WriteUInt128LittleEndian(prefix.AsSpan(16), shadowMask);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(32), domeMask);
+            BinaryPrimitives.WriteInt32LittleEndian(prefix.AsSpan(36), instanceIndex);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(40), (uint)pathBytes.Length);
+            payload.AddRange(prefix);
             payload.AddRange(pathBytes);
         }
 
@@ -550,5 +552,334 @@ internal static class SilkNestedInstanceLinkConformance
             hash *= 1099511628211UL;
         }
         return hash;
+    }
+
+    // Synthetic ABI24 pages exercise real offscreen batches, not the native publisher.
+    internal static async Task HighWordMasksSplitAndRecombineBatches(
+        ISilkGraphicsDevice device,
+        int index,
+        string difference)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        UInt128 blue = UInt128.One;
+        UInt128 high = UInt128.One << index;
+        var full = new SilkLightLinkMasks(blue | high, blue | high, 1u);
+        SilkLightLinkMasks changed = difference switch
+        {
+            "light" => new SilkLightLinkMasks(blue, blue | high, 1u),
+            "shadow" => new SilkLightLinkMasks(blue | high, blue, 1u),
+            "dome" => new SilkLightLinkMasks(blue | high, blue | high, 0u),
+            _ => throw new ArgumentOutOfRangeException(nameof(difference), difference, null),
+        };
+        SilkLightLinkMasks[] equalMasks = [full, full, full, full];
+        SilkLightLinkMasks[] splitMasks = [full, full, changed, changed];
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        var page = new List<byte[]>
+        {
+            HighWordFrame(index),
+            HighWordLightLink(index, (SilkLightLinkCommand.AllInstances, full)),
+            Quad(1, NestedPrototype, Positions[0]),
+        };
+        for (int instance = 1; instance < Positions.Length; instance++)
+        {
+            page.Add(InstanceReference(NestedPrototype, instance, Positions[instance]));
+        }
+        SilkMeshRendererConformance.Apply(renderer, revision: 1, [.. page]);
+        SilkMeshRenderResult equalResult = renderer.Render(color, depth);
+        byte[] equal = ReadPixels(color);
+
+        await Assert.That(equalResult.DrawCount).IsEqualTo(1)
+            .Because($"Bit {index}, {difference}: equal full masks must share one instance draw.");
+        await AssertRegionsAreExactlyTheFourQuads(CoveredColumns(equal), "high-word equal masks");
+        await AssertHighWordInstancePixels(equal, equalMasks, index, "equal masks");
+        ISilkGraphicsBuffer[] equalBuffers =
+            await AssertHighWordInstanceSurfaces(renderer, equalMasks, index, 1, "equal masks");
+
+        // Override the second OUTER instance's two composed identities. An
+        // inner-index-only lookup would wrongly give composed 0 and 2 the same
+        // result. Light and shadow low words remain 1 in every sibling scenario.
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 2,
+            HighWordLightLink(
+                index,
+                (SilkLightLinkCommand.AllInstances, full),
+                (2, changed),
+                (3, changed)));
+        SilkMeshRenderResult splitResult = renderer.Render(color, depth);
+        byte[] split = ReadPixels(color);
+        await Assert.That(splitResult.DrawCount).IsEqualTo(2)
+            .Because($"Bit {index}, {difference}: one independent mask difference must split the batch.");
+        await AssertHighWordInstanceCoverage(equal, split, $"split {difference} masks");
+        await AssertHighWordInstancePixels(split, splitMasks, index, $"split {difference} masks", equal);
+        ISilkGraphicsBuffer[] splitBuffers =
+            await AssertHighWordInstanceSurfaces(renderer, splitMasks, index, 2, $"split {difference} masks");
+        await Assert.That(splitBuffers[0]).IsSameReferenceAs(equalBuffers[0]);
+        if (difference == "shadow")
+        {
+            await Assert.That(split.AsSpan().SequenceEqual(equal)).IsTrue()
+                .Because(
+                    "Changing only high caster membership must not change receiver illumination. " +
+                    "The shadow-only binding operation has a separate command-recording unit test.");
+        }
+
+        // Dropping the composed overrides must remove the second batch and
+        // resolve every instance through the original full-width prototype row.
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 3,
+            HighWordLightLink(index, (SilkLightLinkCommand.AllInstances, full)));
+        SilkMeshRenderResult restoredResult = renderer.Render(color, depth);
+        byte[] restored = ReadPixels(color);
+        await Assert.That(restoredResult.DrawCount).IsEqualTo(1)
+            .Because("Retired composed masks must not keep a second batch alive.");
+        await Assert.That(restored.AsSpan().SequenceEqual(equal)).IsTrue()
+            .Because($"Restoring the {difference} masks must restore the complete original image.");
+        await AssertHighWordInstanceCoverage(equal, restored, $"restored {difference} masks");
+        ISilkGraphicsBuffer[] restoredBuffers =
+            await AssertHighWordInstanceSurfaces(renderer, equalMasks, index, 1, $"restored {difference} masks");
+        await Assert.That(restoredBuffers[0]).IsSameReferenceAs(equalBuffers[0]);
+
+        SilkMeshRenderResult repeatedResult = renderer.Render(color, depth);
+        byte[] repeated = ReadPixels(color);
+        await Assert.That(repeatedResult.DrawCount).IsEqualTo(1);
+        await Assert.That(repeated.AsSpan().SequenceEqual(equal)).IsTrue()
+            .Because("A subsequent unchanged frame must not resurrect an obsolete split or transform table.");
+        ISilkGraphicsBuffer[] repeatedBuffers =
+            await AssertHighWordInstanceSurfaces(renderer, equalMasks, index, 1, "unchanged recombined masks");
+        for (int instance = 0; instance < Positions.Length; instance++)
+        {
+            await Assert.That(repeatedBuffers[instance]).IsSameReferenceAs(restoredBuffers[instance]);
+        }
+    }
+
+    private static async Task<ISilkGraphicsBuffer[]> AssertHighWordInstanceSurfaces(
+        SilkMeshRenderer renderer,
+        SilkLightLinkMasks[] expected,
+        int index,
+        int expectedBatches,
+        string what)
+    {
+        await Assert.That(renderer.Scene.MeshesByPath.Count).IsEqualTo(4);
+        await Assert.That(renderer.BatchKeyCount).IsEqualTo(expectedBatches).Because(what);
+        await Assert.That(renderer.Scene.LightLinks.HasLinks).IsTrue();
+        await Assert.That(renderer.Scene.LightLinks.LightCount).IsEqualTo(checked((uint)index + 1));
+        await Assert.That(renderer.Scene.LightLinks.DomeCount).IsEqualTo(1u);
+        var buffers = new ISilkGraphicsBuffer[Positions.Length];
+        for (int instance = 0; instance < Positions.Length; instance++)
+        {
+            string evidence = $"{what}, bit {index}, composed instance {instance}";
+            SilkMeshData mesh = renderer.Scene.MeshesByPath[(NestedPrototype, instance)];
+            await Assert.That(mesh.InstanceIndex).IsEqualTo(instance).Because(evidence);
+            if (instance > 0)
+            {
+                await Assert.That(mesh.MaterialPath)
+                    .IsEqualTo(renderer.Scene.MeshesByPath[(NestedPrototype, 0)].MaterialPath)
+                    .Because("Only the masks may split the prototype's material key. " + evidence);
+            }
+            SilkLightLinkMasks resolved = renderer.Scene.LightLinks.Resolve(NestedPrototype, instance);
+            await Assert.That(resolved.LightMask).IsEqualTo(expected[instance].LightMask).Because(evidence);
+            await Assert.That(resolved.ShadowMask).IsEqualTo(expected[instance].ShadowMask).Because(evidence);
+            await Assert.That(resolved.DomeMask).IsEqualTo(expected[instance].DomeMask).Because(evidence);
+            buffers[instance] = renderer.GpuResources.RequireSurfaceBuffer(
+                renderer.Scene, mesh, RenderHeadlight.Deterministic);
+            await Assert.That(buffers[instance].Size).IsEqualTo((nuint)240).Because(evidence);
+            var bytes = new byte[240];
+            buffers[instance].ReadbackForTesting(bytes);
+            await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208, 16)))
+                .IsEqualTo(expected[instance].LightMask).Because(evidence);
+            await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(224, 16)))
+                .IsEqualTo(expected[instance].ShadowMask).Because(evidence);
+            await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(76, 4)))
+                .IsEqualTo(0u).Because(evidence);
+            await Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(140, 4)))
+                .IsEqualTo(0u).Because(evidence);
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(192, 4)))
+                .IsEqualTo((float)expected[instance].DomeMask).Because(evidence);
+            for (int previous = 0; previous < instance; previous++)
+            {
+                await Assert.That(ReferenceEquals(buffers[instance], buffers[previous]))
+                    .IsEqualTo(expected[instance] == expected[previous])
+                    .Because($"{evidence}: only equal complete mask values may share a surface.");
+            }
+        }
+        return buffers;
+    }
+
+    private static async Task AssertHighWordInstancePixels(
+        byte[] pixels,
+        SilkLightLinkMasks[] expected,
+        int index,
+        string what,
+        byte[]? equalImage = null)
+    {
+        for (int instance = 0; instance < Centres.Length; instance++)
+        {
+            bool red = (expected[instance].LightMask & (UInt128.One << index)) != UInt128.Zero;
+            bool green = (expected[instance].DomeMask & 1u) != 0;
+            foreach (int y in new[] { 28, SampleY, 36 })
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int x = Centres[instance] + dx;
+                    int offset = checked(((y * (int)Size) + x) * 4);
+                    string evidence =
+                        $"{what}, bit {index}, composed {instance} at ({x},{y}): " +
+                        $"rgba({pixels[offset]},{pixels[offset + 1]}," +
+                        $"{pixels[offset + 2]},{pixels[offset + 3]}).";
+                    if (red)
+                    {
+                        await Assert.That(pixels[offset]).IsGreaterThan((byte)60).Because(evidence);
+                    }
+                    else
+                    {
+                        await Assert.That(pixels[offset]).IsLessThan((byte)3).Because(evidence);
+                    }
+                    if (green)
+                    {
+                        await Assert.That(pixels[offset + 1]).IsGreaterThan((byte)24).Because(evidence);
+                    }
+                    else
+                    {
+                        await Assert.That(pixels[offset + 1]).IsLessThan((byte)3).Because(evidence);
+                    }
+                    await Assert.That(pixels[offset + 2]).IsGreaterThan((byte)12).Because(evidence);
+                    if (equalImage is not null)
+                    {
+                        if (red)
+                        {
+                            await Assert.That(pixels[offset]).IsEqualTo(equalImage[offset]).Because(evidence);
+                        }
+                        else
+                        {
+                            await Assert.That((int)equalImage[offset] - pixels[offset])
+                                .IsGreaterThan(48).Because(evidence);
+                        }
+                        if (green)
+                        {
+                            await Assert.That(pixels[offset + 1])
+                                .IsEqualTo(equalImage[offset + 1]).Because(evidence);
+                        }
+                        else
+                        {
+                            await Assert.That((int)equalImage[offset + 1] - pixels[offset + 1])
+                                .IsGreaterThan(24).Because(evidence);
+                        }
+                        // A dome-only change is visible in green, not red or blue.
+                        // This independently observes dome-only forward-pass rebinding.
+                        for (int channel = 2; channel < 4; channel++)
+                        {
+                            await Assert.That(pixels[offset + channel])
+                                .IsEqualTo(equalImage[offset + channel]).Because(evidence);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static async Task AssertHighWordInstanceCoverage(
+        byte[] baseline,
+        byte[] pixels,
+        string what)
+    {
+        await AssertRegionsAreExactlyTheFourQuads(CoveredColumns(pixels), what);
+        await Assert.That(CoveredTexelCount(pixels)).IsEqualTo(CoveredTexelCount(baseline))
+            .Because($"{what}: splitting must not duplicate or drop any instance.");
+        await Assert.That(
+                HighWordInstanceCoverage(pixels).AsSpan().SequenceEqual(HighWordInstanceCoverage(baseline)))
+            .IsTrue().Because($"{what}: every transformed footprint, not only its centre, must stay fixed.");
+        await Assert.That(pixels.AsSpan(0, 4).SequenceEqual(baseline.AsSpan(0, 4)))
+            .IsTrue().Because($"{what}: the excluded background must remain unchanged.");
+    }
+
+    private static bool[] HighWordInstanceCoverage(byte[] pixels)
+    {
+        var covered = new bool[pixels.Length / 4];
+        for (int texel = 0; texel < covered.Length; texel++)
+        {
+            int offset = texel * 4;
+            covered[texel] =
+                pixels[offset] != pixels[0] ||
+                pixels[offset + 1] != pixels[1] ||
+                pixels[offset + 2] != pixels[2] ||
+                pixels[offset + 3] != pixels[3];
+        }
+        return covered;
+    }
+
+    private static byte[] HighWordFrame(int index)
+    {
+        // ABI24: 128 direct slots, ambient at 23080, dome count/table at 23096/23112.
+        var bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), (int)Size);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), (int)Size);
+        double[] identity = SilkMeshRendererConformance.Identity();
+        for (int element = 0; element < 16; element++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), identity[element]);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), identity[element]);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), checked((uint)index + 1));
+        // Authored-direct flag candidate 0x1: no unannounced managed accessor is assumed.
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(540), 0x1u);
+        for (int light = 0; light <= index; light++)
+        {
+            int entry = 552 + (light * 176);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), 1u); // distant
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 16), light == index ? 1f : 0f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 24), light == 0 ? 1f : 0f);
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(entry + 28), light == index ? 1f : light == 0 ? 0.3f : 0f);
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(entry + 32 + (element * 8)), identity[element]);
+            }
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 164), 1f);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 172), 0.5f);
+        }
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23080 + 4), 0.6f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23080 + 12), 1f);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23096), 1u);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23112 + 4), 0.6f);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23112 + 16), 1u); // present, untextured
+        return bytes;
+    }
+
+    private static byte[] HighWordLightLink(
+        int index,
+        params (int InstanceIndex, SilkLightLinkMasks Masks)[] entries)
+    {
+        byte[] path = Encoding.UTF8.GetBytes(NestedPrototype);
+        var bytes = new byte[24 + (entries.Length * (44 + path.Length))];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.LightLink);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)entries.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), checked((uint)index + 1));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(16), (uint)SilkLightLinkUnsupportedFeatures.None);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), 1u);
+        int entry = 24;
+        foreach ((int instanceIndex, SilkLightLinkMasks masks) in entries)
+        {
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(entry), masks.LightMask);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(entry + 16), masks.ShadowMask);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 32), masks.DomeMask);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(entry + 36), instanceIndex);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 40), (uint)path.Length);
+            path.CopyTo(bytes, entry + 44);
+            entry += 44 + path.Length;
+        }
+        return bytes;
     }
 }

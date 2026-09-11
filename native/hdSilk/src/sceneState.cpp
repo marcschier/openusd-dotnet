@@ -683,6 +683,49 @@ HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode
     return result;
 }
 
+bool HasDirectLightOutput(const HdSilkLightRecord& light)
+{
+    return light.visible &&
+        light.intensity != 0.0f &&
+        (light.color[0] != 0.0f || light.color[1] != 0.0f || light.color[2] != 0.0f) &&
+        (light.diffuse != 0.0f || light.specular != 0.0f) &&
+        light.intensity * std::pow(2.0f, light.exposure) != 0.0f;
+}
+
+void ValidateDirectLight(const HdSilkLightRecord& light)
+{
+    const auto validate = [&light](double value, const char* field)
+    {
+        if (!std::isfinite(value) ||
+            value > std::numeric_limits<float>::max() ||
+            value < -std::numeric_limits<float>::max())
+        {
+            throw std::runtime_error(
+                "hdSilk refused direct light '" + light.path +
+                "': " + field + " is not representable as a finite GPU value.");
+        }
+    };
+    validate(light.intensity, "intensity");
+    validate(light.exposure, "exposure");
+    validate(light.diffuse, "diffuse");
+    validate(light.specular, "specular");
+    validate(light.radius, "radius");
+    validate(light.shapeX, "shape_x");
+    validate(light.shapeY, "shape_y");
+    for (float component : light.color)
+    {
+        validate(component, "color");
+    }
+    for (double component : light.transform)
+    {
+        validate(component, "transform");
+    }
+    if (HasDirectLightOutput(light))
+    {
+        validate(light.intensity * std::pow(2.0f, light.exposure), "exposed intensity");
+    }
+}
+
 /// Splits the retained lights into the ordered direct-light table the FRAME
 /// command publishes, the bounded dome table it publishes beside it, and the
 /// single accumulated ambient term. Separated from AppendFrame because the
@@ -700,12 +743,14 @@ void SelectDirectLights(
     std::vector<HdSilkLightRecord>* outDirectLights,
     std::vector<HdSilkFrameDome>* outDomes,
     bool* outDomeBudgetExceeded,
+    uint32_t* outLightingFlags,
     float (&outAmbientColor)[3],
     float* outAmbientIntensity)
 {
     outDirectLights->clear();
     outDomes->clear();
     *outDomeBudgetExceeded = false;
+    *outLightingFlags = OPENUSD_SILK_FRAME_LIGHTING_NONE;
     outAmbientColor[0] = 0.0f;
     outAmbientColor[1] = 0.0f;
     outAmbientColor[2] = 0.0f;
@@ -774,6 +819,12 @@ void SelectDirectLights(
             }
             continue;
         }
+        *outLightingFlags |= OPENUSD_SILK_FRAME_LIGHTING_HAS_AUTHORED_DIRECT_LIGHTS;
+        ValidateDirectLight(light);
+        if (!HasDirectLightOutput(light))
+        {
+            continue;
+        }
         ++directLightCount;
         if (outDirectLights->size() < OPENUSD_SILK_MAX_FRAME_LIGHTS)
         {
@@ -782,11 +833,12 @@ void SelectDirectLights(
     }
     if (directLightCount > OPENUSD_SILK_MAX_FRAME_LIGHTS)
     {
-        TF_WARN(
-            "hdSilk retained %zu of %zu direct lights; the page ABI limit is %u",
-            outDirectLights->size(),
-            directLightCount,
-            OPENUSD_SILK_MAX_FRAME_LIGHTS);
+        throw std::length_error(
+            "hdSilk refused the frame: " + std::to_string(directLightCount) +
+            " effective direct lights exceed the bounded limit of " +
+            std::to_string(OPENUSD_SILK_MAX_FRAME_LIGHTS) +
+            ". Reduce visible, nonzero direct lights to 128 or fewer and retry; "
+            "no command page was published.");
     }
     if (domeCount > OPENUSD_SILK_MAX_DOME_LIGHTS)
     {
@@ -818,6 +870,7 @@ void AppendFrame(
     const HdSilkFrameState& frame,
     const std::vector<HdSilkLightRecord>& directLights,
     const std::vector<HdSilkFrameDome>& domes,
+    uint32_t lightingFlags,
     const float (&ambientColor)[3],
     float ambientIntensity)
 {
@@ -853,7 +906,7 @@ void AppendFrame(
     }
 
     AppendU32(payload, CheckedCount(directLights.size(), "frame light count"));
-    AppendU32(payload, 0);
+    AppendU32(payload, lightingFlags);
     AppendU32(payload, 0);
     AppendU32(payload, 0);
     for (size_t i = 0; i < OPENUSD_SILK_MAX_FRAME_LIGHTS; ++i)
@@ -1834,7 +1887,8 @@ void AppendMeshUpsert(
         AppendU32(payload, value);
     }
     AppendBytes(payload, complexRecord.materialPath.data(), complexRecord.materialPath.size());
-    for (const HdSilkMeshAttribute& attribute : complexRecord.attributes)
+    const HdSilkMeshAttributes& attributes = complexRecord.attributes;
+    for (const HdSilkMeshAttribute& attribute : attributes)
     {
         AppendU32(payload, attribute.semantic);
         AppendU32(payload, attribute.componentCount);
@@ -2222,7 +2276,7 @@ void AppendEnvironmentRemove(std::vector<uint8_t>& buffer, const std::string& pa
 void AppendLightLink(std::vector<uint8_t>& buffer, const HdSilkLinkTable& table)
 {
     std::vector<uint8_t> payload;
-    payload.reserve(16 + (table.entries.size() * 28));
+    payload.reserve(16 + (table.entries.size() * 44));
     AppendU32(payload, CheckedCount(table.entries.size(), "light link entry count"));
     AppendU32(payload, table.lightCount);
     AppendU32(payload, table.flags);
@@ -2230,8 +2284,14 @@ void AppendLightLink(std::vector<uint8_t>& buffer, const HdSilkLinkTable& table)
     for (const HdSilkLinkEntry& entry : table.entries)
     {
         ValidatePath(entry.path);
-        AppendU32(payload, entry.lightMask);
-        AppendU32(payload, entry.shadowMask);
+        for (uint32_t word : entry.lightMask.words)
+        {
+            AppendU32(payload, word);
+        }
+        for (uint32_t word : entry.shadowMask.words)
+        {
+            AppendU32(payload, word);
+        }
         AppendU32(payload, entry.domeMask);
         AppendI32(payload, entry.instanceIndex);
         AppendU32(payload, CheckedCount(entry.path.size(), "path byte count"));
@@ -2344,16 +2404,15 @@ void ResolveLinkMasks(
     const std::vector<HdSilkLightRecord>& directLights,
     const std::vector<HdSilkFrameDome>& domes,
     const std::vector<std::string>& categories,
-    uint32_t* outLightMask,
-    uint32_t* outShadowMask,
+    HdSilkLightMask* outLightMask,
+    HdSilkLightMask* outShadowMask,
     uint32_t* outDomeMask)
 {
-    uint32_t lightMask = 0;
-    uint32_t shadowMask = 0;
+    HdSilkLightMask lightMask;
+    HdSilkLightMask shadowMask;
     uint32_t domeMask = 0;
     for (size_t index = 0; index < directLights.size(); ++index)
     {
-        const uint32_t bit = 1u << index;
         const HdSilkLightRecord& light = directLights[index];
         if (light.lightLinkCategory.empty() ||
             std::find(
@@ -2361,7 +2420,7 @@ void ResolveLinkMasks(
                 categories.end(),
                 light.lightLinkCategory) != categories.end())
         {
-            lightMask |= bit;
+            lightMask.Set(index);
         }
 
         // Resolved independently of the light mask on purpose. UsdLux defines
@@ -2378,7 +2437,7 @@ void ResolveLinkMasks(
                 categories.end(),
                 light.shadowLinkCategory) != categories.end())
         {
-            shadowMask |= bit;
+            shadowMask.Set(index);
         }
     }
 
@@ -2472,8 +2531,9 @@ HdSilkSceneState::HasLightLinks() const
             }
             continue;
         }
-        if (!entry.second.lightLinkCategory.empty() ||
-            !entry.second.shadowLinkCategory.empty())
+        if (HasDirectLightOutput(entry.second) &&
+            (!entry.second.lightLinkCategory.empty() ||
+                !entry.second.shadowLinkCategory.empty()))
         {
             return true;
         }
@@ -2533,9 +2593,8 @@ HdSilkSceneState::_ResolveLinkTable(
         return empty;
     }
 
-    const uint32_t defaultMask = directLights.size() >= 32
-        ? 0xFFFFFFFFu
-        : ((1u << directLights.size()) - 1u);
+    const HdSilkLightMask defaultMask =
+        HdSilkLightMask::First(static_cast<uint32_t>(directLights.size()));
     const uint32_t defaultDomeMask = domes.size() >= 32
         ? 0xFFFFFFFFu
         : ((1u << domes.size()) - 1u);
@@ -2597,8 +2656,8 @@ HdSilkSceneState::_ResolveLinkTable(
         // omit an instance that opts back into every light under a path that
         // opts out of one, and the consumer would fall back to the path's
         // narrower mask.
-        uint32_t pathLight = defaultMask;
-        uint32_t pathShadow = defaultMask;
+        HdSilkLightMask pathLight = defaultMask;
+        HdSilkLightMask pathShadow = defaultMask;
         uint32_t pathDome = defaultDomeMask;
         if (rows.pathRow != nullptr)
         {
@@ -2627,8 +2686,8 @@ HdSilkSceneState::_ResolveLinkTable(
         }
         for (const HdSilkCategoryMembership* instanceRow : rows.instanceRows)
         {
-            uint32_t lightMask = 0;
-            uint32_t shadowMask = 0;
+            HdSilkLightMask lightMask;
+            HdSilkLightMask shadowMask;
             uint32_t domeMask = 0;
             ResolveLinkMasks(
                 directLights,
@@ -2909,10 +2968,9 @@ HdSilkSceneState::_ResolveShadowTable(
         descriptor.normalBias = static_cast<float>(1.5 * texelWorldSize);
         descriptor.pcfRadius = 1.0f;
 
-        const uint32_t bit = 1u << descriptor.lightIndex;
         for (const HdSilkLinkEntry& entry : links.entries)
         {
-            if ((entry.shadowMask & bit) == 0u)
+            if (!entry.shadowMask.Contains(descriptor.lightIndex))
             {
                 descriptor.flags |= OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED;
                 break;
@@ -3115,6 +3173,8 @@ void
 HdSilkSceneState::ResetForSceneIngestionChange()
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    // The consumer retains published tables across imaging rebuilds. Preserve
+    // their snapshots so the next page can emit replacements and retirements.
     for (const auto& entry : _meshes)
     {
         _pendingRemovals.push_back(entry.first);
@@ -3127,10 +3187,6 @@ HdSilkSceneState::ResetForSceneIngestionChange()
         _pendingMaterialRemovals.push_back(entry.first);
     }
     _materials.clear();
-
-    _publishedLinks = HdSilkLinkTable();
-    _publishedShadows = HdSilkShadowTable();
-    _publishedEnvironments.clear();
 }
 
 void
@@ -3351,6 +3407,7 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     std::vector<HdSilkLightRecord> directLights;
     std::vector<HdSilkFrameDome> domes;
     bool domeBudgetExceeded = false;
+    uint32_t lightingFlags = OPENUSD_SILK_FRAME_LIGHTING_NONE;
     float ambientColor[3] = {0.0f, 0.0f, 0.0f};
     float ambientIntensity = 0.0f;
     SelectDirectLights(
@@ -3358,10 +3415,12 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         &directLights,
         &domes,
         &domeBudgetExceeded,
+        &lightingFlags,
         ambientColor,
         &ambientIntensity);
 
-    AppendFrame(buffer, _frame, directLights, domes, ambientColor, ambientIntensity);
+    AppendFrame(
+        buffer, _frame, directLights, domes, lightingFlags, ambientColor, ambientIntensity);
     size_t appendedCommands = 1;
 
     // The link table follows the frame it indexes and precedes every command
@@ -3371,21 +3430,8 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     HdSilkShadowTable shadows = _ResolveShadowTable(directLights, links);
     if (links != _publishedLinks)
     {
-        const size_t bufferSize = buffer.size();
-        try
-        {
-            AppendLightLink(buffer, links);
-            ++appendedCommands;
-            _publishedLinks = std::move(links);
-        }
-        catch (const std::exception& error)
-        {
-            // A rejected table leaves the previously published linking in place
-            // rather than half replacing it, and is not recorded as published,
-            // so the next page retries it.
-            buffer.resize(bufferSize);
-            TF_WARN("hdSilk skipped the light link table: %s", error.what());
-        }
+        AppendLightLink(buffer, links);
+        ++appendedCommands;
     }
 
     // The shadow table follows the link table it depends on: a descriptor's
@@ -3395,18 +3441,8 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     // caster bounds produced.
     if (shadows != _publishedShadows)
     {
-        const size_t bufferSize = buffer.size();
-        try
-        {
-            AppendShadow(buffer, shadows);
-            ++appendedCommands;
-            _publishedShadows = std::move(shadows);
-        }
-        catch (const std::exception& error)
-        {
-            buffer.resize(bufferSize);
-            TF_WARN("hdSilk skipped the shadow table: %s", error.what());
-        }
+        AppendShadow(buffer, shadows);
+        ++appendedCommands;
     }
 
 
@@ -3659,6 +3695,8 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         entry->dirty = false;
     }
     _pendingMaterialRemovals.clear();
+    _publishedLinks = std::move(links);
+    _publishedShadows = std::move(shadows);
 
     ++_revision;
     if (outRevision != nullptr)

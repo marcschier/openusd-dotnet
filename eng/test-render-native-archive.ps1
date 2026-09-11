@@ -86,8 +86,16 @@ try
             Name = 'openusd_dotnet.h'
         },
         @{
+            Source = 'native/openusd_dotnet/include/openusd_image_exr.h'
+            Name = 'openusd_image_exr.h'
+        },
+        @{
             Source = 'native/openusd_hydra/include/openusd_hydra.h'
             Name = 'openusd_hydra.h'
+        },
+        @{
+            Source = 'native/openusd_hydra/include/openusd_storm_aov.h'
+            Name = 'openusd_storm_aov.h'
         },
         @{
             Source = 'native/hdSilk/include/openusd_hdsilk.h'

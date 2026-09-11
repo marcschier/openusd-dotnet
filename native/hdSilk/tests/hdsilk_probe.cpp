@@ -89,8 +89,17 @@ struct ParsedAttribute
     float firstValue = 0.0F;
     std::vector<float> values;
 };
-static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 5);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 23);
+static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 24);
+static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
+
+using ParsedLightMask = std::array<uint32_t, 4>;
+
+std::ostream& operator<<(std::ostream& stream, const ParsedLightMask& mask)
+{
+    return stream << "[" << mask[0] << "," << mask[1] << ","
+                  << mask[2] << "," << mask[3] << "]";
+}
 
 /// One decoded ABI v20 deformation block. The probe decodes the whole rig
 /// rather than its header, because the only assertion worth making about a
@@ -320,6 +329,7 @@ struct ParsedPage
     std::array<double, 16> frame_view{};
     std::array<double, 16> frame_projection{};
     uint32_t frame_light_count = 0;
+    uint32_t frame_lighting_flags = 0;
     // ABI v21 dome table. dome_count is the ordering a LIGHT_LINK dome_mask
     // indexes; the per-dome ambient and flags are read so a masked dome sum can
     // be checked against the scene-wide ambient it must reproduce.
@@ -327,7 +337,7 @@ struct ParsedPage
     std::array<float, 3> frame_ambient{};
     std::vector<std::tuple<float, float, float, uint32_t>> frame_domes;
 
-    // ABI v18 light linking. The table is sparse and default-free, so its
+    // ABI v24 light linking. The table is sparse and default-free, so its
     // presence and exact contents are the evidence that a collection resolved
     // into per-prim masks rather than into a table that names every prim.
     uint32_t light_link_count = 0;
@@ -336,7 +346,7 @@ struct ParsedPage
     uint32_t light_link_unsupported = 0;
     uint32_t light_link_dome_count = 0;
     // (path, instance_index, light_mask, shadow_mask, dome_mask)
-    std::vector<std::tuple<std::string, int32_t, uint32_t, uint32_t, uint32_t>>
+    std::vector<std::tuple<std::string, int32_t, ParsedLightMask, ParsedLightMask, uint32_t>>
         light_links;
     // ABI v21 environment dome indices, keyed by dome prim path, so a probe can
     // prove the bit an ENVIRONMENT record claims is the bit the dome table
@@ -744,11 +754,13 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
 
         if (type == OPENUSD_SILK_COMMAND_FRAME)
         {
-            ++result.frame_count;
             constexpr size_t payloadOffset = 8;
             constexpr size_t viewOffset = payloadOffset + 8;
             constexpr size_t projectionOffset = viewOffset + (16 * sizeof(double));
-            if (!ReadValue(
+            uint32_t lightingReserved0 = 1;
+            uint32_t lightingReserved1 = 1;
+            if (byteSize != 23368u ||
+                !ReadValue(
                     data,
                     size,
                     offset + payloadOffset,
@@ -758,12 +770,20 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     size,
                     offset + payloadOffset + sizeof(int32_t),
                     &result.frame_height) ||
+                !ReadValue(data, size, offset + 536, &result.frame_light_count) ||
+                !ReadValue(data, size, offset + 540, &result.frame_lighting_flags) ||
+                !ReadValue(data, size, offset + 544, &lightingReserved0) ||
+                !ReadValue(data, size, offset + 548, &lightingReserved1) ||
+                result.frame_light_count > 128u ||
+                (result.frame_lighting_flags & ~1u) != 0u ||
+                lightingReserved0 != 0u || lightingReserved1 != 0u ||
                 projectionOffset + (16 * sizeof(double)) >
                     static_cast<size_t>(byteSize))
             {
                 std::cerr << "Malformed FRAME command.\n";
                 break;
             }
+            ++result.frame_count;
             std::memcpy(
                 result.frame_view.data(),
                 data + offset + viewOffset,
@@ -773,23 +793,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 data + offset + projectionOffset,
                 sizeof(result.frame_projection));
 
-            // The direct-light count the LIGHT_LINK masks index. Reading it here
-            // keeps a link-table assertion from passing for the wrong reason,
-            // because a table that indexes no lights masks nothing.
-            constexpr size_t lightCountOffset = 536;
-            if (static_cast<size_t>(byteSize) >= lightCountOffset + sizeof(uint32_t))
-            {
-                static_cast<void>(ReadValue(
-                    data,
-                    size,
-                    offset + lightCountOffset,
-                    &result.frame_light_count));
-            }
-
-            // The ABI v21 dome table. It follows the eight fixed light entries
-            // and the scene-wide ambient term: 552 header, 8 * 176 lights, 16
-            // ambient.
-            constexpr size_t ambientOffset = 552 + (8 * 176);
+            // ABI v24 keeps the dome layout after 128 fixed direct entries:
+            // 552 header, 128 * 176 lights, then 16 bytes of ambient.
+            constexpr size_t ambientOffset = 23080;
             constexpr size_t domeCountOffset = ambientOffset + 16;
             constexpr size_t domeTableOffset = domeCountOffset + 16;
             if (static_cast<size_t>(byteSize) >=
@@ -1592,7 +1598,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             uint32_t lightCount = 0;
             uint32_t unsupported = 0;
             uint32_t domeCount = 0;
-            bool valid = ReadValue(data, size, offset + 8, &entryCount) &&
+            bool valid = byteSize >= 24u &&
+                ReadValue(data, size, offset + 8, &entryCount) &&
                 ReadValue(data, size, offset + 12, &lightCount) &&
                 ReadValue(data, size, offset + 16, &unsupported) &&
                 ReadValue(data, size, offset + 20, &domeCount) &&
@@ -1602,25 +1609,36 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             size_t cursor = 24;
             for (uint32_t entry = 0; valid && entry < entryCount; ++entry)
             {
-                uint32_t lightMask = 0;
-                uint32_t shadowMask = 0;
+                ParsedLightMask lightMask{};
+                ParsedLightMask shadowMask{};
                 uint32_t domeMask = 0;
                 int32_t instanceIndex = 0;
                 uint32_t pathSize = 0;
-                valid = ReadValue(data, size, offset + cursor, &lightMask) &&
-                    ReadValue(data, size, offset + cursor + 4, &shadowMask) &&
-                    ReadValue(data, size, offset + cursor + 8, &domeMask) &&
-                    ReadValue(data, size, offset + cursor + 12, &instanceIndex) &&
-                    ReadValue(data, size, offset + cursor + 16, &pathSize) &&
+                valid = cursor <= byteSize && byteSize - cursor >= 44u;
+                for (uint32_t word = 0; valid && word < 4; ++word)
+                {
+                    const uint32_t firstBit = word * 32u;
+                    const uint32_t validBits = lightCount <= firstBit ? 0u :
+                        lightCount >= firstBit + 32u ? 0xffffffffu :
+                        (1u << (lightCount - firstBit)) - 1u;
+                    valid = ReadValue(
+                            data, size, offset + cursor + word * 4u, &lightMask[word]) &&
+                        ReadValue(
+                            data, size, offset + cursor + 16u + word * 4u, &shadowMask[word]) &&
+                        (lightMask[word] & ~validBits) == 0u &&
+                        (shadowMask[word] & ~validBits) == 0u;
+                }
+                valid = valid &&
+                    ReadValue(data, size, offset + cursor + 32, &domeMask) &&
+                    ReadValue(data, size, offset + cursor + 36, &instanceIndex) &&
+                    ReadValue(data, size, offset + cursor + 40, &pathSize) &&
                     pathSize > 0 &&
                     instanceIndex >= OPENUSD_SILK_LINK_ALL_INSTANCES &&
                     // Bits at or above the published counts must be zero, which
                     // is what keeps a mask from naming a light or a dome the
                     // frame never published.
-                    (lightCount >= 32 || lightMask < (1u << lightCount)) &&
-                    (lightCount >= 32 || shadowMask < (1u << lightCount)) &&
-                    (domeCount >= 32 || domeMask < (1u << domeCount)) &&
-                    AddSize(&cursor, 20) &&
+                    domeMask < (1u << domeCount) &&
+                    AddSize(&cursor, 44) &&
                     cursor <= byteSize &&
                     static_cast<size_t>(pathSize) <= byteSize - cursor;
                 if (!valid)
@@ -3431,15 +3449,15 @@ bool VerifyLightLinkTableResolvesCategories()
     // and an unlit prim still casts.
     if (std::get<0>(page.light_links[0]) != "/Geom/Unlit" ||
         std::get<1>(page.light_links[0]) != OPENUSD_SILK_LINK_ALL_INSTANCES ||
-        std::get<2>(page.light_links[0]) != 0x2u ||
-        std::get<3>(page.light_links[0]) != 0x3u)
+        std::get<2>(page.light_links[0]) != ParsedLightMask{0x2u, 0u, 0u, 0u} ||
+        std::get<3>(page.light_links[0]) != ParsedLightMask{0x3u, 0u, 0u, 0u})
     {
         return false;
     }
     if (std::get<0>(page.light_links[1]) != "/Geom/Unlit" ||
         std::get<1>(page.light_links[1]) != 3 ||
-        std::get<2>(page.light_links[1]) != 0x3u ||
-        std::get<3>(page.light_links[1]) != 0x3u)
+        std::get<2>(page.light_links[1]) != ParsedLightMask{0x3u, 0u, 0u, 0u} ||
+        std::get<3>(page.light_links[1]) != ParsedLightMask{0x3u, 0u, 0u, 0u})
     {
         return false;
     }
@@ -3505,8 +3523,8 @@ bool VerifyShadowLinkNarrowsOnlyTheShadowMask()
         page.light_link_count == 1 &&
         page.light_links.size() == 1 &&
         std::get<0>(page.light_links[0]) == "/Geom/Receiver" &&
-        std::get<2>(page.light_links[0]) == 0x1u &&
-        std::get<3>(page.light_links[0]) == 0x0u;
+        std::get<2>(page.light_links[0]) == ParsedLightMask{0x1u, 0u, 0u, 0u} &&
+        std::get<3>(page.light_links[0]) == ParsedLightMask{0x0u, 0u, 0u, 0u};
 }
 
 /// The two link collections are resolved independently. A prim excluded from a
@@ -3543,8 +3561,8 @@ bool VerifyUnlitBlockerStillPublishesItsShadowBit()
         page.light_link_count == 1 &&
         page.light_links.size() == 1 &&
         std::get<0>(page.light_links[0]) == "/Geom/Blocker" &&
-        std::get<2>(page.light_links[0]) == 0x0u &&
-        std::get<3>(page.light_links[0]) == 0x1u;
+        std::get<2>(page.light_links[0]) == ParsedLightMask{0x0u, 0u, 0u, 0u} &&
+        std::get<3>(page.light_links[0]) == ParsedLightMask{0x1u, 0u, 0u, 0u};
 }
 
 /// A table larger than the page budget reports the omission rather than
@@ -3637,8 +3655,8 @@ bool VerifyDefaultPrimsDoNotConsumeTheLinkBudget()
         page.light_links.size() == 1 &&
         std::get<0>(page.light_links[0]) == "/Geom/Excluded" &&
         std::get<1>(page.light_links[0]) == OPENUSD_SILK_LINK_ALL_INSTANCES &&
-        std::get<2>(page.light_links[0]) == 0x0u &&
-        std::get<3>(page.light_links[0]) == 0x1u &&
+        std::get<2>(page.light_links[0]) == ParsedLightMask{0x0u, 0u, 0u, 0u} &&
+        std::get<3>(page.light_links[0]) == ParsedLightMask{0x1u, 0u, 0u, 0u} &&
         page.light_link_unsupported == OPENUSD_SILK_LIGHT_LINK_UNSUPPORTED_NONE;
 }
 
@@ -3734,12 +3752,12 @@ bool VerifyCategoryDifferingInstancesResolvingToTheirPathCostNothing()
     // whose categories move a mask, and it moves only the shadow mask.
     return std::get<0>(page.light_links[0]) == "/Geom/Scattered" &&
         std::get<1>(page.light_links[0]) == OPENUSD_SILK_LINK_ALL_INSTANCES &&
-        std::get<2>(page.light_links[0]) == 0x0u &&
-        std::get<3>(page.light_links[0]) == 0x0u &&
+        std::get<2>(page.light_links[0]) == ParsedLightMask{0x0u, 0u, 0u, 0u} &&
+        std::get<3>(page.light_links[0]) == ParsedLightMask{0x0u, 0u, 0u, 0u} &&
         std::get<0>(page.light_links[1]) == "/Geom/Scattered" &&
         std::get<1>(page.light_links[1]) == overrideIndex &&
-        std::get<2>(page.light_links[1]) == 0x0u &&
-        std::get<3>(page.light_links[1]) == 0x1u;
+        std::get<2>(page.light_links[1]) == ParsedLightMask{0x0u, 0u, 0u, 0u} &&
+        std::get<3>(page.light_links[1]) == ParsedLightMask{0x1u, 0u, 0u, 0u};
 }
 
 /// A path whose resolved entries do not fit is omitted whole, so it fails open
@@ -4568,9 +4586,9 @@ bool VerifyNestedInstanceLinksReachTheWire()
             std::get<1>(page.light_links[entry]) !=
                 std::get<0>(expected[entry]) ||
             std::get<2>(page.light_links[entry]) !=
-                std::get<1>(expected[entry]) ||
+                ParsedLightMask{std::get<1>(expected[entry]), 0u, 0u, 0u} ||
             std::get<3>(page.light_links[entry]) !=
-                std::get<2>(expected[entry]) ||
+                ParsedLightMask{std::get<2>(expected[entry]), 0u, 0u, 0u} ||
             std::get<4>(page.light_links[entry]) !=
                 std::get<3>(expected[entry]))
         {
@@ -5349,12 +5367,12 @@ bool VerifyPrimvarAttributes(const std::vector<ParsedAttribute>& attributes)
     return st->semantic == OPENUSD_SILK_ATTRIBUTE_TEXCOORD &&
         st->componentCount == 2 &&
         st->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        st->elementCount == 6 &&
+        st->elementCount == 4 &&
         st->firstValue == 0.0F &&
         weight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
         weight->componentCount == 1 &&
         weight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        weight->elementCount == 6 &&
+        weight->elementCount == 4 &&
         weight->firstValue == 0.25F &&
         tint->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
         tint->componentCount == 3 &&
@@ -5364,17 +5382,17 @@ bool VerifyPrimvarAttributes(const std::vector<ParsedAttribute>& attributes)
         normals->semantic == OPENUSD_SILK_ATTRIBUTE_NORMAL &&
         normals->componentCount == 3 &&
         normals->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        normals->elementCount == 6 &&
+        normals->elementCount == 4 &&
         normals->firstValue == 0.0F &&
         faceWeight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
         faceWeight->componentCount == 1 &&
         faceWeight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        faceWeight->elementCount == 6 &&
+        faceWeight->elementCount == 4 &&
         faceWeight->firstValue == 0.125F &&
         uniformWeight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
         uniformWeight->componentCount == 1 &&
         uniformWeight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        uniformWeight->elementCount == 6 &&
+        uniformWeight->elementCount == 4 &&
         uniformWeight->firstValue == 0.875F;
 }
 
@@ -5961,21 +5979,18 @@ bool VerifyOrientationWinding(const ParsedPage& page)
         return false;
     }
 
-    // The face-varying mesh expands its topology: face-varying data is one
-    // element per triangulated corner in HdMeshUtil's order, so the emitted
-    // vertices are one per corner and the winding shows up in the point order
-    // rather than in the indices. Every emitted vertex must carry the corner
-    // value authored for the point it was expanded from. cornerId is authored
+    // Without authored normals, this face-varying mesh retains the existing
+    // triangle-local normal fallback. Every emitted corner must still carry
+    // the value authored for its point. cornerId is authored
     // 10, 11, 12, 13 for points 0, 1, 2, 3, so this is a direct
     // point-to-corner cross-check that permuting one array without the other
     // cannot satisfy.
     const ParsedCurves& faceVarying = page.left_handed_face_varying_mesh;
     const ParsedAttribute* corner =
         FindAttribute(faceVarying.attributes, "cornerId");
-    const std::vector<uint32_t> expandedIndices{0, 1, 2, 3, 4, 5};
     if (!faceVarying.found ||
         faceVarying.triangle_count != 2 ||
-        faceVarying.indices != expandedIndices ||
+        faceVarying.indices.size() != expectedLeft.size() ||
         faceVarying.points.size() != 18 ||
         corner == nullptr ||
         corner->interpolation != OPENUSD_SILK_INTERPOLATION_VERTEX ||
@@ -5983,7 +5998,7 @@ bool VerifyOrientationWinding(const ParsedPage& page)
         corner->values.size() != 6)
     {
         std::cerr << "hdSilk orientation probe: the leftHanded face-varying "
-                  << "quad did not publish six expanded corners. found="
+                  << "quad did not preserve the triangle-local normal fallback. found="
                   << faceVarying.found
                   << " triangles=" << faceVarying.triangle_count
                   << " indices=" << faceVarying.indices.size()
@@ -5996,31 +6011,27 @@ bool VerifyOrientationWinding(const ParsedPage& page)
         std::cerr << "\n";
         return false;
     }
-    for (size_t vertex = 0; vertex < 6; ++vertex)
+    for (size_t index = 0; index < expectedLeft.size(); ++index)
     {
-        const float x = faceVarying.points[vertex * 3];
-        const float y = faceVarying.points[(vertex * 3) + 1];
-        float expected = -1.0F;
-        if (x == 0.0F && y == 0.0F)
+        const uint32_t vertex = faceVarying.indices[index];
+        const uint32_t origin = expectedLeft[index];
+        if (vertex >= 6)
         {
-            expected = 10.0F;
+            std::cerr << "hdSilk orientation probe: a compact corner indexes an absent vertex.\n";
+            return false;
         }
-        else if (x == 1.0F && y == 0.0F)
+        for (size_t component = 0; component < 3; ++component)
         {
-            expected = 11.0F;
+            if (faceVarying.points[vertex * 3 + component] != expectedPoints[origin * 3 + component])
+            {
+                std::cerr << "hdSilk orientation probe: compacted triangle winding changed.\n";
+                return false;
+            }
         }
-        else if (x == 1.0F && y == 1.0F)
-        {
-            expected = 12.0F;
-        }
-        else if (x == 0.0F && y == 1.0F)
-        {
-            expected = 13.0F;
-        }
+        const float expected = 10.0F + static_cast<float>(origin);
         if (corner->values[vertex] != expected)
         {
-            std::cerr << "hdSilk orientation probe: expanded vertex " << vertex
-                      << " at (" << x << ", " << y << ") carries corner "
+            std::cerr << "hdSilk orientation probe: compact vertex " << vertex << " carries corner "
                       << corner->values[vertex] << ", expected " << expected
                       << "\n";
             return false;
@@ -10155,7 +10166,10 @@ bool VerifyNestedInstanceLinkingProbe(
     // composed 0 and 1, outer instance 1 owns composed 2 and 3.
     auto resolve = [&page](const std::string& path, int32_t instanceIndex)
     {
-        std::tuple<uint32_t, uint32_t, uint32_t> masks{3u, 3u, 3u};
+        std::tuple<ParsedLightMask, ParsedLightMask, uint32_t> masks{
+            ParsedLightMask{3u, 0u, 0u, 0u},
+            ParsedLightMask{3u, 0u, 0u, 0u},
+            3u};
         for (const auto& entry : page.light_links)
         {
             if (std::get<0>(entry) == path &&
@@ -10191,8 +10205,8 @@ bool VerifyNestedInstanceLinkingProbe(
         const char* what)
     {
         const auto masks = resolve(path, instanceIndex);
-        if (std::get<0>(masks) != light ||
-            std::get<1>(masks) != shadow ||
+        if (std::get<0>(masks) != ParsedLightMask{light, 0u, 0u, 0u} ||
+            std::get<1>(masks) != ParsedLightMask{shadow, 0u, 0u, 0u} ||
             std::get<2>(masks) != dome)
         {
             std::cerr << "hdSilk nested-linking " << what << " instance "
@@ -11254,18 +11268,18 @@ int main(int argc, char** argv)
         const bool hasExcludedEntry = std::any_of(
             initial.light_links.begin(),
             initial.light_links.end(),
-            [](const std::tuple<std::string, int32_t, uint32_t, uint32_t, uint32_t>& entry)
+            [](const auto& entry)
             {
                 return std::get<0>(entry) == LinkedUnlitMeshPath &&
                     std::get<1>(entry) == OPENUSD_SILK_LINK_ALL_INSTANCES &&
-                    std::get<2>(entry) == 0u &&
-                    std::get<3>(entry) == 1u &&
+                    std::get<2>(entry) == ParsedLightMask{0u, 0u, 0u, 0u} &&
+                    std::get<3>(entry) == ParsedLightMask{1u, 0u, 0u, 0u} &&
                     std::get<4>(entry) == 0u;
             });
         const bool hasIncludedEntry = std::any_of(
             initial.light_links.begin(),
             initial.light_links.end(),
-            [](const std::tuple<std::string, int32_t, uint32_t, uint32_t, uint32_t>& entry)
+            [](const auto& entry)
             {
                 return std::get<0>(entry) == LinkedLitMeshPath;
             });

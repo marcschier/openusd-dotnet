@@ -597,7 +597,7 @@ public sealed class SilkDepthCaptureNativeTests
         string? plugins = Environment.GetEnvironmentVariable("OPENUSD_TEST_PLUGIN_PATH");
         if (string.IsNullOrWhiteSpace(plugins))
         {
-            Skip.Test("Set OPENUSD_TEST_PLUGIN_PATH to the complete matched ABI23 runtime plugin directory.");
+            Skip.Test("Set OPENUSD_TEST_PLUGIN_PATH to the complete matched ABI24 runtime plugin directory.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         return plugins;

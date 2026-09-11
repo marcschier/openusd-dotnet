@@ -27,7 +27,7 @@ namespace OpenUsd.Rendering.Tests;
 /// </remarks>
 public sealed class SilkShadowDiagnosticTests
 {
-    private const int LightingSize = 1976;
+    private const int LightingSize = 23096;
     private const int LightCountOffset = 536;
     private const int LightTableOffset = 552;
     private const int LightEntrySize = 176;
@@ -241,7 +241,7 @@ public sealed class SilkShadowDiagnosticTests
     }
 
     /// <summary>
-    /// Builds the 1976-byte lighting frame with the given direct lights, each
+    /// Builds the 23096-byte lighting frame with the given direct lights, each
     /// carrying an invertible identity transform so frame packing succeeds.
     /// </summary>
     private static byte[] CreateLightingFrame(
@@ -369,5 +369,145 @@ public sealed class SilkShadowDiagnosticTests
         public void Dispose()
         {
         }
+    }
+
+    [Test]
+    public async Task PublishedHighShadowSlotsRespectBoundsAndClearDiagnostics()
+    {
+        using var device = new ShadowDiagnosticGraphicsDevice(supportsRasterShadows: true);
+        using var resources = new SilkSceneGpuResources(
+            device, (_, _) => throw new InvalidOperationException("No image is decoded."));
+        var scene = new SilkSceneState();
+        _ = scene.Apply(WideDiagnosticFrame(128), 1, 1);
+        ISilkGraphicsBuffer frame = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, 0);
+        string[] unbound = resources.Diagnostics.Entries
+            .Where(entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported)
+            .Select(entry => entry.Message).ToArray();
+        await Assert.That(unbound.Length).IsEqualTo(2);
+        await Assert.That(unbound.Count(message => message.Contains("Direct light 96 ", StringComparison.Ordinal)))
+            .IsEqualTo(1);
+        await Assert.That(unbound.Count(message => message.Contains("Direct light 127 ", StringComparison.Ordinal)))
+            .IsEqualTo(1);
+        await Assert.That(unbound.All(message =>
+            message.Contains("distant", StringComparison.Ordinal) &&
+            message.Contains("no shadow descriptor", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries
+            .Where(entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported)
+            .All(entry => entry.Severity == RenderDiagnosticSeverity.Warning)).IsTrue();
+
+        ulong frameRevision = scene.Frame.Revision;
+        ulong frameWrites = resources.Statistics.BufferWriteBytes;
+        _ = scene.Apply(WideDiagnosticShadows(128, 96, 127), 1, 2);
+        IReadOnlyList<SilkShadowDescriptor> descriptors = scene.Shadows.Descriptors;
+        await Assert.That(resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, 0))
+            .IsSameReferenceAs(frame);
+        await Assert.That(scene.Frame.Revision).IsEqualTo(frameRevision);
+        await Assert.That(resources.Statistics.BufferWriteBytes).IsEqualTo(frameWrites);
+        await Assert.That(scene.Shadows.ResolveSlot(96)).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(1);
+        await Assert.That(scene.Shadows.ResolveSlot(64)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(-1)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(128)).IsEqualTo(-1);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.ShadowUnsupported);
+
+        ulong shadowsRevision = scene.Shadows.Revision;
+        await Assert.That(() => scene.Apply(CreateShadowTable(128, 128), 1, 3))
+            .Throws<InvalidDataException>();
+        await Assert.That(scene.Revision).IsEqualTo(2UL);
+        await Assert.That(scene.Shadows.Revision).IsEqualTo(shadowsRevision);
+        await Assert.That(scene.Shadows.Descriptors).IsSameReferenceAs(descriptors);
+        await Assert.That(descriptors.Select(descriptor => descriptor.LightIndex).SequenceEqual(new uint[] { 96, 127 }))
+            .IsTrue();
+
+        _ = scene.Apply(WideDiagnosticShadows(128, 96), 1, 4);
+        _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, 0);
+        RenderDiagnostic missing127 = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
+        await Assert.That(missing127.Message).Contains("Direct light 127 ");
+        await Assert.That(missing127.Message).Contains("no shadow descriptor");
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.Descriptors).IsSameReferenceAs(descriptors);
+
+        // Retain a recognizable stale slot beyond the published count. Silence
+        // must be explained by the count bound, not by having zeroed that slot.
+        _ = scene.Apply(
+            [.. WideDiagnosticFrame(97, stale127: true), .. WideDiagnosticShadows(97, 96)], 2, 5);
+        _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, 0);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(97u);
+        await Assert.That(scene.Frame.Lights[127].ShadowEnabled).IsEqualTo(1u);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.ShadowUnsupported);
+
+        // Retirement is observable even though this diagnostic-only scene has
+        // never had a drawable mesh, and the same retained frame buffer survives.
+        _ = scene.Apply([.. WideDiagnosticFrame(0), .. WideDiagnosticShadows(0)], 2, 6);
+        ISilkGraphicsBuffer emptyFrame = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, 0);
+        await Assert.That(emptyFrame).IsSameReferenceAs(frame);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(0u);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(96)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.ShadowUnsupported);
+        var bytes = new byte[15296];
+        emptyFrame.ReadbackForTesting(bytes);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(220))).IsEqualTo(0f);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(15020))).IsEqualTo(0f);
+    }
+
+    private static byte[] WideDiagnosticFrame(int count, bool stale127 = false)
+    {
+        var bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 23368u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), 64);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), 64);
+        for (int element = 0; element < 16; element++)
+        {
+            double identity = element % 5 == 0 ? 1 : 0;
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), identity);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), identity);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), (uint)count);
+        for (int light = 0; light < 128; light++)
+        {
+            if (light >= count && !(stale127 && light == 127))
+            {
+                continue;
+            }
+            int entry = 552 + (light * 176);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), 1u);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 4),
+                light is 96 or 127 ? 1u : 0u);
+            for (int component = 0; component < 4; component++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 16 + (component * 4)), 1f);
+            }
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(entry + 32 + (element * 8)), element % 5 == 0 ? 1 : 0);
+            }
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 164), 1f);
+        }
+        return bytes;
+    }
+
+    private static byte[] WideDiagnosticShadows(uint count, params uint[] indices)
+    {
+        var bytes = new byte[24 + (indices.Length * 288)];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Shadow);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)indices.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), count);
+        for (int slot = 0; slot < indices.Length; slot++)
+        {
+            byte[] one = CreateShadowTable(count, indices[slot]);
+            one.AsSpan(24, 288).CopyTo(bytes.AsSpan(24 + (slot * 288)));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28 + (slot * 288)), (uint)slot);
+        }
+        return bytes;
     }
 }

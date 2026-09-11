@@ -8,10 +8,7 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkOcioProcessorTests
 {
     private static string TestConfigPath =>
-        Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..", "..",
-            "test-assets", "ocio-test-config.ocio"));
+        Path.Combine(AppContext.BaseDirectory, "test-assets", "ocio-test-config.ocio");
 
     private static void RequireNativeRuntime()
     {

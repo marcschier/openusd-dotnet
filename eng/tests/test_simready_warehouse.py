@@ -62,7 +62,8 @@ class WarehouseAcquisitionTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="openusd-warehouse-test-")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        # System temporary roots can be aliases, such as /var on macOS.
+        self.root = Path(self.temporary.name).resolve(strict=True)
         self.data = b"synthetic-warehouse"
         self.entries = [entry("scene.usd", self.data), entry("catalog.csv", b"catalog", False)]
         self.profile = profile(self.entries)

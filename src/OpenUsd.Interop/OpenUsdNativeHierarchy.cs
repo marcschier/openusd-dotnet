@@ -120,7 +120,8 @@ public static unsafe partial class OpenUsdNativeRuntime
             throw InvalidHierarchy("invalid version, limits or header");
         }
         ValidateHierarchyBuffer(view.Entries, view.EntriesSize, view.EntryCount, limits.MaximumPrimCount, 4);
-        ValidateHierarchyBuffer(view.VariantSets, view.VariantSetsSize, view.VariantSetCount, limits.MaximumVariantSets, 4);
+        ValidateHierarchyBuffer(
+            view.VariantSets, view.VariantSetsSize, view.VariantSetCount, limits.MaximumVariantSets, 4);
         ValidateHierarchyBuffer(view.Data, view.DataSize, view.DataSize, limits.MaximumTextBytes, 1);
         uint maximumStrings = (limits.MaximumPrimCount * 4) +
             (limits.MaximumVariantSets * 2) + limits.MaximumVariantNames;

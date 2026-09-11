@@ -7,7 +7,8 @@ namespace OpenUsd.Rendering.Silk;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/> reports only what changed since the previous
+/// <see cref="OpenUsdSilkSession.Sync(int, int, double, CameraState, RenderComplexity, RenderDrawMode)"/>
+/// reports only what changed since the previous
 /// synchronization, so the first page carries the whole scene and later pages carry deltas.
 /// A capturer therefore has to keep its renderer - and with it the retained scene - alive
 /// across captures. The one-shot <see cref="SilkFrameCapture"/> helper

@@ -2,6 +2,9 @@
 
 #include "warehouse_localization.h"
 
+#include <pxr/base/gf/vec2f.h>
+#include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/base/js/json.h>
 #include <pxr/base/plug/registry.h>
 #include <pxr/base/tf/errorMark.h>
@@ -31,6 +34,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -49,7 +53,9 @@ struct Audit
 {
     std::map<std::string, uint64_t> counts{
         {"rigidBodyPrims", 0}, {"colliderPrims", 0}, {"pointInstances", 0},
-        {"timeSampledAttributes", 0}, {"nonzeroVisibleLights", 0}};
+        {"timeSampledAttributes", 0}, {"nonzeroVisibleLights", 0},
+        {"shaderInputValuesRecorded", 0}, {"shaderInputValuesUnresolved", 0},
+        {"shaderInputValuesUnsupported", 0}};
     std::map<std::string, uint64_t> types;
     std::map<std::string, uint64_t> schemas;
     std::map<std::string, uint64_t> physics_properties;
@@ -135,6 +141,92 @@ void InspectProperties(const UsdPrim& prim, Audit& result)
     }
 }
 
+double FiniteShaderNumber(double value, const UsdAttribute& attribute)
+{
+    if (!std::isfinite(value))
+    {
+        throw std::runtime_error(
+            "Shader input contains a non-finite value: " + attribute.GetPath().GetString());
+    }
+    return value;
+}
+
+template<class VectorType>
+bool TryShaderVector(
+    const VtValue& value, const UsdAttribute& attribute, JsValue& output)
+{
+    if (!value.IsHolding<VectorType>())
+    {
+        return false;
+    }
+    JsArray components;
+    const auto& vector = value.UncheckedGet<VectorType>();
+    for (size_t index = 0; index < static_cast<size_t>(VectorType::dimension); ++index)
+    {
+        components.emplace_back(FiniteShaderNumber(vector[index], attribute));
+    }
+    output = JsValue(std::move(components));
+    return true;
+}
+
+void InspectShaderInputValue(const UsdAttribute& attribute, JsObject& output, Audit& result)
+{
+    output["colorSpace"] = result.Text(attribute.GetColorSpace().GetString());
+    output["authoredColorSpace"] =
+        JsValue(attribute.HasAuthoredMetadata(TfToken("colorSpace")));
+    VtValue value;
+    if (!attribute.Get(&value))
+    {
+        output["valueStatus"] = result.Text("unresolved");
+        ++result.counts["shaderInputValuesUnresolved"];
+        return;
+    }
+
+    JsValue encoded;
+    if (value.IsHolding<SdfAssetPath>())
+    {
+        const auto& asset = value.UncheckedGet<SdfAssetPath>();
+        output["asset"] = result.Text(asset.GetAssetPath());
+        output["resolvedAsset"] = result.Text(asset.GetResolvedPath());
+        encoded = result.Text(asset.GetAssetPath());
+    }
+    else if (value.IsHolding<bool>())
+    {
+        encoded = JsValue(value.UncheckedGet<bool>());
+    }
+    else if (value.IsHolding<int>())
+    {
+        encoded = JsValue(value.UncheckedGet<int>());
+    }
+    else if (value.IsHolding<float>())
+    {
+        encoded = JsValue(FiniteShaderNumber(value.UncheckedGet<float>(), attribute));
+    }
+    else if (value.IsHolding<double>())
+    {
+        encoded = JsValue(FiniteShaderNumber(value.UncheckedGet<double>(), attribute));
+    }
+    else if (value.IsHolding<std::string>())
+    {
+        encoded = result.Text(value.UncheckedGet<std::string>());
+    }
+    else if (value.IsHolding<TfToken>())
+    {
+        encoded = result.Text(value.UncheckedGet<TfToken>().GetString());
+    }
+    else if (!TryShaderVector<GfVec2f>(value, attribute, encoded) &&
+             !TryShaderVector<GfVec3f>(value, attribute, encoded) &&
+             !TryShaderVector<GfVec4f>(value, attribute, encoded))
+    {
+        output["valueStatus"] = result.Text("unsupported");
+        ++result.counts["shaderInputValuesUnsupported"];
+        return;
+    }
+    output["value"] = std::move(encoded);
+    output["valueStatus"] = result.Text("resolved");
+    ++result.counts["shaderInputValuesRecorded"];
+}
+
 void InspectShader(const UsdPrim& prim, Audit& result)
 {
     UsdShadeShader shader(prim);
@@ -159,15 +251,7 @@ void InspectShader(const UsdPrim& prim, Audit& result)
             {"authoredValue", JsValue(input.GetAttr().HasAuthoredValueOpinion())},
             {"connected", JsValue(input.HasConnectedSource())}
         };
-        if (input.GetTypeName() == SdfValueTypeNames->Asset)
-        {
-            SdfAssetPath path;
-            if (input.Get(&path))
-            {
-                value["asset"] = result.Text(path.GetAssetPath());
-                value["resolvedAsset"] = result.Text(path.GetResolvedPath());
-            }
-        }
+        InspectShaderInputValue(input.GetAttr(), value, result);
         inputs.emplace_back(std::move(value));
     }
     result.Add(result.shaders, {
@@ -385,6 +469,21 @@ def Xform "World" {
     def Shader "Shader" {
         uniform token info:id = "UsdPreviewSurface"
         color3f inputs:diffuseColor = (1, 0, 0)
+        float inputs:roughness = 0.25
+        double inputs:weight = 0.5
+        float2 inputs:texture_scale = (0.5, 1.5)
+        float4 inputs:four = (1, 2, 3, 4)
+        bool inputs:enabled = true
+        int inputs:mode = -3
+        string inputs:label = "fixture"
+        token inputs:token = "raw"
+        asset inputs:albedo = @declared-texture.png@ (colorSpace = "raw")
+        float inputs:unset
+        float inputs:blocked = None
+        float[] inputs:unsupported = [1, 2]
+        float inputs:driven = 0.75
+        float inputs:driven.connect = </World/Shader.outputs:source>
+        float outputs:source = 0.125
     }
     def Xform "DisabledPayload" (
         active = false
@@ -417,6 +516,71 @@ def Xform "World" {
     {
         throw std::runtime_error("The audit lost instance, unknown-schema, shader or animation evidence.");
     }
+    std::map<std::string, JsObject> inputs;
+    for (const JsValue& input : value.shaders[0].GetJsObject().at("inputs").GetJsArray())
+    {
+        const JsObject& object = input.GetJsObject();
+        inputs.emplace(object.at("name").GetString(), object);
+    }
+    const auto number = [&](const char* name, double expected) {
+        return inputs.at(name).at("value") == JsValue(expected) &&
+            inputs.at(name).at("valueStatus") == JsValue(std::string("resolved"));
+    };
+    if (value.counts["shaderInputValuesRecorded"] != 11 ||
+        value.counts["shaderInputValuesUnresolved"] != 2 ||
+        value.counts["shaderInputValuesUnsupported"] != 1 ||
+        !number("roughness", 0.25) || !number("weight", 0.5) || !number("driven", 0.75) ||
+        inputs.at("diffuseColor").at("value") !=
+            JsValue(JsArray{JsValue(1.0), JsValue(0.0), JsValue(0.0)}) ||
+        inputs.at("texture_scale").at("value") != JsValue(JsArray{JsValue(0.5), JsValue(1.5)}) ||
+        inputs.at("four").at("value") !=
+            JsValue(JsArray{JsValue(1.0), JsValue(2.0), JsValue(3.0), JsValue(4.0)}) ||
+        inputs.at("enabled").at("value") != JsValue(true) ||
+        inputs.at("mode").at("value") != JsValue(-3) ||
+        inputs.at("label").at("value") != JsValue(std::string("fixture")) ||
+        inputs.at("token").at("value") != JsValue(std::string("raw")) ||
+        inputs.at("albedo").at("value") != JsValue(std::string("declared-texture.png")) ||
+        inputs.at("albedo").at("asset") != JsValue(std::string("declared-texture.png")) ||
+        inputs.at("albedo").at("resolvedAsset") != JsValue(std::string()) ||
+        inputs.at("albedo").at("colorSpace") != JsValue(std::string("raw")) ||
+        inputs.at("albedo").at("authoredColorSpace") != JsValue(true) ||
+        inputs.at("roughness").at("authoredColorSpace") != JsValue(false) ||
+        inputs.at("unset").at("authoredValue") != JsValue(false) ||
+        inputs.at("blocked").at("authoredValue") != JsValue(true) ||
+        inputs.at("unset").at("valueStatus") != JsValue(std::string("unresolved")) ||
+        inputs.at("blocked").at("valueStatus") != JsValue(std::string("unresolved")) ||
+        inputs.at("unsupported").at("valueStatus") != JsValue(std::string("unsupported")) ||
+        inputs.at("driven").at("connected") != JsValue(true))
+    {
+        throw std::runtime_error("The shader input audit lost typed values, metadata or explicit value status.");
+    }
+    std::cout << "WAREHOUSE_SHADER_INPUT_VALUES=passed\n";
+    const UsdPrim shader = stage->GetPrimAtPath(SdfPath("/World/Shader"));
+    for (const char* name : {"inputs:roughness", "inputs:texture_scale"})
+    {
+        const UsdAttribute attribute = shader.GetAttribute(TfToken(name));
+        const float infinity = std::numeric_limits<float>::infinity();
+        VtValue original;
+        attribute.Get(&original);
+        attribute.Set(name == std::string("inputs:roughness")
+            ? VtValue(infinity) : VtValue(GfVec2f(0, infinity)));
+        bool refused = false;
+        try
+        {
+            Inspect(stage);
+        }
+        catch (const std::runtime_error& error)
+        {
+            refused = std::string(error.what()) ==
+                "Shader input contains a non-finite value: " + attribute.GetPath().GetString();
+        }
+        attribute.Set(original);
+        if (!refused)
+        {
+            throw std::runtime_error("A non-finite shader input was not refused by path.");
+        }
+    }
+    std::cout << "WAREHOUSE_SHADER_INPUT_NONFINITE=passed\n";
     std::cout << "WAREHOUSE_AUDIT_SELF_TEST=passed\n";
 }
 
@@ -683,6 +847,8 @@ int main(int argc, char** argv)
             {"schemaVersion", JsValue(1)},
             {"complete", JsValue(complete)},
             {"scope", JsValue("Composed USD and USD asset dependencies; MDL module imports require separate audit.")},
+            {"shaderInputValueScope", JsValue(
+                "Composed attribute values at default time; connections and shader expressions are not evaluated.")},
             {"root", audit.Text(stage->GetRootLayer()->GetRealPath())},
             {"defaultPrim", audit.Text(stage->GetDefaultPrim().GetPath().GetString())},
             {"openUsdVersion", JsValue(PXR_VERSION)},

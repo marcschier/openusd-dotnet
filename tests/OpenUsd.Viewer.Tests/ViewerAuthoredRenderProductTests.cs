@@ -166,9 +166,11 @@ public sealed class ViewerAuthoredRenderProductTests
                 try
                 {
                     renderWindow.Show();
-                    await WaitUntilAsync(() => Required<ComboBox>(renderWindow, "ProductSelector").SelectedItem is not null);
+                    await WaitUntilAsync(
+                        () => Required<ComboBox>(renderWindow, "ProductSelector").SelectedItem is not null);
                     Required<TextBox>(renderWindow, "ProductOutputFolder").Text = root;
-                    Required<Button>(renderWindow, "ProductRenderButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Required<Button>(renderWindow, "ProductRenderButton")
+                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     await renderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     renderWindow.Close();
                     renderWindow.Close();
@@ -291,7 +293,8 @@ public sealed class ViewerAuthoredRenderProductTests
             await WaitUntilAsync(() => Required<Button>(window, "ProductRenderButton").IsEnabled);
             Required<ComboBox>(window, "ProductHdrFormat").SelectedIndex = 1;
             await WaitUntilAsync(() => !Required<Button>(window, "ProductRenderButton").IsEnabled);
-            await Assert.That(Required<TextBlock>(window, "ProductStatus").Text).Contains("EXR output currently refuses");
+            await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
+                .Contains("EXR output currently refuses");
         }
         finally
         {

@@ -99,7 +99,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 await Assert.That(session.CurrentRenderState.Camera).IsEqualTo(before.Camera);
                 await Assert.That(session.CurrentRenderState.Time).IsEqualTo(before.Time);
                 await Assert.That(session.CurrentRenderState.RenderSettings).IsEqualTo(before.RenderSettings);
-                await Assert.That(await session.Scheduler.InvokeAsync(static stage => stage.ChangeSerial)).IsEqualTo(revision);
+                await Assert.That(await session.Scheduler.InvokeAsync(static stage => stage.ChangeSerial))
+                    .IsEqualTo(revision);
                 await Assert.That(await File.ReadAllTextAsync(stagePath)).IsEqualTo(sourceText);
                 await AssertStormSequenceMatchesRestoredFramebufferAsync(session, before, output);
             }
@@ -150,7 +151,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                     int width = frame.GetProperty("width").GetInt32();
                     int height = frame.GetProperty("height").GetInt32();
                     await Assert.That(frame.GetProperty("timeCode").GetDouble()).IsEqualTo(index + 1d);
-                    byte[] reference = await File.ReadAllBytesAsync(Path.Combine(pngReference, $"frame-{index:D6}.png"));
+                    byte[] reference = await File.ReadAllBytesAsync(
+                        Path.Combine(pngReference, $"frame-{index:D6}.png"));
                     byte[] png = await File.ReadAllBytesAsync(Path.Combine(output, $"frame-{index:D6}.png"));
                     await Assert.That(png.SequenceEqual(reference)).IsTrue()
                         .Because("adding native AOVs must not change native PNG appearance or orientation");
@@ -256,7 +258,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 StageRenderState before = session.CurrentRenderState;
                 bool triggered = false;
                 TextBlock status = Required<TextBlock>(sequence, "SequenceStatus");
-                void OnProgress(object? sender, AvaloniaPropertyChangedEventArgs args)
+                void onProgress(object? sender, AvaloniaPropertyChangedEventArgs args)
                 {
                     if (triggered || args.Property != TextBlock.TextProperty ||
                         status.Text?.StartsWith("Rendering: 1/", StringComparison.Ordinal) != true)
@@ -283,10 +285,11 @@ public sealed partial class ViewerRenderSequenceNativeTests
                             break;
                     }
                 }
-                status.PropertyChanged += OnProgress;
+                status.PropertyChanged += onProgress;
                 try
                 {
-                    Required<Button>(sequence, "SequenceRenderButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Required<Button>(sequence, "SequenceRenderButton")
+                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     await WaitUntilAsync(() => triggered && !sequence.IsRunning);
                     await Assert.That(Directory.GetDirectories(outputParent).Length).IsEqualTo(published);
                     await Assert.That(Directory.GetDirectories(outputParent, ".openusd-render-*")).IsEmpty();
@@ -301,7 +304,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                         session = await reloaded.WaitAsync(TimeSpan.FromSeconds(35));
                         await Assert.That(session).IsNotSameReferenceAs(prior);
                         await Assert.That(sequence.IsVisible).IsFalse();
-                        await Assert.That(async () => await prior.Scheduler.InvokeAsync(static stage => stage.ChangeSerial))
+                        await Assert.That(
+                            async () => await prior.Scheduler.InvokeAsync(static stage => stage.ChangeSerial))
                             .Throws<ObjectDisposedException>();
                     }
                     if (action == "owner-close")
@@ -312,7 +316,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 }
                 finally
                 {
-                    status.PropertyChanged -= OnProgress;
+                    status.PropertyChanged -= onProgress;
                 }
             }
             finally

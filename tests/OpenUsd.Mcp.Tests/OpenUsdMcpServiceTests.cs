@@ -1,8 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using OpenUsd.Rendering;
-using System.Text.Json;
 
 namespace OpenUsd.Mcp.Tests;
 

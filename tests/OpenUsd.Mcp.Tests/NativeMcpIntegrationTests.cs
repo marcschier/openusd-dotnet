@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using Microsoft.Extensions.DependencyInjection;
 using System.Buffers.Binary;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -13,7 +13,8 @@ public sealed partial class NativeMcpIntegrationTests
     [Arguments(true, "raw")]
     [Arguments(false, "exr")]
     [Arguments(true, "exr")]
-    public async Task NativeSequenceRendersDistinctTimesAndExposesTheChosenImmutableFrame(bool includeDepth, string hdrFormat)
+    public async Task NativeSequenceRendersDistinctTimesAndExposesTheChosenImmutableFrame(
+        bool includeDepth, string hdrFormat)
     {
         if (hdrFormat == "exr" && !OpenUsd.Rendering.ExrRgba16FloatWriter.IsSupported)
         {

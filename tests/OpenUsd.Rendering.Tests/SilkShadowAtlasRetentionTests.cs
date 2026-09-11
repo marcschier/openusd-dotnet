@@ -383,7 +383,8 @@ public sealed class SilkShadowAtlasRetentionTests
         {
             if (_appliedResolution != Resolution)
             {
-                _ = Scene.Apply(CreateShadowTable(Resolution), 1, ++_revision);
+                _ = Scene.Apply(
+                    [.. HighShadowFrame(1), .. CreateShadowTable(Resolution)], 2, ++_revision);
                 _appliedResolution = Resolution;
             }
             _ = Cache.Prepare(Scene, Resources);
@@ -565,6 +566,38 @@ public sealed class SilkShadowAtlasRetentionTests
         public void Dispose()
         {
         }
+
+        internal Dictionary<float, string> CasterPathsByX { get; } = [];
+
+        internal List<RecordedShadowDraw> RecordedCasterDraws { get; } = [];
+
+        internal List<SilkGraphicsPipelineDescriptor> RecordedPipelines { get; } = [];
+
+        ISilkGraphicsShaderModule ISilkGraphicsDevice.CreateShaderModule(
+            SilkShaderModuleDescriptor descriptor) => CasterPathsByX.Count == 0
+                ? CreateShaderModule(descriptor)
+                : new RecordingShadowModule(descriptor);
+
+        ISilkGraphicsBindingLayout ISilkGraphicsDevice.CreateBindingLayout(
+            SilkBindingLayoutDescriptor descriptor) => CasterPathsByX.Count == 0
+                ? CreateBindingLayout(descriptor)
+                : new RecordingShadowLayout(descriptor);
+
+        ISilkGraphicsShaderProgram ISilkGraphicsDevice.CreateShaderProgram(
+            SilkShaderProgramDescriptor descriptor) => CasterPathsByX.Count == 0
+                ? CreateShaderProgram(descriptor)
+                : new RecordingShadowProgram(descriptor.BindingLayout);
+
+        ISilkGraphicsPipeline ISilkGraphicsDevice.CreateGraphicsPipeline(
+            SilkGraphicsPipelineDescriptor descriptor)
+        {
+            if (CasterPathsByX.Count == 0)
+            {
+                return CreateGraphicsPipeline(descriptor);
+            }
+            RecordedPipelines.Add(descriptor);
+            return new RecordingShadowPipeline(descriptor);
+        }
     }
 
     internal sealed class ShadowTexture(SilkTextureDescriptor descriptor)
@@ -709,23 +742,11 @@ public sealed class SilkShadowAtlasRetentionTests
         {
         }
 
-        public void DrawIndexed(uint indexCount)
-        {
-        }
-
-        public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
-        {
-        }
-
         public void EndRendering()
         {
         }
 
         public void SetComputePipeline(ISilkComputePipeline pipeline)
-        {
-        }
-
-        public void SetStorageBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer)
         {
         }
 
@@ -747,5 +768,350 @@ public sealed class SilkShadowAtlasRetentionTests
         public void Dispose()
         {
         }
+
+        private ISilkGraphicsBuffer? _recordedShadowInstances;
+
+        void ISilkGraphicsCommandList.SetStorageBuffer(
+            uint setIndex, uint binding, ISilkGraphicsBuffer buffer)
+        {
+            if (setIndex == 0 && binding == 6)
+            {
+                _recordedShadowInstances = buffer;
+            }
+        }
+
+        void ISilkGraphicsCommandList.DrawIndexed(uint indexCount) =>
+            RecordShadowDraw(indexCount, 1);
+
+        void ISilkGraphicsCommandList.DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
+            RecordShadowDraw(indexCount, instanceCount);
+
+        private void RecordShadowDraw(uint indexCount, uint instanceCount)
+        {
+            if (device.CasterPathsByX.Count == 0)
+            {
+                return;
+            }
+            ISilkGraphicsBuffer instances = _recordedShadowInstances ??
+                throw new InvalidOperationException("A recorded shadow draw has no instance buffer.");
+            var bytes = new byte[checked((int)instanceCount * 80)];
+            instances.ReadbackForTesting(bytes);
+            var paths = new string[checked((int)instanceCount)];
+            for (int instance = 0; instance < paths.Length; instance++)
+            {
+                float x = BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan((instance * 80) + 12));
+                paths[instance] = device.CasterPathsByX[x];
+            }
+            device.RecordedCasterDraws.Add(new RecordedShadowDraw(indexCount, instanceCount, paths, bytes));
+        }
+    }
+
+    [Test]
+    [Arguments(96)]
+    [Arguments(127)]
+    public async Task HighShadowMembershipInvalidatesCasterMaps(int index)
+    {
+        using var fixture = new ShadowFixture();
+        const string litPath = "/World/Geom/LitButExcludedCaster";
+        const string unlitPath = "/World/Geom/UnlitCaster";
+        UInt128 high = UInt128.One << index;
+        fixture.Device.CasterPathsByX[-3] = litPath;
+        fixture.Device.CasterPathsByX[5] = unlitPath;
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            [
+                .. HighShadowFrame(index + 1),
+                .. SilkTransactionalApplyTests.Mesh(litPath, 1, x: -3),
+                .. SilkTransactionalApplyTests.Mesh(unlitPath, 2, x: 5),
+                .. HighShadowLinks((uint)index + 1,
+                    (litPath, high | 1, UInt128.One), (unlitPath, UInt128.One, high | 1)),
+                .. HighShadowTable((uint)index + 1, (uint)index),
+            ], 5, 1));
+        IReadOnlyList<SilkShadowDescriptor> descriptors = fixture.Scene.Shadows.Descriptors;
+        ulong frameRevision = fixture.Scene.Frame.Revision;
+        ulong geometryRevision = fixture.Scene.GeometryRevision;
+        ulong shadowRevision = fixture.Scene.Shadows.Revision;
+        ulong linkRevision = fixture.Scene.LightLinks.Revision;
+
+        int firstDraws = fixture.Cache.Prepare(fixture.Scene, fixture.Resources);
+        ShadowTexture atlas = fixture.BindAndCaptureAtlas();
+        await Assert.That(firstDraws).IsEqualTo(1);
+        await AssertRecordedCaster(fixture.Device, unlitPath, 5);
+        await Assert.That(fixture.Scene.LightLinks.Resolve(unlitPath, 0).IsLit(index)).IsFalse();
+        await Assert.That(fixture.Scene.LightLinks.Resolve(unlitPath, 0).CastsShadow(index)).IsTrue();
+        await Assert.That(fixture.Scene.LightLinks.Resolve(litPath, 0).IsLit(index)).IsTrue();
+        await Assert.That(fixture.Scene.LightLinks.Resolve(litPath, 0).CastsShadow(index)).IsFalse();
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(1UL);
+        await Assert.That(fixture.Cache.MapCount).IsEqualTo(1);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(index)).IsEqualTo(0);
+        await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(1);
+        await Assert.That(fixture.Device.RecordedPipelines.Single().DepthOnly).IsTrue();
+
+        fixture.Device.RecordedCasterDraws.Clear();
+        await Assert.That(fixture.Cache.Prepare(fixture.Scene, fixture.Resources)).IsEqualTo(0);
+        await Assert.That(fixture.Device.RecordedCasterDraws.Count).IsEqualTo(0);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(1UL);
+
+        // All low words and all illumination masks stay identical. Only the
+        // selected high SHADOW bit moves to the other caster.
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            HighShadowLinks((uint)index + 1,
+                (litPath, high | 1, high | 1), (unlitPath, UInt128.One, UInt128.One)), 1, 2));
+        int changedDraws = fixture.Cache.Prepare(fixture.Scene, fixture.Resources);
+        await Assert.That(changedDraws).IsEqualTo(1);
+        await AssertRecordedCaster(fixture.Device, litPath, -3);
+        await Assert.That(fixture.Scene.LightLinks.Revision).IsEqualTo(linkRevision + 1);
+        await Assert.That(fixture.Scene.Frame.Revision).IsEqualTo(frameRevision);
+        await Assert.That(fixture.Scene.GeometryRevision).IsEqualTo(geometryRevision);
+        await Assert.That(fixture.Scene.Shadows.Revision).IsEqualTo(shadowRevision);
+        await Assert.That(fixture.Scene.Shadows.Descriptors).IsSameReferenceAs(descriptors);
+        await Assert.That(fixture.Scene.LightLinks.Resolve(litPath, 0).LightMask).IsEqualTo(high | 1);
+        await Assert.That(fixture.Scene.LightLinks.Resolve(unlitPath, 0).LightMask).IsEqualTo(UInt128.One);
+        await Assert.That(fixture.Scene.LightLinks.Resolve(litPath, 0).CastsShadow(index)).IsTrue();
+        await Assert.That(fixture.Scene.LightLinks.Resolve(unlitPath, 0).CastsShadow(index)).IsFalse();
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(2UL);
+        await Assert.That(fixture.Cache.MapCount).IsEqualTo(1);
+        await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(atlas);
+        await Assert.That(atlas.IsDisposed).IsFalse();
+        await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(1);
+
+        fixture.Device.RecordedCasterDraws.Clear();
+        await Assert.That(fixture.Cache.Prepare(fixture.Scene, fixture.Resources)).IsEqualTo(0);
+        await Assert.That(fixture.Device.RecordedCasterDraws.Count).IsEqualTo(0);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(2UL);
+        await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(atlas);
+    }
+
+    [Test]
+    public async Task RetiredHighShadowSlotsDoNotRetainCasterState()
+    {
+        using var fixture = new ShadowFixture();
+        const string firstPath = "/World/Geom/Caster127";
+        const string secondPath = "/World/Geom/Caster96";
+        UInt128 high127 = UInt128.One << 127;
+        UInt128 high96 = UInt128.One << 96;
+        fixture.Device.CasterPathsByX[-3] = firstPath;
+        fixture.Device.CasterPathsByX[5] = secondPath;
+        byte[] links = HighShadowLinks(128,
+            (firstPath, high96 | 1, high127 | 1), (secondPath, high127 | 1, high96 | 1));
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            [
+                .. HighShadowFrame(128),
+                .. SilkTransactionalApplyTests.Mesh(firstPath, 1, x: -3),
+                .. SilkTransactionalApplyTests.Mesh(secondPath, 2, x: 5),
+                .. links, .. HighShadowTable(128, 127),
+            ], 5, 1));
+        await Assert.That(fixture.Cache.Prepare(fixture.Scene, fixture.Resources)).IsEqualTo(1);
+        await AssertRecordedCaster(fixture.Device, firstPath, -3);
+        ShadowTexture atlas = fixture.BindAndCaptureAtlas();
+        ulong linkRevision = fixture.Scene.LightLinks.Revision;
+
+        fixture.Device.RecordedCasterDraws.Clear();
+        _ = fixture.Scene.Apply(HighShadowTable(128, 96), 1, 2);
+        await Assert.That(fixture.Cache.Prepare(fixture.Scene, fixture.Resources)).IsEqualTo(1);
+        await AssertRecordedCaster(fixture.Device, secondPath, 5);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(2UL);
+        await Assert.That(fixture.Cache.MapCount).IsEqualTo(1);
+        await Assert.That(fixture.Scene.LightLinks.Revision).IsEqualTo(linkRevision);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(127)).IsEqualTo(-1);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(96)).IsEqualTo(0);
+        await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(atlas);
+        await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(1);
+        ISilkGraphicsBuffer frame = fixture.Resources.RequireFrameBuffer(
+            fixture.Scene, RenderOutputTransform.Identity, 0, fixture.Cache.Binding, fixture.Cache.BindingRevision);
+        var bytes = new byte[15296];
+        frame.ReadbackForTesting(bytes);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (127 * 16))))
+            .IsEqualTo(-1f);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (96 * 16))))
+            .IsEqualTo(0f);
+
+        fixture.Device.RecordedCasterDraws.Clear();
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            [
+                .. HighShadowTable(0), .. HighShadowLinks(0), .. HighShadowFrame(0),
+                .. HighShadowMeshRemoval(firstPath), .. HighShadowMeshRemoval(secondPath),
+            ], 5, 3));
+        await Assert.That(fixture.Cache.Prepare(fixture.Scene, fixture.Resources)).IsEqualTo(0);
+        await Assert.That(fixture.Cache.MapCount).IsEqualTo(0);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(2UL);
+        await Assert.That(fixture.Device.RecordedCasterDraws.Count).IsEqualTo(0);
+        await Assert.That(fixture.Scene.Meshes.Count).IsEqualTo(0);
+        await Assert.That(fixture.Resources.MeshValues.Count).IsEqualTo(0);
+        await Assert.That(fixture.Scene.Shadows.Count).IsEqualTo(0);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(96)).IsEqualTo(-1);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(127)).IsEqualTo(-1);
+        ShadowTexture standIn = fixture.BindAndCaptureAtlas();
+        await Assert.That(standIn.Width).IsEqualTo(1u);
+        await Assert.That(ReferenceEquals(standIn, atlas)).IsFalse();
+        await Assert.That(atlas.IsDisposed).IsTrue();
+        await Assert.That(fixture.Device.CreatedStandInTextureCount).IsEqualTo(1);
+        ISilkGraphicsBuffer retiredFrame = fixture.Resources.RequireFrameBuffer(
+            fixture.Scene, RenderOutputTransform.Identity, 0, fixture.Cache.Binding, fixture.Cache.BindingRevision);
+        await Assert.That(retiredFrame).IsSameReferenceAs(frame);
+        retiredFrame.ReadbackForTesting(bytes);
+        for (int index = 0; index < 128; index++)
+        {
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (index * 16))))
+                .IsEqualTo(-1f);
+        }
+
+        // Republish a different high map after the empty scene. No old caster
+        // or slot may be resurrected with the same descriptor resolution.
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            [
+                .. HighShadowFrame(97),
+                .. SilkTransactionalApplyTests.Mesh(secondPath, 2, x: 5),
+                .. HighShadowLinks(97, (secondPath, UInt128.One, high96 | 1)),
+                .. HighShadowTable(97, 96),
+            ], 4, 4));
+        await Assert.That(fixture.Cache.Prepare(fixture.Scene, fixture.Resources)).IsEqualTo(1);
+        await AssertRecordedCaster(fixture.Device, secondPath, 5);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(3UL);
+        await Assert.That(fixture.Cache.MapCount).IsEqualTo(1);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(127)).IsEqualTo(-1);
+        await Assert.That(fixture.Cache.Binding.GetSlotForLight(96)).IsEqualTo(0);
+        await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(2);
+        ShadowTexture rebound = fixture.BindAndCaptureAtlas();
+        await Assert.That(ReferenceEquals(rebound, atlas)).IsFalse();
+        await Assert.That(rebound.IsDisposed).IsFalse();
+    }
+
+    private static async Task AssertRecordedCaster(ShadowDevice device, string path, float x)
+    {
+        await Assert.That(device.RecordedCasterDraws.Count).IsEqualTo(1);
+        RecordedShadowDraw draw = device.RecordedCasterDraws.Single();
+        await Assert.That(draw.IndexCount).IsEqualTo(3u);
+        await Assert.That(draw.InstanceCount).IsEqualTo(1u);
+        await Assert.That(draw.Paths.Single()).IsEqualTo(path);
+        float[] expected =
+        [
+            1, 0, 0, x, 0, 1, 0, 0, 0, 0, 0.5f, 0.5f, 0, 0, 0, 1,
+            0, 0, 0, 0,
+        ];
+        await Assert.That(draw.Bytes.Length).IsEqualTo(80);
+        for (int index = 0; index < expected.Length; index++)
+        {
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(draw.Bytes.AsSpan(index * 4)))
+                .IsEqualTo(expected[index]);
+        }
+    }
+
+    private static byte[] HighShadowFrame(int count)
+    {
+        var bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 23368u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), 64);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), 64);
+        for (int element = 0; element < 16; element++)
+        {
+            double identity = element % 5 == 0 ? 1 : 0;
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), identity);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), identity);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), (uint)count);
+        for (int light = 0; light < count; light++)
+        {
+            int entry = 552 + (light * 176);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), 1u);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 4),
+                light is 96 or 127 ? 1u : 0u);
+            for (int component = 0; component < 4; component++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 16 + (component * 4)), 1f);
+            }
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(entry + 32 + (element * 8)), element % 5 == 0 ? 1 : 0);
+            }
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 164), 1f);
+        }
+        return bytes;
+    }
+
+    private static byte[] HighShadowLinks(
+        uint count, params (string Path, UInt128 Light, UInt128 Shadow)[] entries)
+    {
+        var bytes = new byte[24 + entries.Sum(entry => 44 + System.Text.Encoding.UTF8.GetByteCount(entry.Path))];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.LightLink);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)entries.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), count);
+        int offset = 24;
+        foreach ((string path, UInt128 light, UInt128 shadow) in entries)
+        {
+            byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(path);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(offset), light);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(offset + 16), shadow);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(offset + 36), -1);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 40), (uint)pathBytes.Length);
+            pathBytes.CopyTo(bytes, offset + 44);
+            offset += 44 + pathBytes.Length;
+        }
+        return bytes;
+    }
+
+    private static byte[] HighShadowTable(uint count, params uint[] indices)
+    {
+        var bytes = new byte[24 + (indices.Length * 288)];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Shadow);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)indices.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), count);
+        for (int slot = 0; slot < indices.Length; slot++)
+        {
+            int entry = 24 + (slot * 288);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), indices[slot]);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 4), (uint)slot);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 8), 512u);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 12), 3u);
+            for (int element = 0; element < 16; element++)
+            {
+                double identity = element % 5 == 0 ? 1 : 0;
+                BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(entry + 16 + (element * 8)), identity);
+                BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(entry + 144 + (element * 8)), identity);
+            }
+        }
+        return bytes;
+    }
+
+    private static byte[] HighShadowMeshRemoval(string path)
+    {
+        byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(path);
+        var bytes = new byte[24 + pathBytes.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshRemove);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8),
+            SilkEnvironmentLightingTests.ComputeStableHash(path));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)pathBytes.Length);
+        pathBytes.CopyTo(bytes, 24);
+        return bytes;
+    }
+
+    internal sealed record RecordedShadowDraw(uint IndexCount, uint InstanceCount, string[] Paths, byte[] Bytes);
+
+    private sealed class RecordingShadowModule(SilkShaderModuleDescriptor descriptor) : ISilkGraphicsShaderModule
+    {
+        public SilkShaderModuleDescriptor Descriptor => descriptor;
+        public void Dispose() { }
+    }
+
+    private sealed class RecordingShadowLayout(SilkBindingLayoutDescriptor descriptor) : ISilkGraphicsBindingLayout
+    {
+        public SilkBindingLayoutDescriptor Descriptor => descriptor;
+        public void Dispose() { }
+    }
+
+    private sealed class RecordingShadowProgram(ISilkGraphicsBindingLayout layout) : ISilkGraphicsShaderProgram
+    {
+        public ISilkGraphicsBindingLayout BindingLayout => layout;
+        public void Dispose() { }
+    }
+
+    private sealed class RecordingShadowPipeline(SilkGraphicsPipelineDescriptor descriptor) : ISilkGraphicsPipeline
+    {
+        public SilkGraphicsPipelineDescriptor Descriptor => descriptor;
+        public void Dispose() { }
     }
 }

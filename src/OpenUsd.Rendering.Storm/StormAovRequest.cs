@@ -55,7 +55,9 @@ public sealed class StormAovLimits
     /// <param name="instanceContextLimit">Maximum decoded context entries.</param>
     /// <param name="pathByteLimit">Maximum native UTF-8 path bytes.</param>
     /// <param name="nativeWorkingByteLimit">Known native output-copy and retained/replacement scratch budget.</param>
-    /// <param name="managedByteLimit">Conservative managed snapshot storage budget, excluding allocator bookkeeping.</param>
+    /// <param name="managedByteLimit">
+    /// Conservative managed snapshot storage budget, excluding allocator bookkeeping.
+    /// </param>
     public StormAovLimits(
         int pixelLimit = MaximumPixels,
         int identityLimit = MaximumIdentities,

@@ -452,7 +452,7 @@ public sealed class SilkTransactionalApplyTests
 
     private static byte[] Frame(int width, uint lightCount = 0)
     {
-        const int frameSize = 2248;
+        const int frameSize = 23368;
         var bytes = new byte[frameSize];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), frameSize);
@@ -471,7 +471,7 @@ public sealed class SilkTransactionalApplyTests
     private static byte[] LightLinkTable(uint lightCount = 0)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(FirstPath);
-        int entrySize = 20 + pathBytes.Length;
+        int entrySize = 44 + pathBytes.Length;
         var bytes = new byte[24 + entrySize];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.LightLink);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
@@ -479,12 +479,12 @@ public sealed class SilkTransactionalApplyTests
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), lightCount);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), 0u);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), 0u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), 0u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), 0u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(32), 0u);
-        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(36), 0);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), (uint)pathBytes.Length);
-        pathBytes.CopyTo(bytes, 44);
+        BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(24), UInt128.Zero);
+        BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(40), UInt128.Zero);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), 0u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(60), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(64), (uint)pathBytes.Length);
+        pathBytes.CopyTo(bytes, 68);
         return bytes;
     }
 
@@ -642,5 +642,280 @@ public sealed class SilkTransactionalApplyTests
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), 0);
         return bytes;
+    }
+
+    [Test]
+    public async Task LateFailureRestoresWideFrameLinksShadowsAndRevisions()
+    {
+        var scene = new SilkSceneState();
+        UInt128 high127 = UInt128.One << 127;
+        UInt128 high96 = UInt128.One << 96;
+        byte[] seedShadow = ShadowTable(128, resolution: 512);
+        BinaryPrimitives.WriteUInt32LittleEndian(seedShadow.AsSpan(16), 2u);
+        BinaryPrimitives.WriteUInt32LittleEndian(seedShadow.AsSpan(24), 127u);
+        BinaryPrimitives.WriteUInt32LittleEndian(seedShadow.AsSpan(36), 3u);
+        BinaryPrimitives.WriteDoubleLittleEndian(seedShadow.AsSpan(136), 3d);
+        BinaryPrimitives.WriteDoubleLittleEndian(seedShadow.AsSpan(144), -2d);
+        BinaryPrimitives.WriteDoubleLittleEndian(seedShadow.AsSpan(168), 2d);
+        BinaryPrimitives.WriteDoubleLittleEndian(seedShadow.AsSpan(208), 4d);
+        _ = scene.Apply(
+            [
+                .. WideTransactionFrame(replacement: false),
+                .. Mesh(FirstPath, primId: 1),
+                .. MaterialCommand(),
+                .. SilkEnvironmentLightingTests.CreateEnvironmentUpsert(
+                    DomePath, "/assets/before.hdr", domeIndex: 0),
+                .. WideTransactionLinks(128, 2, truncated: true,
+                    (FirstPath, -1, high96 | 5, high127 | 2, 1u),
+                    (FirstPath, 0, high127 | 1, high96 | 4, 2u)),
+                .. seedShadow,
+            ], 6, 40);
+        Snapshot before = Snapshot.Of(scene);
+        SilkFrameState retainedFrame = scene.Frame;
+        SilkLightLinkTable retainedLinks = scene.LightLinks;
+        SilkShadowTable retainedShadows = scene.Shadows;
+        IReadOnlyList<SilkShadowDescriptor> retainedDescriptors = scene.Shadows.Descriptors;
+        SilkMeshData retainedMesh = scene.MeshesByPath[(FirstPath, 0)];
+        SilkMaterialData retainedMaterial = scene.Materials[MaterialPath];
+        SilkEnvironmentData retainedEnvironment = scene.Environments[DomePath];
+        double[] view = scene.Frame.View.ToArray();
+        double[] projection = scene.Frame.Projection.ToArray();
+        double[] clipPlanes = scene.Frame.ClipPlanes.ToArray();
+        SilkFrameLight[] lights = scene.Frame.Lights.ToArray();
+        SilkFrameDome[] domes = scene.Frame.Domes.ToArray();
+        byte[] beforeGpu = WideTransactionGpu(scene);
+
+        byte[] replacementShadow = ShadowTable(97, resolution: 1024, descriptorCount: 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(replacementShadow.AsSpan(24), 96u);
+        BinaryPrimitives.WriteUInt32LittleEndian(replacementShadow.AsSpan(312), 64u);
+        BinaryPrimitives.WriteDoubleLittleEndian(replacementShadow.AsSpan(136), 11d);
+        byte[] bad = Mesh(SecondPath, primId: 2);
+        BinaryPrimitives.WriteUInt64LittleEndian(bad.AsSpan(8), 0xDEADBEEFDEADBEEFUL);
+        byte[] prefix =
+        [
+            .. WideTransactionFrame(replacement: true),
+            .. WideTransactionLinks(97, 1, truncated: false,
+                (FirstPath, -1, high96 | 8, UInt128.One << 64, 1u),
+                (FirstPath, 0, UInt128.One << 64, high96 | 1, 1u)),
+            .. replacementShadow,
+            .. MaterialRemoval(),
+            .. SilkEnvironmentLightingTests.CreateEnvironmentUpsert(
+                DomePath, "/assets/rejected.hdr", domeIndex: 0),
+            .. Mesh(FirstPath, primId: 1, topologyRevision: 2, x: 7),
+            .. Mesh("/World/Geom/Transient", primId: 3, x: -9),
+        ];
+
+        // The bad hash is intentionally NOT a malformed wire record: only the
+        // mutating retained-state pass compares it with its decoded path.
+        InvalidDataException? failure = null;
+        try
+        {
+            _ = scene.Apply([.. prefix, .. bad], 8, 41);
+        }
+        catch (InvalidDataException exception)
+        {
+            failure = exception;
+        }
+        await Assert.That(failure?.Message ?? string.Empty).Contains("stable hash");
+        await Assert.That(failure?.Message ?? string.Empty).Contains(SecondPath);
+        await Assert.That(failure?.Message ?? string.Empty).Contains("DEADBEEFDEADBEEF");
+
+        await before.AssertUnchanged(scene, "a late failure after all seven valid replacements");
+        await Assert.That(scene.Frame).IsSameReferenceAs(retainedFrame);
+        await Assert.That(scene.LightLinks).IsSameReferenceAs(retainedLinks);
+        await Assert.That(scene.Shadows).IsSameReferenceAs(retainedShadows);
+        await Assert.That(scene.Shadows.Descriptors).IsSameReferenceAs(retainedDescriptors);
+        await Assert.That(scene.MeshesByPath[(FirstPath, 0)]).IsSameReferenceAs(retainedMesh);
+        await Assert.That(scene.Materials[MaterialPath]).IsSameReferenceAs(retainedMaterial);
+        await Assert.That(scene.Environments[DomePath]).IsSameReferenceAs(retainedEnvironment);
+        await Assert.That(scene.MeshesByPath.ContainsKey(("/World/Geom/Transient", 0))).IsFalse();
+        await Assert.That(scene.PickIdentities.TryGetRange("/World/Geom/Transient", out _)).IsFalse();
+        await Assert.That(scene.Frame.View.ToArray().SequenceEqual(view)).IsTrue();
+        await Assert.That(scene.Frame.Projection.ToArray().SequenceEqual(projection)).IsTrue();
+        await Assert.That(scene.Frame.ClipPlanes.ToArray().SequenceEqual(clipPlanes)).IsTrue();
+        await Assert.That(scene.Frame.Lights.ToArray().SequenceEqual(lights)).IsTrue();
+        await Assert.That(scene.Frame.Domes.ToArray().SequenceEqual(domes)).IsTrue();
+        await Assert.That(scene.Frame.Width).IsEqualTo(320);
+        await Assert.That(scene.Frame.Height).IsEqualTo(180);
+        await Assert.That(scene.Frame.View.Span[12]).IsEqualTo(5d);
+        await Assert.That(scene.Frame.Projection.Span[5]).IsEqualTo(4d);
+        await Assert.That(scene.Frame.ClipPlaneCount).IsEqualTo(2u);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(128u);
+        await Assert.That(scene.Frame.DomeCount).IsEqualTo(2u);
+        await Assert.That(scene.Frame.AmbientLight)
+            .IsEqualTo(new System.Numerics.Vector4(0.25f, 0.5f, 0.75f, 0));
+        await Assert.That(scene.Frame.Domes[0].IsTextured).IsTrue();
+        await Assert.That(scene.Frame.Domes[1].AmbientColor)
+            .IsEqualTo(new System.Numerics.Vector3(0.5f, 0.75f, 1));
+        await Assert.That(scene.Frame.Lights[127]).IsEqualTo(new SilkFrameLight(
+            3, 1, 32, 64, new System.Numerics.Vector3(1, 2, 4), 256,
+            new System.Numerics.Matrix4x4(
+                1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 128, 256, -128, 1),
+            1, 0.5f, 0.75f, 8));
+        await Assert.That(scene.LightLinks.Count).IsEqualTo(2);
+        await Assert.That(scene.LightLinks.LightCount).IsEqualTo(128u);
+        await Assert.That(scene.LightLinks.DomeCount).IsEqualTo(2u);
+        await Assert.That(scene.LightLinks.UnsupportedFeatures)
+            .IsEqualTo(SilkLightLinkUnsupportedFeatures.Truncated);
+        await Assert.That(scene.LightLinks.HasDomeLinks).IsTrue();
+        await Assert.That(scene.LightLinks.Resolve(FirstPath, 19))
+            .IsEqualTo(new SilkLightLinkMasks(high96 | 5, high127 | 2, 1));
+        await Assert.That(scene.LightLinks.Resolve(FirstPath, 0))
+            .IsEqualTo(new SilkLightLinkMasks(high127 | 1, high96 | 4, 2));
+        await Assert.That(scene.LightLinks.Resolve(SecondPath, 0))
+            .IsEqualTo(new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255));
+        await Assert.That(retainedDescriptors.Count).IsEqualTo(1);
+        SilkShadowDescriptor restored = retainedDescriptors[0];
+        await Assert.That((restored.LightIndex, restored.MapIndex, restored.Resolution, restored.Flags))
+            .IsEqualTo((127u, 0u, 512u,
+                SilkShadowDescriptorOptions.Orthographic | SilkShadowDescriptorOptions.CasterLinked));
+        await Assert.That((restored.DepthBias, restored.NormalBias, restored.PcfRadius))
+            .IsEqualTo((0.001f, 0.01f, 1f));
+        await Assert.That(restored.View.SequenceEqual(
+            new double[] { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, -2, 0, 1 })).IsTrue();
+        await Assert.That(restored.Projection.SequenceEqual(
+            new double[] { 2, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 })).IsTrue();
+        await Assert.That(scene.Shadows.LightCount).IsEqualTo(128u);
+        await Assert.That(scene.Shadows.UnsupportedFeatures).IsEqualTo(SilkShadowUnsupportedFeatures.MapBudget);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(96)).IsEqualTo(-1);
+        byte[] restoredGpu = WideTransactionGpu(scene);
+        await Assert.That(restoredGpu.SequenceEqual(beforeGpu)).IsTrue();
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(restoredGpu.AsSpan(15020)))
+            .IsEqualTo(1f).Because("the candidate 0x1 authored-direct flag must also roll back");
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(
+                restoredGpu.AsSpan(4320 + (127 * 16) + 12)))
+            .IsEqualTo(512f);
+
+        // The exact same prefix now commits when only the final mesh hash is
+        // repaired. This also proves that no preceding command caused refusal.
+        _ = scene.Apply([.. prefix, .. Mesh(SecondPath, primId: 2)], 8, 42);
+        await Assert.That(scene.Revision).IsEqualTo(42UL);
+        await Assert.That(scene.Frame.Width).IsEqualTo(640);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(97u);
+        await Assert.That(scene.Frame.DomeCount).IsEqualTo(1u);
+        await Assert.That(scene.Frame.Domes[1].IsPresent).IsFalse();
+        await Assert.That(scene.Frame.Revision).IsEqualTo(before.Frame + 1);
+        await Assert.That(scene.LightLinks.Revision).IsEqualTo(before.LightLinks + 1);
+        await Assert.That(scene.Shadows.Revision).IsEqualTo(before.Shadows + 1);
+        await Assert.That(scene.MaterialRevision).IsEqualTo(before.Material + 1);
+        await Assert.That(scene.EnvironmentRevision).IsEqualTo(before.Environment + 1);
+        await Assert.That(scene.GeometryRevision).IsGreaterThan(before.Geometry);
+        await Assert.That(scene.PickIdentities.Revision).IsGreaterThan(before.Pick);
+        await Assert.That(scene.Shadows.Descriptors).IsSameReferenceAs(retainedDescriptors);
+        await Assert.That(retainedDescriptors.Count).IsEqualTo(2);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(96)).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(64)).IsEqualTo(1);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(3);
+        await Assert.That(scene.Materials.ContainsKey(MaterialPath)).IsFalse();
+        await Assert.That(scene.LightLinks.Resolve(FirstPath, 0))
+            .IsEqualTo(new SilkLightLinkMasks(UInt128.One << 64, high96 | 1, 1));
+        await Assert.That(scene.LightLinks.HasDomeLinks).IsFalse();
+        await Assert.That(scene.LightLinks.DomeCount).IsEqualTo(1u);
+        await Assert.That(scene.LightLinks.UnsupportedFeatures)
+            .IsEqualTo(SilkLightLinkUnsupportedFeatures.None);
+        byte[] acceptedGpu = WideTransactionGpu(scene);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(acceptedGpu.AsSpan(15020)))
+            .IsEqualTo(0f);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(
+                acceptedGpu.AsSpan(4320 + (127 * 16) + 12)))
+            .IsEqualTo(0f);
+    }
+
+    private static byte[] WideTransactionFrame(bool replacement)
+    {
+        int count = replacement ? 97 : 128;
+        var bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 23368u);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), replacement ? 640 : 320);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), replacement ? 360 : 180);
+        for (int index = 0; index < 16; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (index * 8)),
+                index == 12 ? replacement ? 10 : 5 : index % 5 == 0 ? 1 : 0);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (index * 8)),
+                index switch { 0 => replacement ? 4 : 2, 5 => 4, 10 => 8, 15 => 1, _ => 0 });
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(272), 2u);
+        for (int index = 0; index < 8; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(280 + (index * 8)),
+                (index + 1) * (replacement ? 2d : 1d));
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), (uint)count);
+        // Explicit candidate flag encoding, pending the coordinator's confirmation.
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(540), replacement ? 0u : 0x1u);
+        for (int light = 0; light < count; light++)
+        {
+            int entry = 552 + (light * 176);
+            float t = light + 1;
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry), (uint)((light % 5) + 1));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(entry + 4), 1u);
+            TransactionFloats(bytes, entry + 8, t / 4, t / 2,
+                t / 128, t / 64, t / 32, t * (replacement ? 3 : 2));
+            for (int index = 0; index < 16; index++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(entry + 32 + (index * 8)),
+                    index switch { 12 => t, 13 => 2 * t, 14 => -t, _ => index % 5 == 0 ? 1 : 0 });
+            }
+            TransactionFloats(bytes, entry + 160, 1, 0.5f, 0.75f, t / 16);
+        }
+        TransactionFloats(bytes, 23080,
+            replacement ? 0.75f : 0.25f, replacement ? 0.125f : 0.5f,
+            replacement ? 0.875f : 0.75f, 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23096), replacement ? 1u : 2u);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23128), 3u);
+        if (!replacement)
+        {
+            TransactionFloats(bytes, 23144, 0.5f, 0.75f, 1);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(23160), 1u);
+        }
+        return bytes;
+    }
+
+    private static byte[] WideTransactionLinks(
+        uint count, uint domeCount, bool truncated,
+        params (string Path, int Instance, UInt128 Light, UInt128 Shadow, uint Dome)[] entries)
+    {
+        var bytes = new byte[24 + entries.Sum(entry => 44 + Encoding.UTF8.GetByteCount(entry.Path))];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.LightLink);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)entries.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), count);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), truncated ? 1u : 0u);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), domeCount);
+        int offset = 24;
+        foreach ((string path, int instance, UInt128 light, UInt128 shadow, uint dome) in entries)
+        {
+            byte[] pathBytes = Encoding.UTF8.GetBytes(path);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(offset), light);
+            BinaryPrimitives.WriteUInt128LittleEndian(bytes.AsSpan(offset + 16), shadow);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 32), dome);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(offset + 36), instance);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 40), (uint)pathBytes.Length);
+            pathBytes.CopyTo(bytes, offset + 44);
+            offset += 44 + pathBytes.Length;
+        }
+        return bytes;
+    }
+
+    private static byte[] WideTransactionGpu(SilkSceneState scene)
+    {
+        var bytes = new byte[15296];
+        SilkShadowFrameBinding shadows = SilkShadowFrameBinding.Create(
+            scene.Shadows.Descriptors, SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!);
+        SilkFrameUniformWriter.Write(
+            scene.Frame, bytes, false, RenderOutputTransform.Identity, 0, shadows: shadows);
+        return bytes;
+    }
+
+    private static void TransactionFloats(byte[] bytes, int offset, params float[] values)
+    {
+        for (int index = 0; index < values.Length; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + (index * 4)), values[index]);
+        }
     }
 }

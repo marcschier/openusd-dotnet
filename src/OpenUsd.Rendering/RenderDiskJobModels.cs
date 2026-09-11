@@ -78,7 +78,8 @@ public sealed class RenderDiskJobRequest
     public RenderDiskJobRequest(
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderDiskJobLimits? limits = null)
-        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, RenderHdrColorFormat.RawRgba16Float, limits)
+        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor,
+            RenderHdrColorFormat.RawRgba16Float, limits)
     {
     }
 
@@ -188,7 +189,9 @@ public sealed class RenderDiskJobRequest
     public bool IncludeHdrColor { get; }
     /// <summary>Gets the HDR container choice; existing overloads retain raw binary16 output.</summary>
     public RenderHdrColorFormat HdrColorFormat { get; }
-    /// <summary>Gets admitted authored-product semantics the frame adapter must honor, or null for a viewport job.</summary>
+    /// <summary>
+    /// Gets admitted authored-product semantics the frame adapter must honor, or null for a viewport job.
+    /// </summary>
     public RenderProductJobPlan? ProductPlan { get; }
 }
 
@@ -204,7 +207,9 @@ public interface IRenderJobFrameSource
 /// <remarks>Viewport-only sources cannot accidentally execute authored products with their legacy defaults.</remarks>
 public interface IRenderProductFrameSource : IRenderJobFrameSource
 {
-    /// <summary>Requires the adapter to honor every admitted output, scene filter and renderer setting, or throw.</summary>
+    /// <summary>
+    /// Requires the adapter to honor every admitted output, scene filter and renderer setting, or throw.
+    /// </summary>
     void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken);
 }
 

@@ -86,7 +86,8 @@ public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcesso
         {
             if (!ReferenceEquals(plan, productPlan) || source is not IPreviewProductFrameSource productSource)
             {
-                throw new NotSupportedException("The configured capture source cannot honor authored-product scene filters.");
+                throw new NotSupportedException(
+                    "The configured capture source cannot honor authored-product scene filters.");
             }
             productSource.ValidateProduct(plan, cancellationToken);
         }

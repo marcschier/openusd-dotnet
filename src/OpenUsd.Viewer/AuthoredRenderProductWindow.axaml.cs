@@ -408,7 +408,8 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            ProductStatus.Text = "Cancelled. No RenderProduct output was published; the pre-job Viewer state has been restored.";
+            ProductStatus.Text =
+                "Cancelled. No RenderProduct output was published; the pre-job Viewer state has been restored.";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
             InvalidOperationException or InvalidDataException or NotSupportedException or ArgumentException or

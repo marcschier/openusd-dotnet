@@ -100,27 +100,23 @@ public readonly ref struct SilkFrameCommand
 {
     private const int MinimumSize = 272;
     private const int ExtendedSize = 536;
-    private const int LightingSize = 1976;
-    private const int DomeSize = 2248;
+    private const int LightingSize = AmbientOffset + 16;
+    private const int DomeSize = DomeTableOffset + ((int)MaximumDomes * DomeEntrySize);
     private const int ClipPlaneOffset = MinimumSize + 8;
     private const int LightCountOffset = ExtendedSize;
     private const int LightTableOffset = ExtendedSize + 16;
     private const int LightEntrySize = 176;
-    private const int AmbientOffset = LightTableOffset + (8 * LightEntrySize);
+    private const int AmbientOffset = LightTableOffset + ((int)MaximumLights * LightEntrySize);
     private const int DomeCountOffset = LightingSize;
     private const int DomeTableOffset = LightingSize + 16;
     private const int DomeEntrySize = 32;
     private readonly ReadOnlySpan<byte> _bytes;
 
     /// <summary>Gets the fixed number of direct lights a frame table can carry.</summary>
-    public const uint MaximumLights = 8;
+    public const uint MaximumLights = 128;
 
     /// <summary>Gets the fixed number of dome lights a frame table can carry.</summary>
-    /// <remarks>
-    /// The same bound as <see cref="MaximumLights"/>, because a dome bit and a
-    /// direct light bit are bounded the same way: one constant sizes both, and a
-    /// consumer never has to ask which mask it is holding.
-    /// </remarks>
+    /// <remarks>The dome table and mask retain their independent eight-entry bound.</remarks>
     public const uint MaximumDomes = 8;
 
     internal SilkFrameCommand(ReadOnlySpan<byte> bytes)
@@ -131,7 +127,7 @@ public readonly ref struct SilkFrameCommand
             bytes.Length != DomeSize)
         {
             throw new InvalidDataException(
-                "The frame command must be exactly 272, 536, 1976, or 2248 bytes.");
+                "The frame command must be exactly 272, 536, 23096, or 23368 bytes.");
         }
         if (bytes.Length >= ExtendedSize &&
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[MinimumSize..(MinimumSize + 4)]) > 8)
@@ -139,9 +135,23 @@ public readonly ref struct SilkFrameCommand
             throw new InvalidDataException("The frame command clip plane count is invalid.");
         }
         if (bytes.Length >= LightingSize &&
-            BinaryPrimitives.ReadUInt32LittleEndian(bytes[LightCountOffset..(LightCountOffset + 4)]) > 8)
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes[LightCountOffset..(LightCountOffset + 4)]) > MaximumLights)
         {
-            throw new InvalidDataException("The frame command light count is invalid.");
+            throw new InvalidDataException(
+                "The frame command exceeds the bounded limit of 128 direct lights.");
+        }
+        if (bytes.Length >= LightingSize &&
+            ((BinaryPrimitives.ReadUInt32LittleEndian(bytes[540..544]) & ~1u) != 0 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes[544..548]) != 0 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes[548..552]) != 0))
+        {
+            throw new InvalidDataException(
+                "The frame lighting flags are unknown or a reserved field is not zero.");
+        }
+        if (bytes.Length >= LightingSize)
+        {
+            ValidateLightTable(bytes);
         }
         if (bytes.Length == DomeSize)
         {
@@ -154,6 +164,40 @@ public readonly ref struct SilkFrameCommand
             ValidateDomeTable(bytes, domeCount);
         }
         _bytes = bytes;
+    }
+
+    private static void ValidateLightTable(ReadOnlySpan<byte> bytes)
+    {
+        for (int light = 0; light < MaximumLights; light++)
+        {
+            ReadOnlySpan<byte> entry = bytes.Slice(
+                LightTableOffset + (light * LightEntrySize), LightEntrySize);
+            for (int offset = 8; offset < 32; offset += sizeof(float))
+            {
+                ValidateLightScalar(entry, offset);
+            }
+            for (int offset = 160; offset < LightEntrySize; offset += sizeof(float))
+            {
+                ValidateLightScalar(entry, offset);
+            }
+            for (int offset = 32; offset < 160; offset += sizeof(double))
+            {
+                double value = BinaryPrimitives.ReadDoubleLittleEndian(entry[offset..]);
+                if (!double.IsFinite(value) || value > float.MaxValue || value < -float.MaxValue)
+                {
+                    throw new InvalidDataException(
+                        "A frame light transform is not representable as a finite GPU value.");
+                }
+            }
+        }
+    }
+
+    private static void ValidateLightScalar(ReadOnlySpan<byte> entry, int offset)
+    {
+        if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(entry[offset..])))
+        {
+            throw new InvalidDataException("A frame light scalar is not finite.");
+        }
     }
 
     /// <summary>
@@ -258,6 +302,10 @@ public readonly ref struct SilkFrameCommand
         _bytes.Length >= LightingSize
             ? BinaryPrimitives.ReadUInt32LittleEndian(_bytes[LightCountOffset..(LightCountOffset + 4)])
             : 0;
+
+    internal bool HasAuthoredDirectLights =>
+        _bytes.Length >= LightingSize &&
+        (BinaryPrimitives.ReadUInt32LittleEndian(_bytes[540..544]) & 1u) != 0;
 
     internal uint GetLightType(int light) => ReadLightUInt32(light, 0);
 
@@ -376,7 +424,7 @@ public readonly ref struct SilkFrameCommand
     private static void ValidateLight(int light)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(light);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(light, 8);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(light, (int)MaximumLights);
     }
 
     private static void ValidateDome(int dome)
@@ -2583,8 +2631,8 @@ public enum SilkLightLinkUnsupportedFeatures : uint
 public readonly record struct SilkLightLinkEntry(
     string Path,
     int InstanceIndex,
-    uint LightMask,
-    uint ShadowMask,
+    UInt128 LightMask,
+    UInt128 ShadowMask,
     uint DomeMask);
 
 /// <summary>
@@ -2599,7 +2647,7 @@ public readonly record struct SilkLightLinkEntry(
 public readonly ref struct SilkLightLinkCommand
 {
     private const int FixedSize = 24;
-    private const int EntryFixedSize = 20;
+    private const int EntryFixedSize = 44;
     private const SilkLightLinkUnsupportedFeatures KnownUnsupported =
         SilkLightLinkUnsupportedFeatures.Truncated |
         SilkLightLinkUnsupportedFeatures.DomeBudget;
@@ -2642,7 +2690,9 @@ public readonly ref struct SilkLightLinkCommand
         // rejected whole rather than part way through being applied, and so that
         // every later read is a bounds-checked slice of an already valid span.
         int offset = FixedSize;
-        uint maskLimit = lightCount >= 32 ? uint.MaxValue : (1u << (int)lightCount) - 1;
+        UInt128 maskLimit = lightCount == SilkFrameCommand.MaximumLights
+            ? UInt128.MaxValue
+            : (UInt128.One << (int)lightCount) - 1;
         uint domeLimit = domeCount >= 32 ? uint.MaxValue : (1u << (int)domeCount) - 1;
         for (uint index = 0; index < entryCount; index++)
         {
@@ -2650,17 +2700,17 @@ public readonly ref struct SilkLightLinkCommand
             {
                 throw new InvalidDataException("A light link entry is truncated.");
             }
-            uint lightMask = BinaryPrimitives.ReadUInt32LittleEndian(
-                bytes.Slice(offset, sizeof(uint)));
-            uint shadowMask = BinaryPrimitives.ReadUInt32LittleEndian(
-                bytes.Slice(offset + 4, sizeof(uint)));
+            UInt128 lightMask = BinaryPrimitives.ReadUInt128LittleEndian(
+                bytes.Slice(offset, 16));
+            UInt128 shadowMask = BinaryPrimitives.ReadUInt128LittleEndian(
+                bytes.Slice(offset + 16, 16));
             if ((lightMask | shadowMask) > maskLimit)
             {
                 throw new InvalidDataException(
                     "A light link entry names a light the frame table does not publish.");
             }
             uint domeMask = BinaryPrimitives.ReadUInt32LittleEndian(
-                bytes.Slice(offset + 8, sizeof(uint)));
+                bytes.Slice(offset + 32, sizeof(uint)));
             if (domeMask > domeLimit)
             {
                 throw new InvalidDataException(
@@ -2673,8 +2723,8 @@ public readonly ref struct SilkLightLinkCommand
             // shadow without being lit by it -- an unlit or off-screen blocker --
             // is a valid, publishable combination rather than a malformed one.
             uint pathLength = BinaryPrimitives.ReadUInt32LittleEndian(
-                bytes.Slice(offset + 16, sizeof(uint)));
-            if (BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(offset + 12, sizeof(int))) <
+                bytes.Slice(offset + 40, sizeof(uint)));
+            if (BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(offset + 36, sizeof(int))) <
                 AllInstances)
             {
                 throw new InvalidDataException(
@@ -2742,16 +2792,16 @@ public readonly ref struct SilkLightLinkCommand
                 return false;
             }
 
-            uint lightMask = BinaryPrimitives.ReadUInt32LittleEndian(
-                _bytes.Slice(_offset, sizeof(uint)));
-            uint shadowMask = BinaryPrimitives.ReadUInt32LittleEndian(
-                _bytes.Slice(_offset + 4, sizeof(uint)));
+            UInt128 lightMask = BinaryPrimitives.ReadUInt128LittleEndian(
+                _bytes.Slice(_offset, 16));
+            UInt128 shadowMask = BinaryPrimitives.ReadUInt128LittleEndian(
+                _bytes.Slice(_offset + 16, 16));
             uint domeMask = BinaryPrimitives.ReadUInt32LittleEndian(
-                _bytes.Slice(_offset + 8, sizeof(uint)));
+                _bytes.Slice(_offset + 32, sizeof(uint)));
             int instanceIndex = BinaryPrimitives.ReadInt32LittleEndian(
-                _bytes.Slice(_offset + 12, sizeof(int)));
+                _bytes.Slice(_offset + 36, sizeof(int)));
             int pathLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(
-                _bytes.Slice(_offset + 16, sizeof(uint)));
+                _bytes.Slice(_offset + 40, sizeof(uint)));
             Current = new SilkLightLinkEntry(
                 SilkWireFormat.DecodePath(
                     _bytes.Slice(_offset + EntryFixedSize, pathLength)),

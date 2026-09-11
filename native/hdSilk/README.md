@@ -82,7 +82,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 6 and page ABI 23. Managed creation requires the matching session/page
+session ABI 6 and page ABI 24. Managed creation requires the matching session/page
 version exports; older session-5 libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -104,6 +104,23 @@ retired geometry cache, partial source fingerprint or bounds-based reconstructio
 Material networks use the existing full resolver, and excluded volumes are
 filtered before field loading.
 
+## Bounded direct lighting
+
+Page ABI 24 admits all of a frame's effective direct lights up to 128, after
+inherited visibility and zero-output filtering. A 129th effective light refuses
+the whole sync with the observed count and limit; nothing is published, and
+reducing the count allows the same session to retry. Authored-dark lights retain
+an explicit frame flag so omitting them never invents a camera headlight.
+
+The direct and shadow memberships are independent four-word, 128-bit masks,
+resolved against the same path-sorted light ordering as the frame. The dome
+table and mask remain separately bounded at eight. Shadows remain bounded at
+four distant-light maps: this expansion adds no area-light or dome shadows.
+The native frame is 23368 bytes, and each link entry is 44 bytes plus its UTF-8
+path. The managed/GPU frame is 15296 bytes at the existing raw-buffer binding;
+the 240-byte per-draw surface block carries two integer `uint4` masks, without
+floating-point conversion or per-element native calls.
+
 Requested filters commit only when a page is successfully returned. Failure
 during engine reconstruction leaves the stage and owned scene state available
 for the next explicit or legacy sync to retry. Test-only failure hooks are
@@ -112,6 +129,21 @@ page-publication failures, while managed pixel cases cover hidden primvars,
 normals, topology, ancestor transforms, deletion/redefinition and instancing.
 
 ## Wire format
+
+Meshes with published normals can share triangle corners whose original point identity
+and every resolved vertex attribute agree bit-for-bit. `src/meshVertexLayout.h` builds a
+deterministic indexed layout and compacts its attributes without changing triangle order,
+face/edge identity, UV seams or normal discontinuities. Layout-changing primvar edits
+advance the topology revision even when the mesh remains corner-remapped.
+Meshes without published normals retain the existing triangle-local normal fallback;
+this optimization must not introduce smoothing through an implicit normal calculation.
+
+The Rprim borrows its emitted triangle and face-identity tables from the control cage or
+the active refiner instead of retaining a second copy. Attribute collections use the
+existing native copy-on-write array: Rprim caches and published records share storage,
+while edits and compaction detach the writer. Read-only traversal, including serialization,
+must use const views so it neither changes earlier records nor duplicates their payloads.
+The wire format and native ABI are unchanged.
 
 `openusd_silk_session_sync` returns an `openusd_silk_page_view` whose `data`
 buffer is a sequence of little-endian commands. Every command starts with a

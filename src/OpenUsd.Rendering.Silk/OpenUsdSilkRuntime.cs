@@ -330,7 +330,8 @@ public static unsafe partial class OpenUsdSilkRuntime
         catch (EntryPointNotFoundException exception)
         {
             throw new NotSupportedException(
-                $"This build requires hdSilk session ABI {RequiredSilkSessionAbiVersion} with session/page version exports.",
+                $"This build requires hdSilk session ABI {RequiredSilkSessionAbiVersion} " +
+                "with session/page version exports.",
                 exception);
         }
 

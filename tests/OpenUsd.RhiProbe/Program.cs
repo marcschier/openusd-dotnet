@@ -1219,31 +1219,35 @@ internal static class Program
     /// because a probe with no material transforms no coordinates; a buffer that
     /// stopped short of them left the shader reading an all-zero affine, which
     /// collapses every texture coordinate onto one texel. The ABI 18 light-link
-    /// mask in the fifth row and the shadow-link mask in the ninth are written
-    /// with every bit set, because a zero mask means "linked to no light".
+    /// masks now follow the float prefix as two integer uint4 values, with every
+    /// bit set because a zero mask means "linked to no light".
     /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
-        const int surfaceConstantsByteSize = 13 * 4 * sizeof(float);
+        const int surfaceConstantsByteSize = 240;
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             surfaceConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        buffer.Write(MemoryMarshal.AsBytes<float>(
+        var values = new byte[surfaceConstantsByteSize];
+        MemoryMarshal.AsBytes<float>(
         [
             0.18f, 0.18f, 0.18f, 1,
             0, 0, 0, 1,
             0, 0, 0, 1.5f,
             0, 0.5f, 0, 0,
-            0, 0.01f, 0, 255,
+            0, 0.01f, 0, 0,
             0, 0, 1, 1,
             1, 1, 1, 1,
             0, 0, 0, 0,
-            0, 0, 0, 255,
+            0, 0, 0, 0,
             1, 0, 0, 0,
             0, 1, 0, 0,
             0, 0, 0, 0,
             255, 0, 0, 0
-        ]));
+        ]).CopyTo(values);
+        BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(208, 16), UInt128.MaxValue);
+        BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(224, 16), UInt128.MaxValue);
+        buffer.Write(values);
         return buffer;
     }
 
@@ -1252,7 +1256,7 @@ internal static class Program
     /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>. It grew
     /// when per-frame lighting and area-light bases moved <c>eyeToWorld</c>.
     /// </summary>
-    private const int FrameConstantsByteSize = 1856;
+    private const int FrameConstantsByteSize = 15296;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {
@@ -1261,16 +1265,16 @@ internal static class Program
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         var values = new byte[FrameConstantsByteSize];
         Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
-        // clipToEye at 0 and eyeToWorld at 992 must both be identity; the zero
+        // clipToEye at 0 and eyeToWorld at 12512 must both be identity; the zero
         // light block makes the shader fall back to the deterministic headlight.
         floats[0] = 1;
         floats[5] = 1;
         floats[10] = 1;
         floats[15] = 1;
-        floats[248] = 1;
-        floats[253] = 1;
-        floats[258] = 1;
-        floats[263] = 1;
+        floats[3128] = 1;
+        floats[3133] = 1;
+        floats[3138] = 1;
+        floats[3143] = 1;
         buffer.Write(values);
         return buffer;
     }

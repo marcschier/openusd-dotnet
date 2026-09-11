@@ -1120,4 +1120,74 @@ public sealed class VulkanDeviceTests
             device,
             SilkShaderBinaryFormat.SpirV);
     }
+
+    [Test]
+    [Arguments(32)]
+    [Arguments(64)]
+    [Arguments(96)]
+    [Arguments(127)]
+    public async Task SwiftShaderBindsHighWordUsdLuxLightMasks(int index)
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.Vulkan);
+        await Assert.That(device.Capabilities.IsSoftware).IsTrue();
+        await Assert.That(device.Capabilities.DeviceName.Contains(
+                "SwiftShader", StringComparison.OrdinalIgnoreCase))
+            .IsTrue().Because(
+                $"This synthetic offscreen case requires SwiftShader; selected {device.Capabilities.DeviceName}.");
+        await SilkLightLinkConformance.HighWordMasksUseDistinctSurfaceBindings(device, index);
+    }
+
+    [Test]
+    [Arguments(96)]
+    [Arguments(127)]
+    public async Task SwiftShaderKeepsHighShadowMasksIndependentOfIllumination(int index)
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.Vulkan);
+        await Assert.That(device.Capabilities.IsSoftware).IsTrue();
+        await Assert.That(device.Capabilities.DeviceName.Contains(
+                "SwiftShader", StringComparison.OrdinalIgnoreCase))
+            .IsTrue().Because(
+                $"This synthetic offscreen case requires SwiftShader; selected {device.Capabilities.DeviceName}.");
+        await SilkLightLinkConformance.HighShadowOnlyChangePreservesIllumination(device, index);
+    }
+
+    [Test]
+    [Arguments(96, "light")]
+    [Arguments(127, "light")]
+    [Arguments(96, "shadow")]
+    [Arguments(127, "shadow")]
+    [Arguments(96, "dome")]
+    [Arguments(127, "dome")]
+    public async Task SwiftShaderSplitsAndRecombinesHighWordInstanceMasks(int index, string difference)
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.Vulkan);
+        await Assert.That(device.Capabilities.IsSoftware).IsTrue();
+        await Assert.That(device.Capabilities.DeviceName.Contains(
+                "SwiftShader", StringComparison.OrdinalIgnoreCase))
+            .IsTrue().Because(
+                $"This synthetic offscreen case requires SwiftShader; selected {device.Capabilities.DeviceName}.");
+        await SilkNestedInstanceLinkConformance.HighWordMasksSplitAndRecombineBatches(
+            device, index, difference);
+    }
 }

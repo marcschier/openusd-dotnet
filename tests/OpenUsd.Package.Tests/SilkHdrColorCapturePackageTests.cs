@@ -33,7 +33,10 @@ public sealed partial class SilkHdrColorCapturePackageTests
                 .Contains("get_Depth");
             TypeDefinition options = FindType(metadata, "SilkHdrColorCaptureOptions");
             await Assert.That(PublicMethods(metadata, options)).IsEquivalentTo(
-                [".ctor", "get_Default", "get_IncludeDeviceDepth", "get_MaximumPixelCount", "get_MaximumReadbackBytes"]);
+                [
+                    ".ctor", "get_Default", "get_IncludeDeviceDepth",
+                    "get_MaximumPixelCount", "get_MaximumReadbackBytes"
+                ]);
             MethodDefinition constructor = options.GetMethods().Select(metadata.GetMethodDefinition)
                 .Single(method => metadata.GetString(method.Name) == ".ctor");
             Parameter[] parameters = [.. constructor.GetParameters().Select(metadata.GetParameter)];
@@ -54,9 +57,15 @@ public sealed partial class SilkHdrColorCapturePackageTests
             ];
             await Assert.That(values).IsEquivalentTo(["RendererWorkingCompositedBeforeExposureAndDisplay"]);
             await AssertCaptureParameters(metadata, "SilkFrameCapture", "CaptureRetainedWithHdrColor",
-                ["renderer", "device", "width", "height", "renderSettings", "hdrColorOptions", "pageRevision", "cancellationToken"]);
+                [
+                    "renderer", "device", "width", "height", "renderSettings",
+                    "hdrColorOptions", "pageRevision", "cancellationToken"
+                ]);
             await AssertCaptureParameters(metadata, "SilkFrameCapturer", "CaptureWithHdrColor",
-                ["session", "width", "height", "renderSettings", "hdrColorOptions", "timeCode", "camera", "cancellationToken"]);
+                [
+                    "session", "width", "height", "renderSettings", "hdrColorOptions",
+                    "timeCode", "camera", "cancellationToken"
+                ]);
 
             using Stream xmlSource = RequireEntry(package, $"lib/{framework}/OpenUsd.Rendering.Silk.xml").Open();
             XDocument documentation = XDocument.Load(xmlSource);
@@ -80,7 +89,8 @@ public sealed partial class SilkHdrColorCapturePackageTests
             await Assert.That(quota).Contains("unchanged when depth or selection is disabled");
             string continuity = string.Join(" ", documentation.Descendants("member")
                 .Where(member => (member.Attribute("name")?.Value ?? string.Empty)
-                    .StartsWith("M:OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(", StringComparison.Ordinal))
+                    .StartsWith(
+                        "M:OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(", StringComparison.Ordinal))
                 .Select(member => NormalizeWhitespace(member.Value)));
             await Assert.That(continuity).Contains("exclusive session synchronization ownership");
             await Assert.That(continuity).Contains("before target allocation or native Sync");

@@ -606,7 +606,13 @@ public sealed class UsdLayerEditCodecTests
         UsdEditWriter writer = Packet(4);
         writer.Text("anon:review.usda");
         writer.Text("");
-        writer.U32(corruption switch { "missing-root" => 0, "spec-count" => uint.MaxValue, "duplicate-spec" => 2, _ => 1 });
+        writer.U32(corruption switch
+        {
+            "missing-root" => 0,
+            "spec-count" => uint.MaxValue,
+            "duplicate-spec" => 2,
+            _ => 1
+        });
         int copies = corruption == "duplicate-spec" ? 2 : 1;
         for (int spec = 0; spec < copies; spec++)
         {
@@ -614,7 +620,8 @@ public sealed class UsdLayerEditCodecTests
             writer.U32(corruption == "wrong-root-type" ? 6u : 7u);
             writer.U32(corruption == "field-count" ? 129u : corruption == "duplicate-field" ? 2u : 1u);
             writer.Text(corruption == "empty-field" ? "" : corruption == "bad-field-kind" ? "primChildren" : "unknown");
-            writer.Bytes(corruption == "absent-field" ? UsdLayerEditValue.Absent.Payload : UsdLayerEditValue.FromInt32(1).Payload);
+            writer.Bytes(corruption == "absent-field"
+                ? UsdLayerEditValue.Absent.Payload : UsdLayerEditValue.FromInt32(1).Payload);
             if (corruption == "duplicate-field")
             {
                 writer.Text("unknown");

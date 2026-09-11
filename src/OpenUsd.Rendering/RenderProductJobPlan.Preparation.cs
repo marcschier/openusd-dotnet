@@ -6,7 +6,9 @@ namespace OpenUsd.Rendering;
 
 public sealed partial class RenderProductJobPlan
 {
-    /// <summary>Reads an authored product and samples its camera in bounded scheduler batches without scene mutation.</summary>
+    /// <summary>
+    /// Reads an authored product and samples its camera in bounded scheduler batches without scene mutation.
+    /// </summary>
     /// <remarks>
     /// Null settings select the stage's authored default. Null product selects only a sole product, never
     /// silently the first of several. An observed source revision is checked around every batch.
@@ -106,7 +108,8 @@ public sealed partial class RenderProductJobPlan
     {
         if (stage.ChangeSerial != expected)
         {
-            throw new InvalidOperationException("The stage changed while the product was prepared; no output was created.");
+            throw new InvalidOperationException(
+                "The stage changed while the product was prepared; no output was created.");
         }
     }
 

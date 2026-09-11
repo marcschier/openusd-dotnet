@@ -881,7 +881,7 @@ internal sealed class SilkDisplacementTests
             .Because("a scene with no shadow map has no light frustum to be clipped by");
 
         // Shadows are enabled after the displaced geometry already exists.
-        ApplyPage(scene, resources, 2, CreateShadowCommand(descriptorCount: 1));
+        ApplyPage(scene, resources, 2, CreateShadowFrameCommand(1), CreateShadowCommand(descriptorCount: 1));
         IReadOnlyList<RenderDiagnostic> raised = Diagnostics(
             resources,
             SilkRenderDiagnosticCodes.DisplacementShadowBoundsUnverified);
@@ -890,7 +890,7 @@ internal sealed class SilkDisplacementTests
         await Assert.That(raised[0].Severity).IsEqualTo(RenderDiagnosticSeverity.Information);
 
         // And retiring them clears it again.
-        ApplyPage(scene, resources, 3, CreateShadowCommand(descriptorCount: 0));
+        ApplyPage(scene, resources, 3, CreateShadowFrameCommand(0), CreateShadowCommand(descriptorCount: 0));
         await Assert
             .That(Diagnostics(
                 resources,
@@ -1182,6 +1182,7 @@ internal sealed class SilkDisplacementTests
             scene,
             resources,
             1,
+            CreateShadowFrameCommand(1),
             CreateShadowCommand(descriptorCount: 1),
             CreateMaterialUpsert(scalarAmount: 0.5f),
             CreateMeshUpsert(FlatPoints, FlatNormals));
@@ -1282,6 +1283,7 @@ internal sealed class SilkDisplacementTests
             scene,
             resources,
             1,
+            CreateShadowFrameCommand(1),
             CreateShadowCommand(descriptorCount: 1),
             CreateMaterialUpsert(textureAsset: HeightAsset),
             CreateMeshUpsert(FlatPoints, FlatNormals));
@@ -1342,6 +1344,7 @@ internal sealed class SilkDisplacementTests
             scene,
             resources,
             1,
+            CreateShadowFrameCommand(1),
             CreateShadowCommand(descriptorCount: 1),
             CreateMaterialUpsert(textureAsset: HeightAsset, textureFallback: 0.125f),
             CreateMeshUpsert(FlatPoints, FlatNormals));
@@ -1540,6 +1543,7 @@ internal sealed class SilkDisplacementTests
             scene,
             resources,
             1,
+            CreateShadowFrameCommand(1),
             CreateShadowCommand(descriptorCount: 1),
             CreateMaterialUpsert(textureAsset: HeightAsset),
             CreateMaterialUpsert(
@@ -1792,6 +1796,37 @@ internal sealed class SilkDisplacementTests
                 SilkTextureFormat.Rgba32Float);
         }
         return HeightDecoder(HeightAsset, false);
+    }
+
+    private static byte[] CreateShadowFrameCommand(uint lightCount)
+    {
+        var bytes = new byte[23368];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), 128);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12), 128);
+        for (int element = 0; element < 16; element += 5)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(16 + (element * 8)), 1);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(144 + (element * 8)), 1);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(536), lightCount);
+        if (lightCount != 0)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(540), 1);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(552), 1);
+            for (int component = 0; component < 4; component++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(568 + (component * 4)), 1);
+            }
+            for (int element = 0; element < 16; element += 5)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(584 + (element * 8)), 1);
+            }
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(716), 1);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(720), 1);
+        }
+        return bytes;
     }
 
     /// <summary>

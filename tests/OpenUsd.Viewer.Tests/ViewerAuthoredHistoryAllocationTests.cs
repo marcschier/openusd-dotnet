@@ -52,7 +52,7 @@ public sealed class ViewerAuthoredHistoryAllocationTests
             int equalAffectedStates = 0;
             int differentAffectedStates = 0;
             int refusedMerges = 0;
-            void Read(int iteration)
+            void readPayload(int iteration)
             {
                 if (!history.TryPeekUndo(out ViewerAuthoredEditStep? step))
                 {
@@ -67,7 +67,7 @@ public sealed class ViewerAuthoredHistoryAllocationTests
                 refusedMerges += step.TryCoalesce(next, out _) ? 0 : 1;
             }
 
-            Action<int> read = Read;
+            Action<int> read = readPayload;
             _ = AllocationWarmup.UntilQuiet(read);
             byteTotal = 0;
             equalPackets = 0;

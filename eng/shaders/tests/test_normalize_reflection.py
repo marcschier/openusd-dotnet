@@ -238,6 +238,41 @@ def program() -> dict:
 
 
 class NormalizeReflectionTests(unittest.TestCase):
+    def test_raw_frame_buffer_preserves_byte_address_shape_without_a_fake_stride(self) -> None:
+        for access in ("read", "readWrite"):
+            with self.subTest(access=access):
+                type_info = {"kind": "resource", "baseShape": "byteAddressBuffer"}
+                if access == "readWrite":
+                    type_info["access"] = access
+                result = MODULE.normalize_resource_shape(type_info, access, "row-major")
+                self.assertEqual(
+                    {
+                        "kind": "byteAddressBuffer",
+                        "access": access,
+                        "arrayCount": None,
+                        "elementType": None,
+                        "elementStride": None,
+                        "size": None,
+                    },
+                    result,
+                )
+
+    def test_raw_buffer_does_not_infer_writable_access(self) -> None:
+        type_info = {"kind": "resource", "baseShape": "byteAddressBuffer"}
+        with self.assertRaisesRegex(ValueError, "Missing access"):
+            MODULE.normalize_resource_shape(type_info, "readWrite", "row-major")
+        type_info["access"] = "readWrite"
+        with self.assertRaisesRegex(ValueError, "does not match contract"):
+            MODULE.normalize_resource_shape(type_info, "read", "row-major")
+
+    def test_structured_buffer_still_requires_element_type(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Missing resultType"):
+            MODULE.normalize_resource_shape(
+                {"kind": "resource", "baseShape": "structuredBuffer"},
+                "read",
+                "row-major",
+            )
+
     def test_preserves_resources_layout_and_stage_io(self) -> None:
         result = MODULE.normalize(
             raw("dxil"),

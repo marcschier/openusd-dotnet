@@ -209,9 +209,9 @@ public sealed class SilkSceneIngestionConformanceTests
     public async Task SharedHdrCapturerRestoresLegacyQuadrantsAndProductRoundTrip(SilkGraphicsBackend backend)
     {
         using var fixture = new ProductLikeSceneFixture();
+        using OpenUsdSilkSession session = fixture.CreateSession();
         using OpenUsd.UsdStage stage = OpenUsd.UsdStage.Open(fixture.ScenePath);
         CameraState camera = CameraState.FromStageCamera(stage, "/Camera", 0, 16, 16);
-        using OpenUsdSilkSession session = fixture.CreateSession();
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         using var capturer = new SilkFrameCapturer(device);
 

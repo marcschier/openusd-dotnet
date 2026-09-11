@@ -46,7 +46,8 @@ internal static class LayerEditingProbe
                         root.GetEditingState().CanAttemptAuthoredEdits ||
                         root.CaptureAuthored([addresses[0]]).Opinions[0].Value.AsDouble() != 7)
                     {
-                        throw new InvalidOperationException("Layer resolution or generic capture-only state is incorrect.");
+                        throw new InvalidOperationException(
+                            "Layer resolution or generic capture-only state is incorrect.");
                     }
                     UsdLayerAuthoredSnapshot snapshot = review.CaptureAuthored(addresses);
                     if (snapshot.Opinions.Any(opinion => opinion.PropertyKind != UsdLayerPropertyKind.Absent))
@@ -84,18 +85,22 @@ internal static class LayerEditingProbe
                     if (overlay.UserLayerIdentifier != review.Identifier ||
                         review.GetEditingState().Identity != before.Identity)
                     {
-                        throw new InvalidOperationException("Starting simulation replaced the authored review history target.");
+                        throw new InvalidOperationException(
+                            "Starting simulation replaced the authored review history target.");
                     }
                     UsdLayerEditResult result = review.CompareAndRestore(applied.AfterSnapshot!, before);
                     RequireApplied(result);
-                    if (result.AfterSnapshot!.Opinions.Any(opinion => opinion.PropertyKind != UsdLayerPropertyKind.Absent) ||
-                        !result.AfterSnapshot.CopyBytes().AsSpan().SequenceEqual(review.CaptureAuthored(addresses).CopyBytes()))
+                    if (result.AfterSnapshot!.Opinions.Any(
+                        opinion => opinion.PropertyKind != UsdLayerPropertyKind.Absent) ||
+                        !result.AfterSnapshot.CopyBytes().AsSpan().SequenceEqual(
+                            review.CaptureAuthored(addresses).CopyBytes()))
                     {
                         throw new InvalidOperationException("Undo did not return actual resulting authored absence.");
                     }
                     if (stage.GetPrim("/World").GetDouble("weight") != 7)
                     {
-                        throw new InvalidOperationException("Review undo after simulation start did not reveal the source.");
+                        throw new InvalidOperationException(
+                            "Review undo after simulation start did not reveal the source.");
                     }
                     return result;
                 }).ConfigureAwait(false);
@@ -138,11 +143,13 @@ internal static class LayerEditingProbe
                     actual.Opinions[1].Value.AsTokenArray()[0] != "first" ||
                     actual.Opinions[4].Value.Kind != UsdLayerEditValueKind.Block)
                 {
-                    throw new InvalidOperationException("Native review delta reopen lost authored state or flattened the source.");
+                    throw new InvalidOperationException(
+                        "Native review delta reopen lost authored state or flattened the source.");
                 }
             }
             Console.WriteLine(
-                "LAYER_EDITING_MANAGED_OK: exact capture, typed CAS, overlay history continuity, undo/redo, detached scheduler DTOs, checkpoint export/reopen");
+                "LAYER_EDITING_MANAGED_OK: exact capture, typed CAS, overlay history continuity, " +
+                "undo/redo, detached scheduler DTOs, checkpoint export/reopen");
         }
         finally
         {

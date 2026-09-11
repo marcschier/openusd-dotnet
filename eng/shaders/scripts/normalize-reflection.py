@@ -187,12 +187,17 @@ def normalize_resource_shape(
         }
     if kind == "resource":
         base_shape = require(base_type, "baseShape", "resource")
-        result_type = require(base_type, "resultType", "resource")
+        raw_buffer = base_shape == "byteAddressBuffer"
+        result_type = None if raw_buffer else require(base_type, "resultType", "resource")
         access = base_type.get("access")
         if (
             access is None
             and expected_access == "read"
-            and (base_shape.startswith("texture") or base_shape == "structuredBuffer")
+            and (
+                base_shape.startswith("texture")
+                or base_shape == "structuredBuffer"
+                or raw_buffer
+            )
         ):
             access = "read"
         if access is None:
@@ -208,7 +213,7 @@ def normalize_resource_shape(
             "kind": base_shape,
             "access": access,
             "arrayCount": array_count,
-            "elementType": normalize_type(result_type, matrix_layout),
+            "elementType": None if raw_buffer else normalize_type(result_type, matrix_layout),
             "elementStride": stride,
             "size": None,
         }

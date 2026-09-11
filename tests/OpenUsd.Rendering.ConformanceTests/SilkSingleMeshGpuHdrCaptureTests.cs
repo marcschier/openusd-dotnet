@@ -33,9 +33,9 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
             SilkSingleMeshHdrFixture.Retain(device, renderer, session);
         }
         var options = new SilkHdrColorCaptureOptions(includeDepth);
-        SilkFrameCaptureResult cpu = Capture(RenderSettings.Default);
+        SilkFrameCaptureResult cpu = capture(RenderSettings.Default);
         int before = device.ScenePasses;
-        SilkFrameCaptureResult gpu = Capture(SilkSingleMeshHdrFixture.GpuSettings());
+        SilkFrameCaptureResult gpu = capture(SilkSingleMeshHdrFixture.GpuSettings());
         int renderedPasses = device.ScenePasses - before;
         SilkFrameCaptureResult oldGpu = retained
             ? SilkFrameCapture.CaptureRetainedWithDepth(
@@ -59,7 +59,7 @@ public sealed partial class SilkSingleMeshGpuHdrCaptureTests
             await Assert.That(gpu.Depth.Values.Span[(8 * 16) + 8]).IsEqualTo(0.05f).Within(0.00001f);
         }
 
-        SilkFrameCaptureResult Capture(RenderSettings settings) => retained
+        SilkFrameCaptureResult capture(RenderSettings settings) => retained
             ? SilkFrameCapture.CaptureRetainedWithHdrColor(renderer, device, 16, 16, settings, options)
             : capturer.CaptureWithHdrColor(
                 session, 16, 16, settings, options, camera: SilkHdrColorCaptureFixture.Camera);

@@ -1094,9 +1094,8 @@ public sealed class SilkMeshRenderer :
         bool resolveTransparent(SilkMeshData mesh) =>
             options.UseSceneMaterials && IsTransparent(mesh);
 
-        uint resolveLinkMasks(SilkMeshData mesh) =>
-            SilkSceneGpuResources.PackLinkMasks(
-                Scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex));
+        SilkLightLinkMasks resolveLinkMasks(SilkMeshData mesh) =>
+            Scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex);
 
         if (singleMesh is not null)
         {
@@ -1170,7 +1169,7 @@ public sealed class SilkMeshRenderer :
 
         int drawCount = 0;
         PipelineKey? boundPipeline = null;
-        (string MaterialPath, uint LinkMasks)? boundSurface = null;
+        (string MaterialPath, SilkLightLinkMasks LinkMasks)? boundSurface = null;
         if (singleMesh is not null)
         {
             SilkShaderFeatures features = resolveMaterialFeatures(singleMesh.Mesh);
@@ -1405,12 +1404,11 @@ public sealed class SilkMeshRenderer :
     private void BindSurfaceBufferIfChanged(
         ISilkGraphicsCommandList commands,
         SilkMeshGpuResource mesh,
-        ref (string MaterialPath, uint LinkMasks)? boundSurface)
+        ref (string MaterialPath, SilkLightLinkMasks LinkMasks)? boundSurface)
     {
-        (string MaterialPath, uint LinkMasks) next = (
+        (string MaterialPath, SilkLightLinkMasks LinkMasks) next = (
             mesh.Mesh.MaterialPath,
-            SilkSceneGpuResources.PackLinkMasks(
-                Scene.LightLinks.Resolve(mesh.Mesh.Path, mesh.Mesh.InstanceIndex)));
+            Scene.LightLinks.Resolve(mesh.Mesh.Path, mesh.Mesh.InstanceIndex));
         if (boundSurface is { } bound &&
             bound.LinkMasks == next.LinkMasks &&
             string.Equals(bound.MaterialPath, next.MaterialPath, StringComparison.Ordinal))
@@ -1491,7 +1489,13 @@ public sealed class SilkMeshRenderer :
         {
             return result;
         }
-        return left.LinkMasks.CompareTo(right.LinkMasks);
+        result = left.LinkMasks.LightMask.CompareTo(right.LinkMasks.LightMask);
+        if (result != 0)
+        {
+            return result;
+        }
+        result = left.LinkMasks.ShadowMask.CompareTo(right.LinkMasks.ShadowMask);
+        return result != 0 ? result : left.LinkMasks.DomeMask.CompareTo(right.LinkMasks.DomeMask);
     }
 
     /// <summary>
@@ -1911,7 +1915,7 @@ public sealed class SilkMeshRenderer :
         // different lights cannot share a draw and must not share a batch. A
         // scene with no authored linking resolves every prim to the same value,
         // so batching is unchanged there.
-        uint LinkMasks);
+        SilkLightLinkMasks LinkMasks);
 
     private readonly record struct PipelineKey(
         SilkShaderFeatures Features,

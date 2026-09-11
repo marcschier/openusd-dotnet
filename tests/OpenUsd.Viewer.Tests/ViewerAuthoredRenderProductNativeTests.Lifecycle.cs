@@ -1,8 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia;
 using Avalonia.Threading;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
@@ -21,7 +21,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             if (!product.IsVisible)
             {
                 await WaitUntilAsync(() => Required<MenuItem>(owner, "RenderAuthoredProductMenuItem").IsEnabled);
-                Required<MenuItem>(owner, "RenderAuthoredProductMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Required<MenuItem>(owner, "RenderAuthoredProductMenuItem")
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 await WaitUntilAsync(() => owner.OwnedWindows.OfType<AuthoredRenderProductWindow>().Any());
                 product = owner.OwnedWindows.OfType<AuthoredRenderProductWindow>().Single();
                 await WaitUntilAsync(() => Required<ComboBox>(product, "ProductSelector").SelectedItem is not null);
@@ -39,7 +40,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             Task<ViewerStageSession>? reloaded = action == "reload" ? prepareReload() : null;
             TextBlock status = Required<TextBlock>(product, "ProductStatus");
             bool triggered = false;
-            void OnProgress(object? sender, AvaloniaPropertyChangedEventArgs args)
+            void onProgress(object? sender, AvaloniaPropertyChangedEventArgs args)
             {
                 if (triggered || args.Property != TextBlock.TextProperty ||
                     status.Text?.StartsWith("Rendering: 1/", StringComparison.Ordinal) != true)
@@ -50,21 +51,23 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
                 switch (action)
                 {
                     case "cancel":
-                        Required<Button>(product, "ProductCancelButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Required<Button>(product, "ProductCancelButton")
+                            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                         break;
                     case "double-close":
                         product.Close();
                         product.Close();
                         break;
                     case "reload":
-                        Required<MenuItem>(owner, "ReloadStageMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                        Required<MenuItem>(owner, "ReloadStageMenuItem")
+                            .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                         break;
                     case "close":
                         owner.Close();
                         break;
                 }
             }
-            status.PropertyChanged += OnProgress;
+            status.PropertyChanged += onProgress;
             try
             {
                 Required<Button>(product, "ProductRenderButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -98,7 +101,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             }
             finally
             {
-                status.PropertyChanged -= OnProgress;
+                status.PropertyChanged -= onProgress;
             }
         }
     }
