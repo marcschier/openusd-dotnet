@@ -10,6 +10,7 @@
 
 #include <map>
 #include <set>
+#include <typeinfo>
 
 namespace OpenUsdEdit
 {
@@ -95,6 +96,12 @@ private:
 
 struct DataAccess : SdfFileFormat
 {
+    static const std::type_info& ConcreteType(const SdfAbstractDataConstPtr& data)
+    {
+        // Keep smart-pointer evaluation outside typeid's operand for strict Clang builds.
+        const auto* value = get_pointer(data);
+        return typeid(*value);
+    }
     static SdfAbstractDataConstPtr Get(const SdfLayer& layer)
     {
         return _GetLayerData(layer);

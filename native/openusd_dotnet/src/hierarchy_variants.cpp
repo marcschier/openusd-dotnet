@@ -33,8 +33,9 @@ StoreKind Kind(const SdfAbstractDataConstPtr& data)
     {
         return StoreKind::Deferred;
     }
-    if (typeid(*data) == typeid(SdfData) || typeid(*data) == typeid(SdfUsdaData) ||
-        typeid(*data) == typeid(OpenUsdEdit::CountedData))
+    const auto& type = OpenUsdEdit::DataAccess::ConcreteType(data);
+    if (type == typeid(SdfData) || type == typeid(SdfUsdaData) ||
+        type == typeid(OpenUsdEdit::CountedData))
     {
         return StoreKind::Resident;
     }
@@ -43,7 +44,7 @@ StoreKind Kind(const SdfAbstractDataConstPtr& data)
         const auto format = SdfFileFormat::FindById(TfToken("usdc"));
         return format ? format->InitData({}) : SdfAbstractDataRefPtr();
     }();
-    return crate && typeid(*data) == typeid(*crate) ? StoreKind::Crate : StoreKind::Deferred;
+    return crate && type == OpenUsdEdit::DataAccess::ConcreteType(crate) ? StoreKind::Crate : StoreKind::Deferred;
 }
 
 struct Store

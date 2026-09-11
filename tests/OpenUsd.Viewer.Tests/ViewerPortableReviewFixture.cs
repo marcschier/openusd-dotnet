@@ -79,8 +79,7 @@ internal sealed class ViewerPortableReviewFixture : IDisposable
         {
             Skip.Test("Verified portable review opening currently requires Windows.");
         }
-        string plugins = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH") ??
-            throw new InvalidOperationException("Set OPENUSD_PLUGIN_PATH to the matching native runtime.");
+        string plugins = ViewerNativeTestStages.RequirePluginPathOrSkip();
         OpenUsdNativeRuntime.RegisterPlugins(plugins);
         string parent = Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ?? Path.GetTempPath();
         if (!Path.IsPathFullyQualified(parent))

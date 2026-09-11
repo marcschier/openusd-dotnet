@@ -470,7 +470,8 @@ private:
             }
             return format->InitData({});
         }();
-        return data && identity && typeid(*data) == typeid(*identity);
+        return data && identity &&
+            OpenUsdEdit::DataAccess::ConcreteType(data) == OpenUsdEdit::DataAccess::ConcreteType(identity);
     }
 
     static void RequireResident(const SdfAbstractDataConstPtr& data)
@@ -482,7 +483,7 @@ private:
         {
             throw std::invalid_argument(
                 std::string("Bounded render source admission requires a known resident USD/review store, not ") +
-                (data ? typeid(*data).name() : "a missing data store") +
+                (data ? OpenUsdEdit::DataAccess::ConcreteType(data).name() : "a missing data store") +
                 ". Deferred crate and custom backing stores require explicit preparation outside this query; "
                 "they are not materialized implicitly.");
         }
@@ -491,8 +492,9 @@ private:
     static bool IsResident(const SdfAbstractDataConstPtr& data)
     {
         // This final project-owned class changes mutation bookkeeping, not SdfData's borrowed reads.
-        return data && (typeid(*data) == typeid(SdfData) || typeid(*data) == typeid(SdfUsdaData) ||
-            typeid(*data) == typeid(OpenUsdEdit::CountedData));
+        return data && (OpenUsdEdit::DataAccess::ConcreteType(data) == typeid(SdfData) ||
+            OpenUsdEdit::DataAccess::ConcreteType(data) == typeid(SdfUsdaData) ||
+            OpenUsdEdit::DataAccess::ConcreteType(data) == typeid(OpenUsdEdit::CountedData));
     }
 
     const SdfAbstractDataConstPtr& Data(const SdfLayerHandle& layer)

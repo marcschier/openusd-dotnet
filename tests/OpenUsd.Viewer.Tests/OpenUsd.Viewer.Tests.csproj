@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" />
     <PackageReference Include="SharpMetal" />
     <PackageReference Include="TUnit" />
   </ItemGroup>

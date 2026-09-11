@@ -226,9 +226,9 @@ bool Matches(const Identity& identity, const openusd_stage* stage, const LayerRe
 SdfAbstractDataConstPtr Resident(const SdfLayerHandle& layer)
 {
     const auto data = DataAccess::Get(*layer);
-    Check(data && (typeid(*data) == typeid(SdfData)
-        || typeid(*data) == typeid(SdfUsdaData)
-        || typeid(*data) == typeid(CountedData)),
+    Check(data && (DataAccess::ConcreteType(data) == typeid(SdfData)
+        || DataAccess::ConcreteType(data) == typeid(SdfUsdaData)
+        || DataAccess::ConcreteType(data) == typeid(CountedData)),
         "Editing requires resident SdfData/SdfUsdaData; deferred or custom backing is unsupported.");
     return data;
 }

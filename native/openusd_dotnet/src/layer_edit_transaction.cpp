@@ -187,7 +187,7 @@ bool CanDelete(const LayerRecord& record, const Snapshot& before, const SdfPath&
     const auto owned = record.owned.find(path);
     if (owned == record.owned.end()) { return false; }
     const auto data = Resident(record.layer);
-    if (typeid(*data) == typeid(CountedData))
+    if (DataAccess::ConcreteType(data) == typeid(CountedData))
     {
         const auto& counted = static_cast<const CountedData&>(*data);
         if (counted.FieldCount(path) > MaxFields) { return false; }
@@ -380,7 +380,7 @@ void CleanupAncestors(LayerRecord& record, const std::set<SdfPath>* only = nullp
             }
         }
         if (!empty) { continue; }
-        if (typeid(*data) == typeid(CountedData))
+        if (DataAccess::ConcreteType(data) == typeid(CountedData))
         {
             const auto& counted = static_cast<const CountedData&>(*data);
             if (counted.FieldCount(path) > 3) { continue; }
@@ -473,7 +473,7 @@ int32_t Execute(const openusd_layer* handle, const Snapshot& expected, Snapshot 
         return OPENUSD_EDIT_NOT_EDITABLE;
     }
     const auto data = Resident(record.layer);
-    if (typeid(*data) != typeid(CountedData))
+    if (DataAccess::ConcreteType(data) != typeid(CountedData))
     {
         WriteError(error, "Bounded mutation requires the owned review data inventory; this resident layer is capture-only.");
         return OPENUSD_EDIT_NOT_EDITABLE;

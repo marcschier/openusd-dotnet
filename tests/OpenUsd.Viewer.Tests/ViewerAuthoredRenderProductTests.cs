@@ -2,6 +2,7 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using OpenUsd.Render;
@@ -103,6 +104,25 @@ public sealed class ViewerAuthoredRenderProductTests
             .Throws<ArgumentException>();
         await Assert.That(() => new ViewerRenderSequenceRange(0, 1, 0))
             .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task DialogHostOwnsItsDispatcherAfterAnotherThreadHasUsedAvalonia()
+    {
+        _ = Dispatcher.UIThread;
+        int calls = 0;
+        for (int run = 0; run < 2; run++)
+        {
+            await RunUiAsync(async () =>
+            {
+                await Assert.That(Dispatcher.UIThread.CheckAccess()).IsTrue();
+                await Task.Yield();
+                await Assert.That(Dispatcher.UIThread.CheckAccess()).IsTrue();
+                await Assert.That(Application.Current).IsTypeOf<App>();
+                calls++;
+            });
+        }
+        await Assert.That(calls).IsEqualTo(2);
     }
 
     [Test]
@@ -459,52 +479,12 @@ public sealed class ViewerAuthoredRenderProductTests
 
     private static async Task RunUiAsync(Func<Task> action)
     {
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var thread = new Thread(() =>
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(App));
+        await session.Dispatch(async () =>
         {
-            try
-            {
-                AppBuilder.Configure<App>().UsePlatformDetect()
-                    .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
-                    .SetupWithoutStarting();
-                _ = Dispatcher.UIThread.InvokeAsync(async () =>
-                {
-                    try
-                    {
-                        await action();
-                        completion.SetResult();
-                    }
-                    catch (Exception exception)
-                    {
-                        completion.SetException(exception);
-                    }
-                    finally
-                    {
-                        lifetime.Cancel();
-                    }
-                });
-                Dispatcher.UIThread.MainLoop(lifetime.Token);
-            }
-            catch (Exception exception)
-            {
-                completion.TrySetException(exception);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "Viewer authored RenderProduct UI test"
-        };
-        if (OperatingSystem.IsWindows())
-        {
-            thread.SetApartmentState(ApartmentState.STA);
-        }
-        thread.Start();
-        await completion.Task.WaitAsync(TimeSpan.FromSeconds(20));
-        lifetime.Cancel();
-        if (!thread.Join(TimeSpan.FromSeconds(5)))
-        {
-            throw new TimeoutException("The product dialog UI test thread did not stop.");
-        }
+            await action();
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
     }
 }

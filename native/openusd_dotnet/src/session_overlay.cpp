@@ -246,7 +246,8 @@ openusd_status AdoptRegisteredReview(
     OpenUsdEdit::Check(session->PermissionToEdit(), "The session container is not editable.");
     OpenUsdEdit::Check(user && stage->value->HasLocalLayer(user),
         "The registered review layer is detached; explicit document preparation is required.");
-    OpenUsdEdit::Check(typeid(*OpenUsdEdit::Resident(user)) == typeid(OpenUsdEdit::CountedData),
+    OpenUsdEdit::Check(OpenUsdEdit::DataAccess::ConcreteType(OpenUsdEdit::Resident(user)) ==
+        typeid(OpenUsdEdit::CountedData),
         "Review adoption requires the existing owned resident review store.");
     OpenUsdEdit::Check(!context.physics || !stage->value->HasLocalLayer(context.physics),
         "A registered simulation overlay is already active.");

@@ -32,14 +32,15 @@ enum class StoreKind { Resident, Crate, Deferred };
 StoreKind Kind(const SdfAbstractDataConstPtr& data)
 {
     if (!data) return StoreKind::Deferred;
-    if (typeid(*data) == typeid(SdfData) || typeid(*data) == typeid(SdfUsdaData) ||
-        typeid(*data) == typeid(OpenUsdEdit::CountedData)) return StoreKind::Resident;
+    const auto& type = OpenUsdEdit::DataAccess::ConcreteType(data);
+    if (type == typeid(SdfData) || type == typeid(SdfUsdaData) ||
+        type == typeid(OpenUsdEdit::CountedData)) return StoreKind::Resident;
     static const SdfAbstractDataRefPtr crate = []
     {
         const auto format = SdfFileFormat::FindById(TfToken("usdc"));
         return format ? format->InitData({}) : SdfAbstractDataRefPtr();
     }();
-    return crate && typeid(*data) == typeid(*crate) ? StoreKind::Crate : StoreKind::Deferred;
+    return crate && type == OpenUsdEdit::DataAccess::ConcreteType(crate) ? StoreKind::Crate : StoreKind::Deferred;
 }
 
 struct Store

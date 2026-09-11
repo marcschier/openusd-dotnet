@@ -261,7 +261,8 @@ TfRefPtr<CountedData> ParseText(const Bytes& bytes)
     // ImportFromString changes CountedData to SdfUsdaData and therefore adopts
     // parser data without a numeric/fallback equality pass.
     const auto resident = OpenUsdEdit::DataAccess::Get(*layer);
-    Check(typeid(*resident) == typeid(SdfUsdaData), "Text parsing did not produce the pinned resident USDA data implementation.");
+    Check(OpenUsdEdit::DataAccess::ConcreteType(resident) == typeid(SdfUsdaData),
+        "Text parsing did not produce the pinned resident USDA data implementation.");
     SourceVisitor visitor;
     resident->VisitSpecs(&visitor);
     return visitor.data;
@@ -538,7 +539,7 @@ void UserLayerAttached(const openusd_stage* stage)
     auto& state = *context.review;
     state.sessionVersion = state.sessionData->Version();
     const auto data = OpenUsdEdit::DataAccess::Get(*context.user);
-    Check(typeid(*data) == typeid(CountedData), "New review must use owned counted data.");
+    Check(OpenUsdEdit::DataAccess::ConcreteType(data) == typeid(CountedData), "New review must use owned counted data.");
     state.userVersion = static_cast<const CountedData*>(get_pointer(data))->Version();
 }
 TfRefPtr<CountedData> ReviewData(const openusd_layer* layer)
@@ -547,7 +548,7 @@ TfRefPtr<CountedData> ReviewData(const openusd_layer* layer)
     Check(record.local && record.role == 2 && record.layer == EditContext(layer->stage).user,
         "Portable persistence requires the current owned local review layer, never source or physics.");
     const auto data = OpenUsdEdit::Resident(record.layer);
-    Check(typeid(*data) == typeid(CountedData),
+    Check(OpenUsdEdit::DataAccess::ConcreteType(data) == typeid(CountedData),
         "Portable review inventory was replaced by unverified data; reconcile the review target.");
     return TfCreateRefPtrFromProtectedWeakPtr(
         TfWeakPtr<CountedData>(const_cast<CountedData*>(static_cast<const CountedData*>(get_pointer(data)))));
@@ -647,7 +648,7 @@ bool Pristine(const openusd_stage* stage)
         if (values.size() != 1 || values[0].GetOffset() != 0 || values[0].GetScale() != 1) { return false; }
     }
     const auto user = OpenUsdEdit::DataAccess::Get(*context.user);
-    if (!user || typeid(*user) != typeid(CountedData)) { return false; }
+    if (!user || OpenUsdEdit::DataAccess::ConcreteType(user) != typeid(CountedData)) { return false; }
     const auto* data = static_cast<const CountedData*>(get_pointer(user));
     return data->Version() == state.userVersion && data->Inventory().size() == 1
         && data->FieldCount(SdfPath::AbsoluteRootPath()) == 0 && stage->value->HasLocalLayer(context.user);

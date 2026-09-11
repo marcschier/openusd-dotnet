@@ -246,7 +246,7 @@ Document CaptureDocument(const openusd_layer* layer)
     auto& record = Record(layer);
     Check(record.local && record.role == 2, "Checkpoint capture requires the local owned user-review layer.");
     const auto data = Resident(record.layer);
-    Check(typeid(*data) == typeid(CountedData),
+    Check(DataAccess::ConcreteType(data) == typeid(CountedData),
         "Bounded checkpoint inventory is unavailable for this imported/normalized layer; no unbounded preparation is performed.");
     Document document;
     document.identity = GetIdentity(layer->stage, record);

@@ -145,8 +145,8 @@ void Topology(const Data& data, bool inspectionOnly)
                 || parentType == SdfSpecTypeVariant || (type == SdfSpecTypeVariant && parentType == SdfSpecTypeVariantSet),
                 "Portable parent spec is missing.");
             const auto children = data->Get(parent, key);
-            Check(children.IsHolding<TfTokenVector>(), "Portable parent child-name inventory is missing.");
-            const auto& names = children.UncheckedGet<TfTokenVector>();
+            Check(children.template IsHolding<TfTokenVector>(), "Portable parent child-name inventory is missing.");
+            const auto& names = children.template UncheckedGet<TfTokenVector>();
             Check(std::count(names.begin(), names.end(), name) == 1,
                 "Portable parent inventory must uniquely contain its child.");
         }
@@ -155,9 +155,9 @@ void Topology(const Data& data, bool inspectionOnly)
         {
             const auto children = data->Get(spec.first, key);
             if (children.IsEmpty()) { continue; }
-            Check(children.IsHolding<TfTokenVector>(), "Invalid portable child inventory.");
+            Check(children.template IsHolding<TfTokenVector>(), "Invalid portable child inventory.");
             std::set<TfToken> unique;
-            for (const auto& name : children.UncheckedGet<TfTokenVector>())
+            for (const auto& name : children.template UncheckedGet<TfTokenVector>())
             {
                 const bool property = key == SdfChildrenKeys->PropertyChildren;
                 if (key != SdfChildrenKeys->VariantChildren)
@@ -188,8 +188,8 @@ void Topology(const Data& data, bool inspectionOnly)
         if (type == SdfSpecTypeAttribute)
         {
             const auto name = data->Get(spec.first, SdfFieldKeys->TypeName);
-            Check(name.IsHolding<TfToken>(), "Portable attribute type declaration is missing.");
-            const auto* valueType = ValueType(name.UncheckedGet<TfToken>(), inspectionOnly);
+            Check(name.template IsHolding<TfToken>(), "Portable attribute type declaration is missing.");
+            const auto* valueType = ValueType(name.template UncheckedGet<TfToken>(), inspectionOnly);
             Check(valueType != nullptr, "Portable attribute declaration is unsupported.");
             const auto valid = [&](const VtValue& value)
             {
@@ -201,8 +201,8 @@ void Topology(const Data& data, bool inspectionOnly)
             const auto samples = data->Get(spec.first, SdfFieldKeys->TimeSamples);
             if (!samples.IsEmpty())
             {
-                Check(samples.IsHolding<SdfTimeSampleMap>(), "Invalid portable sample storage.");
-                for (const auto& sample : samples.UncheckedGet<SdfTimeSampleMap>()) { valid(sample.second); }
+                Check(samples.template IsHolding<SdfTimeSampleMap>(), "Invalid portable sample storage.");
+                for (const auto& sample : samples.template UncheckedGet<SdfTimeSampleMap>()) { valid(sample.second); }
             }
         }
     }

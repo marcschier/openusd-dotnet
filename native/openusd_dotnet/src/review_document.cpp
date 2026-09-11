@@ -71,7 +71,8 @@ void RestoreSession(const SdfLayerRefPtr& session, const TfRefPtr<CountedData>& 
     SdfChangeBlock block;
     OpenUsdEdit::DataAccess::Install(get_pointer(session), before);
     const auto resident = OpenUsdEdit::DataAccess::Get(*session);
-    Check(typeid(*resident) == typeid(CountedData), "Review import rollback lost its owned session data.");
+    Check(OpenUsdEdit::DataAccess::ConcreteType(resident) == typeid(CountedData),
+        "Review import rollback lost its owned session data.");
     auto* installed = const_cast<CountedData*>(static_cast<const CountedData*>(get_pointer(resident)));
     std::vector<SdfPath> paths;
     Check(installed->Inventory().size() <= OpenUsdEdit::MaxSpecs, "Rollback session inventory exceeded its budget.");

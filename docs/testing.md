@@ -128,8 +128,18 @@ passed as a PowerShell array so filters and paths remain single arguments:
 Viewer editor/document cases probe the data shim before creating a background stage scheduler.
 A managed-only run skips only an unavailable native library. An explicitly configured
 `OPENUSD_VIEWER_TEST_NATIVE_ROOT`, an incompatible ABI or a missing entry point still fails;
-native-required runs must not turn missing inputs into skips. The product-dialog lifecycle
-case uses UI-only Avalonia initialization with software X11 rendering, not native Storm startup.
+native-required runs must not turn missing inputs into skips.
+Portable-review fixtures accept `OPENUSD_PLUGIN_PATH`, or `OPENUSD_TEST_PLUGIN_PATH` when
+the first variable is unset. They skip only when neither plugin variable nor a Viewer native
+root is configured; blank, relative or missing explicit plugin directories fail, and an invalid
+primary value never falls back to the alias.
+
+Fake-renderer product-dialog tests use the pinned test-only `Avalonia.Headless` package and
+an isolated `HeadlessUnitTestSession`. They do not initialize native Storm or a real display.
+`DialogHostOwnsItsDispatcherAfterAnotherThreadHasUsedAvalonia` covers prior dispatcher access,
+async UI-thread continuity and repeated isolated sessions. `NotInParallel` alone does not
+establish dispatcher ownership, and software X11 rendering still needs an X server.
+The separate native Viewer workflow smokes retain their actual desktop requirements.
 
 Coverage also runs the built DLL directly:
 

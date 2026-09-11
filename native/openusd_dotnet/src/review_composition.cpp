@@ -103,8 +103,14 @@ private:
                 Check(target != layers.end(), "Missing admitted composition target.");
                 const auto defaultPrim = target->second->Get(SdfPath::AbsoluteRootPath(), SdfFieldKeys->DefaultPrim);
                 std::string name;
-                if (defaultPrim.IsHolding<TfToken>()) { name = defaultPrim.UncheckedGet<TfToken>().GetString(); }
-                else if (defaultPrim.IsHolding<std::string>()) { name = defaultPrim.UncheckedGet<std::string>(); }
+                if (defaultPrim.template IsHolding<TfToken>())
+                {
+                    name = defaultPrim.template UncheckedGet<TfToken>().GetString();
+                }
+                else if (defaultPrim.template IsHolding<std::string>())
+                {
+                    name = defaultPrim.template UncheckedGet<std::string>();
+                }
                 Check(SdfPath::IsValidIdentifier(name),
                     "A portable composition arc needs an explicit prim path or a valid target defaultPrim.");
                 targetPath = SdfPath::AbsoluteRootPath().AppendChild(TfToken(name));
