@@ -139,10 +139,11 @@ Meshes without published normals retain the existing triangle-local normal fallb
 this optimization must not introduce smoothing through an implicit normal calculation.
 
 The Rprim borrows its emitted triangle and face-identity tables from the control cage or
-the active refiner instead of retaining a second copy. Attribute collections use the
-existing native copy-on-write array: Rprim caches and published records share storage,
-while edits and compaction detach the writer. Read-only traversal, including serialization,
-must use const views so it neither changes earlier records nor duplicates their payloads.
+the active refiner instead of retaining a second copy. Attribute collections, triangle
+indices and authored face/point/edge identity use native copy-on-write arrays: producer
+caches and published records share storage, while edits and presentation changes detach
+only the arrays they write. Read-only traversal, including serialization, must use const
+views so it neither changes earlier records nor duplicates their payloads.
 The wire format and native ABI are unchanged.
 
 `openusd_silk_session_sync` returns an `openusd_silk_page_view` whose `data`

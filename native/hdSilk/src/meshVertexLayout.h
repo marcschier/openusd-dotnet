@@ -16,15 +16,15 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 struct HdSilkMeshVertexLayout
 {
-    std::vector<uint32_t> pointIndices;
-    std::vector<uint32_t> triangleIndices;
+    VtArray<uint32_t> pointIndices;
+    VtArray<uint32_t> triangleIndices;
 };
 
 namespace HdSilkVertexLayoutDetail
 {
 struct CornerHash
 {
-    const std::vector<uint32_t>& points;
+    const VtArray<uint32_t>& points;
     const HdSilkMeshAttributes& attributes;
 
     size_t operator()(uint32_t corner) const
@@ -50,7 +50,7 @@ struct CornerHash
 
 struct CornerEqual
 {
-    const std::vector<uint32_t>& points;
+    const VtArray<uint32_t>& points;
     const HdSilkMeshAttributes& attributes;
 
     bool operator()(uint32_t left, uint32_t right) const
@@ -76,7 +76,7 @@ struct CornerEqual
 }
 
 inline HdSilkMeshVertexLayout HdSilkBuildSharedVertexLayout(
-    const std::vector<uint32_t>& sourceIndices,
+    const VtArray<uint32_t>& sourceIndices,
     size_t sourcePointCount,
     HdSilkMeshAttributes& attributes)
 {

@@ -16,7 +16,7 @@ public sealed class ViewerAuthoredHistoryAllocationTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:labels", UsdLayerEditField.Default);
             var foreign = new UsdLayerEditAddress("/Body.review:foreign", UsdLayerEditField.Default);

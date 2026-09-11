@@ -21,7 +21,7 @@ public sealed class ViewerDocumentNativeSeamTests
         try
         {
             await File.WriteAllTextAsync(source, original);
-            await using (UsdStageScheduler scheduler = UsdStageScheduler.Open(source))
+            await using (UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(source))
             {
                 bool composedAuthored = await scheduler.InvokeAsync(stage =>
                 {
@@ -32,7 +32,7 @@ public sealed class ViewerDocumentNativeSeamTests
                 });
                 await Assert.That(composedAuthored).IsTrue();
             }
-            await using (UsdStageScheduler targetOnly = UsdStageScheduler.Open(target))
+            await using (UsdStageScheduler targetOnly = ViewerNativeTestStages.OpenSchedulerOrSkip(target))
             {
                 bool targetHasPrim = await targetOnly.InvokeAsync(static stage => stage.HasPrim("/Body"));
                 await Assert.That(targetHasPrim).IsFalse()

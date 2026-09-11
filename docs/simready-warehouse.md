@@ -330,7 +330,8 @@ Further private instrumentation attributes roughly 3.1 GB of a 4.3 GB full-root 
 to retained Rprim/scene-record arrays; the temporary corner hash peaks at about 28 MB
 in that run. Rprims now borrow active coarse/refined topology tables, and published
 attributes share copy-on-write storage instead of duplicating every attribute buffer.
-Mutation detaches the writer so earlier records remain unchanged. The controlled grid's
+Triangle indices and face/point/edge identity tables also share their producer's storage.
+Mutation detaches only changed arrays so earlier records remain unchanged. The controlled grid's
 complete 1,340,590-byte command page is byte-identical across these ownership changes.
 These are measured representation/lifetime improvements, not a complete warehouse memory
 budget. Remaining retained arrays, USD/Hydra caches and later publication peaks still

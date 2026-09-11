@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -464,7 +465,9 @@ public sealed class ViewerAuthoredRenderProductTests
         {
             try
             {
-                Program.BuildAvaloniaApp().SetupWithoutStarting();
+                AppBuilder.Configure<App>().UsePlatformDetect()
+                    .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
+                    .SetupWithoutStarting();
                 _ = Dispatcher.UIThread.InvokeAsync(async () =>
                 {
                     try

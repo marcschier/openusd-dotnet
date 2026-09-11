@@ -551,9 +551,10 @@ void RebuildPointDrawModeOrigins(HdSilkMeshRecord& record, size_t pointCount)
         return;
     }
 
+    const VtArray<uint32_t>& origins = record.pointOrigins;
     for (size_t vertex = 0; vertex < pointCount; ++vertex)
     {
-        const uint32_t origin = record.pointOrigins[vertex];
+        const uint32_t origin = origins[vertex];
         if (origin != OPENUSD_SILK_SUBPRIM_NONE &&
             static_cast<size_t>(origin) != vertex)
         {
@@ -646,17 +647,17 @@ HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode
     }
 
     result.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
-    std::vector<uint32_t> lines;
-    std::vector<uint32_t> lineSubprims;
-    lines.reserve(result.indices.size() * 2);
-    lineSubprims.reserve(result.indices.size());
-    for (size_t triangle = 0; triangle + 2 < result.indices.size(); triangle += 3)
+    VtArray<uint32_t> lines;
+    VtArray<uint32_t> lineSubprims;
+    lines.reserve(record.indices.size() * 2);
+    lineSubprims.reserve(record.indices.size());
+    for (size_t triangle = 0; triangle + 2 < record.indices.size(); triangle += 3)
     {
-        const uint32_t a = result.indices[triangle];
-        const uint32_t b = result.indices[triangle + 1];
-        const uint32_t c = result.indices[triangle + 2];
-        const uint32_t subprim = triangle / 3 < result.triangleSubprims.size()
-            ? result.triangleSubprims[triangle / 3]
+        const uint32_t a = record.indices[triangle];
+        const uint32_t b = record.indices[triangle + 1];
+        const uint32_t c = record.indices[triangle + 2];
+        const uint32_t subprim = triangle / 3 < record.triangleSubprims.size()
+            ? record.triangleSubprims[triangle / 3]
             : 0u;
         lines.push_back(a);
         lines.push_back(b);
@@ -1518,6 +1519,7 @@ HdSilkMeshRecord ApplyComplexity(
     uint32_t complexity)
 {
     const uint32_t density = ComplexityDensity(complexity);
+    const HdSilkMeshRecord& source = record;
     if (density == 1 ||
         (record.topologyKind != OPENUSD_SILK_TOPOLOGY_LINE_LIST &&
             record.topologyKind != OPENUSD_SILK_TOPOLOGY_POINT_LIST) ||
@@ -1534,7 +1536,7 @@ HdSilkMeshRecord ApplyComplexity(
     // before the preflight that decides whether even one entry may be reserved
     // had run. Moving it into a local leaves the result with no capacity at all
     // while keeping the source entries readable for the emission below.
-    const std::vector<uint32_t> sourcePointOrigins =
+    const VtArray<uint32_t> sourcePointOrigins =
         std::move(record.pointOrigins);
     record.pointOrigins.clear();
 
@@ -1566,7 +1568,7 @@ HdSilkMeshRecord ApplyComplexity(
              ++primitive)
         {
             originsUsable =
-                record.indices[primitive] < sourcePointOrigins.size();
+                source.indices[primitive] < sourcePointOrigins.size();
         }
         duplicateOrigins = claimsPoints && originsUsable;
         if (!duplicateOrigins &&
@@ -1625,7 +1627,7 @@ HdSilkMeshRecord ApplyComplexity(
         // triangulated face, and there is no corner an authored edge could map
         // onto. Neither claim becomes answerable because the points were
         // duplicated, so both are dropped here with the topology-mode reason.
-        std::vector<uint32_t>().swap(result.cornerEdges);
+        VtArray<uint32_t>().swap(result.cornerEdges);
         result.authoredEdgeCount = 0;
         result.subprimIdentity &= ~(OPENUSD_SILK_SUBPRIM_IDENTITY_FACE |
             OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE);
@@ -1658,14 +1660,14 @@ HdSilkMeshRecord ApplyComplexity(
         bool namedOrigin = false;
         for (size_t primitive = 0; primitive < record.indices.size(); ++primitive)
         {
-            const uint32_t point = record.indices[primitive];
+            const uint32_t point = source.indices[primitive];
             for (uint32_t copy = 0; copy < density; ++copy)
             {
                 const uint32_t emitted =
                     CheckedCount(result.points.size() / 3, "complexity point");
                 AppendPointWithAttributes(result, record, point);
                 result.indices.push_back(emitted);
-                result.triangleSubprims.push_back(record.triangleSubprims[primitive]);
+                result.triangleSubprims.push_back(source.triangleSubprims[primitive]);
                 if (duplicateOrigins)
                 {
                     const uint32_t origin = sourcePointOrigins[point];
@@ -1708,8 +1710,8 @@ HdSilkMeshRecord ApplyComplexity(
 
     for (size_t primitive = 0; primitive < record.indices.size() / 2; ++primitive)
     {
-        const uint32_t first = record.indices[primitive * 2];
-        const uint32_t second = record.indices[(primitive * 2) + 1];
+        const uint32_t first = source.indices[primitive * 2];
+        const uint32_t second = source.indices[(primitive * 2) + 1];
         for (uint32_t segment = 0; segment < density; ++segment)
         {
             const uint32_t emitted =
@@ -1730,7 +1732,7 @@ HdSilkMeshRecord ApplyComplexity(
                 end);
             result.indices.push_back(emitted);
             result.indices.push_back(emitted + 1);
-            result.triangleSubprims.push_back(record.triangleSubprims[primitive]);
+            result.triangleSubprims.push_back(source.triangleSubprims[primitive]);
         }
     }
     return result;
@@ -1814,22 +1816,23 @@ void AppendMeshUpsert(
     uint32_t sourceTopologyKind)
 {
     const uint64_t sourceRevision = record.topologyRevision;
-    HdSilkMeshRecord complexRecord =
+    HdSilkMeshRecord presented =
         ApplyComplexity(std::move(record), complexity);
     // Complexity rebuilds only line and point topology, so a record that
     // reaches the wire as a triangle list is presented at density one whatever
     // the session's complexity is: its refinement level is what complexity
     // moves, and that already moved the source revision at the producer.
     const uint32_t presentedDensity =
-        (complexRecord.topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
-            complexRecord.topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST)
+        (presented.topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+            presented.topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST)
             ? ComplexityDensity(complexity)
             : 1u;
-    complexRecord.topologyRevision = PresentationTopologyRevision(
+    presented.topologyRevision = PresentationTopologyRevision(
         sourceRevision,
         sourceTopologyKind,
-        complexRecord.topologyKind,
+        presented.topologyKind,
         presentedDensity);
+    const HdSilkMeshRecord& complexRecord = presented;
     const MeshWireCounts counts = ValidateMesh(complexRecord);
 
     std::vector<uint8_t> payload;

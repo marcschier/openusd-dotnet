@@ -323,7 +323,7 @@ bool ResolveFaceVaryingPrimvar(
 bool ExpandIndexedElements(
     const std::vector<float>& source,
     uint32_t componentCount,
-    const std::vector<uint32_t>& indices,
+    const VtArray<uint32_t>& indices,
     std::vector<float>* expanded)
 {
     if (componentCount == 0 || source.size() % componentCount != 0)
@@ -387,7 +387,7 @@ void NormalizeRefinedNormals(
 bool ExpandUniformElements(
     const std::vector<float>& source,
     uint32_t componentCount,
-    const std::vector<uint32_t>& triangleSubprims,
+    const VtArray<uint32_t>& triangleSubprims,
     std::vector<float>* expanded)
 {
     if (componentCount == 0 || source.size() % componentCount != 0)
@@ -435,8 +435,8 @@ bool ExpandUniformElements(
 /// be walked or its edge count would not fit the wire.
 bool BuildAuthoredEdgeTable(
     const HdMeshTopology& topology,
-    const std::vector<uint32_t>& triangleIndices,
-    std::vector<uint32_t>* outCornerEdges,
+    const VtArray<uint32_t>& triangleIndices,
+    VtArray<uint32_t>* outCornerEdges,
     uint32_t* outAuthoredEdgeCount)
 {
     outCornerEdges->clear();
@@ -522,7 +522,7 @@ bool BuildAuthoredEdgeTable(
 /// the table it already read. An authored component no emitted primitive covers
 /// -- a point no face references, or an edge that belongs only to hole faces --
 /// is simply not named, and the count shrinks to match.
-uint32_t OneePastLargestNamed(const std::vector<uint32_t>& table)
+uint32_t OneePastLargestNamed(const VtArray<uint32_t>& table)
 {
     uint32_t largest = 0;
     bool named = false;
@@ -1992,7 +1992,7 @@ HdSilkMesh::Sync(
         materialDirty || cullDirty || subdivisionRefreshed)
     {
         const VtVec3fArray& emittedPoints = _EmittedPoints();
-        const std::vector<uint32_t>& triangleIndices = _EmittedTriangleIndices();
+        const VtArray<uint32_t>& triangleIndices = _EmittedTriangleIndices();
         // An empty mesh is retired rather than published. A record with no
         // points and no indices is byte-identical on the wire to an ABI v8
         // instance reference, so publishing one as a point-instanced prototype
@@ -2030,7 +2030,7 @@ HdSilkMesh::Sync(
         }
         if (_attributesRequireExpandedTopology)
         {
-            const std::vector<uint32_t>& pointIndices = _attributePointIndices.empty()
+            const VtArray<uint32_t>& pointIndices = _attributePointIndices.empty()
                 ? triangleIndices : _attributePointIndices;
             record.points.reserve(pointIndices.size() * 3);
             if (_attributeTriangleIndices.empty())
@@ -2132,12 +2132,10 @@ HdSilkMesh::Sync(
                 // one. It publishes the sentinel instead, which also keeps
                 // authored_point_count honest: a trailing run of stray points
                 // does not inflate the authored space a consumer is handed.
-                record.pointOrigins.clear();
-                record.pointOrigins.reserve(emittedPointCount);
                 bool pointOriginsResolved = true;
                 if (_attributesRequireExpandedTopology)
                 {
-                    const std::vector<uint32_t>& origins = _attributePointIndices.empty()
+                    const VtArray<uint32_t>& origins = _attributePointIndices.empty()
                         ? triangleIndices : _attributePointIndices;
                     if (origins.size() != emittedPointCount)
                     {
@@ -2145,14 +2143,12 @@ HdSilkMesh::Sync(
                     }
                     else
                     {
-                        for (uint32_t origin : origins)
-                        {
-                            record.pointOrigins.push_back(origin);
-                        }
+                        record.pointOrigins = origins;
                     }
                 }
                 else
                 {
+                    record.pointOrigins.reserve(emittedPointCount);
                     std::vector<bool> referenced(emittedPointCount, false);
                     for (uint32_t index : triangleIndices)
                     {
@@ -2187,7 +2183,7 @@ HdSilkMesh::Sync(
                 }
                 else
                 {
-                    std::vector<uint32_t>().swap(record.pointOrigins);
+                    VtArray<uint32_t>().swap(record.pointOrigins);
                     record.subprimUnsupported |=
                         OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
                 }
@@ -2259,11 +2255,11 @@ HdSilkMesh::Sync(
 bool
 HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id)
 {
-    const std::vector<uint32_t>& triangleIndices = _EmittedTriangleIndices();
-    const std::vector<uint32_t>& triangleSubprims = _EmittedTriangleSubprims();
+    const VtArray<uint32_t>& triangleIndices = _EmittedTriangleIndices();
+    const VtArray<uint32_t>& triangleSubprims = _EmittedTriangleSubprims();
     const bool expandedBefore = _attributesRequireExpandedTopology;
-    std::vector<uint32_t> previousPoints = std::move(_attributePointIndices);
-    std::vector<uint32_t> previousIndices = std::move(_attributeTriangleIndices);
+    VtArray<uint32_t> previousPoints = std::move(_attributePointIndices);
+    VtArray<uint32_t> previousIndices = std::move(_attributeTriangleIndices);
     _attributePointIndices.clear();
     _attributeTriangleIndices.clear();
     _attributes.clear();

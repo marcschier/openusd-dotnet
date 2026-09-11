@@ -15,7 +15,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:labels", UsdLayerEditField.Default);
             string[] values = Enumerable.Repeat(new string('x', 2048), 128).ToArray();
@@ -54,7 +54,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:text", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture before = await editor.CaptureAsync([address]);
@@ -85,7 +85,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, source);
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture first = await editor.CaptureAsync([address]);
@@ -144,7 +144,7 @@ public sealed class ViewerAuthoredEditControllerTests
             "#usda 1.0\ndef Xform \"Body\" {\n custom double review:value = 7\n}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture before = await editor.CaptureAsync([address]);
@@ -186,7 +186,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             var foreign = new UsdLayerEditAddress("/Body.review:foreign", UsdLayerEditField.Default);
@@ -235,7 +235,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             UsdLayerEditAddress[] addresses =
             [
@@ -283,7 +283,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture before = await editor.CaptureAsync([address]);
@@ -319,7 +319,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             var foreign = new UsdLayerEditAddress("/Body.review:foreign", UsdLayerEditField.Default);
@@ -374,7 +374,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             var foreign = new UsdLayerEditAddress("/Body.review:foreign", UsdLayerEditField.Default);
@@ -424,7 +424,7 @@ public sealed class ViewerAuthoredEditControllerTests
             "#usda 1.0\ndef Xform \"Body\" {\n custom double3 xformOp:translate = (1, 2, 3)\n}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             ViewerPropertyEditCapture property = await editor.CapturePropertyAsync(
                 "/Body", "xformOp:translate", UsdLayerEditField.Default, 0);
@@ -457,7 +457,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var physics = new ViewerPhysicsDocumentAuthoringStage(editor);
             ViewerPhysicsAuthoringResult result = await physics.ApplyAsync(new ViewerPhysicsEditStep("Invalid batch",
@@ -504,7 +504,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, source);
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture capture = await editor.CaptureAsync([address]);
@@ -540,7 +540,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var edited = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             var foreign = new UsdLayerEditAddress("/Body.review:foreign", UsdLayerEditField.Default);
@@ -597,7 +597,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             UsdLayerEditAddress[] addresses =
             [
@@ -643,7 +643,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var physics = new ViewerPhysicsDocumentAuthoringStage(editor);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
@@ -683,7 +683,7 @@ public sealed class ViewerAuthoredEditControllerTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             UsdSessionOverlay? overlay = null;
             try
             {

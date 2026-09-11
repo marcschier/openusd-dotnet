@@ -550,12 +550,15 @@ public sealed class ViewerPhysicsAuthoringUiTests
         int end = body.IndexOf("private void RebuildPhysicsObjectSelector", StringComparison.Ordinal);
         string reload = body[..(end < 0 ? body.Length : end)];
 
-        // The anchor is captured before the load, so the rebuild has something to restore from.
+        // A slow read must preserve the operator's latest selection after stale reads are refused.
         int capture = reload.IndexOf("CapturePhysicsSelection()", StringComparison.Ordinal);
-        int load = reload.IndexOf("LoadInspectorAsync", StringComparison.Ordinal);
-        await Assert.That(capture).IsGreaterThan(0);
-        await Assert.That(load).IsGreaterThan(capture);
-        await Assert.That(reload).Contains("RebuildPhysicsObjectSelector(anchor)");
+        int load = reload.IndexOf("await physics.LoadInspectorAsync(cancellation)", StringComparison.Ordinal);
+        int current = reload.IndexOf("request != _physicsPropertyReadGeneration", StringComparison.Ordinal);
+        int rebuild = reload.IndexOf("RebuildPhysicsObjectSelector(anchor)", StringComparison.Ordinal);
+        await Assert.That(load).IsGreaterThan(0);
+        await Assert.That(current).IsGreaterThan(load);
+        await Assert.That(capture).IsGreaterThan(current);
+        await Assert.That(rebuild).IsGreaterThan(capture);
 
         await Assert.That(source).Contains("ViewerPhysicsSelectionResolver.ResolveSection");
         await Assert.That(source).Contains("ViewerPhysicsSelectionResolver.ResolveRow");
@@ -741,15 +744,23 @@ public sealed class ViewerPhysicsAuthoringUiTests
             "private async Task RunPhysicsAuthoringAsync",
             StringComparison.Ordinal);
         await Assert.That(start).IsGreaterThan(0);
-        string body = source[start..Math.Min(source.Length, start + 1600)];
+        int end = source.IndexOf("\n    private ", start + 1, StringComparison.Ordinal);
+        await Assert.That(end).IsGreaterThan(start);
+        string body = source[start..end];
 
         // Apply, clear, undo, and redo all funnel through here, so one guard covers all of them.
         // The reset lives in a finally, or a failed edit would wedge every later one.
-        await Assert.That(body).Contains("if (_physicsAuthoringBusy)");
+        await Assert.That(body).Contains("if (_physicsAuthoringBusy || _physicsPropertyReadBusy ||");
+        await Assert.That(body).Contains("_documentEditBusy || _documentSnapshotRefreshBusy || _documentBusy)");
         await Assert.That(body).Contains("_physicsAuthoringBusy = true;");
+        int wait = body.IndexOf("await _documentGate.WaitAsync(cancellation)", StringComparison.Ordinal);
+        int execute = body.IndexOf("await operation(physics)", StringComparison.Ordinal);
+        await Assert.That(wait).IsGreaterThan(0);
+        await Assert.That(execute).IsGreaterThan(wait);
         int final = body.IndexOf("finally", StringComparison.Ordinal);
-        await Assert.That(final).IsGreaterThan(0);
+        await Assert.That(final).IsGreaterThan(execute);
         await Assert.That(body[final..]).Contains("_physicsAuthoringBusy = false;");
+        await Assert.That(body[final..]).Contains("_documentGate.Release();");
 
         foreach (string handler in new[]
         {

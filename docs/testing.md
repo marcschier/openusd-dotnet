@@ -125,6 +125,12 @@ passed as a PowerShell array so filters and paths remain single arguments:
     '/*/*/VulkanCompositionPresentationTests/D3D11BridgeImportsPixelsAndReusesKeyedMutex')
 ```
 
+Viewer editor/document cases probe the data shim before creating a background stage scheduler.
+A managed-only run skips only an unavailable native library. An explicitly configured
+`OPENUSD_VIEWER_TEST_NATIVE_ROOT`, an incompatible ABI or a missing entry point still fails;
+native-required runs must not turn missing inputs into skips. The product-dialog lifecycle
+case uses UI-only Avalonia initialization with software X11 rendering, not native Storm startup.
+
 Coverage also runs the built DLL directly:
 
 ```powershell
@@ -342,6 +348,12 @@ It writes each bounded input to an isolated temporary USDA file, opens it throug
 results after successful parses. Ordinary native builds and CTest do not create or run
 the fuzzer.
 
+`run-native-fuzz.ps1 -SelfTest` compiles the harness against the project-owned C header
+and exercises the same `NativeFuzzTargets.cmake` helper the production shim calls. With
+fuzzing disabled, neither the fuzzer target nor sanitizer options may appear. This
+source-only check needs no installed OpenUSD SDK; real shim configuration still requires
+the pinned PCP, render-edit and storage-admission provenance checks.
+
 After the locked `native/install/linux-x64` build exists, run a bounded ASAN/UBSAN pass:
 
 ```powershell
@@ -437,6 +449,10 @@ identity, signed zero, invalid-input preservation and deterministic ordering.
 equal values. `AttributeWritesDetachWithoutChangingPublishedRecords` and
 `CompactionPreservesAnEarlierAttributeSnapshot` prove that edits, cache refresh and compaction
 preserve earlier records. The probe links the pinned native SDK for its copy-on-write array.
+`RecordCopiesShareIndexAndIdentityStorage` also checks triangle/face/point/edge buffer identity.
+`IndexAndIdentityWritesDetachOnlyTheChangedBuffer` preserves the old values and unchanged
+buffer owners, while `IdentityRetirementReleasesOnlyTheRetiredOwner` checks zero retained
+capacity and exact refusal flags without invalidating another record.
 `SilkVertexCompactionNativeTests` follows actual Hydra publication through continuous UVs,
 UV seams, layout-changing edits and the unchanged missing-normal fallback. Its D3D12/Vulkan
 pixel cases compare against an independently vertex-indexed textured scene.

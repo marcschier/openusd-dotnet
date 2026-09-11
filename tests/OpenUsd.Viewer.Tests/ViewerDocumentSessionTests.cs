@@ -15,7 +15,7 @@ public sealed class ViewerDocumentSessionTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             await editor.ReadDocumentAsync();
             await editor.CaptureAsync([new("/Body.review:value", UsdLayerEditField.Default)]);
@@ -45,7 +45,7 @@ public sealed class ViewerDocumentSessionTests
         await File.WriteAllTextAsync(foreign, "foreign bytes");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             await editor.CaptureAsync([new("/Body.review:value", UsdLayerEditField.Default)]);
             UsdLayerCheckpoint checkpoint = await editor.CaptureReviewCheckpointAsync();
@@ -84,7 +84,7 @@ public sealed class ViewerDocumentSessionTests
         await File.WriteAllTextAsync(path, source);
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture before = await editor.CaptureAsync([address]);
@@ -93,7 +93,7 @@ public sealed class ViewerDocumentSessionTests
             UsdLayerCheckpoint checkpoint = await editor.CaptureReviewCheckpointAsync();
             await ViewerReviewLayerExporter.ExportNewAsync(checkpoint, path, destination, CancellationToken.None);
 
-            await using UsdStageScheduler exported = UsdStageScheduler.Open(destination);
+            await using UsdStageScheduler exported = ViewerNativeTestStages.OpenSchedulerOrSkip(destination);
             await Assert.That(await exported.InvokeAsync(static stage => stage.GetPrim("/Body")
                 .GetDouble("review:value"))).IsEqualTo(42d);
             await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(source);
@@ -115,7 +115,7 @@ public sealed class ViewerDocumentSessionTests
         await File.WriteAllTextAsync(path, "#usda 1.0\ndef Xform \"Body\" {}\n");
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
             ViewerAuthoredEditCapture capture = await editor.CaptureAsync([address]);
@@ -151,7 +151,7 @@ public sealed class ViewerDocumentSessionTests
         await File.WriteAllTextAsync(path, source);
         try
         {
-            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
             await using var editor = new ViewerAuthoredEditController(scheduler);
             string[] originalLayers = await scheduler.InvokeAsync(static stage => stage.GetLayerStackIdentifiers());
             ViewerDocumentObservation initial = await editor.ReadDocumentAsync();

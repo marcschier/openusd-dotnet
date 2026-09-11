@@ -210,10 +210,13 @@ public sealed class ViewerPhysicsUiTests
             "private async Task StopCurrentDocumentAsync()",
             StringComparison.Ordinal);
         await Assert.That(stop).IsGreaterThan(0);
-        string body = window[stop..(stop + 400)];
-        await Assert.That(body).Contains("await DetachPhysicsAsync();");
-        await Assert.That(body.IndexOf("await DetachPhysicsAsync();", StringComparison.Ordinal))
-            .IsLessThan(body.IndexOf("StopStormNavigationPolling();", StringComparison.Ordinal) + 1);
+        int end = window.IndexOf("\n    private ", stop + 1, StringComparison.Ordinal);
+        await Assert.That(end).IsGreaterThan(stop);
+        string body = window[stop..end];
+        int detach = body.IndexOf("await DetachPhysicsAsync();", StringComparison.Ordinal);
+        int stopPolling = body.IndexOf("StopStormNavigationPolling();", StringComparison.Ordinal);
+        await Assert.That(detach).IsGreaterThan(0);
+        await Assert.That(stopPolling).IsGreaterThan(detach);
     }
 
     [Test]

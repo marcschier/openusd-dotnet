@@ -138,7 +138,7 @@ public:
     int GetRefineLevel() const { return _refineLevel; }
 
     /// Refined vertex index per emitted triangle corner, three per triangle.
-    const std::vector<uint32_t>& GetTriangleIndices() const
+    const VtArray<uint32_t>& GetTriangleIndices() const
     {
         return _triangleIndices;
     }
@@ -146,7 +146,7 @@ public:
     /// The authored coarse face index each emitted triangle descends from, so a
     /// material subset or a uniform primvar keyed by authored face still
     /// resolves after refinement.
-    const std::vector<uint32_t>& GetTriangleSubprims() const
+    const VtArray<uint32_t>& GetTriangleSubprims() const
     {
         return _triangleSubprims;
     }
@@ -224,8 +224,8 @@ private:
     int _refineLevel = 0;
     size_t _coarseVertexCount = 0;
     size_t _refinedVertexCount = 0;
-    std::vector<uint32_t> _triangleIndices;
-    std::vector<uint32_t> _triangleSubprims;
+    VtArray<uint32_t> _triangleIndices;
+    VtArray<uint32_t> _triangleSubprims;
 };
 
 /// A stable one-line reason for a status, for diagnostics and probes.

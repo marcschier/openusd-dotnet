@@ -163,13 +163,13 @@ private:
         return _subdivision.IsRefined() ? _refinedPoints : _points;
     }
 
-    const std::vector<uint32_t>& _EmittedTriangleIndices() const
+    const VtArray<uint32_t>& _EmittedTriangleIndices() const
     {
         return _subdivision.IsRefined()
             ? _subdivision.GetTriangleIndices() : _coarseTriangleIndices;
     }
 
-    const std::vector<uint32_t>& _EmittedTriangleSubprims() const
+    const VtArray<uint32_t>& _EmittedTriangleSubprims() const
     {
         return _subdivision.IsRefined()
             ? _subdivision.GetTriangleSubprims() : _coarseTriangleSubprims;
@@ -181,15 +181,15 @@ private:
     // Emission borrows either these coarse tables or the refiner's tables.
     // Keeping the control cage does not require another copy of the active
     // triangulation, and switching refinement off needs no topology resync.
-    std::vector<uint32_t> _coarseTriangleIndices;
-    std::vector<uint32_t> _coarseTriangleSubprims;
+    VtArray<uint32_t> _coarseTriangleIndices;
+    VtArray<uint32_t> _coarseTriangleSubprims;
     // The ABI v22 authored-edge table of the control cage: one entry per coarse
     // triangle corner, in corner order, naming the authored mesh edge that
     // corner spans or OPENUSD_SILK_SUBPRIM_NONE when the corner is a
     // triangulation diagonal of an n-gon. Derived from the authored topology
     // alone, so it is rebuilt exactly when the topology is, beside the coarse
     // triangulation it indexes.
-    std::vector<uint32_t> _coarseCornerEdges;
+    VtArray<uint32_t> _coarseCornerEdges;
     uint32_t _coarseAuthoredEdgeCount = 0;
     // Refined control cage state. The refiner and every table derived from
     // topology alone survive across frames, so animated points re-run
@@ -212,8 +212,8 @@ private:
     // emitted triangle-list vertices appear here; anything else is omitted so
     // the consumer falls back rather than receiving data this delegate guessed.
     HdSilkMeshAttributes _attributes;
-    std::vector<uint32_t> _attributePointIndices;
-    std::vector<uint32_t> _attributeTriangleIndices;
+    VtArray<uint32_t> _attributePointIndices;
+    VtArray<uint32_t> _attributeTriangleIndices;
     bool _attributesRequireExpandedTopology = false;
 
     HdSilkMesh(const HdSilkMesh&) = delete;

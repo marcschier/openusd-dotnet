@@ -90,12 +90,14 @@ function Test-NativeFuzzContract
 {
     $nativeCmakePath = Join-Path $repoRoot 'native/CMakeLists.txt'
     $shimCmakePath = Join-Path $repoRoot 'native/openusd_dotnet/CMakeLists.txt'
+    $fuzzCmakePath = Join-Path $repoRoot 'native/openusd_dotnet/cmake/NativeFuzzTargets.cmake'
     $harnessPath = Join-Path $repoRoot `
         'native/openusd_dotnet/tests/fuzz/stage_layer_fuzzer.cpp'
     $seedPath = Join-Path $repoRoot 'test-assets/fuzz-seeds/stage-layer/minimal.usda'
     $workflowPath = Join-Path $repoRoot '.github/workflows/native.yml'
     $nativeCmake = Get-Content $nativeCmakePath -Raw
     $shimCmake = Get-Content $shimCmakePath -Raw
+    $fuzzCmake = Get-Content $fuzzCmakePath -Raw
     $harness = Get-Content $harnessPath -Raw
     $workflow = Get-Content $workflowPath -Raw
     $runner = Get-Content $PSCommandPath -Raw
@@ -110,12 +112,20 @@ function Test-NativeFuzzContract
         'Native CMake'
     foreach ($required in @(
         'tests/fuzz/stage_layer_fuzzer.cpp',
+        'cmake/NativeFuzzTargets.cmake',
+        'openusd_configure_native_fuzz_targets('))
+    {
+        Assert-Contains $shimCmake $required 'OpenUSD C ABI CMake'
+    }
+    foreach ($required in @(
+        'if(NOT OPENUSD_BUILD_NATIVE_FUZZERS)',
+        'OPENUSD_BUILD_NATIVE_FUZZERS requires Linux with Clang and libFuzzer.',
         'add_executable(',
         'openusd_stage_layer_fuzzer',
         '-fsanitize=fuzzer-no-link,address,undefined',
         '-fsanitize=fuzzer,address,undefined'))
     {
-        Assert-Contains $shimCmake $required 'OpenUSD C ABI CMake'
+        Assert-Contains $fuzzCmake $required 'Native fuzz target configuration'
     }
     foreach ($required in @(
         'LLVMFuzzerTestOneInput',
@@ -181,21 +191,26 @@ function Test-NativeFuzzContract
         $sourceRoot = Join-Path $scratchRoot 'source'
         $buildRoot = Join-Path $scratchRoot 'build'
         New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
-        $shimSource = (Join-Path $repoRoot 'native/openusd_dotnet').Replace('\', '/')
+        $fuzzCmakeSource = $fuzzCmakePath.Replace('\', '/')
         $harnessSource = $harnessPath.Replace('\', '/')
         $includeSource = (Join-Path $repoRoot 'native/openusd_dotnet/include').Replace('\', '/')
         @"
 cmake_minimum_required(VERSION 3.28)
 project(OpenUsdNativeFuzzIsolation LANGUAGES CXX)
-set(OPENUSD_BUILD_NATIVE_TESTS OFF CACHE BOOL "" FORCE)
 set(OPENUSD_BUILD_NATIVE_FUZZERS OFF CACHE BOOL "" FORCE)
-add_library(usd_m INTERFACE)
-add_library(OpenColorIO::OpenColorIO INTERFACE IMPORTED)
-add_library(openusd_native_sanitizers INTERFACE)
-add_subdirectory("$shimSource" openusd_dotnet)
+file(WRITE "`${CMAKE_CURRENT_BINARY_DIR}/ordinary.cpp" "int ordinary_native_contract() { return 0; }\n")
+add_library(openusd_ordinary_contract STATIC "`${CMAKE_CURRENT_BINARY_DIR}/ordinary.cpp")
+include("$fuzzCmakeSource")
+openusd_configure_native_fuzz_targets(openusd_ordinary_contract "$harnessSource")
 if(TARGET openusd_stage_layer_fuzzer)
     message(FATAL_ERROR "Fuzzer target leaked into an ordinary native configure.")
 endif()
+foreach(property COMPILE_OPTIONS LINK_OPTIONS)
+    get_target_property(options openusd_ordinary_contract "`${property}")
+    if(options MATCHES "sanitize|fuzzer")
+        message(FATAL_ERROR "Fuzzer instrumentation leaked into ordinary native options.")
+    endif()
+endforeach()
 add_library(openusd_fuzz_harness_syntax OBJECT "$harnessSource")
 target_compile_features(openusd_fuzz_harness_syntax PRIVATE cxx_std_17)
 target_include_directories(openusd_fuzz_harness_syntax PRIVATE "$includeSource")
@@ -208,7 +223,7 @@ endif()
         Invoke-Checked `
             -FilePath $cmake `
             -Arguments @('-S', $sourceRoot, '-B', $buildRoot) `
-            -Description 'Ordinary native CMake isolation configure'
+            -Description 'Ordinary native fuzz-target isolation configure'
         Invoke-Checked `
             -FilePath $cmake `
             -Arguments @(

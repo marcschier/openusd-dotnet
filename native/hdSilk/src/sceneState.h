@@ -208,9 +208,11 @@ struct HdSilkMeshRecord
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0};
     std::vector<float> points;      // x, y, z per point.
-    std::vector<uint32_t> indices;  // 3 indices per triangle or 2 per line.
+    // Topology and identity share their producer's buffers. Readers must stay
+    // const; edits and presentation transforms detach only the arrays they write.
+    VtArray<uint32_t> indices;     // 3 indices per triangle or 2 per line.
     // Authored USD face per triangle, or curve segment per line.
-    std::vector<uint32_t> triangleSubprims;
+    VtArray<uint32_t> triangleSubprims;
     // ABI v22 subprim identity. `pointOrigins` is the authored point index of
     // every emitted vertex, and `cornerEdges` is the authored mesh edge index
     // of every emitted primitive corner, both using OPENUSD_SILK_SUBPRIM_NONE
@@ -219,8 +221,8 @@ struct HdSilkMeshRecord
     // why. They are deliberately not derived by the serializer: only the prim
     // that triangulated the authored topology knows which emitted component
     // came from which authored one.
-    std::vector<uint32_t> pointOrigins;
-    std::vector<uint32_t> cornerEdges;
+    VtArray<uint32_t> pointOrigins;
+    VtArray<uint32_t> cornerEdges;
     // The absolute USD path of the owning instancer, empty when the prim has no
     // instancer. instanceId is a hash and cannot be inverted, so this is the
     // only authoritative instance identity the wire carries.
@@ -244,14 +246,14 @@ struct HdSilkMeshRecord
     /// so a stale table is never published against a topology it no longer
     /// describes.
     ///
-    /// The vectors are swapped with empty ones rather than cleared, because
-    /// `clear()` keeps the capacity: a record rejected for exceeding the
+    /// The arrays are swapped with empty ones rather than cleared, because
+    /// `clear()` keeps uniquely owned capacity: a record rejected for exceeding the
     /// identity budget would otherwise keep holding the very allocation the
     /// budget exists to bound, for as long as the record lives.
     void RejectSubprimIdentity(uint32_t reason)
     {
-        std::vector<uint32_t>().swap(pointOrigins);
-        std::vector<uint32_t>().swap(cornerEdges);
+        VtArray<uint32_t>().swap(pointOrigins);
+        VtArray<uint32_t>().swap(cornerEdges);
         authoredPointCount = 0;
         authoredEdgeCount = 0;
         subprimIdentity &= ~(OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE |
@@ -264,7 +266,7 @@ struct HdSilkMeshRecord
     /// exactly as the geometry and the rig do, so an instance carries neither a
     /// table nor a reason: nothing about the instance is unsupported.
     ///
-    /// The vectors are swapped with empty ones rather than cleared, for the same
+    /// The arrays are swapped with empty ones rather than cleared, for the same
     /// reason RejectSubprimIdentity swaps: `clear()` keeps the capacity, so a
     /// lightweight instance reference copied from a prototype record would keep
     /// holding that prototype's whole identity allocation -- up to the ABI's
@@ -273,8 +275,8 @@ struct HdSilkMeshRecord
     /// thousand copies of an allocation no instance publishes a byte of.
     void ClearSubprimIdentity()
     {
-        std::vector<uint32_t>().swap(pointOrigins);
-        std::vector<uint32_t>().swap(cornerEdges);
+        VtArray<uint32_t>().swap(pointOrigins);
+        VtArray<uint32_t>().swap(cornerEdges);
         authoredPointCount = 0;
         authoredEdgeCount = 0;
         subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_NONE;

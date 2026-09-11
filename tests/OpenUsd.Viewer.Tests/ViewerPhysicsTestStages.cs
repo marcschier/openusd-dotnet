@@ -14,19 +14,7 @@ internal static class ViewerPhysicsTestStages
     {
         ArgumentNullException.ThrowIfNull(fileName);
         string path = Path.Combine(FindRepositoryRoot(), "test-assets", fileName);
-        try
-        {
-            // The scheduler opens the stage on its own thread, so probing here is what turns a
-            // managed-only checkout into a skip instead of a background DllNotFoundException.
-            using UsdStage probe = UsdStage.Open(path);
-        }
-        catch (DllNotFoundException exception)
-        {
-            Skip.Test($"openusd_dotnet native runtime is unavailable: {exception.Message}");
-            throw;
-        }
-
-        return UsdStageScheduler.Open(path);
+        return ViewerNativeTestStages.OpenSchedulerOrSkip(path);
     }
 
     internal static void SkipWhenSolverIsNotStaged(ViewerPhysicsController controller)

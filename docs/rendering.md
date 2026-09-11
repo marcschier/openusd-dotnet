@@ -1809,9 +1809,11 @@ point share an indexed vertex. Different authored point identities, UVs, normals
 and signed-zero values remain distinct. Triangle order and corner-edge identities do not change.
 Without published normals, the prior triangle-local generated-normal behavior is preserved.
 The Rprim borrows the active coarse/refined triangle tables rather than retaining another copy.
-Its attribute collection shares native copy-on-write storage with published records; edits detach
-the writer, and serialization reads through const views. These ownership changes leave the page
-format and values unchanged. They do not by themselves make full-scene memory bounded.
+Its attribute collection, triangle indices and face/point/edge identity arrays share native
+copy-on-write storage with published records. Edits detach only the changed arrays, retirement
+releases only the retiring owner's references, and serialization reads through const views.
+These ownership changes leave the page format and values unchanged. They do not by themselves
+make full-scene memory bounded.
 
 #### Presentation topology revision
 
