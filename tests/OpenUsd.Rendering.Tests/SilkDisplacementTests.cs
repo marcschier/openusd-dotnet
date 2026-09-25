@@ -1637,6 +1637,48 @@ internal sealed class SilkDisplacementTests
         }
     }
 
+    [Test]
+    public async Task LateMaterialReplacementFailurePreservesSharedGeometryImagesAndVerdicts()
+    {
+        using var device = new DisplacementDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV,
+            (_, srgb) => HeightDecoder(HeightAsset, srgb));
+        SilkSceneState scene = renderer.Scene;
+        SilkSceneGpuResources resources = renderer.GpuResources;
+        ApplyPage(scene, resources, 1,
+            CreateMaterialUpsert(textureAsset: HeightAsset),
+            CreateMeshUpsert(FlatPoints, FlatNormals, instanceIndex: 0, primId: 1),
+            CreateMeshUpsert(FlatPoints, FlatNormals, instanceIndex: 1, primId: 2));
+        SilkMeshGpuResource[] original = [.. resources.Meshes.Values];
+        SilkMaterialData originalMaterial = scene.Materials[MaterialPath];
+        string[] diagnostics = DiagnosticSignature(resources);
+        int images = resources.DisplacementImageCount;
+        ulong imageBytes = resources.DisplacementImageBytes;
+        int liveBuffers = device.LiveBufferCount;
+        ulong geometryRevision = scene.GeometryRevision;
+        byte[] changed = CreateMaterialUpsert(textureAsset: "replacement-height.png");
+        using var page = new OpenUsdSilkPage(24, 2, changed, 1);
+        device.FailAllocationAfter = 3;
+        await Assert.That(() => renderer.ApplyPage(page)).Throws<InvalidOperationException>();
+        await Assert.That(scene.Materials[MaterialPath]).IsSameReferenceAs(originalMaterial);
+        await Assert.That(scene.Revision).IsEqualTo(1ul);
+        await Assert.That(scene.GeometryRevision).IsEqualTo(geometryRevision);
+        await Assert.That(resources.Revision).IsEqualTo(1ul);
+        await Assert.That(resources.Meshes.Values.SequenceEqual(original)).IsTrue();
+        await Assert.That(DiagnosticSignature(resources)).IsEquivalentTo(diagnostics);
+        await Assert.That(resources.DisplacementVerdictCount).IsEqualTo(2);
+        await Assert.That(resources.DisplacementImageCount).IsEqualTo(images);
+        await Assert.That(resources.DisplacementImageBytes).IsEqualTo(imageBytes);
+        await Assert.That(resources.GeometryResourceCount).IsEqualTo(1);
+        await Assert.That(device.LiveBufferCount).IsEqualTo(liveBuffers);
+        renderer.ApplyPage(page);
+        await Assert.That(scene.Materials[MaterialPath]).IsNotSameReferenceAs(originalMaterial);
+        await Assert.That(resources.GeometryResourceCount).IsEqualTo(1);
+        await Assert.That(device.LiveBufferCount).IsEqualTo(liveBuffers);
+        await Assert.That(resources.Meshes.Values.First().Geometry)
+            .IsSameReferenceAs(resources.Meshes.Values.Last().Geometry);
+    }
+
     /// <summary>
     /// A displacement refused because the mesh carries no such coordinate set
     /// recovers the moment that coordinate set is added, even though the points,

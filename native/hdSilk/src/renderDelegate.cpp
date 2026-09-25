@@ -228,6 +228,11 @@ HdSilkRenderDelegate::GetMaterialBindingPurpose() const
 HdSprim*
 HdSilkRenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
 {
+    if (_sceneState->MeshPreparationBudget()->Enabled() && typeId == HdPrimTypeTokens->extComputation)
+    {
+        _sceneState->MeshPreparationBudget()->Refuse(
+            "The bounded hdSilk mesh preparation profile does not admit external computations.");
+    }
     if (typeId == HdPrimTypeTokens->extComputation)
     {
         return new HdExtComputation(sprimId);

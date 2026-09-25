@@ -31,5 +31,19 @@ Common server configuration:
 | `OPENUSD_PLUGIN_PATH` | Verified OpenUSD and hdSilk plug-in root. |
 | `OPENUSD_MCP_VIEWER_ROOT` | Optional root containing a compatible Viewer bundle. |
 | `OPENUSD_MCP_VIEWER_PATH` | Optional path to the Viewer executable. |
+| `OPENUSD_SILK_MESH_RESERVATION_BYTES` | Optional logical coarse-mesh reservation ceiling; requires the page ceiling. |
+| `OPENUSD_SILK_MAX_PAGE_BYTES` | Optional positive `Int32` serialized-page byte ceiling; requires the mesh ceiling. |
+| `OPENUSD_SILK_GPU_BUFFER_BYTES` | Optional shared logical RHI buffer payload ceiling; independent of native limits. |
+
+Session ceilings also apply to legacy preview and separate product captures, and are
+forwarded to a launched Viewer. Storm cannot bypass them. Both unset preserves defaults;
+partial/invalid configuration fails startup. These are not total process/GPU memory limits.
+
+Managed hdSilk sessions require the explicit native page-acknowledgement extension;
+matching session/page ABI versions alone do not make an older runtime compatible.
+
+GPU buffer reservations precede native creation and survive while submissions retain
+the buffer. Textures, backend staging, driver overhead and source/managed memory are
+not included. A launched Viewer receives the maximum for its own independent pool.
 
 The tool targets .NET 10. Install a .NET 10 runtime or SDK before installation.

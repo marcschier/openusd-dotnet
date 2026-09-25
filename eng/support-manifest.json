@@ -1033,6 +1033,107 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "shared-gpu-buffer-admission",
+          "description": "Opt-in immutable SilkGpuBufferBudget aggregates logical payload-byte reservations for built-in RHI CreateBuffer calls across devices/renderers sharing one process-local pool. Reservation precedes native creation and remains held until final native release, including submission leases after public disposal; failed creation returns only its own charge. Old/new replacements and both reusable deformation pose slots are counted. Exact/full-width/concurrent limits, backend creation and real compute-submission lifetimes are exercised. Budget refusals cannot silently select CPU deformation and preserve prior scene/pixels and ordered retirement replay. Viewer/MCP share configured pools across viewport/product paths, forward the maximum explicitly to child Viewers, and refuse unsupported devices or Storm bypass. Stable bounded diagnostics report the effective limit and an actual package-only NativeAOT consumer enforces the threshold.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkGpuBufferBudgetTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshPreparationCopyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkGpuBufferAdmissionTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/OffscreenRhiConformance.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkDeformationRenderConformance.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMeshPreparationNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPreparationLimitsTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerAuthoredRenderProductNativeTests.cs",
+            "tests/OpenUsd.Mcp.Tests/McpHostConfigurationTests.cs",
+            "tests/OpenUsd.Mcp.Tests/ViewerChildLauncherTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Logical public-RHI buffer payloads only, not physical VRAM or total memory. Textures, backend-internal staging/readback buffers, descriptor heaps, alignment/driver overhead and source/managed arrays are excluded. Existing texture retention trimming remains separate. A child process gets its own pool, not a shared cross-process quota. Failed native teardown retains unproven charges. Defaults are opt-in and no automatic device-memory budget is inferred. Concurrent buffer requests are exercised within isolated device fixtures; overlapping independent WARP render fixtures remain unqualified after a background pixel-shader JIT access violation. Metal code is compile-checked but runtime and hardware-Vulkan/Linux/Metal qualification plus a full warehouse image remain open."
+        },
+        {
+          "id": "native-page-copy-acknowledgement",
+          "description": "An additive native mode defers publication acknowledgement until a validated managed page copy and owner exist. Managed sessions require the matching enable/acknowledge exports; older libraries fail creation even if the session/page ABI versions match. Acknowledgement commits dirty flags, retirements, environments, light links and shadows without allocation. Releasing an unacknowledged page preserves all pending changes, and the next request computes its own current frame rather than receiving stale bytes. One unresolved page blocks newer syncs; acknowledgement is idempotent and page bytes/usage remain independently owned across later pages and session teardown. Real native-copy failures, repeated refusal partitions, exact full-publication retry bytes, both native allocation sweeps and a clean-feed NativeAOT consumer exercise the contract.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_publication_allocation_probe.cpp",
+            "native/hdSilk/tests/hdsilk_scene_ingestion_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshPreparationCopyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkNativePageCopyRecoveryTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMeshPreparationNativeTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "In-memory transfer safety, not crash-durable publication, total memory admission or GPU submission rollback. Native C callers that do not enable the mode retain responsibility for historical immediate publication. Metadata borrows retained native entries and prevents mutation until resolution; native and managed byte buffers still overlap during copying. After successful acknowledgement, later GPU refusal needs ordered managed-page replay. Session 6/page 24 and successful wire bytes are unchanged. Non-Windows/hardware-Vulkan execution and a complete warehouse image are not claimed."
+        },
+        {
+          "id": "gpu-page-preparation-transaction",
+          "description": "SilkMeshRenderer retains the CPU undo journal through GPU mesh preparation and publishes replacements, removals, metadata, displacement verdicts and prepared poses together. Allocation/upload refusal preserves earlier resources and revisions. Deformation inputs use two reusable pose slots rather than mutating published inputs or reallocating all static rig data. One rejected managed page is retained without copying its bytes and replayed before the owning native session emits another delta, preserving already-acknowledged removals and table changes without an accumulating queue. Out-of-order or multiple-consumer rejection fails closed. Quiet page application stays allocation-free. Recording-device allocation/write sweeps, material/shared-cache rollback, real D3D12/Vulkan pose pixels and native-retirement replay exercise the seam.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMeshRendererTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDisplacementTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkDeformationRetentionTests.cs",
+            "tests/OpenUsd.Rendering.Tests/RendererSessionOwnershipTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkGpuPublicationTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkDeformationRenderConformance.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMeshPreparationNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "A page-preparation transaction, not total VRAM admission or rollback of submitted frames/device loss. Later render target, texture, pipeline and submission failures remain separate. Staged replacements, a retained rejected page and two pose slots can overlap older storage. Cumulative work counters include failed attempts. Use one ordered renderer consumer; a disposed replay owner or out-of-order/multiple-consumer conflict requires session recreation. Standalone CPU scene mutations remain caller-owned. Vulkan pixel evidence uses SwiftShader; Linux/Metal/hardware Vulkan and a full warehouse image are not claimed."
+        },
+        {
+          "id": "session-preparation-admission",
+          "description": "Opt-in immutable hdSilk session ceilings apply conservative coarse-mesh reservation and serialized-page limits to every legacy and explicit sync. Per-request limits may tighten but cannot relax the session policy; purpose and allPurpose/full/preview binding choices remain unchanged. The one-shot native extension refuses reconfiguration and older libraries, and successful pages retain immutable usage snapshots independently of the session. Shared typed/invariant configuration reaches Viewer live/product/recreated sessions and MCP preview/sequence/product sessions, with explicit propagation to launched Viewers. Storm cannot bypass the configured policy. Capture diagnostics report stable effective ceilings without consuming one distinct job diagnostic per frame. Native entry-point, material-transition and lifetime cases, real D3D12/Vulkan captures, actual Viewer/MCP jobs, and a clean-feed NativeAOT consumer exercise the profile.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_scene_ingestion_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkPreparationLimitsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshPreparationCopyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMeshPreparationNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPreparationLimitsTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerAuthoredRenderProductNativeTests.cs",
+            "tests/OpenUsd.Mcp.Tests/McpHostConfigurationTests.cs",
+            "tests/OpenUsd.Mcp.Tests/ViewerChildLauncherTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.Products.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Opt-in, not a total-memory/RAM/VRAM policy. Source opening, SDK/material caches, metadata, other live pages, overlapping buffers, textures and GPU resources remain outside these metrics. The existing coarse-mesh geometry restrictions remain; unsupported profiles fail rather than being omitted. Limits are chosen by the host, not mutable tool-call authority. Windows Viewer evidence uses D3D12; Vulkan capture fixtures use SwiftShader. Hardware Vulkan, Linux/Metal execution and a complete warehouse image remain unqualified."
+        },
+        {
+          "id": "serialized-command-page-admission",
+          "description": "Opt-in preparation limits version 2 adds a positive per-page serialized-byte ceiling to the existing coarse-mesh reservation profile. All commands write directly into one amortized native byte buffer; capacity requests are checked before allocation and there are no separate per-command payload vectors/copies. Headers, frame, materials, environments, mesh updates and retirements share the page limit. Refusal preserves complete retry and previously owned pages; changing only the page ceiling does not invalidate unchanged geometry. Managed copying checks native length before allocation and exposes actual ByteLength. Preparation-v1 libraries reject the newer packet; usage remains version 1. Native allocation/limit boundary sweeps, amortization/rollback/packet contracts, real Hydra and retained-renderer recovery, and a clean-feed NativeAOT consumer exercise the profile.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_publication_allocation_probe.cpp",
+            "native/hdSilk/tests/hdsilk_scene_ingestion_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkSceneIngestionOptionsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshPreparationCopyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMeshPreparationNativeTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Not total process memory or a global live-page budget. Native vector growth overlaps old/new buffers and managed copying overlaps native/managed buffers. Allocator overhead, metadata, other live pages, retained geometry, source/SDK/material caches, textures and GPU storage are excluded. The coarse-mesh numeric reservation metric and its restricted geometry profile are unchanged. Legacy/v1 calls remain page-unbounded. Vulkan fixture pixels use SwiftShader; hardware Vulkan, Linux/Metal and a complete warehouse image are not claimed."
+        },
+        {
+          "id": "coarse-mesh-preparation-admission",
+          "description": "Opt-in version-1 native admission before coarse mesh triangulation, point conversion and supported attribute expansion. A positive caller limit bounds conservative logical numeric-buffer reservation charges, with one lease shared by a producer and its records and overlapping old/new reservations during updates. Worker refusals are latched and returned after the Hydra barrier instead of escaping the worker pool or publishing partial pages. The existing scene-ingestion options gain an explicit limit overload and successful pages report retained and peak charges. Old native libraries explicitly refuse the missing extension. Native limit/overflow/concurrency contracts, real Hydra boundary/instancing/retry cases, D3D12/Vulkan capture recovery and an actual clean-feed NativeAOT consumer cover the initial profile.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_mesh_preparation_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkSceneIngestionOptionsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshPreparationCopyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMeshPreparationNativeTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "The metric is not actual allocation or process memory. Source/SDK materialization and caches, allocator capacity/overhead, maps/strings, materials, instance metadata, serialized pages, textures and GPU resources are excluded. Version 1 refuses refinement, alternate draw modes, Skel/computed geometry, point/curve Rprims and volumes. Legacy defaults remain unchanged. Vulkan fixture pixels use SwiftShader; Linux/Metal and complete warehouse admission or rendering are not claimed."
+        },
+        {
           "id": "bounded-128-direct-lights",
           "description": "A bounded 128-effective-direct-light profile across native page ABI24, retained managed state, full 128-bit light/shadow membership, per-instance batching and checked GPU layouts. Native admission excludes inherited-hidden and genuinely zero-output direct lights, preserves authored-dark headlight suppression, and refuses the whole sync at 129 rather than publishing a prefix. Recovery preserves published table snapshots, so a same-count replacement can explicitly retire departed links, shadows and dome environments. Four integer words carry each direct/shadow mask without float conversion or high-word alias. Shared-stage 97/128-light fixtures prove light indices 96/127 affect only linked meshes or instances and that removal/restoration changes/restores real RTX 5070, D3D12 WARP and Vulkan SwiftShader pixels. The raw frame binding avoids D3D12's 2048-byte structured-element limit. This does not qualify full-warehouse rendering or new shadow models.",
           "status": "implemented",

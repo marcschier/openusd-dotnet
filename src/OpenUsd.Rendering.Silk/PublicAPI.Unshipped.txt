@@ -1,4 +1,43 @@
 #nullable enable
+OpenUsd.Rendering.Silk.ISilkBufferAdmissionDevice
+OpenUsd.Rendering.Silk.ISilkBufferAdmissionDevice.GpuBufferBudget.get -> OpenUsd.Rendering.Silk.SilkGpuBufferBudget?
+OpenUsd.Rendering.Silk.ISilkBufferAdmissionDevice.ConfigureBufferBudget(OpenUsd.Rendering.Silk.SilkGpuBufferBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.GpuBufferBudget.get -> OpenUsd.Rendering.Silk.SilkGpuBufferBudget?
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ConfigureBufferBudget(OpenUsd.Rendering.Silk.SilkGpuBufferBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ReserveBufferAllocation(nuint bytes) -> System.IDisposable?
+OpenUsd.Rendering.Silk.SilkGpuBufferBudget
+OpenUsd.Rendering.Silk.SilkGpuBufferBudget.SilkGpuBufferBudget(ulong maximumBytes) -> void
+OpenUsd.Rendering.Silk.SilkGpuBufferBudget.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferBudget.Usage.get -> OpenUsd.Rendering.Silk.SilkGpuBufferUsage!
+OpenUsd.Rendering.Silk.SilkGpuBufferBudget.ConfigureDevice(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+static OpenUsd.Rendering.Silk.SilkGpuBufferBudget.FromConfiguration(string? maximumBytes) -> OpenUsd.Rendering.Silk.SilkGpuBufferBudget?
+OpenUsd.Rendering.Silk.SilkGpuBufferUsage
+OpenUsd.Rendering.Silk.SilkGpuBufferUsage.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferUsage.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferUsage.PeakReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferUsage.ReservationCount.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferBudgetExceededException
+OpenUsd.Rendering.Silk.SilkGpuBufferBudgetExceededException.RequestedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferBudgetExceededException.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuBufferBudgetExceededException.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkPreparationLimits
+OpenUsd.Rendering.Silk.SilkPreparationLimits.SilkPreparationLimits(ulong maximumMeshPreparationReservationBytes, int maximumCommandPageBytes) -> void
+OpenUsd.Rendering.Silk.SilkPreparationLimits.MaximumMeshPreparationReservationBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkPreparationLimits.MaximumCommandPageBytes.get -> int
+static OpenUsd.Rendering.Silk.SilkPreparationLimits.FromConfiguration(string? maximumMeshPreparationReservationBytes, string? maximumCommandPageBytes) -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
+OpenUsd.Rendering.Silk.OpenUsdSilkSession.PreparationLimits.get -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
+static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, string! stagePath, OpenUsd.Rendering.Silk.SilkPreparationLimits? preparationLimits) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
+static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source, OpenUsd.Rendering.Silk.SilkPreparationLimits? preparationLimits) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.SilkSceneIngestionOptions(OpenUsd.Rendering.RenderPurpose includedPurposes, string! materialBindingPurpose, ulong maximumMeshPreparationReservationBytes, int maximumCommandPageBytes) -> void
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.MaximumCommandPageBytes.get -> int?
+OpenUsd.Rendering.Silk.OpenUsdSilkPage.ByteLength.get -> int
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.SilkSceneIngestionOptions(OpenUsd.Rendering.RenderPurpose includedPurposes, string! materialBindingPurpose, ulong maximumMeshPreparationReservationBytes) -> void
+OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.MaximumMeshPreparationReservationBytes.get -> ulong?
+OpenUsd.Rendering.Silk.SilkMeshPreparationUsage
+OpenUsd.Rendering.Silk.SilkMeshPreparationUsage.MaximumReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshPreparationUsage.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshPreparationUsage.PeakReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.OpenUsdSilkPage.MeshPreparationUsage.get -> OpenUsd.Rendering.Silk.SilkMeshPreparationUsage?
 OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkSceneIngestionOptions! ingestionOptions, OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions? hdrColorOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithDepth(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkSceneIngestionOptions! ingestionOptions, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.ISilkComputeBindingLayout

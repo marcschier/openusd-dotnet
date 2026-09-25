@@ -135,7 +135,9 @@ public sealed partial class NativeMcpIntegrationTests
 
     [Test]
     [NotInParallel]
-    public async Task AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport(bool bounded)
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
         {
@@ -155,7 +157,9 @@ public sealed partial class NativeMcpIntegrationTests
         await File.WriteAllTextAsync(files.SourcePath, scene);
         var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
             Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
-            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
+            PreparationLimits: bounded ? new OpenUsd.Rendering.Silk.SilkPreparationLimits(1_000_000, 1_000_000) : null,
+            GpuBufferBudget: bounded ? new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000) : null);
         await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
             .BuildServiceProvider();
         IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
@@ -173,6 +177,12 @@ public sealed partial class NativeMcpIntegrationTests
             TimeStep = 2
         };
         McpRenderSequenceResultDto job = await service.RenderProductAsync(request, default);
+        await Assert.That(job.Diagnostics.Any(static entry =>
+            entry.Code == "HDSILK_PREPARATION_ADMISSION" &&
+            entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
+        await Assert.That(job.Diagnostics.Any(static entry =>
+            entry.Code == "HDSILK_GPU_BUFFER_ADMISSION" &&
+            entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
         for (int index = 0; index < 2; index++)
         {
             McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(

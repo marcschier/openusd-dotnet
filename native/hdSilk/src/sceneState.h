@@ -16,11 +16,13 @@
 // is the authority for the wire format, and this file's records are what is
 // serialized into it, so naming the constants here keeps the two from drifting.
 #include "openusd_hdsilk.h"
+#include "meshPreparation.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -194,6 +196,7 @@ struct HdSilkInstancerContextEntry
 
 struct HdSilkMeshRecord
 {
+    std::shared_ptr<HdSilkMeshPreparationLease> preparationLease;
     std::string path;
     int32_t primId = -1;
     int32_t instanceId = 0;
@@ -811,6 +814,10 @@ struct HdSilkMeshKeyHash
 class HdSilkSceneState
 {
 public:
+    const std::shared_ptr<HdSilkMeshPreparationBudget>& MeshPreparationBudget() const
+    {
+        return _meshPreparationBudget;
+    }
     /// Replaces every published instance of "path" with "records". Instance
     /// indices that existed before but are absent from "records" are queued
     /// for removal so a shrinking instancer cannot leave stale geometry
@@ -878,11 +885,18 @@ public:
     static uint64_t GetRejectedMaterialCount();
 
     /// Builds a serialized page containing the current frame state plus any
-    /// mesh upserts/removals queued since the previous call, then clears
-    /// that pending state. Returns the page bytes; *outRevision and
+    /// mesh upserts/removals queued since the last acknowledged call. Unless
+    /// awaitAcknowledgement is set, pending state commits immediately as before.
+    /// Returns the page bytes; *outRevision and
     /// *outCommandCount receive the new monotonically increasing revision
     /// and the number of commands written into the returned buffer.
-    std::vector<uint8_t> BuildPage(uint64_t* outRevision, uint32_t* outCommandCount);
+    std::vector<uint8_t> BuildPage(
+        uint64_t* outRevision, uint32_t* outCommandCount, size_t maximumPageBytes = SIZE_MAX,
+        bool awaitAcknowledgement = false);
+
+    /// Resolves the one deferred publication. Rejecting leaves every change pending.
+    /// No scene mutation is permitted until acknowledgement or rejection.
+    bool CompletePage(uint64_t revision, bool acknowledge);
 
 private:
     struct _Entry
@@ -906,6 +920,19 @@ private:
         bool dirty = true;
     };
 
+    struct _Publication
+    {
+        std::vector<_Entry*> dirtyMeshes;
+        std::vector<_MaterialEntry*> dirtyMaterials;
+        std::unordered_map<std::string, HdSilkEnvironmentSnapshot> environments;
+        HdSilkLinkTable links;
+        HdSilkShadowTable shadows;
+        bool environmentsChanged = false;
+    };
+
+    void _RequirePublicationResolved() const;
+    void _Acknowledge(_Publication& publication) noexcept;
+
     /// Resolves the sparse link table for one page from the retained prim
     /// category memberships, the ordered direct lights that page publishes, and
     /// the bounded dome table it publishes alongside them.
@@ -927,6 +954,8 @@ private:
         const HdSilkLinkTable& links) const;
 
     mutable std::mutex _mutex;
+    std::shared_ptr<HdSilkMeshPreparationBudget> _meshPreparationBudget =
+        std::make_shared<HdSilkMeshPreparationBudget>();
     uint64_t _materialBindingGeneration = 0;
     std::string _materialBindingPurpose;
     std::unordered_map<HdSilkMeshKey, _Entry, HdSilkMeshKeyHash> _meshes;
@@ -955,6 +984,7 @@ private:
     uint32_t _complexity = 0;
     uint32_t _drawMode = 0;
     uint64_t _revision = 0;
+    std::unique_ptr<_Publication> _pendingPublication;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

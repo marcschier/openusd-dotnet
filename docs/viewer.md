@@ -92,6 +92,38 @@ failure is reported as a viewer error without tearing the shell down.
 `ShutdownToken` closes the window when cancelled, so a host that renders for a bounded time does not
 leave a window behind.
 
+### Opt-in session preparation ceilings
+
+`ViewerHostOptions.GpuBufferBudget` or `OPENUSD_SILK_GPU_BUFFER_BYTES` independently
+enables shared RHI buffer-payload admission. The same pool covers viewport and isolated
+product renderers, and embedding hosts can reuse an object across Viewer hosts in one
+process. The limit must be a positive invariant decimal byte count. It excludes textures,
+backend staging, driver overhead and source/managed memory; it is not a VRAM measurement.
+Submission-held buffers retain their reservations until their final native release.
+See [shared GPU buffer admission](rendering.md#shared-gpu-buffer-payload-admission).
+
+Managed hdSilk session creation requires the native page-acknowledgement extension as
+well as matching ABI versions. Older runtimes fail explicitly instead of leaving copy
+failures with an incomplete change stream.
+
+Set both `OPENUSD_SILK_MESH_RESERVATION_BYTES` and `OPENUSD_SILK_MAX_PAGE_BYTES` before
+starting Viewer, or supply `ViewerHostOptions.PreparationLimits` with a
+`OpenUsd.Rendering.Silk.SilkPreparationLimits` value. Explicit embedding options override
+environment configuration. Both byte counts must be positive invariant decimal integers;
+the page ceiling must fit `Int32`. Neither has an implicit default.
+
+The same immutable policy reaches D3D12/Vulkan/Metal session creation, including separate
+authored-product captures and later backend recreation. Storm is refused while it cannot
+enforce the policy, so fallback cannot bypass it. Legacy purpose/material choices remain
+unchanged. The current coarse-mesh profile refuses refinement, alternate draw modes,
+Skel/computed geometry, point/curve Rprims and volumes rather than omitting their costs.
+The native runtime must implement the session-admission extension.
+
+These are logical numeric-buffer reservations and per-page serialized-byte ceilings,
+not total RAM/VRAM or source/material/cache limits. Concurrent viewport and product sessions
+each have their own ceiling, not a shared pool. Measure an appropriate policy and keep
+independent host safeguards. See [render preparation admission](rendering.md#opt-in-coarse-mesh-preparation-admission).
+
 ### Reacting to the operator
 
 A host that needs to know what the operator clicked should use `PrimPicked` rather than attaching its

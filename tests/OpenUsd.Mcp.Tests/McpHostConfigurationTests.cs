@@ -6,6 +6,56 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class McpHostConfigurationTests
 {
     [Test]
+    public async Task GpuBufferBudgetIsIndependentOptionalAndStrictlyValidated()
+    {
+        const string variable = "OPENUSD_SILK_GPU_BUFFER_BYTES";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+            await Assert.That(McpHostConfiguration.LoadOptions().GpuBufferBudget).IsNull();
+            Environment.SetEnvironmentVariable(variable, "5000");
+            await Assert.That(McpHostConfiguration.LoadOptions().GpuBufferBudget!.MaximumBytes).IsEqualTo(5000ul);
+            Environment.SetEnvironmentVariable(variable, "0");
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+            Environment.SetEnvironmentVariable(variable, "1.5");
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Test]
+    public async Task SessionPreparationConfigurationIsOptionalStrictAndUsesExactByteLimits()
+    {
+        const string meshVariable = "OPENUSD_SILK_MESH_RESERVATION_BYTES";
+        const string pageVariable = "OPENUSD_SILK_MAX_PAGE_BYTES";
+        string? meshBefore = Environment.GetEnvironmentVariable(meshVariable);
+        string? pageBefore = Environment.GetEnvironmentVariable(pageVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(meshVariable, null);
+            Environment.SetEnvironmentVariable(pageVariable, null);
+            await Assert.That(McpHostConfiguration.LoadOptions().PreparationLimits).IsNull();
+            Environment.SetEnvironmentVariable(meshVariable, "5000");
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+            Environment.SetEnvironmentVariable(pageVariable, "6000");
+            OpenUsd.Rendering.Silk.SilkPreparationLimits limits = McpHostConfiguration.LoadOptions().PreparationLimits!;
+            await Assert.That(limits.MaximumMeshPreparationReservationBytes).IsEqualTo(5000ul);
+            await Assert.That(limits.MaximumCommandPageBytes).IsEqualTo(6000);
+            Environment.SetEnvironmentVariable(pageVariable, "0");
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(meshVariable, meshBefore);
+            Environment.SetEnvironmentVariable(pageVariable, pageBefore);
+        }
+    }
+
+    [Test]
     [Arguments(null, true)]
     [Arguments("true", true)]
     [Arguments("false", false)]

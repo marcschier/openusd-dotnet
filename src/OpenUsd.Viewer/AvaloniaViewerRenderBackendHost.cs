@@ -22,6 +22,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     string pluginPath,
     Action<string> reportStatus) : IViewerRenderBackendHost
 {
+    private readonly SilkPreparationLimits? _preparationLimits = ViewerStartupOptions.PreparationLimits;
+    private readonly SilkGpuBufferBudget? _gpuBufferBudget = ViewerStartupOptions.GpuBufferBudget;
     private readonly int[] _attachCounts =
         new int[Enum.GetValues<RenderBackendKind>().Max(kind => (int)kind) + 1];
     private readonly ViewerBackendRuntimeIdentity?[] _runtimeIdentities =
@@ -48,6 +50,14 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     internal ViewerBackendRuntimeIdentity GetRuntimeIdentity(RenderBackendKind kind) =>
         Volatile.Read(ref _runtimeIdentities[(int)kind]) ??
         ViewerBackendRuntimeIdentity.Unknown;
+
+    internal static string? GetPreparationUnsupportedReason(
+        RenderBackendKind kind, SilkPreparationLimits? limits, SilkGpuBufferBudget? gpuBufferBudget = null) =>
+        kind == RenderBackendKind.Storm && (limits is not null || gpuBufferBudget is not null)
+            ? "Storm cannot enforce the configured hdSilk preparation or GPU buffer ceilings."
+            : null;
+
+    private OpenUsdSilkSession CreateSilkSession() => OpenUsdSilkRuntime.Create(pluginPath, source, _preparationLimits);
 
     private bool AttachForSurfaceCreation(RenderBackendKind kind, Control control)
     {
@@ -96,6 +106,11 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget) is { } preparationReason)
+        {
+            return ValueTask.FromResult(Unavailable(kind, RenderBackendProbeFailureKind.RuntimeUnavailable,
+                "VIEWER_PREPARATION_LIMITS_UNSUPPORTED", preparationReason));
+        }
         if (ViewerStartupOptions.IsBackendForcedUnavailable(kind))
         {
             return ValueTask.FromResult(Unavailable(
@@ -263,6 +278,11 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(initialState);
+        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget) is { } preparationReason)
+        {
+            throw Failure(kind, RenderBackendInitializationFailureKind.UnsupportedConfiguration,
+                "VIEWER_PREPARATION_LIMITS_UNSUPPORTED", preparationReason);
+        }
         if (ViewerStartupOptions.IsBackendForcedInitializationFailure(kind))
         {
             throw Failure(
@@ -542,6 +562,17 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             string diagnosticMessage = kind == RenderBackendKind.Metal
                 ? $"Metal hdSilk composition initialized on {resources.Capabilities.DeviceName}."
                 : $"{kind} initialized on {resources.Capabilities.DeviceName}.";
+            if (_preparationLimits is { } limits)
+            {
+                diagnosticMessage += string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $" Session logical mesh reservation ceiling={limits.MaximumMeshPreparationReservationBytes}; " +
+                    $"command-page ceiling={limits.MaximumCommandPageBytes} bytes. Not total memory admission.");
+            }
+            if (_gpuBufferBudget is { } bufferBudget)
+            {
+                diagnosticMessage += string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $" Shared logical GPU buffer payload ceiling={bufferBudget.MaximumBytes} bytes; not total VRAM.");
+            }
             SetRuntimeIdentity(
                 kind,
                 kind switch
@@ -592,8 +623,9 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         SilkMeshRenderer? meshRenderer = null;
         try
         {
-            session = OpenUsdSilkRuntime.Create(pluginPath, source);
+            session = CreateSilkSession();
             device = D3D12SilkGraphicsDevice.Create(useWarp: false);
+            _gpuBufferBudget?.ConfigureDevice(device);
             meshRenderer = new SilkMeshRenderer(device);
             var renderer = new D3D12StagePresentationRenderer(
                 new OpenUsdSilkSessionAdapter(session),
@@ -607,7 +639,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 device,
                 renderer,
                 device.Capabilities,
-                () => OpenUsdSilkRuntime.Create(pluginPath, source));
+                CreateSilkSession);
         }
         catch
         {
@@ -623,12 +655,12 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         OpenUsdSilkSession? session = null;
         try
         {
-            session = OpenUsdSilkRuntime.Create(pluginPath, source);
+            session = CreateSilkSession();
             var renderer = new VulkanStagePresentationRenderer(
                 new OpenUsdSilkSessionAdapter(session),
                 state);
             VulkanCompositionViewportPresenter presenter =
-                VulkanCompositionViewportPresenter.Create(renderer.Render);
+                VulkanCompositionViewportPresenter.Create(renderer.Render, _gpuBufferBudget);
             return new SilkCompositionResources(
                 presenter,
                 session,
@@ -640,7 +672,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     "Vulkan",
                     SupportsCompute: true,
                     IsSoftware: false),
-                () => OpenUsdSilkRuntime.Create(pluginPath, source));
+                CreateSilkSession);
         }
         catch
         {
@@ -656,12 +688,13 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         MetalCompositionViewportPresenter? presenter = null;
         try
         {
-            session = OpenUsdSilkRuntime.Create(pluginPath, source);
+            session = CreateSilkSession();
             var renderer = new MetalStagePresentationRenderer(
                 new OpenUsdSilkSessionAdapter(session),
                 state);
             presenter = new MetalCompositionViewportPresenter(
                 renderer.Render,
+                _gpuBufferBudget,
                 required: true);
             return new SilkCompositionResources(
                 presenter,
@@ -677,7 +710,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 {
                     SupportsDescriptorIndexedTextureTables = true
                 },
-                () => OpenUsdSilkRuntime.Create(pluginPath, source));
+                CreateSilkSession);
         }
         catch
         {

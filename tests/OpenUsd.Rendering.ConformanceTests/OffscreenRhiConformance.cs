@@ -1161,16 +1161,24 @@ internal static class OffscreenRhiConformance
 
     internal static async Task ComputeSubmissionLeasesResources(
         ISilkGraphicsDevice device,
-        SilkShaderBinaryFormat shaderFormat)
+        SilkShaderBinaryFormat shaderFormat,
+        SilkGpuBufferBudget? bufferBudget = null)
     {
+        bufferBudget?.ConfigureDevice(device);
         const uint elementCount = 67;
         var resources = new ComputeResources(device, shaderFormat, elementCount);
+        ulong reserved = bufferBudget?.Usage.ReservedBytes ?? 0;
         ISilkGraphicsCommandList commands = device.CreateCommandList();
         resources.RecordFillAndScale(commands, elementCount);
         ISilkGraphicsSubmission submission = device.Submit(commands);
 
         commands.Dispose();
         resources.Dispose();
+        if (bufferBudget is not null)
+        {
+            await Assert.That(reserved).IsGreaterThan(0ul);
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(reserved);
+        }
 
         await Assert.That(
             () => resources.Output.ReadbackForTesting(
@@ -1182,6 +1190,11 @@ internal static class OffscreenRhiConformance
         submission.Wait();
         await Assert.That(submission.IsCompleted).IsTrue();
         submission.Dispose();
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(bufferBudget.Usage.ReservationCount).IsEqualTo(0ul);
+        }
     }
 
     internal static async Task RejectsInvalidComputeResources(

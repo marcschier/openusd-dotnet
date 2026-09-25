@@ -1,4 +1,5 @@
 #nullable enable
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.MetalCompositionViewportPresenter(OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderCallback! renderCallback, OpenUsd.Rendering.Silk.SilkGpuBufferBudget? gpuBufferBudget, bool required = false) -> void
 const OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.IOSurfaceHandleType = "IOSurfaceRef" -> string!
 const OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.SharedEventHandleType = "MetalSharedEvent" -> string!
 OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics

@@ -2,6 +2,7 @@
 
 using System.Buffers.Binary;
 using Microsoft.Extensions.DependencyInjection;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -9,12 +10,13 @@ public sealed partial class NativeMcpIntegrationTests
 {
     [Test]
     [NotInParallel]
-    [Arguments(false, "raw")]
-    [Arguments(true, "raw")]
-    [Arguments(false, "exr")]
-    [Arguments(true, "exr")]
+    [Arguments(false, "raw", false)]
+    [Arguments(true, "raw", false)]
+    [Arguments(false, "exr", false)]
+    [Arguments(true, "exr", false)]
+    [Arguments(true, "raw", true)]
     public async Task NativeSequenceRendersDistinctTimesAndExposesTheChosenImmutableFrame(
-        bool includeDepth, string hdrFormat)
+        bool includeDepth, string hdrFormat, bool bounded)
     {
         if (hdrFormat == "exr" && !OpenUsd.Rendering.ExrRgba16FloatWriter.IsSupported)
         {
@@ -60,7 +62,9 @@ public sealed partial class NativeMcpIntegrationTests
         string plugins = Path.Combine(layout.ShimRoot, "plugin", "usd");
         var options = new OpenUsdMcpApplicationOptions(
             files.SourceRoot, files.OutputRoot, plugins, files.OutputRoot,
-            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
+            PreparationLimits: bounded ? new SilkPreparationLimits(1_000_000, 1_000_000) : null,
+            GpuBufferBudget: bounded ? new SilkGpuBufferBudget(1_000_000) : null);
         await using ServiceProvider services = new ServiceCollection().AddOpenUsdMcpServices(options)
             .BuildServiceProvider();
         IOpenUsdMcpService service = services.GetRequiredService<IOpenUsdMcpService>();
@@ -81,6 +85,12 @@ public sealed partial class NativeMcpIntegrationTests
             IncludeHdrColor = true,
             HdrColorFormat = hdrFormat
         }, default);
+        await Assert.That(job.Diagnostics.Any(static entry =>
+            entry.Code == "HDSILK_PREPARATION_ADMISSION" &&
+            entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
+        await Assert.That(job.Diagnostics.Any(static entry =>
+            entry.Code == "HDSILK_GPU_BUFFER_ADMISSION" &&
+            entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
         IArtifactResourceStore resources = services.GetRequiredService<IArtifactResourceStore>();
         var centers = new double[3];
         for (int index = 0; index < 3; index++)
@@ -123,6 +133,68 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(centers[1] - centers[0]).IsGreaterThan(12d);
         await Assert.That(centers[2] - centers[1]).IsGreaterThan(12d);
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        if (bounded)
+        {
+            await Assert.That(options.GpuBufferBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [NotInParallel]
+    [Arguments("mesh")]
+    [Arguments("page")]
+    [Arguments("gpu")]
+    public async Task ConfiguredSessionRefusalCannotPublishASequenceOrFallBackToUnboundedCapture(string limit)
+    {
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        await File.WriteAllTextAsync(files.SourcePath, """
+            #usda 1.0
+            def Cube "Cube" {}
+            """);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
+            PreparationLimits: new SilkPreparationLimits(limit == "mesh" ? 1ul : 1_000_000ul,
+                limit == "page" ? 1 : 1_000_000),
+            GpuBufferBudget: limit == "gpu" ? new SilkGpuBufferBudget(1) : null);
+        await using ServiceProvider services = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = services.GetRequiredService<IOpenUsdMcpService>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        string[] previousManifests = Directory.GetFiles(files.OutputRoot, "manifest.json", SearchOption.AllDirectories);
+        OpenUsdMcpFailureException? failure = await Assert.That(async () => await service.RenderSequenceAsync(
+            new RenderSequenceRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                Width = 16,
+                Height = 16,
+                FrameCount = 1
+            }, default)).Throws<OpenUsdMcpFailureException>();
+        await Assert.That(failure!.Code).IsEqualTo(OpenUsdMcpErrorCodes.RenderFailure);
+        if (limit == "gpu")
+        {
+            await Assert.That(failure.InnerException).IsTypeOf<SilkGpuBufferBudgetExceededException>();
+            await Assert.That(options.GpuBufferBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        else
+        {
+            await Assert.That(failure.InnerException).IsTypeOf<OpenUsdSilkException>();
+            await Assert.That(failure.InnerException!.Message)
+                .Contains(limit == "page" ? "command page refused" : "mesh preparation refused");
+        }
+        await Assert.That(Directory.GetFiles(files.OutputRoot, "*.png", SearchOption.AllDirectories)).IsEmpty();
+        await Assert.That(Directory.GetFiles(files.OutputRoot, "manifest.json", SearchOption.AllDirectories))
+            .IsEquivalentTo(previousManifests);
         await service.CloseSceneAsync(new SceneRevisionRequest
         {
             SessionId = session.SessionId,

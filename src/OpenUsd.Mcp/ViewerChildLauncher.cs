@@ -1,12 +1,16 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Diagnostics;
+using System.Globalization;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Mcp;
 
 public sealed record ViewerChildLauncherOptions(
     string ExecutableRoot,
-    string ExecutablePath);
+    string ExecutablePath,
+    SilkPreparationLimits? PreparationLimits = null,
+    SilkGpuBufferBudget? GpuBufferBudget = null);
 
 public sealed record ViewerLaunchRequest(
     string StagePath,
@@ -24,6 +28,8 @@ public sealed class ViewerChildLauncher
 {
     private readonly IViewerProcessStarter _processStarter;
     private readonly string _executablePath;
+    private readonly SilkPreparationLimits? _preparationLimits;
+    private readonly SilkGpuBufferBudget? _gpuBufferBudget;
 
     public ViewerChildLauncher(ViewerChildLauncherOptions options)
         : this(options, new ViewerProcessStarter())
@@ -38,18 +44,22 @@ public sealed class ViewerChildLauncher
         _processStarter = processStarter
             ?? throw new ArgumentNullException(nameof(processStarter));
         _executablePath = ValidateExecutable(options);
+        _preparationLimits = options.PreparationLimits;
+        _gpuBufferBudget = options.GpuBufferBudget;
     }
 
     public ViewerProcessMetadata Launch(ViewerLaunchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ProcessStartInfo startInfo = CreateStartInfo(_executablePath, request);
+        ProcessStartInfo startInfo = CreateStartInfo(_executablePath, request, _preparationLimits, _gpuBufferBudget);
         return _processStarter.Start(startInfo);
     }
 
     internal static ProcessStartInfo CreateStartInfo(
         string executablePath,
-        ViewerLaunchRequest request)
+        ViewerLaunchRequest request,
+        SilkPreparationLimits? preparationLimits = null,
+        SilkGpuBufferBudget? gpuBufferBudget = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentNullException.ThrowIfNull(request);
@@ -58,6 +68,11 @@ public sealed class ViewerChildLauncher
             request.PluginPath,
             nameof(request.PluginPath));
         ValidateArgumentValue(request.Renderer, nameof(request.Renderer));
+        if ((preparationLimits is not null || gpuBufferBudget is not null) &&
+            string.Equals(request.Renderer, "Storm", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException("Storm cannot enforce the configured preparation or GPU buffer ceilings.");
+        }
         if (request.CameraPath is not null)
         {
             ValidateArgumentValue(request.CameraPath, nameof(request.CameraPath));
@@ -72,6 +87,21 @@ public sealed class ViewerChildLauncher
             RedirectStandardError = true,
             CreateNoWindow = false,
         };
+        startInfo.Environment.Remove("OPENUSD_SILK_MESH_RESERVATION_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_MAX_PAGE_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_GPU_BUFFER_BYTES");
+        if (preparationLimits is not null)
+        {
+            startInfo.Environment["OPENUSD_SILK_MESH_RESERVATION_BYTES"] =
+                preparationLimits.MaximumMeshPreparationReservationBytes.ToString(CultureInfo.InvariantCulture);
+            startInfo.Environment["OPENUSD_SILK_MAX_PAGE_BYTES"] =
+                preparationLimits.MaximumCommandPageBytes.ToString(CultureInfo.InvariantCulture);
+        }
+        if (gpuBufferBudget is not null)
+        {
+            startInfo.Environment["OPENUSD_SILK_GPU_BUFFER_BYTES"] =
+                gpuBufferBudget.MaximumBytes.ToString(CultureInfo.InvariantCulture);
+        }
         startInfo.ArgumentList.Add("--stage");
         startInfo.ArgumentList.Add(stagePath);
         startInfo.ArgumentList.Add("--plugins");

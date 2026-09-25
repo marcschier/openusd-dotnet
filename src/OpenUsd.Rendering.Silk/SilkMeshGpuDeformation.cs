@@ -35,6 +35,8 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
     private ISilkGraphicsBuffer _blendSpans;
     private ISilkGraphicsBuffer _blendDeltas;
     private ISilkGraphicsBuffer _parameters;
+    private PoseBuffers? _sparePose;
+    private bool _posePending;
     private bool _disposed;
 
     internal SilkMeshGpuDeformation(
@@ -80,41 +82,123 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
     internal bool NeedsDispatch => DispatchedIdentity != PendingIdentity;
 
     /// <summary>
-    /// Re-uploads the pose-dependent inputs, growing a buffer only when the new
-    /// pose needs more room than the last one.
+    /// Prepares pose-dependent inputs in a reusable second slot, then publishes them together.
     /// </summary>
     /// <remarks>
     /// The sizes change between poses because the resolved sub-shape set does:
     /// an in-between that becomes active adds a range and its deltas. Growing
     /// rather than reallocating keeps a scrub through a blend-shape animation
-    /// from churning allocations once it has seen its widest pose.
+    /// from churning allocations once both slots have seen their widest pose.
+    /// The active slot remains untouched if any upload into the pending slot fails.
     /// </remarks>
     internal void UpdatePose(
         ISilkGraphicsDevice device,
         SilkDeformationGpuPayload payload)
+    {
+        using PreparedPose? prepared = PreparePose(device, payload);
+        prepared?.Commit();
+    }
+
+    internal PreparedPose? PreparePose(ISilkGraphicsDevice device, SilkDeformationGpuPayload payload)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(payload);
         if (payload.Identity == PendingIdentity)
         {
-            return;
+            return null;
         }
-        SilkDeformationGpuBuffers.WriteGrowing(device, ref _matrices, payload.Matrices);
-        SilkDeformationGpuBuffers.WriteGrowing(
-            device,
-            ref _blendWeights,
-            payload.BlendWeights);
-        SilkDeformationGpuBuffers.WriteGrowing(device, ref _blendSpans, payload.BlendSpans);
-        SilkDeformationGpuBuffers.WriteGrowing(
-            device,
-            ref _blendDeltas,
-            payload.BlendDeltas);
-        SilkDeformationGpuBuffers.WriteGrowing(
-            device,
-            ref _parameters,
-            payload.Parameters);
-        PendingIdentity = payload.Identity;
+        if (_posePending)
+        {
+            throw new InvalidOperationException("A deformation pose is already being prepared.");
+        }
+        var prepared = new PreparedPose(this, payload.Identity);
+        _sparePose ??= new PoseBuffers();
+        try
+        {
+            _sparePose.Write(device, payload);
+            _posePending = true;
+            return prepared;
+        }
+        catch
+        {
+            _sparePose.Dispose();
+            _sparePose = null;
+            throw;
+        }
+    }
+
+    // Two reusable pose slots keep published inputs untouched until the whole
+    // page is ready, without allocating another palette on every animation frame.
+    private sealed class PoseBuffers : IDisposable
+    {
+        internal ISilkGraphicsBuffer? Matrices;
+        internal ISilkGraphicsBuffer? Weights;
+        internal ISilkGraphicsBuffer? Spans;
+        internal ISilkGraphicsBuffer? Deltas;
+        internal ISilkGraphicsBuffer? Parameters;
+
+        internal void Write(ISilkGraphicsDevice device, SilkDeformationGpuPayload payload)
+        {
+            SilkDeformationGpuBuffers.WriteGrowing(device, ref Matrices, payload.Matrices);
+            SilkDeformationGpuBuffers.WriteGrowing(device, ref Weights, payload.BlendWeights);
+            SilkDeformationGpuBuffers.WriteGrowing(device, ref Spans, payload.BlendSpans);
+            SilkDeformationGpuBuffers.WriteGrowing(device, ref Deltas, payload.BlendDeltas);
+            SilkDeformationGpuBuffers.WriteGrowing(device, ref Parameters, payload.Parameters);
+        }
+
+        internal void Swap(SilkMeshGpuDeformation owner)
+        {
+            (owner._matrices, Matrices) = (Matrices!, owner._matrices);
+            (owner._blendWeights, Weights) = (Weights!, owner._blendWeights);
+            (owner._blendSpans, Spans) = (Spans!, owner._blendSpans);
+            (owner._blendDeltas, Deltas) = (Deltas!, owner._blendDeltas);
+            (owner._parameters, Parameters) = (Parameters!, owner._parameters);
+        }
+
+        public void Dispose()
+        {
+            Parameters?.Dispose();
+            Deltas?.Dispose();
+            Spans?.Dispose();
+            Weights?.Dispose();
+            Matrices?.Dispose();
+        }
+    }
+
+    internal sealed class PreparedPose(SilkMeshGpuDeformation owner, ulong identity) : IDisposable
+    {
+        private bool _committed;
+        private bool _disposed;
+        internal ulong Identity { get; } = identity;
+
+        internal void Commit()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_committed || !owner._posePending)
+            {
+                throw new InvalidOperationException("The deformation pose is not pending.");
+            }
+            owner._sparePose!.Swap(owner);
+            owner.PendingIdentity = Identity;
+            owner._posePending = false;
+            _committed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            if (!_committed)
+            {
+                owner._sparePose?.Dispose();
+                owner._sparePose = null;
+                owner._posePending = false;
+            }
+            _disposed = true;
+        }
     }
 
     /// <summary>
@@ -186,6 +270,8 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
             return;
         }
         _disposed = true;
+        _sparePose?.Dispose();
+        _sparePose = null;
         _parameters.Dispose();
         _blendDeltas.Dispose();
         _blendSpans.Dispose();
@@ -213,10 +299,18 @@ internal static class SilkDeformationGpuBuffers
         ReadOnlySpan<float> values)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            ByteSize(values.Length * sizeof(float)),
+            ByteSize(checked(values.Length * sizeof(float))),
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        Write(buffer, values);
-        return buffer;
+        try
+        {
+            Write(buffer, values);
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Creates an uploadable storage buffer holding one uint array.</summary>
@@ -225,10 +319,18 @@ internal static class SilkDeformationGpuBuffers
         ReadOnlySpan<uint> values)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            ByteSize(values.Length * sizeof(uint)),
+            ByteSize(checked(values.Length * sizeof(uint))),
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        Write(buffer, values);
-        return buffer;
+        try
+        {
+            Write(buffer, values);
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Creates the kernel's parameter buffer.</summary>
@@ -239,54 +341,62 @@ internal static class SilkDeformationGpuBuffers
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             ByteSize(values.Length),
             SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
-        buffer.Write(values);
-        return buffer;
+        try
+        {
+            buffer.Write(values);
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     internal static void WriteGrowing(
         ISilkGraphicsDevice device,
-        ref ISilkGraphicsBuffer buffer,
+        ref ISilkGraphicsBuffer? buffer,
         ReadOnlySpan<float> values)
     {
-        nuint required = ByteSize(values.Length * sizeof(float));
-        if (buffer.Size < required)
+        nuint required = ByteSize(checked(values.Length * sizeof(float)));
+        if (buffer is null || buffer.Size < required)
         {
-            buffer.Dispose();
-            buffer = device.CreateBuffer(
-                required,
-                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+            ISilkGraphicsBuffer replacement = Create(device, values);
+            buffer?.Dispose();
+            buffer = replacement;
+            return;
         }
         Write(buffer, values);
     }
 
     internal static void WriteGrowing(
         ISilkGraphicsDevice device,
-        ref ISilkGraphicsBuffer buffer,
+        ref ISilkGraphicsBuffer? buffer,
         ReadOnlySpan<uint> values)
     {
-        nuint required = ByteSize(values.Length * sizeof(uint));
-        if (buffer.Size < required)
+        nuint required = ByteSize(checked(values.Length * sizeof(uint)));
+        if (buffer is null || buffer.Size < required)
         {
-            buffer.Dispose();
-            buffer = device.CreateBuffer(
-                required,
-                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+            ISilkGraphicsBuffer replacement = Create(device, values);
+            buffer?.Dispose();
+            buffer = replacement;
+            return;
         }
         Write(buffer, values);
     }
 
     internal static void WriteGrowing(
         ISilkGraphicsDevice device,
-        ref ISilkGraphicsBuffer buffer,
+        ref ISilkGraphicsBuffer? buffer,
         ReadOnlySpan<byte> values)
     {
         nuint required = ByteSize(values.Length);
-        if (buffer.Size < required)
+        if (buffer is null || buffer.Size < required)
         {
-            buffer.Dispose();
-            buffer = device.CreateBuffer(
-                required,
-                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+            ISilkGraphicsBuffer replacement = CreateParameters(device, values);
+            buffer?.Dispose();
+            buffer = replacement;
+            return;
         }
         buffer.Write(values);
     }

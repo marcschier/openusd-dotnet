@@ -346,9 +346,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
         global::Silk.NET.Vulkan.Buffer buffer = default;
         DeviceMemory memory = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveBufferAllocation(size);
             var bufferInfo = new BufferCreateInfo
             {
                 SType = StructureType.BufferCreateInfo,
@@ -378,8 +380,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             ThrowIfFailed(
                 _api.BindBufferMemory(_device, buffer, memory, 0),
                 "vkBindBufferMemory");
-            success = true;
-            return new VulkanSilkGraphicsBuffer(
+            var result = new VulkanSilkGraphicsBuffer(
                 this,
                 _api,
                 _device,
@@ -387,6 +388,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 memory,
                 size,
                 usage);
+            result.OwnBufferReservation(reservation);
+            success = true;
+            return result;
         }
         finally
         {
@@ -401,6 +405,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             if (!success)
             {
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }

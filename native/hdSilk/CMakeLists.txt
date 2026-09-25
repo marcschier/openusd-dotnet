@@ -29,6 +29,8 @@ set(OPENUSD_HDSILK_SOURCES
     src/mesh.h
     src/mesh.cpp
     src/meshVertexLayout.h
+    src/meshPreparation.h
+    src/pageWriter.h
     src/points.h
     src/points.cpp
     src/renderDelegate.h

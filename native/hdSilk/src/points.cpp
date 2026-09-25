@@ -128,6 +128,13 @@ HdSilkPoints::Sync(
     HdDirtyBits* dirtyBits,
     TfToken const& /*reprToken*/)
 {
+    const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
+    if (budget->Enabled())
+    {
+        budget->Refuse("The bounded hdSilk mesh preparation profile does not admit point Rprims.");
+        *dirtyBits = HdChangeTracker::Clean;
+        return;
+    }
     SdfPath const& id = GetId();
 
     const bool visibilityDirty =

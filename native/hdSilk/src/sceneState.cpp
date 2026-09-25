@@ -4,6 +4,7 @@
 
 #include "instanceLinking.h"
 #include "openusd_hdsilk.h"
+#include "pageWriter.h"
 
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/gf/vec3d.h"
@@ -47,62 +48,38 @@ constexpr size_t DeformationBlendDeltaSize = 28;
 constexpr size_t DeformationIdentityOffset = 24;
 constexpr size_t DeformationIdentityCoverageOffset = 32;
 
-void AppendU32(std::vector<uint8_t>& buffer, uint32_t value)
+void AppendU32(HdSilkCommandPayload& buffer, uint32_t value)
 {
-    buffer.push_back(static_cast<uint8_t>(value & 0xFFu));
-    buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
-    buffer.push_back(static_cast<uint8_t>((value >> 16) & 0xFFu));
-    buffer.push_back(static_cast<uint8_t>((value >> 24) & 0xFFu));
+    buffer.AppendU32(value);
 }
 
-void AppendI32(std::vector<uint8_t>& buffer, int32_t value)
+void AppendI32(HdSilkCommandPayload& buffer, int32_t value)
 {
     AppendU32(buffer, static_cast<uint32_t>(value));
 }
 
-void AppendU64(std::vector<uint8_t>& buffer, uint64_t value)
+void AppendU64(HdSilkCommandPayload& buffer, uint64_t value)
 {
-    for (int shift = 0; shift < 64; shift += 8)
-    {
-        buffer.push_back(static_cast<uint8_t>((value >> shift) & 0xFFu));
-    }
+    buffer.AppendU64(value);
 }
 
-void AppendF32(std::vector<uint8_t>& buffer, float value)
+void AppendF32(HdSilkCommandPayload& buffer, float value)
 {
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     AppendU32(buffer, bits);
 }
 
-void AppendF64(std::vector<uint8_t>& buffer, double value)
+void AppendF64(HdSilkCommandPayload& buffer, double value)
 {
     uint64_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     AppendU64(buffer, bits);
 }
 
-void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
+void AppendBytes(HdSilkCommandPayload& buffer, const void* data, size_t size)
 {
-    if (size == 0)
-    {
-        return;
-    }
-    const uint8_t* bytes = static_cast<const uint8_t*>(data);
-    buffer.insert(buffer.end(), bytes, bytes + size);
-}
-
-void AppendCommand(std::vector<uint8_t>& buffer, uint32_t type, const std::vector<uint8_t>& payload)
-{
-    if (payload.size() >
-        static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 8)
-    {
-        throw std::length_error("An hdSilk command exceeds the 32-bit byte_size field.");
-    }
-    const uint32_t byteSize = static_cast<uint32_t>(8 + payload.size());
-    AppendU32(buffer, type);
-    AppendU32(buffer, byteSize);
-    AppendBytes(buffer, payload.data(), payload.size());
+    buffer.AppendBytes(data, size);
 }
 
 uint32_t CheckedCount(size_t value, const char* name)
@@ -395,7 +372,7 @@ void ValidateDeformation(
 /// receives rather than a second, independently computed value that could
 /// disagree with them.
 size_t AppendDeformation(
-    std::vector<uint8_t>& payload,
+    HdSilkCommandPayload& payload,
     const HdSilkMeshDeformation& deformation,
     uint32_t bindPointCount)
 {
@@ -468,7 +445,7 @@ size_t AppendDeformation(
 }
 
 void AppendLight(
-    std::vector<uint8_t>& payload,
+    HdSilkCommandPayload& payload,
     const HdSilkLightRecord* record)
 {
     if (record == nullptr)
@@ -868,7 +845,7 @@ void SelectDirectLights(
 }
 
 void AppendFrame(
-    std::vector<uint8_t>& buffer,
+    HdSilkPageWriter& buffer,
     const HdSilkFrameState& frame,
     const std::vector<HdSilkLightRecord>& directLights,
     const std::vector<HdSilkFrameDome>& domes,
@@ -876,7 +853,7 @@ void AppendFrame(
     const float (&ambientColor)[3],
     float ambientIntensity)
 {
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_FRAME);
     payload.reserve(
         16 +
         sizeof(frame.viewMatrix) +
@@ -936,7 +913,7 @@ void AppendFrame(
         AppendU32(payload, 0);
         AppendU32(payload, 0);
     }
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_FRAME, payload);
+    payload.Complete();
 }
 
 struct MeshWireCounts
@@ -1811,7 +1788,7 @@ uint64_t PresentationTopologyRevision(
 }
 
 void AppendMeshUpsert(
-    std::vector<uint8_t>& buffer,
+    HdSilkPageWriter& buffer,
     HdSilkMeshRecord record,
     uint32_t complexity,
     uint32_t sourceTopologyKind)
@@ -1836,7 +1813,7 @@ void AppendMeshUpsert(
     const HdSilkMeshRecord& complexRecord = presented;
     const MeshWireCounts counts = ValidateMesh(complexRecord);
 
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_MESH_UPSERT);
     payload.reserve(counts.payloadSize);
 
     AppendU64(payload, ComputeStableHash(complexRecord.path));
@@ -1943,10 +1920,10 @@ void AppendMeshUpsert(
         AppendBytes(payload, entry.path.data(), entry.path.size());
     }
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_MESH_UPSERT, payload);
+    payload.Complete();
 }
 
-void AppendMeshRemove(std::vector<uint8_t>& buffer, const HdSilkMeshKey& key)
+void AppendMeshRemove(HdSilkPageWriter& buffer, const HdSilkMeshKey& key)
 {
     ValidatePath(key.path);
     const uint32_t pathByteCount = CheckedCount(key.path.size(), "path byte count");
@@ -1957,18 +1934,18 @@ void AppendMeshRemove(std::vector<uint8_t>& buffer, const HdSilkMeshKey& key)
             "An hdSilk MESH_REMOVE exceeds the 32-bit command byte_size.");
     }
 
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_MESH_REMOVE);
     payload.reserve(8 + 4 + 4 + pathByteCount);
     AppendU64(payload, ComputeStableHash(key.path));
     AppendI32(payload, key.instanceIndex);
     AppendU32(payload, pathByteCount);
     AppendBytes(payload, key.path.data(), key.path.size());
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_MESH_REMOVE, payload);
+    payload.Complete();
 }
 
 void AppendMaterialUpsert(
-    std::vector<uint8_t>& buffer,
+    HdSilkPageWriter& buffer,
     const HdSilkMaterialRecord& record)
 {
     ValidatePath(record.path);
@@ -2092,7 +2069,7 @@ void AppendMaterialUpsert(
     }
 
     const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_MATERIAL_UPSERT);
     payload.reserve(24 + pathByteCount);
     AppendU64(payload, ComputeStableHash(record.path));
     AppendU32(payload, pathByteCount);
@@ -2163,24 +2140,24 @@ void AppendMaterialUpsert(
         AppendF32(payload, record.uvTransform[index]);
     }
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_UPSERT, payload);
+    payload.Complete();
 }
 
-void AppendMaterialRemove(std::vector<uint8_t>& buffer, const std::string& path)
+void AppendMaterialRemove(HdSilkPageWriter& buffer, const std::string& path)
 {
     ValidatePath(path);
     const uint32_t pathByteCount = CheckedCount(path.size(), "path byte count");
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_MATERIAL_REMOVE);
     payload.reserve(8 + 4 + pathByteCount);
     AppendU64(payload, ComputeStableHash(path));
     AppendU32(payload, pathByteCount);
     AppendBytes(payload, path.data(), path.size());
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_REMOVE, payload);
+    payload.Complete();
 }
 
 void AppendEnvironmentUpsert(
-    std::vector<uint8_t>& buffer,
+    HdSilkPageWriter& buffer,
     const std::string& path,
     const HdSilkEnvironmentSnapshot& snapshot)
 {
@@ -2234,7 +2211,7 @@ void AppendEnvironmentUpsert(
     const uint32_t textureByteCount = CheckedCount(
         snapshot.textureAsset.size(),
         "environment texture byte count");
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_ENVIRONMENT_UPSERT);
     payload.reserve(192 + pathByteCount + textureByteCount);
     AppendU64(payload, ComputeStableHash(path));
     AppendU32(payload, pathByteCount);
@@ -2261,25 +2238,25 @@ void AppendEnvironmentUpsert(
         snapshot.textureAsset.data(),
         snapshot.textureAsset.size());
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_ENVIRONMENT_UPSERT, payload);
+    payload.Complete();
 }
 
-void AppendEnvironmentRemove(std::vector<uint8_t>& buffer, const std::string& path)
+void AppendEnvironmentRemove(HdSilkPageWriter& buffer, const std::string& path)
 {
     ValidatePath(path);
     const uint32_t pathByteCount = CheckedCount(path.size(), "path byte count");
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_ENVIRONMENT_REMOVE);
     payload.reserve(8 + 4 + pathByteCount);
     AppendU64(payload, ComputeStableHash(path));
     AppendU32(payload, pathByteCount);
     AppendBytes(payload, path.data(), path.size());
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_ENVIRONMENT_REMOVE, payload);
+    payload.Complete();
 }
 
-void AppendLightLink(std::vector<uint8_t>& buffer, const HdSilkLinkTable& table)
+void AppendLightLink(HdSilkPageWriter& buffer, const HdSilkLinkTable& table)
 {
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_LIGHT_LINK);
     payload.reserve(16 + (table.entries.size() * 44));
     AppendU32(payload, CheckedCount(table.entries.size(), "light link entry count"));
     AppendU32(payload, table.lightCount);
@@ -2302,12 +2279,12 @@ void AppendLightLink(std::vector<uint8_t>& buffer, const HdSilkLinkTable& table)
         AppendBytes(payload, entry.path.data(), entry.path.size());
     }
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_LIGHT_LINK, payload);
+    payload.Complete();
 }
 
-void AppendShadow(std::vector<uint8_t>& buffer, const HdSilkShadowTable& table)
+void AppendShadow(HdSilkPageWriter& buffer, const HdSilkShadowTable& table)
 {
-    std::vector<uint8_t> payload;
+    HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_SHADOW);
     payload.reserve(16 + (table.descriptors.size() * 288));
     AppendU32(payload, CheckedCount(table.descriptors.size(), "shadow descriptor count"));
     AppendU32(payload, table.lightCount);
@@ -2333,7 +2310,7 @@ void AppendShadow(std::vector<uint8_t>& buffer, const HdSilkShadowTable& table)
         AppendU32(payload, 0);
     }
 
-    AppendCommand(buffer, OPENUSD_SILK_COMMAND_SHADOW, payload);
+    payload.Complete();
 }
 
 /// Builds the row-major, row-vector world-to-light view matrix of a directional
@@ -2551,6 +2528,7 @@ HdSilkSceneState::SetCategoryMemberships(
     bool truncated)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     _categoryMemberships = std::move(memberships);
     _categoryMembershipsTruncated = truncated;
 }
@@ -3014,6 +2992,7 @@ HdSilkSceneState::ReplaceMeshInstances(
     }
 
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     std::vector<int32_t>& published = _instancesByPath[path];
     std::vector<int32_t> retained;
     retained.reserve(records.size());
@@ -3097,6 +3076,7 @@ void
 HdSilkSceneState::RemoveMesh(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     const auto published = _instancesByPath.find(path);
     if (published == _instancesByPath.end())
     {
@@ -3117,6 +3097,7 @@ void
 HdSilkSceneState::SetFrame(const HdSilkFrameState& frame)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     _frame = frame;
 }
 
@@ -3128,6 +3109,7 @@ HdSilkSceneState::SetComplexity(uint32_t complexity)
         throw std::invalid_argument("An hdSilk complexity level is unknown.");
     }
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     if (_complexity == complexity)
     {
         return;
@@ -3162,6 +3144,7 @@ HdSilkSceneState::SetDrawMode(uint32_t drawMode)
         throw std::invalid_argument("An hdSilk draw mode is unknown.");
     }
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     if (_drawMode == drawMode)
     {
         return;
@@ -3177,6 +3160,7 @@ void
 HdSilkSceneState::ResetForSceneIngestionChange()
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     // The consumer retains published tables across imaging rebuilds. Preserve
     // their snapshots so the next page can emit replacements and retirements.
     for (const auto& entry : _meshes)
@@ -3197,6 +3181,7 @@ void
 HdSilkSceneState::SetMaterialBindingPurpose(const std::string& purpose)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     _materialBindingPurpose = purpose;
 }
 
@@ -3227,6 +3212,7 @@ HdSilkSceneState::SetMeshMaterialPath(
     const std::string& materialPath)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     const auto instances = _instancesByPath.find(path);
     if (instances == _instancesByPath.end())
     {
@@ -3249,6 +3235,7 @@ void
 HdSilkSceneState::NoteMaterialBindingPurposeChanged()
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     if (_materialBindingGeneration == std::numeric_limits<uint64_t>::max())
     {
         throw std::overflow_error("The hdSilk material-binding generation is exhausted.");
@@ -3271,6 +3258,7 @@ HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
         throw std::invalid_argument("An hdSilk material record requires a path.");
     }
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     const std::string path = record.path;
     _MaterialEntry& entry = _materials[path];
     entry.record = std::move(record);
@@ -3289,6 +3277,7 @@ void
 HdSilkSceneState::RemoveMaterial(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     if (_materials.erase(path) != 0)
     {
         _pendingMaterialRemovals.push_back(path);
@@ -3336,6 +3325,7 @@ HdSilkSceneState::ReplaceLight(HdSilkLightRecord record)
         throw std::invalid_argument("An hdSilk light record requires a path.");
     }
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     const std::string path = record.path;
     _lights[path] = std::move(record);
 }
@@ -3344,20 +3334,24 @@ void
 HdSilkSceneState::RemoveLight(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     _lights.erase(path);
 }
 
 std::vector<uint8_t>
-HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
+HdSilkSceneState::BuildPage(
+    uint64_t* outRevision, uint32_t* outCommandCount, size_t maximumPageBytes, bool awaitAcknowledgement)
 {
     std::lock_guard<std::mutex> lock(_mutex);
+    _RequirePublicationResolved();
     if (_revision == std::numeric_limits<uint64_t>::max())
     {
         throw std::overflow_error("The hdSilk page revision is exhausted.");
     }
 
-    std::vector<uint8_t> buffer;
-    std::vector<_Entry*> dirtyEntries;
+    HdSilkPageWriter buffer(maximumPageBytes);
+    auto publication = std::make_unique<_Publication>();
+    auto& dirtyEntries = publication->dirtyMeshes;
     dirtyEntries.reserve(_meshes.size());
     for (auto& entry : _meshes)
     {
@@ -3430,8 +3424,10 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     // The link table follows the frame it indexes and precedes every command
     // that names a prim, so a consumer applying the page in order knows which
     // lights reach a surface before that surface arrives.
-    HdSilkLinkTable links = _ResolveLinkTable(directLights, domes, domeBudgetExceeded);
-    HdSilkShadowTable shadows = _ResolveShadowTable(directLights, links);
+    auto& links = publication->links;
+    auto& shadows = publication->shadows;
+    links = _ResolveLinkTable(directLights, domes, domeBudgetExceeded);
+    shadows = _ResolveShadowTable(directLights, links);
     if (links != _publishedLinks)
     {
         AppendLightLink(buffer, links);
@@ -3511,7 +3507,8 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     // A later allocation failure must not acknowledge environment changes from
     // a page the caller never received.
     const bool environmentsChanged = !environmentUpserts.empty() || !environmentRemovals.empty();
-    std::unordered_map<std::string, HdSilkEnvironmentSnapshot> publishedEnvironments;
+    publication->environmentsChanged = environmentsChanged;
+    auto& publishedEnvironments = publication->environments;
     if (environmentsChanged)
     {
         publishedEnvironments = _publishedEnvironments;
@@ -3567,7 +3564,7 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
 
     // Materials precede meshes so a consumer that applies the page in order
     // always has the material available when the mesh that binds it arrives.
-    std::vector<_MaterialEntry*> dirtyMaterials;
+    auto& dirtyMaterials = publication->dirtyMaterials;
     dirtyMaterials.reserve(_materials.size());
     for (auto& entry : _materials)
     {
@@ -3721,22 +3718,14 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
     const uint32_t commandCount =
         CheckedCount(appendedCommands, "page command count");
 
-    if (environmentsChanged)
+    if (awaitAcknowledgement)
     {
-        _publishedEnvironments.swap(publishedEnvironments);
+        _pendingPublication = std::move(publication);
     }
-    for (_Entry* entry : dirtyEntries)
+    else
     {
-        entry->dirty = false;
+        _Acknowledge(*publication);
     }
-    _pendingRemovals.clear();
-    for (_MaterialEntry* entry : dirtyMaterials)
-    {
-        entry->dirty = false;
-    }
-    _pendingMaterialRemovals.clear();
-    _publishedLinks = std::move(links);
-    _publishedShadows = std::move(shadows);
 
     ++_revision;
     if (outRevision != nullptr)
@@ -3748,7 +3737,47 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         *outCommandCount = commandCount;
     }
 
-    return buffer;
+    return buffer.Take();
+}
+
+void
+HdSilkSceneState::_RequirePublicationResolved() const
+{
+    if (_pendingPublication)
+    {
+        throw std::logic_error("The previous hdSilk page must be acknowledged or released before scene mutation.");
+    }
+}
+
+void
+HdSilkSceneState::_Acknowledge(_Publication& publication) noexcept
+{
+    if (publication.environmentsChanged)
+    {
+        _publishedEnvironments.swap(publication.environments);
+    }
+    for (_Entry* entry : publication.dirtyMeshes) { entry->dirty = false; }
+    for (_MaterialEntry* entry : publication.dirtyMaterials) { entry->dirty = false; }
+    _pendingRemovals.clear();
+    _pendingMaterialRemovals.clear();
+    _publishedLinks = std::move(publication.links);
+    _publishedShadows = std::move(publication.shadows);
+}
+
+bool
+HdSilkSceneState::CompletePage(uint64_t revision, bool acknowledge)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (!_pendingPublication || revision != _revision)
+    {
+        return false;
+    }
+    if (acknowledge)
+    {
+        _Acknowledge(*_pendingPublication);
+    }
+    _pendingPublication.reset();
+    return true;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

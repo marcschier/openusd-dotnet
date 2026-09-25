@@ -9,6 +9,120 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkMeshRendererTests
 {
     [Test]
+    [Arguments(0, false)]
+    [Arguments(1, false)]
+    [Arguments(2, false)]
+    [Arguments(3, false)]
+    [Arguments(4, false)]
+    [Arguments(5, false)]
+    [Arguments(0, true)]
+    [Arguments(1, true)]
+    [Arguments(2, true)]
+    [Arguments(3, true)]
+    [Arguments(4, true)]
+    [Arguments(5, true)]
+    public Task LateBufferRefusalPreservesEveryPreviouslyPublishedMesh(int failure, bool coordinated) =>
+        VerifyRefusedPage(failure, coordinated, failWrite: false);
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(2)]
+    [Arguments(3)]
+    public Task LateUploadRefusalPreservesTheCompleteCpuAndGpuPage(int failure) =>
+        VerifyRefusedPage(failure, coordinated: true, failWrite: true);
+
+    private static async Task VerifyRefusedPage(int failure, bool coordinated, bool failWrite)
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        SilkSceneState scene = renderer.Scene;
+        SilkSceneGpuResources resources = renderer.GpuResources;
+        byte[] first = CreateMeshCommand([1, 0, 0, 1], pathText: "/First", primId: 7);
+        byte[] metadata = CreateMeshCommand([0, 1, 0, 1], pathText: "/Metadata", primId: 8, pointZ: 0.25f);
+        byte[] removed = CreateMeshCommand([0, 0, 1, 1], pathText: "/Removed", primId: 9, pointZ: 0.5f);
+        byte[] firstFrame = CreateFrameCommand();
+        resources.Apply(scene, scene.Apply([.. firstFrame, .. first, .. metadata, .. removed], 4, 1));
+        Dictionary<ulong, SilkMeshGpuResource> before = resources.Meshes.ToDictionary();
+        Dictionary<ulong, SilkMeshData> beforeMetadata = before.ToDictionary(
+            static pair => pair.Key, static pair => pair.Value.Mesh);
+        ulong revision = resources.Revision;
+        ulong frameRevision = scene.Frame.Revision;
+        int live = device.Buffers.Count(static buffer => !buffer.Released);
+        byte[] replacement = CreateMeshCommand([1, 1, 0, 1], pathText: "/First", primId: 7, pointZ: 1);
+        byte[] tint = CreateMeshCommand([1, 0, 1, 1], pathText: "/Metadata", primId: 8, pointZ: 0.25f);
+        byte[] added = CreateMeshCommand([0, 1, 1, 1], pathText: "/Added", primId: 10, pointZ: 2);
+        byte[] removal = CreateRemoval("/Removed");
+        byte[] movedFrame = CreateFrameCommand();
+        BinaryPrimitives.WriteDoubleLittleEndian(movedFrame.AsSpan(16 + 12 * sizeof(double)), 2);
+        using var page = new OpenUsdSilkPage(24, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
+        SilkSceneDelta delta = coordinated ? default : scene.Apply(page);
+        device.BufferFailureCountdown = failWrite ? null : failure;
+        device.WriteFailureCountdown = failWrite ? failure : null;
+        Action apply = coordinated ? () => renderer.ApplyPage(page) : () => resources.Apply(scene, delta);
+
+        await Assert.That(apply).Throws<InvalidOperationException>();
+        await Assert.That(resources.Revision).IsEqualTo(revision);
+        await Assert.That(resources.Meshes.Keys).IsEquivalentTo(before.Keys);
+        foreach ((ulong id, SilkMeshGpuResource resource) in before)
+        {
+            await Assert.That(resources.Meshes[id]).IsSameReferenceAs(resource);
+            await Assert.That(resource.Mesh).IsSameReferenceAs(beforeMetadata[id]);
+            if (coordinated)
+            {
+                await Assert.That(scene.Meshes[id]).IsSameReferenceAs(beforeMetadata[id]);
+            }
+        }
+        if (coordinated)
+        {
+            await Assert.That(scene.Revision).IsEqualTo(1ul);
+            await Assert.That(scene.Frame.Revision).IsEqualTo(frameRevision);
+            await Assert.That(scene.Meshes.Keys).IsEquivalentTo(before.Keys);
+        }
+        await Assert.That(device.Buffers.Count(static buffer => !buffer.Released)).IsEqualTo(live);
+
+        device.BufferFailureCountdown = null;
+        device.WriteFailureCountdown = null;
+        apply();
+        await Assert.That(resources.Meshes.Keys).IsEquivalentTo([7ul, 8ul, 10ul]);
+        await Assert.That(resources.Meshes[7].Mesh).IsSameReferenceAs(scene.Meshes[7]);
+        await Assert.That(resources.Meshes[8].Mesh).IsSameReferenceAs(scene.Meshes[8]);
+        await Assert.That(resources.Meshes[10].Mesh).IsSameReferenceAs(scene.Meshes[10]);
+        await Assert.That(resources.Revision).IsEqualTo(revision + 1);
+        await Assert.That(device.Buffers.Count(static buffer => !buffer.Released)).IsEqualTo(live);
+    }
+
+    [Test]
+    public async Task PreparedQuietPagesRemainAllocationFreeAndKeepTheSameGpuResources()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(24, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        renderer.ApplyPage(first);
+        using var quiet = new OpenUsdSilkPage(24, 2, CreateFrameCommand(), 1);
+        SilkMeshGpuResource original = renderer.GpuResources.Meshes[7];
+        int created = device.Buffers.Count;
+        for (int index = 0; index < 1000; index++)
+        {
+            renderer.ApplyPage(quiet);
+        }
+        int consecutiveZero = 0;
+        for (int pass = 0; pass < 8 && consecutiveZero < 2; pass++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < 1000; index++)
+            {
+                renderer.ApplyPage(quiet);
+            }
+            consecutiveZero = GC.GetAllocatedBytesForCurrentThread() == before ? consecutiveZero + 1 : 0;
+        }
+        await Assert.That(consecutiveZero).IsEqualTo(2);
+        await Assert.That(device.Buffers.Count).IsEqualTo(created);
+        await Assert.That(renderer.GpuResources.Meshes[7]).IsSameReferenceAs(original);
+        await Assert.That(renderer.GpuResources.Revision).IsEqualTo(1ul);
+    }
+
+    [Test]
     public async Task BuildsInterleavedNormalsAndThirtyTwoBitIndices()
     {
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
@@ -304,13 +418,16 @@ public sealed class SilkMeshRendererTests
     private static byte[] CreateMeshCommand(
         float[] color,
         int instanceIndex = 0,
-        double[]? transform = null)
+        double[]? transform = null,
+        string pathText = "/Triangle",
+        int primId = 7,
+        float pointZ = 0)
     {
-        byte[] path = Encoding.UTF8.GetBytes("/Triangle");
+        byte[] path = Encoding.UTF8.GetBytes(pathText);
         byte[] instancerPath = instanceIndex == 0
             ? []
             : Encoding.UTF8.GetBytes("/Instancer");
-        float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
+        float[] points = [-0.5f, -0.5f, pointZ, 0, 0.5f, pointZ, 0.5f, -0.5f, pointZ];
         uint[] indices = [0, 1, 2];
         int size = 268 +
             path.Length +
@@ -324,8 +441,8 @@ public sealed class SilkMeshRendererTests
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
         BinaryPrimitives.WriteUInt64LittleEndian(
             bytes.AsSpan(8),
-            SilkWireFormat.ComputeStableHash("/Triangle"));
-        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), 7);
+            SilkWireFormat.ComputeStableHash(pathText));
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), primId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
@@ -388,9 +505,23 @@ public sealed class SilkMeshRendererTests
     private static float ReadSingle(ReadOnlySpan<byte> bytes, int floatIndex) =>
         BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(floatIndex * sizeof(float), sizeof(float)));
 
+    private static byte[] CreateRemoval(string path)
+    {
+        byte[] text = Encoding.UTF8.GetBytes(path);
+        byte[] result = new byte[24 + text.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(result, (uint)SilkCommandType.MeshRemove);
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(4), (uint)result.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(result.AsSpan(8), SilkWireFormat.ComputeStableHash(path));
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(20), (uint)text.Length);
+        text.CopyTo(result, 24);
+        return result;
+    }
+
     private sealed class TestGraphicsDevice : ISilkGraphicsDevice
     {
         internal List<TestGraphicsBuffer> Buffers { get; } = [];
+        internal int? BufferFailureCountdown { get; set; }
+        internal int? WriteFailureCountdown { get; set; }
 
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
@@ -399,7 +530,15 @@ public sealed class SilkMeshRendererTests
 
         public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage)
         {
-            var buffer = new TestGraphicsBuffer(size, usage);
+            if (BufferFailureCountdown is { } count)
+            {
+                BufferFailureCountdown = count - 1;
+                if (count == 0)
+                {
+                    throw new InvalidOperationException("Injected GPU buffer allocation refusal.");
+                }
+            }
+            var buffer = new TestGraphicsBuffer(size, usage, this);
             Buffers.Add(buffer);
             return buffer;
         }
@@ -453,14 +592,23 @@ public sealed class SilkMeshRendererTests
         }
     }
 
-    private sealed class TestGraphicsBuffer(nuint size, SilkBufferUsage usage)
+    private sealed class TestGraphicsBuffer(nuint size, SilkBufferUsage usage, TestGraphicsDevice owner)
         : SilkGraphicsBufferBase(size, usage)
     {
         internal byte[] Data { get; } = new byte[checked((int)size)];
+        internal bool Released { get; private set; }
 
         public override void Write(ReadOnlySpan<byte> data, nuint offset = 0)
         {
             _ = ValidateWrite(data.Length, offset);
+            if (owner.WriteFailureCountdown is { } count)
+            {
+                owner.WriteFailureCountdown = count - 1;
+                if (count == 0)
+                {
+                    throw new InvalidOperationException("Injected GPU buffer upload refusal.");
+                }
+            }
             data.CopyTo(Data.AsSpan(checked((int)offset)));
         }
 
@@ -472,6 +620,7 @@ public sealed class SilkMeshRendererTests
 
         protected override void ReleaseNative()
         {
+            Released = true;
         }
     }
 }

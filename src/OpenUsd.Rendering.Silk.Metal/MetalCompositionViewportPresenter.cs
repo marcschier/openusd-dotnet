@@ -88,6 +88,7 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
     private readonly object _sync = new();
     private readonly MetalCompositionRenderCallback? _renderCallback;
     private readonly bool _required;
+    private readonly SilkGpuBufferBudget? _gpuBufferBudget;
     private readonly List<MetalCompositionPresentationGeneration> _generations = [];
     private MetalSilkGraphicsDevice? _device;
     private MetalCompositionPipelineResources? _pipeline;
@@ -123,11 +124,20 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
     /// </summary>
     public MetalCompositionViewportPresenter(
         MetalCompositionRenderCallback renderCallback,
+        bool required = false) : this(renderCallback, null, required)
+    {
+    }
+
+    /// <summary>Creates a retained presenter sharing a buffer payload budget with other renderers or devices.</summary>
+    public MetalCompositionViewportPresenter(
+        MetalCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
         bool required = false)
     {
         ArgumentNullException.ThrowIfNull(renderCallback);
         _renderCallback = renderCallback;
         _required = required;
+        _gpuBufferBudget = gpuBufferBudget;
     }
 
     /// <summary>Captures current presenter resources, ring reuse, and scene evidence.</summary>
@@ -240,7 +250,7 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
                     (MetalSilkGraphicsDevice device,
                         MetalCompositionPipelineResources? pipeline,
                         SilkMeshRenderer? renderer) =
-                        CreateInitializedResources(target, _renderCallback is not null);
+                        CreateInitializedResources(target, _renderCallback is not null, _gpuBufferBudget);
                     _device = device;
                     _pipeline = pipeline;
                     _renderer = renderer;
@@ -550,13 +560,15 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
         MetalCompositionPipelineResources? Pipeline,
         SilkMeshRenderer? Renderer) CreateInitializedResources(
             CompositionPresentationTarget target,
-            bool createMeshRenderer)
+            bool createMeshRenderer,
+            SilkGpuBufferBudget? gpuBufferBudget)
     {
         MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
         MetalCompositionPipelineResources? pipeline = null;
         SilkMeshRenderer? renderer = null;
         try
         {
+            gpuBufferBudget?.ConfigureDevice(device);
             device.ProbeCompositionPresentation();
             ValidateDeviceIdentity(device, target);
             if (createMeshRenderer)

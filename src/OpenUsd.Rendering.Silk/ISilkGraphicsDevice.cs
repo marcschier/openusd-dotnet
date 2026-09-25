@@ -420,12 +420,59 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
 /// <summary>
 /// Coordinates deterministic disposal between a graphics device and its native dependents.
 /// </summary>
-public abstract class SilkGraphicsDeviceLifetimeBase
+public abstract class SilkGraphicsDeviceLifetimeBase : ISilkBufferAdmissionDevice
 {
     private readonly object _lifetimeGate = new();
     private int _dependentObjectCount;
     private bool _disposeStarted;
     private bool _disposeCompleted;
+    private bool _bufferCreationStarted;
+    private SilkGpuBufferBudget? _gpuBufferBudget;
+
+    /// <summary>Gets the shared RHI buffer payload budget, or null for unbounded allocation.</summary>
+    public SilkGpuBufferBudget? GpuBufferBudget
+    {
+        get
+        {
+            lock (_lifetimeGate)
+            {
+                return _gpuBufferBudget;
+            }
+        }
+    }
+
+    /// <summary>Sets the immutable shared budget before any buffer creation is attempted.</summary>
+    public void ConfigureBufferBudget(SilkGpuBufferBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            if (ReferenceEquals(_gpuBufferBudget, budget))
+            {
+                return;
+            }
+            if (_gpuBufferBudget is not null || _bufferCreationStarted)
+            {
+                throw new InvalidOperationException("A GPU buffer budget must be configured once before allocation.");
+            }
+            _gpuBufferBudget = budget;
+        }
+    }
+
+    /// <summary>Reserves logical buffer bytes before creation until final native release.</summary>
+    protected IDisposable? ReserveBufferAllocation(nuint bytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(bytes);
+        SilkGpuBufferBudget? budget;
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            _bufferCreationStarted = true;
+            budget = _gpuBufferBudget;
+        }
+        return budget?.Reserve(checked((ulong)bytes));
+    }
 
     /// <summary>Registers a native object that must be released before device teardown.</summary>
     protected void RegisterDependentLifetime()

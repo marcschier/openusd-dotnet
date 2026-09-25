@@ -447,6 +447,50 @@ is a thread-local `ArResolverContextBinder`, so a continuation resuming on anoth
 both resolve without the binding and fail to release it; the tests capture results inside the bound
 scope and assert them after it.
 
+## GPU page publication
+
+`SilkGpuBufferBudgetTests` checks exact and full-width thresholds, refusal before a
+recording factory runs, immutable configuration, shared-device and concurrent reservations,
+creation rollback, delayed release through owner leases and withheld credits when native
+release fails. `SilkGpuBufferAdmissionTests` exercises actual D3D12/Vulkan buffer creation
+and compute-submission leases. `BudgetRefusalCannotSilentlyDowngradeGpuDeformation` leaves
+enough room for CPU geometry but not a GPU rig, requiring refusal rather than fallback.
+The pose-publication case checks that both retained pose slots count and stop growing.
+
+`RejectedGpuPreparationReplaysRetirementsBeforeAnotherNativeSync` also runs under an
+actual shared buffer ceiling: old pixels and deletion commands survive while another
+buffer consumes the budget, and releasing that buffer permits the exact ordered retry.
+Viewer/MCP configuration tests cover explicit embedding pools and child maximum propagation.
+The real Viewer product/gallery and MCP sequence/product journeys require the stable
+GPU admission diagnostic. The package-only NativeAOT consumer requires
+`GPU_BUFFER_ADMISSION=true`, an exact-full allocation, one-byte-over refusal and zero
+reservations after disposal. Windows Vulkan evidence uses SwiftShader; Metal is compile-
+checked locally, not newly runtime-qualified.
+These real-device fixtures use `NotInParallel`, matching the existing D3D12/Vulkan
+device suites. Concurrent admission remains tested explicitly inside one fixture, including
+two real devices sharing a pool. Overlapping the separate WARP budget/pose fixtures on
+this Windows host reproduced a native access violation in `d3d10warp.dll`; its cause
+remains unresolved, and that overlap is not qualified by serial fixture execution.
+Matching native symbols place the fault in the background pixel-shader optimizer
+(`PixelJitProgram::ClassifyVars`), not a buffer-admission stack.
+
+`LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
+allocation in a multi-mesh replacement, metadata edit, addition and retirement. It
+requires exact old resource references and counts, unchanged CPU/GPU revisions, and a
+complete retry. `LateUploadRefusalPreservesTheCompleteCpuAndGpuPage` covers buffer writes.
+`LateMaterialReplacementFailurePreservesSharedGeometryImagesAndVerdicts` exercises a
+material-only edit with shared geometry and a populated displacement cache.
+`PreparedQuietPagesRemainAllocationFreeAndKeepTheSameGpuResources` checks two successive
+zero-allocation windows of 1,000 quiet pages.
+
+`LateGpuPosePreparationRefusalPreservesPixelsAndAmortizedBufferReuse` runs real D3D12
+and Vulkan captures around a late pose failure, then checks that repeated poses reuse
+both upload slots. `RejectedGpuPreparationReplaysRetirementsBeforeAnotherNativeSync`
+uses real Hydra pages, disposes the rejected caller-owned page, refuses its retry again,
+and verifies old pixels, exact next native revision, retained deletion commands and
+final pixels against an independent session. Out-of-order replay fails closed; another
+case verifies replay does not hold the native-session lock. Vulkan uses SwiftShader.
+
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
@@ -459,6 +503,14 @@ and fails each ordinary C++ allocation in turn; it does not add hooks to the shi
 changing output sentinels or malformed-record counters. It compares the retry byte-for-byte
 with a clean control, covering environment updates/removal, material and mesh updates/removal,
 light links and shadows, then requires the next quiet page to contain no replayed changes.
+`PageByteLimitsPreserveCompleteUpdatesAndRetirements` refuses byte ceilings at command
+boundaries and one byte below the complete page, then requires byte-identical exact-limit
+and above-limit retries. `PageWriterCapsGrowthAndRollsBackIncompleteCommands` verifies
+capped capacity, rollback, endian/header bytes and overflow refusal before copying.
+`ManyCommandsReuseOneAmortizedPageBuffer` requires fewer than 32 allocations for 1,000
+commands, so per-command payload allocation or exact-size growth cannot masquerade as
+one shared buffer. The scene-ingestion native probe rejects truncated version-2 packets,
+zero page ceilings and unknown versions without changing output or retained state.
 
 `hdsilk_vertex_layout` checks exact corner sharing, all-attribute equality, original point
 identity, signed zero, invalid-input preservation and deterministic ordering.
@@ -474,6 +526,58 @@ capacity and exact refusal flags without invalidating another record.
 UV seams, layout-changing edits and the unchanged missing-normal fallback. Its D3D12/Vulkan
 pixel cases compare against an independently vertex-indexed textured scene.
 Run it with `OPENUSD_VERTEX_COMPACTION_REQUIRED=1` and matching native plugin paths.
+
+`hdsilk_mesh_preparation` verifies checked reservation arithmetic, exact limit boundaries,
+shared/old/new ownership, concurrent admission and worker-refusal recovery.
+`SilkMeshPreparationNativeTests` exercises the versioned extension through real Hydra:
+exact-limit versus one-byte-under refusal, preserved old pages, failed growth and retry,
+aggregate meshes, shared instancing, legacy restoration and fail-closed unsupported profiles.
+Its D3D12/Vulkan capture cases keep one retained renderer across refusal/recovery and compare
+the actual pixels. `SilkMeshPreparationCopyTests` injects managed copy/recovery failures
+through the same static dispatch seam as production; it requires release without native
+acknowledgement after failure and acknowledgement only after a successful managed copy.
+An acknowledgement error disposes the new managed owner and preserves the original error.
+Use `OPENUSD_MESH_PREPARATION_REQUIRED=1` with the matching native runtime.
+The clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires actual
+preparation and version-2 page admission, refusal and exact-limit recovery; compilation
+or an old library is not a pass. `CommandPageBoundaryRefusesTheWholeUpdateAndPreservesExactRetryValues`
+checks dirty real-Hydra data against an independent session, old-page lifetime and quiet
+geometry after a page-only limit change. Empty scenes must still fit their frame command.
+Managed copy tests refuse oversized native lengths before invoking the copier and reject
+truncated copies without acknowledging publication.
+
+`SilkNativePageCopyRecoveryTests` drives that real managed seam over actual native pages.
+`FailedNativeCopyRetainsRetirementUntilNextSuccessfulCopy` covers bounded and unbounded
+legacy ingestion. `RepeatedCopyStageFailuresPreserveMeshMaterialAndEnvironmentRetirements`
+repeats copy, usage-read, short-copy, acknowledgement and byte-ceiling failures, requires
+byte-identical complete retries, then checks the next quiet page and zero native-page leaks.
+`RequestAfterCopyFailureUsesItsCurrentFrameWithoutLosingThePendingDeletion` changes output
+dimensions after failure to rule out returning stale request bytes.
+
+The publication allocation probe sweeps ordinary allocations in both immediate and
+deferred modes and requires acknowledgement itself to allocate nothing.
+`DeferredAcknowledgementPreservesAllUpdatesAndRetirements` compares exact mesh, material,
+environment, link and shadow bytes after repeated rejection.
+`VerifyAcknowledgedPagesRetainOwnershipAndBlockSync` covers unresolved-page exclusion,
+invalid/idempotent acknowledgement, rejected-page release, old-page release and session
+teardown with an outstanding page. The clean-feed NativeAOT consumer requires the same
+acknowledgement-capable runtime and a quiet follow-up page.
+
+Session-ceiling coverage uses the same real publisher. `VerifySessionLimitsCannotBeBypassed`
+drives legacy, explicit and deliberately relaxed per-request calls; all obey the immutable
+session limits. `VerifySessionLimitsPreserveLegacyChoicesAndPageSnapshots` pins allPurpose/full
+material transitions, refused reconfiguration, output validation and page-owned accounting
+after session destruction. Managed cases cover path/shared-stage factories, tighter requests,
+snapshot-read failure cleanup and identical D3D12/Vulkan capture recovery.
+`PreparationDiagnosticsStayStableAcrossFrameUsageChanges` prevents long sequences from
+exhausting their distinct-diagnostic quota merely because per-frame usage changes.
+
+Viewer startup/fallback and MCP configuration/child-launch tests cover paired strict parsing,
+embedding overrides and propagation of the effective policy instead of ambient child values.
+The actual D3D12 authored-product Viewer journey uses session ceilings and requires their
+diagnostic in the completed manifest. Native MCP preview/sequence/product cases preserve
+pixels and filters with ceilings; refused jobs publish no PNG or manifest. The clean-feed
+NativeAOT imaging consumer also requires `SESSION_PREPARATION_ADMISSION=true`.
 
 The `hdsilk_direct_light_*` CTests exercise effective admission, all four direct/shadow mask words,
 128/129 refusal and retry, inherited visibility, reordered links and unchanged dome/shadow bounds.

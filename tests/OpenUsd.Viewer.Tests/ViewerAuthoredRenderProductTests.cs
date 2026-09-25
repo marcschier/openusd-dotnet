@@ -302,9 +302,14 @@ public sealed class ViewerAuthoredRenderProductTests
             (_, selected, _) => ValueTask.FromResult(
                 ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, selected)),
             (_, _, _) => throw new InvalidOperationException("Admission test must not render."));
+        DirectoryInfo output = Directory.CreateTempSubdirectory("viewer-product-admission-");
         try
         {
+            Required<TextBox>(window, "ProductOutputFolder").Text = string.Empty;
             window.Show();
+            await WaitUntilAsync(() => Required<ComboBox>(window, "ProductSelector").SelectedItem is not null);
+            await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
+            Required<TextBox>(window, "ProductOutputFolder").Text = output.FullName;
             await WaitUntilAsync(() => Required<Button>(window, "ProductRenderButton").IsEnabled);
             Required<TextBox>(window, "ProductSettingsPath").Text = "/Render/OtherSettings";
             await WaitUntilAsync(() => !Required<Button>(window, "ProductRenderButton").IsEnabled);
@@ -319,7 +324,14 @@ public sealed class ViewerAuthoredRenderProductTests
         }
         finally
         {
-            await window.CloseAsync();
+            try
+            {
+                await window.CloseAsync();
+            }
+            finally
+            {
+                output.Delete(recursive: true);
+            }
         }
     }
 

@@ -146,11 +146,103 @@ only the arrays they write. Read-only traversal, including serialization, must u
 views so it neither changes earlier records nor duplicates their payloads.
 The wire format and native ABI are unchanged.
 
+### Optional mesh preparation admission
+
+`openusd_silk_session_sync_with_mesh_preparation` is an additive extension with versioned
+limits packets; older libraries explicitly refuse unavailable versions. The existing
+session-6/page-24 calls retain their unbounded behavior. The three-argument managed
+`SilkSceneIngestionOptions` overload requests version 1 with a positive
+`maximumMeshPreparationReservationBytes`, and successful pages expose `MeshPreparationUsage`.
+
+The initial profile admits coarse, smooth-shaded mesh Rprims with resolved numeric points
+and the existing supported numeric attributes. It refuses refinement, other draw modes,
+Skel/computed geometry, point/curve Rprims and volumes, rather than silently ignoring their
+cost. Point-instancer references share the prototype reservation; their transform/identity
+metadata is not a numeric mesh buffer reservation.
+
+The metric is **conservative logical buffer reservation bytes**, not actual allocation,
+private memory or RSS. For `P` source points, `T` upper-bound triangles (sum of `max(faceSize-2,0)`),
+`C=3T` and `V=max(P,C)`, the base charge is `12(P+V) + 4(9C+2T+P) + P`.
+Each supported attribute adds `4(S+3E)`, where `S` is its source float-component count and
+`E` is `S` for a constant, otherwise `V * componentCount`. This reserves conversion/emission,
+triangulation, remapping/identity flags and overlapping attribute preparations before
+hdSilk builds those arrays. It intentionally does not discount holes, seams or compaction.
+The charge remains reserved for that mesh generation even after its temporary arrays shrink.
+
+A producer and its retained record share one reservation lease. A replacement reserves
+new work while the old lease remains live; failed partial preparation retains both until
+recovery destroys that owner. Concurrent Hydra workers cannot overcommit the ceiling.
+Worker refusal is latched and propagated after the Hydra worker barrier, not thrown
+through the worker pool. No page is published; the existing repopulation path supplies
+the complete retry. Changing the mesh limit or switching to/from legacy mode rebuilds imaging.
+If managed copying fails, publication remains unacknowledged and the native page is
+released without consuming its pending changes.
+
+Source/SDK materialization and caches, allocator capacity/overhead, maps/strings, materials,
+instance metadata, serialized pages, managed/GPU buffers and texture residency are outside
+this metric. Keep an independent host-memory safety guard; this profile is not complete
+whole-scene resource admission.
+
+The four-argument managed overload additionally takes `maximumCommandPageBytes`, a
+positive `int`, and requests preparation limits version 2. Native callers pass the
+24-byte `openusd_silk_mesh_preparation_page_limits` packet through its `base` prefix.
+The usage output remains version 1 and 32 bytes; session/page ABI versions do not change.
+A preparation-v1 library rejects the newer packet instead of ignoring its page ceiling.
+
+`src/pageWriter.h` writes all commands directly into one amortized byte buffer, with
+no separate per-command payload vectors or payload-to-page copies. Every growth request
+is checked against the page ceiling before allocation, including command headers and
+the always-present frame. Incomplete commands roll back; a ceiling refusal aborts the
+whole publication. Managed copying checks the native length against the same limit
+before allocating, and successful pages expose their actual `ByteLength`.
+Changing only the page ceiling does not invalidate unchanged geometry.
+
+This is a **per-page serialized-byte ceiling**, not a total-memory reservation or a
+global live-page pool. Vector growth can temporarily overlap old and new buffers;
+native and managed buffers overlap during copying. Allocator overhead, metadata,
+other live pages, retained geometry, source/SDK caches, materials, textures and GPU
+storage remain separate costs. The mesh reservation metric above is unchanged.
+
+`openusd_silk_session_set_preparation_limits` optionally installs immutable version-2
+ceilings before the first sync. All native sync entry points apply the effective minimum
+of session and per-request limits. Unbounded legacy requests therefore remain bounded
+when the host configured a session policy, without changing their purposes or allPurpose
+material binding. Configuration after sync starts, repeated configuration, malformed
+packets and zero ceilings fail explicitly. An unconfigured session retains prior behavior.
+`openusd_silk_page_get_preparation_usage` reads the successful page's immutable version-1
+snapshot, even after subsequent syncs or session destruction; unbounded pages have zero
+counters. The managed `SilkPreparationLimits` factory overloads fail on older libraries
+and release the newly created native session rather than silently omitting admission.
+
 Command-page allocation failures abort the whole publication instead of being treated
 as malformed scene records. Environment acknowledgements, dirty flags and removals
 advance only after a complete page is built, so a retry still publishes every pending
 change. Invalid authored records retain their existing diagnostic behavior. This is
 failure atomicity, not a total-process memory limit or pre-allocation admission policy.
+
+### Native copy acknowledgement
+
+The managed runtime requires `openusd_silk_session_enable_page_acknowledgement` and
+`openusd_silk_page_acknowledge`. It enables the mode before the first sync and acknowledges
+only after page metadata, copy length and construction of the immutable managed owner
+all succeed. Older libraries fail creation explicitly, even when session 6/page 24 match.
+The native ABI and wire versions remain unchanged; C callers that do not enable this
+additive mode keep historical immediate-publication behavior.
+
+An enabled session has at most one unacknowledged native page. Another sync or explicit
+repopulation is refused while that page is outstanding. Acknowledgement commits the
+staged dirty flags, removals, environment snapshots, light links and shadows without
+allocation. Releasing the page without acknowledgement discards only its prepared
+acknowledgement metadata, leaving every change pending. The next request rebuilds its
+own current frame and can observe newer scene edits; it is not handed stale request bytes.
+Issued page revisions still advance on each successfully built native page.
+
+Prepared metadata borrows native dirty entries, so scene mutation is blocked until the
+page is resolved. Session teardown rejects any outstanding publication before destroying
+imaging, and owned page bytes/usage remain readable independently. Releasing an older
+acknowledged page cannot cancel a newer pending page. There is no second retained serialized
+byte buffer. This is in-memory transfer safety, not crash-durable recovery or a memory budget.
+After copying succeeds, later GPU preparation failure still uses ordered managed-page replay.
 
 `openusd_silk_session_sync` returns an `openusd_silk_page_view` whose `data`
 buffer is a sequence of little-endian commands. Every command starts with a

@@ -244,6 +244,8 @@ public sealed class SilkMeshRenderer :
     private ulong _selectionDeviceInvalidations;
     private ulong _unsupportedXRayRequests;
     private bool _disposed;
+    private OpenUsdSilkPage.ReplaySnapshot? _rejectedPage;
+    private readonly Action _replayRejectedPage;
 
     /// <summary>Initializes a retained renderer using checked shaders for the device backend.</summary>
     public SilkMeshRenderer(ISilkGraphicsDevice device)
@@ -286,6 +288,7 @@ public sealed class SilkMeshRenderer :
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
+        _replayRejectedPage = ReplayRejectedPage;
         _shaderFormat = shaderFormat;
         _pickingDevice = device as ISilkPickingGraphicsDevice;
         _selectionOutlineDevice = device as ISilkSelectionOutlineGraphicsDevice;
@@ -647,8 +650,7 @@ public sealed class SilkMeshRenderer :
                 checked((int)colorTarget.Height),
                 timeCode,
                 CameraState.Default);
-            SilkSceneDelta delta = Scene.Apply(page);
-            ApplySceneDelta(delta);
+            ApplyPage(page);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -678,8 +680,7 @@ public sealed class SilkMeshRenderer :
                 checked((int)colorTarget.Height),
                 timeCode,
                 CameraState.Default);
-            SilkSceneDelta delta = Scene.Apply(page);
-            ApplySceneDelta(delta);
+            ApplyPage(page);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -699,8 +700,7 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
-            SilkSceneDelta delta = Scene.Apply(page);
-            ApplySceneDelta(delta);
+            ApplyPage(page);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -723,8 +723,7 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
-            SilkSceneDelta delta = Scene.Apply(page);
-            ApplySceneDelta(delta);
+            ApplyPage(page);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -814,8 +813,7 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
-            SilkSceneDelta delta = Scene.Apply(page);
-            ApplySceneDelta(delta);
+            ApplyPage(page);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -894,6 +892,11 @@ public sealed class SilkMeshRenderer :
                 return;
             }
             _disposed = true;
+            if (_rejectedPage?.Source is { } source && source.TryGetTarget(out OpenUsdSilkSession? session))
+            {
+                session.RevokePageReplay(_replayRejectedPage);
+            }
+            _rejectedPage = null;
             var disposed = new ObjectDisposedException(nameof(SilkMeshRenderer));
             _activePick?.Fail(disposed);
             _pendingPick?.Fail(disposed);
@@ -1926,12 +1929,67 @@ public sealed class SilkMeshRenderer :
         uint VertexStride,
         string MaterialShaderIdentity);
 
-    private void ApplySceneDelta(SilkSceneDelta delta)
+    internal void ApplyPage(OpenUsdSilkPage page)
     {
-        GpuResources.Apply(Scene, delta);
-        if (delta.MeshUpserts != 0 || delta.MeshRemovals != 0)
+        ArgumentNullException.ThrowIfNull(page);
+        lock (_gate)
         {
-            _selectionResolutionDirty = true;
+            ThrowIfDisposed();
+            if (_rejectedPage is { } rejected && !rejected.Matches(page))
+            {
+                ReplayRejectedPage();
+            }
+            OpenUsdSilkPage.ReplaySnapshot snapshot = page.CaptureReplay();
+            bool committed = false;
+            bool staged = false;
+            try
+            {
+                using SilkSceneState.PreparedPage scene = Scene.PreparePage(page);
+                staged = true;
+                using SilkSceneGpuResources.PreparedMeshUpdate? gpu = GpuResources.Prepare(Scene, scene.Delta);
+                gpu?.Commit();
+                scene.Commit();
+                committed = true;
+                _rejectedPage = null;
+                if (scene.Delta.MeshUpserts != 0 || scene.Delta.MeshRemovals != 0)
+                {
+                    _selectionResolutionDirty = true;
+                }
+                GpuResources.CompleteApply(Scene, scene.Delta);
+            }
+            catch (Exception preparationFailure)
+            {
+                if (committed || !staged)
+                {
+                    throw;
+                }
+                _rejectedPage = snapshot;
+                try
+                {
+                    page.RegisterReplay(_replayRejectedPage);
+                }
+                catch (Exception recoveryFailure)
+                {
+                    throw new AggregateException(
+                        "GPU page preparation failed and ordered replay could not be registered.",
+                        preparationFailure, recoveryFailure);
+                }
+                throw;
+            }
+        }
+
+    }
+
+    private void ReplayRejectedPage()
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_rejectedPage is { } rejected)
+            {
+                using OpenUsdSilkPage page = rejected.CreatePage();
+                ApplyPage(page);
+            }
         }
     }
 

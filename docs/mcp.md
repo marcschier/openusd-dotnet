@@ -428,6 +428,31 @@ separate Viewer root; it is not included in either the tool package or MCP RID b
 
 ### Environment variables
 
+- **`OPENUSD_SILK_GPU_BUFFER_BYTES`:** optional positive invariant decimal ceiling for
+  logical RHI buffer payload bytes. The process shares one pool across its preview/
+  sequence/product devices; submission-held and replacement buffers remain charged.
+  It excludes textures, backend-internal staging/readback, driver overhead and source/
+  managed memory. Unset preserves defaults; invalid values fail startup.
+  The maximum is forwarded explicitly to a launched Viewer, whose pool is independent
+  because it runs in another process. Unsupported devices and Storm cannot bypass it.
+  Stable `HDSILK_GPU_BUFFER_ADMISSION` information appears in capture diagnostics.
+
+These managed bindings require an hdSilk runtime with explicit page acknowledgement.
+An older session-6/page-24 library without that extension fails session creation.
+See [native-to-managed page acknowledgement](rendering.md#native-to-managed-page-acknowledgement).
+
+- **`OPENUSD_SILK_MESH_RESERVATION_BYTES` and `OPENUSD_SILK_MAX_PAGE_BYTES`:** optional paired
+  positive base-10 byte ceilings for every hdSilk session. The page ceiling must fit `Int32`;
+  both unset keeps historical defaults, while partial/invalid configuration fails startup.
+  These cover logical coarse-mesh preparation reservations and serialized pages, not total
+  process memory, source/SDK/material caches, textures or GPU resources. Preview, sequence
+  and authored-product paths share the immutable policy; per-request options cannot relax it.
+  Each simultaneous native session is independently bounded, not charged to a global pool.
+  The effective policy is forwarded explicitly to launched Viewers, and Storm is refused
+  while it cannot enforce the ceilings. Older native libraries fail explicitly.
+  Successful captures include `HDSILK_PREPARATION_ADMISSION` information; native refusals
+  retain the existing `render_failure` protocol classification and original inner diagnostic.
+  Choose measured limits rather than treating these as a complete warehouse memory budget.
 - **`OPENUSD_MCP_SOURCE_ROOT`:** defaults to the client process current directory. It is
   the existing canonical read-only root for `open_scene` relative paths.
 - **`OPENUSD_MCP_OUTPUT_ROOT`:** defaults to

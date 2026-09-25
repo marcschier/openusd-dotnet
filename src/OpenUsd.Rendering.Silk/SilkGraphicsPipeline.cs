@@ -15,6 +15,30 @@ public abstract class SilkGraphicsResourceBase : IDisposable
     private int _leaseCount;
     private bool _disposeRequested;
     private bool _nativeReleased;
+    private IDisposable? _bufferReservation;
+
+    internal void OwnBufferReservation(IDisposable? reservation)
+    {
+        if (reservation is null)
+        {
+            return;
+        }
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeRequested || _nativeReleased, this);
+            if (_bufferReservation is not null)
+            {
+                throw new InvalidOperationException("A buffer already owns its allocation reservation.");
+            }
+            _bufferReservation = reservation;
+        }
+    }
+
+    private void ReleaseNativeAndReservation()
+    {
+        ReleaseNative();
+        Interlocked.Exchange(ref _bufferReservation, null)?.Dispose();
+    }
 
     /// <inheritdoc/>
     public void Dispose()
@@ -36,7 +60,7 @@ public abstract class SilkGraphicsResourceBase : IDisposable
         }
         if (release)
         {
-            ReleaseNative();
+            ReleaseNativeAndReservation();
         }
     }
 
@@ -77,7 +101,7 @@ public abstract class SilkGraphicsResourceBase : IDisposable
         }
         if (release)
         {
-            ReleaseNative();
+            ReleaseNativeAndReservation();
         }
     }
 

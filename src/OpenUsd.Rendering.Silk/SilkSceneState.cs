@@ -212,6 +212,45 @@ public sealed class SilkSceneState
         return Apply(page.GetEnumerator(), page.Revision, requiresJournal);
     }
 
+    internal PreparedPage PreparePage(OpenUsdSilkPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        if (_journaling)
+        {
+            throw new InvalidOperationException("A scene page is already being prepared.");
+        }
+        _ = Preflight(page.GetEnumerator());
+        BeginTransaction();
+        try
+        {
+            return new PreparedPage(this, ApplyCore(page.GetEnumerator(), page.Revision));
+        }
+        catch
+        {
+            RollbackTransaction();
+            throw;
+        }
+    }
+
+    internal ref struct PreparedPage(SilkSceneState scene, SilkSceneDelta delta)
+    {
+        private SilkSceneState? _scene = scene;
+        internal SilkSceneDelta Delta { get; } = delta;
+
+        internal void Commit()
+        {
+            (_scene ?? throw new InvalidOperationException("The scene page is no longer pending."))
+                .CommitTransaction();
+            _scene = null;
+        }
+
+        public void Dispose()
+        {
+            _scene?.RollbackTransaction();
+            _scene = null;
+        }
+    }
+
     /// <summary>
     /// Replaces the points of one retained mesh with externally simulated ones.
     /// </summary>
@@ -2995,7 +3034,7 @@ public readonly record struct SilkSceneDelta(
 /// <summary>
 /// Owns backend buffers corresponding to retained hdSilk mesh resources.
 /// </summary>
-public sealed class SilkSceneGpuResources : IDisposable
+public sealed partial class SilkSceneGpuResources : IDisposable
 {
     private const int DiagnosticCapacity = 128;
     private const int MaximumUdimAtlasCells = 256;
@@ -3362,6 +3401,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         _environmentIdentityContext = string.Create(
             CultureInfo.InvariantCulture,
             $"{device.Backend}/{Interlocked.Increment(ref _environmentContextSequence)}");
+        EnsureBufferBudgetDiagnostic();
         SilkManagedDiagnostics.GpuSceneCreated();
     }
 
@@ -3369,13 +3409,33 @@ public sealed class SilkSceneGpuResources : IDisposable
     public IReadOnlyDictionary<ulong, SilkMeshGpuResource> Meshes => _meshes;
 
     /// <summary>Gets a bounded snapshot of material and texture degradation diagnostics.</summary>
-    public RenderDiagnosticsState Diagnostics =>
-        _diagnostics.Count == 0
-            ? RenderDiagnosticsState.Empty
-            : new RenderDiagnosticsState(
-                _diagnostics
-                    .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
-                    .Select(static pair => pair.Value));
+    public RenderDiagnosticsState Diagnostics
+    {
+        get
+        {
+            EnsureBufferBudgetDiagnostic();
+            return _diagnostics.Count == 0
+                ? RenderDiagnosticsState.Empty
+                : new RenderDiagnosticsState(
+                    _diagnostics
+                        .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+                        .Select(static pair => pair.Value));
+        }
+    }
+
+    private void EnsureBufferBudgetDiagnostic()
+    {
+        const string admissionCode = "HDSILK_GPU_BUFFER_ADMISSION";
+        if (_device is ISilkBufferAdmissionDevice { GpuBufferBudget: { } budget } &&
+            !_diagnostics.ContainsKey(admissionCode + "\0"))
+        {
+            AddDiagnostic(admissionCode, string.Empty, RenderDiagnosticSeverity.Information,
+                string.Create(CultureInfo.InvariantCulture,
+                    $"Shared logical RHI buffer payload ceiling={budget.MaximumBytes} bytes. ") +
+                "Charges include submission-held buffers; excludes textures, backend staging, driver overhead " +
+                "and source/managed memory. Not total VRAM.");
+        }
+    }
 
     /// <summary>
     /// Discards failed texture fallbacks so the next render retries assets that may have changed.
@@ -3669,77 +3729,29 @@ public sealed class SilkSceneGpuResources : IDisposable
     private ulong _bufferWriteBytes;
     private ulong _textureUploadBytes;
 
-    /// <summary>Applies only the mesh changes reported by a scene delta.</summary>
+    /// <summary>Prepares all changed mesh resources before publishing a scene delta.</summary>
+    /// <remarks>
+    /// Allocation/upload refusal preserves earlier GPU membership and metadata.
+    /// Use SilkMeshRenderer to keep its CPU scene journal open through this preparation too.
+    /// Cumulative work statistics include refused attempts; publication revisions do not.
+    /// </remarks>
     public void Apply(SilkSceneState scene, SilkSceneDelta delta)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scene);
-        bool changed = delta.MeshRemovals != 0 ||
-            delta.MeshUpserts != 0 ||
-            delta.MaterialChanges != 0;
+        using PreparedMeshUpdate? prepared = Prepare(scene, delta);
+        prepared?.Commit();
+        CompleteApply(scene, delta);
+    }
 
-        foreach (ulong id in delta.RemovedMeshIds.Span)
-        {
-            if (_meshes.Remove(id, out SilkMeshGpuResource? removed))
-            {
-                // A removed prim keeps no displacement verdict: nothing is drawn
-                // for it, so a retained report would name a prim the consumer can
-                // no longer see. Only this instance's verdict is dropped -- a
-                // sibling instance of the same prototype is still drawn, and still
-                // earns the report its own verdict produces.
-                ForgetDisplacementVerdict(removed.Mesh);
-                DisposeMesh(removed);
-            }
-        }
-
-        foreach (ulong id in delta.UpsertedMeshIds.Span)
-        {
-            if (!scene.Meshes.TryGetValue(id, out SilkMeshData? mesh))
-            {
-                throw new InvalidDataException(
-                    $"Scene delta references missing mesh {id}.");
-            }
-
-            if (_meshes.TryGetValue(id, out SilkMeshGpuResource? existing) &&
-                existing.HasSameGeometry(mesh))
-            {
-                existing.UpdateMesh(mesh);
-                continue;
-            }
-
-            SilkMeshGpuResource replacement = CreateMesh(scene, mesh);
-            if (_meshes.Remove(id, out SilkMeshGpuResource? previous))
-            {
-                DisposeMesh(previous);
-            }
-            _meshes.Add(id, replacement);
-        }
-        foreach (string materialPath in delta.ChangedMaterialPaths.ToArray())
-        {
-            List<ulong>? affected = null;
-            foreach (KeyValuePair<ulong, SilkMeshGpuResource> pair in _meshes)
-            {
-                if (string.Equals(pair.Value.Mesh.MaterialPath, materialPath, StringComparison.Ordinal))
-                {
-                    (affected ??= []).Add(pair.Key);
-                }
-            }
-            if (affected is null)
-            {
-                continue;
-            }
-            foreach (ulong id in affected)
-            {
-                SilkMeshData mesh = scene.Meshes[id];
-                SilkMeshGpuResource replacement = CreateMesh(scene, mesh);
-                SilkMeshGpuResource previous = _meshes[id];
-                _meshes[id] = replacement;
-                DisposeMesh(previous);
-            }
-            RemoveSurfaceBuffers(materialPath);
-        }
+    internal void CompleteApply(SilkSceneState scene, SilkSceneDelta delta)
+    {
         if (delta.MaterialChanges != 0)
         {
+            foreach (string path in delta.ChangedMaterialPaths.Span)
+            {
+                RemoveSurfaceBuffers(path);
+            }
             RemoveChangedMaterialTextureCacheEntries(delta.ChangedMaterialPaths.Span);
             RemoveMaterialDiagnostics();
         }
@@ -3747,10 +3759,6 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             RemoveMaterialResolutionDiagnostics();
             PruneInactiveTextureFailures(scene);
-        }
-        if (changed)
-        {
-            Revision++;
         }
         // The displacement verdicts depend on the published shadow table as well
         // as on which prims are displaced, and neither is a property of the other.
@@ -4609,9 +4617,9 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             EnsureEnvironmentTextures(maps, identity, candidates);
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or NotSupportedException or
-                ArgumentException or OutOfMemoryException or OverflowException)
+        catch (Exception exception) when (exception is not SilkGpuBufferBudgetExceededException &&
+            exception is (InvalidOperationException or NotSupportedException or
+                ArgumentException or OutOfMemoryException or OverflowException))
         {
             // Not a settled state. The scene is unchanged and the payload is
             // still cached, so the only thing that failed is an allocation the
@@ -7295,9 +7303,17 @@ public sealed class SilkSceneGpuResources : IDisposable
         // GPU-eligible prim whose displacement was refused records the refusal it
         // would otherwise never have reported, because the resolution that reports
         // one runs only on the CPU path.
-        RecordDisplacementVerdict(mesh, materialPath, plan, resource);
-        RefreshDisplacementDiagnostics(scene);
-        return resource;
+        try
+        {
+            RecordDisplacementVerdict(mesh, materialPath, plan, resource);
+            RefreshDisplacementDiagnostics(scene);
+            return resource;
+        }
+        catch
+        {
+            ReleaseGeometry(resource);
+            throw;
+        }
     }
 
     private SilkMeshGpuGeometryResource ResolveGeometryResource(
@@ -8005,6 +8021,11 @@ public sealed class SilkSceneGpuResources : IDisposable
             plan.Fallback is SilkDisplacementFallback.NotAuthored or
                 SilkDisplacementFallback.AuthoredZero)
         {
+            if (_preparing is not null)
+            {
+                _preparing.SetVerdict(key, null);
+                return;
+            }
             if (_displacementVerdicts.Remove(key))
             {
                 _displacementVerdictRevision++;
@@ -8016,6 +8037,11 @@ public sealed class SilkSceneGpuResources : IDisposable
             fallback,
             resource.DisplacedVertexCount,
             resource.MaximumDisplacement);
+        if (_preparing is not null)
+        {
+            _preparing.SetVerdict(key, verdict);
+            return;
+        }
         if (_displacementVerdicts.TryGetValue(key, out DisplacementVerdict existing) &&
             existing == verdict)
         {
@@ -8056,6 +8082,10 @@ public sealed class SilkSceneGpuResources : IDisposable
     /// </remarks>
     private void RefreshDisplacementDiagnostics(SilkSceneState scene)
     {
+        if (_preparing is not null)
+        {
+            return;
+        }
         ulong shadowRevision = scene.Shadows.Revision;
         if (_displacementReportedRevision == _displacementVerdictRevision &&
             _displacementReportedShadowRevision == shadowRevision)
@@ -8304,10 +8334,10 @@ public sealed class SilkSceneGpuResources : IDisposable
     private static readonly float[] IdentityUvTransform = [1, 0, 0, 1, 0, 0];
 
     /// <summary>One drawn prim, distinguished from its sibling instances.</summary>
-    private readonly record struct DisplacedPrimKey(string Path, int InstanceIndex);
+    internal readonly record struct DisplacedPrimKey(string Path, int InstanceIndex);
 
     /// <summary>What one drawn prim's displacement resolved to.</summary>
-    private readonly record struct DisplacementVerdict(
+    internal readonly record struct DisplacementVerdict(
         string MaterialPath,
         SilkDisplacementFallback Fallback,
         int VertexCount,
@@ -8350,7 +8380,14 @@ public sealed class SilkSceneGpuResources : IDisposable
                 ulong generation = ReadDeformationDeviceGeneration();
                 try
                 {
-                    retained.UpdatePose(_device, deformationPayload);
+                    if (_preparing is null)
+                    {
+                        retained.UpdatePose(_device, deformationPayload);
+                    }
+                    else
+                    {
+                        _preparing.PreparePose(retained, deformationPayload);
+                    }
                 }
                 catch (Exception exception)
                     when (IsRecoverableDeformationFailure(exception, generation))
@@ -8359,7 +8396,15 @@ public sealed class SilkSceneGpuResources : IDisposable
                     // resource drops it out of the cache and puts the
                     // authoritative CPU vertices under the draw, and the caller
                     // falls through to the CPU key.
-                    RetireDeformation(candidate);
+                    if (_preparing is null)
+                    {
+                        RetireDeformation(candidate);
+                    }
+                    else
+                    {
+                        _deformationDisabled = true;
+                        _deformationFallbacks++;
+                    }
                     return false;
                 }
             }
@@ -8393,6 +8438,15 @@ public sealed class SilkSceneGpuResources : IDisposable
         ISilkGraphicsBuffer? indexBuffer = null;
         SilkMeshGpuDeformation? deformation = null;
         ulong generation = ReadDeformationDeviceGeneration();
+        if (!_geometries.TryGetValue(key, out List<SilkMeshGpuGeometryResource>? matches))
+        {
+            matches = new List<SilkMeshGpuGeometryResource>(1);
+            _geometries.EnsureCapacity(checked(_geometries.Count + 1));
+        }
+        else
+        {
+            matches.EnsureCapacity(checked(matches.Count + 1));
+        }
         try
         {
             // A GPU-deformed geometry writes its vertices with a kernel, so its
@@ -8446,10 +8500,6 @@ public sealed class SilkSceneGpuResources : IDisposable
             {
                 Deformation = deformation
             };
-            if (!_geometries.TryGetValue(key, out List<SilkMeshGpuGeometryResource>? matches))
-            {
-                matches = [];
-            }
             matches.Add(resource);
             _geometries[key] = matches;
             _geometryBuilds++;
@@ -8543,7 +8593,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         ISilkGraphicsShaderModule? module = null;
         ISilkComputeShaderProgram? program = null;
         ISilkComputePipeline? pipeline = null;
-        List<ISilkGraphicsBuffer> buffers = [];
+        List<ISilkGraphicsBuffer> buffers = new(9);
         try
         {
             layout = _device.CreateComputeBindingLayout(
@@ -8746,6 +8796,7 @@ public sealed class SilkSceneGpuResources : IDisposable
     private bool IsRecoverableDeformationFailure(Exception exception, ulong generation) =>
         exception is not ObjectDisposedException &&
         exception is not OperationCanceledException &&
+        exception is not SilkGpuBufferBudgetExceededException &&
         ReadDeformationDeviceGeneration() == generation;
 
     /// <summary>

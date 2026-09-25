@@ -1655,6 +1655,90 @@ HdSilkMesh::_InitRepr(TfToken const& reprToken, HdDirtyBits* /*dirtyBits*/)
     }
 }
 
+HdSilkMeshPreparationPlan
+HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const
+{
+    for (size_t interpolation = 0; interpolation < HdInterpolationCount; ++interpolation)
+    {
+        if (!sceneDelegate->GetExtComputationPrimvarDescriptors(
+                id, static_cast<HdInterpolation>(interpolation)).empty())
+        {
+            throw std::invalid_argument(
+                "The bounded hdSilk mesh preparation profile does not admit computed primvars.");
+        }
+    }
+    const HdMeshTopology topology = sceneDelegate->GetMeshTopology(id);
+    uint64_t triangles = 0;
+    for (int count : topology.GetFaceVertexCounts())
+    {
+        if (count < 0)
+        {
+            throw std::invalid_argument("The bounded hdSilk mesh has a negative face count.");
+        }
+        if (count >= 3)
+        {
+            triangles = HdSilkMeshPreparationPlan::Add(triangles, static_cast<uint64_t>(count - 2));
+        }
+    }
+    const VtValue pointValue = sceneDelegate->Get(id, HdTokens->points);
+    uint64_t points = 0;
+    if (pointValue.IsHolding<VtVec3fArray>())
+    {
+        points = pointValue.UncheckedGet<VtVec3fArray>().size();
+    }
+    else if (pointValue.IsHolding<VtVec3dArray>())
+    {
+        points = pointValue.UncheckedGet<VtVec3dArray>().size();
+    }
+    else
+    {
+        throw std::invalid_argument(
+            "The bounded hdSilk mesh preparation profile requires resolved float3 or double3 points.");
+    }
+    HdSilkMeshPreparationPlan plan(points, triangles);
+    for (HdInterpolation interpolation : {HdInterpolationConstant, HdInterpolationVertex,
+             HdInterpolationVarying, HdInterpolationFaceVarying, HdInterpolationUniform})
+    {
+        for (const auto& primvar : sceneDelegate->GetPrimvarDescriptors(id, interpolation))
+        {
+            if (primvar.name == HdTokens->points)
+            {
+                continue;
+            }
+            const VtValue value = sceneDelegate->Get(id, primvar.name);
+            const void* source = nullptr;
+            int elements = 0;
+            HdType type = HdTypeInvalid;
+            uint32_t components = 0;
+            if (GetFloatArraySource(value, &source, &elements, &type))
+            {
+                components = type == HdTypeFloat ? 1u : type == HdTypeFloatVec2 ? 2u :
+                    type == HdTypeFloatVec3 ? 3u : 4u;
+            }
+            else if (value.IsHolding<float>() || value.IsHolding<GfVec2f>() ||
+                value.IsHolding<GfVec3f>() || value.IsHolding<GfVec4f>())
+            {
+                elements = 1;
+                components = value.IsHolding<float>() ? 1u : value.IsHolding<GfVec2f>() ? 2u :
+                    value.IsHolding<GfVec3f>() ? 3u : 4u;
+            }
+            else if (value.IsHolding<VtFloatArray>() || value.IsHolding<VtVec2fArray>() ||
+                value.IsHolding<VtVec3fArray>() || value.IsHolding<VtVec4fArray>())
+            {
+                throw std::length_error("The bounded hdSilk primvar exceeds the supported element range.");
+            }
+            if (components != 0)
+            {
+                const bool constant = interpolation == HdInterpolationConstant ||
+                    (elements == 1 && interpolation != HdInterpolationUniform &&
+                        interpolation != HdInterpolationFaceVarying);
+                plan.Attribute(static_cast<uint64_t>(elements), components, constant);
+            }
+        }
+    }
+    return plan;
+}
+
 void
 HdSilkMesh::Sync(
     HdSceneDelegate* sceneDelegate,
@@ -1662,7 +1746,40 @@ HdSilkMesh::Sync(
     HdDirtyBits* dirtyBits,
     TfToken const& /*reprToken*/)
 {
+    const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
+    if (!budget->Enabled())
+    {
+        _Sync(sceneDelegate, renderParam, dirtyBits);
+        return;
+    }
+    if (!budget->Refused())
+    {
+        try
+        {
+            _Sync(sceneDelegate, renderParam, dirtyBits);
+            return;
+        }
+        catch (const std::exception& error)
+        {
+            budget->Refuse(error.what());
+        }
+    }
+    *dirtyBits = HdChangeTracker::Clean;
+}
+
+void
+HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits)
+{
     SdfPath const& id = GetId();
+    const auto& preparationBudget = static_cast<HdSilkRenderParam*>(renderParam)
+        ->GetSceneState().MeshPreparationBudget();
+    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
+    if (preparationBudget->Enabled())
+    {
+        preparation = preparationBudget->Acquire(_PlanPreparation(sceneDelegate, id).bytes);
+        preparation->RetainPrevious(_preparationLease);
+    }
+    _preparationLease = preparation;
 
     const bool visibilityDirty =
         HdChangeTracker::IsVisibilityDirty(*dirtyBits, id);
@@ -1983,6 +2100,7 @@ HdSilkMesh::Sync(
         static_cast<HdSilkRenderParam*>(renderParam)
             ->GetSceneState()
             .RemoveMesh(id.GetString());
+        if (preparation) { preparation->Complete(); }
         *dirtyBits = HdChangeTracker::Clean;
         return;
     }
@@ -2007,11 +2125,13 @@ HdSilkMesh::Sync(
             static_cast<HdSilkRenderParam*>(renderParam)
                 ->GetSceneState()
                 .RemoveMesh(id.GetString());
+            if (preparation) { preparation->Complete(); }
             *dirtyBits = HdChangeTracker::Clean;
             return;
         }
 
         HdSilkMeshRecord record;
+        record.preparationLease = preparation;
         record.path = id.GetString();
         record.primId = GetPrimId();
         record.topologyRevision = _topologyRevision;
@@ -2249,6 +2369,7 @@ HdSilkMesh::Sync(
             std::move(records));
     }
 
+    if (preparation) { preparation->Complete(); }
     *dirtyBits = HdChangeTracker::Clean;
 }
 

@@ -7,6 +7,50 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class ViewerChildLauncherTests
 {
     [Test]
+    [NotInParallel]
+    public async Task ChildInheritsTheEffectivePolicyRatherThanAmbientLimitsAndRefusesStorm()
+    {
+        using var files = new ViewerLaunchTestFiles();
+        const string meshVariable = "OPENUSD_SILK_MESH_RESERVATION_BYTES";
+        const string pageVariable = "OPENUSD_SILK_MAX_PAGE_BYTES";
+        const string bufferVariable = "OPENUSD_SILK_GPU_BUFFER_BYTES";
+        string? meshBefore = Environment.GetEnvironmentVariable(meshVariable);
+        string? pageBefore = Environment.GetEnvironmentVariable(pageVariable);
+        string? bufferBefore = Environment.GetEnvironmentVariable(bufferVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(meshVariable, "wrong");
+            Environment.SetEnvironmentVariable(pageVariable, "wrong");
+            Environment.SetEnvironmentVariable(bufferVariable, "wrong");
+            var starter = new RecordingViewerProcessStarter();
+            var options = new ViewerChildLauncherOptions(files.Root, files.ExecutablePath,
+                new OpenUsd.Rendering.Silk.SilkPreparationLimits(1234, 5678),
+                new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(9876));
+            var launcher = new ViewerChildLauncher(options, starter);
+            var request = new ViewerLaunchRequest(files.StagePath, files.PluginPath, "D3D12");
+            _ = launcher.Launch(request);
+            await Assert.That(starter.StartInfo!.Environment[meshVariable]).IsEqualTo("1234");
+            await Assert.That(starter.StartInfo.Environment[pageVariable]).IsEqualTo("5678");
+            await Assert.That(starter.StartInfo.Environment[bufferVariable]).IsEqualTo("9876");
+            await Assert.That(() => launcher.Launch(request with { Renderer = "Storm" }))
+                .Throws<NotSupportedException>();
+            await Assert.That(starter.StartCount).IsEqualTo(1);
+            ProcessStartInfo unconfigured = ViewerChildLauncher.CreateStartInfo(files.ExecutablePath, request);
+            await Assert.That(unconfigured.Environment.ContainsKey(meshVariable)).IsFalse();
+            await Assert.That(unconfigured.Environment.ContainsKey(pageVariable)).IsFalse();
+            await Assert.That(unconfigured.Environment.ContainsKey(bufferVariable)).IsFalse();
+            await Assert.That(Environment.GetEnvironmentVariable(meshVariable)).IsEqualTo("wrong");
+            await Assert.That(Environment.GetEnvironmentVariable(pageVariable)).IsEqualTo("wrong");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(meshVariable, meshBefore);
+            Environment.SetEnvironmentVariable(pageVariable, pageBefore);
+            Environment.SetEnvironmentVariable(bufferVariable, bufferBefore);
+        }
+    }
+
+    [Test]
     public async Task UsesArgumentListAndRedirectedMcpStreams()
     {
         using var files = new ViewerLaunchTestFiles();

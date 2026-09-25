@@ -272,9 +272,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             ? ResourceStates.UnorderedAccess
             : ResourceStates.GenericRead;
         ID3D12Resource* resource = null;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveBufferAllocation(size);
             Guid resourceId = ID3D12Resource.Guid;
             SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
                 &heapProperties,
@@ -284,13 +286,15 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 null,
                 &resourceId,
                 (void**)&resource));
-            success = true;
-            return new D3D12SilkGraphicsBuffer(
+            var buffer = new D3D12SilkGraphicsBuffer(
                 this,
                 resource,
                 size,
                 usage,
                 initialState);
+            buffer.OwnBufferReservation(reservation);
+            success = true;
+            return buffer;
         }
         finally
         {
@@ -298,6 +302,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             {
                 Release(ref resource);
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }

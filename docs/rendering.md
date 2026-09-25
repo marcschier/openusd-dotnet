@@ -37,6 +37,158 @@ crash.
 Hydra/Storm is the primary viewer renderer. The fallback is a custom Hydra renderer that emits dirty
 scene updates into native-owned command pages consumed by managed Silk.NET code.
 
+### Opt-in coarse-mesh preparation admission
+
+Pass a positive `maximumMeshPreparationReservationBytes` to the three-argument
+`SilkSceneIngestionOptions` constructor to request the native version-1 preparation extension.
+The existing options constructor and legacy viewport defaults are unchanged. Older libraries
+without `openusd_silk_session_sync_with_mesh_preparation` fail explicitly, rather than render
+without enforcing the requested limit.
+
+This profile reserves conservative logical numeric-buffer charges before hdSilk triangulates,
+converts or expands mesh data. `OpenUsdSilkPage.MeshPreparationUsage` reports the configured,
+retained and peak concurrent reservations after a successful sync. Shared prototype/record
+owners count once; old/new preparation generations overlap until completion or recovery.
+Unsupported geometry/profile choices fail the entire request, and a refused update publishes
+no page. Previously copied pages remain valid.
+
+Version 1 is restricted to Low-complexity, SmoothShaded mesh Rprims without Skel/external
+computations or volumes. Its numeric buffer metric excludes source/SDK materialization,
+allocator capacity/overhead, material/instance metadata, pages, texture caches and GPU storage.
+It is not a total-process memory guarantee. The exact charge formula and ownership contract
+are in [the native hdSilk guide](../native/hdSilk/README.md#optional-mesh-preparation-admission).
+
+The four-argument constructor adds a positive `maximumCommandPageBytes` and requests
+preparation limits version 2. Commands serialize directly into one amortized native byte
+buffer, with no separate command-payload copies. A limit applies to the entire page,
+including headers, materials, environments, retirements and the always-present frame.
+Exceeding it refuses the whole update; retry republishes complete state, while previous
+owned pages remain valid. Changing only this ceiling leaves unchanged geometry retained.
+
+`OpenUsdSilkPage.ByteLength` reports the actual copied bytes. Managed copying enforces
+the same ceiling before allocation. Older libraries that only implement preparation
+version 1 reject version 2 explicitly; the usage output stays version 1. Legacy and
+three-argument calls do not inherit a prior request's page ceiling.
+
+This additional limit is not total process memory or a global live-page budget.
+Vector reallocation can overlap old/new native byte buffers, and native/managed buffers
+overlap during copying. Other live pages, serialization metadata, retained geometry,
+SDK/source/material caches, textures and GPU storage remain outside this per-page limit.
+The mesh reservation metric and its restricted geometry profile are unchanged.
+
+For an immutable per-session policy, pass `SilkPreparationLimits` to either
+`OpenUsdSilkRuntime.Create` overload. Native session ceilings apply to every sync,
+including historical viewport ingestion. They do not change the default/proxy/render
+purpose mask or the legacy allPurpose material binding. Explicit per-request ceilings
+may tighten the session policy but cannot relax it. Configuration is one-shot, before
+the first sync; older libraries without the session extension fail during creation.
+Successful legacy pages also expose their own immutable reservation snapshots.
+
+Viewer and MCP share this policy through the paired host environment variables
+`OPENUSD_SILK_MESH_RESERVATION_BYTES` and `OPENUSD_SILK_MAX_PAGE_BYTES`. Both are positive
+base-10 byte counts, and the page count must fit `Int32`; both unset preserves historical
+defaults. Partial or malformed configuration fails startup. An embedding Viewer can
+instead set `ViewerHostOptions.PreparationLimits`. Configured ceilings cover live previews,
+captures, sequences and isolated authored-product sessions, not stage opening or GPU costs.
+Each simultaneous session has its own ceiling; the limits are not pooled across sessions.
+Storm is unavailable under this opt-in policy rather than becoming an unbounded fallback.
+Successful captures report effective ceilings as an informational
+`HDSILK_PREPARATION_ADMISSION` diagnostic. Per-frame usage remains on the page, not in a
+new distinct job diagnostic per frame. Choose limits from measurements and retain external
+host-memory safeguards; this does not prove that a complete warehouse fits.
+
+### Shared GPU buffer payload admission
+
+`SilkGpuBufferBudget` is an opt-in, immutable ceiling on **logical buffer payload bytes**
+requested through the built-in RHI `CreateBuffer` methods. Configure it on the device
+before the first buffer allocation attempt; reuse the same object to aggregate several
+devices or viewport/product renderers within one process. Replacing it later is refused.
+`Usage` returns a consistent snapshot of current/peak reserved bytes and reservation count.
+
+The device reserves before native creation. A failed creation returns its reservation;
+a successful buffer retains its charge until final native release, including any
+submission leases surviving public `Dispose`. Shared geometry counts once, while old/new
+replacements and both reusable deformation pose slots overlap and count separately.
+`SilkGpuBufferBudgetExceededException` reports the refused request, existing reservations
+and ceiling. Budget refusal is not a reason to silently switch GPU deformation to CPU.
+The page-preparation transaction and ordered retry described below preserve prior pixels
+and retirements until enough capacity is released. A failed native teardown does not
+return unproven capacity.
+
+This is **not physical VRAM or total memory admission**. Textures, backend-internal
+upload/readback staging, descriptor heaps, alignment/driver overhead, and native/managed
+source arrays remain outside this first GPU metric. Existing texture residency limits
+still control post-submission cache retention and are not a replacement for this
+pre-allocation check.
+
+Viewer and MCP accept `OPENUSD_SILK_GPU_BUFFER_BYTES` as a positive invariant decimal
+byte count; unset preserves unbounded RHI buffer defaults, and malformed values fail
+startup. It is independent of the paired native preparation/page limits. Embedding
+hosts can supply `ViewerHostOptions.GpuBufferBudget` to share one pool explicitly.
+Viewport and product captures use the configured device pool; Vulkan and Metal
+composition presenters configure it before creating their retained renderer.
+Storm and unsupported devices cannot bypass the opted-in policy.
+Child Viewers receive the same **maximum**, but have independent process-local pools.
+
+Successful captures report stable `HDSILK_GPU_BUFFER_ADMISSION` information; variable
+usage stays on the budget snapshot rather than creating distinct diagnostics per frame.
+Admission reporting remains within the disk-job diagnostic limit and names any omitted
+renderer diagnostics explicitly.
+
+### Native-to-managed page acknowledgement
+
+Every managed hdSilk session now requires the native page-acknowledgement extension;
+session 6/page 24 alone are not enough to identify a compatible runtime. Creation fails
+explicitly on older libraries rather than silently losing changes after a copy failure.
+Native C callers keep their existing behavior unless they enable this additive mode.
+
+Native publication stays pending until the managed copy passes metadata and byte-length
+checks and its immutable page owner has been constructed. Acknowledgement then commits
+the complete update without allocation. Copy, metadata or acknowledgement failure releases
+the native owner without consuming dirty flags, deletions, environment records, light links
+or shadows. The next request builds a current frame containing those still-pending changes.
+This works for unbounded legacy viewport choices as well as explicit preparation ceilings.
+
+Only one native page can await acknowledgement; another sync is refused until it is
+acknowledged or released. Already acknowledged page bytes and usage remain independently
+owned after subsequent syncs or session teardown. Pending acknowledgement metadata is not
+an additional serialized-page copy. This does not make publication crash-durable or
+bound total process/GPU memory.
+
+### Failure-atomic GPU page preparation
+
+`SilkMeshRenderer` keeps the CPU scene's undo journal open until every changed GPU mesh
+has been prepared. Replacements, removals, metadata edits and displacement verdicts
+publish together; an allocation or upload refusal preserves the previous scene and GPU
+resources. Material-only changes participate too. Shared geometry remains shared.
+Frame-only pages retain the allocation-free steady path.
+
+GPU-deformed meshes prepare pose inputs in a second reusable buffer slot. Publication
+swaps the slots only after the complete page is ready, so a late failure cannot alter
+an earlier pose. Both slots grow to accommodate their widest pose; static rig and
+vertex/index buffers remain shared. Their overlapping storage is real memory, not a
+resource-budget exemption.
+
+A rejected renderer retains one managed page's immutable bytes without copying them.
+For a page obtained from a native session, the next `Sync` retries this exact page
+before generating another delta. This preserves removals and table updates that the
+native producer has already acknowledged; repopulating native geometry alone would
+not resend all of those retirements. Persistent refusal blocks further syncs rather
+than growing a queue. Disposing the caller's page does not discard the retry bytes;
+successful replay or renderer disposal releases that retained reference.
+
+Use one renderer as the ordered consumer of a session. Replay runs on the thread
+calling `Sync`, outside the native-session lock. A rejected older outstanding page or
+conflicting consumers fails closed and requires session recreation. Recorded pages
+without a session can be retried explicitly. Callers that separately mutate
+`SilkSceneState` and then call `SilkSceneGpuResources.Apply` own their CPU transaction;
+the renderer coordinates both.
+
+This covers **page preparation**, not a rollback of an already submitted GPU frame,
+device-loss recovery, later texture/target/shader allocations, or a total VRAM budget.
+Work counters include failed attempts; publication revisions advance only on success.
+Aggregate GPU and cross-session admission remain separate work.
+
 ## Authored product preparation
 
 These interfaces are unreleased source additions and require the current matching data ABI 24 shim.

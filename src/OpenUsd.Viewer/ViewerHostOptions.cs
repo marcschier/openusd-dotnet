@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using OpenUsd.Rendering;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Viewer;
 
@@ -28,6 +29,20 @@ public sealed class ViewerHostOptions
     /// <c>Metal</c>. When <c>null</c> the viewer's own default selection applies.
     /// </summary>
     public string? Renderer { get; init; }
+
+    /// <summary>Gets optional immutable hdSilk mesh-reservation and page ceilings for all Viewer sessions.</summary>
+    /// <remarks>
+    /// Null uses OPENUSD_SILK_MESH_RESERVATION_BYTES and OPENUSD_SILK_MAX_PAGE_BYTES when both are configured.
+    /// Storm cannot enforce these limits and is unavailable while they are set. This is not total memory admission.
+    /// </remarks>
+    public SilkPreparationLimits? PreparationLimits { get; init; }
+
+    /// <summary>Gets a shared logical RHI buffer payload budget for Viewer devices and product captures.</summary>
+    /// <remarks>
+    /// Null uses OPENUSD_SILK_GPU_BUFFER_BYTES when configured. Reuse one object to aggregate multiple hosts
+    /// in this process. Textures, backend staging and driver overhead are not included; Storm cannot enforce it.
+    /// </remarks>
+    public SilkGpuBufferBudget? GpuBufferBudget { get; init; }
 
     /// <summary>
     /// Window title. When <c>null</c> the viewer's default title is kept.

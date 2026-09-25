@@ -2,6 +2,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Mcp;
 
@@ -19,7 +20,9 @@ internal sealed record OpenUsdMcpApplicationOptions(
     OpenUsdMcpProtocolOptions? Protocol = null,
     int MaximumCheckpointCount = 256,
     int MaximumJournalEntryCount = 1024,
-    int MaximumAppliedProposalHistoryCount = 1024);
+    int MaximumAppliedProposalHistoryCount = 1024,
+    SilkPreparationLimits? PreparationLimits = null,
+    SilkGpuBufferBudget? GpuBufferBudget = null);
 
 internal static class McpHostConfiguration
 {
@@ -68,7 +71,12 @@ internal static class McpHostConfiguration
                 1024),
             MaximumAppliedProposalHistoryCount: GetNonNegativeInt(
                 "OPENUSD_MCP_MAX_APPLIED_PROPOSALS",
-                1024));
+                1024),
+            PreparationLimits: SilkPreparationLimits.FromConfiguration(
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_MESH_RESERVATION_BYTES"),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_MAX_PAGE_BYTES")),
+            GpuBufferBudget: SilkGpuBufferBudget.FromConfiguration(
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_BUFFER_BYTES")));
     }
 
     internal static IServiceCollection AddOpenUsdMcpServices(
@@ -123,7 +131,9 @@ internal static class McpHostConfiguration
                 options.PluginPath,
                 provider.GetRequiredService<McpSessionWorkspace>(),
                 provider.GetRequiredService<IPreviewGraphicsDeviceFactory>(),
-                graphicsOptions));
+                graphicsOptions,
+                options.PreparationLimits,
+                options.GpuBufferBudget));
         services.AddSingleton<IPreviewCaptureProcessor>(provider =>
             new PreviewCaptureProcessor(
                 provider.GetRequiredService<IPreviewFrameSourceFactory>(),
@@ -141,7 +151,9 @@ internal static class McpHostConfiguration
             new ViewerChildLauncher(
                 new ViewerChildLauncherOptions(
                     options.ViewerExecutableRoot,
-                    options.ViewerExecutablePath)));
+                    options.ViewerExecutablePath,
+                    options.PreparationLimits,
+                    options.GpuBufferBudget)));
         services.AddSingleton<IOpenUsdMcpService, OpenUsdMcpService>();
         return services;
     }

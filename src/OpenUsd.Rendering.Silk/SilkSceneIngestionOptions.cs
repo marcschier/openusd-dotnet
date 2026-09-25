@@ -34,6 +34,46 @@ public sealed class SilkSceneIngestionOptions
         MaterialBindingPurpose = NormalizeMaterialBindingPurpose(materialBindingPurpose);
     }
 
+    /// <summary>Creates an explicit coarse-mesh request with a native preparation reservation limit.</summary>
+    /// <remarks>
+    /// The limit counts conservative logical buffer reservations, not process memory, allocator overhead,
+    /// source materialization, materials, instance metadata, command pages or GPU storage.
+    /// Only Low complexity and SmoothShaded meshes without Skel, computed geometry or volumes are admitted.
+    /// Changing the limit rebuilds native imaging. Older native libraries must reject this extension.
+    /// </remarks>
+    public SilkSceneIngestionOptions(
+        RenderPurpose includedPurposes,
+        string materialBindingPurpose,
+        ulong maximumMeshPreparationReservationBytes)
+        : this(includedPurposes, materialBindingPurpose)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(maximumMeshPreparationReservationBytes);
+        MaximumMeshPreparationReservationBytes = maximumMeshPreparationReservationBytes;
+    }
+
+    /// <summary>Gets the optional native logical mesh preparation reservation limit in bytes.</summary>
+    public ulong? MaximumMeshPreparationReservationBytes { get; }
+
+    /// <summary>Creates a bounded coarse-mesh request with a positive serialized command-page byte limit.</summary>
+    /// <remarks>
+    /// Requires native preparation limits version 2. Each page is built directly into a capped
+    /// buffer, then copied into managed storage. Reallocation/copying can overlap two buffers;
+    /// other live pages, mesh state, metadata, SDK, texture and GPU storage are not this byte limit.
+    /// </remarks>
+    public SilkSceneIngestionOptions(
+        RenderPurpose includedPurposes,
+        string materialBindingPurpose,
+        ulong maximumMeshPreparationReservationBytes,
+        int maximumCommandPageBytes)
+        : this(includedPurposes, materialBindingPurpose, maximumMeshPreparationReservationBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumCommandPageBytes);
+        MaximumCommandPageBytes = maximumCommandPageBytes;
+    }
+
+    /// <summary>Gets the optional native serialized-page and managed-copy byte ceiling.</summary>
+    public int? MaximumCommandPageBytes { get; }
+
     /// <summary>Gets the included standard USD purpose mask.</summary>
     public RenderPurpose IncludedPurposes { get; }
 

@@ -1,4 +1,5 @@
 #nullable enable
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback! renderCallback, OpenUsd.Rendering.Silk.SilkGpuBufferBudget? gpuBufferBudget, bool required = false) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
 ~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ToString() -> string
 OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics

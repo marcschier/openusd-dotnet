@@ -14,6 +14,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -759,6 +760,226 @@ bool Near(float left, float right)
     return std::fabs(left - right) < 0.0001f;
 }
 
+bool VerifySessionLimitsCannotBeBypassed(const char* pluginPath)
+{
+    for (bool limitPage : {false, true})
+    {
+        EditableSession editable = CreateEditableSession(pluginPath);
+        try
+        {
+            char errorBytes[4096]{};
+            openusd_error_buffer error{errorBytes, sizeof(errorBytes), 0};
+            const openusd_silk_mesh_preparation_page_limits limits{
+                {sizeof(limits), OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION, limitPage ? 1'000'000u : 1u},
+                limitPage ? 1u : 1'000'000u};
+            RequireStatus(openusd_silk_session_set_preparation_limits(editable.session, &limits, &error),
+                error, "Could not configure session preparation ceilings");
+            const openusd_render_camera camera = MakeCamera();
+            const openusd_silk_scene_ingestion_request request{
+                sizeof(request), RequestVersion, LegacyMask,
+                OPENUSD_SILK_COMPLEXITY_LOW, OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED, "full"};
+            const openusd_silk_mesh_preparation_page_limits relaxed{
+                {sizeof(relaxed), OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION, 1'000'000}, 1'000'000};
+            for (int call = 0; call < 3; ++call)
+            {
+                openusd_silk_page* page = nullptr;
+                openusd_silk_page_view view{};
+                view.struct_size = sizeof(view);
+                view.revision = 123;
+                view.command_count = 321;
+                openusd_silk_mesh_preparation_usage usage{sizeof(usage), 1, 1000, 31, 43};
+                error = {errorBytes, sizeof(errorBytes), 0};
+                const openusd_status status = call == 0
+                    ? openusd_silk_session_sync(editable.session, 96, 96, 0, &camera, &page, &view, &error)
+                    : call == 1
+                        ? openusd_silk_session_sync_with_scene_ingestion(
+                            editable.session, 96, 96, 0, &camera, &request, &page, &view, &error)
+                        : openusd_silk_session_sync_with_mesh_preparation(
+                            editable.session, 96, 96, 0, &camera, &request, &relaxed.base,
+                            &usage, &page, &view, &error);
+                if (page != nullptr) { openusd_silk_page_release(page); }
+                Require(status != OPENUSD_STATUS_OK && page == nullptr,
+                    "A legacy or explicit sync bypassed its immutable session preparation ceiling.");
+                Require(view.revision == 123 && view.command_count == 321 &&
+                    usage.maximum_reserved_bytes == 1000 && usage.reserved_bytes == 31 && usage.peak_reserved_bytes == 43,
+                    "Session admission refusal changed caller output.");
+                Require(std::string(errorBytes).find(limitPage
+                    ? "hdSilk command page refused" : "hdSilk mesh preparation refused") != std::string::npos,
+                    "The session refusal did not identify the resource ceiling.");
+            }
+        }
+        catch (...)
+        {
+            DestroyEditableSession(&editable);
+            throw;
+        }
+        DestroyEditableSession(&editable);
+    }
+    return true;
+}
+
+bool VerifySessionLimitsPreserveLegacyChoicesAndPageSnapshots(const char* pluginPath)
+{
+    EditableSession editable = CreateEditableSession(pluginPath);
+    openusd_silk_page* owned = nullptr;
+    try
+    {
+        char errorBytes[4096]{};
+        openusd_error_buffer error{errorBytes, sizeof(errorBytes), 0};
+        openusd_silk_mesh_preparation_page_limits limits{
+            {sizeof(limits), OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION, 1'000'000}, 1'000'000};
+        limits.base.struct_size--;
+        Require(openusd_silk_session_set_preparation_limits(editable.session, &limits, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "A truncated session ceiling was accepted.");
+        limits.base.struct_size = sizeof(limits);
+        limits.maximum_page_bytes = 0;
+        Require(openusd_silk_session_set_preparation_limits(editable.session, &limits, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "A zero session page ceiling was accepted.");
+        limits.maximum_page_bytes = 1'000'000;
+        RequireStatus(openusd_silk_session_set_preparation_limits(editable.session, &limits, &error),
+            error, "Could not configure valid session ceilings after malformed requests");
+        Require(openusd_silk_session_set_preparation_limits(editable.session, &limits, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "An immutable session ceiling was reconfigured.");
+        const openusd_render_camera camera = MakeCamera();
+        openusd_silk_page_view view{};
+        view.struct_size = sizeof(view);
+        RequireStatus(openusd_silk_session_sync(editable.session, 96, 96, 0, &camera, &owned, &view, &error),
+            error, "Could not synchronize a bounded legacy viewport");
+        Require(ReadPage(view).boundMaterialPath == "/World/AllPurposeMaterial",
+            "Session admission changed the legacy allPurpose material binding.");
+        const auto* bytes = static_cast<const uint8_t*>(view.data);
+        const std::vector<uint8_t> original(bytes, bytes + view.data_size);
+        openusd_silk_mesh_preparation_usage usage{sizeof(usage), 0, 0, 0, 0};
+        RequireStatus(openusd_silk_page_get_preparation_usage(owned, &usage, &error),
+            error, "Could not read a bounded legacy page's reservation snapshot");
+        Require(usage.version == 1 && usage.maximum_reserved_bytes == 1'000'000 &&
+            usage.reserved_bytes > 0 && usage.reserved_bytes <= usage.peak_reserved_bytes &&
+            usage.peak_reserved_bytes <= usage.maximum_reserved_bytes,
+            "A bounded legacy page did not report its actual reservation snapshot.");
+        const openusd_silk_mesh_preparation_usage expected = usage;
+        const PageStats full = Sync(editable.session, camera, LegacyMask, "full");
+        Require(full.boundMaterialPath == "/World/FullMaterial",
+            "Session admission changed explicit full-purpose binding.");
+        const PageStats legacy = SyncLegacy(editable.session, camera);
+        Require(legacy.boundMaterialPath == "/World/AllPurposeMaterial",
+            "A bounded legacy retry did not restore allPurpose binding after an explicit request.");
+        Require(openusd_silk_session_set_preparation_limits(editable.session, &limits, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "Session ceilings changed after synchronization.");
+        const PageStats quiet = SyncLegacy(editable.session, camera);
+        Require(quiet.meshUpserts == 0 && quiet.materialUpserts == 0,
+            "Refused reconfiguration invalidated unchanged geometry.");
+        RequireStatus(openusd_silk_page_get_preparation_usage(owned, &usage, &error),
+            error, "Could not read an earlier page after further synchronization");
+        Require(usage.maximum_reserved_bytes == expected.maximum_reserved_bytes &&
+            usage.reserved_bytes == expected.reserved_bytes && usage.peak_reserved_bytes == expected.peak_reserved_bytes &&
+            original == std::vector<uint8_t>(bytes, bytes + view.data_size),
+            "Later synchronization changed an earlier owned page or its accounting.");
+        usage.struct_size--;
+        Require(openusd_silk_page_get_preparation_usage(owned, &usage, &error) == OPENUSD_STATUS_INVALID_ARGUMENT &&
+            usage.struct_size == sizeof(usage) - 1 && usage.reserved_bytes == expected.reserved_bytes,
+            "A truncated usage output was accepted or overwritten.");
+        DestroyEditableSession(&editable);
+        usage.struct_size = sizeof(usage);
+        RequireStatus(openusd_silk_page_get_preparation_usage(owned, &usage, &error),
+            error, "Destroying the session invalidated its owned page snapshot");
+        Require(usage.reserved_bytes == expected.reserved_bytes,
+            "Session teardown changed an owned page's accounting.");
+    }
+    catch (...)
+    {
+        if (owned != nullptr) { openusd_silk_page_release(owned); }
+        DestroyEditableSession(&editable);
+        throw;
+    }
+    openusd_silk_page_release(owned);
+    return true;
+}
+
+bool VerifyAcknowledgedPagesRetainOwnershipAndBlockSync(const char* pluginPath)
+{
+    EditableSession editable = CreateEditableSession(pluginPath);
+    openusd_silk_page* first = nullptr;
+    openusd_silk_page* retry = nullptr;
+    openusd_silk_page* later = nullptr;
+    try
+    {
+        char errorBytes[4096]{};
+        openusd_error_buffer error{errorBytes, sizeof(errorBytes), 0};
+        RequireStatus(openusd_silk_session_enable_page_acknowledgement(editable.session, &error),
+            error, "Could not enable acknowledged publication");
+        Require(openusd_silk_session_enable_page_acknowledgement(editable.session, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "Repeated acknowledgement configuration was accepted.");
+        const openusd_render_camera camera = MakeCamera();
+        openusd_silk_page_view view{};
+        view.struct_size = sizeof(view);
+        RequireStatus(openusd_silk_session_sync(editable.session, 96, 96, 0, &camera, &first, &view, &error),
+            error, "Could not publish the first acknowledged-mode page");
+        const auto* data = static_cast<const uint8_t*>(view.data);
+        const std::vector<uint8_t> expected(data, data + view.data_size);
+        const uint64_t firstRevision = view.revision;
+        const auto requireBlocked = [&]()
+        {
+            openusd_silk_page* rejected = reinterpret_cast<openusd_silk_page*>(static_cast<uintptr_t>(1));
+            openusd_silk_page_view untouched{};
+            untouched.struct_size = sizeof(untouched);
+            untouched.revision = 1234;
+            untouched.command_count = 4321;
+            Require(openusd_silk_session_sync(
+                editable.session, 96, 96, 0, &camera, &rejected, &untouched, &error) ==
+                    OPENUSD_STATUS_INVALID_ARGUMENT,
+                "A sync bypassed its unresolved page.");
+            Require(rejected == nullptr && untouched.revision == 1234 && untouched.command_count == 4321,
+                "Blocked publication changed its output view.");
+        };
+        requireBlocked();
+        Require(openusd_silk_session_request_repopulation(editable.session, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "Repopulation bypassed an unresolved page.");
+        Require(openusd_silk_page_acknowledge(nullptr, &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+            "A null page was acknowledged.");
+        openusd_silk_page_release(first);
+        first = nullptr;
+        RequireStatus(openusd_silk_session_sync(editable.session, 96, 96, 0, &camera, &retry, &view, &error),
+            error, "An unacknowledged release did not permit a retry");
+        data = static_cast<const uint8_t*>(view.data);
+        Require(view.revision == firstRevision + 1 &&
+            expected == std::vector<uint8_t>(data, data + view.data_size),
+            "Unacknowledged release changed the retry payload or issued-page sequence.");
+        openusd_status acknowledged = OPENUSD_STATUS_NATIVE_ERROR;
+        std::thread acknowledge([&]()
+        {
+            acknowledged = openusd_silk_page_acknowledge(retry, &error);
+        });
+        acknowledge.join();
+        RequireStatus(acknowledged, error, "Cross-thread acknowledgement failed");
+        RequireStatus(openusd_silk_page_acknowledge(retry, &error), error, "Acknowledgement was not idempotent");
+        RequireStatus(openusd_silk_session_sync(editable.session, 96, 96, 0, &camera, &later, &view, &error),
+            error, "The acknowledged page still blocked synchronization");
+        Require(view.command_count == 1, "Acknowledgement replayed an already consumed update.");
+        RequireStatus(openusd_silk_page_acknowledge(retry, &error), error,
+            "An old acknowledged page did not remain idempotent");
+        openusd_silk_page_release(retry);
+        retry = nullptr;
+        requireBlocked();
+        const auto* quietBytes = static_cast<const uint8_t*>(view.data);
+        const std::vector<uint8_t> quiet(quietBytes, quietBytes + view.data_size);
+        DestroyEditableSession(&editable);
+        Require(quiet == std::vector<uint8_t>(quietBytes, quietBytes + view.data_size),
+            "Destroying the session invalidated unacknowledged owned page bytes.");
+        Require(openusd_silk_page_acknowledge(later, &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+            "A page was acknowledged after its session was destroyed.");
+    }
+    catch (...)
+    {
+        openusd_silk_page_release(first);
+        openusd_silk_page_release(retry);
+        openusd_silk_page_release(later);
+        DestroyEditableSession(&editable);
+        throw;
+    }
+    openusd_silk_page_release(later);
+    return true;
+}
+
 bool VerifyRetainedInvalidation(const char* pluginPath)
 {
     Require(
@@ -983,6 +1204,48 @@ bool VerifyInvalidArguments(const char* pluginPath)
     Require(
         malformedRetry.meshUpserts == 0 && malformedRetry.materialUpserts == 0,
         "Rejecting a malformed material-binding token still changed retained scene state.");
+
+    static_assert(sizeof(openusd_silk_mesh_preparation_limits) == 16);
+    static_assert(sizeof(openusd_silk_mesh_preparation_page_limits) == 24);
+    static_assert(offsetof(openusd_silk_mesh_preparation_page_limits, maximum_page_bytes) == 16);
+    static_assert(sizeof(openusd_silk_mesh_preparation_usage) == 32);
+    const openusd_silk_scene_ingestion_request boundedRequest{
+        sizeof(openusd_silk_scene_ingestion_request), RequestVersion,
+        OPENUSD_GEOM_PURPOSE_MASK_DEFAULT | OPENUSD_GEOM_PURPOSE_MASK_RENDER,
+        OPENUSD_SILK_COMPLEXITY_LOW, OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED, "full"};
+    const auto rejectLimits = [&](const openusd_silk_mesh_preparation_limits* limits, const char* diagnostic)
+    {
+        openusd_silk_mesh_preparation_usage usage{sizeof(usage), 1, 1000, 31, 43};
+        page = reinterpret_cast<openusd_silk_page*>(static_cast<uintptr_t>(1));
+        view.abi_version = 77;
+        view.revision = 123;
+        view.data_size = 7;
+        view.command_count = 11;
+        error = {errorBytes, sizeof(errorBytes), 0};
+        Require(openusd_silk_session_sync_with_mesh_preparation(
+            session, 96, 96, 0, &camera, &boundedRequest, limits, &usage, &page, &view, &error) ==
+                OPENUSD_STATUS_INVALID_ARGUMENT, "Invalid preparation limits were accepted.");
+        Require(page == nullptr, "Invalid preparation limits returned an owned page.");
+        Require(view.abi_version == 77 && view.revision == 123 && view.data_size == 7 &&
+            view.command_count == 11, "Invalid preparation limits changed the page view.");
+        Require(usage.struct_size == sizeof(usage) && usage.version == 1 && usage.maximum_reserved_bytes == 1000 &&
+            usage.reserved_bytes == 31 && usage.peak_reserved_bytes == 43,
+            "Invalid preparation limits changed usage output.");
+        Require(std::string(errorBytes).find(diagnostic) != std::string::npos,
+            "Invalid preparation limits did not give the expected diagnostic.");
+        const PageStats unchanged = Sync(session, camera, boundedRequest.included_purpose_mask, "full");
+        Require(unchanged.meshUpserts == 0 && unchanged.materialUpserts == 0,
+            "Invalid preparation limits changed retained publication state.");
+    };
+    const openusd_silk_mesh_preparation_limits truncated{
+        sizeof(openusd_silk_mesh_preparation_limits), OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION, 1'000'000};
+    rejectLimits(&truncated, "version-2 preparation limit packet is incomplete");
+    openusd_silk_mesh_preparation_page_limits pageLimits{
+        {sizeof(pageLimits), OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION, 1'000'000}, 0};
+    rejectLimits(&pageLimits.base, "command page byte limit must be positive");
+    pageLimits.maximum_page_bytes = 1'000'000;
+    pageLimits.base.version = OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION + 1;
+    rejectLimits(&pageLimits.base, "Valid mesh preparation limits");
 
     openusd_error_buffer destroyError{errorBytes, sizeof(errorBytes), 0};
     Require(
@@ -1288,7 +1551,10 @@ int main(int argc, char** argv)
             return 2;
         }
 
-        if (!VerifyRetainedInvalidation(argv[1]) ||
+        if (!VerifyAcknowledgedPagesRetainOwnershipAndBlockSync(argv[1]) ||
+            !VerifySessionLimitsCannotBeBypassed(argv[1]) ||
+            !VerifySessionLimitsPreserveLegacyChoicesAndPageSnapshots(argv[1]) ||
+            !VerifyRetainedInvalidation(argv[1]) ||
             !VerifyInvalidArguments(argv[1]) ||
             !VerifyFailureRecovery(argv[1]) ||
             !VerifyHiddenSceneEditsDoNotRestoreStaleRetiredMeshes(argv[1]))

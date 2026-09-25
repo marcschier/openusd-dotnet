@@ -440,7 +440,8 @@ public static partial class SilkFrameCapture
                 transformedPage.Revision,
                 transformedPage.CommandCount,
                 depthRequest,
-                hdrColor);
+                hdrColor,
+                transformedPage);
         }
 
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
@@ -464,7 +465,7 @@ public static partial class SilkFrameCapture
             result,
             page.Revision,
             page.CommandCount,
-            renderer.GpuResources.Diagnostics,
+            page.WithPreparationDiagnostics(renderer.GpuResources.Diagnostics),
             depthRequest);
     }
 
@@ -510,7 +511,7 @@ public static partial class SilkFrameCapture
             result,
             page.Revision,
             page.CommandCount,
-            renderer.GpuResources.Diagnostics,
+            page.WithPreparationDiagnostics(renderer.GpuResources.Diagnostics),
             depthRequest);
     }
 
@@ -571,7 +572,8 @@ public static partial class SilkFrameCapture
         ulong pageRevision,
         uint commandCount,
         SilkDepthCaptureRequest? depthRequest = null,
-        SilkHdrColorCaptureResult? hdrColor = null)
+        SilkHdrColorCaptureResult? hdrColor = null,
+        OpenUsdSilkPage? preparationPage = null)
     {
         SilkDepthCaptureResult? capturedDepth = depthRequest?.Readback(depth);
         // The GPU already produced display-referred RGBA8, so there is no CPU
@@ -594,7 +596,9 @@ public static partial class SilkFrameCapture
             result,
             pageRevision,
             commandCount,
-            MergeDisplayTransformDiagnostics(renderer),
+            preparationPage is null
+                ? MergeDisplayTransformDiagnostics(renderer)
+                : preparationPage.WithPreparationDiagnostics(MergeDisplayTransformDiagnostics(renderer)),
             capturedDepth,
             hdrColor);
     }

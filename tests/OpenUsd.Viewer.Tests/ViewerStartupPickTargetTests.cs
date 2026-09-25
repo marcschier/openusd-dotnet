@@ -229,7 +229,8 @@ public sealed class ViewerStartupPickTargetTests
         // The host overload states both values after the environment defaults ran, so a
         // host that configures nothing keeps the documented fixed primitive request.
         string hostBody = startup[hostOverload..];
-        int reset = hostBody.IndexOf("Initialize([]);", StringComparison.Ordinal);
+        int reset = hostBody.IndexOf(
+            "Initialize([], options.PreparationLimits, options.GpuBufferBudget);", StringComparison.Ordinal);
         int follow = hostBody.IndexOf(
             "HostFollowsViewerPickTarget = options.FollowViewerPickTarget;",
             StringComparison.Ordinal);

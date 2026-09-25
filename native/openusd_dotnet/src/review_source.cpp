@@ -193,7 +193,8 @@ void Dependencies(const TfRefPtr<CountedData>& data,
 
 void DefaultResolver()
 {
-    Check(typeid(ArGetUnderlyingResolver()) == typeid(ArDefaultResolver),
+    ArResolver& resolver = ArGetUnderlyingResolver();
+    Check(typeid(resolver) == typeid(ArDefaultResolver),
         "Portable review requires the default filesystem resolver; custom/URI resolvers are not supported.");
 }
 void CheckFilesystemPath(const std::string& text)

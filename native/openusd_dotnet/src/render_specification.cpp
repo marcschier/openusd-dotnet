@@ -194,7 +194,8 @@ public:
     void StageMetadata(const UsdStageRefPtr& stage)
     {
         _budget.Visit();
-        const auto& index = stage->GetPseudoRoot().GetPrimIndex();
+        const UsdPrim root = stage->GetPseudoRoot();
+        const PcpPrimIndex& index = root.GetPrimIndex();
         if (!index.IsValid() || !index.GetRootNode() || !index.GetRootNode().GetLayerStack() ||
             OpenUsdProperties::HasStoredCompositionErrors(index) ||
             OpenUsdProperties::HasStoredCompositionErrors(*index.GetRootNode().GetLayerStack()))
@@ -298,7 +299,8 @@ public:
 
     SdfPathVector RelationshipTargets(const UsdRelationship& relationship)
     {
-        Prim(relationship.GetPrim());
+        const UsdPrim prim = relationship.GetPrim();
+        Prim(prim);
         const SdfPath path = relationship.GetPath();
         const SdfSpecType kind = StrongestKind(path);
         if (kind != SdfSpecTypeUnknown && kind != SdfSpecTypeRelationship)
@@ -308,7 +310,7 @@ public:
         const auto source = _kinds.find(path);
         if (source != _kinds.end())
             _budget.Materialization((1 + source->second.opinions + source->second.targets) * 512);
-        const PcpPrimIndex& primIndex = relationship.GetPrim().GetPrimIndex();
+        const PcpPrimIndex& primIndex = prim.GetPrimIndex();
         if (!_propertyIndexContext)
         {
             // In pinned USD mode this builder reads only the cache's identifier and IsUsd().

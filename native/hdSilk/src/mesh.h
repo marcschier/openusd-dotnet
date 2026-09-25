@@ -112,6 +112,8 @@ protected:
     HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
+    void _Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits);
+
     /// Expands one published record into per-instance records. A prim with no
     /// instancer yields exactly one full record at instance index 0. Point
     /// instancers publish full prototype geometry only in instance zero; later
@@ -122,6 +124,7 @@ private:
 
     /// Rebuilds authored attributes and reports whether the emitted vertex layout changed.
     bool _RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id);
+    HdSilkMeshPreparationPlan _PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const;
 
     /// Rebuilds the OpenSubdiv refiner and the emitted triangle tables for the
     /// requested refinement level, then republishes either the refined or the
@@ -176,6 +179,7 @@ private:
     }
 
     HdMeshTopology _topology;
+    std::shared_ptr<HdSilkMeshPreparationLease> _preparationLease;
     GfMatrix4d _transform;
     VtVec3fArray _points;
     // Emission borrows either these coarse tables or the refiner's tables.

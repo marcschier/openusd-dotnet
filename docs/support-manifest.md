@@ -453,6 +453,12 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `cpu-skinning` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `basis-curve-width-interpolation` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `point-instancer-instance-identity` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| `shared-gpu-buffer-admission` | Implemented | `win-x64` |
+| `native-page-copy-acknowledgement` | Implemented | `win-x64` |
+| `gpu-page-preparation-transaction` | Implemented | `win-x64` |
+| `session-preparation-admission` | Implemented | `win-x64` |
+| `serialized-command-page-admission` | Implemented | `win-x64` |
+| `coarse-mesh-preparation-admission` | Implemented | `win-x64` |
 | `bounded-128-direct-lights` | Implemented | `win-x64` |
 | `usdlux-light-linking` | Workflow-gated | `win-x64`, `linux-x64` |
 | `nested-instance-light-linking` | Workflow-gated | `win-x64`, `linux-x64` |
@@ -644,6 +650,113 @@ inner_index against the inner instancer's own authoritative instance count and n
 with a diagnostic any index that count cannot explain; that composition is an hdSilk encoding rather than an index USD
 can decode. This is a page-level identity claim only: there is no Storm parity scene, because Storm publishes no
 per-instance page to compare against, and instanced shadows remain ungated
+
+### `shared-gpu-buffer-admission`
+
+Opt-in immutable SilkGpuBufferBudget aggregates logical payload-byte reservations for built-in RHI CreateBuffer calls
+across devices/renderers sharing one process-local pool. Reservation precedes native creation and remains held until
+final native release, including submission leases after public disposal; failed creation returns only its own charge.
+Old/new replacements and both reusable deformation pose slots are counted. Exact/full-width/concurrent limits, backend
+creation and real compute-submission lifetimes are exercised. Budget refusals cannot silently select CPU deformation and
+preserve prior scene/pixels and ordered retirement replay. Viewer/MCP share configured pools across viewport/product
+paths, forward the maximum explicitly to child Viewers, and refuse unsupported devices or Storm bypass. Stable bounded
+diagnostics report the effective limit and an actual package-only NativeAOT consumer enforces the threshold.
+
+**Limits:** Logical public-RHI buffer payloads only, not physical VRAM or total memory. Textures, backend-internal
+staging/readback buffers, descriptor heaps, alignment/driver overhead and source/managed arrays are excluded. Existing
+texture retention trimming remains separate. A child process gets its own pool, not a shared cross-process quota. Failed
+native teardown retains unproven charges. Defaults are opt-in and no automatic device-memory budget is inferred.
+Concurrent buffer requests are exercised within isolated device fixtures; overlapping independent WARP render fixtures
+remain unqualified after a background pixel-shader JIT access violation. Metal code is compile-checked but runtime and
+hardware-Vulkan/Linux/Metal qualification plus a full warehouse image remain open.
+
+### `native-page-copy-acknowledgement`
+
+An additive native mode defers publication acknowledgement until a validated managed page copy and owner exist. Managed
+sessions require the matching enable/acknowledge exports; older libraries fail creation even if the session/page ABI
+versions match. Acknowledgement commits dirty flags, retirements, environments, light links and shadows without
+allocation. Releasing an unacknowledged page preserves all pending changes, and the next request computes its own
+current frame rather than receiving stale bytes. One unresolved page blocks newer syncs; acknowledgement is idempotent
+and page bytes/usage remain independently owned across later pages and session teardown. Real native-copy failures,
+repeated refusal partitions, exact full-publication retry bytes, both native allocation sweeps and a clean-feed
+NativeAOT consumer exercise the contract.
+
+**Limits:** In-memory transfer safety, not crash-durable publication, total memory admission or GPU submission rollback.
+Native C callers that do not enable the mode retain responsibility for historical immediate publication. Metadata
+borrows retained native entries and prevents mutation until resolution; native and managed byte buffers still overlap
+during copying. After successful acknowledgement, later GPU refusal needs ordered managed-page replay. Session 6/page 24
+and successful wire bytes are unchanged. Non-Windows/hardware-Vulkan execution and a complete warehouse image are not
+claimed.
+
+### `gpu-page-preparation-transaction`
+
+SilkMeshRenderer retains the CPU undo journal through GPU mesh preparation and publishes replacements, removals,
+metadata, displacement verdicts and prepared poses together. Allocation/upload refusal preserves earlier resources and
+revisions. Deformation inputs use two reusable pose slots rather than mutating published inputs or reallocating all
+static rig data. One rejected managed page is retained without copying its bytes and replayed before the owning native
+session emits another delta, preserving already-acknowledged removals and table changes without an accumulating queue.
+Out-of-order or multiple-consumer rejection fails closed. Quiet page application stays allocation-free. Recording-device
+allocation/write sweeps, material/shared-cache rollback, real D3D12/Vulkan pose pixels and native-retirement replay
+exercise the seam.
+
+**Limits:** A page-preparation transaction, not total VRAM admission or rollback of submitted frames/device loss. Later
+render target, texture, pipeline and submission failures remain separate. Staged replacements, a retained rejected page
+and two pose slots can overlap older storage. Cumulative work counters include failed attempts. Use one ordered renderer
+consumer; a disposed replay owner or out-of-order/multiple-consumer conflict requires session recreation. Standalone CPU
+scene mutations remain caller-owned. Vulkan pixel evidence uses SwiftShader; Linux/Metal/hardware Vulkan and a full
+warehouse image are not claimed.
+
+### `session-preparation-admission`
+
+Opt-in immutable hdSilk session ceilings apply conservative coarse-mesh reservation and serialized-page limits to every
+legacy and explicit sync. Per-request limits may tighten but cannot relax the session policy; purpose and
+allPurpose/full/preview binding choices remain unchanged. The one-shot native extension refuses reconfiguration and
+older libraries, and successful pages retain immutable usage snapshots independently of the session. Shared
+typed/invariant configuration reaches Viewer live/product/recreated sessions and MCP preview/sequence/product sessions,
+with explicit propagation to launched Viewers. Storm cannot bypass the configured policy. Capture diagnostics report
+stable effective ceilings without consuming one distinct job diagnostic per frame. Native entry-point,
+material-transition and lifetime cases, real D3D12/Vulkan captures, actual Viewer/MCP jobs, and a clean-feed NativeAOT
+consumer exercise the profile.
+
+**Limits:** Opt-in, not a total-memory/RAM/VRAM policy. Source opening, SDK/material caches, metadata, other live pages,
+overlapping buffers, textures and GPU resources remain outside these metrics. The existing coarse-mesh geometry
+restrictions remain; unsupported profiles fail rather than being omitted. Limits are chosen by the host, not mutable
+tool-call authority. Windows Viewer evidence uses D3D12; Vulkan capture fixtures use SwiftShader. Hardware Vulkan,
+Linux/Metal execution and a complete warehouse image remain unqualified.
+
+### `serialized-command-page-admission`
+
+Opt-in preparation limits version 2 adds a positive per-page serialized-byte ceiling to the existing coarse-mesh
+reservation profile. All commands write directly into one amortized native byte buffer; capacity requests are checked
+before allocation and there are no separate per-command payload vectors/copies. Headers, frame, materials, environments,
+mesh updates and retirements share the page limit. Refusal preserves complete retry and previously owned pages; changing
+only the page ceiling does not invalidate unchanged geometry. Managed copying checks native length before allocation and
+exposes actual ByteLength. Preparation-v1 libraries reject the newer packet; usage remains version 1. Native
+allocation/limit boundary sweeps, amortization/rollback/packet contracts, real Hydra and retained-renderer recovery, and
+a clean-feed NativeAOT consumer exercise the profile.
+
+**Limits:** Not total process memory or a global live-page budget. Native vector growth overlaps old/new buffers and
+managed copying overlaps native/managed buffers. Allocator overhead, metadata, other live pages, retained geometry,
+source/SDK/material caches, textures and GPU storage are excluded. The coarse-mesh numeric reservation metric and its
+restricted geometry profile are unchanged. Legacy/v1 calls remain page-unbounded. Vulkan fixture pixels use SwiftShader;
+hardware Vulkan, Linux/Metal and a complete warehouse image are not claimed.
+
+### `coarse-mesh-preparation-admission`
+
+Opt-in version-1 native admission before coarse mesh triangulation, point conversion and supported attribute expansion.
+A positive caller limit bounds conservative logical numeric-buffer reservation charges, with one lease shared by a
+producer and its records and overlapping old/new reservations during updates. Worker refusals are latched and returned
+after the Hydra barrier instead of escaping the worker pool or publishing partial pages. The existing scene-ingestion
+options gain an explicit limit overload and successful pages report retained and peak charges. Old native libraries
+explicitly refuse the missing extension. Native limit/overflow/concurrency contracts, real Hydra
+boundary/instancing/retry cases, D3D12/Vulkan capture recovery and an actual clean-feed NativeAOT consumer cover the
+initial profile.
+
+**Limits:** The metric is not actual allocation or process memory. Source/SDK materialization and caches, allocator
+capacity/overhead, maps/strings, materials, instance metadata, serialized pages, textures and GPU resources are
+excluded. Version 1 refuses refinement, alternate draw modes, Skel/computed geometry, point/curve Rprims and volumes.
+Legacy defaults remain unchanged. Vulkan fixture pixels use SwiftShader; Linux/Metal and complete warehouse admission or
+rendering are not claimed.
 
 ### `bounded-128-direct-lights`
 

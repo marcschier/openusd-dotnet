@@ -35,6 +35,8 @@
 #include "pxr/usd/usd/primRange.h"
 #include "pxr/usd/usdShade/tokens.h"
 #include "pxr/usd/usdShade/material.h"
+#include "pxr/usd/usdSkel/bindingAPI.h"
+#include "pxr/usd/usdSkel/root.h"
 #include "pxr/usd/usdGeom/xformCache.h"
 #include "pxr/usd/usdVol/openVDBAsset.h"
 #include "pxr/usd/usdVol/volume.h"
@@ -83,11 +85,15 @@ struct SilkSceneIngestionState
 {
     uint32_t includedPurposeMask = LegacyViewportPurposeMask;
     std::string materialBindingPurpose;
+    uint64_t maximumMeshPreparationBytes = 0;
+    // A serialization ceiling does not change retained scene contents.
+    size_t maximumCommandPageBytes = SIZE_MAX;
 
     bool operator==(const SilkSceneIngestionState& other) const
     {
         return includedPurposeMask == other.includedPurposeMask &&
-            materialBindingPurpose == other.materialBindingPurpose;
+            materialBindingPurpose == other.materialBindingPurpose &&
+            maximumMeshPreparationBytes == other.maximumMeshPreparationBytes;
     }
 
     bool operator!=(const SilkSceneIngestionState& other) const
@@ -265,6 +271,11 @@ struct SilkSessionState
     std::unique_ptr<UsdImagingGLEngine> engine;
     std::shared_ptr<HdSilkSceneState> sceneState;
     SilkSceneIngestionState ingestionState;
+    uint64_t maximumSessionMeshPreparationBytes = 0;
+    size_t maximumSessionCommandPageBytes = SIZE_MAX;
+    bool synchronizationStarted = false;
+    bool pageAcknowledgementEnabled = false;
+    uint64_t pendingPageRevision = 0;
     std::vector<std::string> volumeProxyPaths;
     std::vector<std::string> volumeMaterialPaths;
     mutable std::mutex mutex;
@@ -281,6 +292,11 @@ struct openusd_silk_page
     std::vector<uint8_t> data;
     uint64_t revision = 0;
     uint32_t command_count = 0;
+    std::weak_ptr<SilkSessionState> acknowledgementState;
+    bool requiresAcknowledgement = false;
+    bool acknowledged = false;
+    openusd_silk_mesh_preparation_usage preparationUsage{
+        sizeof(openusd_silk_mesh_preparation_usage), OPENUSD_SILK_MESH_PREPARATION_VERSION, 0, 0, 0};
 };
 
 namespace
@@ -1302,18 +1318,39 @@ openusd_status RebuildSceneImagingEngine(
 }
 
 openusd_status SyncSessionWithSceneIngestionState(
-    SilkSessionState* state,
+    const std::shared_ptr<SilkSessionState>& owner,
     int32_t width,
     int32_t height,
     double time_code,
     const openusd_render_camera* camera,
-    const SilkSceneIngestionState& ingestionState,
+    SilkSceneIngestionState ingestionState,
     uint32_t complexity,
     uint32_t draw_mode,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
     openusd_error_buffer* error)
 {
+    SilkSessionState* state = owner.get();
+    if (state->pendingPageRevision != 0)
+    {
+        WriteError(error, "The previous hdSilk page must be acknowledged or released before another sync.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    state->synchronizationStarted = true;
+    if (state->maximumSessionMeshPreparationBytes != 0)
+    {
+        ingestionState.maximumMeshPreparationBytes = ingestionState.maximumMeshPreparationBytes == 0
+            ? state->maximumSessionMeshPreparationBytes
+            : std::min(ingestionState.maximumMeshPreparationBytes, state->maximumSessionMeshPreparationBytes);
+        ingestionState.maximumCommandPageBytes =
+            std::min(ingestionState.maximumCommandPageBytes, state->maximumSessionCommandPageBytes);
+    }
+    if (ingestionState.maximumMeshPreparationBytes != 0 &&
+        (complexity != OPENUSD_SILK_COMPLEXITY_LOW || draw_mode != OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED))
+    {
+        WriteError(error, "Bounded mesh preparation currently requires Low complexity and SmoothShaded draw mode.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
     const bool reapplyRequested =
         !state->engine ||
         state->sceneSyncRecoveryPending ||
@@ -1332,6 +1369,18 @@ openusd_status SyncSessionWithSceneIngestionState(
             : TfToken(ingestionState.materialBindingPurpose);
     try
     {
+        if (ingestionState.maximumMeshPreparationBytes != 0)
+        {
+            for (const UsdPrim& prim : UsdPrimRange(
+                     state->stage->GetPseudoRoot(), UsdTraverseInstanceProxies()))
+            {
+                if (prim.IsA<UsdSkelRoot>() || prim.HasAPI<UsdSkelBindingAPI>() || prim.IsA<UsdVolVolume>())
+                {
+                    throw std::invalid_argument(
+                        "The bounded hdSilk mesh preparation profile does not admit Skel geometry or volumes.");
+                }
+            }
+        }
         if (reapplyRequested)
         {
             const openusd_status rebuildStatus = RebuildSceneImagingEngine(state, error);
@@ -1341,6 +1390,7 @@ openusd_status SyncSessionWithSceneIngestionState(
                 return rebuildStatus;
             }
         }
+        state->sceneState->MeshPreparationBudget()->Configure(ingestionState.maximumMeshPreparationBytes);
         ApplyRequestedSceneIngestionState(state, ingestionState);
         if (materialBindingPurposeChanged)
         {
@@ -1424,6 +1474,7 @@ openusd_status SyncSessionWithSceneIngestionState(
                 throw;
             }
             HdSilkEndUsdSkelEvaluation(state->sceneState.get());
+            state->sceneState->MeshPreparationBudget()->ThrowIfRefused();
             if (!mark.IsClean())
             {
                 state->sceneSyncRecoveryPending = true;
@@ -1487,8 +1538,22 @@ openusd_status SyncSessionWithSceneIngestionState(
         ThrowIfSceneSyncFailpoint("before-build-page");
 
         auto result = std::make_unique<openusd_silk_page>();
+        if (state->pageAcknowledgementEnabled)
+        {
+            result->acknowledgementState = owner;
+            result->requiresAcknowledgement = true;
+        }
         result->data =
-            state->sceneState->BuildPage(&result->revision, &result->command_count);
+            state->sceneState->BuildPage(
+                &result->revision, &result->command_count, ingestionState.maximumCommandPageBytes,
+                state->pageAcknowledgementEnabled);
+        if (ingestionState.maximumMeshPreparationBytes != 0)
+        {
+            const auto& budget = state->sceneState->MeshPreparationBudget();
+            result->preparationUsage.maximum_reserved_bytes = budget->Limit();
+            result->preparationUsage.reserved_bytes = budget->Reserved();
+            result->preparationUsage.peak_reserved_bytes = budget->Peak();
+        }
 
         view->struct_size = sizeof(openusd_silk_page_view);
         view->abi_version = OPENUSD_SILK_PAGE_ABI_VERSION;
@@ -1497,11 +1562,12 @@ openusd_status SyncSessionWithSceneIngestionState(
         view->data_size = result->data.size();
         view->command_count = result->command_count;
 
+        state->pendingPageRevision = state->pageAcknowledgementEnabled ? result->revision : 0;
+        state->ingestionState = std::move(ingestionState);
         const size_t live =
             g_live_page_count.fetch_add(1, std::memory_order_relaxed) + 1;
         UpdatePeak(g_peak_page_count, live);
         *page = result.release();
-        state->ingestionState = ingestionState;
         state->sceneSyncRecoveryPending = false;
         return OPENUSD_STATUS_OK;
     }
@@ -1776,6 +1842,11 @@ openusd_status openusd_silk_session_destroy(
             error,
             [&](openusd_stage_access*)
             {
+                if (state->pendingPageRevision != 0)
+                {
+                    state->sceneState->CompletePage(state->pendingPageRevision, false);
+                    state->pendingPageRevision = 0;
+                }
                 state->engine.reset();
                 state->sceneState.reset();
                 state->stage.Reset();
@@ -1791,6 +1862,134 @@ openusd_status openusd_silk_session_destroy(
         state->stage_core = nullptr;
         RemoveDestroyedSession(session, state);
         openusd_stage_release(stage);
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+static openusd_status DecodePreparationLimits(
+    const openusd_silk_mesh_preparation_limits* limits,
+    SilkSceneIngestionState* ingestionState,
+    openusd_error_buffer* error)
+{
+    if (limits == nullptr || limits->struct_size < sizeof(*limits) ||
+        (limits->version != OPENUSD_SILK_MESH_PREPARATION_VERSION &&
+            limits->version != OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION) ||
+        limits->maximum_reserved_bytes == 0)
+    {
+        WriteError(error, "Valid mesh preparation limits and a positive reservation limit are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (limits->version == OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION)
+    {
+        if (limits->struct_size < sizeof(openusd_silk_mesh_preparation_page_limits))
+        {
+            WriteError(error, "The version-2 preparation limit packet is incomplete.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        uint64_t maximumPageBytes = 0;
+        std::memcpy(&maximumPageBytes,
+            reinterpret_cast<const uint8_t*>(limits) + sizeof(*limits), sizeof(maximumPageBytes));
+        if (maximumPageBytes == 0 || maximumPageBytes > SIZE_MAX)
+        {
+            WriteError(error, "The command page byte limit must be positive and fit the native address space.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        ingestionState->maximumCommandPageBytes = static_cast<size_t>(maximumPageBytes);
+    }
+    ingestionState->maximumMeshPreparationBytes = limits->maximum_reserved_bytes;
+    return OPENUSD_STATUS_OK;
+}
+
+openusd_status openusd_silk_session_set_preparation_limits(
+    openusd_silk_session* session,
+    const openusd_silk_mesh_preparation_page_limits* limits,
+    openusd_error_buffer* error)
+{
+    if (limits == nullptr || limits->base.struct_size < sizeof(*limits) ||
+        limits->base.version != OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION)
+    {
+        WriteError(error, "Session preparation ceilings require a version-2 limit packet.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    SilkSceneIngestionState decoded;
+    const openusd_status status = DecodePreparationLimits(&limits->base, &decoded, error);
+    if (status != OPENUSD_STATUS_OK) { return status; }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->synchronizationStarted || state->maximumSessionMeshPreparationBytes != 0)
+        {
+            WriteError(error, "Session preparation ceilings must be set once before synchronization starts.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        state->maximumSessionMeshPreparationBytes = decoded.maximumMeshPreparationBytes;
+        state->maximumSessionCommandPageBytes = decoded.maximumCommandPageBytes;
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_page_get_preparation_usage(
+    const openusd_silk_page* page,
+    openusd_silk_mesh_preparation_usage* usage,
+    openusd_error_buffer* error)
+{
+    if (page == nullptr || usage == nullptr || usage->struct_size < sizeof(*usage))
+    {
+        WriteError(error, "An owned command page and complete preparation usage output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    *usage = page->preparationUsage;
+    return OPENUSD_STATUS_OK;
+}
+
+openusd_status openusd_silk_session_enable_page_acknowledgement(
+    openusd_silk_session* session,
+    openusd_error_buffer* error)
+{
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->synchronizationStarted || state->pageAcknowledgementEnabled)
+        {
+            WriteError(error, "Page acknowledgement must be enabled once before synchronization starts.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        state->pageAcknowledgementEnabled = true;
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_page_acknowledge(openusd_silk_page* page, openusd_error_buffer* error)
+{
+    return Guard(error, [&]()
+    {
+        if (page == nullptr || !page->requiresAcknowledgement)
+        {
+            WriteError(error, "An owned acknowledgement-enabled page is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        if (page->acknowledged) { return OPENUSD_STATUS_OK; }
+        const auto state = page->acknowledgementState.lock();
+        if (!state)
+        {
+            WriteError(error, "The page's native session no longer exists.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->sceneState == nullptr || state->pendingPageRevision != page->revision ||
+            !state->sceneState->CompletePage(page->revision, true))
+        {
+            WriteError(error, "The page is not the native session's pending publication.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        state->pendingPageRevision = 0;
+        page->acknowledged = true;
         return OPENUSD_STATUS_OK;
     });
 }
@@ -1901,7 +2100,7 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
                 ""
             };
             return SyncSessionWithSceneIngestionState(
-                state.get(),
+                state,
                 width,
                 height,
                 time_code,
@@ -1916,14 +2115,15 @@ openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
     });
 }
 
-extern "C" OPENUSD_HDSILK_API openusd_status
-openusd_silk_session_sync_with_scene_ingestion(
+static openusd_status SyncWithSceneIngestion(
     openusd_silk_session* session,
     int32_t width,
     int32_t height,
     double time_code,
     const openusd_render_camera* camera,
     const openusd_silk_scene_ingestion_request* request,
+    const openusd_silk_mesh_preparation_limits* limits,
+    openusd_silk_mesh_preparation_usage* usage,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
     openusd_error_buffer* error)
@@ -1959,6 +2159,21 @@ openusd_silk_session_sync_with_scene_ingestion(
     {
         return requestStatus;
     }
+    if (limits != nullptr)
+    {
+        if (usage == nullptr || usage->struct_size < sizeof(*usage))
+        {
+            WriteError(error, "A complete version-1 preparation usage output is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const openusd_status limitStatus = DecodePreparationLimits(limits, &ingestionState, error);
+        if (limitStatus != OPENUSD_STATUS_OK) { return limitStatus; }
+        if (complexity != OPENUSD_SILK_COMPLEXITY_LOW || draw_mode != OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED)
+        {
+            WriteError(error, "Bounded mesh preparation currently requires Low complexity and SmoothShaded draw mode.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+    }
     return Guard(error, [&]()
     {
         const std::shared_ptr<SilkSessionState> state =
@@ -1979,10 +2194,10 @@ openusd_silk_session_sync_with_scene_ingestion(
                 "A valid session, positive viewport size, and page/view outputs are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
-        return WithStageAccess(state->stage_core, error, [&](openusd_stage_access*)
+        const openusd_status status = WithStageAccess(state->stage_core, error, [&](openusd_stage_access*)
         {
             return SyncSessionWithSceneIngestionState(
-                state.get(),
+                state,
                 width,
                 height,
                 time_code,
@@ -1994,6 +2209,57 @@ openusd_silk_session_sync_with_scene_ingestion(
                 view,
                 error);
         });
+        if (status == OPENUSD_STATUS_OK && usage != nullptr)
+        {
+            *usage = (*page)->preparationUsage;
+        }
+        return status;
+    });
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_session_sync_with_scene_ingestion(
+    openusd_silk_session* session, int32_t width, int32_t height, double time_code,
+    const openusd_render_camera* camera, const openusd_silk_scene_ingestion_request* request,
+    openusd_silk_page** page, openusd_silk_page_view* view, openusd_error_buffer* error)
+{
+    return SyncWithSceneIngestion(session, width, height, time_code, camera, request, nullptr, nullptr,
+        page, view, error);
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_session_sync_with_mesh_preparation(
+    openusd_silk_session* session, int32_t width, int32_t height, double time_code,
+    const openusd_render_camera* camera, const openusd_silk_scene_ingestion_request* request,
+    const openusd_silk_mesh_preparation_limits* limits, openusd_silk_mesh_preparation_usage* usage,
+    openusd_silk_page** page, openusd_silk_page_view* view, openusd_error_buffer* error)
+{
+    if (limits == nullptr)
+    {
+        if (page != nullptr) { *page = nullptr; }
+        WriteError(error, "A mesh preparation limit is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return SyncWithSceneIngestion(session, width, height, time_code, camera, request, limits, usage,
+        page, view, error);
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_session_request_repopulation(openusd_silk_session* session, openusd_error_buffer* error)
+{
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->pendingPageRevision != 0)
+        {
+            WriteError(error, "Release the unacknowledged page before requesting native repopulation.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        state->sceneSyncRecoveryPending = true;
+        return OPENUSD_STATUS_OK;
     });
 }
 
@@ -2001,6 +2267,18 @@ void openusd_silk_page_release(openusd_silk_page* page) noexcept
 {
     if (page != nullptr)
     {
+        if (page->requiresAcknowledgement && !page->acknowledged)
+        {
+            if (const auto state = page->acknowledgementState.lock())
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (state->sceneState && state->pendingPageRevision == page->revision)
+                {
+                    state->sceneState->CompletePage(page->revision, false);
+                    state->pendingPageRevision = 0;
+                }
+            }
+        }
         g_live_page_count.fetch_sub(1, std::memory_order_relaxed);
     }
     delete page;

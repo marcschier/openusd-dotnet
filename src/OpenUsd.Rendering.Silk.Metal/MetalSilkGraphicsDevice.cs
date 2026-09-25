@@ -122,16 +122,20 @@ public sealed partial class MetalSilkGraphicsDevice
             ? MTLResourceOptions.ResourceStorageModeShared
             : MTLResourceOptions.ResourceStorageModePrivate;
         MTLBuffer buffer = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveBufferAllocation(size);
             buffer = _device.NewBuffer(checked((ulong)size), options);
             if (buffer.NativePtr == 0)
             {
                 throw new InvalidOperationException("Could not create a Metal buffer.");
             }
+            var result = new MetalSilkGraphicsBuffer(this, buffer, size, usage);
+            result.OwnBufferReservation(reservation);
             success = true;
-            return new MetalSilkGraphicsBuffer(this, buffer, size, usage);
+            return result;
         }
         finally
         {
@@ -142,6 +146,7 @@ public sealed partial class MetalSilkGraphicsDevice
                     buffer.Dispose();
                 }
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }

@@ -3782,6 +3782,11 @@ public sealed partial class RuntimePackageTests
             Console.WriteLine(result.Output.Trim());
             await Assert.That(result.ExitCode).IsEqualTo(0);
             await Assert.That(result.Output).Contains("PACKAGE_IMAGING_EXECUTION_OK");
+            await Assert.That(result.Output).Contains("MESH_PREPARATION_ADMISSION=true");
+            await Assert.That(result.Output).Contains("COMMAND_PAGE_ADMISSION=true");
+            await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
+            await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
+            await Assert.That(result.Output).Contains("GPU_BUFFER_ADMISSION=true");
             await Assert.That(result.Output).Contains("NATIVE_AOT=true");
             await Assert.That(result.Output).Contains("FIRST_PAGE_FRAMES=1");
             await Assert.That(result.Output).Contains("FIRST_PAGE_UPSERTS=");
@@ -7202,6 +7207,98 @@ public sealed partial class RuntimePackageTests
                         return 2;
                     }
 
+                    using (var preparationSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
+                    {
+                        using OpenUsdSilkPage admitted = preparationSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 1_000_000));
+                        SilkMeshPreparationUsage usage = admitted.MeshPreparationUsage ??
+                            throw new InvalidOperationException("The package omitted native mesh admission.");
+                        if (usage.ReservedBytes == 0 || usage.PeakReservedBytes > usage.MaximumReservedBytes)
+                        {
+                            throw new InvalidOperationException("The package reported invalid reservation accounting.");
+                        }
+                        bool refused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = preparationSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 1));
+                        }
+                        catch (OpenUsdSilkException)
+                        {
+                            refused = true;
+                        }
+                        if (!refused)
+                        {
+                            throw new InvalidOperationException("The native package ignored its preparation limit.");
+                        }
+                        using OpenUsdSilkPage retry = preparationSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 1_000_000));
+                        if (retry.MeshPreparationUsage?.ReservedBytes != usage.ReservedBytes)
+                        {
+                            throw new InvalidOperationException("The native package leaked failed reservations.");
+                        }
+                        Console.WriteLine("MESH_PREPARATION_ADMISSION=true");
+                        bool pageRefused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = preparationSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 1_000_000, 1));
+                        }
+                        catch (OpenUsdSilkException error) when (
+                            error.Message.Contains("hdSilk command page refused", StringComparison.Ordinal))
+                        {
+                            pageRefused = true;
+                        }
+                        if (!pageRefused)
+                        {
+                            throw new InvalidOperationException("The native package ignored its command page limit.");
+                        }
+                        using OpenUsdSilkPage pageRetry = preparationSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(
+                                RenderPurpose.Default, "full", 1_000_000, admitted.ByteLength));
+                        if (pageRetry.ByteLength != admitted.ByteLength ||
+                            pageRetry.CommandCount != admitted.CommandCount ||
+                            pageRetry.MeshPreparationUsage?.ReservedBytes != usage.ReservedBytes)
+                        {
+                            throw new InvalidOperationException(
+                                "The page-limited package did not republish completely.");
+                        }
+                        Console.WriteLine("COMMAND_PAGE_ADMISSION=true");
+                        using var scoped = OpenUsdSilkRuntime.Create(pluginPath, stagePath,
+                            new SilkPreparationLimits(1_000_000, admitted.ByteLength));
+                        using OpenUsdSilkPage scopedPage = scoped.Sync(16, 16);
+                        if (scopedPage.ByteLength != admitted.ByteLength ||
+                            scopedPage.MeshPreparationUsage?.MaximumReservedBytes != 1_000_000 ||
+                            scopedPage.MeshPreparationUsage.ReservedBytes != usage.ReservedBytes)
+                        {
+                            throw new InvalidOperationException("The package omitted immutable session admission.");
+                        }
+                        using var refusedSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath,
+                            new SilkPreparationLimits(1, admitted.ByteLength));
+                        bool sessionRefused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = refusedSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 1_000_000));
+                        }
+                        catch (OpenUsdSilkException error) when (
+                            error.Message.Contains("hdSilk mesh preparation refused", StringComparison.Ordinal))
+                        {
+                            sessionRefused = true;
+                        }
+                        if (!sessionRefused)
+                        {
+                            throw new InvalidOperationException("The package relaxed its immutable session ceiling.");
+                        }
+                        Console.WriteLine("SESSION_PREPARATION_ADMISSION=true");
+                        using OpenUsdSilkPage afterCopy = scoped.Sync(16, 16);
+                        if (afterCopy.CommandCount != 1 || afterCopy.Revision != scopedPage.Revision + 1)
+                        {
+                            throw new InvalidOperationException("The copied package page was not acknowledged once.");
+                        }
+                        Console.WriteLine("PAGE_COPY_ACKNOWLEDGEMENT=true");
+                    }
+
                     string ocioConfigPath = Path.Combine(
                         AppContext.BaseDirectory,
                         "ocio-test-config.ocio");
@@ -7302,6 +7399,31 @@ public sealed partial class RuntimePackageTests
                     }
 
                     using ISilkGraphicsDevice device = __DEVICE_FACTORY__;
+                    var bufferBudget = new SilkGpuBufferBudget(1_048_576);
+                    bufferBudget.ConfigureDevice(device);
+                    using (ISilkGraphicsBuffer pressure = device.CreateBuffer(
+                        1_048_576, SilkBufferUsage.Upload))
+                    {
+                        bool refused = false;
+                        try
+                        {
+                            using ISilkGraphicsBuffer overLimit = device.CreateBuffer(1, SilkBufferUsage.Upload);
+                        }
+                        catch (SilkGpuBufferBudgetExceededException error) when (
+                            error.RequestedBytes == 1 && error.ReservedBytes == 1_048_576)
+                        {
+                            refused = true;
+                        }
+                        if (!refused || bufferBudget.Usage.ReservedBytes != 1_048_576)
+                        {
+                            throw new InvalidOperationException("The packaged device ignored buffer admission.");
+                        }
+                    }
+                    if (bufferBudget.Usage.ReservedBytes != 0)
+                    {
+                        throw new InvalidOperationException("The packaged device leaked buffer reservations.");
+                    }
+                    Console.WriteLine("GPU_BUFFER_ADMISSION=true");
                     PackageAuthoredProductExecution.Run(device, pluginPath);
                     using var sceneResources = new SilkSceneGpuResources(device);
                     var scene = new SilkSceneState();

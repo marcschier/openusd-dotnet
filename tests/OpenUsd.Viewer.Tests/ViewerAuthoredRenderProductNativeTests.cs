@@ -129,11 +129,14 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
         string statusFile = Path.Combine(root, "viewer-status.log");
         Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", statusFile);
         var opened = new TaskCompletionSource<ViewerStageSession>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bufferBudget = new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000);
         ViewerStartupOptions.Initialize(new ViewerHostOptions
         {
             StagePath = stagePath,
             StageCameraPath = "/Camera",
             Renderer = ViewerNativeCaptureBackend.Kind.ToString(),
+            PreparationLimits = new OpenUsd.Rendering.Silk.SilkPreparationLimits(1_000_000, 1_000_000),
+            GpuBufferBudget = bufferBudget,
             PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH"),
             StageReadyAsync = (session, _) =>
             {
@@ -166,6 +169,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             }
             await WaitUntilAsync(() => Required<MenuItem>(window, "RenderAuthoredProductMenuItem").IsEnabled);
             ViewerNativeCaptureBackend.Require(session);
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsGreaterThan(0ul);
             StageRenderState before = session.CurrentRenderState;
             string editTarget = await session.Scheduler.InvokeAsync(static stage => stage.EditTargetLayerIdentifier);
             await Assert.That(before.Viewport.Width == 16 && before.Viewport.Height == 16).IsFalse();
@@ -270,6 +274,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             }
             window.Close();
             await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await WaitUntilAsync(() => bufferBudget.Usage.ReservedBytes == 0);
             Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", null);
         }
     }
@@ -300,6 +305,12 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             Path.Combine(output, "manifest.json")));
         JsonElement frames = manifest.RootElement.GetProperty("frames");
         await Assert.That(frames.GetArrayLength()).IsEqualTo(2);
+        await Assert.That(manifest.RootElement.GetProperty("diagnostics").EnumerateArray().Any(static entry =>
+            entry.GetProperty("code").GetString() == "HDSILK_PREPARATION_ADMISSION" &&
+            entry.GetProperty("message").GetString()!.Contains("ceiling=1000000", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(manifest.RootElement.GetProperty("diagnostics").EnumerateArray().Any(static entry =>
+            entry.GetProperty("code").GetString() == "HDSILK_GPU_BUFFER_ADMISSION" &&
+            entry.GetProperty("message").GetString()!.Contains("ceiling=1000000", StringComparison.Ordinal))).IsTrue();
         for (int index = 0; index < 2; index++)
         {
             JsonElement frame = frames[index];

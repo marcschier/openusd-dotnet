@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using OpenUsd.Rendering;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Viewer;
 
@@ -24,6 +25,9 @@ internal static class ViewerStartupOptions
     internal static int SoakSeconds { get; private set; } = 90;
 
     internal static string Renderer { get; private set; } = "Auto";
+
+    internal static SilkPreparationLimits? PreparationLimits { get; private set; }
+    internal static SilkGpuBufferBudget? GpuBufferBudget { get; private set; }
 
     internal static bool LiveEditSmoke { get; private set; }
 
@@ -236,6 +240,7 @@ internal static class ViewerStartupOptions
             $"OPENUSD_FORCE_{kind.ToString().ToUpperInvariant()}_FAILURE"));
 
     internal static bool RequiresCompositionPlatform =>
+        PreparationLimits is not null || GpuBufferBudget is not null ||
         RequestedBackend is RenderBackendKind.D3D12 or
             RenderBackendKind.Vulkan or RenderBackendKind.Metal ||
         SmokeSwitchBackend is RenderBackendKind.D3D12 or
@@ -247,8 +252,16 @@ internal static class ViewerStartupOptions
         IsBackendForcedUnavailable(RenderBackendKind.Storm) ||
         IsBackendForcedInitializationFailure(RenderBackendKind.Storm);
 
-    internal static void Initialize(string[] args)
+    internal static void Initialize(string[] args) => Initialize(args, null, null);
+
+    private static void Initialize(
+        string[] args, SilkPreparationLimits? preparationLimits, SilkGpuBufferBudget? gpuBufferBudget)
     {
+        PreparationLimits = preparationLimits ?? SilkPreparationLimits.FromConfiguration(
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_MESH_RESERVATION_BYTES"),
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_MAX_PAGE_BYTES"));
+        GpuBufferBudget = gpuBufferBudget ?? SilkGpuBufferBudget.FromConfiguration(
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_BUFFER_BYTES"));
         PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
         StagePath = Environment.GetEnvironmentVariable("OPENUSD_STAGE_PATH");
         StatusFile = Environment.GetEnvironmentVariable("OPENUSD_STATUS_FILE");
@@ -421,7 +434,7 @@ internal static class ViewerStartupOptions
     internal static void Initialize(ViewerHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        Initialize([]);
+        Initialize([], options.PreparationLimits, options.GpuBufferBudget);
         if (!string.IsNullOrWhiteSpace(options.StagePath))
         {
             StagePath = Path.GetFullPath(options.StagePath);

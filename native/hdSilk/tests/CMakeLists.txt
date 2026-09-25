@@ -1,7 +1,7 @@
 add_executable(hdsilk_vertex_layout_probe hdsilk_vertex_layout_probe.cpp)
 target_compile_features(hdsilk_vertex_layout_probe PRIVATE cxx_std_17)
 target_link_libraries(hdsilk_vertex_layout_probe PRIVATE usd_m)
-target_include_directories(hdsilk_vertex_layout_probe PRIVATE ../include ../../include)
+target_include_directories(hdsilk_vertex_layout_probe PRIVATE ../include ../../include ../../openusd_dotnet/include)
 target_include_directories(hdsilk_vertex_layout_probe SYSTEM PRIVATE "${pxr_DIR}/include")
 if(MSVC)
     target_compile_options(hdsilk_vertex_layout_probe PRIVATE /W4 /WX /permissive- /EHsc)
@@ -9,6 +9,18 @@ else()
     target_compile_options(hdsilk_vertex_layout_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME hdsilk_vertex_layout COMMAND hdsilk_vertex_layout_probe)
+
+add_executable(hdsilk_mesh_preparation_probe hdsilk_mesh_preparation_probe.cpp)
+target_compile_features(hdsilk_mesh_preparation_probe PRIVATE cxx_std_17)
+find_package(Threads REQUIRED)
+target_link_libraries(hdsilk_mesh_preparation_probe PRIVATE Threads::Threads)
+if(MSVC)
+    target_compile_options(hdsilk_mesh_preparation_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_mesh_preparation_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_mesh_preparation COMMAND hdsilk_mesh_preparation_probe)
+set_tests_properties(hdsilk_mesh_preparation PROPERTIES TIMEOUT 60)
 
 add_executable(
     hdsilk_probe

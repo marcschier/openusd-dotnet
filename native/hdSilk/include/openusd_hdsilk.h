@@ -1386,7 +1386,7 @@ typedef struct openusd_silk_page_view
 } openusd_silk_page_view;
 
 /// Append-only request packet for per-sync scene-ingestion choices. Session
-/// ABI v6 adds this public contract; page ABI stays unchanged at v23.
+/// ABI v6 adds this public contract independently of the command-page version.
 /// Set struct_size to at least sizeof(this struct) and version to
 /// OPENUSD_SILK_SCENE_INGESTION_VERSION. On all shipped 64-bit platforms the
 /// size is 32 bytes; the pointer is at offset 24 and padding is not inspected.
@@ -1403,6 +1403,48 @@ typedef struct openusd_silk_scene_ingestion_request
     uint32_t draw_mode;
     const char* material_binding_purpose;
 } openusd_silk_scene_ingestion_request;
+
+#define OPENUSD_SILK_MESH_PREPARATION_VERSION 1u
+#define OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION 2u
+
+/// Optional v1 admission of coarse, smooth-shaded mesh preparation. The limit is
+/// a conservative logical buffer-reservation charge, not process memory or actual
+/// allocator bytes. Charges cover old/new mesh owners and worst-case numeric
+/// preparation buffers; shared record/producer leases are counted once. USD/Hydra
+/// source materialization, allocator/container overhead, materials, instance
+/// metadata, page copies and GPU storage are outside this metric.
+/// Skel/computed geometry, non-mesh Rprims, volumes and refinement are refused.
+/// maximum_reserved_bytes must be positive. Both packets are 16/32 bytes on every RID.
+typedef struct openusd_silk_mesh_preparation_limits
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t maximum_reserved_bytes;
+} openusd_silk_mesh_preparation_limits;
+
+/// Version 2 extends the version-1 limits prefix with a positive per-page byte
+/// ceiling. Set base.struct_size to sizeof(this struct), base.version to
+/// OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION, and pass &base to the sync call.
+/// The packet is 24 bytes on shipped RIDs. Usage remains the version-1 32-byte packet.
+/// A page writes directly into one growing serialized buffer; each capacity
+/// request is capped before allocation and oversized pages fail as a whole.
+/// Vector reallocation can temporarily hold old and new storage, and copying a
+/// returned page into managed storage overlaps native and managed buffers.
+/// The ceiling is not a limit on other live pages, mesh/cache state or total memory.
+typedef struct openusd_silk_mesh_preparation_page_limits
+{
+    openusd_silk_mesh_preparation_limits base;
+    uint64_t maximum_page_bytes;
+} openusd_silk_mesh_preparation_page_limits;
+
+typedef struct openusd_silk_mesh_preparation_usage
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t maximum_reserved_bytes;
+    uint64_t reserved_bytes;
+    uint64_t peak_reserved_bytes;
+} openusd_silk_mesh_preparation_usage;
 
 /// Returns the native hdSilk session ABI version this binary implements.
 OPENUSD_HDSILK_API uint32_t openusd_silk_get_session_abi_version(void)
@@ -1438,6 +1480,37 @@ OPENUSD_HDSILK_API void openusd_silk_session_release(
 /// session intact and retryable.
 OPENUSD_HDSILK_API openusd_status openusd_silk_session_destroy(
     openusd_silk_session* session,
+    openusd_error_buffer* error);
+
+/// Installs immutable version-2 preparation/page ceilings before the first sync.
+/// Every legacy and explicit sync obeys these ceilings; per-request limits may
+/// tighten them but never relax them. Purpose/material choices are unchanged.
+/// Reconfiguration or configuration after synchronization starts is refused.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_set_preparation_limits(
+    openusd_silk_session* session,
+    const openusd_silk_mesh_preparation_page_limits* limits,
+    openusd_error_buffer* error);
+
+/// Copies the successful page's immutable version-1 reservation snapshot.
+/// An unbounded page reports zero counters. The page need not retain its session.
+OPENUSD_HDSILK_API openusd_status openusd_silk_page_get_preparation_usage(
+    const openusd_silk_page* page,
+    openusd_silk_mesh_preparation_usage* usage,
+    openusd_error_buffer* error);
+
+/// Enables explicit page acknowledgement before this session's first sync.
+/// Existing C callers that do not opt in retain their historical immediate publication.
+/// An enabled session refuses another sync until its page is acknowledged or released.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_enable_page_acknowledgement(
+    openusd_silk_session* session,
+    openusd_error_buffer* error);
+
+/// Acknowledges a successfully copied page. Call before releasing it.
+/// Publication state commits without allocation; later acknowledgement is idempotent.
+/// Releasing an unacknowledged page rejects it, leaving updates and retirements pending.
+/// Page bytes and usage remain owned independently after acknowledgement/session teardown.
+OPENUSD_HDSILK_API openusd_status openusd_silk_page_acknowledge(
+    openusd_silk_page* page,
     openusd_error_buffer* error);
 
 /// Renders one frame at the given viewport size and time code, then returns
@@ -1503,6 +1576,34 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_scene_ingestion
     const openusd_silk_scene_ingestion_request* request,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
+    openusd_error_buffer* error);
+
+/// Additive, versioned preparation extension; the legacy session/page ABI is unchanged.
+/// Old libraries lack this export and must be refused when the caller requests a limit.
+/// Admission occurs before mesh triangulation/conversion/attribute expansion. Resource
+/// refusal returns no page. Usage is written only after a successful page; a limit/profile
+/// change rebuilds imaging so previously unaccounted caches cannot bypass admission.
+/// Version-2 limits also cap command-page serialization; version-1 libraries reject
+/// that limits version rather than ignoring its additional ceiling.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_mesh_preparation(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    const openusd_silk_scene_ingestion_request* request,
+    const openusd_silk_mesh_preparation_limits* limits,
+    openusd_silk_mesh_preparation_usage* usage,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error);
+
+/// Marks the next sync for current native scene repopulation. This is not replay:
+/// retirements from previously acknowledged pages cannot be reconstructed this way.
+/// Use page acknowledgement for native-to-managed copying and ordered replay for
+/// already-copied pages. Refuses while an unacknowledged page is outstanding.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_request_repopulation(
+    openusd_silk_session* session,
     openusd_error_buffer* error);
 
 OPENUSD_HDSILK_API void openusd_silk_page_release(

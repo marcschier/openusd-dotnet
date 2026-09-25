@@ -71,6 +71,7 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     private readonly VulkanCompositionContext _context;
     private readonly VulkanCompositionRenderCallback? _renderCallback;
     private readonly bool _required;
+    private readonly SilkGpuBufferBudget? _gpuBufferBudget;
     private SilkMeshRenderer? _renderer;
     private SilkMeshRenderResult? _lastMeshRenderResult;
     private int _generationCount;
@@ -84,11 +85,13 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     private VulkanCompositionViewportPresenter(
         VulkanCompositionContext context,
         VulkanCompositionRenderCallback? renderCallback,
-        bool required)
+        bool required,
+        SilkGpuBufferBudget? gpuBufferBudget = null)
     {
         _context = context;
         _renderCallback = renderCallback;
         _required = required;
+        _gpuBufferBudget = gpuBufferBudget;
     }
 
     /// <summary>Creates a headless Vulkan composition presenter.</summary>
@@ -103,13 +106,20 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     /// </summary>
     public static VulkanCompositionViewportPresenter Create(
         VulkanCompositionRenderCallback renderCallback,
+        bool required = false) => Create(renderCallback, null, required);
+
+    /// <summary>Creates a retained presenter sharing a buffer payload budget with other renderers or devices.</summary>
+    public static VulkanCompositionViewportPresenter Create(
+        VulkanCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
         bool required = false)
     {
         ArgumentNullException.ThrowIfNull(renderCallback);
         return new VulkanCompositionViewportPresenter(
             VulkanCompositionContext.Create(),
             renderCallback,
-            required);
+            required,
+            gpuBufferBudget);
     }
 
     /// <summary>Captures current presenter resources and render evidence.</summary>
@@ -139,6 +149,7 @@ public sealed unsafe class VulkanCompositionViewportPresenter
         _compatible = result.IsAvailable;
         if (_compatible && _renderCallback is not null && _renderer is null)
         {
+            _gpuBufferBudget?.ConfigureDevice(_context.GraphicsDevice);
             _renderer = new SilkMeshRenderer(_context.GraphicsDevice);
         }
         return new ValueTask<CompositionPresenterProbeResult>(result);

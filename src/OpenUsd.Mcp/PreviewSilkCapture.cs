@@ -16,7 +16,9 @@ public sealed class PreviewSilkFrameSourceFactory(
     string pluginPath,
     IPreviewRenderSourceProvider renderSourceProvider,
     IPreviewGraphicsDeviceFactory graphicsDeviceFactory,
-    PreviewGraphicsDeviceOptions graphicsOptions) : IPreviewFrameSourceFactory
+    PreviewGraphicsDeviceOptions graphicsOptions,
+    SilkPreparationLimits? preparationLimits = null,
+    SilkGpuBufferBudget? gpuBufferBudget = null) : IPreviewFrameSourceFactory
 {
     private readonly string _pluginPath = ValidatePluginPath(pluginPath);
     private readonly IPreviewRenderSourceProvider _renderSourceProvider =
@@ -38,11 +40,36 @@ public sealed class PreviewSilkFrameSourceFactory(
                 .GetAwaiter()
                 .GetResult()
                 ?? throw new InvalidOperationException("The stage source factory returned null."),
-            () => _graphicsDeviceFactory.Create(_graphicsOptions),
-            source => OpenUsdSilkRuntime.Create(_pluginPath, source),
+            CreateDevice,
+            source => OpenUsdSilkRuntime.Create(_pluginPath, source, preparationLimits),
             device => new SilkFrameCapturer(device),
             static (source, device, session, capturer) =>
                 new PreviewSilkFrameSource(source, device, session, capturer));
+    }
+
+    private ISilkGraphicsDevice CreateDevice()
+    {
+        ISilkGraphicsDevice device = _graphicsDeviceFactory.Create(_graphicsOptions) ??
+            throw new InvalidOperationException("The graphics device factory returned null.");
+        try
+        {
+            gpuBufferBudget?.ConfigureDevice(device);
+            return device;
+        }
+        catch (Exception configurationFailure)
+        {
+            try
+            {
+                device.Dispose();
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException(
+                    "GPU buffer admission failed and the created device could not be released.",
+                    configurationFailure, cleanupFailure);
+            }
+            throw;
+        }
     }
 
     internal static PreviewSilkFrameSource CreateCore<
