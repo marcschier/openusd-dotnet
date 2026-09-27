@@ -244,6 +244,11 @@ jobs:
       # native runtime and runs in the ordinary managed sweep.
       - name: Verify pinned OpenUSD schema inventory
         run: python eng/generate-schema-coverage.py --verify
+      - name: Verify SDK runtime patch provenance
+        shell: pwsh
+        run: >
+          ./eng/sdk-runtime-patch-metadata.ps1
+          -Operation Verify -SdkRoot native/install/linux-x64 -Rid linux-x64
       - name: Build current native shim
         shell: pwsh
         run: |

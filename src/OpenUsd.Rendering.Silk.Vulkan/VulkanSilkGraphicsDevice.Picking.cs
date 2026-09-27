@@ -1275,6 +1275,8 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     private readonly ulong _copyRangeSize;
     private VkBuffer _buffer;
     private DeviceMemory _memory;
+    private IDisposable? _readbackReservation;
+    private IDisposable? _uniformReservation;
     private ulong _allocationSize;
     private nint _mapped;
     private CommandPool _commandPool;
@@ -1706,6 +1708,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     private void CreateReadbackBuffer()
     {
         ulong size = checked(_copyOffset + _copyRangeSize);
+        _readbackReservation = Owner.ReservePickStaging(size);
         var bufferInfo = new BufferCreateInfo
         {
             SType = StructureType.BufferCreateInfo,
@@ -1953,6 +1956,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         ulong size = checked(
             AlignUp(16, _uniformOffsetAlignment) *
             checked((ulong)capacity));
+        _uniformReservation = Owner.ReservePickStaging(size);
         var bufferInfo = new BufferCreateInfo
         {
             SType = StructureType.BufferCreateInfo,
@@ -2499,6 +2503,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             _api.FreeMemory(_device, _pickUniformMemory, null);
             _pickUniformMemory = default;
         }
+        Interlocked.Exchange(ref _uniformReservation, null)?.Dispose();
         if (_pickUniformDiagnosticsRegistered)
         {
             _pickUniformDiagnosticsRegistered = false;
@@ -2557,6 +2562,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
                 _api.FreeMemory(_device, _memory, null);
                 _memory = default;
             }
+            Interlocked.Exchange(ref _readbackReservation, null)?.Dispose();
             _allocationSize = 0;
         }
         finally

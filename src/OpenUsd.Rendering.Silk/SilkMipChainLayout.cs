@@ -84,6 +84,25 @@ internal static class SilkMipChainLayout
         return levels;
     }
 
+    /// <summary>Computes full-width logical payload bytes without allocating an upload layout.</summary>
+    internal static ulong GetLogicalByteSize(
+        uint baseWidth,
+        uint baseHeight,
+        SilkTextureFormat format,
+        uint mipLevelCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(mipLevelCount);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(mipLevelCount, GetMaxMipLevelCount(baseWidth, baseHeight));
+        uint bytesPerPixel = SilkTextureFormats.GetBytesPerPixel(format);
+        ulong bytes = 0;
+        for (uint level = 0; level < mipLevelCount; level++)
+        {
+            (uint width, uint height) = GetLevelExtent(baseWidth, baseHeight, level);
+            bytes = checked(bytes + (ulong)width * height * bytesPerPixel);
+        }
+        return bytes;
+    }
+
     /// <summary>Computes the exact tightly packed byte size of a full chain upload.</summary>
     internal static int GetTotalByteSize(
         uint baseWidth,

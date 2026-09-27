@@ -145,16 +145,16 @@ public sealed partial class MetalSilkGraphicsDevice
         buffer.ThrowIfDisposed();
         WaitIdle();
 
-        MTLBuffer readback = _device.NewBuffer(
-            checked((ulong)buffer.Size),
-            MTLResourceOptions.ResourceStorageModeShared);
-        if (readback.NativePtr == 0)
-        {
-            throw new InvalidOperationException("Could not create a Metal readback buffer.");
-        }
+        IDisposable? reservation = ReserveStagingAllocation(checked((ulong)buffer.Size));
+        MTLBuffer readback = default;
         MTLCommandBuffer commandBuffer = default;
         try
         {
+            readback = _device.NewBuffer(checked((ulong)buffer.Size), MTLResourceOptions.ResourceStorageModeShared);
+            if (readback.NativePtr == 0)
+            {
+                throw new InvalidOperationException("Could not create a Metal readback buffer.");
+            }
             commandBuffer = _queue.CommandBuffer();
             if (commandBuffer.NativePtr == 0)
             {
@@ -192,7 +192,11 @@ public sealed partial class MetalSilkGraphicsDevice
             {
                 commandBuffer.Dispose();
             }
-            readback.Dispose();
+            if (readback.NativePtr != 0)
+            {
+                readback.Dispose();
+            }
+            reservation?.Dispose();
         }
     }
 }

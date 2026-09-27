@@ -245,6 +245,7 @@ public sealed class SilkMeshRenderer :
     private ulong _unsupportedXRayRequests;
     private bool _disposed;
     private OpenUsdSilkPage.ReplaySnapshot? _rejectedPage;
+    private bool _rejectedPageUsesMaterials;
     private readonly Action _replayRejectedPage;
 
     /// <summary>Initializes a retained renderer using checked shaders for the device backend.</summary>
@@ -279,12 +280,25 @@ public sealed class SilkMeshRenderer :
         return options;
     }
 
+    /// <summary>Creates a renderer with shared managed material-pixel preparation admission.</summary>
+    public SilkMeshRenderer(
+        ISilkGraphicsDevice device,
+        SilkTextureResidencyOptions textureResidencyOptions,
+        SilkCpuTextureBudget cpuTextureBudget)
+        : this(device, GetShaderFormat(device),
+            textureResidencyOptions: RequireResidencyOptions(textureResidencyOptions),
+            cpuTextureBudget: cpuTextureBudget ?? throw new ArgumentNullException(nameof(cpuTextureBudget)))
+    {
+    }
+
     internal SilkMeshRenderer(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat,
         Func<string, bool, SilkDecodedImage>? imageDecoder = null,
         Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
-        SilkTextureResidencyOptions? textureResidencyOptions = null)
+        SilkTextureResidencyOptions? textureResidencyOptions = null,
+        SilkCpuTextureBudget? cpuTextureBudget = null,
+        Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
@@ -294,10 +308,14 @@ public sealed class SilkMeshRenderer :
         _selectionOutlineDevice = device as ISilkSelectionOutlineGraphicsDevice;
         Scene = new SilkSceneState();
         GpuResources = imageDecoder is null
-            ? textureResidencyOptions is null
+            ? cpuTextureBudget is not null
+                ? new SilkSceneGpuResources(device, textureResidencyOptions ?? SilkTextureResidencyOptions.Default,
+                    cpuTextureBudget)
+                : textureResidencyOptions is null
                 ? new SilkSceneGpuResources(device)
                 : new SilkSceneGpuResources(device, textureResidencyOptions)
-            : new SilkSceneGpuResources(device, imageDecoder, udimResolver, textureResidencyOptions);
+            : new SilkSceneGpuResources(device, imageDecoder, udimResolver, textureResidencyOptions,
+                cpuTextureBudget: cpuTextureBudget, ownedImageDecoder: ownedImageDecoder);
 
         ISilkPickGraphicsPipeline? pickPipeline = null;
         SilkPickReadbackRing? pickReadbacks = null;
@@ -650,7 +668,7 @@ public sealed class SilkMeshRenderer :
                 checked((int)colorTarget.Height),
                 timeCode,
                 CameraState.Default);
-            ApplyPage(page);
+            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -680,7 +698,7 @@ public sealed class SilkMeshRenderer :
                 checked((int)colorTarget.Height),
                 timeCode,
                 CameraState.Default);
-            ApplyPage(page);
+            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -700,7 +718,7 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
-            ApplyPage(page);
+            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -723,7 +741,7 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
-            ApplyPage(page);
+            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -813,7 +831,7 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
-            ApplyPage(page);
+            ApplyPage(page, options.UseSceneMaterials);
             return RenderCore(
                 colorTarget,
                 depthTarget,
@@ -1929,7 +1947,7 @@ public sealed class SilkMeshRenderer :
         uint VertexStride,
         string MaterialShaderIdentity);
 
-    internal void ApplyPage(OpenUsdSilkPage page)
+    internal void ApplyPage(OpenUsdSilkPage page, bool useSceneMaterials = true)
     {
         ArgumentNullException.ThrowIfNull(page);
         lock (_gate)
@@ -1946,7 +1964,8 @@ public sealed class SilkMeshRenderer :
             {
                 using SilkSceneState.PreparedPage scene = Scene.PreparePage(page);
                 staged = true;
-                using SilkSceneGpuResources.PreparedMeshUpdate? gpu = GpuResources.Prepare(Scene, scene.Delta);
+                using SilkSceneGpuResources.PreparedMeshUpdate? gpu =
+                    GpuResources.Prepare(Scene, scene.Delta, useSceneMaterials);
                 gpu?.Commit();
                 scene.Commit();
                 committed = true;
@@ -1955,7 +1974,7 @@ public sealed class SilkMeshRenderer :
                 {
                     _selectionResolutionDirty = true;
                 }
-                GpuResources.CompleteApply(Scene, scene.Delta);
+                GpuResources.CompleteApply(Scene, scene.Delta, gpu?.TexturesPrepared == true);
             }
             catch (Exception preparationFailure)
             {
@@ -1964,6 +1983,7 @@ public sealed class SilkMeshRenderer :
                     throw;
                 }
                 _rejectedPage = snapshot;
+                _rejectedPageUsesMaterials = useSceneMaterials;
                 try
                 {
                     page.RegisterReplay(_replayRejectedPage);
@@ -1988,7 +2008,7 @@ public sealed class SilkMeshRenderer :
             if (_rejectedPage is { } rejected)
             {
                 using OpenUsdSilkPage page = rejected.CreatePage();
-                ApplyPage(page);
+                ApplyPage(page, _rejectedPageUsesMaterials);
             }
         }
     }

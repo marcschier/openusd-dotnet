@@ -189,6 +189,7 @@ public sealed partial class MetalSilkGraphicsDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
         RegisterDependentObject();
         MTLBuffer buffer = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
@@ -196,6 +197,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 checked((ulong)SilkPickTokenEncoding.ByteSize),
                 _device.MinimumLinearTextureAlignmentForPixelFormat(
                     MTLPixelFormat.RGBA8Unorm));
+            reservation = ReserveStagingAllocation(rowPitch);
             buffer = _device.NewBuffer(
                 rowPitch,
                 MTLResourceOptions.ResourceStorageModeShared);
@@ -204,13 +206,15 @@ public sealed partial class MetalSilkGraphicsDevice
                 throw new InvalidOperationException(
                     "Could not create a shared Metal pick readback buffer.");
             }
-            success = true;
-            _ = Interlocked.Increment(ref _pickReadbackBufferCreationCount);
-            return new MetalSilkPickReadbackBuffer(
+            var result = new MetalSilkPickReadbackBuffer(
                 this,
                 buffer,
                 PickDeviceGeneration,
                 rowPitch);
+            result.OwnBufferReservation(reservation);
+            success = true;
+            _ = Interlocked.Increment(ref _pickReadbackBufferCreationCount);
+            return result;
         }
         finally
         {
@@ -221,6 +225,7 @@ public sealed partial class MetalSilkGraphicsDevice
                     buffer.Dispose();
                 }
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }

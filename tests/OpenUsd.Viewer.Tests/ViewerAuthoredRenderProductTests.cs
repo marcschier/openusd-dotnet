@@ -395,9 +395,12 @@ public sealed class ViewerAuthoredRenderProductTests
                 new IOException("session dispose failed")));
         try
         {
+            Required<TextBox>(window, "ProductOutputFolder").Text = Path.Combine(root, "does-not-exist");
             window.Show();
-            await WaitUntilAsync(() => Required<Button>(window, "ProductRenderButton").IsEnabled);
+            await WaitUntilAsync(() => Required<ComboBox>(window, "ProductSelector").ItemCount == 1);
+            await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
             Required<TextBox>(window, "ProductOutputFolder").Text = root;
+            await WaitUntilAsync(() => Required<Button>(window, "ProductRenderButton").IsEnabled);
             Required<Button>(window, "ProductRenderButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => Required<TextBlock>(window, "ProductStatus").Text?.Contains(
                 "Product render failed", StringComparison.Ordinal) == true);

@@ -96,9 +96,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
         ID3D12GraphicsCommandList* commands = null;
         ID3D12Fence* fence = null;
         void* mapped = null;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveStagingAllocation(PickReadbackRowPitch);
             var heapProperties = new HeapProperties(HeapType.Readback);
             var description = new ResourceDesc(
                 ResourceDimension.Buffer,
@@ -154,6 +156,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
                 commands,
                 fence,
                 PickDeviceGeneration);
+            result.OwnBufferReservation(reservation);
             Interlocked.Increment(ref _pickReadbackCreateCount);
             Interlocked.Increment(ref _pickCommandAllocatorCreateCount);
             Interlocked.Increment(ref _pickCommandListCreateCount);
@@ -175,6 +178,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice : ISilkPickingGraphic
                 Release(ref allocator);
                 Release(ref resource);
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -753,12 +757,12 @@ internal sealed unsafe class D3D12SilkPickSubmission(
     D3D12SilkPickReadbackBuffer readback,
     ulong fenceValue,
     IDisposable[] leases,
-    nint[] uploadResources)
+    D3D12StagingResource[] uploadResources)
     : ISilkGraphicsSubmission
 {
     private readonly object _gate = new();
     private IDisposable[]? _leases = leases;
-    private nint[]? _uploadResources = uploadResources;
+    private D3D12StagingResource[]? _uploadResources = uploadResources;
     private bool _completed;
     private bool _disposed;
 
@@ -861,15 +865,14 @@ internal sealed unsafe class D3D12SilkPickSubmission(
                 lease.Dispose();
             }
         }
-        nint[]? resources = Interlocked.Exchange(ref _uploadResources, null);
+        D3D12StagingResource[]? resources = Interlocked.Exchange(ref _uploadResources, null);
         if (resources is null)
         {
             return;
         }
-        foreach (nint resource in resources)
+        foreach (D3D12StagingResource resource in resources)
         {
-            ID3D12Resource* pointer = (ID3D12Resource*)resource;
-            D3D12SilkGraphicsDevice.Release(ref pointer);
+            resource.Dispose();
         }
     }
 }

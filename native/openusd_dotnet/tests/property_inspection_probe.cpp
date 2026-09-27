@@ -8,11 +8,23 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <locale>
 #include <stdexcept>
 #include <string>
 
 namespace
 {
+struct CommaDecimal final : std::numpunct<char>
+{
+    char do_decimal_point() const override { return ','; }
+};
+
+struct NumericLocaleScope
+{
+    std::locale previous = std::locale::global(std::locale(std::locale::classic(), new CommaDecimal));
+    ~NumericLocaleScope() { std::locale::global(previous); }
+};
+
 void Require(bool value, const char* message)
 {
     if (!value) throw std::runtime_error(message);
@@ -238,6 +250,11 @@ def Xform "Subject" (
     custom double referenced
     custom double animated.timeSamples = { 1: 2, 3: 6 }
     custom double3 precise = (1.25, 2.5, 3.75)
+    custom float tenth = 0.1
+    custom double preciseScalar = 1.2345678901234567
+    custom double small = 0.000001
+    custom float signedZero = -0.0
+    custom uint64 largest = 18446744073709551615
     custom int[] numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     custom float connected = 4
     custom float connected.connect = </Source.outputs:value>
@@ -259,8 +276,12 @@ def Scope "Destination" {}
             "Could not read initial stage serial.");
         Quotas(stage);
         Snapshot snapshot;
-        const auto status = openusd_stage_get_prim_property_snapshot(
-            stage, "/Subject", 1, 1, nullptr, &snapshot.owner, &snapshot.view, &error);
+        const auto status = [&]()
+        {
+            NumericLocaleScope locale;
+            return openusd_stage_get_prim_property_snapshot(
+                stage, "/Subject", 1, 1, nullptr, &snapshot.owner, &snapshot.view, &error);
+        }();
         uint64_t after = 0;
         Require(openusd_stage_get_change_serial(stage, &after, &error) == OPENUSD_STATUS_OK,
             "Could not read final stage serial.");
@@ -297,6 +318,12 @@ def Scope "Destination" {}
             precise.value.status == OPENUSD_PROPERTY_COMPLETE &&
             snapshot.String(precise.value.offset) == "(1.25, 2.5, 3.75)",
             "Double vector preview lost its native type or components.");
+        Require(snapshot.String(snapshot.Find("tenth").value.offset) == "0.1" &&
+            snapshot.String(snapshot.Find("preciseScalar").value.offset) == "1.2345678901234567" &&
+            snapshot.String(snapshot.Find("small").value.offset) == "0.000001" &&
+            snapshot.String(snapshot.Find("signedZero").value.offset) == "-0" &&
+            snapshot.String(snapshot.Find("largest").value.offset) == "18446744073709551615",
+            "Numeric previews lost canonical OpenUSD float formatting, precision, sign or locale independence.");
         const auto& numbers = snapshot.Find("numbers");
         Require((numbers.flags & 4) != 0 && numbers.value.total_count == 20 &&
             numbers.value.count == 16 && numbers.value.status == OPENUSD_PROPERTY_TRUNCATED &&

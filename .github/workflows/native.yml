@@ -9,6 +9,11 @@ on:
       - '.github/workflows/native.yml'
       - 'eng/openusd.lock.json'
       - 'eng/openusd.install.lock.json'
+      - 'eng/openusd-runtime-patches.lock.json'
+      - 'eng/patches/openusd/storm-aov-restoration.patch'
+      - 'eng/apply-openusd-source-patches.ps1'
+      - 'eng/sdk-runtime-patch-metadata.ps1'
+      - 'eng/test-sdk-runtime-patch-metadata.ps1'
       - 'eng/fetch-native.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
@@ -24,6 +29,9 @@ on:
       - 'eng/prepare-render-native.ps1'
       - 'eng/create-native-archive.ps1'
       - 'eng/run-native-fuzz.ps1'
+      - 'eng/run-windows-native-tests.ps1'
+      - 'eng/prepare-mesa-wgl-test-runtime.ps1'
+      - 'eng/mesa-wgl-test-runtime.lock.json'
       - 'eng/native-fuzz-lsan.supp'
       - 'native/**'
       - 'test-assets/fuzz-seeds/**'
@@ -34,6 +42,11 @@ on:
       - '.github/workflows/native.yml'
       - 'eng/openusd.lock.json'
       - 'eng/openusd.install.lock.json'
+      - 'eng/openusd-runtime-patches.lock.json'
+      - 'eng/patches/openusd/storm-aov-restoration.patch'
+      - 'eng/apply-openusd-source-patches.ps1'
+      - 'eng/sdk-runtime-patch-metadata.ps1'
+      - 'eng/test-sdk-runtime-patch-metadata.ps1'
       - 'eng/fetch-native.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
@@ -49,6 +62,9 @@ on:
       - 'eng/prepare-render-native.ps1'
       - 'eng/create-native-archive.ps1'
       - 'eng/run-native-fuzz.ps1'
+      - 'eng/run-windows-native-tests.ps1'
+      - 'eng/prepare-mesa-wgl-test-runtime.ps1'
+      - 'eng/mesa-wgl-test-runtime.lock.json'
       - 'eng/native-fuzz-lsan.supp'
       - 'native/**'
       - 'test-assets/fuzz-seeds/**'
@@ -130,7 +146,9 @@ jobs:
           ./eng/check-linux-native-prerequisites.ps1
       - name: Validate archive producer and consumer
         shell: pwsh
-        run: ./eng/test-render-native-archive.ps1
+        run: |
+          ./eng/test-sdk-runtime-patch-metadata.ps1
+          ./eng/test-render-native-archive.ps1
       - name: Validate native fuzz source contract
         shell: pwsh
         run: ./eng/run-native-fuzz.ps1 -SelfTest
@@ -246,17 +264,15 @@ jobs:
             -OutputRoot eng/shaders/out/checked-payload/osx-arm64
       - name: Run Windows native CTest
         if: runner.os == 'Windows'
+        shell: pwsh
         # This unfiltered run is the adapter-absent half of the MDL evidence:
         # the default configuration registers hdsilk_probe without
         # HDSILK_PROBE_MDL_ADAPTER, so it asserts the state every base package
         # ships in. --no-tests=error keeps it fail-closed -- a build tree that
         # configured no tests at all would otherwise report success.
-        run: >
-          ctest
-          --test-dir native/build/shim/win-x64
-          -C Release
-          --no-tests=error
-          --output-on-failure
+        # Hosted Windows has no WGL 4.5 driver. Stage the already-pinned Mesa
+        # runtime beside the Storm probes so AOV coverage executes rather than skips.
+        run: ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64
       - name: Build and test optional MDL adapter
         if: runner.os == 'Windows'
         shell: pwsh
@@ -285,7 +301,7 @@ jobs:
           $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.321.0).Path
           ./eng/build-physx-native.ps1 -Rid win-x64
           ./eng/build-physx-shim.ps1 -Rid win-x64
-          ctest --test-dir native/build/shim/win-x64-physx -C Release --output-on-failure
+          ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64-physx
       - name: Run PhysX shim managed coverage tests
         if: runner.os == 'Windows'
         shell: pwsh

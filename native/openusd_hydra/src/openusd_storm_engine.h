@@ -16,11 +16,41 @@ public:
     {
     }
 
+    PXR_NS::HdAovDescriptor GetColorOutput() const
+    {
+        if (_taskControllerSceneIndex)
+            return _taskControllerSceneIndex->GetRenderOutputSettings(PXR_NS::HdAovTokens->color);
+        if (_taskController)
+            return _taskController->GetRenderOutputSettings(PXR_NS::HdAovTokens->color);
+        return {};
+    }
+
+    bool RestorePresentation(const PXR_NS::HdAovDescriptor& color)
+    {
+        if (color.format == PXR_NS::HdFormatInvalid)
+        {
+            return SetCaptureOutputs({}, false);
+        }
+        if (!SetCaptureOutputs({PXR_NS::HdAovTokens->color}, color.multiSampled))
+        {
+            return false;
+        }
+        if (_taskControllerSceneIndex)
+            _taskControllerSceneIndex->SetRenderOutputSettings(PXR_NS::HdAovTokens->color, color);
+        else if (_taskController)
+            _taskController->SetRenderOutputSettings(PXR_NS::HdAovTokens->color, color);
+        return true;
+    }
+
     bool SetCaptureOutputs(const PXR_NS::TfTokenVector& outputs, bool multisampled)
     {
         if (!SetRendererAovs(outputs))
         {
             return false;
+        }
+        if (outputs.empty())
+        {
+            return true;
         }
         // OpenUSD 26.05 disables viewport AOV selection for multiple outputs.
         // Its protected controller extension seam lets this project preserve

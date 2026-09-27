@@ -24,16 +24,15 @@ public interface ISilkBufferAdmissionDevice
 /// </remarks>
 public sealed class SilkGpuBufferBudget
 {
-    private readonly object _gate = new();
-    private ulong _reservedBytes;
-    private ulong _peakBytes;
-    private ulong _reservationCount;
+    private readonly SilkByteReservationPool _pool;
 
     /// <summary>Creates a positive immutable logical-byte ceiling.</summary>
     public SilkGpuBufferBudget(ulong maximumBytes)
     {
         ArgumentOutOfRangeException.ThrowIfZero(maximumBytes);
         MaximumBytes = maximumBytes;
+        _pool = new(maximumBytes, static (requested, reserved, maximum) =>
+            new SilkGpuBufferBudgetExceededException(requested, reserved, maximum));
     }
 
     /// <summary>Gets the maximum concurrent buffer payload reservations.</summary>
@@ -44,10 +43,8 @@ public sealed class SilkGpuBufferBudget
     {
         get
         {
-            lock (_gate)
-            {
-                return new(MaximumBytes, _reservedBytes, _peakBytes, _reservationCount);
-            }
+            (ulong reserved, ulong peak, ulong count) = _pool.Snapshot;
+            return new(MaximumBytes, reserved, peak, count);
         }
     }
 
@@ -78,37 +75,7 @@ public sealed class SilkGpuBufferBudget
         return new SilkGpuBufferBudget(value);
     }
 
-    internal IDisposable Reserve(ulong bytes)
-    {
-        ArgumentOutOfRangeException.ThrowIfZero(bytes);
-        var reservation = new Reservation(this, bytes);
-        lock (_gate)
-        {
-            if (bytes > MaximumBytes - _reservedBytes)
-            {
-                throw new SilkGpuBufferBudgetExceededException(bytes, _reservedBytes, MaximumBytes);
-            }
-            _reservedBytes = checked(_reservedBytes + bytes);
-            _peakBytes = Math.Max(_peakBytes, _reservedBytes);
-            _reservationCount++;
-        }
-        return reservation;
-    }
-
-    private void Release(ulong bytes)
-    {
-        lock (_gate)
-        {
-            _reservedBytes -= bytes;
-            _reservationCount--;
-        }
-    }
-
-    private sealed class Reservation(SilkGpuBufferBudget owner, ulong bytes) : IDisposable
-    {
-        private SilkGpuBufferBudget? _owner = owner;
-        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(bytes);
-    }
+    internal IDisposable Reserve(ulong bytes) => _pool.Reserve(bytes);
 }
 
 /// <summary>Immutable shared buffer-payload reservation accounting, not physical VRAM measurements.</summary>

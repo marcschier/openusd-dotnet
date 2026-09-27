@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "2095fafafd033fa23386d7ec6d58c7cc33974518",
+  "accessorVersion": 1,
+  "patches": [
+    {
+      "id": "storm-aov-restoration",
+      "path": "eng\\patches\\openusd\\storm-aov-restoration.patch",
+      "sha256": "2B3BE96FAAD822BF0D29752020864F7E07FF7EDA2630EECF5325ECDE6EC20F9F",
+      "files": [
+        {
+          "path": "pxr\\imaging\\hdx\\taskController.cpp",
+          "beforeSha256": "D445E46346E4D4BCAD08DF1AC9F1E2F530F4BAF9B70DE1DAC8310AB72F171478",
+          "afterSha256": "D5FFC14AC942AEA0293CF636AFF8D71A673CD688D4D1318067E8BD9C019C1BCE"
+        },
+        {
+          "path": "pxr\\imaging\\hdx\\taskControllerSceneIndex.cpp",
+          "beforeSha256": "18FBBBEDC066B0BC58904D043BFE8943DC10B43B1B9D1BE7B29BDC8FFD560B63",
+          "afterSha256": "E1446BF8EE32BCC6A118C998B3D90FCCE062F3A906B8D30BFBF4AE38DF3F5DBF"
+        },
+        {
+          "path": "pxr\\imaging\\hdx\\aovInputTask.cpp",
+          "beforeSha256": "C0BBE925F3E00C69611D562DBD51802D65A60AFC00664FEBBE2BDE315199A73F",
+          "afterSha256": "B3F3119533301B1BF6CF328E1655BF3EA8C4F5AF4D64A8B29088F034E6420ABF"
+        }
+      ]
+    }
+  ]
+}

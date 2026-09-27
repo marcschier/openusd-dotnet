@@ -28,6 +28,8 @@ PINNED_INPUTS = [
     "global.json",
     "Directory.Packages.props",
     "eng/openusd.install.lock.json",
+    "eng/openusd-runtime-patches.lock.json",
+    "eng/patches/openusd/storm-aov-restoration.patch",
     "eng/cesium.lock.json",
     "eng/physx.lock.json",
     "eng/mdl.lock.json",

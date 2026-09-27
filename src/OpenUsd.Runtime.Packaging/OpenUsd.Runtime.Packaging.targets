@@ -139,6 +139,8 @@
     <None Include="$(OpenUsdInstallRoot)/.openusd-storage-admission.json"
           Condition="Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"
           Pack="true" PackagePath="build/$(PackageId).storage-admission.json" />
+    <None Include="$(OpenUsdInstallRoot)/.openusd-runtime-patches.json"
+          Pack="true" PackagePath="build/$(PackageId).runtime-patches.json" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(RuntimePackageKind)' == 'Imaging'">
@@ -176,6 +178,10 @@
   </ItemGroup>
 
   <Target Name="ValidateOpenUsdRuntimePackageInputs" BeforeTargets="GenerateNuspec">
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(OpenUsdInstallRoot)/.openusd-runtime-patches.json')"
+           Text="The Core SDK requires verified runtime-patch provenance before packing. Rebuild the pinned SDK." />
+    <Exec Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/.openusd-runtime-patches.json')"
+          Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)../../eng/sdk-runtime-patch-metadata.ps1&quot; -Operation Verify -SdkRoot &quot;$(OpenUsdInstallRoot)&quot; -Rid &quot;$(RuntimePackageRid)&quot;" />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and !Exists('%(_OpenUsdExrCoreDependency.Identity)')"
            Text="The Core EXR output dependency is missing: '%(_OpenUsdExrCoreDependency.Identity)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/include/pxr/usd/sdf/storageAdmission.h') and !Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"

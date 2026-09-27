@@ -648,6 +648,40 @@ public sealed partial class RuntimePackageTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CorePackagingRefusesMissingOrChangedSdkRuntimeProvenance(bool changedBinary)
+    {
+        string repository = FindRepositoryRoot();
+        string work = CreateWorkRoot(repository);
+        try
+        {
+            (string install, string shim, string vulkan) = CreateSyntheticWindowsInstall(work);
+            string packages = Path.Combine(work, "packages");
+            Directory.CreateDirectory(packages);
+            if (changedBinary)
+            {
+                await File.AppendAllTextAsync(Path.Combine(install, "lib", "usd_ms.dll"), "changed");
+            }
+            else
+            {
+                File.Delete(Path.Combine(install, ".openusd-runtime-patches.json"));
+            }
+            InvalidOperationException? failure = await Assert.That(async () => await PackAsync(
+                repository, "OpenUsd.Runtime.Core.win-x64", install, shim, vulkan, packages))
+                .Throws<InvalidOperationException>();
+            await Assert.That(failure!.Message).Contains(changedBinary
+                ? "SDK runtime-patch provenance mismatch"
+                : "requires verified runtime-patch provenance");
+            await Assert.That(Directory.EnumerateFiles(packages, "*.nupkg")).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task WindowsPackagesPreserveLayoutAndPublishFromACleanFeed()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -678,6 +712,7 @@ public sealed partial class RuntimePackageTests
             await AssertPackageEntriesAsync(
                 corePackage.Path,
                 [
+                    "build/OpenUsd.Runtime.Core.win-x64.runtime-patches.json",
                     "buildTransitive/OpenUsd.Runtime.Core.win-x64.targets",
                     "runtimes/win-x64/native/OpenEXR-3_1.dll",
                     "runtimes/win-x64/native/Iex-3_1.dll",
@@ -2435,6 +2470,20 @@ public sealed partial class RuntimePackageTests
             await File.ReadAllTextAsync(metadataPath));
         JsonElement root = metadata.RootElement;
         await Assert.That(root.GetProperty("schemaVersion").GetInt32()).IsEqualTo(3);
+        await Assert.That(root.GetProperty("runtimePatchLockSha256").GetString())
+            .IsEqualTo(GetFileSha256(Path.Combine(repositoryRoot, "eng", "openusd-runtime-patches.lock.json")));
+        using JsonDocument runtimePatches = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(inputs.InstallRoot, ".openusd-runtime-patches.json")));
+        await Assert.That(runtimePatches.RootElement.GetProperty("patchLockSha256").GetString())
+            .IsEqualTo(root.GetProperty("runtimePatchLockSha256").GetString());
+        string sdkLibrary = inputs.Platform.Rid switch
+        {
+            "win-x64" => "usd_ms.dll",
+            "linux-x64" => "libusd_ms.so",
+            _ => "libusd_ms.dylib"
+        };
+        await Assert.That(runtimePatches.RootElement.GetProperty("librarySha256").GetString())
+            .IsEqualTo(GetFileSha256(Path.Combine(inputs.InstallRoot, "lib", sdkLibrary)));
         await Assert.That(root.GetProperty("shimDataAbiVersion").GetUInt32())
             .IsEqualTo(RequiredDataAbiVersion);
         await Assert.That(root.GetProperty("shimDataCapabilities").GetUInt64())
@@ -3787,6 +3836,9 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
             await Assert.That(result.Output).Contains("GPU_BUFFER_ADMISSION=true");
+            await Assert.That(result.Output).Contains("GPU_TEXTURE_ADMISSION=true");
+            await Assert.That(result.Output).Contains("GPU_STAGING_ADMISSION=true");
+            await Assert.That(result.Output).Contains("CPU_TEXTURE_ADMISSION=true");
             await Assert.That(result.Output).Contains("NATIVE_AOT=true");
             await Assert.That(result.Output).Contains("FIRST_PAGE_FRAMES=1");
             await Assert.That(result.Output).Contains("FIRST_PAGE_UPSERTS=");
@@ -7399,6 +7451,80 @@ public sealed partial class RuntimePackageTests
                     }
 
                     using ISilkGraphicsDevice device = __DEVICE_FACTORY__;
+                    var cpuTextureBudget = new SilkCpuTextureBudget(8_388_608);
+                    cpuTextureBudget.ConfigureDevice(device);
+                    var textureBudget = new SilkGpuTextureBudget(4_194_304);
+                    textureBudget.ConfigureDevice(device);
+                    using (ISilkGraphicsTexture pressure = device.CreateTexture2D(1024, 1024))
+                    {
+                        bool refused = false;
+                        try
+                        {
+                            using ISilkGraphicsTexture overLimit = device.CreateTexture2D(1, 1);
+                        }
+                        catch (SilkGpuTextureBudgetExceededException error) when (
+                            error.RequestedBytes == 4 && error.ReservedBytes == 4_194_304)
+                        {
+                            refused = true;
+                        }
+                        if (!refused || textureBudget.Usage.ReservedBytes != 4_194_304)
+                        {
+                            throw new InvalidOperationException("The packaged device ignored texture admission.");
+                        }
+                    }
+                    if (textureBudget.Usage.ReservedBytes != 0)
+                    {
+                        throw new InvalidOperationException("The packaged device leaked texture reservations.");
+                    }
+                    Console.WriteLine("GPU_TEXTURE_ADMISSION=true");
+                    var stagingBudget = new SilkGpuStagingBudget(4_194_304);
+                    stagingBudget.ConfigureDevice(device);
+                    using (ISilkGraphicsTexture uploadTarget = device.CreateTexture2D(new SilkTextureDescriptor(
+                        1024, 1024, SilkTextureFormat.Rgba8Unorm,
+                        SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination)))
+                    using (ISilkGraphicsCommandList uploadCommands = device.CreateCommandList())
+                    {
+                        byte[] upload = new byte[4_194_304];
+                        uploadCommands.UploadTexture(uploadTarget, upload);
+                        uploadCommands.UploadTexture(uploadTarget, upload);
+                        bool cpuRefused = false;
+                        try
+                        {
+                            uploadCommands.UploadTexture(uploadTarget, upload);
+                        }
+                        catch (SilkCpuTextureBudgetExceededException error) when (
+                            error.RequestedBytes == 4_194_304 && error.ReservedBytes == 8_388_608)
+                        {
+                            cpuRefused = true;
+                        }
+                        if (!cpuRefused || cpuTextureBudget.Usage.ReservedBytes != 8_388_608)
+                        {
+                            throw new InvalidOperationException("The packaged device ignored CPU copy admission.");
+                        }
+                        bool refused = false;
+                        try
+                        {
+                            using ISilkGraphicsSubmission submission = device.Submit(uploadCommands);
+                            submission.Wait();
+                        }
+                        catch (SilkGpuStagingBudgetExceededException error) when (
+                            error.RequestedBytes == 4_194_304 && error.ReservedBytes == 4_194_304)
+                        {
+                            refused = true;
+                        }
+                        if (!refused || stagingBudget.Usage.ReservedBytes != 0 ||
+                            stagingBudget.Usage.PeakReservedBytes != 4_194_304)
+                        {
+                            throw new InvalidOperationException("The packaged device ignored staging admission.");
+                        }
+                    }
+                    Console.WriteLine("GPU_STAGING_ADMISSION=true");
+                    if (cpuTextureBudget.Usage.ReservedBytes != 0)
+                    {
+                        throw new InvalidOperationException(
+                            "The packaged device leaked CPU command-copy reservations.");
+                    }
+                    Console.WriteLine("CPU_TEXTURE_ADMISSION=true");
                     var bufferBudget = new SilkGpuBufferBudget(1_048_576);
                     bufferBudget.ConfigureDevice(device);
                     using (ISilkGraphicsBuffer pressure = device.CreateBuffer(
@@ -8561,6 +8687,7 @@ public sealed partial class RuntimePackageTests
             "bin",
             "vulkan-1.dll");
         WriteTestFile(vulkanRuntimeLibrary);
+        WriteSyntheticRuntimePatchMetadata(installRoot, "win-x64", "usd_ms.dll");
         return (installRoot, shimRoot, vulkanRuntimeLibrary);
     }
 
@@ -8804,7 +8931,25 @@ public sealed partial class RuntimePackageTests
         WriteTestFile(
             Path.Combine(shimRoot, "plugin", "usd", "hdSilk", "resources", "plugInfo.json"),
             CreateSyntheticHdSilkPlugInfo("installed-source-path"));
+        WriteSyntheticRuntimePatchMetadata(installRoot, rid, $"libusd_ms{extension}");
         return (installRoot, shimRoot);
+    }
+
+    private static void WriteSyntheticRuntimePatchMetadata(string installRoot, string rid, string library)
+    {
+        string pinPath = Path.Combine(FindRepositoryRoot(), "eng", "openusd-runtime-patches.lock.json");
+        using JsonDocument pin = JsonDocument.Parse(File.ReadAllText(pinPath));
+        var metadata = new
+        {
+            schemaVersion = 1,
+            rid,
+            sourceCommit = pin.RootElement.GetProperty("sourceCommit").GetString(),
+            patchLockSha256 = GetFileSha256(pinPath),
+            libraryPath = "lib\\" + library,
+            librarySha256 = GetFileSha256(Path.Combine(installRoot, "lib", library))
+        };
+        WriteTestFile(Path.Combine(installRoot, ".openusd-runtime-patches.json"),
+            JsonSerializer.Serialize(metadata, IndentedJsonOptions));
     }
 
     private static (string InstallRoot, string ShimRoot, string VulkanRuntimeLibrary)

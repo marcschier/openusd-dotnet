@@ -447,6 +447,62 @@ is a thread-local `ArResolverContextBinder`, so a continuation resuming on anoth
 both resolve without the binding and fail to release it; the tests capture results inside the bound
 scope and assert them after it.
 
+## Texture preparation
+
+`CpuBudgetRefusesBeforeAllocatingPixelsAndHoldsCreditUntilOwnerDisposal` uses the native
+HDR decoder and a one-byte-below ceiling; it requires refusal without allocating the
+pixel payload, exact admitted pixels and charge release on disposal. Material tests
+cover base/mip and tile/atlas simultaneous ownership. `SilkCpuTextureAdmissionTests`
+checks actual D3D12/Vulkan command copies and their independent native staging lifetime.
+
+`MaterialPageRefusalRetainsPublishedTexturesAndMeshesUntilSuccessfulRetry` covers GPU
+texture, CPU mip and upload refusals with old material/mesh identities and pending
+retirements preserved. `MaterialPreparationRefusalPreservesPixelsAndReplaysNativeRetirements`
+changes a real USD material and removes a prim, then checks unchanged old rendered pixels,
+typed repeated refusal before native advancement, successful ordered replay and changed
+new pixels on D3D12/Vulkan. These tests prove material preparation, not rollback of every
+environment/shadow/frame resource allocated later in rendering.
+`QuietPageHotReloadRetainsThePreviousTextureWhenReplacementIsRefused` exercises a real
+changed file with no USD material delta, including retained binding during refusal and
+the later successful cache replacement.
+
+`SilkGpuStagingAdmissionTests` exercises actual padded uploads, mip chains, volume slices,
+readback refusal, persistent picking owners, failed multi-upload rollback and retry on
+D3D12/Vulkan. A 4x4 RGBA8 upload charges 784 native transfer bytes on D3D12 and 64 on
+Vulkan; three mip levels charge 1540 and 84 respectively. These are logical transfer
+footprints, not native allocation sizes. The retained D3D12 readback-owner case requires
+credit to remain withheld until teardown releases the record. The package-only NativeAOT
+consumer requires `GPU_STAGING_ADMISSION=true` and verifies refused duplicate uploads
+return all pending staging reservations.
+
+`SilkGpuTextureBudgetTests` covers every mip/slice, full-width accounting, overflow,
+shared ownership, concurrent requests, creation failure, immutable configuration,
+submission-held disposal and withheld credit on native release failure.
+`SilkGpuTextureAdmissionTests` runs actual D3D12/Vulkan texture creation and submissions,
+including an independent buffer pool and late-configuration refusal. These fixtures
+are isolated like the existing real-device suites. The clean-feed imaging consumer
+requires `GPU_TEXTURE_ADMISSION=true`, exact-full allocation/refusal, and zero texture
+charges after release. Metal allocation paths compile on Windows; runtime qualification
+still requires macOS.
+
+`TextureAdmissionRefusalCannotDowngradeTheEnvironmentAndCanBeRetried` injects the typed
+texture refusal at each environment allocation, requires propagation instead of an
+ambient fallback, checks cleanup, and retries successfully.
+
+`SilkNativeImageDecoderTests` runs the real native image decoder when
+`OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1` is set. It checks raw and linearized HDR
+values, alpha, dimensions, exact pixel storage and source preservation, plus retry after
+a missing source is created. The warmed 256x256 and 512x512 allocation cases allow one
+RGBA32F payload plus 16 KiB of managed bookkeeping, not a second full-size pixel array.
+The allocation interval is synchronous and excludes fixture creation and assertions;
+it measures managed allocations, not native Hio/codec scratch or total process memory.
+
+`SilkMaterialCommandTests.UdimAtlasCellLimitIsCheckedBeforeDecodingTiles` checks valid
+255/256-cell layouts and rejected 258/900-cell layouts. Rejected layouts invoke no
+decoder, still report the existing diagnostic and authored fallback, and reuse that
+fallback without repeated decode attempts. Accepted layouts keep their atlas dimensions
+and metadata. These are preparation safeguards, not shared texture/staging admission.
+
 ## GPU page publication
 
 `SilkGpuBufferBudgetTests` checks exact and full-width thresholds, refusal before a
@@ -473,6 +529,18 @@ this Windows host reproduced a native access violation in `d3d10warp.dll`; its c
 remains unresolved, and that overlap is not qualified by serial fixture execution.
 Matching native symbols place the fault in the background pixel-shader optimizer
 (`PixelJitProgram::ClassifyVars`), not a buffer-admission stack.
+
+Windows native CI uses `eng\run-windows-native-tests.ps1` to provision the already-pinned
+Mesa WGL runtime and verify its OpenGL 4.5 compatibility profile before CTest. The runner
+places hash-verified copies beside discovered Storm probe executables, restores its
+environment and deletes only copies it created, including after a failing run. A different
+existing OpenGL DLL is refused, not overwritten. No AOV pixel or resize assertions are
+skipped by this runner. AOV capture and resize execute both the scene-index and legacy
+Storm controllers. The capture probe requires identical pixels before capture, in its
+RGBA companion and in a subsequent ordinary frame. The pinned SDK runtime patch
+preserves empty output lists and clears stale AOV task-context handles before early
+return; the shim restores the prior presentation mode. An unpatched SDK fails this
+pixel test and lacks the required `.openusd-runtime-patches.json` provenance.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It

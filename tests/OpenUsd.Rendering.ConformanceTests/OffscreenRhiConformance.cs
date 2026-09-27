@@ -113,8 +113,10 @@ internal static class OffscreenRhiConformance
     }
 
     internal static async Task SubmittedTextureSurvivesEarlyDispose(
-        ISilkGraphicsDevice device)
+        ISilkGraphicsDevice device,
+        SilkGpuTextureBudget? budget = null)
     {
+        budget?.ConfigureDevice(device);
         ISilkGraphicsTexture texture = device.CreateTexture2D(64, 64);
         ISilkGraphicsCommandList commands = device.CreateCommandList();
         commands.ClearColor(texture, new SilkColor(0, 1, 0, 1));
@@ -122,6 +124,11 @@ internal static class OffscreenRhiConformance
 
         commands.Dispose();
         texture.Dispose();
+        if (budget is not null)
+        {
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16384ul);
+            await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        }
 
         byte[] destination = new byte[64 * 64 * 4];
         await Assert.That(
@@ -145,6 +152,11 @@ internal static class OffscreenRhiConformance
         await Assert.That(submission.IsCompleted).IsTrue();
         Assert.Throws<InvalidOperationException>(device.Dispose);
         submission.Dispose();
+        if (budget is not null)
+        {
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+        }
 
         using ISilkGraphicsTexture replacement = device.CreateTexture2D(1, 1);
     }

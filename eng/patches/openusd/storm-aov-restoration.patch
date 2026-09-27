@@ -1,0 +1,63 @@
+--- a/pxr/imaging/hdx/taskController.cpp
++++ b/pxr/imaging/hdx/taskController.cpp
+@@ -989,6 +989,10 @@
+ _ResolvedRenderOutputs(const TfTokenVector &aovNames,
+                        const bool isForStorm)
+ {
++    if (aovNames.empty()) {
++        return {};
++    }
++
+     bool hasColor = false;
+     bool hasDepth = false;
+     bool hasPrimId = false;
+--- a/pxr/imaging/hdx/taskControllerSceneIndex.cpp
++++ b/pxr/imaging/hdx/taskControllerSceneIndex.cpp
+@@ -1395,6 +1395,10 @@
+ _ResolvedRenderOutputs(const TfTokenVector &aovNames,
+                        const bool isForStorm)
+ {
++    if (aovNames.empty()) {
++        return {};
++    }
++
+     bool hasColor = false;
+     bool hasDepth = false;
+     bool hasPrimId = false;
+@@ -1586,6 +1590,7 @@
+         params->aovBindings = aovBindings;
+         if (taskPath == volumeId) {
+             // The Storm Volume tasks reads the depth AOV.
++            params->aovInputBindings.clear();
+             if (depthAovBindingIndex >= 0) {
+                 params->aovInputBindings = { aovBindings[depthAovBindingIndex] };
+             }
+--- a/pxr/imaging/hdx/aovInputTask.cpp
++++ b/pxr/imaging/hdx/aovInputTask.cpp
+@@ -113,6 +113,12 @@
+     HD_TRACE_FUNCTION();
+     HF_MALLOC_TAG_FUNCTION();
+ 
++    // Clear last frame's handles even when AOV input has been disabled.
++    ctx->erase(HdAovTokens->color);
++    ctx->erase(HdAovTokens->depth);
++    ctx->erase(HdxAovTokens->colorIntermediate);
++    ctx->erase(HdxAovTokens->depthIntermediate);
++
+     // This task requires an aov buffer to have been set and is immediately
+     // converged if there is no aov buffer.
+     if (!_aovBuffer) {
+@@ -131,13 +137,6 @@
+     if (_depthBuffer) {
+         _depthBuffer->Resolve();
+     }
+-
+-    // Start by clearing aov texture handles from task context.
+-    // These are last frames textures and we may be visualizing different aovs.
+-    ctx->erase(HdAovTokens->color);
+-    ctx->erase(HdAovTokens->depth);
+-    ctx->erase(HdxAovTokens->colorIntermediate);
+-    ctx->erase(HdxAovTokens->depthIntermediate);
+ 
+     // If the aov is already backed by a HgiTexture we skip creating a new
+     // GPU HgiTexture for it and place it directly on the shared task context

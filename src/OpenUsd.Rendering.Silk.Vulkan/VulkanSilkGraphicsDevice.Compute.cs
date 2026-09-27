@@ -205,13 +205,15 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         CommandPool pool = default;
         CommandBuffer commands = default;
         Fence fence = default;
+        IDisposable? reservation = null;
         try
         {
             CreateHostBuffer(
                 checked((ulong)buffer.Size),
                 BufferUsageFlags.TransferDstBit,
                 out readback,
-                out memory);
+                out memory,
+                out reservation);
             CreateCommandBuffer(out pool, out commands);
             var barrier = new BufferMemoryBarrier
             {
@@ -278,6 +280,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             {
                 _api.FreeMemory(_device, memory, null);
             }
+            reservation?.Dispose();
         }
     }
 }

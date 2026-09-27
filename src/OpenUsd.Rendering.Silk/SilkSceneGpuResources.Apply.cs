@@ -6,7 +6,8 @@ public sealed partial class SilkSceneGpuResources
 {
     private PreparedMeshUpdate? _preparing;
 
-    internal PreparedMeshUpdate? Prepare(SilkSceneState scene, SilkSceneDelta delta)
+    internal PreparedMeshUpdate? Prepare(
+        SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures = true)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scene);
@@ -14,7 +15,8 @@ public sealed partial class SilkSceneGpuResources
         {
             throw new InvalidOperationException("A GPU scene update is already being prepared.");
         }
-        if (delta.MeshUpserts == 0 && delta.MeshRemovals == 0 && delta.MaterialChanges == 0)
+        if (delta.MeshUpserts == 0 && delta.MeshRemovals == 0 && delta.MaterialChanges == 0 &&
+            !(prepareMaterialTextures && RequiresTexturePreparation && HasChangedMaterialTextureDependencies()))
         {
             return null;
         }
@@ -22,7 +24,7 @@ public sealed partial class SilkSceneGpuResources
         _preparing = prepared;
         try
         {
-            prepared.Prepare(scene, delta);
+            prepared.Prepare(scene, delta, prepareMaterialTextures);
             return prepared;
         }
         catch (Exception preparationFailure)
@@ -53,6 +55,7 @@ public sealed partial class SilkSceneGpuResources
         private readonly ulong _imageBytes;
         private readonly ulong _imageClock;
         private readonly bool _deformationDisabled;
+        private PreparedTextureUpdate? _textures;
         private bool _committed;
         private bool _disposed;
 
@@ -67,8 +70,13 @@ public sealed partial class SilkSceneGpuResources
             _deformationDisabled = owner._deformationDisabled;
         }
 
-        internal void Prepare(SilkSceneState scene, SilkSceneDelta delta)
+        internal void Prepare(SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures)
         {
+            if (prepareMaterialTextures && _owner.RequiresTexturePreparation)
+            {
+                _textures = new PreparedTextureUpdate(_owner);
+                _textures.Prepare(scene, delta);
+            }
             var changedMaterials = new HashSet<string>(delta.ChangedMaterialPaths.ToArray(), StringComparer.Ordinal);
             var removed = new HashSet<ulong>(delta.RemovedMeshIds.ToArray());
             var desired = new Dictionary<ulong, SilkMeshData>();
@@ -202,9 +210,12 @@ public sealed partial class SilkSceneGpuResources
                 _owner._displacementVerdictRevision++;
             }
             _owner.Revision++;
+            _textures?.Commit();
             _owner._preparing = null;
             _committed = true;
         }
+
+        internal bool TexturesPrepared => _textures is not null;
 
         public void Dispose()
         {
@@ -228,6 +239,14 @@ public sealed partial class SilkSceneGpuResources
             foreach (SilkMeshGpuDeformation.PreparedPose pose in _poses.Values)
             {
                 pose.Dispose();
+            }
+            try
+            {
+                _textures?.Dispose();
+            }
+            catch (Exception error)
+            {
+                (failures ??= []).Add(error);
             }
             if (!_committed)
             {

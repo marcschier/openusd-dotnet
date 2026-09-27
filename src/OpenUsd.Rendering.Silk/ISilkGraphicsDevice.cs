@@ -251,6 +251,30 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
     private int _submissionLeaseCount;
     private bool _disposeRequested;
     private bool _nativeReleased;
+    private IDisposable? _textureReservation;
+
+    internal void OwnTextureReservation(IDisposable? reservation)
+    {
+        if (reservation is null)
+        {
+            return;
+        }
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeRequested || _nativeReleased, this);
+            if (_textureReservation is not null)
+            {
+                throw new InvalidOperationException("A texture already owns its allocation reservation.");
+            }
+            _textureReservation = reservation;
+        }
+    }
+
+    private void ReleaseNativeAndReservation()
+    {
+        ReleaseNative();
+        Interlocked.Exchange(ref _textureReservation, null)?.Dispose();
+    }
 
     /// <summary>Initializes a texture wrapper.</summary>
     protected SilkGraphicsTextureBase(uint width, uint height, SilkTextureFormat format)
@@ -316,7 +340,7 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
 
         if (releaseNative)
         {
-            ReleaseNative();
+            ReleaseNativeAndReservation();
         }
     }
 
@@ -400,7 +424,7 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
 
         if (releaseNative)
         {
-            ReleaseNative();
+            ReleaseNativeAndReservation();
         }
     }
 
@@ -428,6 +452,148 @@ public abstract class SilkGraphicsDeviceLifetimeBase : ISilkBufferAdmissionDevic
     private bool _disposeCompleted;
     private bool _bufferCreationStarted;
     private SilkGpuBufferBudget? _gpuBufferBudget;
+    private bool _textureCreationStarted;
+    private SilkGpuTextureBudget? _gpuTextureBudget;
+    private bool _stagingCreationStarted;
+    private SilkGpuStagingBudget? _gpuStagingBudget;
+    private bool _cpuTextureStarted;
+    private SilkCpuTextureBudget? _cpuTextureBudget;
+
+    /// <summary>Gets the shared managed pixel-copy budget.</summary>
+    public SilkCpuTextureBudget? CpuTextureBudget
+    {
+        get
+        {
+            lock (_lifetimeGate)
+            {
+                return _cpuTextureBudget;
+            }
+        }
+    }
+
+    /// <summary>Sets the managed pixel budget before scene resources or command copies are created.</summary>
+    public void ConfigureCpuTextureBudget(SilkCpuTextureBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            if (ReferenceEquals(_cpuTextureBudget, budget))
+            {
+                return;
+            }
+            if (_cpuTextureBudget is not null || _cpuTextureStarted)
+            {
+                throw new InvalidOperationException("A CPU texture budget must be configured before pixel ownership.");
+            }
+            _cpuTextureBudget = budget;
+        }
+    }
+
+    internal SilkCpuTextureBudget? GetCpuTextureBudgetForAllocation()
+    {
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            _cpuTextureStarted = true;
+            return _cpuTextureBudget;
+        }
+    }
+
+    internal byte[] CopyTextureCommandData(ReadOnlySpan<byte> source, ref List<IDisposable>? owners)
+    {
+        SilkCpuTextureBudget? budget = GetCpuTextureBudgetForAllocation();
+        return budget is null ? source.ToArray() : budget.Copy(source, ref owners);
+    }
+
+    /// <summary>Gets the shared internal transfer-buffer budget, or null for unbounded allocation.</summary>
+    public SilkGpuStagingBudget? GpuStagingBudget
+    {
+        get
+        {
+            lock (_lifetimeGate)
+            {
+                return _gpuStagingBudget;
+            }
+        }
+    }
+
+    /// <summary>Sets immutable transfer-buffer admission before its first allocation attempt.</summary>
+    public void ConfigureStagingBudget(SilkGpuStagingBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            if (ReferenceEquals(_gpuStagingBudget, budget))
+            {
+                return;
+            }
+            if (_gpuStagingBudget is not null || _stagingCreationStarted)
+            {
+                throw new InvalidOperationException("A GPU staging budget must be configured once before allocation.");
+            }
+            _gpuStagingBudget = budget;
+        }
+    }
+
+    /// <summary>Reserves internal transfer payload bytes until final native release.</summary>
+    protected IDisposable? ReserveStagingAllocation(ulong bytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(bytes);
+        SilkGpuStagingBudget? budget;
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            _stagingCreationStarted = true;
+            budget = _gpuStagingBudget;
+        }
+        return budget?.Reserve(bytes);
+    }
+
+    /// <summary>Gets the shared owned-texture payload budget, or null for unbounded allocation.</summary>
+    public SilkGpuTextureBudget? GpuTextureBudget
+    {
+        get
+        {
+            lock (_lifetimeGate)
+            {
+                return _gpuTextureBudget;
+            }
+        }
+    }
+
+    /// <summary>Sets the immutable shared budget before any owned texture creation is attempted.</summary>
+    public void ConfigureTextureBudget(SilkGpuTextureBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            if (ReferenceEquals(_gpuTextureBudget, budget))
+            {
+                return;
+            }
+            if (_gpuTextureBudget is not null || _textureCreationStarted)
+            {
+                throw new InvalidOperationException("A GPU texture budget must be configured once before allocation.");
+            }
+            _gpuTextureBudget = budget;
+        }
+    }
+
+    /// <summary>Reserves all owned texture mip/slice payloads until final native release.</summary>
+    protected IDisposable? ReserveTextureAllocation(SilkTextureDescriptor descriptor, uint depth = 1)
+    {
+        SilkGpuTextureBudget? budget;
+        lock (_lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeStarted || _disposeCompleted, this);
+            _textureCreationStarted = true;
+            budget = _gpuTextureBudget;
+        }
+        return budget?.Reserve(descriptor, depth);
+    }
 
     /// <summary>Gets the shared RHI buffer payload budget, or null for unbounded allocation.</summary>
     public SilkGpuBufferBudget? GpuBufferBudget

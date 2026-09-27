@@ -311,6 +311,14 @@ if ($buildScriptHash -ne $lock.openUsd.patchedBuildScriptSha256)
     throw "OpenUSD patched build script hash mismatch. Expected $($lock.openUsd.patchedBuildScriptSha256), got $buildScriptHash."
 }
 
+$runtimePatchLock = Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json'
+if ((Get-FileHash -LiteralPath $runtimePatchLock).Hash -cne $lock.openUsd.runtimePatchLockSha256)
+{
+    throw 'The required runtime patch lock does not match the pinned OpenUSD source configuration.'
+}
+& (Join-Path $PSScriptRoot 'apply-openusd-source-patches.ps1') `
+    -SourceRoot $openUsdSource -PatchLockPath $runtimePatchLock | Out-Null
+
 $patchSet = $null
 if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
 {

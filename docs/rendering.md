@@ -121,6 +121,14 @@ source arrays remain outside this first GPU metric. Existing texture residency l
 still control post-submission cache retention and are not a replacement for this
 pre-allocation check.
 
+Texture preparation avoids two known unnecessary costs: HDR decoding writes directly
+into the final owned RGBA32F byte buffer, without a full-size intermediate managed
+float array, and the existing 256-cell UDIM atlas extent limit is checked before any
+tile is decoded. Accepted UDIM layouts and the existing invalid-layout diagnostic and
+authored fallback are unchanged. These safeguards do not bound native codec scratch,
+decoded/mip/atlas overlap, texture residency or backend-internal staging; aggregate
+texture/decode/staging admission remains separate work.
+
 Viewer and MCP accept `OPENUSD_SILK_GPU_BUFFER_BYTES` as a positive invariant decimal
 byte count; unset preserves unbounded RHI buffer defaults, and malformed values fail
 startup. It is independent of the paired native preparation/page limits. Embedding
@@ -134,6 +142,80 @@ Successful captures report stable `HDSILK_GPU_BUFFER_ADMISSION` information; var
 usage stays on the budget snapshot rather than creating distinct diagnostics per frame.
 Admission reporting remains within the disk-job diagnostic limit and names any omitted
 renderer diagnostics explicitly.
+
+### Owned GPU texture payload admission
+
+Low-level RHI callers can configure a `SilkGpuTextureBudget` before a built-in device's
+first owned texture allocation. The pool is independent of `SilkGpuBufferBudget` and
+counts every declared 2D mip level or 3D volume slice once per native owner, across
+devices sharing the same pool. Admission occurs before native creation. Failed creation
+returns its charge; public disposal does not return credit until all submission leases
+and native ownership release. A failed native release withholds unproven credit.
+
+`Usage` reports immutable current/peak payload bytes and reservation count.
+`SilkGpuTextureBudgetExceededException` reports requested, reserved and maximum bytes.
+Environment preparation propagates this exception instead of silently replacing the
+environment with ambient lighting. Captures report `HDSILK_GPU_TEXTURE_ADMISSION`
+when the underlying device is configured.
+
+This metric excludes imported images, decoded CPU pixels, mip/atlas construction,
+upload/readback staging, descriptors, alignment and driver overhead. It is not physical
+VRAM or complete scene admission. This low-level policy is not yet exposed through
+Viewer/MCP startup options: environment, shadow and complete frame preparation still
+need publication coordination before advertising whole-host failure atomicity. Existing
+host buffer ceilings do not implicitly configure this separate texture pool.
+
+### Backend staging payload admission
+
+`SilkGpuStagingBudget` is a separate low-level device policy for internal upload/readback
+buffers and retained picking transfer storage. It counts the native transfer payload,
+including row, mip-offset and slice padding. Charges remain with pending creation,
+in-flight upload buffers and persistent picking/readback owners until native release.
+Failed upload preparation returns every charge acquired before submission; an unresolved
+D3D12 readback retained for later teardown retains its charge too.
+
+The staging pool does not charge public `CreateBuffer` payloads or GPU texture storage
+again. It also does not cover CPU command-data copies, decoded images, Metal's managed
+repacking array, native memory-allocation alignment or driver overhead. Vulkan's internal
+host-visible picking uniform buffers belong to this pool. Metal shared textures can be
+read directly without allocating a staging buffer and therefore incur no fictitious
+readback charge. Unsupported devices and late/replacement configuration fail explicitly.
+This policy remains low-level until complete render preparation/publication is coordinated;
+it does not by itself promise that a refused frame leaves every prior scene cache intact.
+
+### Managed material-pixel admission and atomic preparation
+
+Configure `SilkCpuTextureBudget` on a built-in device before constructing scene resources
+or recording texture copies. Alternatively pass it with `SilkTextureResidencyOptions`
+to the renderer or scene-resource constructor. The shared pool admits native-decoder
+output arrays before allocation, decoded-image/mip-chain overlap, UDIM tiles and their
+atlas, row-flip scratch, fallback pixels, raw volume arrays, RHI texture-command copies
+and Metal's managed aligned transfer array. Native decode validates that its output
+dimensions still match the admitted destination. Raw volume reads require the declared
+length before allocating and reject an inconsistent stream.
+
+Image ownership transfers to the retained cache; cache disposal returns its logical
+charge. Command-copy disposal returns only the CPU copy charge: the native staging
+buffer remains separately charged while its submission owns it. `Usage` is a snapshot
+of owned payload bytes, not GC heap residency. `SilkCpuTextureBudgetExceededException`
+propagates rather than selecting a missing-texture fallback. Captures include
+`HDSILK_CPU_TEXTURE_ADMISSION` when configured.
+
+With any material CPU/texture/staging admission enabled, page application stages
+ordinary/UDIM/volume material textures and their uploads before publishing the mesh
+and CPU scene delta. Failed preparation retains the prior material/cache/mesh identities,
+pending removals and upload state. The existing ordered native-page replay remains
+mandatory. Material-disabled renders do not eagerly load textures. Without the new
+admission policies the previous lazy material behavior is preserved.
+Changed texture dependencies on a quiet page also use this transaction. Under admission,
+standalone retained rendering reuses its published cache rather than retrying file reload
+outside the page journal; the next page application performs the admitted reload.
+
+This is not complete process-memory or whole-frame admission. Native Hio/codec scratch,
+environment and displacement caches, general source/SDK memory, and frame resources
+such as shadows are distinct domains. Environment/shadow/frame-wide atomic publication
+and host configuration remain pending; these material guarantees do not claim that
+every later render or device-loss failure is reversible.
 
 ### Native-to-managed page acknowledgement
 
@@ -478,6 +560,19 @@ with a 64-MiB ceiling. The snapshot's native working-storage budget and the disk
 limits remain separate. No ID, element or Neye plane is relabeled as a supported job plane.
 
 ### Native-child AOV capture
+
+The pinned OpenUSD SDK includes the required `storm-aov-restoration` patch. Empty
+AOV selections no longer retain implicit depth, and disabled AOV input clears prior
+texture handles from the task context. Capture restores the original direct-render
+or color-AOV presentation mode, including color settings. This preserves exact native
+presentation pixels before capture, in the RGBA companion and in subsequent ordinary
+frames, under both legacy and scene-index controllers.
+
+`eng\fetch-native.ps1` applies the hash-locked patch; `eng\build-native.ps1` rebuilds
+USD when runtime-patch provenance is missing or mismatched. SDK binary identity and
+patch-lock identity are recorded in `.openusd-runtime-patches.json` and checked by
+native archive production/consumption and coverage. An old install with the same OpenUSD
+commit is not sufficient; it must contain the matching required runtime patches.
 
 Child ABI 9 exposes the same typed AOVs through the child's existing render thread; the caller
 does not need a current GL context. Use the actual physical child dimensions and framebuffer zero:

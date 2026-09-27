@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
@@ -646,6 +648,17 @@ public sealed class McpApplicationPackagingTests
         };
 
         WriteFile(nativeLibrary, "native");
+        string runtimePatchLock = Path.Combine(repositoryRoot, "eng", "openusd-runtime-patches.lock.json");
+        using JsonDocument runtimePin = JsonDocument.Parse(File.ReadAllText(runtimePatchLock));
+        WriteFile(Path.Combine(nativeRoot, ".openusd-runtime-patches.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            rid,
+            sourceCommit = runtimePin.RootElement.GetProperty("sourceCommit").GetString(),
+            patchLockSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(runtimePatchLock))),
+            libraryPath = "lib\\" + Path.GetFileName(nativeLibrary),
+            librarySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(nativeLibrary)))
+        }));
         foreach (string shimLibrary in shimLibraries)
         {
             WriteFile(Path.Combine(shimDirectory, shimLibrary), "native");

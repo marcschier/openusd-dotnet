@@ -1,4 +1,55 @@
 #nullable enable
+OpenUsd.Rendering.Silk.ISilkCpuTextureAdmissionDevice
+OpenUsd.Rendering.Silk.ISilkCpuTextureAdmissionDevice.CpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkCpuTextureBudget?
+OpenUsd.Rendering.Silk.ISilkCpuTextureAdmissionDevice.ConfigureCpuTextureBudget(OpenUsd.Rendering.Silk.SilkCpuTextureBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.CpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkCpuTextureBudget?
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ConfigureCpuTextureBudget(OpenUsd.Rendering.Silk.SilkCpuTextureBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkCpuTextureBudget.ConfigureDevice(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! residencyOptions, OpenUsd.Rendering.Silk.SilkCpuTextureBudget! cpuTextureBudget) -> void
+OpenUsd.Rendering.Silk.SilkMeshRenderer.SilkMeshRenderer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! textureResidencyOptions, OpenUsd.Rendering.Silk.SilkCpuTextureBudget! cpuTextureBudget) -> void
+OpenUsd.Rendering.Silk.SilkCpuTextureBudget
+OpenUsd.Rendering.Silk.SilkCpuTextureBudget.SilkCpuTextureBudget(ulong maximumBytes) -> void
+OpenUsd.Rendering.Silk.SilkCpuTextureBudget.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkCpuTextureBudget.Usage.get -> OpenUsd.Rendering.Silk.SilkGpuBufferUsage!
+OpenUsd.Rendering.Silk.SilkCpuTextureBudgetExceededException
+OpenUsd.Rendering.Silk.SilkCpuTextureBudgetExceededException.RequestedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkCpuTextureBudgetExceededException.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkCpuTextureBudgetExceededException.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.ISilkStagingAdmissionDevice
+OpenUsd.Rendering.Silk.ISilkStagingAdmissionDevice.GpuStagingBudget.get -> OpenUsd.Rendering.Silk.SilkGpuStagingBudget?
+OpenUsd.Rendering.Silk.ISilkStagingAdmissionDevice.ConfigureStagingBudget(OpenUsd.Rendering.Silk.SilkGpuStagingBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.GpuStagingBudget.get -> OpenUsd.Rendering.Silk.SilkGpuStagingBudget?
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ConfigureStagingBudget(OpenUsd.Rendering.Silk.SilkGpuStagingBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ReserveStagingAllocation(ulong bytes) -> System.IDisposable?
+OpenUsd.Rendering.Silk.SilkGpuStagingBudget
+OpenUsd.Rendering.Silk.SilkGpuStagingBudget.SilkGpuStagingBudget(ulong maximumBytes) -> void
+OpenUsd.Rendering.Silk.SilkGpuStagingBudget.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuStagingBudget.Usage.get -> OpenUsd.Rendering.Silk.SilkGpuBufferUsage!
+OpenUsd.Rendering.Silk.SilkGpuStagingBudget.ConfigureDevice(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+OpenUsd.Rendering.Silk.SilkGpuStagingBudgetExceededException
+OpenUsd.Rendering.Silk.SilkGpuStagingBudgetExceededException.RequestedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuStagingBudgetExceededException.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuStagingBudgetExceededException.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.ISilkTextureAdmissionDevice
+OpenUsd.Rendering.Silk.ISilkTextureAdmissionDevice.GpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkGpuTextureBudget?
+OpenUsd.Rendering.Silk.ISilkTextureAdmissionDevice.ConfigureTextureBudget(OpenUsd.Rendering.Silk.SilkGpuTextureBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.GpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkGpuTextureBudget?
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ConfigureTextureBudget(OpenUsd.Rendering.Silk.SilkGpuTextureBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.ReserveTextureAllocation(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor, uint depth = 1) -> System.IDisposable?
+OpenUsd.Rendering.Silk.SilkGpuTextureBudget
+OpenUsd.Rendering.Silk.SilkGpuTextureBudget.SilkGpuTextureBudget(ulong maximumBytes) -> void
+OpenUsd.Rendering.Silk.SilkGpuTextureBudget.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureBudget.Usage.get -> OpenUsd.Rendering.Silk.SilkGpuTextureUsage!
+OpenUsd.Rendering.Silk.SilkGpuTextureBudget.ConfigureDevice(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+OpenUsd.Rendering.Silk.SilkGpuTextureUsage
+OpenUsd.Rendering.Silk.SilkGpuTextureUsage.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureUsage.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureUsage.PeakReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureUsage.ReservationCount.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureBudgetExceededException
+OpenUsd.Rendering.Silk.SilkGpuTextureBudgetExceededException.RequestedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureBudgetExceededException.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkGpuTextureBudgetExceededException.MaximumBytes.get -> ulong
 OpenUsd.Rendering.Silk.ISilkBufferAdmissionDevice
 OpenUsd.Rendering.Silk.ISilkBufferAdmissionDevice.GpuBufferBudget.get -> OpenUsd.Rendering.Silk.SilkGpuBufferBudget?
 OpenUsd.Rendering.Silk.ISilkBufferAdmissionDevice.ConfigureBufferBudget(OpenUsd.Rendering.Silk.SilkGpuBufferBudget! budget) -> void

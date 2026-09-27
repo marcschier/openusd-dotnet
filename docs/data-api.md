@@ -118,6 +118,13 @@ handles, mutable arrays or lazy native views escape. The complete property inven
 UTF-8 name order; authored `propertyOrder` is deliberately not materialized. Quotas refuse the query
 with an actionable error and cleared native outputs, never successful partial property rows.
 
+Floating-point preview text uses OpenUSD's canonical, locale-independent shortest-roundtrip
+formatter, including native float precision and signed zero. Integer previews retain their
+full signed/unsigned range. Canonical exponent/fixed notation follows OpenUSD rather than
+the platform C++ library (for example, `0.000001` rather than `1e-06`); previews remain
+display text, not editable-value serialization. This also preserves the macOS 13.0 deployment
+baseline without requiring the floating-point `std::to_chars` API introduced in macOS 13.3.
+
 Stored composition errors on the selected prim or its ancestors, and errors in relevant contributing
 layer stacks, also refuse the inventory before property enumeration. Missing internal/external
 references or sublayers therefore cannot produce a complete empty list or a falsely complete list

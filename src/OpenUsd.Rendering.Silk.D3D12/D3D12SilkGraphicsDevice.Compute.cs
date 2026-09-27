@@ -182,9 +182,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12CommandAllocator* allocator = null;
         ID3D12GraphicsCommandList* commands = null;
         ID3D12Fence* fence = null;
+        IDisposable? reservation = null;
         bool submitted = false;
         try
         {
+            reservation = ReserveStagingAllocation(checked((ulong)buffer.Size));
             var heap = new HeapProperties(HeapType.Readback);
             var description = new ResourceDesc(
                 ResourceDimension.Buffer,
@@ -272,6 +274,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             Release(ref commands);
             Release(ref allocator);
             Release(ref readback);
+            reservation?.Dispose();
         }
     }
 }

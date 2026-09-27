@@ -453,6 +453,9 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `cpu-skinning` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `basis-curve-width-interpolation` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `point-instancer-instance-identity` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| `managed-material-pixel-admission` | Implemented | `win-x64` |
+| `storm-aov-presentation-restoration` | Implemented | `win-x64` |
+| `owned-texture-and-transfer-admission` | Implemented | `win-x64` |
 | `shared-gpu-buffer-admission` | Implemented | `win-x64` |
 | `native-page-copy-acknowledgement` | Implemented | `win-x64` |
 | `gpu-page-preparation-transaction` | Implemented | `win-x64` |
@@ -650,6 +653,52 @@ inner_index against the inner instancer's own authoritative instance count and n
 with a diagnostic any index that count cannot explain; that composition is an hdSilk encoding rather than an index USD
 can decode. This is a page-level identity claim only: there is no Storm parity scene, because Storm publishes no
 per-instance page to compare against, and instanced shadows remain ungated
+
+### `managed-material-pixel-admission`
+
+Opt-in immutable SilkCpuTextureBudget admits owned native-decoder output arrays, mip-chain overlap, live UDIM
+tiles/atlas, row-flip scratch, fallback and raw volume pixels, RHI texture-command copies and Metal CPU transfer
+repacking. CPU reservations transfer to retained cache owners or remain with command copies until disposal,
+independently of native texture/staging pools. Under CPU/texture/staging policy, material preparation stages replacement
+textures and uploads before mesh/CPU scene publication, retaining old owners, diagnostics, upload flags and pending
+retirements on refusal. Native-backed D3D12/Vulkan tests verify unchanged prior pixels and ordered page replay after
+material edits and prim removal.
+
+**Limits:** Logical managed payload ownership, not GC heap/process residency or native Hio/codec scratch. Environment,
+displacement and general source/SDK caches remain separate. Complete environment/shadow/frame resource publication must
+be coordinated before exposing a whole-host policy; no Viewer/MCP startup texture policy or complete warehouse image is
+claimed. Metal runtime and non-Windows execution remain unqualified locally.
+
+### `storm-aov-presentation-restoration`
+
+Typed Storm AOV capture snapshots and restores the prior direct-render or color-AOV presentation mode. The hash-locked
+OpenUSD runtime patch keeps an empty output list empty, clears stale color/depth/intermediate handles before a disabled
+AOV-input task returns, and clears obsolete volume-depth inputs. Mesa WGL regression probes compare exact
+ordinary-before, companion and ordinary-after pixels and exercise resize refusal in both legacy and scene-index
+controllers. SDK source/binary provenance is mandatory during native archive production/consumption and coverage;
+missing or mismatched runtime-patch provenance forces SDK rebuilding rather than reuse.
+
+**Limits:** Locally executed with pinned Mesa WGL and an exact-source SDK candidate; new hosted Linux/macOS/native
+archive results and hardware renderer parity require subsequent execution. No pixel tolerance, required skip,
+controller-private-state hack or source-scene mutation is used. This does not complete authored Storm product filtering
+or Metal AOV support.
+
+### `owned-texture-and-transfer-admission`
+
+Opt-in low-level SilkGpuTextureBudget and SilkGpuStagingBudget provide independent immutable process-local payload pools
+for built-in D3D12, Vulkan and Metal devices. Texture charges include all declared mips and volume slices;
+transfer-buffer charges include required row/mip/slice padding and persistent picking transfer storage. Reservation
+precedes native creation and follows actual native/submission ownership; failed creation or pre-submit quota refusal
+releases only acquired charges, and retained D3D12 readbacks keep their credits withheld. The existing public
+CreateBuffer metric is unchanged. Typed texture/staging refusal is not silently converted into environment/deformation
+fallback. Windows real-device footprint, lifetime, rollback and clean-feed NativeAOT checks exercise these contracts.
+
+**Limits:** Low-level RHI only, not whole-scene or physical VRAM admission. No Viewer/MCP texture/staging startup policy
+is exposed until CPU decode/mip/atlas ownership and complete texture-preparation publication/rollback are coordinated.
+Source/cache memory, CPU command copies, imported texture storage, native allocator alignment and driver overhead remain
+excluded. Metal is compile-checked locally but its runtime, hardware Vulkan and non-Windows execution remain
+unqualified. Existing WARP parallel shader-JIT failures remain a separate unresolved evidence gap; no complete warehouse
+frame is claimed.
 
 ### `shared-gpu-buffer-admission`
 

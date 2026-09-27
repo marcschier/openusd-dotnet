@@ -1497,6 +1497,34 @@ public sealed class SilkEnvironmentRetentionTests
     [Test]
     [Arguments(1)]
     [Arguments(2)]
+    [Arguments(3)]
+    public async Task TextureAdmissionRefusalCannotDowngradeTheEnvironmentAndCanBeRetried(int failingTexture)
+    {
+        using var device = new EnvironmentDevice
+        {
+            FailTextureOrdinal = failingTexture,
+            TextureBudgetFailure = true
+        };
+        using SilkSceneGpuResources resources = CreateResources(device);
+        var scene = new SilkSceneState();
+        _ = scene.Apply(Upsert(DomePath, TexturePath), 1, 1);
+
+        await Assert.That(() => resources.PrepareEnvironmentLighting(scene))
+            .Throws<SilkGpuTextureBudgetExceededException>();
+        await Assert.That(device.DisposedTextureCount).IsEqualTo(failingTexture - 1);
+        await Assert.That(resources.EnvironmentBinding.Enabled).IsFalse();
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.EnvironmentLightingUnavailable);
+
+        device.FailTextureOrdinal = 0;
+        resources.PrepareEnvironmentLighting(scene);
+        await Assert.That(resources.EnvironmentBinding.Enabled).IsTrue();
+        await Assert.That(resources.EnvironmentLitDomes).IsNotEmpty();
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(2)]
     public async Task AnEnvironmentSamplerFailureLeavesNoPartialEnvironment(
         int failingSampler)
     {
@@ -2157,6 +2185,7 @@ public sealed class SilkEnvironmentRetentionTests
         /// first failure would look correct until the third one happened.
         /// </remarks>
         internal int FailTextureOrdinal { get; set; }
+        internal bool TextureBudgetFailure { get; set; }
 
         /// <summary>The one-based ordinal of the sampler allocation that fails.</summary>
         internal int FailSamplerOrdinal { get; set; }
@@ -2201,6 +2230,10 @@ public sealed class SilkEnvironmentRetentionTests
             CreatedTextureCount++;
             if (FailTextureOrdinal == CreatedTextureCount)
             {
+                if (TextureBudgetFailure)
+                {
+                    throw new SilkGpuTextureBudgetExceededException(4, 4, 4);
+                }
                 throw new InvalidOperationException(
                     $"This device refuses texture {CreatedTextureCount}.");
             }

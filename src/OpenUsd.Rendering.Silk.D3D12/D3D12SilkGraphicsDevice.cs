@@ -15,6 +15,9 @@ namespace OpenUsd.Rendering.Silk.D3D12;
 public sealed unsafe partial class D3D12SilkGraphicsDevice
     : SilkGraphicsDeviceLifetimeBase,
       ISilkGraphicsDevice,
+      ISilkTextureAdmissionDevice,
+      ISilkStagingAdmissionDevice,
+      ISilkCpuTextureAdmissionDevice,
       ISilkVolumeTextureGraphicsDevice,
       ISilkDeviceLossGraphicsDevice
 {
@@ -498,7 +501,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12Resource* readback,
         ID3D12CommandAllocator* allocator,
         ID3D12GraphicsCommandList* commands,
-        ID3D12Fence* fence)
+        ID3D12Fence* fence,
+        IDisposable? reservation = null)
     {
         lock (_retainedResourcesGate)
         {
@@ -506,7 +510,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 [(nint)readback],
                 (nint)allocator,
                 (nint)commands,
-                (nint)fence));
+                (nint)fence,
+                reservation));
         }
     }
 
@@ -784,12 +789,14 @@ internal sealed unsafe class D3D12RetainedResources(
     nint[] resources,
     nint allocator,
     nint commands,
-    nint fence)
+    nint fence,
+    IDisposable? reservation = null)
 {
     private nint[]? _resources = resources;
     private nint _allocator = allocator;
     private nint _commands = commands;
     private nint _fence = fence;
+    private IDisposable? _reservation = reservation;
 
     internal void Release()
     {
@@ -806,6 +813,7 @@ internal sealed unsafe class D3D12RetainedResources(
             nint value = resource;
             Release(ref value);
         }
+        Interlocked.Exchange(ref _reservation, null)?.Dispose();
     }
 
     private static void Release(ref nint value)
@@ -814,6 +822,23 @@ internal sealed unsafe class D3D12RetainedResources(
         {
             _ = ((IUnknown*)value)->Release();
             value = 0;
+        }
+    }
+}
+
+[SupportedOSPlatform("windows")]
+internal sealed unsafe class D3D12StagingResource(ID3D12Resource* resource, IDisposable? reservation) : IDisposable
+{
+    private nint _resource = (nint)resource;
+    internal ID3D12Resource* Resource => (ID3D12Resource*)_resource;
+
+    public void Dispose()
+    {
+        nint pointer = Interlocked.Exchange(ref _resource, 0);
+        if (pointer != 0)
+        {
+            _ = ((ID3D12Resource*)pointer)->Release();
+            reservation?.Dispose();
         }
     }
 }

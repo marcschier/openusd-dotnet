@@ -184,6 +184,32 @@ if ($Rid -eq 'win-x64' -and -not (Get-Command cl.exe -ErrorAction SilentlyContin
 New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
 
+$runtimeMetadataPath = Join-Path $installRoot '.openusd-runtime-patches.json'
+$runtimeLibrary = switch ($Rid)
+{
+    'win-x64' { 'lib\usd_ms.dll' }
+    'linux-x64' { 'lib\libusd_ms.so' }
+    'osx-arm64' { 'lib\libusd_ms.dylib' }
+}
+$runtimeLibraryPath = Join-Path $installRoot $runtimeLibrary
+$runtimeMetadata = if (Test-Path -LiteralPath $runtimeMetadataPath -PathType Leaf)
+{
+    Get-Content -LiteralPath $runtimeMetadataPath -Raw | ConvertFrom-Json
+}
+else { $null }
+$runtimeCurrent = $null -ne $runtimeMetadata -and
+    $runtimeMetadata.schemaVersion -eq 1 -and $runtimeMetadata.rid -ceq $Rid -and
+    $runtimeMetadata.sourceCommit -ceq $lock.openUsd.commit -and
+    $runtimeMetadata.patchLockSha256 -ceq $lock.openUsd.runtimePatchLockSha256 -and
+    $runtimeMetadata.libraryPath -ceq $runtimeLibrary -and
+    (Test-Path -LiteralPath $runtimeLibraryPath -PathType Leaf) -and
+    (Get-FileHash -LiteralPath $runtimeLibraryPath).Hash -ceq $runtimeMetadata.librarySha256
+if (-not $runtimeCurrent)
+{
+    Write-Host 'The required SDK runtime patch is not verified; rebuilding USD rather than reusing an old install.'
+    $arguments += @('--force', 'USD')
+}
+
 Write-Host "Building OpenUSD $($lock.openUsd.tag) for $Rid"
 $env:CMAKE_POLICY_VERSION_MINIMUM = '3.5'
 Remove-Item Env:NoDefaultCurrentDirectoryInExePath -ErrorAction SilentlyContinue
@@ -200,6 +226,9 @@ if ($LASTEXITCODE -ne 0)
 {
     exit $LASTEXITCODE
 }
+
+& (Join-Path $PSScriptRoot 'sdk-runtime-patch-metadata.ps1') -Operation Write `
+    -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource
 
 if ($SdkOnly)
 {

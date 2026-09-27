@@ -13,6 +13,9 @@ namespace OpenUsd.Rendering.Silk.Metal;
 public sealed partial class MetalSilkGraphicsDevice
     : SilkGraphicsDeviceLifetimeBase,
       ISilkGraphicsDevice,
+      ISilkTextureAdmissionDevice,
+      ISilkStagingAdmissionDevice,
+      ISilkCpuTextureAdmissionDevice,
       ISilkPickingGraphicsDevice,
       ISilkSelectionOutlineGraphicsDevice,
       ISilkVolumeTextureGraphicsDevice

@@ -20,6 +20,125 @@ public sealed class SilkMeshPreparationNativeTests
         """;
 
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, "texture")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "texture")]
+    [Arguments(SilkGraphicsBackend.D3D12, "cpu")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "cpu")]
+    [Arguments(SilkGraphicsBackend.D3D12, "staging")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "staging")]
+    public async Task MaterialPreparationRefusalPreservesPixelsAndReplaysNativeRetirements(
+        SilkGraphicsBackend backend, string kind)
+    {
+        const string material = """
+            def Material "Material" {
+                token outputs:surface.connect = </Material/Surface.outputs:surface>
+                def Shader "Surface" {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor.connect = </Material/Texture.outputs:rgb>
+                    float inputs:roughness = 1
+                    token outputs:surface
+                }
+                def Shader "Texture" {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @before.png@
+                    token inputs:sourceColorSpace = "raw"
+                    float2 inputs:st.connect = </Material/Reader.outputs:result>
+                    float3 outputs:rgb
+                }
+                def Shader "Reader" {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    token inputs:varname = "st"
+                    float2 outputs:result
+                }
+            }
+            """;
+        string mesh = Mesh.Replace("def Mesh \"Mesh\" {",
+            "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
+            "rel material:binding = </Material>", StringComparison.Ordinal);
+        using Fixture fixture = Create(material + "\n" + mesh + "\n" +
+            mesh.Replace("\"Mesh\"", "\"Removed\"", StringComparison.Ordinal));
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(
+            fixture.Plugins, source, new SilkPreparationLimits(1_000_000, 1_000_000));
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textures = new SilkGpuTextureBudget(1_048_576);
+        var cpu = new SilkCpuTextureBudget(1_048_576);
+        var staging = new SilkGpuStagingBudget(1_048_576);
+        textures.ConfigureDevice(device);
+        cpu.ConfigureDevice(device);
+        staging.ConfigureDevice(device);
+        static SilkDecodedImage decode(string path, bool _) => new(
+            1, 1, path.Contains("before", StringComparison.Ordinal) ? [255, 0, 0, 255] : [0, 0, 255, 255]);
+        using var renderer = new SilkMeshRenderer(device,
+            backend == SilkGraphicsBackend.D3D12 ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV,
+            decode, cpuTextureBudget: cpu, ownedImageDecoder: (path, linear, budget) =>
+            {
+                IDisposable reservation = budget.Reserve(4);
+                SilkDecodedImage image = decode(path, linear);
+                image.OwnReservation(reservation);
+                return image;
+            });
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        using OpenUsdSilkPage initial = session.Sync(32, 32, camera: camera);
+        renderer.ApplyPage(initial);
+        byte[] before = SilkFrameCapture.CaptureRetained(
+            renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
+        ulong revision = renderer.Scene.Revision;
+        ulong meshCount = (ulong)renderer.Scene.Meshes.Count;
+        await scheduler.InvokeAsync(stage =>
+        {
+            OpenUsd.Shade.UsdShadeShader.Wrap(stage.GetPrim("/Material/Texture"))
+                .GetInput("file").SetAssetPath(new UsdAssetPath("after.png"));
+            stage.RemovePrim("/Removed");
+        });
+        using OpenUsdSilkPage update = session.Sync(32, 32, camera: camera);
+        IDisposable reserve() => kind switch
+        {
+            "cpu" => cpu.Reserve(cpu.MaximumBytes - cpu.Usage.ReservedBytes - 1),
+            "staging" => staging.Reserve(staging.MaximumBytes - staging.Usage.ReservedBytes - 1),
+            _ => textures.Reserve(new SilkTextureDescriptor(
+                checked((uint)((textures.MaximumBytes - textures.Usage.ReservedBytes) / 4)),
+                1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1)
+        };
+        bool isExpected(Exception? failure) => kind switch
+        {
+            "cpu" => failure is SilkCpuTextureBudgetExceededException,
+            "staging" => failure is SilkGpuStagingBudgetExceededException,
+            _ => failure is SilkGpuTextureBudgetExceededException
+        };
+        using (IDisposable pressure = reserve())
+        {
+            Exception? failure = await Assert.That(() => renderer.ApplyPage(update)).ThrowsException();
+            await Assert.That(isExpected(failure)).IsTrue();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+            await Assert.That((ulong)renderer.Scene.Meshes.Count).IsEqualTo(meshCount);
+        }
+        byte[] refused = SilkFrameCapture.CaptureRetained(
+            renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
+        await Assert.That(refused.SequenceEqual(before)).IsTrue();
+        update.Dispose();
+        using (IDisposable pressure = reserve())
+        {
+            Exception? failure = await Assert.That(() => session.Sync(32, 32, camera: camera)).ThrowsException();
+            await Assert.That(isExpected(failure)).IsTrue();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+        }
+        using OpenUsdSilkPage retry = session.Sync(32, 32, camera: camera);
+        renderer.ApplyPage(retry);
+        await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/Removed", 0))).IsFalse();
+        byte[] after = SilkFrameCapture.CaptureRetained(
+            renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
+        await Assert.That(after.SequenceEqual(before)).IsFalse();
+        renderer.Dispose();
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12, false)]
     [Arguments(SilkGraphicsBackend.Vulkan, false)]
     [Arguments(SilkGraphicsBackend.D3D12, true)]

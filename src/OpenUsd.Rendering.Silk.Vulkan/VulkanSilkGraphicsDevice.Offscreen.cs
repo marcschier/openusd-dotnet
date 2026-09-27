@@ -62,9 +62,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         Image image = default;
         DeviceMemory memory = default;
         ImageView imageView = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveTextureAllocation(descriptor);
             ThrowIfFailed(_api.CreateImage(_device, &imageInfo, null, &image), "vkCreateImage");
             _api.GetImageMemoryRequirements(
                 _device,
@@ -104,14 +106,16 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             ThrowIfFailed(
                 _api.CreateImageView(_device, &viewInfo, null, &imageView),
                 "vkCreateImageView");
-            success = true;
-            return new VulkanSilkGraphicsTexture(
+            var result = new VulkanSilkGraphicsTexture(
                 this,
                 image,
                 memory,
                 imageView,
                 descriptor,
                 ownsNativeObjects: true);
+            result.OwnTextureReservation(reservation);
+            success = true;
+            return result;
         }
         finally
         {
@@ -130,6 +134,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             if (!success)
             {
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -161,6 +166,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
         RegisterDependentObject();
 
+        var descriptor = new SilkTextureDescriptor(
+            width, height, format, SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination);
         var imageInfo = new ImageCreateInfo
         {
             SType = StructureType.ImageCreateInfo,
@@ -178,9 +185,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         Image image = default;
         DeviceMemory memory = default;
         ImageView imageView = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveTextureAllocation(descriptor, depth);
             ThrowIfFailed(_api.CreateImage(_device, &imageInfo, null, &image), "vkCreateImage(3D)");
             _api.GetImageMemoryRequirements(_device, image, out MemoryRequirements requirements);
             var allocationInfo = new MemoryAllocateInfo
@@ -209,19 +218,17 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 }
             };
             ThrowIfFailed(_api.CreateImageView(_device, &viewInfo, null, &imageView), "vkCreateImageView(3D)");
-            success = true;
-            return new VulkanSilkGraphicsTexture(
+            var result = new VulkanSilkGraphicsTexture(
                 this,
                 image,
                 memory,
                 imageView,
-                new SilkTextureDescriptor(
-                    width,
-                    height,
-                    format,
-                    SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination),
+                descriptor,
                 ownsNativeObjects: true,
                 depth);
+            result.OwnTextureReservation(reservation);
+            success = true;
+            return result;
         }
         finally
         {
@@ -240,6 +247,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             if (!success)
             {
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -546,6 +554,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     case SilkGraphicsCommandKind.UploadTexture:
                         VulkanSilkGraphicsTexture uploadTexture = command.Texture!;
                         uploadTexture.ThrowIfDisposed();
+                        uploadResources.EnsureCapacity(checked(uploadResources.Count + 1));
                         VulkanUploadResource upload = CreateTextureUpload(command.Data!);
                         uploadResources.Add(upload);
                         Transition(
@@ -605,6 +614,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     case SilkGraphicsCommandKind.UploadTexture3D:
                         VulkanSilkGraphicsTexture uploadVolume = command.Texture!;
                         uploadVolume.ThrowIfDisposed();
+                        uploadResources.EnsureCapacity(checked(uploadResources.Count + 1));
                         VulkanUploadResource volumeUpload = CreateTextureUpload(command.Data!);
                         uploadResources.Add(volumeUpload);
                         Transition(
@@ -1865,7 +1875,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         CreateReadbackBuffer(
             size,
             out global::Silk.NET.Vulkan.Buffer buffer,
-            out DeviceMemory memory);
+            out DeviceMemory memory,
+            out IDisposable? reservation);
         CommandPool pool = default;
         Fence fence = default;
         try
@@ -1930,6 +1941,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             }
             _api.DestroyBuffer(_device, buffer, null);
             _api.FreeMemory(_device, memory, null);
+            reservation?.Dispose();
         }
     }
 
@@ -1961,7 +1973,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             checked((ulong)source.Length),
             BufferUsageFlags.TransferSrcBit,
             out global::Silk.NET.Vulkan.Buffer buffer,
-            out DeviceMemory memory);
+            out DeviceMemory memory,
+            out IDisposable? reservation);
         try
         {
             void* mapped = null;
@@ -1982,12 +1995,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             {
                 _api.UnmapMemory(_device, memory);
             }
-            return new VulkanUploadResource(buffer, memory);
+            return new VulkanUploadResource(buffer, memory, reservation);
         }
         catch
         {
             _api.DestroyBuffer(_device, buffer, null);
             _api.FreeMemory(_device, memory, null);
+            reservation?.Dispose();
             throw;
         }
     }
@@ -2002,23 +2016,27 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             _api.FreeMemory(_device, resource.Memory, null);
         }
+        resource.Reservation?.Dispose();
     }
 
     private void CreateReadbackBuffer(
         ulong size,
         out global::Silk.NET.Vulkan.Buffer buffer,
-        out DeviceMemory memory) =>
+        out DeviceMemory memory,
+        out IDisposable? reservation) =>
         CreateHostBuffer(
             size,
             BufferUsageFlags.TransferDstBit,
             out buffer,
-            out memory);
+            out memory,
+            out reservation);
 
     private void CreateHostBuffer(
         ulong size,
         BufferUsageFlags usage,
         out global::Silk.NET.Vulkan.Buffer buffer,
-        out DeviceMemory memory)
+        out DeviceMemory memory,
+        out IDisposable? reservation)
     {
         var bufferInfo = new BufferCreateInfo
         {
@@ -2029,12 +2047,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         };
         global::Silk.NET.Vulkan.Buffer createdBuffer = default;
         DeviceMemory allocatedMemory = default;
+        IDisposable? pendingReservation = ReserveStagingAllocation(size);
         bool success = false;
-        ThrowIfFailed(
-            _api.CreateBuffer(_device, &bufferInfo, null, &createdBuffer),
-            "vkCreateBuffer");
         try
         {
+            ThrowIfFailed(
+                _api.CreateBuffer(_device, &bufferInfo, null, &createdBuffer),
+                "vkCreateBuffer");
             _api.GetBufferMemoryRequirements(
                 _device,
                 createdBuffer,
@@ -2056,17 +2075,22 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 "vkBindBufferMemory");
             buffer = createdBuffer;
             memory = allocatedMemory;
+            reservation = pendingReservation;
             success = true;
         }
         finally
         {
+            if (!success && createdBuffer.Handle != 0)
+            {
+                _api.DestroyBuffer(_device, createdBuffer, null);
+            }
             if (!success && allocatedMemory.Handle != 0)
             {
                 _api.FreeMemory(_device, allocatedMemory, null);
             }
             if (!success)
             {
-                _api.DestroyBuffer(_device, createdBuffer, null);
+                pendingReservation?.Dispose();
             }
         }
     }
@@ -2428,6 +2452,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
       ISilkDisplayTransformGraphicsCommandList
 {
     private readonly List<VulkanGraphicsCommand> _commands = [];
+    private List<IDisposable>? _pixelCopies;
     private VulkanSilkGraphicsTexture? _colorAttachment;
     private VulkanSilkGraphicsTexture? _depthAttachment;
     private VulkanSilkGraphicsPipeline? _pipeline;
@@ -2473,7 +2498,9 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
                 $"The source must contain exactly {requiredLength} bytes.",
                 nameof(source));
         }
-        _commands.Add(VulkanGraphicsCommand.Upload(vulkanTexture, source.ToArray()));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(VulkanGraphicsCommand.Upload(
+            vulkanTexture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
     }
 
     public void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
@@ -2497,7 +2524,9 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
                 $"The source must contain exactly {requiredLength} bytes.",
                 nameof(source));
         }
-        _commands.Add(VulkanGraphicsCommand.Upload3D(vulkanTexture, source.ToArray()));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(VulkanGraphicsCommand.Upload3D(
+            vulkanTexture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
     }
 
     public void ClearColor(ISilkGraphicsTexture texture, SilkColor color)
@@ -2913,6 +2942,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         DisposeSelectionOutlineState();
         DisposeDisplayTransformState();
         _commands.Clear();
+        SilkCpuTextureBudget.ReleaseCopies(ref _pixelCopies);
         _disposed = true;
     }
 
@@ -3325,7 +3355,8 @@ internal readonly record struct VulkanMaterialBinding(
 
 internal readonly record struct VulkanUploadResource(
     global::Silk.NET.Vulkan.Buffer Buffer,
-    DeviceMemory Memory);
+    DeviceMemory Memory,
+    IDisposable? Reservation);
 
 internal readonly record struct VulkanDrawSubmissionResource(
     Framebuffer Framebuffer,
@@ -3457,6 +3488,7 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
                 {
                     _api.FreeMemory(_device, upload.Memory, null);
                 }
+                upload.Reservation?.Dispose();
             }
         }
         VulkanDrawSubmissionResource[]? draws =

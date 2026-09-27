@@ -29,9 +29,11 @@ public sealed partial class MetalSilkGraphicsDevice
 
         MTLTextureDescriptor nativeDescriptor = default;
         MTLTexture texture = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveTextureAllocation(descriptor);
             nativeDescriptor = MTLTextureDescriptor.Texture2DDescriptor(
                 GetNativeFormat(descriptor.Format),
                 descriptor.Width,
@@ -57,8 +59,10 @@ public sealed partial class MetalSilkGraphicsDevice
             {
                 throw new InvalidOperationException("Could not create a Metal texture.");
             }
+            var result = new MetalSilkGraphicsTexture(this, texture, descriptor);
+            result.OwnTextureReservation(reservation);
             success = true;
-            return new MetalSilkGraphicsTexture(this, texture, descriptor);
+            return result;
         }
         finally
         {
@@ -73,6 +77,7 @@ public sealed partial class MetalSilkGraphicsDevice
                     texture.Dispose();
                 }
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -122,9 +127,11 @@ public sealed partial class MetalSilkGraphicsDevice
             SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination);
         MTLTextureDescriptor nativeDescriptor = default;
         MTLTexture texture = default;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveTextureAllocation(descriptor, depth);
             nativeDescriptor = new MTLTextureDescriptor
             {
                 TextureType = MTLTextureType.Type3D,
@@ -143,8 +150,10 @@ public sealed partial class MetalSilkGraphicsDevice
             {
                 throw new InvalidOperationException("Could not create a Metal 3D texture.");
             }
+            var result = new MetalSilkGraphicsTexture(this, texture, descriptor, depth, isVolume: true);
+            result.OwnTextureReservation(reservation);
             success = true;
-            return new MetalSilkGraphicsTexture(this, texture, descriptor, depth, isVolume: true);
+            return result;
         }
         finally
         {
@@ -159,6 +168,7 @@ public sealed partial class MetalSilkGraphicsDevice
                     texture.Dispose();
                 }
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -259,7 +269,7 @@ public sealed partial class MetalSilkGraphicsDevice
         var leasedSamplers = new HashSet<MetalSilkGraphicsSampler>();
         HashSet<MetalSilkPickReadbackBuffer>? leasedPickReadbacks =
             commands.ContainsPickCommands ? [] : null;
-        var uploadBuffers = new List<MTLBuffer>();
+        var uploadBuffers = new List<MetalStagingResource>();
         MTLCommandBuffer commandBuffer = default;
         MTLComputeCommandEncoder computeEncoder = default;
         bool dependentRegistered = false;
@@ -592,16 +602,16 @@ public sealed partial class MetalSilkGraphicsDevice
                         // source offset and row pitch of a buffer-to-texture blit
                         // to be 256-byte aligned, and a tightly packed chain
                         // satisfies neither past the base level.
-                        byte[] staged = new byte[
-                            checked((int)MetalMipCopyPlan.GetStagingByteSize(uploadPlans))];
-                        MetalMipCopyPlan.Stage(
-                            uploadPlans,
-                            uploadTexture.Width,
-                            uploadTexture.Height,
-                            uploadTexture.Format,
-                            command.Data!,
-                            staged);
-                        MTLBuffer upload = CreateTextureUpload(staged);
+                        uploadBuffers.EnsureCapacity(checked(uploadBuffers.Count + 1));
+                        MetalStagingResource upload;
+                        int byteCount = checked((int)MetalMipCopyPlan.GetStagingByteSize(uploadPlans));
+                        using (IDisposable? reservation = GetCpuTextureBudgetForAllocation()?.Reserve((ulong)byteCount))
+                        {
+                            byte[] staged = new byte[byteCount];
+                            MetalMipCopyPlan.Stage(uploadPlans, uploadTexture.Width, uploadTexture.Height,
+                                uploadTexture.Format, command.Data!, staged);
+                            upload = CreateTextureUpload(staged);
+                        }
                         uploadBuffers.Add(upload);
                         MTLBlitCommandEncoder blitEncoder =
                             commandBuffer.BlitCommandEncoder();
@@ -613,7 +623,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         foreach (MetalMipCopyPlan uploadPlan in uploadPlans)
                         {
                             blitEncoder.CopyFromBuffer(
-                                upload,
+                                upload.Buffer,
                                 uploadPlan.SourceOffset,
                                 uploadPlan.SourceBytesPerRow,
                                 uploadPlan.SourceBytesPerImage,
@@ -634,7 +644,8 @@ public sealed partial class MetalSilkGraphicsDevice
                     case SilkGraphicsCommandKind.UploadTexture3D:
                         MetalSilkGraphicsTexture uploadVolume = command.Texture!;
                         uploadVolume.ThrowIfDisposed();
-                        MTLBuffer volumeUpload = CreateTextureUpload(command.Data!);
+                        uploadBuffers.EnsureCapacity(checked(uploadBuffers.Count + 1));
+                        MetalStagingResource volumeUpload = CreateTextureUpload(command.Data!);
                         uploadBuffers.Add(volumeUpload);
                         MTLBlitCommandEncoder volumeEncoder =
                             commandBuffer.BlitCommandEncoder();
@@ -650,7 +661,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         ulong volumeBytesPerRow = checked(
                             (ulong)uploadVolume.Width * sizeof(float));
                         volumeEncoder.CopyFromBuffer(
-                            volumeUpload,
+                            volumeUpload.Buffer,
                             0,
                             volumeBytesPerRow,
                             checked(volumeBytesPerRow * uploadVolume.Height),
@@ -1131,7 +1142,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 {
                     lease.Dispose();
                 }
-                foreach (MTLBuffer upload in uploadBuffers)
+                foreach (MetalStagingResource upload in uploadBuffers)
                 {
                     upload.Dispose();
                 }
@@ -1395,23 +1406,27 @@ public sealed partial class MetalSilkGraphicsDevice
         }
     }
 
-    private unsafe MTLBuffer CreateTextureUpload(ReadOnlySpan<byte> source)
+    private unsafe MetalStagingResource CreateTextureUpload(ReadOnlySpan<byte> source)
     {
-        MTLBuffer upload = _device.NewBuffer(
-            checked((ulong)source.Length),
-            MTLResourceOptions.ResourceStorageModeShared);
-        if (upload.NativePtr == 0)
-        {
-            throw new InvalidOperationException("Could not create a Metal upload buffer.");
-        }
+        IDisposable? reservation = ReserveStagingAllocation(checked((ulong)source.Length));
+        MTLBuffer upload = default;
         try
         {
+            upload = _device.NewBuffer(checked((ulong)source.Length), MTLResourceOptions.ResourceStorageModeShared);
+            if (upload.NativePtr == 0)
+            {
+                throw new InvalidOperationException("Could not create a Metal upload buffer.");
+            }
             source.CopyTo(new Span<byte>((void*)upload.Contents, source.Length));
-            return upload;
+            return new MetalStagingResource(upload, reservation);
         }
         catch
         {
-            upload.Dispose();
+            if (upload.NativePtr != 0)
+            {
+                upload.Dispose();
+            }
+            reservation?.Dispose();
             throw;
         }
     }
@@ -1600,6 +1615,7 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
       ISilkVolumeTextureCommandList
 {
     private readonly List<MetalGraphicsCommand> _commands = [];
+    private List<IDisposable>? _pixelCopies;
     private MetalSilkGraphicsTexture? _colorAttachment;
     private MetalSilkGraphicsTexture? _depthAttachment;
     private MetalSilkGraphicsPipeline? _pipeline;
@@ -1663,7 +1679,9 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
                 $"The source must contain exactly {requiredLength} bytes.",
                 nameof(source));
         }
-        _commands.Add(MetalGraphicsCommand.Upload(metalTexture, source.ToArray()));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(MetalGraphicsCommand.Upload(
+            metalTexture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
     }
 
     public void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
@@ -1688,7 +1706,9 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
                 $"The source must contain exactly {requiredLength} bytes.",
                 nameof(source));
         }
-        _commands.Add(MetalGraphicsCommand.Upload3D(metalTexture, source.ToArray()));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(MetalGraphicsCommand.Upload3D(
+            metalTexture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
     }
 
     public void ClearColor(ISilkGraphicsTexture texture, SilkColor color)
@@ -2346,6 +2366,7 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     public void Dispose()
     {
         _commands.Clear();
+        SilkCpuTextureBudget.ReleaseCopies(ref _pixelCopies);
         _disposed = true;
     }
 
@@ -2793,14 +2814,14 @@ internal sealed class MetalSilkGraphicsSubmission(
     MTLCommandBuffer commandBuffer,
     MetalSubmissionCompletion completion,
     IDisposable[] leases,
-    MTLBuffer[] uploadBuffers)
+    MetalStagingResource[] uploadBuffers)
     : ISilkGraphicsSubmission
 {
     private readonly MetalSilkGraphicsDevice _device = device;
     private readonly MetalSubmissionCompletion _completion = completion;
     private MTLCommandBuffer _commandBuffer = commandBuffer;
     private IDisposable[]? _leases = leases;
-    private MTLBuffer[]? _uploadBuffers = uploadBuffers;
+    private MetalStagingResource[]? _uploadBuffers = uploadBuffers;
     private bool _disposed;
 
     public bool IsCompleted
@@ -2856,14 +2877,30 @@ internal sealed class MetalSilkGraphicsSubmission(
         {
             lease.Dispose();
         }
-        MTLBuffer[]? uploads = Interlocked.Exchange(ref _uploadBuffers, null);
+        MetalStagingResource[]? uploads = Interlocked.Exchange(ref _uploadBuffers, null);
         if (uploads is null)
         {
             return;
         }
-        foreach (MTLBuffer upload in uploads)
+        foreach (MetalStagingResource upload in uploads)
         {
             upload.Dispose();
+        }
+    }
+}
+
+[SupportedOSPlatform("macos")]
+internal sealed class MetalStagingResource(MTLBuffer buffer, IDisposable? reservation) : IDisposable
+{
+    private nint _pointer = buffer.NativePtr;
+    internal MTLBuffer Buffer { get; } = buffer;
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _pointer, 0) != 0)
+        {
+            Buffer.Dispose();
+            reservation?.Dispose();
         }
     }
 }

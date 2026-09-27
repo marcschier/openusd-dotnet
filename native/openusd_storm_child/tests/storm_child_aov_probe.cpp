@@ -57,6 +57,16 @@ bool VerifyCapture(
     {
         return false;
     }
+    std::vector<uint8_t> ordinary(reference.size());
+    openusd_storm_child_framebuffer_capture ordinary_capture{};
+    if (!Require(openusd_storm_child_render(child, 0, &camera, &frames, &converged, &error) ==
+            OPENUSD_STATUS_OK, error.data) ||
+        !Require(openusd_storm_child_capture_framebuffer(child, 0xff0e0e0e, 2, 0,
+            ordinary.data(), ordinary.size(), &required, &ordinary_capture, &error) ==
+            OPENUSD_STATUS_OK, error.data))
+        return false;
+    if (!Require(ordinary == reference, "The ordinary presentation control is not stable."))
+        return false;
 
     openusd_storm_aov_request request{};
     request.struct_size = sizeof(request);
@@ -76,6 +86,24 @@ bool VerifyCapture(
         child, &request, &captured, rgba.data(), rgba.size(),
         &required, &capture, &error);
     Owner owner(captured, openusd_storm_aov_release);
+    if (!Require(status == OPENUSD_STATUS_OK, error.data) ||
+        !Require(owner != nullptr && required == rgba.size(),
+            "AOV capture did not transfer the complete admitted output."))
+    {
+        return false;
+    }
+    size_t after_required = 0;
+    std::vector<uint8_t> after(reference.size());
+    openusd_storm_child_framebuffer_capture after_capture{};
+    if (!Require(openusd_storm_child_render(child, 0, &camera, &frames, &converged, &error) ==
+            OPENUSD_STATUS_OK, error.data) ||
+        !Require(openusd_storm_child_capture_framebuffer(child, 0xff0e0e0e, 2, 0,
+            after.data(), after.size(), &after_required, &after_capture, &error) ==
+            OPENUSD_STATUS_OK, error.data))
+        return false;
+    if (!Require(after_required == after.size() && after == reference,
+            "AOV capture changed subsequent ordinary presentation pixels."))
+        return false;
     if (!Require(status == OPENUSD_STATUS_OK, error.data) ||
         !Require(owner != nullptr, "The child did not transfer an AOV owner.") ||
         !Require(required == rgba.size() &&

@@ -195,6 +195,15 @@ if(WIN32)
         TIMEOUT 120
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:${pxr_DIR}/bin;PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR}")
+    foreach(probe openusd_storm_child_aov_probe openusd_storm_child_aov_resize_probe)
+        set_property(TEST ${probe} APPEND PROPERTY ENVIRONMENT_MODIFICATION
+            "USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX=set:1")
+        add_test(NAME ${probe}_legacy COMMAND ${probe} ${STORM_CHILD_PROBE_ARGUMENTS})
+        set_tests_properties(${probe}_legacy PROPERTIES
+            TIMEOUT 120
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${pxr_DIR}/bin;PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR};USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX=set:0;USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX_DEPRECATION_WARNING=set:0")
+    endforeach()
     set_tests_properties(
         openusd_storm_child_probe
         PROPERTIES

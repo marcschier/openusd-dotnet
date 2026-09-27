@@ -6,11 +6,29 @@ using OpenUsd.Interop;
 
 namespace OpenUsd.Rendering.Silk;
 
-internal sealed record SilkDecodedImage(
-    uint Width,
-    uint Height,
-    byte[] Pixels,
-    SilkTextureFormat Format = SilkTextureFormat.Rgba8Unorm);
+internal sealed class SilkDecodedImage(
+    uint width,
+    uint height,
+    byte[] pixels,
+    SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) : IDisposable
+{
+    private IDisposable? _reservation;
+
+    internal uint Width { get; } = width;
+    internal uint Height { get; } = height;
+    internal byte[] Pixels { get; } = pixels;
+    internal SilkTextureFormat Format { get; } = format;
+
+    internal void OwnReservation(IDisposable? reservation)
+    {
+        if (reservation is not null && Interlocked.CompareExchange(ref _reservation, reservation, null) is not null)
+        {
+            throw new InvalidOperationException("Decoded pixels already own a CPU reservation.");
+        }
+    }
+    internal IDisposable? TransferReservation() => Interlocked.Exchange(ref _reservation, null);
+    public void Dispose() => TransferReservation()?.Dispose();
+}
 
 /// <summary>
 /// What an image library could observe about one image, beyond its shape.
@@ -102,6 +120,10 @@ internal sealed record SilkUdimTile(uint Number, string Asset);
 internal static unsafe partial class SilkNativeImageDecoder
 {
     internal static SilkDecodedImage Decode(string asset, bool convertSrgbToLinear)
+        => Decode(asset, convertSrgbToLinear, null);
+
+    internal static SilkDecodedImage Decode(
+        string asset, bool convertSrgbToLinear, SilkCpuTextureBudget? budget)
     {
         ArgumentException.ThrowIfNullOrEmpty(asset);
         OpenUsdNativeImageInfo info = OpenUsdNativeImageInfo.Create();
@@ -124,7 +146,8 @@ internal static unsafe partial class SilkNativeImageDecoder
                     info,
                     errorBytes,
                     error,
-                    errorBuffer);
+                    errorBuffer,
+                    budget);
             }
             if (status is OpenUsdNativeStatus.NotFound or OpenUsdNativeStatus.InvalidArgument)
             {
@@ -135,7 +158,8 @@ internal static unsafe partial class SilkNativeImageDecoder
                 convertSrgbToLinear,
                 ref info,
                 errorBytes,
-                error);
+                error,
+                budget);
         }
     }
 
@@ -147,7 +171,7 @@ internal static unsafe partial class SilkNativeImageDecoder
     /// The native decoder's own two-phase contract is what makes this exact: a
     /// call with no destination buffer reports the shape and answers
     /// <c>BufferTooSmall</c>. The eight-bit entry point is probed first for the
-    /// same reason <see cref="Decode"/> probes it first -- an image it can
+    /// same reason <see cref="Decode(string, bool)"/> probes it first -- an image it can
     /// represent is decoded as eight-bit -- so the format reported here is the
     /// format a later decode produces.
     /// </remarks>
@@ -235,22 +259,39 @@ internal static unsafe partial class SilkNativeImageDecoder
         OpenUsdNativeImageInfo info,
         Span<byte> errorBytes,
         byte* error,
-        NativeErrorBuffer errorBuffer)
+        NativeErrorBuffer errorBuffer,
+        SilkCpuTextureBudget? budget)
     {
-        byte[] pixels = new byte[checked((int)(info.Width * info.Height * 4))];
-        fixed (byte* pixelBytes = pixels)
+        int byteCount = checked((int)((ulong)info.Width * info.Height * 4));
+        IDisposable? reservation = budget?.Reserve((ulong)byteCount);
+        try
         {
-            errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
-            OpenUsdNativeStatus status = DecodeImageRgba8(
-                asset,
-                convertSrgbToLinear ? 1u : 0u,
-                ref info,
-                pixelBytes,
-                (nuint)pixels.Length,
-                ref errorBuffer);
-            ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+            byte[] pixels = new byte[byteCount];
+            fixed (byte* pixelBytes = pixels)
+            {
+                errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
+                OpenUsdNativeStatus status = DecodeImageRgba8(
+                    asset,
+                    convertSrgbToLinear ? 1u : 0u,
+                    ref info,
+                    pixelBytes,
+                    (nuint)pixels.Length,
+                    ref errorBuffer);
+                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+            }
+            if (checked((ulong)info.Width * info.Height * 4) != (ulong)byteCount)
+            {
+                throw new InvalidDataException("Image dimensions changed during decoding.");
+            }
+            var image = new SilkDecodedImage(info.Width, info.Height, pixels);
+            image.OwnReservation(reservation);
+            return image;
         }
-        return new SilkDecodedImage(info.Width, info.Height, pixels);
+        catch
+        {
+            reservation?.Dispose();
+            throw;
+        }
     }
 
     private static SilkDecodedImage DecodeRgba32Float(
@@ -258,7 +299,8 @@ internal static unsafe partial class SilkNativeImageDecoder
         bool convertSrgbToLinear,
         ref OpenUsdNativeImageInfo info,
         Span<byte> errorBytes,
-        byte* error)
+        byte* error,
+        SilkCpuTextureBudget? budget)
     {
         NativeErrorBuffer errorBuffer = new(error, (nuint)errorBytes.Length);
         OpenUsdNativeStatus status = DecodeImageRgba32Float(
@@ -272,25 +314,36 @@ internal static unsafe partial class SilkNativeImageDecoder
         {
             ThrowIfFailed(asset, status, errorBytes, errorBuffer);
         }
-        float[] values = new float[checked((int)(info.Width * info.Height * 4))];
-        fixed (float* pixels = values)
+        int byteCount = checked((int)((ulong)info.Width * info.Height * 4 * sizeof(float)));
+        IDisposable? reservation = budget?.Reserve((ulong)byteCount);
+        try
         {
-            errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
-            status = DecodeImageRgba32Float(
-                asset,
-                convertSrgbToLinear ? 1u : 0u,
-                ref info,
-                pixels,
-                checked((nuint)values.Length * (nuint)sizeof(float)),
-                ref errorBuffer);
-            ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+            byte[] bytes = new byte[byteCount];
+            fixed (byte* pixels = bytes)
+            {
+                errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
+                status = DecodeImageRgba32Float(
+                    asset,
+                    convertSrgbToLinear ? 1u : 0u,
+                    ref info,
+                    (float*)pixels,
+                    (nuint)bytes.Length,
+                    ref errorBuffer);
+                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+            }
+            if (checked((ulong)info.Width * info.Height * 4 * sizeof(float)) != (ulong)byteCount)
+            {
+                throw new InvalidDataException("Image dimensions changed during decoding.");
+            }
+            var image = new SilkDecodedImage(info.Width, info.Height, bytes, SilkTextureFormat.Rgba32Float);
+            image.OwnReservation(reservation);
+            return image;
         }
-        byte[] bytes = MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
-        return new SilkDecodedImage(
-            info.Width,
-            info.Height,
-            bytes,
-            SilkTextureFormat.Rgba32Float);
+        catch
+        {
+            reservation?.Dispose();
+            throw;
+        }
     }
 
     private static void ThrowIfFailed(

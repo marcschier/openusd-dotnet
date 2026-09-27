@@ -54,6 +54,41 @@ public sealed class WorkflowStructureContractTests
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     [Test]
+    public async Task RuntimeSdkPatchIsPinnedAppliedVerifiedAndInvalidatesTheInstallCache()
+    {
+        string root = FindRepositoryRoot();
+        string pinPath = Path.Combine(root, "eng", "openusd-runtime-patches.lock.json");
+        string pinHash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(pinPath)));
+        using JsonDocument pin = JsonDocument.Parse(await File.ReadAllTextAsync(pinPath));
+        using JsonDocument install = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "openusd.install.lock.json")));
+        await Assert.That(install.RootElement.GetProperty("openUsd").GetProperty("runtimePatchLockSha256").GetString())
+            .IsEqualTo(pinHash);
+        await Assert.That(pin.RootElement.GetProperty("sourceCommit").GetString())
+            .IsEqualTo(install.RootElement.GetProperty("openUsd").GetProperty("commit").GetString());
+        foreach (JsonElement patch in pin.RootElement.GetProperty("patches").EnumerateArray())
+        {
+            string relative = patch.GetProperty("path").GetString()!.Replace('\\', Path.DirectorySeparatorChar);
+            string path = Path.Combine(root, relative);
+            await Assert.That(patch.GetProperty("sha256").GetString())
+                .IsEqualTo(Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(path))));
+        }
+        string fetch = await File.ReadAllTextAsync(Path.Combine(root, "eng", "fetch-native.ps1"));
+        await Assert.That(fetch).Contains("-SourceRoot $openUsdSource -PatchLockPath $runtimePatchLock");
+        string build = await File.ReadAllTextAsync(Path.Combine(root, "eng", "build-native.ps1"));
+        await Assert.That(build).Contains("$arguments += @('--force', 'USD')");
+        await Assert.That(build).Contains("'sdk-runtime-patch-metadata.ps1') -Operation Write");
+        string metadata = await File.ReadAllTextAsync(Path.Combine(root, "eng", "native-install-metadata.ps1"));
+        await Assert.That(metadata).Contains("'sdk-runtime-patch-metadata.ps1') -Operation Verify");
+        string native = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "native.yml"));
+        await Assert.That(native).Contains("./eng/test-sdk-runtime-patch-metadata.ps1");
+        string ci = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        await Assert.That(ci).Contains("-Operation Verify -SdkRoot native/install/linux-x64 -Rid linux-x64");
+    }
+
+    [Test]
     public async Task EveryJobRunningARepositoryScriptChecksOutTheRepository()
     {
         string root = FindRepositoryRoot();
@@ -917,13 +952,18 @@ public sealed class WorkflowStructureContractTests
         string adapterAbsent = ReadRunCommand(
             ReadStep(ReadJob(native, "build"), "Run Windows native CTest"));
         await Assert.That(adapterAbsent)
-            .Contains("--test-dir native/build/shim/win-x64\n", StringComparison.Ordinal)
+            .Contains("./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64",
+                StringComparison.Ordinal)
             .Because(
                 "the adapter-absent half is the default build tree's own CTest run: " +
                 "eng/run-silk-probe.ps1 publishes and runs the managed Silk probe and " +
                 "invokes no CTest at all, so it never executes hdsilk_probe and cannot " +
                 "be cited as this evidence");
-        await Assert.That(adapterAbsent)
+        await Assert.That(adapterAbsent).DoesNotContain("-TestFilter", StringComparison.Ordinal);
+        string runner = await File.ReadAllTextAsync(Path.Combine(root, "eng", "run-windows-native-tests.ps1"));
+        await Assert.That(runner).Contains("'--test-dir', $build", StringComparison.Ordinal);
+        await Assert.That(runner).Contains("& $ctest @arguments", StringComparison.Ordinal);
+        await Assert.That(runner)
             .Contains("--no-tests=error", StringComparison.Ordinal)
             .Because(
                 "a run that reports success on an empty test set is not evidence that " +
@@ -1078,6 +1118,10 @@ public sealed class WorkflowStructureContractTests
         string windowsCtest = ReadRunCommand(
             ReadStep(ReadJob(native, "build"), "Run Windows native CTest"));
         await Assert.That(windowsCtest)
+            .Contains("./eng/run-windows-native-tests.ps1", StringComparison.Ordinal);
+        await Assert.That(windowsCtest).DoesNotContain("-TestFilter", StringComparison.Ordinal);
+        string windowsRunner = await File.ReadAllTextAsync(Path.Combine(root, "eng", "run-windows-native-tests.ps1"));
+        await Assert.That(windowsRunner)
             .Contains("--no-tests=error", StringComparison.Ordinal)
             .Because(
                 "the same adapter-absent probe runs unfiltered from the default win-x64 " +

@@ -325,6 +325,8 @@ $stormChildLibraryPath = Join-Path `
     "$($nativeLayout.Directory)/$stormChildLibraryName"
 Assert-RequiredPath (Join-Path $openUsdRoot 'lib/usd/plugInfo.json') `
     'OpenUSD plugin metadata'
+& (Join-Path $PSScriptRoot 'sdk-runtime-patch-metadata.ps1') -Operation Verify `
+    -SdkRoot $openUsdRoot -Rid $Rid | Out-Null
 Assert-RequiredPath (Join-Path $shimRoot 'plugin/usd/hdSilk/resources/plugInfo.json') `
     'hdSilk plugin metadata'
 if ($RequireVulkanRuntime -and $Rid -eq 'win-x64')
@@ -338,6 +340,7 @@ $expected = [ordered]@{
     schemaVersion = 3
     rid = $Rid
     openUsdCommit = [string]$lock.openUsd.commit
+    runtimePatchLockSha256 = [string]$lock.openUsd.runtimePatchLockSha256
     lockSha256 = (Get-FileHash $lockPath -Algorithm SHA256).Hash
     dataSourceSha256 = (Get-FileHash $dataAbiSource -Algorithm SHA256).Hash
     stormChildSourceSha256 = (Get-FileHash $stormChildSource -Algorithm SHA256).Hash

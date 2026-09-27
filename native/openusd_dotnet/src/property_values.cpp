@@ -10,6 +10,7 @@
 #include "pxr/base/gf/vec4d.h"
 #include "pxr/base/gf/vec4h.h"
 #include "pxr/base/gf/vec4i.h"
+#include "pxr/base/tf/stringUtils.h"
 #include "pxr/usd/ar/resolverContextBinder.h"
 #include "pxr/usd/sdf/timeCode.h"
 
@@ -23,10 +24,18 @@ namespace
 template <typename T>
 std::string Number(T value)
 {
-    char buffer[128]{};
-    const auto result = std::to_chars(std::begin(buffer), std::end(buffer), value);
-    if (result.ec != std::errc()) throw std::runtime_error("Property numeric preview conversion failed.");
-    return {buffer, result.ptr};
+    if constexpr (std::is_floating_point_v<T>)
+    {
+        // OpenUSD's shortest-roundtrip formatter also supports the macOS 13.0 baseline.
+        return TfStringify(value);
+    }
+    else
+    {
+        char buffer[128]{};
+        const auto result = std::to_chars(std::begin(buffer), std::end(buffer), value);
+        if (result.ec != std::errc()) throw std::runtime_error("Property numeric preview conversion failed.");
+        return {buffer, result.ptr};
+    }
 }
 
 template <typename T>

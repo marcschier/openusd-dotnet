@@ -13,6 +13,8 @@
 *.ps1      text eol=lf
 *.sh       text eol=lf
 *.cmake    text eol=lf
+# Unified diffs require a leading space on empty context lines.
+*.patch    text eol=lf whitespace=-blank-at-eol
 CMakeLists.txt text eol=lf
 *.editorconfig text eol=lf
 

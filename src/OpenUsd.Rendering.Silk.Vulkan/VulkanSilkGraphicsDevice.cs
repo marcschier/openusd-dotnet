@@ -12,6 +12,9 @@ namespace OpenUsd.Rendering.Silk.Vulkan;
 public sealed unsafe partial class VulkanSilkGraphicsDevice
     : SilkGraphicsDeviceLifetimeBase,
       ISilkGraphicsDevice,
+      ISilkTextureAdmissionDevice,
+      ISilkStagingAdmissionDevice,
+      ISilkCpuTextureAdmissionDevice,
       ISilkVolumeTextureGraphicsDevice,
       ISilkPickingGraphicsDevice,
       ISilkSelectionOutlineGraphicsDevice,
@@ -454,6 +457,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     internal void RegisterDependentObject() => RegisterDependentLifetime();
 
     internal void ReleaseDependentObject() => ReleaseDependentLifetime();
+
+    internal IDisposable? ReservePickStaging(ulong bytes) => ReserveStagingAllocation(bytes);
 
     private static VulkanDescriptorIndexingFeatures QueryDescriptorIndexingFeatures(
         Vk api,

@@ -1964,6 +1964,7 @@ openusd_status openusd_storm_aov_capture(
     AovOwner pending(nullptr, openusd_storm_aov_release);
     bool selected_outputs = false;
     bool multisampled_presentation = false;
+    HdAovDescriptor prior_color;
     openusd_status status = Guard(error, [&]()
     {
         if (request == nullptr || owner == nullptr)
@@ -2002,6 +2003,7 @@ openusd_status openusd_storm_aov_capture(
                     return OPENUSD_STATUS_NATIVE_ERROR;
                 }
                 multisampled_presentation = samples > 1;
+                prior_color = renderer->engine->GetColorOutput();
                 selected_outputs = true;
                 if (!renderer->engine->SetCaptureOutputs(
                         openusd_storm_aov_detail::OutputNames(*request),
@@ -2072,8 +2074,7 @@ openusd_status openusd_storm_aov_capture(
                 renderer->stage_core, &restore_error, [&](openusd_stage_access*)
                 {
                     TfErrorMark mark;
-                    if (!renderer->engine->SetCaptureOutputs(
-                            {TfToken("color")}, multisampled_presentation) ||
+                    if (!renderer->engine->RestorePresentation(prior_color) ||
                         !mark.IsClean())
                     {
                         mark.Clear();

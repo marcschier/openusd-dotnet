@@ -200,6 +200,23 @@ try
         }
     }
 
+    $runtimePatchLock = Get-Content (Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json') -Raw |
+        ConvertFrom-Json
+    $sdkLibrary = switch ($rid)
+    {
+        'win-x64' { 'lib\usd_ms.dll' }
+        'osx-arm64' { 'lib\libusd_ms.dylib' }
+        'linux-x64' { 'lib\libusd_ms.so' }
+    }
+    [ordered]@{
+        schemaVersion = 1
+        rid = $rid
+        sourceCommit = $runtimePatchLock.sourceCommit
+        patchLockSha256 = (Get-FileHash (Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json')).Hash
+        libraryPath = $sdkLibrary
+        librarySha256 = (Get-FileHash (Join-Path $sourceOpenUsdRoot $sdkLibrary)).Hash
+    } | ConvertTo-Json | Set-Content (Join-Path $sourceOpenUsdRoot '.openusd-runtime-patches.json')
+
     New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
     & tar -czf $archivePath -C $sourceRoot native unrelated
     if ($LASTEXITCODE -ne 0)

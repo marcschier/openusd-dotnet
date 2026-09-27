@@ -70,9 +70,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12Resource* resource = null;
         ID3D12DescriptorHeap* attachmentDescriptorHeap = null;
         ID3D12DescriptorHeap* shaderResourceDescriptorHeap = null;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveTextureAllocation(descriptor);
             Guid resourceId = ID3D12Resource.Guid;
             ClearValue* clearValuePointer = &clearValue;
             SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
@@ -169,8 +171,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 }
 
             }
-            success = true;
-            return new D3D12SilkGraphicsTexture(
+            var result = new D3D12SilkGraphicsTexture(
                 this,
                 resource,
                 attachmentDescriptorHeap,
@@ -179,6 +180,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 readOnlyDepthView,
                 shaderResourceView,
                 descriptor);
+            result.OwnTextureReservation(reservation);
+            success = true;
+            return result;
         }
         finally
         {
@@ -194,6 +198,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             if (!success)
             {
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -226,6 +231,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, ushort.MaxValue);
 
         RegisterDependentObject();
+        var descriptor = new SilkTextureDescriptor(
+            width, height, format, SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination);
         var heapProperties = new HeapProperties(HeapType.Default);
         var description = new ResourceDesc(
             ResourceDimension.Texture3D,
@@ -240,9 +247,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             ResourceFlags.None);
         ID3D12Resource* resource = null;
         ID3D12DescriptorHeap* shaderResourceDescriptorHeap = null;
+        IDisposable? reservation = null;
         bool success = false;
         try
         {
+            reservation = ReserveTextureAllocation(descriptor, depth);
             Guid resourceId = ID3D12Resource.Guid;
             SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
                 &heapProperties,
@@ -274,8 +283,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             };
             _device->CreateShaderResourceView(resource, &view, shaderResourceView);
 
-            success = true;
-            return new D3D12SilkGraphicsTexture(
+            var result = new D3D12SilkGraphicsTexture(
                 this,
                 resource,
                 null,
@@ -283,11 +291,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 default,
                 default,
                 shaderResourceView,
-                new SilkTextureDescriptor(
-                    width,
-                    height,
-                    format,
-                    SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination));
+                descriptor);
+            result.OwnTextureReservation(reservation);
+            success = true;
+            return result;
         }
         finally
         {
@@ -302,6 +309,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             if (!success)
             {
                 ReleaseDependentObject();
+                reservation?.Dispose();
             }
         }
     }
@@ -384,7 +392,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         D3D12SilkPickReadbackBuffer? pickExecution =
             commands.PickReadbackDestination;
         var leases = new List<IDisposable>();
-        var uploadResources = new List<nint>();
+        var uploadResources = new List<D3D12StagingResource>();
         var materialHeaps = new List<nint>();
         ID3D12CommandAllocator* allocator = null;
         ID3D12GraphicsCommandList* nativeCommands = null;
@@ -900,12 +908,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         uploadTexture.ThrowIfDisposed();
                         ResourceStates uploadPreviousState =
                             GetCurrentState(finalStates, uploadTexture);
+                        uploadResources.EnsureCapacity(checked(uploadResources.Count + 1));
                         CreateTexture2DMipChainUpload(
                             uploadTexture,
                             command.Data!,
-                            out ID3D12Resource* upload,
+                            out D3D12StagingResource upload,
                             out PlacedSubresourceFootprint[] footprints);
-                        uploadResources.Add((nint)upload);
+                        uploadResources.Add(upload);
                         Transition(
                             nativeCommands,
                             uploadTexture.Resource,
@@ -914,7 +923,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         for (int level = 0; level < footprints.Length; level++)
                         {
                             var sourceLocation = new TextureCopyLocation(
-                                upload,
+                                upload.Resource,
                                 TextureCopyType.PlacedFootprint)
                             {
                                 PlacedFootprint = footprints[level]
@@ -945,19 +954,20 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         upload3DTexture.ThrowIfDisposed();
                         ResourceStates upload3DPreviousState =
                             GetCurrentState(finalStates, upload3DTexture);
+                        uploadResources.EnsureCapacity(checked(uploadResources.Count + 1));
                         CreateVolumeTextureUpload(
                             upload3DTexture,
                             command.Data!,
-                            out ID3D12Resource* upload3D,
+                            out D3D12StagingResource upload3D,
                             out PlacedSubresourceFootprint footprint3D);
-                        uploadResources.Add((nint)upload3D);
+                        uploadResources.Add(upload3D);
                         Transition(
                             nativeCommands,
                             upload3DTexture.Resource,
                             upload3DPreviousState,
                             ResourceStates.CopyDest);
                         var source3DLocation = new TextureCopyLocation(
-                            upload3D,
+                            upload3D.Resource,
                             TextureCopyType.PlacedFootprint)
                         {
                             PlacedFootprint = footprint3D
@@ -1610,10 +1620,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 Release(ref completionFence);
                 Release(ref nativeCommands);
                 Release(ref allocator);
-                foreach (nint resource in uploadResources)
+                foreach (D3D12StagingResource resource in uploadResources)
                 {
-                    ID3D12Resource* pointer = (ID3D12Resource*)resource;
-                    Release(ref pointer);
+                    resource.Dispose();
                 }
                 foreach (nint heap in materialHeaps)
                 {
@@ -1635,7 +1644,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private void CreateVolumeTextureUpload(
         D3D12SilkGraphicsTexture texture,
         ReadOnlySpan<byte> source,
-        out ID3D12Resource* upload,
+        out D3D12StagingResource upload,
         out PlacedSubresourceFootprint footprint)
     {
         ResourceDesc textureDescription = texture.Resource->GetDesc();
@@ -1665,17 +1674,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             TextureLayout.LayoutRowMajor,
             ResourceFlags.None);
         ID3D12Resource* nativeUpload = null;
+        IDisposable? reservation = ReserveStagingAllocation(totalSize);
         Guid resourceId = ID3D12Resource.Guid;
-        SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
-            &heapProperties,
-            HeapFlags.None,
-            &uploadDescription,
-            ResourceStates.GenericRead,
-            null,
-            &resourceId,
-            (void**)&nativeUpload));
         try
         {
+            SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+                &heapProperties, HeapFlags.None, &uploadDescription, ResourceStates.GenericRead,
+                null, &resourceId, (void**)&nativeUpload));
             void* mapped = null;
             var readRange = new global::Silk.NET.Direct3D12.Range(0, 0);
             SilkMarshal.ThrowHResult(nativeUpload->Map(0, &readRange, &mapped));
@@ -1716,12 +1721,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     checked((nuint)totalSize));
                 nativeUpload->Unmap(0, &writtenRange);
             }
-            upload = nativeUpload;
+            upload = new D3D12StagingResource(nativeUpload, reservation);
             footprint = nativeFootprint;
         }
         catch
         {
             Release(ref nativeUpload);
+            reservation?.Dispose();
             throw;
         }
     }
@@ -1736,7 +1742,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private void CreateTexture2DMipChainUpload(
         D3D12SilkGraphicsTexture texture,
         ReadOnlySpan<byte> source,
-        out ID3D12Resource* upload,
+        out D3D12StagingResource upload,
         out PlacedSubresourceFootprint[] footprints)
     {
         uint mipLevelCount = texture.MipLevelCount;
@@ -1772,17 +1778,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             TextureLayout.LayoutRowMajor,
             ResourceFlags.None);
         ID3D12Resource* nativeUpload = null;
+        IDisposable? reservation = ReserveStagingAllocation(totalSize);
         Guid resourceId = ID3D12Resource.Guid;
-        SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
-            &heapProperties,
-            HeapFlags.None,
-            &uploadDescription,
-            ResourceStates.GenericRead,
-            null,
-            &resourceId,
-            (void**)&nativeUpload));
         try
         {
+            SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+                &heapProperties, HeapFlags.None, &uploadDescription, ResourceStates.GenericRead,
+                null, &resourceId, (void**)&nativeUpload));
             void* mapped = null;
             var readRange = new global::Silk.NET.Direct3D12.Range(0, 0);
             SilkMarshal.ThrowHResult(nativeUpload->Map(0, &readRange, &mapped));
@@ -1819,12 +1821,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     checked((nuint)totalSize));
                 nativeUpload->Unmap(0, &writtenRange);
             }
-            upload = nativeUpload;
+            upload = new D3D12StagingResource(nativeUpload, reservation);
             footprints = nativeFootprints;
         }
         catch
         {
             Release(ref nativeUpload);
+            reservation?.Dispose();
             throw;
         }
     }
@@ -2193,8 +2196,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12Fence* fence = null;
         bool submitted = false;
         bool completed = false;
+        IDisposable? reservation = null;
         try
         {
+            reservation = ReserveStagingAllocation(totalSize);
             Guid resourceId = ID3D12Resource.Guid;
             SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
                 &heapProperties,
@@ -2291,7 +2296,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 !IsDeviceRemoved() &&
                 !TryDrainSubmittedWork())
             {
-                RetainSubmittedReadback(readback, allocator, commands, fence);
+                RetainSubmittedReadback(readback, allocator, commands, fence, reservation);
+                reservation = null;
                 readback = null;
                 allocator = null;
                 commands = null;
@@ -2301,6 +2307,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             Release(ref commands);
             Release(ref allocator);
             Release(ref readback);
+            reservation?.Dispose();
         }
     }
 
@@ -2428,6 +2435,7 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     : ISilkGraphicsCommandList, ISilkVolumeTextureCommandList, ISilkShadowGraphicsCommandList
 {
     private readonly List<D3D12GraphicsCommand> _commands = [];
+    private List<IDisposable>? _pixelCopies;
     private D3D12SilkGraphicsTexture? _colorAttachment;
     private D3D12SilkGraphicsTexture? _depthAttachment;
     private D3D12SilkGraphicsPipeline? _pipeline;
@@ -2476,7 +2484,9 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
                 $"The source must contain exactly {requiredLength} bytes.",
                 nameof(source));
         }
-        _commands.Add(D3D12GraphicsCommand.Upload(d3d12Texture, source.ToArray()));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(D3D12GraphicsCommand.Upload(
+            d3d12Texture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
     }
 
     public unsafe void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
@@ -2502,7 +2512,9 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
                 $"The source must contain exactly {requiredLength} bytes.",
                 nameof(source));
         }
-        _commands.Add(D3D12GraphicsCommand.Upload3D(d3d12Texture, source.ToArray()));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(D3D12GraphicsCommand.Upload3D(
+            d3d12Texture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
     }
 
     public void ClearColor(ISilkGraphicsTexture texture, SilkColor color)
@@ -2915,6 +2927,7 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     public void Dispose()
     {
         _commands.Clear();
+        SilkCpuTextureBudget.ReleaseCopies(ref _pixelCopies);
         _pickPipeline = null;
         _pickReadbackDestination = null;
         _pickBaseToken = 0;
@@ -3375,7 +3388,7 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     ID3D12GraphicsCommandList* commands,
     ID3D12Fence* fence,
     IDisposable[] leases,
-    nint[] uploadResources,
+    D3D12StagingResource[] uploadResources,
     nint[] descriptorHeaps)
     : ISilkGraphicsSubmission
 {
@@ -3384,7 +3397,7 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     private ID3D12GraphicsCommandList* _commands = commands;
     private ID3D12Fence* _fence = fence;
     private IDisposable[]? _leases = leases;
-    private nint[]? _uploadResources = uploadResources;
+    private D3D12StagingResource[]? _uploadResources = uploadResources;
     private nint[]? _descriptorHeaps = descriptorHeaps;
 
     public bool IsCompleted
@@ -3466,13 +3479,12 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
         }
         finally
         {
-            nint[]? resources = Interlocked.Exchange(ref _uploadResources, null);
+            D3D12StagingResource[]? resources = Interlocked.Exchange(ref _uploadResources, null);
             if (resources is not null)
             {
-                foreach (nint resource in resources)
+                foreach (D3D12StagingResource resource in resources)
                 {
-                    ID3D12Resource* pointer = (ID3D12Resource*)resource;
-                    D3D12SilkGraphicsDevice.Release(ref pointer);
+                    resource.Dispose();
                 }
             }
             nint[]? heaps = Interlocked.Exchange(ref _descriptorHeaps, null);
