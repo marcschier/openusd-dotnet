@@ -353,6 +353,20 @@ void PageWriterCapsGrowthAndRollsBackIncompleteCommands()
     }
     catch (const std::length_error&) { rejected = true; }
     Require(rejected && overflow.size() == 0, "A wire-size overflow was copied or retained.");
+    rejected = false;
+    try
+    {
+        HdSilkCommandPayload payload(overflow, 1);
+        payload.AppendBytes(nullptr, 1);
+    }
+    catch (const std::invalid_argument&) { rejected = true; }
+    Require(rejected && overflow.size() == 0, "A nonempty null byte payload was copied or retained.");
+    {
+        HdSilkCommandPayload empty(overflow, 1);
+        empty.AppendBytes(nullptr, 0);
+        empty.Complete();
+    }
+    Require(overflow.size() == 8, "A null zero-byte payload did not preserve its complete empty command.");
 }
 
 void ManyCommandsReuseOneAmortizedPageBuffer()

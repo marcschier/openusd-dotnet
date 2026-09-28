@@ -30,7 +30,6 @@ constexpr uint32_t LegacyMask =
     OPENUSD_GEOM_PURPOSE_MASK_DEFAULT |
     OPENUSD_GEOM_PURPOSE_MASK_PROXY |
     OPENUSD_GEOM_PURPOSE_MASK_RENDER;
-constexpr uint32_t AllMask = LegacyMask | OPENUSD_GEOM_PURPOSE_MASK_GUIDE;
 
 struct PageStats
 {

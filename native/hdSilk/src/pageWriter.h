@@ -157,7 +157,12 @@ public:
     void AppendBytes(const void* data, size_t count)
     {
         if (count == 0) { return; }
-        Require(count);
+        ValidateGrowth(count);
+        if (data == nullptr)
+        {
+            throw std::invalid_argument("A nonempty hdSilk byte payload requires a source buffer.");
+        }
+        _page.Require(count);
         const size_t offset = _page.size();
         _page._bytes.resize(offset + count);
         std::memcpy(_page._bytes.data() + offset, data, count);
@@ -181,13 +186,19 @@ public:
     }
 
 private:
-    void Require(size_t count)
+    void ValidateGrowth(size_t count) const
     {
         constexpr size_t maximumPayload = static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 8;
-        if (count > maximumPayload - size())
+        const size_t present = size();
+        if (present > maximumPayload || count > maximumPayload - present)
         {
             throw std::length_error("An hdSilk command exceeds the 32-bit byte_size field.");
         }
+    }
+
+    void Require(size_t count)
+    {
+        ValidateGrowth(count);
         _page.Require(count);
     }
 
