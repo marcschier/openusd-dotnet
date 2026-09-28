@@ -186,10 +186,14 @@ public sealed class ViewerAuthoredRenderProductTests
                     });
                 try
                 {
+                    Required<TextBox>(renderWindow, "ProductOutputFolder").Text = Path.Combine(root, "missing");
                     renderWindow.Show();
                     await WaitUntilAsync(
                         () => Required<ComboBox>(renderWindow, "ProductSelector").SelectedItem is not null);
+                    await Assert.That(Required<Button>(renderWindow, "ProductRenderButton").IsEnabled).IsFalse();
                     Required<TextBox>(renderWindow, "ProductOutputFolder").Text = root;
+                    await WaitUntilAsync(
+                        () => Required<Button>(renderWindow, "ProductRenderButton").IsEnabled);
                     Required<Button>(renderWindow, "ProductRenderButton")
                         .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     await renderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));

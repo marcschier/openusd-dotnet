@@ -53,7 +53,11 @@ try
         $metadata | ConvertTo-Json | Set-Content -LiteralPath $metadataPath
         Assert-Refused { & $verify -Operation Verify -SdkRoot $sdk -Rid $rid } 'patchLockSha256'
         Assert-Refused { & $verify -Operation Write -SdkRoot $sdk -Rid $rid } 'source root'
-        Remove-Item -LiteralPath $metadataPath
+        if ($IsWindows)
+        {
+            [IO.File]::SetAttributes($metadataPath, [IO.File]::GetAttributes($metadataPath) -bor [IO.FileAttributes]::Hidden)
+        }
+        Remove-Item -LiteralPath $metadataPath -Force
     }
     Write-Output 'SDK_RUNTIME_PATCH_METADATA_OK: all RIDs, missing provenance, binary drift, patch drift and missing source'
 }
