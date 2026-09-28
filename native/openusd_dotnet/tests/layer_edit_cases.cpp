@@ -131,7 +131,8 @@ void RunAuthoredKinds(Api& api, openusd_layer* review)
     const auto plusZero = api.Apply(review, api.Capture(review, {zero, zeroSample}),
         {SetDouble(zero, 0.0), SetDouble(zeroSample, 0.0)});
     api.Apply(review, plusZero, {SetDouble(zero, -0.0), SetDouble(zeroSample, -0.0)});
-    Require(std::signbit(native->GetField(SdfPath(zero.path), SdfFieldKeys->Default).Get<double>())
+    const VtValue authoredZero = native->GetField(SdfPath(zero.path), SdfFieldKeys->Default);
+    Require(authoredZero.IsHolding<double>() && std::signbit(authoredZero.Get<double>())
         && native->QueryTimeSample(SdfPath(zero.path), 1.0, &sampled)
         && std::signbit(sampled.Get<double>()), "Exact IEEE scalar state must retain negative zero.");
     api.Apply(review, api.Capture(review, {zeroSample}),
