@@ -1,0 +1,38 @@
+--- a/pxr/base/arch/timing.cpp
++++ b/pxr/base/arch/timing.cpp
+@@ -23,8 +23,10 @@
+ template <class T>
+ constexpr static T InitializingState = -2;
+ 
+-static std::atomic<double> 
++#if ARCH_USE_TSC_TIMING
++static std::atomic<double>
+ Arch_NanosecondsPerTick{UninitializedState<double>};
++#endif
+ 
+ // Tick measurement granularity.
+ static std::atomic<int64_t> 
+--- a/pxr/base/vt/streamOut.cpp
++++ b/pxr/base/vt/streamOut.cpp
+@@ -77,7 +77,8 @@
+     size_t dimension)
+ {
+     out << '[';
+-    if (dimension == shape.GetRank() - 1) {
++    if (dimension >= Vt_ShapeData::NumOtherDims ||
++        dimension == shape.GetRank() - 1) {
+         for (size_t j = 0; j < lastDimSize; ++j) {
+             if (j) { out << ", "; }
+             streamNextElem(out);
+@@ -111,9 +112,10 @@
+     size_t remainder = divisor ? shapeData->totalSize % divisor : 0;
+ 
+     // If there's a remainder, make a rank-1 shapeData.
+-    Vt_ShapeData rank1;
++    Vt_ShapeData rank1{};
+     if (remainder) {
+         rank1.totalSize = shapeData->totalSize;
++        lastDimSize = rank1.totalSize;
+         shapeData = &rank1;
+     }
+ 

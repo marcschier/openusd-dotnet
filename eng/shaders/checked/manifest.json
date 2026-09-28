@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "9a7a6cf6f15f09109826428e148e927ff78c4bfbfade2cb0fdb71f71398874ad"
+      "sha256": "61c1ce0f9899340ec699d33e74b63784b5b1d0aa219a8552ed81ed448aff2c9c"
     },
     {
       "path": ".github/workflows/package.yml",

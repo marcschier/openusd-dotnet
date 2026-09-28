@@ -24,6 +24,23 @@
           "afterSha256": "B3F3119533301B1BF6CF328E1655BF3EA8C4F5AF4D64A8B29088F034E6420ABF"
         }
       ]
+    },
+    {
+      "id": "strict-compiler-portability",
+      "path": "eng\\patches\\openusd\\strict-compiler-portability.patch",
+      "sha256": "F0618CA0F457315D988C6413E572F0855AF62E53E016C2210ADAEAEE02818D36",
+      "files": [
+        {
+          "path": "pxr\\base\\arch\\timing.cpp",
+          "beforeSha256": "1FE46001C66879420147CFE736CCBCC7255581AA71726CFF12D1032D259210B4",
+          "afterSha256": "99CB9D8709D18394D22FD400F02B5A6292E04BCC39E6681E3EF1AFF582AC5551"
+        },
+        {
+          "path": "pxr\\base\\vt\\streamOut.cpp",
+          "beforeSha256": "38D8B2E9D817D7D5D0F42033C36FE9C0E6806402DFBA1F346411C7C00E22AF2B",
+          "afterSha256": "B7D4459829ADEECBD39E0D53F710F4AAE58A121EDE2A7F07D148FDA3E55130B1"
+        }
+      ]
     }
   ]
 }

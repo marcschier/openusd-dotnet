@@ -471,6 +471,13 @@ coverage jobs verify its source/header/binary provenance before running bounded 
 queries. The USDC crop case remains required; it is not replaced by an unbounded read
 or a text-stage-only success.
 
+Strict SDK builds also apply the hash-locked compiler-portability patch. The timing
+conversion state is compiled only on TSC platforms. Array streaming explicitly bounds
+dimension access and value-initializes its rank-one remainder fallback while preserving
+the full element count. `openusd_sdk_runtime_patch_probe` checks ranks one through four,
+non-divisible shapes, empty arrays and positive timing conversion without disabling
+compiler warnings.
+
 Curated parity byte baselines are measured against the current 128-light frame layout.
 The fixed 15,296-byte frame block is outside the variable-scene headroom calculation:
 only the remaining scene buffers receive the existing 25-percent/256-byte margin.
