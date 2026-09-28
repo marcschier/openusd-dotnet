@@ -656,6 +656,8 @@ public sealed class McpApplicationPackagingTests
             rid,
             sourceCommit = runtimePin.RootElement.GetProperty("sourceCommit").GetString(),
             patchLockSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(runtimePatchLock))),
+            storageAdmissionPatchLockSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(
+                Path.Combine(repositoryRoot, "eng", "openusd-storage-admission.lock.json")))),
             libraryPath = "lib\\" + Path.GetFileName(nativeLibrary),
             librarySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(nativeLibrary)))
         }));

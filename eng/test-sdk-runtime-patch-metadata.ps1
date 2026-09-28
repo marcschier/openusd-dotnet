@@ -40,6 +40,8 @@ try
             rid = $rid
             sourceCommit = $pin.sourceCommit
             patchLockSha256 = (Get-FileHash (Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json')).Hash
+            storageAdmissionPatchLockSha256 =
+                (Get-FileHash (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json')).Hash
             libraryPath = $relative
             librarySha256 = (Get-FileHash $binary).Hash
         }

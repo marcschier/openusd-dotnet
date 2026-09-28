@@ -10,6 +10,10 @@ on:
       - 'eng/openusd.lock.json'
       - 'eng/openusd.install.lock.json'
       - 'eng/openusd-runtime-patches.lock.json'
+      - 'eng/openusd-storage-admission.lock.json'
+      - 'eng/patches/openusd/storage-admission-v1.patch'
+      - 'eng/patches/openusd/render-product-hash-adl.patch'
+      - 'eng/sdk-storage-admission-metadata.ps1'
       - 'eng/patches/openusd/storm-aov-restoration.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
@@ -43,6 +47,10 @@ on:
       - 'eng/openusd.lock.json'
       - 'eng/openusd.install.lock.json'
       - 'eng/openusd-runtime-patches.lock.json'
+      - 'eng/openusd-storage-admission.lock.json'
+      - 'eng/patches/openusd/storage-admission-v1.patch'
+      - 'eng/patches/openusd/render-product-hash-adl.patch'
+      - 'eng/sdk-storage-admission-metadata.ps1'
       - 'eng/patches/openusd/storm-aov-restoration.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
@@ -234,6 +242,10 @@ jobs:
       - name: Verify native install metadata
         shell: pwsh
         run: |
+          ./eng/sdk-storage-admission-metadata.ps1 `
+            -Operation Verify `
+            -SdkRoot native/install/${{ matrix.rid }} `
+            -Rid ${{ matrix.rid }}
           ./eng/native-install-metadata.ps1 `
             -Operation Verify `
             -Rid ${{ matrix.rid }} `

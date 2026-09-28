@@ -7,7 +7,7 @@ param(
     [string]$CacheRoot = (Join-Path $PSScriptRoot '../native/downloads'),
     [string]$SourceRoot = (Join-Path $PSScriptRoot '../native/src'),
     [switch]$SourceOnly,
-    [string]$PatchLockPath,
+    [string]$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'),
     [switch]$Force
 )
 
@@ -15,6 +15,15 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $lockPath = Join-Path $PSScriptRoot 'openusd.lock.json'
 $lock = Get-Content $lockPath -Raw | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace($PatchLockPath))
+{
+    throw 'The standard SDK requires the pinned storage-admission patch profile.'
+}
+$storagePin = Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'
+if ((Get-FileHash -LiteralPath $storagePin).Hash -cne $lock.openUsd.storageAdmissionPatchLockSha256)
+{
+    throw 'The storage-admission patch lock does not match the pinned SDK configuration.'
+}
 $CacheRoot = [System.IO.Path]::GetFullPath($CacheRoot)
 $SourceRoot = [System.IO.Path]::GetFullPath($SourceRoot)
 

@@ -213,6 +213,8 @@ try
         rid = $rid
         sourceCommit = $runtimePatchLock.sourceCommit
         patchLockSha256 = (Get-FileHash (Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json')).Hash
+        storageAdmissionPatchLockSha256 =
+            (Get-FileHash (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json')).Hash
         libraryPath = $sdkLibrary
         librarySha256 = (Get-FileHash (Join-Path $sourceOpenUsdRoot $sdkLibrary)).Hash
     } | ConvertTo-Json | Set-Content (Join-Path $sourceOpenUsdRoot '.openusd-runtime-patches.json')

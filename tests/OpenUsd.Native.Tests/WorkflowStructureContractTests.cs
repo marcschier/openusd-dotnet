@@ -65,6 +65,11 @@ public sealed class WorkflowStructureContractTests
             Path.Combine(root, "eng", "openusd.install.lock.json")));
         await Assert.That(install.RootElement.GetProperty("openUsd").GetProperty("runtimePatchLockSha256").GetString())
             .IsEqualTo(pinHash);
+        string storagePinPath = Path.Combine(root, "eng", "openusd-storage-admission.lock.json");
+        await Assert.That(install.RootElement.GetProperty("openUsd")
+            .GetProperty("storageAdmissionPatchLockSha256").GetString())
+            .IsEqualTo(Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(storagePinPath))));
         await Assert.That(pin.RootElement.GetProperty("sourceCommit").GetString())
             .IsEqualTo(install.RootElement.GetProperty("openUsd").GetProperty("commit").GetString());
         foreach (JsonElement patch in pin.RootElement.GetProperty("patches").EnumerateArray())
@@ -77,15 +82,22 @@ public sealed class WorkflowStructureContractTests
         }
         string fetch = await File.ReadAllTextAsync(Path.Combine(root, "eng", "fetch-native.ps1"));
         await Assert.That(fetch).Contains("-SourceRoot $openUsdSource -PatchLockPath $runtimePatchLock");
+        await Assert.That(fetch).Contains(
+            "$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json')");
         string build = await File.ReadAllTextAsync(Path.Combine(root, "eng", "build-native.ps1"));
         await Assert.That(build).Contains("$arguments += @('--force', 'USD')");
         await Assert.That(build).Contains("'sdk-runtime-patch-metadata.ps1') -Operation Write");
+        await Assert.That(build).Contains(
+            "$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json')");
+        await Assert.That(build).Contains("if (-not $runtimeCurrent -or -not $storageCurrent)");
         string metadata = await File.ReadAllTextAsync(Path.Combine(root, "eng", "native-install-metadata.ps1"));
         await Assert.That(metadata).Contains("'sdk-runtime-patch-metadata.ps1') -Operation Verify");
         string native = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "native.yml"));
         await Assert.That(native).Contains("./eng/test-sdk-runtime-patch-metadata.ps1");
+        await Assert.That(native).Contains("./eng/sdk-storage-admission-metadata.ps1");
         string ci = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "ci.yml"));
         await Assert.That(ci).Contains("-Operation Verify -SdkRoot native/install/linux-x64 -Rid linux-x64");
+        await Assert.That(ci).Contains("./eng/sdk-storage-admission-metadata.ps1");
     }
 
     [Test]

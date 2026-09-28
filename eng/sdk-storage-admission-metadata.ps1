@@ -41,6 +41,11 @@ if ($lock.sourceCommit -cne $sourceLock.openUsd.commit -or $lock.accessorVersion
 {
     throw 'The SDK storage-admission patch set does not match the pinned source/accessor version.'
 }
+if ((Get-Hash (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json')) -cne
+    $sourceLock.openUsd.storageAdmissionPatchLockSha256)
+{
+    throw 'The canonical storage-admission patch lock does not match the standard SDK configuration.'
+}
 foreach ($patch in $lock.patches)
 {
     if ((Get-Hash (Join-Path $repository $patch.path)) -cne $patch.sha256)
@@ -51,10 +56,9 @@ foreach ($patch in $lock.patches)
 
 if ($Operation -eq 'Write')
 {
-    if (-not $SdkRoot.StartsWith($repository + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
-        $SdkRoot.StartsWith((Join-Path $repository 'native\install'), [StringComparison]::OrdinalIgnoreCase))
+    if (-not $SdkRoot.StartsWith($repository + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))
     {
-        throw 'SDK admission metadata must be written to an isolated repository-owned SDK graph.'
+        throw 'SDK admission metadata must be written to a repository-owned SDK graph.'
     }
     $ancestor = Get-Item -LiteralPath $SdkRoot
     while ($ancestor)

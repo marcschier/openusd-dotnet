@@ -574,6 +574,12 @@ patch-lock identity are recorded in `.openusd-runtime-patches.json` and checked 
 native archive production/consumption and coverage. An old install with the same OpenUSD
 commit is not sufficient; it must contain the matching required runtime patches.
 
+The standard SDK also applies `eng\openusd-storage-admission.lock.json`. Its bounded
+crate/array-edit accessors and exact installed header/binary provenance are required for
+the production render-specification path, including USDC products. Missing or mismatched
+storage provenance triggers an SDK rebuild, not implicit materialization of deferred
+stores. The install lock pins this profile and invalidates old SDK caches.
+
 Child ABI 9 exposes the same typed AOVs through the child's existing render thread; the caller
 does not need a current GL context. Use the actual physical child dimensions and framebuffer zero:
 

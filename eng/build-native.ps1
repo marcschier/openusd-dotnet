@@ -7,7 +7,7 @@ param(
     [string]$Rid,
     [string]$NativeRoot = (Join-Path $PSScriptRoot '../native'),
     [string]$SdkBuildRoot,
-    [string]$PatchLockPath,
+    [string]$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'),
     [switch]$SdkOnly,
     [switch]$ReuseExistingDependencies,
     [switch]$DisableSdkPrecompiledHeaders,
@@ -29,6 +29,10 @@ $buildRoot = if ([string]::IsNullOrWhiteSpace($SdkBuildRoot)) { Join-Path $Nativ
     else { [IO.Path]::GetFullPath($SdkBuildRoot) }
 $installRoot = Join-Path $NativeRoot "install/$Rid"
 $lock = Get-Content (Join-Path $PSScriptRoot 'openusd.lock.json') -Raw | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace($PatchLockPath))
+{
+    throw 'The standard SDK requires the pinned storage-admission patch profile.'
+}
 $openUsdSource = Join-Path $sourceRoot $lock.openUsd.extractDirectory
 $buildScript = Join-Path $openUsdSource $lock.openUsd.buildScript
 
@@ -204,9 +208,30 @@ $runtimeCurrent = $null -ne $runtimeMetadata -and
     $runtimeMetadata.libraryPath -ceq $runtimeLibrary -and
     (Test-Path -LiteralPath $runtimeLibraryPath -PathType Leaf) -and
     (Get-FileHash -LiteralPath $runtimeLibraryPath).Hash -ceq $runtimeMetadata.librarySha256
-if (-not $runtimeCurrent)
+$storageMetadataPath = Join-Path $installRoot '.openusd-storage-admission.json'
+$storageMetadata = if (Test-Path -LiteralPath $storageMetadataPath -PathType Leaf)
 {
-    Write-Host 'The required SDK runtime patch is not verified; rebuilding USD rather than reusing an old install.'
+    Get-Content -LiteralPath $storageMetadataPath -Raw | ConvertFrom-Json
+}
+else { $null }
+$storageCurrent = $null -ne $storageMetadata -and
+    $storageMetadata.schemaVersion -eq 1 -and $storageMetadata.accessorVersion -eq 1 -and
+    $storageMetadata.sourceCommit -ceq $lock.openUsd.commit -and
+    $storageMetadata.patchLockSha256 -ceq (Get-FileHash -LiteralPath $PatchLockPath).Hash
+$storageFiles = @('include/pxr/usd/sdf/storageAdmission.h', 'include/pxr/base/vt/arrayEdit.h',
+    $runtimeLibrary.Replace('\', '/'))
+if ($Rid -eq 'win-x64') { $storageFiles += 'lib/usd_ms.lib' }
+foreach ($relative in $storageFiles)
+{
+    $records = @($storageMetadata.files | Where-Object { $_.path -ceq $relative })
+    $file = Join-Path $installRoot $relative
+    $storageCurrent = $storageCurrent -and $records.Count -eq 1 -and
+        (Test-Path -LiteralPath $file -PathType Leaf) -and
+        (Get-FileHash -LiteralPath $file).Hash -ceq $records[0].sha256
+}
+if (-not $runtimeCurrent -or -not $storageCurrent)
+{
+    Write-Host 'The required SDK runtime/storage patches are not verified; rebuilding USD instead of reusing the install.'
     $arguments += @('--force', 'USD')
 }
 

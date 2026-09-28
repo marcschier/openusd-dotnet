@@ -246,9 +246,11 @@ jobs:
         run: python eng/generate-schema-coverage.py --verify
       - name: Verify SDK runtime patch provenance
         shell: pwsh
-        run: >
-          ./eng/sdk-runtime-patch-metadata.ps1
-          -Operation Verify -SdkRoot native/install/linux-x64 -Rid linux-x64
+        run: |
+          ./eng/sdk-runtime-patch-metadata.ps1 `
+            -Operation Verify -SdkRoot native/install/linux-x64 -Rid linux-x64
+          ./eng/sdk-storage-admission-metadata.ps1 `
+            -Operation Verify -SdkRoot native/install/linux-x64 -Rid linux-x64
       - name: Build current native shim
         shell: pwsh
         run: |

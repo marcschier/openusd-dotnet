@@ -149,7 +149,7 @@ internal static class ParityCaptureDriver
         }
     }
 
-    private static SilkParityCapture CaptureSilk(
+    internal static SilkParityCapture CaptureSilk(
         ParityCaptureInput input,
         UsdStageRenderSource source,
         SilkParityBackend backend)

@@ -15,12 +15,17 @@ $lockPath = Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json'
 $pin = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
 $installLock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'openusd.install.lock.json') -Raw | ConvertFrom-Json
 $pinHash = (Get-FileHash -LiteralPath $lockPath).Hash
+$storageLockPath = Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'
+$storagePin = Get-Content -LiteralPath $storageLockPath -Raw | ConvertFrom-Json
+$storageHash = (Get-FileHash -LiteralPath $storageLockPath).Hash
 if ($pin.sourceCommit -cne $installLock.openUsd.commit -or
-    $pinHash -cne $installLock.openUsd.runtimePatchLockSha256)
+    $pinHash -cne $installLock.openUsd.runtimePatchLockSha256 -or
+    $storagePin.sourceCommit -cne $pin.sourceCommit -or
+    $storageHash -cne $installLock.openUsd.storageAdmissionPatchLockSha256)
 {
     throw 'The SDK runtime patches do not match the pinned install source.'
 }
-foreach ($patch in $pin.patches)
+foreach ($patch in @($pin.patches) + @($storagePin.patches))
 {
     if ((Get-FileHash -LiteralPath (Join-Path $repo $patch.path)).Hash -cne $patch.sha256)
     {
@@ -39,6 +44,7 @@ $expected = [ordered]@{
     rid = $Rid
     sourceCommit = $pin.sourceCommit
     patchLockSha256 = $pinHash
+    storageAdmissionPatchLockSha256 = $storageHash
     libraryPath = $binary
     librarySha256 = (Get-FileHash -LiteralPath (Join-Path $sdk $binary)).Hash
 }
@@ -64,7 +70,7 @@ if ($Operation -eq 'Write')
             $ancestor = $ancestor.Parent
         }
     }
-    foreach ($patch in $pin.patches)
+    foreach ($patch in @($pin.patches) + @($storagePin.patches))
     {
         foreach ($file in $patch.files)
         {

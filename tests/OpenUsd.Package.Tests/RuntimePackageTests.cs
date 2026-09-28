@@ -2472,10 +2472,14 @@ public sealed partial class RuntimePackageTests
         await Assert.That(root.GetProperty("schemaVersion").GetInt32()).IsEqualTo(3);
         await Assert.That(root.GetProperty("runtimePatchLockSha256").GetString())
             .IsEqualTo(GetFileSha256(Path.Combine(repositoryRoot, "eng", "openusd-runtime-patches.lock.json")));
+        await Assert.That(root.GetProperty("storageAdmissionPatchLockSha256").GetString())
+            .IsEqualTo(GetFileSha256(Path.Combine(repositoryRoot, "eng", "openusd-storage-admission.lock.json")));
         using JsonDocument runtimePatches = JsonDocument.Parse(
             await File.ReadAllTextAsync(Path.Combine(inputs.InstallRoot, ".openusd-runtime-patches.json")));
         await Assert.That(runtimePatches.RootElement.GetProperty("patchLockSha256").GetString())
             .IsEqualTo(root.GetProperty("runtimePatchLockSha256").GetString());
+        await Assert.That(runtimePatches.RootElement.GetProperty("storageAdmissionPatchLockSha256").GetString())
+            .IsEqualTo(root.GetProperty("storageAdmissionPatchLockSha256").GetString());
         string sdkLibrary = inputs.Platform.Rid switch
         {
             "win-x64" => "usd_ms.dll",
@@ -8945,6 +8949,8 @@ public sealed partial class RuntimePackageTests
             rid,
             sourceCommit = pin.RootElement.GetProperty("sourceCommit").GetString(),
             patchLockSha256 = GetFileSha256(pinPath),
+            storageAdmissionPatchLockSha256 = GetFileSha256(
+                Path.Combine(FindRepositoryRoot(), "eng", "openusd-storage-admission.lock.json")),
             libraryPath = "lib\\" + library,
             librarySha256 = GetFileSha256(Path.Combine(installRoot, "lib", library))
         };

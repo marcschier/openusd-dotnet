@@ -466,6 +466,21 @@ environment/shadow/frame resource allocated later in rendering.
 changed file with no USD material delta, including retained binding during refusal and
 the later successful cache replacement.
 
+The standard SDK build now includes the pinned storage-admission profile. Native and
+coverage jobs verify its source/header/binary provenance before running bounded crate
+queries. The USDC crop case remains required; it is not replaced by an unbounded read
+or a text-stage-only success.
+
+Curated parity byte baselines are measured against the current 128-light frame layout.
+The fixed 15,296-byte frame block is outside the variable-scene headroom calculation:
+only the remaining scene buffers receive the existing 25-percent/256-byte margin.
+Draw, mesh, geometry/upload counts, texture-byte limits and all pixel tolerances remain
+unchanged. The opt-in `RecordsCuratedResourceFootprintsForBaselineReview` helper records
+new measurements; ordinary performance and parity assertions remain separate required
+gates. Set `OPENUSD_PARITY_MEASURE_RESOURCES=1` and
+`OPENUSD_PARITY_VERIFY_RESOURCE_BASELINES=1` to execute that measurement plus the current
+resource ceilings, not to bypass them.
+
 `SilkGpuStagingAdmissionTests` exercises actual padded uploads, mip chains, volume slices,
 readback refusal, persistent picking owners, failed multi-upload rollback and retry on
 D3D12/Vulkan. A 4x4 RGBA8 upload charges 784 native transfer bytes on D3D12 and 64 on

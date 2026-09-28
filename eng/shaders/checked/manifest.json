@@ -31,11 +31,11 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "dd1d48ff10030c1edf8343f84d491add0c9db4aeff8e2d2b05bfbf6a9a0b472f"
+      "sha256": "5ff0e61014fd55ca5f9249779dbbc5133725912ab5664d05e0c1b239c1963451"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "1328fa93c27dc498e55fdc792741015888bbbba707d8cbebcb531414917849cb"
+      "sha256": "9a7a6cf6f15f09109826428e148e927ff78c4bfbfade2cb0fdb71f71398874ad"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -247,7 +247,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "31c4c1dc7b81b0fcaf63e735436a012da0590e66eae594b8eb857e36634113d0"
+      "sha256": "8f654159029aa5c1281e1a8f8bc26e535adda3d4275a9bf23f14db102a36ceb0"
     }
   ],
   "programs": [
