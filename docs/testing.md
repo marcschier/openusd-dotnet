@@ -478,6 +478,12 @@ the full element count. `openusd_sdk_runtime_patch_probe` checks ranks one throu
 non-divisible shapes, empty arrays and positive timing conversion without disabling
 compiler warnings.
 
+The same probe checks dictionary digit ordering and plugin metadata vector/matrix
+defaults. Schema tuple recursion explicitly checks its fixed dimension storage, and
+digit predicates use logical boolean operators. After an SDK build fails, the build
+script collects remaining Ninja compiler diagnostics but still returns the original
+failure; it does not install or accept a partially built SDK.
+
 Curated parity byte baselines are measured against the current 128-light frame layout.
 The fixed 15,296-byte frame block is outside the variable-scene headroom calculation:
 only the remaining scene buffers receive the existing 25-percent/256-byte margin.

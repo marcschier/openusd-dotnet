@@ -7,7 +7,8 @@ if(MSVC)
 else()
     target_compile_options(openusd_sdk_runtime_patch_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
-add_test(NAME openusd_sdk_runtime_patch_probe COMMAND openusd_sdk_runtime_patch_probe)
+add_test(NAME openusd_sdk_runtime_patch_probe COMMAND openusd_sdk_runtime_patch_probe
+    "${CMAKE_CURRENT_LIST_DIR}/fixtures/sdk-runtime")
 set_tests_properties(openusd_sdk_runtime_patch_probe PROPERTIES TIMEOUT 30)
 if(WIN32)
     set_tests_properties(openusd_sdk_runtime_patch_probe PROPERTIES ENVIRONMENT_MODIFICATION

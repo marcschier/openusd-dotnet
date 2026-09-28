@@ -36,3 +36,39 @@
          shapeData = &rank1;
      }
  
+--- a/pxr/base/tf/stringUtils.cpp
++++ b/pxr/base/tf/stringUtils.cpp
+@@ -793,8 +793,8 @@
+             // Add 5 mod 32 makes '_' sort before all letters.
+             return ((l + 5) & 31) < ((r + 5) & 31);
+         }
+-        else if (IsDigit(l) | IsDigit(r)) {
+-            if (IsDigit(l) & IsDigit(r)) {
++        else if (IsDigit(l) || IsDigit(r)) {
++            if (IsDigit(l) && IsDigit(r)) {
+                 // We backtrack to find the start of each digit string, then we
+                 // scan each digit string, ignoring leading zeros to put the two
+                 // strings into alignment with their most significant digits.
+@@ -856,7 +856,7 @@
+                 curEnd = lcur + std::min(std::distance(lcur, lend),
+                                          std::distance(rcur, rend));
+             }
+-            else if (IsDigit(l) | IsDigit(r)) {
++            else if (IsDigit(l) || IsDigit(r)) {
+                 if (lcur == lstr.c_str()) {
+                     return l < r;
+                 }
+--- a/pxr/usd/sdf/schema.cpp
++++ b/pxr/usd/sdf/schema.cpp
+@@ -1538,7 +1538,10 @@
+             context->AppendValue(values->front());
+             values->pop_front();
+         }
+-    } else if (static_cast<size_t>(level) < context->valueTupleDimensions.size) {
++    } else if (level >= 0 &&
++               static_cast<size_t>(level) < sizeof(context->valueTupleDimensions.d) /
++                   sizeof(context->valueTupleDimensions.d[0]) &&
++               static_cast<size_t>(level) < context->valueTupleDimensions.size) {
+         context->BeginTuple();
+         for (size_t i = 0; i < context->valueTupleDimensions.d[level]; i++) {
+             _AddValuesToValueContext(values, context, level + 1);

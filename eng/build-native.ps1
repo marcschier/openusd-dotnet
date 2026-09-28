@@ -249,7 +249,14 @@ if ($ReuseExistingDependencies)
 & python $layout.BuildScript @arguments
 if ($LASTEXITCODE -ne 0)
 {
-    exit $LASTEXITCODE
+    $buildFailure = $LASTEXITCODE
+    $sdkBuildRoot = Join-Path $buildRoot $lock.openUsd.extractDirectory
+    if (Test-Path -LiteralPath (Join-Path $sdkBuildRoot 'build.ninja'))
+    {
+        Write-Host 'Collecting remaining SDK compiler diagnostics; the original build failure remains fatal.'
+        & cmake --build $sdkBuildRoot --config Release --parallel $Jobs -- -k 0
+    }
+    exit $buildFailure
 }
 
 & (Join-Path $PSScriptRoot 'sdk-runtime-patch-metadata.ps1') -Operation Write `
