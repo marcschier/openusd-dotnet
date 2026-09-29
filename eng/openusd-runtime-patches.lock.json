@@ -28,7 +28,7 @@
     {
       "id": "strict-compiler-portability",
       "path": "eng\\patches\\openusd\\strict-compiler-portability.patch",
-      "sha256": "92E03BF313C16A447DB580E18E7B9BDBD5949156DF821640DA01D4A521681006",
+      "sha256": "7F12E927996275961948C0F5BBCDEC301F56B863B39AF1C371F0692CDA7D872F",
       "files": [
         {
           "path": "pxr\\base\\arch\\timing.cpp",
@@ -73,7 +73,154 @@
         {
           "path": "pxr\\imaging\\hdx\\unitTestDelegate.h",
           "beforeSha256": "79E10A9E5DE7AB621A668134969936D4AAF954A0075DA80ACABD536182E3825A",
-          "afterSha256": "2143984042E9410C5DE31A481174AFB0302641A6B55A31CFE1F9C0E3AAC04969"
+          "afterSha256": "2143984042E9410C5DE31A481174AFB0302641A6B55A31CFE1F9C0E3AAC04969",
+          "installedHeader": false
+        },
+        {
+          "path": "pxr\\base\\vt\\arrayEditBuilder.cpp",
+          "beforeSha256": "1AFA05596828A9DAC7DA9B1BC6C79895B5B3480E95E84656AA12E132418E228C",
+          "afterSha256": "A908ED33C66D652232C1F706D4086CDDE5AF5FE41DEC4895D81359648EE0A039"
+        },
+        {
+          "path": "pxr\\base\\vt\\arrayEditOps.cpp",
+          "beforeSha256": "23FD2CAA5D89C7CE887407CA1CC56C547D60E4F6328619B75D024E672A3267A4",
+          "afterSha256": "7FC69D9E919695A46D9E7ABD4F3FEEB6F0C48AC809F4DBB4A300205936FB98BE"
+        },
+        {
+          "path": "pxr\\exec\\vdf\\parallelExecutorEngineBase.h",
+          "beforeSha256": "BED2DF5064367B17056DF813DE18B72346080459B93776E640B7646F2C33D071",
+          "afterSha256": "A38DA609D32E2B6267F1AC5278481F03E3F9C19E6CFBA815D8C651B345EE73E8"
+        },
+        {
+          "path": "pxr\\imaging\\hd\\renderDelegateAdapterRenderer.cpp",
+          "beforeSha256": "DB9B464382DE9DF529C1BF8825EA7BC6202AB025FD90BCB133401012E585423E",
+          "afterSha256": "1A5BBA0CBB8686755602D392884EAFA1CDEBB32CEE07649E76274E968C09FD52"
+        },
+        {
+          "path": "pxr\\imaging\\hd\\sceneIndexPluginRegistry.cpp",
+          "beforeSha256": "F74AE944A257D51B3E8A422894155747A2269B6D41A979DB95DFB799B2107F53",
+          "afterSha256": "039341568D0DBC05B9EC346AB5AB48243F7B09EA8FD8DE12B8D513F870A3D0F7"
+        },
+        {
+          "path": "pxr\\imaging\\hdSt\\commandBuffer.cpp",
+          "beforeSha256": "AB15BDE5C91166967A6FF6E87883A7512EBFDDE01837E4841F34354188018896",
+          "afterSha256": "4E21E2C7A38258D04B120D28CF8095882FBDF75493ECA045D74738FB484AAE76"
+        },
+        {
+          "path": "pxr\\imaging\\hdSt\\mesh.cpp",
+          "beforeSha256": "6DF65A08826F12CBB8FDD4BAEF637E8F811ADE3C1DF74DE460966C493533C795",
+          "afterSha256": "C826A94FFEA726EE798D033CA789F237021B56D2474563729E7EE8E9EB545CA3"
+        },
+        {
+          "path": "pxr\\imaging\\hdx\\selectionTracker.cpp",
+          "beforeSha256": "A6642F7D978E13F97B0B94538A05EBC5A2EE48F66AA71394BA7E576586246818",
+          "afterSha256": "A26C798FEAF325DCC20715CCE958DAB0F3E53B522E84B4715AD48FD5AE8DE20B"
+        },
+        {
+          "path": "pxr\\imaging\\hgiGL\\scopedStateHolder.h",
+          "beforeSha256": "6E7B035C4351FB5BD301EBA1A0E6813D1F1F11FB0D374EE79B38FAA9F3C84BC9",
+          "afterSha256": "6982DC2831F8085CDEF902CB5314B010ECE1B8DA645FE22B7D09272D3784B18C",
+          "installedHeader": false
+        },
+        {
+          "path": "pxr\\imaging\\plugin\\hioImageIO\\imageIOImage.mm",
+          "beforeSha256": "8920604B0CF650DBCAE83FA4A8BA5458010C724FC69E081459F1E5A6EF67D6C6",
+          "afterSha256": "A55AA8BB9AE6CC979A11B9619B50D862F47BAE335A36B78D4D27F71E3E58960B"
+        },
+        {
+          "path": "pxr\\usd\\pcp\\dependencies.cpp",
+          "beforeSha256": "AD9B720256878490CA055955823C7D44C86FB51C03FB01C2BDEF1A90747E79BA",
+          "afterSha256": "BDA77CD05F89E7E9DA3AFF524A9F87AC3DFFCC87566FD143DEBFDEA387032B8B"
+        },
+        {
+          "path": "pxr\\usd\\pcp\\primIndex.cpp",
+          "beforeSha256": "16C9CE3B23E2BF936B9BD031C1E8A296E0959ED0482140D6638D70BCACA041A4",
+          "afterSha256": "E09BA3FB74A18380B780A6428F2B218C1C80292FBAFB66F03A4844342A6B3A65"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\fileFormat.cpp",
+          "beforeSha256": "A290166CEBA7ACCB289DD04725644BB0111EE87F42F9C4FD46CD4B80CAAE5385",
+          "afterSha256": "5F3EA91527B6834A84DA046BE88BD0773700A13E04FE578370824D8B43ECA949"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\pathNode.cpp",
+          "beforeSha256": "69B8915B2A3FFBCA56D9BDD7BCF22E250235D96274720C60C25B85D6CA245C58",
+          "afterSha256": "A2F3AC28F5B132A45D0C714F01A9531F02632E3E26CDF0B485C0A5D8AA703DA1"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\specType.cpp",
+          "beforeSha256": "980D86456DB123BE4BBA9EF6498F1639FCEDAD2B610F3564C93EAF01E1B4554C",
+          "afterSha256": "E65682C1ECDA49E136D265E6E1E0C979B4D5AADDFD1B8A5554D78AD7F467C215"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\variableExpressionImpl.cpp",
+          "beforeSha256": "69F9C57EC870DB8B060E09D6914C1EE9CC065BC5BE8A23B247EF05CAF1EA8B8A",
+          "afterSha256": "B0545952D1AD480CB92EAEA3DF9E8BB83EC0DE7194FF197FB121C31127221B90"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\zipFile.cpp",
+          "beforeSha256": "4530982FA69CF8F8DE125031874B731899F5DD377015270DE216CA7339D5DC6D",
+          "afterSha256": "1D031BFC9E1CFC006124F6894CE5E6733B5E66190046E95852FE695764938CC7"
+        },
+        {
+          "path": "pxr\\usd\\usdGeom\\basisCurves.cpp",
+          "beforeSha256": "FA12C06957949D970A72F4216D651116C4F99699991C3BFB3672B4E2F1781CBF",
+          "afterSha256": "FAC995AFB872BE5F4CD501A5855F428F99103C25D1A39D1B40B22CCADC3B0AED"
+        },
+        {
+          "path": "pxr\\usd\\usdSkel\\animation.cpp",
+          "beforeSha256": "A47AB74CAFDBC4C6B80DE1D4CC14137336CA5EBDEB1AFA7284610300E396B494",
+          "afterSha256": "29BD64914FE608C2DF3DB83B81808D0741AB6C1BCC197A69DDBD5EFB7CB29121"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourceMaterial.cpp",
+          "beforeSha256": "EE53BAF0A07EC6296B336F4B689D62D77DEA6359D7E76F8EA925A99B75F73BEA",
+          "afterSha256": "6F35DDEC707A2B9712037AA21B2B60B01B00C86B59C5F09927E55A2F9D065BFF"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourcePrim.h",
+          "beforeSha256": "A4BE2EB0C563136BF559F9A39CBAA768B0F7C5FD1B1075563CF9899210D6F8A6",
+          "afterSha256": "B795D432ACECC16D40A5DE40A242FC39B5DFE91ACC38F83FF7A359E41AEC4318"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourcePrim.cpp",
+          "beforeSha256": "A67DCD4620FD894D34A68B9DB7614DDB611620A68E145C87144E5F7B09E65DE0",
+          "afterSha256": "8AFFEFE299879BE79626A1B7DFB4CE8E6287A268C4F5AAEE660F9C1FCD4B4592"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourceRelationship.h",
+          "beforeSha256": "CA8B67D5A0821EEA9DCD04970CF5C3B6E3D854329C9267E5290873CCC1EB233C",
+          "afterSha256": "29584E94320C1886DB27E2FD4BF186B3BE615B9313ECD9919C2AFD28439F813E"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourceRelationship.cpp",
+          "beforeSha256": "FEF41281150AA9B02FF2E0AB5AEEE58363B530B9E361E4F6E7CA2BC012D3B8F0",
+          "afterSha256": "1212830F84B5EF03DE33BA0871D8110DA6B7C92068ECFB76B4E4C5B6B580D5A8"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourceRenderPrims.cpp",
+          "beforeSha256": "CD473A6E9E438393D6A2F989F223DB2F795B7D4ED956958DDF1E5967DF9D5D21",
+          "afterSha256": "CC653A8F00626EE516B1AE9314A434891A2678C2977F5BC08366E2E4FC25A877"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourceVolume.h",
+          "beforeSha256": "CE48CC4BB0A70BDE6E146120893CD68A309E33260286AF684986B716A4C0A3BF",
+          "afterSha256": "9F54CEA1C93B366B555AD8879D37A31794F7AEBC6082FEFE6AF1EACF7CBAFDAB"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\dataSourceVolume.cpp",
+          "beforeSha256": "E0C2E311FA53F202BAFF2E0355BCF0CD6BEB89E1785587C99A6ED76C0CAB4FE1",
+          "afterSha256": "BFBAAA9E147D2A922BB0B7A00E698287BA3C03F348075BDB9ADB8CF4E3745A7F"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\indexProxy.cpp",
+          "beforeSha256": "4EB7ED19EC772F9B8A53D6A7D19A9A124D7A70BB55F1197307D9CBD6469147B2",
+          "afterSha256": "97ADB9C8D328DF27C72E31B5B2A40A5CE413B835980E9DFEE5BAEE05B0FE1397"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\instanceAdapter.cpp",
+          "beforeSha256": "5626BA4D430EFC3D6CCD222D7252AB7F6D6F66B3F096B9A617A9210D70CF4921",
+          "afterSha256": "5D45931BD0733D9D8FCB2DF561DCF9AB1D8E9225B3E26FF03FCC24C3439A25B9"
         }
       ]
     }

@@ -490,6 +490,12 @@ Patched installed headers are verified alongside the SDK binary; a header drift 
 rebuilding rather than reuse. The native probe exercises empty/nonempty vector moves and
 authored clip sample bracketing as well as the shape and metadata cases.
 
+The patch manifest distinguishes installed public headers from private implementation
+headers, which are source-verified but are not required in SDK installations. The full
+Clang diagnostic batch preserves eager boolean side effects and exact format types,
+uses C++17-compatible captures, and removes unused internal state without disabling
+strict compilation.
+
 Curated parity byte baselines are measured against the current 128-light frame layout.
 The fixed 15,296-byte frame block is outside the variable-scene headroom calculation:
 only the remaining scene buffers receive the existing 25-percent/256-byte margin.

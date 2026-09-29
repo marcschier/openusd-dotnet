@@ -142,3 +142,608 @@
          _Instancer(VtVec3fArray const &scale,
                     VtVec4fArray const &rotate,
                     VtVec3fArray const &translate,
+--- a/pxr/base/vt/arrayEditBuilder.cpp
++++ b/pxr/base/vt/arrayEditBuilder.cpp
+@@ -75,8 +75,8 @@
+ void
+ Vt_ArrayEditOpsBuilder::_IssueNegativeSizeError(Ops::Op op, int64_t size)
+ {
+-    TF_CODING_ERROR("Op '%s' invalid negative size argument: %zd",
+-                    TfEnum::GetName(op).c_str(), size);
++    TF_CODING_ERROR("Op '%s' invalid negative size argument: %lld",
++                    TfEnum::GetName(op).c_str(), static_cast<long long>(size));
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+--- a/pxr/base/vt/arrayEditOps.cpp
++++ b/pxr/base/vt/arrayEditOps.cpp
+@@ -32,32 +32,32 @@
+ Vt_ArrayEditOps::_LiteralOutOfBounds(int64_t idx, size_t size)
+ {
+     TF_DEBUG(VT_ARRAY_EDIT_BOUNDS).Msg(
+-        "Index %zd out of bounds for literal value (max = %zu)\n",
+-        idx, size);
++        "Index %lld out of bounds for literal value (max = %zu)\n",
++        static_cast<long long>(idx), size);
+ }
+ 
+ void
+ Vt_ArrayEditOps::_ReferenceOutOfBounds(int64_t idx, size_t size)
+ {
+     TF_DEBUG(VT_ARRAY_EDIT_BOUNDS).Msg(
+-        "Array reference index %zd out of bounds (size = %zu)\n",
+-        idx, size);
++        "Array reference index %lld out of bounds (size = %zu)\n",
++        static_cast<long long>(idx), size);
+ }
+ 
+ void
+ Vt_ArrayEditOps::_InsertOutOfBounds(int64_t idx, size_t size)
+ {
+     TF_DEBUG(VT_ARRAY_EDIT_BOUNDS).Msg(
+-        "Array insert index %zd out of bounds (size = %zu)\n",
+-        idx, size);
++        "Array insert index %lld out of bounds (size = %zu)\n",
++        static_cast<long long>(idx), size);
+ }
+ 
+ void
+ Vt_ArrayEditOps::_NegativeSizeArg(Op op, int64_t size)
+ {
+     TF_DEBUG(VT_ARRAY_EDIT_BOUNDS).Msg(
+-        "Sizing operation '%s' with negative size argument %zd\n",
+-        TfEnum::GetName(op).c_str(), size);
++        "Sizing operation '%s' with negative size argument %lld\n",
++        TfEnum::GetName(op).c_str(), static_cast<long long>(size));
+ }
+ 
+ void
+--- a/pxr/exec/vdf/parallelExecutorEngineBase.h
++++ b/pxr/exec/vdf/parallelExecutorEngineBase.h
+@@ -2190,7 +2190,7 @@
+ 
+         // If the scratch buffer contains any data, absorb the public data still
+         // living on this output, and publish the whole shebang. 
+-        if (const VdfVector* value = scratchBuffer->GetExecutorCache()) {
++        if (scratchBuffer->GetExecutorCache()) {
+             _AbsorbPublicBuffer(
+                 output, dataHandle, scratchBuffer->GetExecutorCacheMask());
+             _dataManager->PublishScratchBufferData(dataHandle);
+--- a/pxr/imaging/hd/renderDelegateAdapterRenderer.cpp
++++ b/pxr/imaging/hd/renderDelegateAdapterRenderer.cpp
+@@ -53,7 +53,7 @@
+ /// Creating a std::vector<HdDriver*> here.
+ /// HdRenderDelegateAdapterRenderer::_drivers owns the HdDriver struct's.
+ ///
+-class HdRenderDelegateAdapterRenderer::_LegacyRenderControl
++class HdRenderDelegateAdapterRenderer::_LegacyRenderControl final
+     : public HdLegacyRenderControlInterface
+ {
+ public:
+--- a/pxr/imaging/hd/sceneIndexPluginRegistry.cpp
++++ b/pxr/imaging/hd/sceneIndexPluginRegistry.cpp
+@@ -1010,7 +1010,8 @@
+     const _StringPair &rendererAndApp,
+     size_t *numEntriesForAllRenderers /* = nullptr */) const
+ {
+-    const auto &[rendererDisplayName, appName] = rendererAndApp;
++    const auto &rendererDisplayName = rendererAndApp.first;
++    const auto &appName = rendererAndApp.second;
+ 
+     _RegEntriesByRendererMap::const_iterator allRenderersIt =
+         regEntriesForRenderers.find(
+@@ -1055,7 +1056,8 @@
+     const _StringPair &rendererAndApp,
+     size_t *numEntriesForAllRenderers /* = nullptr */) const
+ {
+-    const auto &[rendererDisplayName, appName] = rendererAndApp;
++    const auto &rendererDisplayName = rendererAndApp.first;
++    const auto &appName = rendererAndApp.second;
+ 
+     _JsonEntriesByRendererMap::const_iterator allRenderersIt =
+         jsonEntriesForRenderers.find(
+--- a/pxr/imaging/hdSt/commandBuffer.cpp
++++ b/pxr/imaging/hdSt/commandBuffer.cpp
+@@ -526,7 +526,7 @@
+     tbb::enumerable_thread_specific<size_t> visCounts;
+ 
+     WorkParallelForN(_drawItemInstances.size()/N+1,
+-      [&visCounts, this, N](size_t start, size_t end) {
++      [&visCounts, this](size_t start, size_t end) {
+         TRACE_SCOPE("SetVis");
+         start *= N;
+         end = std::min(end*N, _drawItemInstances.size());
+@@ -618,4 +618,3 @@
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/imaging/hdSt/mesh.cpp
++++ b/pxr/imaging/hdSt/mesh.cpp
+@@ -70,7 +70,6 @@
+ 
+ // Use more recognizable names for each compute queue the mesh computations use.
+ namespace {
+-    constexpr HdStComputeQueue _CopyExtCompQueue = HdStComputeQueueZero;
+     constexpr HdStComputeQueue _RefinePrimvarCompQueue = HdStComputeQueueOne;
+     constexpr HdStComputeQueue _NormalsCompQueue = HdStComputeQueueTwo;
+     constexpr HdStComputeQueue _RefineNormalsCompQueue = HdStComputeQueueThree;
+@@ -3391,4 +3390,3 @@
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/imaging/hdx/selectionTracker.cpp
++++ b/pxr/imaging/hdx/selectionTracker.cpp
+@@ -467,7 +467,7 @@
+ 
+     size_t const N = 1000;
+     WorkParallelForN(numPrims/N + 1,
+-       [&ids, index, N, &selectedPrims](size_t begin, size_t end) mutable {
++       [&ids, index, &selectedPrims](size_t begin, size_t end) mutable {
+         end = std::min(end*N, ids.size());
+         begin = begin*N;
+         for (size_t i = begin; i < end; i++) {
+--- a/pxr/imaging/hgiGL/scopedStateHolder.h
++++ b/pxr/imaging/hgiGL/scopedStateHolder.h
+@@ -58,7 +58,6 @@
+     int32_t _restoreStencilReferenceValue[2];
+     int32_t _restoreStencilFail[2];
+     int32_t _restoreStencilReadMask[2];
+-    int32_t _restoreStencilPass[2];
+     int32_t _restoreStencilDepthFail[2];
+     int32_t _restoreStencilDepthPass[2];
+     int32_t _restoreStencilWriteMask[2];
+--- a/pxr/imaging/plugin/hioImageIO/imageIOImage.mm
++++ b/pxr/imaging/plugin/hioImageIO/imageIOImage.mm
+@@ -715,8 +715,6 @@
+     
+     int width = GetWidth();
+     int height = GetHeight();
+-    int bytesPerRow = (int)CGImageGetBytesPerRow(_imageRef);
+-    int bitsPerComponent = (int)CGImageGetBitsPerComponent(_imageRef);
+ 
+     CGImageRef croppedImage = NULL;
+     if (cropTop || cropBottom || cropLeft || cropRight) {
+@@ -888,4 +886,3 @@
+ 
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/usd/pcp/dependencies.cpp
++++ b/pxr/usd/pcp/dependencies.cpp
+@@ -59,20 +59,6 @@
+     // If this prim index does not introduce new nodes it can't
+     // introduce any additional dependencies.
+     return primIndex.GetGraph()->HasNewNodes();
+-}
+-
+-// Determine if Pcp_Dependencies should store an entry
+-// for the arc represented by the given node.
+-//
+-// As a space optimization, Pcp_Dependencies does not store entries
+-// for arcs that are implied by nearby structure and which can
+-// be easily synthesized. Specifically, it does not store arcs
+-// introduced purely ancestrally, nor does it store arcs for root nodes
+-// (PcpDependencyTypeRoot).
+-inline static bool
+-_ShouldStoreDependency(PcpDependencyFlags depFlags)
+-{
+-    return depFlags & PcpDependencyTypeDirect;
+ }
+ 
+ // Determine if Pcp_Dependencies should store entries for the subtree
+--- a/pxr/usd/pcp/primIndex.cpp
++++ b/pxr/usd/pcp/primIndex.cpp
+@@ -901,28 +901,6 @@
+         std::swap(lhs.vsetPath, rhs.vsetPath);
+     }
+ 
+-    // Stream insertion operator for debugging.
+-    friend std::ostream &operator<<(std::ostream &os, Task const &task) {
+-        unsigned char buf[sizeof(PcpNodeRef)] = { 0 };
+-        memcpy(buf, &task.node, sizeof(task.node));
+-        std::string bytes;
+-        for (char b: buf) {
+-            bytes += TfStringPrintf("%x", int(b));
+-        }
+-        os << TfStringPrintf(
+-            "Task(type=%s, node=%s, nodePath=<%s>, nodeSite=<%s>",
+-            TfEnum::GetName(task.type).c_str(),
+-            bytes.c_str(),
+-            task.node.GetPath().GetText(),
+-            TfStringify(task.node.GetSite()).c_str());
+-        if (!task.vsetName.empty()) {
+-            os << TfStringPrintf(
+-                ", vsetPath=%s, vsetName=%s, vsetNum=%d",
+-                task.vsetPath.GetText(), task.vsetName.c_str(), task.vsetNum);
+-        }
+-        return os << ")";
+-    }        
+-    
+     Type type;
+     int vsetNum; // << only for variant tasks.
+     PcpNodeRef node;
+--- a/pxr/usd/sdf/fileFormat.cpp
++++ b/pxr/usd/sdf/fileFormat.cpp
+@@ -561,11 +561,13 @@
+         // to have the qualities the file format dictates, even if the
+         // underlying data object type is the same.
+         const SdfAbstractDataConstPtr oldData = _GetLayerData(*layer);
++        const SdfAbstractData * const newDataPointer = get_pointer(data);
++        const SdfAbstractData * const oldDataPointer = get_pointer(oldData);
+         const bool differentDataImpl = 
+             data->StreamsData() != oldData->StreamsData() ||
+             data->IsDetached() != oldData->IsDetached() ||
+             !TfSafeTypeCompare(
+-                typeid(*get_pointer(data)), typeid(*get_pointer(oldData)));
++                typeid(*newDataPointer), typeid(*oldDataPointer));
+ 
+         if (differentDataImpl) {
+             layer->_AdoptData(data);
+--- a/pxr/usd/sdf/pathNode.cpp
++++ b/pxr/usd/sdf/pathNode.cpp
+@@ -27,6 +27,7 @@
+ #include <atomic>
+ #include <memory>
+ #include <utility>
++#include <type_traits>
+ #include <vector>
+ 
+ using std::string;
+@@ -106,63 +107,50 @@
+ template <class T>
+ inline bool operator==(_ParentAnd<T> const &x, _ParentAnd<T> const &y)
+ {
+-    return x.parent == y.parent && x.value == y.value;
++    if constexpr (std::is_void_v<T>) {
++        return x.parent == y.parent;
++    } else {
++        return x.parent == y.parent && x.value == y.value;
++    }
+ }
+ template <class T>
+ inline bool operator==(_ParentAndRef<T> const &x, _ParentAndRef<T> const &y)
+ {
+-    return x.parent == y.parent && x.value == y.value;
++    if constexpr (std::is_void_v<T>) {
++        return x.parent == y.parent;
++    } else {
++        return x.parent == y.parent && x.value == y.value;
++    }
+ }
+ template <class T>
+ inline bool operator==(_ParentAndRef<T> const &x, _ParentAnd<T> const &y)
+ {
+-    return x.parent == y.parent && x.value == y.value;
++    if constexpr (std::is_void_v<T>) {
++        return x.parent == y.parent;
++    } else {
++        return x.parent == y.parent && x.value == y.value;
++    }
+ }
+ template <class T>
+ inline bool operator==(_ParentAnd<T> const &x, _ParentAndRef<T> const &y)
+ {
+-    return x.parent == y.parent && x.value == y.value;
+-}
+-
+-inline bool operator==(_ParentAnd<void> const &x, _ParentAnd<void> const &y)
+-{
+-    return x.parent == y.parent;
+-}
+-inline bool operator==(_ParentAndRef<void> const &x,
+-                       _ParentAndRef<void> const &y)
+-{
+-    return x.parent == y.parent;
+-}
+-inline bool operator==(_ParentAndRef<void> const &x, _ParentAnd<void> const &y)
+-{
+-    return x.parent == y.parent;
+-}
+-inline bool operator==(_ParentAnd<void> const &x, _ParentAndRef<void> const &y)
+-{
+-    return x.parent == y.parent;
+-}
+-
+-inline size_t
+-hash_value(const Sdf_PathNode *p)
+-{
+-    return TfHash()(p);
++    if constexpr (std::is_void_v<T>) {
++        return x.parent == y.parent;
++    } else {
++        return x.parent == y.parent && x.value == y.value;
++    }
+ }
+ 
+ template <class PaT>
+ inline size_t _OuterHash(PaT const &pat)
+ {
+-    return TfHash::Combine(pat.parent, pat.value);
+-}
+-
+-inline size_t _OuterHash(_ParentAnd<void> const &pat)
+-{
+-    return TfHash::Combine(pat.parent);
+-};
+-
+-inline size_t _OuterHash(_ParentAndRef<void> const &pat)
+-{
+-    return TfHash::Combine(pat.parent);
+-};
++    if constexpr (std::is_same_v<PaT, _ParentAnd<void>> ||
++                  std::is_same_v<PaT, _ParentAndRef<void>>) {
++        return TfHash::Combine(pat.parent);
++    } else {
++        return TfHash::Combine(pat.parent, pat.value);
++    }
++}
+ 
+ template <class HashState, class T>
+ inline void TfHashAppend(HashState &h, _ParentAnd<T> const &pat)
+--- a/pxr/usd/sdf/specType.cpp
++++ b/pxr/usd/sdf/specType.cpp
+@@ -176,7 +176,8 @@
+ {
+     const Sdf_SpecTypeInfo& specTypeInfo = Sdf_SpecTypeInfo::GetInstance();
+ 
+-    const TfType& schemaType = TfType::Find(typeid(from.GetSchema()));
++    const auto& fromSchema = from.GetSchema();
++    const TfType& schemaType = TfType::Find(typeid(fromSchema));
+     if (!TF_VERIFY(!schemaType.IsUnknown())) {
+         return TfType();
+     }
+@@ -226,7 +227,8 @@
+     const SdfSpecType fromType = from.GetSpecType();
+     const TfType& toType = TfType::Find(to);
+ 
+-    const TfType& fromSchemaType = TfType::Find(typeid(from.GetSchema()));
++    const auto& fromSchema = from.GetSchema();
++    const TfType& fromSchemaType = TfType::Find(typeid(fromSchema));
+ 
+     TfBigRWMutex::ScopedLock lock(specTypeInfo.mutex, /*write=*/false);
+ 
+--- a/pxr/usd/sdf/variableExpressionImpl.cpp
++++ b/pxr/usd/sdf/variableExpressionImpl.cpp
+@@ -157,8 +157,9 @@
+     std::vector<std::string>* errors,
+     Result* result, Others*... others)
+ {
+-    // Bitwise-or is intentional to prevent short-circuiting.
+-    return _CollectErrors(errors, result) | _CollectErrors(errors, others...);
++    const bool first = _CollectErrors(errors, result);
++    const bool rest = _CollectErrors(errors, others...);
++    return first || rest;
+ }
+ 
+ template <class... Results>
+--- a/pxr/usd/sdf/zipFile.cpp
++++ b/pxr/usd/sdf/zipFile.cpp
+@@ -977,8 +977,8 @@
+     if (!mark.IsClean()) {
+         mark.Clear();
+         TF_RUNTIME_ERROR(
+-            "Zipfile is larger than maximum size allowed by Zip32 (%ld)", 
+-                Sdf_GetMaxZipFileSize()
++            "Zipfile is larger than maximum size allowed by Zip32 (%lld)",
++                static_cast<long long>(Sdf_GetMaxZipFileSize())
+         );
+ 
+         return false;
+--- a/pxr/usd/usdGeom/basisCurves.cpp
++++ b/pxr/usd/usdGeom/basisCurves.cpp
+@@ -385,13 +385,13 @@
+             if (wrap == UsdGeomTokens->periodic) {
+                 // Cubic, bezier, periodic
+                 std::transform(curveVertexCounts.cbegin(), curveVertexCounts.cend(), 
+-                    segmentCounts.begin(), [vstep](int n) { return n / vstep; });
++                    segmentCounts.begin(), [](int n) { return n / vstep; });
+                 isValid = true;
+             } else if (wrap == UsdGeomTokens->nonperiodic || 
+                     wrap == UsdGeomTokens->pinned) {
+                 // Cubic, bezier, nonperiodic/pinned
+                 std::transform(curveVertexCounts.cbegin(), curveVertexCounts.cend(), 
+-                    segmentCounts.begin(), [vstep](int n) { return (n - 4) / vstep + 1; });
++                    segmentCounts.begin(), [](int n) { return (n - 4) / vstep + 1; });
+                 isValid = true;
+             }
+         } else if (basis == UsdGeomTokens->bspline ||
+--- a/pxr/usd/usdSkel/animation.cpp
++++ b/pxr/usd/usdSkel/animation.cpp
+@@ -265,9 +265,10 @@
+     VtVec3hArray scales;
+     if (UsdSkelDecomposeTransforms(xforms, &translations,
+                                    &rotations, &scales)) {
+-        return GetTranslationsAttr().Set(translations, time) &
+-               GetRotationsAttr().Set(rotations, time) &
+-               GetScalesAttr().Set(scales, time);
++        const bool translationsSet = GetTranslationsAttr().Set(translations, time);
++        const bool rotationsSet = GetRotationsAttr().Set(rotations, time);
++        const bool scalesSet = GetScalesAttr().Set(scales, time);
++        return translationsSet && rotationsSet && scalesSet;
+     }
+     return false;
+ }
+--- a/pxr/usdImaging/usdImaging/dataSourceMaterial.cpp
++++ b/pxr/usdImaging/usdImaging/dataSourceMaterial.cpp
+@@ -404,15 +404,13 @@
+ private:
+     _UsdImagingDataSourceShadingNodeInputs(
+         UsdShadeShader shaderNode,
+-        const UsdImagingDataSourceStageGlobals &stageGlobals,
++        const UsdImagingDataSourceStageGlobals & /*stageGlobals*/,
+         const SdfPath &materialPrefix)
+     : _shaderNode(shaderNode)
+-    , _stageGlobals(stageGlobals)
+     , _materialPrefix(materialPrefix)
+     {}
+ 
+     UsdShadeShader _shaderNode;
+-    const UsdImagingDataSourceStageGlobals &_stageGlobals;
+     const SdfPath _materialPrefix;
+ };
+ 
+--- a/pxr/usdImaging/usdImaging/dataSourcePrim.h
++++ b/pxr/usdImaging/usdImaging/dataSourcePrim.h
+@@ -94,7 +94,6 @@
+ 
+ private:
+     UsdAttributeQuery _purposeQuery;
+-    const UsdImagingDataSourceStageGlobals &_stageGlobals;
+ };
+ 
+ HD_DECLARE_DATASOURCE_HANDLES(UsdImagingDataSourcePurpose);
+@@ -272,7 +271,6 @@
+ 
+ private:
+     UsdGeomXformable::XformQuery _xformQuery;
+-    const UsdImagingDataSourceStageGlobals &_stageGlobals;
+ };
+ 
+ HD_DECLARE_DATASOURCE_HANDLES(UsdImagingDataSourceXformResetXformStack);
+--- a/pxr/usdImaging/usdImaging/dataSourcePrim.cpp
++++ b/pxr/usdImaging/usdImaging/dataSourcePrim.cpp
+@@ -96,9 +96,8 @@
+ 
+ UsdImagingDataSourcePurpose::UsdImagingDataSourcePurpose(
+         const UsdAttributeQuery &purposeQuery,
+-        const UsdImagingDataSourceStageGlobals &stageGlobals)
++        const UsdImagingDataSourceStageGlobals & /*stageGlobals*/)
+     : _purposeQuery(purposeQuery)
+-    , _stageGlobals(stageGlobals)
+ {
+ }
+ 
+@@ -383,9 +382,8 @@
+ 
+ UsdImagingDataSourceXformResetXformStack::UsdImagingDataSourceXformResetXformStack(
+         const UsdGeomXformable::XformQuery &xformQuery,
+-        const UsdImagingDataSourceStageGlobals &stageGlobals)
++        const UsdImagingDataSourceStageGlobals & /*stageGlobals*/)
+     : _xformQuery(xformQuery)
+-    , _stageGlobals(stageGlobals)
+ {
+ }
+ 
+--- a/pxr/usdImaging/usdImaging/dataSourceRelationship.h
++++ b/pxr/usdImaging/usdImaging/dataSourceRelationship.h
+@@ -55,7 +55,6 @@
+ 
+ private:
+     UsdRelationship _usdRel;
+-    const UsdImagingDataSourceStageGlobals & _stageGlobals;
+ };
+ 
+ HD_DECLARE_DATASOURCE_HANDLES(UsdImagingDataSourceRelationship);
+--- a/pxr/usdImaging/usdImaging/dataSourceRelationship.cpp
++++ b/pxr/usdImaging/usdImaging/dataSourceRelationship.cpp
+@@ -10,9 +10,8 @@
+ 
+ UsdImagingDataSourceRelationship::UsdImagingDataSourceRelationship(
+         const UsdRelationship &usdRel,
+-        const UsdImagingDataSourceStageGlobals &stageGlobals)
++        const UsdImagingDataSourceStageGlobals & /*stageGlobals*/)
+ : _usdRel(usdRel)
+-, _stageGlobals(stageGlobals)
+ {}
+ 
+ VtValue
+--- a/pxr/usdImaging/usdImaging/dataSourceRenderPrims.cpp
++++ b/pxr/usdImaging/usdImaging/dataSourceRenderPrims.cpp
+@@ -141,16 +141,14 @@
+     _DataSourceRenderPass(
+             const SdfPath &sceneIndexPath,
+             UsdRenderPass usdRenderPass,
+-            const UsdImagingDataSourceStageGlobals &stageGlobals)
++            const UsdImagingDataSourceStageGlobals & /*stageGlobals*/)
+         : _sceneIndexPath(sceneIndexPath)
+         , _usdRenderPass(usdRenderPass)
+-        , _stageGlobals(stageGlobals)
+     {}
+ 
+ private:
+     const SdfPath _sceneIndexPath;
+     UsdRenderPass _usdRenderPass;
+-    const UsdImagingDataSourceStageGlobals & _stageGlobals;
+ };
+ 
+ HD_DECLARE_DATASOURCE_HANDLES(_DataSourceRenderPass);
+--- a/pxr/usdImaging/usdImaging/dataSourceVolume.h
++++ b/pxr/usdImaging/usdImaging/dataSourceVolume.h
+@@ -38,7 +38,6 @@
+ 
+ private:
+     UsdVolVolume _usdVolume;
+-    const UsdImagingDataSourceStageGlobals &_stageGlobals;
+ };
+ 
+ HD_DECLARE_DATASOURCE_HANDLES(UsdImagingDataSourceVolumeFieldBindings);
+--- a/pxr/usdImaging/usdImaging/dataSourceVolume.cpp
++++ b/pxr/usdImaging/usdImaging/dataSourceVolume.cpp
+@@ -16,9 +16,8 @@
+ UsdImagingDataSourceVolumeFieldBindings
+ ::UsdImagingDataSourceVolumeFieldBindings(
+         UsdVolVolume usdVolume,
+-        const UsdImagingDataSourceStageGlobals &stageGlobals)
++        const UsdImagingDataSourceStageGlobals & /*stageGlobals*/)
+     : _usdVolume(usdVolume)
+-    , _stageGlobals(stageGlobals)
+ {
+ }
+ 
+--- a/pxr/usdImaging/usdImaging/indexProxy.cpp
++++ b/pxr/usdImaging/usdImaging/indexProxy.cpp
+@@ -40,10 +40,11 @@
+         }
+     }
+ 
++    const auto * const adapterPointer = adapterToInsert.get();
+     TF_DEBUG(USDIMAGING_CHANGES).Msg(
+         "[Add HdPrim Info] <%s> adapter=%s\n",
+         cachePath.GetText(),
+-        TfType::GetCanonicalTypeName(typeid(*(adapterToInsert.get()))).c_str());
++        TfType::GetCanonicalTypeName(typeid(*adapterPointer)).c_str());
+ 
+     // Currently, we don't support more than one adapter dependency per usd
+     // prim, but we could relax this restriction if it's useful.
+@@ -272,10 +273,11 @@
+         primInfo->dirtyBits = HdChangeTracker::AllDirty;
+         _delegate->_dirtyCachePaths.insert(cachePath);
+ 
++        const auto * const adapterPointer = adapter.get();
+         TF_DEBUG(USDIMAGING_INSTANCER).Msg(
+             "[Instancer Inserted] %s, adapter = %s\n",
+             cachePath.GetText(),
+-            adapter ? TfType::GetCanonicalTypeName(typeid(*adapter)).c_str()
++            adapter ? TfType::GetCanonicalTypeName(typeid(*adapterPointer)).c_str()
+                     : "none");
+ 
+         _AddTask(cachePath);
+@@ -531,4 +533,3 @@
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/usdImaging/usdImaging/instanceAdapter.cpp
++++ b/pxr/usdImaging/usdImaging/instanceAdapter.cpp
+@@ -344,12 +344,13 @@
+                 protoPath = newProtoPath;
+             }
+ 
++            const auto * const adapterPointer = primAdapter.get();
+             TF_DEBUG(USDIMAGING_INSTANCER).Msg(
+                 "[Add Instance NI] <%s>  %s (%s), adapter = %s\n",
+                 instancerPath.GetText(), protoPath.GetText(),
+                 iter->GetName().GetText(),
+                 primAdapter ?
+-                    TfType::GetCanonicalTypeName(typeid(*primAdapter)).c_str() :
++                    TfType::GetCanonicalTypeName(typeid(*adapterPointer)).c_str() :
+                     "none");
+         }
+     }
+@@ -3055,4 +3056,3 @@
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-

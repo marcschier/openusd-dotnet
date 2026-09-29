@@ -6,7 +6,7 @@
     {
       "id": "sdk-storage-admission-v1",
       "path": "eng\\patches\\openusd\\storage-admission-v1.patch",
-      "sha256": "EE2BA2379795EC569AFBB056D2A5AE1154548E81E88911FF1E75B1B44C06CC0E",
+      "sha256": "578943726FA9E114F611A44D7D756A3BDF0AD1ADE4315318D70A5964CBB431D1",
       "files": [
         {
           "path": "pxr\\usd\\sdf\\CMakeLists.txt",
@@ -26,7 +26,7 @@
         {
           "path": "pxr\\usd\\sdf\\crateFile.cpp",
           "beforeSha256": "6BA71BC4D507F53F150DEAFE900B325DAE62746A710CB7DDB6D91F505D2A2D1D",
-          "afterSha256": "4CE0BC68EFB350D0B1096222BFF9355DED88ECDAA00EDC83359EF3A551AAA51B"
+          "afterSha256": "050072BCAC23141EDCF865BFAAB07D35D6864AA6FE73B92102F078E3B667B568"
         },
         {
           "path": "pxr\\base\\vt\\arrayEdit.h",

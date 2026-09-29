@@ -233,7 +233,8 @@ $runtimePin = Get-Content (Join-Path $PSScriptRoot 'openusd-runtime-patches.lock
 $storagePin = Get-Content -LiteralPath $PatchLockPath -Raw | ConvertFrom-Json
 foreach ($patch in @($runtimePin.patches) + @($storagePin.patches))
 {
-    foreach ($header in $patch.files | Where-Object { $_.path.EndsWith('.h', [StringComparison]::Ordinal) })
+    foreach ($header in $patch.files | Where-Object {
+        $_.path.EndsWith('.h', [StringComparison]::Ordinal) -and $_.installedHeader -ne $false })
     {
         $path = Join-Path (Join-Path $installRoot 'include') $header.path
         $runtimeCurrent = $runtimeCurrent -and

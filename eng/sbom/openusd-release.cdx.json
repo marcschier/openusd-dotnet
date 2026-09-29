@@ -35,15 +35,15 @@
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",
-        "value": "12b4d16c07fc409771380eeedb768ea23a9c2a63792a86a4534a61b66a107af8"
+        "value": "ef95e9f597599a3d2ee1b5660c4e20cccc0ff96c5beb91636dc145e9f5d49a6e"
       },
       {
         "name": "openusd:input:eng/openusd-storage-admission.lock.json:sha256",
-        "value": "ba9a1d1af54b729d046d348c0d53504a50780a35a24dd6a2514ac666bb8a22c5"
+        "value": "48b345af19d5f0b8b46a1197812f16a2ae7ea8a471b214af3914f59c4dc1db05"
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "7e22cd2c6677a321c6232d5c59cb8982d4e86b439b1346854c67b90a2a170fed"
+        "value": "af7c0a731255bba7f7508fc44f6d9a1383793f040dc1f39375dd52a83f93316c"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
@@ -55,7 +55,7 @@
       },
       {
         "name": "openusd:input:eng/patches/openusd/storage-admission-v1.patch:sha256",
-        "value": "ee2ba2379795ec569afbb056d2a5ae1154548e81e88911ff1e75b1b44c06cc0e"
+        "value": "578943726fa9e114f611a44d7d756a3bdf0ad1ade4315318d70a5964cbb431d1"
       },
       {
         "name": "openusd:input:eng/patches/openusd/storm-aov-restoration.patch:sha256",
@@ -63,7 +63,7 @@
       },
       {
         "name": "openusd:input:eng/patches/openusd/strict-compiler-portability.patch:sha256",
-        "value": "92e03bf313c16a447db580e18e7b9bdbd5949156df821640da01d4a521681006"
+        "value": "7f12e927996275961948c0f5bbcdec301f56b863b39af1c371f0692cda7d872f"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",

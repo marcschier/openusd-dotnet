@@ -177,6 +177,28 @@
  #include "crateFile.h"
  #include "integerCoding.h"
  
+@@ -720,8 +721,8 @@
+         if constexpr (SafetyOverSpeed) {
+             if (nRead != nBytes) {
+                 PXR_TF_THROW(SdfReadOutOfBoundsError, TfStringPrintf(
+-                             "Failed reading %zu bytes at offset %zu",
+-                             nBytes, _cur));
++                             "Failed reading %zu bytes at offset %lld",
++                             nBytes, static_cast<long long>(_cur)));
+             }
+         }
+         _cur += nRead;
+@@ -3740,8 +3741,8 @@
+     }
+     wd.Wait();
+     if (i != numTokens) {
+-        TF_RUNTIME_ERROR("Crate file claims %zu tokens, found %zu",
+-                         numTokens, i);
++        TF_RUNTIME_ERROR("Crate file claims %llu tokens, found %zu",
++                         static_cast<unsigned long long>(numTokens), i);
+     }
+ 
+     WorkSwapDestroyAsync(chars);
 @@ -4012,6 +4013,272 @@
      }
  }
