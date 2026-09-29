@@ -484,6 +484,12 @@ digit predicates use logical boolean operators. After an SDK build fails, the bu
 script collects remaining Ninja compiler diagnostics but still returns the original
 failure; it does not install or accept a partially built SDK.
 
+The complete diagnostic sweep also guards empty zero-inline-capacity vector moves,
+small clip-time sorting, Vulkan format-table indices and default instancer transforms.
+Patched installed headers are verified alongside the SDK binary; a header drift triggers
+rebuilding rather than reuse. The native probe exercises empty/nonempty vector moves and
+authored clip sample bracketing as well as the shape and metadata cases.
+
 Curated parity byte baselines are measured against the current 128-light frame layout.
 The fixed 15,296-byte frame block is outside the variable-scene headroom calculation:
 only the remaining scene buffers receive the existing 25-percent/256-byte margin.

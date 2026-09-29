@@ -61,7 +61,9 @@ try
         }
         Remove-Item -LiteralPath $metadataPath -Force
     }
-    Write-Output 'SDK_RUNTIME_PATCH_METADATA_OK: all RIDs, missing provenance, binary drift, patch drift and missing source'
+    New-Item -ItemType Directory -Path (Join-Path $sdk 'include') | Out-Null
+    Assert-Refused { & $verify -Operation Verify -SdkRoot $sdk -Rid 'win-x64' } 'header mismatch'
+    Write-Output 'SDK_RUNTIME_PATCH_METADATA_OK: RIDs, provenance, binary/patch/header drift and missing source'
 }
 finally
 {

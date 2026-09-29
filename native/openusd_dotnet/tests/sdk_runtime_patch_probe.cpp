@@ -5,10 +5,13 @@
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/tf/functionRef.h"
+#include "pxr/base/tf/smallVector.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/vt/streamOut.h"
 #include "pxr/base/vt/types.h"
 #include "pxr/usd/sdf/schema.h"
+#include "pxr/usd/usd/attribute.h"
+#include "pxr/usd/usd/stage.h"
 
 #include <iostream>
 #include <sstream>
@@ -46,6 +49,15 @@ int main(int argc, char** argv)
         {
             throw std::runtime_error("SDK dictionary order changed its digit or equality semantics.");
         }
+        TfSmallVector<GfVec3d, 0> empty;
+        TfSmallVector<GfVec3d, 0> movedEmpty(std::move(empty));
+        TfSmallVector<GfVec3d, 0> remote{GfVec3d(1, 2, 3), GfVec3d(4, 5, 6)};
+        TfSmallVector<GfVec3d, 0> movedRemote(std::move(remote));
+        if (!movedEmpty.empty() || !remote.empty() || movedRemote.size() != 2 ||
+            movedRemote[0] != GfVec3d(1, 2, 3) || movedRemote[1] != GfVec3d(4, 5, 6))
+        {
+            throw std::runtime_error("SDK zero-inline-capacity vector move lost or changed values.");
+        }
         if (PlugRegistry::GetInstance().RegisterPlugins(argv[1]).empty())
         {
             throw std::runtime_error("SDK metadata fixture was not registered.");
@@ -60,6 +72,21 @@ int main(int argc, char** argv)
         {
             throw std::runtime_error("SDK schema tuple parsing changed vector/matrix shape or values.");
         }
+        UsdStageRefPtr stage = UsdStage::Open(std::string(argv[1]) + "/clip-root.usda");
+        if (!stage)
+        {
+            throw std::runtime_error("SDK clip fixture could not be opened.");
+        }
+        UsdAttribute sampled = stage->GetAttributeAtPath(SdfPath("/Root.sampled"));
+        double lower = 0, upper = 0;
+        bool hasSamples = false;
+        if (!sampled.GetBracketingTimeSamples(2.5, &lower, &upper, &hasSamples) ||
+            !hasSamples || lower != 0 || upper != 5 ||
+            !sampled.GetBracketingTimeSamples(7.5, &lower, &upper, &hasSamples) ||
+            !hasSamples || lower != 5 || upper != 10)
+        {
+            throw std::runtime_error("SDK clip sample ordering or bracketing changed.");
+        }
         Check({3, {0, 0, 0}}, "[0, 1, 2]");
         Check({6, {2, 0, 0}}, "[[0, 1, 2], [3, 4, 5]]");
         Check({8, {2, 2, 0}}, "[[[0, 1], [2, 3]], [[4, 5], [6, 7]]]");
@@ -72,7 +99,7 @@ int main(int argc, char** argv)
             throw std::runtime_error("SDK timing must provide a positive conversion.");
         }
         (void)ArchGetTickQuantum();
-        std::cout << "SDK_RUNTIME_PATCH_PROBE_OK: ranks1-4, remainder, empty, timing, dictionary and schema tuples\n";
+        std::cout << "SDK_RUNTIME_PATCH_PROBE_OK: arrays, timing, dictionary, tuples, moves and clip samples\n";
         return 0;
     }
     catch (const std::exception& error)

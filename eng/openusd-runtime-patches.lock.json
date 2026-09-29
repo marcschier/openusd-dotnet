@@ -28,7 +28,7 @@
     {
       "id": "strict-compiler-portability",
       "path": "eng\\patches\\openusd\\strict-compiler-portability.patch",
-      "sha256": "7A867AFE78933645CB616337ADC0BB0876290ADF28BE86F962518906490E46BA",
+      "sha256": "92E03BF313C16A447DB580E18E7B9BDBD5949156DF821640DA01D4A521681006",
       "files": [
         {
           "path": "pxr\\base\\arch\\timing.cpp",
@@ -49,6 +49,31 @@
           "path": "pxr\\usd\\sdf\\schema.cpp",
           "beforeSha256": "D0665AF366DDD48EB63A2BCF269DEF279C025508F330357D574044A66D7DB391",
           "afterSha256": "507B215B6E06A3D4A320B8FCBBD8D12D4C3EB181F89EAA7ABBC071FA71A0F8F3"
+        },
+        {
+          "path": "pxr\\usd\\usd\\clip.cpp",
+          "beforeSha256": "1AB5C2EED6F441D55F56B832BBAB0F1F90492AAE8407BE805509C8DE62C63631",
+          "afterSha256": "A75896B7FFBC0134A777817FCBB794CFA218CE4F9B7F7CED30CE9839959948B1"
+        },
+        {
+          "path": "pxr\\base\\tf\\smallVector.h",
+          "beforeSha256": "9B60DFD85B61EE5783E671928E5498FEA557B6CF29D693CC60DEC337EAB080B9",
+          "afterSha256": "7E0EAD01A875BCC0833241E3578D284B5DBE34300281822901BB1F72B462FBCB"
+        },
+        {
+          "path": "pxr\\imaging\\hgiVulkan\\conversions.cpp",
+          "beforeSha256": "694967F3FB6359A4AB775D260B4A5DDAED69D8C30AAB1462F1E4132499B70EAA",
+          "afterSha256": "0380E0307D74C55A94D3C82510FB005EA5B2ECF3F3ACCE6A5AC82C3D7B4F5519"
+        },
+        {
+          "path": "pxr\\imaging\\hd\\unitTestDelegate.h",
+          "beforeSha256": "153691632867693EB53BD73385FFF66B3665423BE34DE76703CE11BD2B1115E8",
+          "afterSha256": "ACFDDCEFD2C20FCCA038F8E0119CFA1690E236FC3C2BC9D9C603702B3A0FA194"
+        },
+        {
+          "path": "pxr\\imaging\\hdx\\unitTestDelegate.h",
+          "beforeSha256": "79E10A9E5DE7AB621A668134969936D4AAF954A0075DA80ACABD536182E3825A",
+          "afterSha256": "2143984042E9410C5DE31A481174AFB0302641A6B55A31CFE1F9C0E3AAC04969"
         }
       ]
     }

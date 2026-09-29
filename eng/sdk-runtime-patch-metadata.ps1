@@ -31,6 +31,18 @@ foreach ($patch in @($pin.patches) + @($storagePin.patches))
     {
         throw "SDK runtime patch identity mismatch: $($patch.id)"
     }
+    if (Test-Path -LiteralPath (Join-Path $sdk 'include') -PathType Container)
+    {
+        foreach ($file in $patch.files | Where-Object { $_.path.EndsWith('.h', [StringComparison]::Ordinal) })
+        {
+            $installedHeader = Join-Path (Join-Path $sdk 'include') $file.path
+            if (-not (Test-Path -LiteralPath $installedHeader -PathType Leaf) -or
+                (Get-FileHash -LiteralPath $installedHeader).Hash -cne $file.afterSha256)
+            {
+                throw "Installed SDK runtime patch header mismatch: $($file.path)"
+            }
+        }
+    }
 }
 $binary = switch ($Rid)
 {

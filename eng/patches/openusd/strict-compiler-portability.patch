@@ -72,3 +72,73 @@
          context->BeginTuple();
          for (size_t i = 0; i < context->valueTupleDimensions.d[level]; i++) {
              _AddValuesToValueContext(values, context, level + 1);
+--- a/pxr/usd/usd/clip.cpp
++++ b/pxr/usd/usd/clip.cpp
+@@ -430,7 +430,15 @@
+         return true;
+     }
+ 
+-    std::sort(bracketingTimes.begin(), bracketingTimes.begin() + numTimes);
++    for (size_t i = 1; i < numTimes; ++i) {
++        const ExternalTime value = bracketingTimes[i];
++        size_t j = i;
++        while (j > 0 && value < bracketingTimes[j - 1]) {
++            bracketingTimes[j] = bracketingTimes[j - 1];
++            --j;
++        }
++        bracketingTimes[j] = value;
++    }
+     auto uniqueIt = std::unique(
+         bracketingTimes.begin(), bracketingTimes.begin() + numTimes);
+     return _GetBracketingTimeSamples(
+@@ -985,4 +993,3 @@
+     VtValue*) const;
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE
+-
+--- a/pxr/base/tf/smallVector.h
++++ b/pxr/base/tf/smallVector.h
+@@ -81,6 +81,9 @@
+     template <typename Iterator>
+     static Iterator _UninitializedMove(
+         Iterator first, Iterator last, Iterator dest) {
++        if (first == last) {
++            return dest;
++        }
+         return std::uninitialized_copy(
+             std::make_move_iterator(first),
+             std::make_move_iterator(last),
+--- a/pxr/imaging/hgiVulkan/conversions.cpp
++++ b/pxr/imaging/hgiVulkan/conversions.cpp
+@@ -369,7 +369,8 @@
+ VkFormat
+ HgiVulkanConversions::GetFormat(HgiFormat inFormat, bool depthFormat)
+ {
+-    if (!TF_VERIFY(inFormat!=HgiFormatInvalid)) {
++    if (inFormat < 0 || inFormat >= HgiFormatCount) {
++        TF_CODING_ERROR("Invalid Hgi format: %d", static_cast<int>(inFormat));
+         return VK_FORMAT_UNDEFINED;
+     }
+ 
+--- a/pxr/imaging/hd/unitTestDelegate.h
++++ b/pxr/imaging/hd/unitTestDelegate.h
+@@ -484,7 +484,7 @@
+         VtVec3fArray points;
+     };
+     struct _Instancer {
+-        _Instancer() { }
++        _Instancer() : rootTransform(1.0f) { }
+         _Instancer(VtVec3fArray const &scale,
+                    VtVec4fArray const &rotate,
+                    VtVec3fArray const &translate,
+--- a/pxr/imaging/hdx/unitTestDelegate.h
++++ b/pxr/imaging/hdx/unitTestDelegate.h
+@@ -218,7 +218,7 @@
+     };
+     
+     struct _Instancer {
+-        _Instancer() { }
++        _Instancer() : rootTransform(1.0f) { }
+         _Instancer(VtVec3fArray const &scale,
+                    VtVec4fArray const &rotate,
+                    VtVec3fArray const &translate,

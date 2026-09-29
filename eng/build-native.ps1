@@ -229,6 +229,18 @@ foreach ($relative in $storageFiles)
         (Test-Path -LiteralPath $file -PathType Leaf) -and
         (Get-FileHash -LiteralPath $file).Hash -ceq $records[0].sha256
 }
+$runtimePin = Get-Content (Join-Path $PSScriptRoot 'openusd-runtime-patches.lock.json') -Raw | ConvertFrom-Json
+$storagePin = Get-Content -LiteralPath $PatchLockPath -Raw | ConvertFrom-Json
+foreach ($patch in @($runtimePin.patches) + @($storagePin.patches))
+{
+    foreach ($header in $patch.files | Where-Object { $_.path.EndsWith('.h', [StringComparison]::Ordinal) })
+    {
+        $path = Join-Path (Join-Path $installRoot 'include') $header.path
+        $runtimeCurrent = $runtimeCurrent -and
+            (Test-Path -LiteralPath $path -PathType Leaf) -and
+            (Get-FileHash -LiteralPath $path).Hash -ceq $header.afterSha256
+    }
+}
 if (-not $runtimeCurrent -or -not $storageCurrent)
 {
     Write-Host 'The required SDK runtime/storage patches are not verified; rebuilding USD instead of reusing the install.'

@@ -35,7 +35,7 @@
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",
-        "value": "4f71235aa7e36a24af5cb5c73deabf043cd2590b040c8c0de9bde3830353ddef"
+        "value": "12b4d16c07fc409771380eeedb768ea23a9c2a63792a86a4534a61b66a107af8"
       },
       {
         "name": "openusd:input:eng/openusd-storage-admission.lock.json:sha256",
@@ -43,7 +43,7 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "f37aac443dc913d434fddc0efee871dcae58fda57d12609ebce2ec69690f44ec"
+        "value": "7e22cd2c6677a321c6232d5c59cb8982d4e86b439b1346854c67b90a2a170fed"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
@@ -63,7 +63,7 @@
       },
       {
         "name": "openusd:input:eng/patches/openusd/strict-compiler-portability.patch:sha256",
-        "value": "7a867afe78933645cb616337adc0bb0876290adf28be86f962518906490e46ba"
+        "value": "92e03bf313c16a447db580e18e7b9bdbd5949156df821640da01d4a521681006"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",
