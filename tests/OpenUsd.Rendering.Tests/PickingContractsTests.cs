@@ -867,43 +867,23 @@ public sealed class PickingContractsTests
         var worldNormal = Vector3.UnitY;
         ulong checksum = 0;
 
-        for (int index = 0; index < 64; index++)
+        for (int block = 0; block < 8; block++)
         {
-            var warmupRequest = new RenderPickRequest(
-                index,
-                index,
-                viewport,
-                (ulong)index,
-                requestedSceneRevision: (ulong)index,
-                RenderPickTarget.Face);
-            RenderPickResult warmupResult = RenderPickResult.Hit(
-                warmupRequest,
-                (ulong)index,
-                (ulong)index,
-                item,
-                worldPosition,
-                worldNormal,
-                0.5f,
-                RenderBackendKind.Vulkan,
-                backendToken: 1);
-            RenderPickResult idOnlyWarmupResult = RenderPickResult.Hit(
-                warmupRequest,
-                (ulong)index,
-                (ulong)index,
-                item);
-            RenderPickResult staleWarmupResult = RenderPickResult.Stale(
-                warmupRequest,
-                (ulong)index,
-                (ulong)index,
-                RenderPickStaleReason.Camera |
-                RenderPickStaleReason.ContextGeneration);
-            checksum +=
-                warmupResult.StateRevision +
-                idOnlyWarmupResult.StateRevision +
-                (ulong)staleWarmupResult.StaleReasons;
+            checksum += CreateValueResults(viewport, item, worldPosition, worldNormal);
         }
-
         long before = GC.GetAllocatedBytesForCurrentThread();
+        checksum += CreateValueResults(viewport, item, worldPosition, worldNormal);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        await Assert.That(allocated).IsEqualTo(0);
+        await Assert.That(checksum).IsGreaterThan(0ul);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static ulong CreateValueResults(
+        ViewportDimensions viewport, SelectionItem item, Vector3 worldPosition, Vector3 worldNormal)
+    {
+        ulong checksum = 0;
         for (int index = 0; index < AllocationIterations; index++)
         {
             var request = new RenderPickRequest(
@@ -939,10 +919,7 @@ public sealed class PickingContractsTests
                 idOnlyResult.StateRevision +
                 (ulong)staleResult.StaleReasons;
         }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        await Assert.That(allocated).IsEqualTo(0);
-        await Assert.That(checksum).IsGreaterThan(0ul);
+        return checksum;
     }
 
     private sealed class TestPickingBackend : IRenderPickingBackend
