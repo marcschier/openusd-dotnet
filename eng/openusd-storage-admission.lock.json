@@ -20,6 +20,7 @@
         },
         {
           "path": "pxr\\usd\\sdf\\crateFile.h",
+          "installedHeader": false,
           "beforeSha256": "1B9F8ADFE731F24D21C149FEF84B3EA23420970EDE002979C2C84CC350FBA250",
           "afterSha256": "94BF346B17F2CB9B6F34CE9D11BAC979DA65EA04EDC017DD51A9D962BD23A000"
         },

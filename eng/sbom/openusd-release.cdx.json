@@ -39,11 +39,11 @@
       },
       {
         "name": "openusd:input:eng/openusd-storage-admission.lock.json:sha256",
-        "value": "48b345af19d5f0b8b46a1197812f16a2ae7ea8a471b214af3914f59c4dc1db05"
+        "value": "5f98554255b95e647eaae53964448158b58ff53ca2854614e670f1e9fe53447e"
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "af7c0a731255bba7f7508fc44f6d9a1383793f040dc1f39375dd52a83f93316c"
+        "value": "3cc951989dda7730eeffcee25eca8995ee197f5fbaeea47591a30a25f19a1014"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",

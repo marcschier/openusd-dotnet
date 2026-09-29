@@ -54,6 +54,40 @@ public sealed class WorkflowStructureContractTests
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     [Test]
+    public async Task SdkPatchHeaderInventoryDistinguishesAllNoninstalledPrivateHeaders()
+    {
+        string root = FindRepositoryRoot();
+        var privateHeaders = new List<string>();
+        var publicHeaders = new List<string>();
+        foreach (string file in new[] { "openusd-runtime-patches.lock.json", "openusd-storage-admission.lock.json" })
+        {
+            using JsonDocument pin = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root, "eng", file)));
+            foreach (JsonElement patch in pin.RootElement.GetProperty("patches").EnumerateArray())
+            {
+                foreach (JsonElement source in patch.GetProperty("files").EnumerateArray())
+                {
+                    string path = source.GetProperty("path").GetString()!.Replace('\\', '/');
+                    if (!path.EndsWith(".h", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    bool installed = !source.TryGetProperty("installedHeader", out JsonElement flag) || flag.GetBoolean();
+                    (installed ? publicHeaders : privateHeaders).Add(path);
+                }
+            }
+        }
+        await Assert.That(privateHeaders).IsEquivalentTo(
+        [
+            "pxr/imaging/hdx/unitTestDelegate.h",
+            "pxr/imaging/hgiGL/scopedStateHolder.h",
+            "pxr/usd/sdf/crateFile.h"
+        ]);
+        await Assert.That(publicHeaders).Count().IsEqualTo(8);
+        await Assert.That(publicHeaders).Contains("pxr/usd/sdf/storageAdmission.h");
+        await Assert.That(publicHeaders).Contains("pxr/base/tf/smallVector.h");
+    }
+
+    [Test]
     public async Task RuntimeSdkPatchIsPinnedAppliedVerifiedAndInvalidatesTheInstallCache()
     {
         string root = FindRepositoryRoot();
