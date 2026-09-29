@@ -71,7 +71,8 @@ public sealed class WorkflowStructureContractTests
                     {
                         continue;
                     }
-                    bool installed = !source.TryGetProperty("installedHeader", out JsonElement flag) || flag.GetBoolean();
+                    bool installed =
+                        !source.TryGetProperty("installedHeader", out JsonElement flag) || flag.GetBoolean();
                     (installed ? publicHeaders : privateHeaders).Add(path);
                 }
             }
