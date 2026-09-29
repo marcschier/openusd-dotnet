@@ -111,24 +111,36 @@ public sealed class UsdMatrix4dInversionTests
             0, 3, -1, 2,
             2, 0, 5, -1,
             1, -2, 0.25, 4);
-        for (int index = 0; index < 256; index++)
-        {
-            _ = matrix.TryInvert(out _);
-        }
-
         bool succeeded = true;
         double checksum = 0;
+        for (int block = 0; block < 8; block++)
+        {
+            var warmed = InvertAndConsume(matrix);
+            succeeded &= warmed.Succeeded;
+            checksum += warmed.Checksum;
+        }
         long before = GC.GetAllocatedBytesForCurrentThread();
+        var measured = InvertAndConsume(matrix);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        succeeded &= measured.Succeeded;
+        checksum += measured.Checksum;
+
+        await Assert.That(succeeded).IsTrue();
+        await Assert.That(checksum).IsNotEqualTo(0);
+        await Assert.That(allocated).IsEqualTo(0);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (bool Succeeded, double Checksum) InvertAndConsume(UsdMatrix4d matrix)
+    {
+        bool succeeded = true;
+        double checksum = 0;
         for (int index = 0; index < 4096; index++)
         {
             succeeded &= matrix.TryInvert(out UsdMatrix4d inverse);
             checksum += inverse.M00;
         }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        await Assert.That(succeeded).IsTrue();
-        await Assert.That(checksum).IsNotEqualTo(0);
-        await Assert.That(allocated).IsEqualTo(0);
+        return (succeeded, checksum);
     }
 
     private static async Task AssertFailureAsync(UsdMatrix4d matrix)
