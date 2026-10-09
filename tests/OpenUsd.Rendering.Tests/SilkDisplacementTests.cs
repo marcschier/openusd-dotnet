@@ -34,6 +34,232 @@ internal sealed class SilkDisplacementTests
     private const string SecondMaterialPath = "/World/Materials/Shallow";
     private const string HeightAsset = "height.png";
 
+    [Test]
+    [Arguments(SilkTextureFormat.Rgba8Unorm, 32ul)]
+    [Arguments(SilkTextureFormat.Rgba32Float, 96ul)]
+    public async Task DisplacementPixelsAdmitExactDecodeScratchAndHeightOverlap(
+        SilkTextureFormat format, ulong peak)
+    {
+        using var device = new DisplacementDevice();
+        var budget = new SilkCpuTextureBudget(peak);
+        int decodes = 0;
+        using var resources = BudgetedResources(device, budget, format, () => decodes++);
+        var scene = new SilkSceneState();
+        byte[][] commands =
+        [
+            CreateMaterialUpsert(textureAsset: HeightAsset),
+            CreateMeshUpsert(FlatPoints, FlatNormals)
+        ];
+        using (budget.Reserve(1))
+        {
+            await Assert.That(() => ApplyBudgetedPage(scene, resources, 1, commands))
+                .Throws<SilkCpuTextureBudgetExceededException>();
+            await Assert.That(scene.Revision).IsEqualTo(0ul);
+            await Assert.That(resources.Meshes).IsEmpty();
+            await Assert.That(resources.DisplacementImageCount).IsEqualTo(0);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(1ul);
+        }
+
+        ApplyBudgetedPage(scene, resources, 1, commands);
+        await Assert.That(decodes).IsEqualTo(2);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(peak);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        float[] vertices = ReadVertices(resources, 3, 8);
+        await Assert.That(vertices[2]).IsEqualTo(128f / 255f).Within(1e-6f);
+        await Assert.That(vertices[10]).IsEqualTo(1f);
+        await Assert.That(vertices[18]).IsEqualTo(0f);
+        ApplyBudgetedPage(scene, resources, 2, CreateMeshUpsert(FlatPoints, FlatNormals));
+        await Assert.That(decodes).IsEqualTo(2);
+        resources.RetryFailedTextures();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(ReadVertices(resources, 3, 8)).IsEquivalentTo(vertices);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DisplacementRetryRetainsOldPixelOwnershipUntilCommitOrRollback(bool lateBufferFailure)
+    {
+        using var device = new DisplacementDevice();
+        var budget = new SilkCpuTextureBudget(48);
+        int decodes = 0;
+        using var resources = BudgetedResources(device, budget,
+            SilkTextureFormat.Rgba8Unorm, () => decodes++);
+        var scene = new SilkSceneState();
+        ApplyBudgetedPage(scene, resources, 1,
+            CreateMaterialUpsert(textureAsset: HeightAsset),
+            CreateMeshUpsert(FlatPoints, FlatNormals));
+        SilkMeshGpuResource previous = resources.Meshes.Values.Single();
+        float[] vertices = ReadVertices(resources, 3, 8);
+        ulong revision = scene.GeometryRevision;
+        IDisposable? blocker = lateBufferFailure ? null : budget.Reserve(1);
+        try
+        {
+            if (lateBufferFailure)
+            {
+                device.FailAllocationAfter = 0;
+                await Assert.That(() => resources.RetryFailedTextures(scene)).Throws<InvalidOperationException>();
+            }
+            else
+            {
+                await Assert.That(() => resources.RetryFailedTextures(scene))
+                    .Throws<SilkCpuTextureBudgetExceededException>();
+            }
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(lateBufferFailure ? 16ul : 17ul);
+            await Assert.That(resources.DisplacementImageBytes).IsEqualTo(16ul);
+            await Assert.That(resources.Meshes.Values.Single()).IsSameReferenceAs(previous);
+            await Assert.That(scene.GeometryRevision).IsEqualTo(revision);
+            await Assert.That(ReadVertices(resources, 3, 8)).IsEquivalentTo(vertices);
+        }
+        finally
+        {
+            blocker?.Dispose();
+        }
+        resources.RetryFailedTextures(scene);
+        await Assert.That(decodes).IsEqualTo(3);
+        await Assert.That(resources.Meshes.Values.Single()).IsNotSameReferenceAs(previous);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(48ul);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        resources.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DisplacementPageRollbackReleasesCandidatePixelsAndRestoresTheCache(bool evict)
+    {
+        using var device = new DisplacementDevice();
+        var budget = new SilkCpuTextureBudget(48);
+        int decodes = 0;
+        using var resources = BudgetedResources(device, budget,
+            SilkTextureFormat.Rgba8Unorm, () => decodes++);
+        resources.SetDisplacementBudgetsForTesting(3, 4, evict ? 16ul : 32ul);
+        var scene = new SilkSceneState();
+        ApplyBudgetedPage(scene, resources, 1,
+            CreateMaterialUpsert(textureAsset: HeightAsset),
+            CreateMeshUpsert(FlatPoints, FlatNormals));
+        SilkMeshGpuResource previous = resources.Meshes.Values.Single();
+        device.FailAllocationAfter = 0;
+        await Assert.That(() => ApplyBudgetedPage(scene, resources, 2,
+            CreateMaterialUpsert(textureAsset: HeightAsset, textureScale: 0.5f)))
+            .Throws<InvalidOperationException>();
+        await Assert.That(scene.Revision).IsEqualTo(1ul);
+        await Assert.That(resources.Meshes.Values.Single()).IsSameReferenceAs(previous);
+        await Assert.That(resources.DisplacementImageCount).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
+
+        ApplyBudgetedPage(scene, resources, 2,
+            CreateMeshUpsert([0, 0, 0, 2, 0, 0, 0, 1, 0], FlatNormals, instanceIndex: 1, primId: 2));
+        await Assert.That(decodes).IsEqualTo(2);
+        ApplyBudgetedPage(scene, resources, 3,
+            CreateMaterialUpsert(textureAsset: HeightAsset, textureScale: 0.5f));
+        await Assert.That(decodes).IsEqualTo(3);
+        foreach (SilkMeshGpuResource mesh in resources.Meshes.Values)
+        {
+            await Assert.That(ReadVertices(resources, mesh, 3, 8)[2]).IsEqualTo(64f / 255f).Within(1e-6f);
+        }
+        await Assert.That(resources.DisplacementImageCount).IsEqualTo(evict ? 1 : 2);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(evict ? 16ul : 32ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(evict ? 1ul : 2ul);
+        resources.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments("nonfinite")]
+    [Arguments("length")]
+    [Arguments("shape")]
+    [Arguments("overflow")]
+    public async Task DisplacementInvalidDecodeReleasesEveryPixelOwner(string failure)
+    {
+        using var device = new DisplacementDevice();
+        var budget = new SilkCpuTextureBudget(96);
+        using var resources = BudgetedResources(device, budget, SilkTextureFormat.Rgba32Float, () => { },
+            decode: () =>
+            {
+                if (failure == "length")
+                {
+                    return new SilkDecodedImage(2, 2, new byte[63], SilkTextureFormat.Rgba32Float);
+                }
+                if (failure == "shape")
+                {
+                    return new SilkDecodedImage(1, 4, new byte[64], SilkTextureFormat.Rgba32Float);
+                }
+                if (failure == "overflow")
+                {
+                    return new SilkDecodedImage(uint.MaxValue, uint.MaxValue, [], SilkTextureFormat.Rgba32Float);
+                }
+                SilkDecodedImage image = FormattedHeightImage(SilkTextureFormat.Rgba32Float);
+                BinaryPrimitives.WriteSingleLittleEndian(image.Pixels, float.NaN);
+                return image;
+            });
+        var scene = new SilkSceneState();
+        void apply() => ApplyBudgetedPage(scene, resources, 1,
+            CreateMaterialUpsert(textureAsset: HeightAsset), CreateMeshUpsert(FlatPoints, FlatNormals));
+        if (failure == "shape")
+        {
+            await Assert.That(apply).Throws<InvalidDataException>();
+            await Assert.That(scene.Revision).IsEqualTo(0ul);
+        }
+        else if (failure == "overflow")
+        {
+            await Assert.That(apply).Throws<OverflowException>();
+            await Assert.That(scene.Revision).IsEqualTo(0ul);
+        }
+        else
+        {
+            apply();
+            await Assert.That(ReadVertices(resources, 3, 8)[2]).IsEqualTo(0f);
+            IReadOnlyList<RenderDiagnostic> diagnostics = Diagnostics(
+                resources, SilkRenderDiagnosticCodes.DisplacementUnsupported);
+            await Assert.That(diagnostics.Count).IsEqualTo(1);
+            await Assert.That(diagnostics[0].Message).Contains(
+                failure == "length" ? "could not be found or decoded" : "not finite");
+        }
+        await Assert.That(resources.DisplacementImageCount).IsEqualTo(0);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    private static SilkSceneGpuResources BudgetedResources(
+        DisplacementDevice device, SilkCpuTextureBudget budget, SilkTextureFormat format, Action decoded,
+        Func<SilkDecodedImage>? decode = null) =>
+        new(device, (_, _) => throw new InvalidOperationException("Unbounded displacement decode."),
+            imageDescriber: _ => new SilkImageDescription(2, 2, format),
+            cpuTextureBudget: budget,
+            ownedImageDecoder: (_, _, owner) =>
+            {
+                IDisposable reservation = owner.Reserve(4ul * SilkTextureFormats.GetBytesPerPixel(format));
+                try
+                {
+                    decoded();
+                    SilkDecodedImage image = decode is null ? FormattedHeightImage(format) : decode();
+                    image.OwnReservation(reservation);
+                    return image;
+                }
+                catch
+                {
+                    reservation.Dispose();
+                    throw;
+                }
+            });
+
+    private static void ApplyBudgetedPage(
+        SilkSceneState scene, SilkSceneGpuResources resources, ulong revision, params byte[][] commands)
+    {
+        using var page = new OpenUsdSilkPage(24, revision, commands.SelectMany(command => command).ToArray(),
+            checked((uint)commands.Length));
+        using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
+        using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(
+            scene, cpu.Delta, prepareMaterialTextures: false);
+        gpu?.Commit();
+        cpu.Commit();
+        resources.CompleteApply(scene, cpu.Delta, gpu?.TexturesPrepared == true, gpu?.SurfacesPrepared == true);
+    }
+
     /// <summary>
     /// A constant displacement moves every point by exactly the authored amount
     /// along the normal that point is shaded with, and moves nothing else.
@@ -2210,7 +2436,8 @@ internal sealed class SilkDisplacementTests
     }
 
     /// <summary>A device that retains what was written so a vertex buffer can be read back.</summary>
-    private sealed class DisplacementDevice : ISilkGraphicsDevice
+    private sealed class DisplacementDevice
+        : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkCpuTextureAdmissionDevice
     {
         private int _created;
         private int _disposedBuffers;
@@ -2250,10 +2477,10 @@ internal sealed class SilkDisplacementTests
             throw new NotSupportedException();
 
         public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor) =>
-            throw new NotSupportedException();
+            new DisplacementTexture(descriptor);
 
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) =>
-            throw new NotSupportedException();
+            new DisplacementSampler(descriptor);
 
         public ISilkGraphicsShaderModule CreateShaderModule(
             SilkShaderModuleDescriptor descriptor) =>
@@ -2293,6 +2520,23 @@ internal sealed class SilkDisplacementTests
         {
         }
 
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class DisplacementTexture(SilkTextureDescriptor descriptor) : SilkGraphicsTextureBase(descriptor)
+    {
+        public override void ReadbackForTesting(Span<byte> destination) => throw new NotSupportedException();
+        public override void ReadbackForTesting(Span<float> destination) => throw new NotSupportedException();
+        protected override void ReleaseNative()
+        {
+        }
+    }
+
+    private sealed class DisplacementSampler(SilkSamplerDescriptor descriptor) : ISilkGraphicsSampler
+    {
+        public SilkSamplerDescriptor Descriptor { get; } = descriptor;
         public void Dispose()
         {
         }

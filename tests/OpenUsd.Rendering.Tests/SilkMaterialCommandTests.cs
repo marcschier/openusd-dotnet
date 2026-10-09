@@ -20,6 +20,54 @@ public sealed class SilkMaterialCommandTests
     private static readonly float[] PlacedUvTransform = [2f, 0f, 0f, 2f, -0.25f, 0.5f];
 
     [Test]
+    public async Task AdmittedSurfaceReplacementRefusalKeepsThePreviousConstantsAndPage()
+    {
+        static byte[] material(float value) => CreateMaterialUpsert(
+            "/Material", SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Roughness, [value])], textures: []);
+        using var device = new TextureGraphicsDevice();
+        new SilkGpuTextureBudget(1024).ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil,
+            (_, _) => throw new InvalidOperationException("No image is used."));
+        using var first = new OpenUsdSilkPage(24, 1,
+            [.. material(0.25f), .. CreateMeshUpsert("/Mesh", "/Material")], 2);
+        renderer.ApplyPage(first);
+        TextureGraphicsBuffer preparedFrame =
+            device.Buffers.Single(buffer => buffer.Size == SilkFrameUniformWriter.ByteSize);
+        await Assert.That(preparedFrame.Writes).IsEqualTo(0);
+        renderer.GpuResources.RequireFrameBuffer(renderer.Scene, RenderOutputTransform.Identity, 0);
+        await Assert.That(preparedFrame.Writes).IsEqualTo(1);
+        renderer.GpuResources.RequireFrameBuffer(renderer.Scene, RenderOutputTransform.Identity, 0);
+        await Assert.That(preparedFrame.Writes).IsEqualTo(1);
+        SilkMeshData mesh = renderer.Scene.Meshes.Values.Single();
+        ISilkGraphicsBuffer original = renderer.GpuResources.RequireSurfaceBuffer(
+            renderer.Scene, mesh, RenderHeadlight.Deterministic);
+        byte[] before = new byte[checked((int)original.Size)];
+        original.ReadbackForTesting(before);
+        ulong revision = renderer.Scene.Revision;
+        int live = device.Buffers.Count(buffer => !buffer.Released);
+        using var update = new OpenUsdSilkPage(24, 2, material(0.75f), 1);
+        device.RefuseBufferSize = original.Size;
+        await Assert.That(() => renderer.ApplyPage(update)).Throws<InvalidOperationException>();
+        device.RefuseBufferSize = null;
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+        await Assert.That(device.Buffers.Count(buffer => !buffer.Released)).IsEqualTo(live);
+        ISilkGraphicsBuffer after = renderer.GpuResources.RequireSurfaceBuffer(
+            renderer.Scene, mesh, RenderHeadlight.Deterministic);
+        await Assert.That(after).IsSameReferenceAs(original);
+        byte[] bytes = new byte[before.Length];
+        after.ReadbackForTesting(bytes);
+        await Assert.That(bytes.SequenceEqual(before)).IsTrue();
+        renderer.ApplyPage(update);
+        ISilkGraphicsBuffer replacement = renderer.GpuResources.RequireSurfaceBuffer(
+            renderer.Scene, renderer.Scene.Meshes.Values.Single(), RenderHeadlight.Deterministic);
+        await Assert.That(replacement).IsNotSameReferenceAs(original);
+        replacement.ReadbackForTesting(bytes);
+        await Assert.That(bytes.SequenceEqual(before)).IsFalse();
+        await Assert.That(((TextureGraphicsBuffer)original).Released).IsTrue();
+    }
+
+    [Test]
     public async Task ParsesScalarAndTextureParameters()
     {
         byte[] command = CreateMaterialUpsert(
@@ -1003,7 +1051,7 @@ public sealed class SilkMaterialCommandTests
                         SilkColorSpace.Raw, 4, [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], path, "st"),
                 ]);
             using var device = new TextureGraphicsDevice();
-            var budget = new SilkGpuTextureBudget(8);
+            var budget = new SilkGpuTextureBudget(64);
             budget.ConfigureDevice(device);
             using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil, (asset, _) =>
                 new SilkDecodedImage(1, 1, File.ReadAllText(asset) == "before"
@@ -1011,15 +1059,17 @@ public sealed class SilkMaterialCommandTests
             using var first = new OpenUsdSilkPage(24, 1,
                 [.. material, .. CreateMeshUpsert("/Mesh", "/Material")], 2);
             renderer.ApplyPage(first);
-            Texture previous = device.TextureOwners.Single();
+            Texture previous = device.TextureOwners.Single(texture => texture.Format == SilkTextureFormat.Rgba8Unorm);
+            ulong reserved = budget.Usage.ReservedBytes;
             await File.WriteAllTextAsync(path, "after-longer");
             using var quiet = new OpenUsdSilkPage(24, 2, [], 0);
             using (IDisposable pressure = budget.Reserve(
-                new SilkTextureDescriptor(1, 1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
+                new SilkTextureDescriptor(checked((uint)((budget.MaximumBytes - reserved) / 4)),
+                    1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
             {
                 await Assert.That(() => renderer.ApplyPage(quiet)).Throws<SilkGpuTextureBudgetExceededException>();
                 await Assert.That(previous.Released).IsFalse();
-                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(8ul);
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(budget.MaximumBytes);
                 using var commands = new TextureCommandList();
                 renderer.GpuResources.BindMaterialTexture(
                     commands, renderer.Scene.Materials["/Material"], SilkMaterialParameter.DiffuseColor);
@@ -1028,7 +1078,7 @@ public sealed class SilkMaterialCommandTests
             }
             renderer.ApplyPage(quiet);
             await Assert.That(previous.Released).IsTrue();
-            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(4ul);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
             renderer.Dispose();
             await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
         }
@@ -1050,7 +1100,7 @@ public sealed class SilkMaterialCommandTests
                     "not-needed.png", "st"),
             ]);
         using var device = new TextureGraphicsDevice();
-        var budget = new SilkGpuTextureBudget(1);
+        var budget = new SilkGpuTextureBudget(64);
         budget.ConfigureDevice(device);
         int decodes = 0;
         using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil, (_, _) =>
@@ -1063,8 +1113,9 @@ public sealed class SilkMaterialCommandTests
         renderer.ApplyPage(page, useSceneMaterials: false);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
         await Assert.That(decodes).IsEqualTo(0);
-        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
-        await Assert.That(device.TextureOwners).IsEmpty();
+        await Assert.That(device.TextureOwners.Count).IsEqualTo(2);
+        await Assert.That(device.CreatedTextureFormats).DoesNotContain(SilkTextureFormat.Rgba8Unorm);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(12ul);
     }
 
     [Test]
@@ -1113,7 +1164,7 @@ public sealed class SilkMaterialCommandTests
                 SilkMaterialParameter.DiffuseColor);
             await Assert.That(commands.UploadCount).IsEqualTo(0);
         }
-        Texture original = device.TextureOwners.Single();
+        Texture original = device.TextureOwners.Single(texture => texture.Format == SilkTextureFormat.Rgba8Unorm);
         SilkMaterialData originalMaterial = renderer.Scene.Materials["/Material"];
         Dictionary<ulong, SilkMeshGpuResource> originalMeshes = renderer.GpuResources.Meshes.ToDictionary();
         ulong revision = renderer.GpuResources.Revision;
@@ -1122,8 +1173,10 @@ public sealed class SilkMaterialCommandTests
         using var replacement = new OpenUsdSilkPage(24, 2,
             [.. material("after.png"), .. CreateMeshRemove("/Removed"),
                 .. CreateMeshUpsert("/Added", "/Material", 9)], 3);
+        int originalOwners = device.TextureOwners.Count(texture => !texture.Released);
         IDisposable? pressure = refusal == "cpu" ? cpu!.Reserve(56) : refuseUpload ? null : budget.Reserve(
-            new SilkTextureDescriptor(15, 1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1);
+            new SilkTextureDescriptor(checked((uint)((budget.MaximumBytes - charged) / 4)),
+                1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1);
         device.RefuseSubmission = refuseUpload;
         try
         {
@@ -1150,7 +1203,7 @@ public sealed class SilkMaterialCommandTests
                 await Assert.That(renderer.GpuResources.Meshes[id]).IsSameReferenceAs(mesh);
             }
             await Assert.That(original.Released).IsFalse();
-            await Assert.That(device.TextureOwners.Count(texture => !texture.Released)).IsEqualTo(1);
+            await Assert.That(device.TextureOwners.Count(texture => !texture.Released)).IsEqualTo(originalOwners);
             await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(refusal == "texture" ? 64ul : charged);
             if (cpu is not null)
             {
@@ -1174,7 +1227,7 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(renderer.Scene.Meshes.Values.Any(mesh => mesh.Path == "/Added")).IsTrue();
         await Assert.That(renderer.Scene.Materials["/Material"].Textures.Single().Asset).IsEqualTo("after.png");
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(charged);
-        await Assert.That(device.TextureOwners.Count(texture => !texture.Released)).IsEqualTo(1);
+        await Assert.That(device.TextureOwners.Count(texture => !texture.Released)).IsEqualTo(originalOwners);
         renderer.Dispose();
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
         if (cpu is not null)
@@ -2915,6 +2968,8 @@ public sealed class SilkMaterialCommandTests
         internal List<Texture> TextureOwners { get; } = [];
         internal bool RefuseSubmission { get; set; }
         internal int Submissions { get; private set; }
+        internal nuint? RefuseBufferSize { get; set; }
+        internal List<TextureGraphicsBuffer> Buffers { get; } = [];
 
         // Defaults to the behavior-preserving 1x capability so every existing test keeps
         // exercising the "device does not advertise anisotropy" path unless a test opts in.
@@ -2937,14 +2992,14 @@ public sealed class SilkMaterialCommandTests
             SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm)
         {
             CreatedTextureFormats.Add(format);
-            return new Texture(width, height, format);
+            return new Texture(new SilkTextureDescriptor(
+                width, height, format, SilkTextureDescriptor.GetDefaultUsage(format)));
         }
 
         public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
         {
             IDisposable? reservation = ReserveTextureAllocation(descriptor);
-            var result = new Texture(
-                descriptor.Width, descriptor.Height, descriptor.Format, descriptor.MipLevelCount);
+            var result = new Texture(descriptor);
             result.OwnTextureReservation(reservation);
             CreatedTextureFormats.Add(descriptor.Format);
             CreatedTextures.Add(descriptor);
@@ -2952,8 +3007,16 @@ public sealed class SilkMaterialCommandTests
             return result;
         }
 
-        public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
-            new TextureGraphicsBuffer(size, usage);
+        public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage)
+        {
+            if (RefuseBufferSize == size)
+            {
+                throw new InvalidOperationException("Injected surface buffer allocation refusal.");
+            }
+            var buffer = new TextureGraphicsBuffer(size, usage);
+            Buffers.Add(buffer);
+            return buffer;
+        }
 
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
         {
@@ -3023,12 +3086,7 @@ public sealed class SilkMaterialCommandTests
         }
     }
 
-    private sealed class Texture(
-        uint width,
-        uint height,
-        SilkTextureFormat format,
-        uint mipLevelCount = 1) : SilkGraphicsTextureBase(
-            new SilkTextureDescriptor(width, height, format, SilkTextureUsage.Sampled, mipLevelCount))
+    private sealed class Texture(SilkTextureDescriptor descriptor) : SilkGraphicsTextureBase(descriptor)
     {
         internal bool Released { get; private set; }
         public override void ReadbackForTesting(Span<byte> destination) =>
@@ -3044,19 +3102,25 @@ public sealed class SilkMaterialCommandTests
         : ISilkGraphicsBuffer
     {
         private readonly byte[] _bytes = new byte[checked((int)size)];
+        internal bool Released { get; private set; }
+        internal int Writes { get; private set; }
 
         public nuint Size => size;
 
         public SilkBufferUsage Usage => usage;
 
-        public void Write(ReadOnlySpan<byte> data, nuint offset = 0) =>
+        public void Write(ReadOnlySpan<byte> data, nuint offset = 0)
+        {
             data.CopyTo(_bytes.AsSpan(checked((int)offset)));
+            Writes++;
+        }
 
         public void ReadbackForTesting(Span<byte> destination) =>
             _bytes.AsSpan(0, destination.Length).CopyTo(destination);
 
         public void Dispose()
         {
+            Released = true;
         }
     }
 
@@ -3076,8 +3140,9 @@ public sealed class SilkMaterialCommandTests
         public void ClearColor(ISilkGraphicsTexture texture, SilkColor color) =>
             throw new NotSupportedException();
 
-        public void ClearDepth(ISilkGraphicsTexture texture, float depth) =>
-            throw new NotSupportedException();
+        public void ClearDepth(ISilkGraphicsTexture texture, float depth)
+        {
+        }
 
         public void BeginRendering(SilkRenderingDescriptor descriptor) =>
             throw new NotSupportedException();

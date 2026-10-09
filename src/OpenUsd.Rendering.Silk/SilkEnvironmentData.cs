@@ -619,12 +619,11 @@ internal sealed class SilkEnvironmentMeanRadianceCache
         // Decoded without a transfer function so that the effective colour space
         // is decided from what the image library observed, which is the only
         // place a dome texture's encoding is actually recorded.
-        SilkDecodedImage image;
         ulong decodedBytes;
         Vector3 mean;
         try
         {
-            image = decoder(asset, false);
+            using SilkDecodedImage image = decoder(asset, false);
             DecodeCount++;
             decodedBytes = checked((ulong)image.Pixels.LongLength);
 

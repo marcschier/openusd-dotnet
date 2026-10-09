@@ -10,6 +10,16 @@ public sealed class SilkCpuTextureAdmissionTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task DisplacementPixelRefusalKeepsPublishedPixelsUntilRetry(SilkGraphicsBackend backend)
+    {
+        await SilkDisplacementRenderConformance.PixelRefusalKeepsPublishedDisplacementUntilRetry(
+            () => SilkDepthCaptureConformance.CreateDevice(backend),
+            backend == SilkGraphicsBackend.D3D12 ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task CommandPixelCopiesAreAdmittedAndReleasedByTheirOwnOwner(SilkGraphicsBackend backend)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);

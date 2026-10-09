@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Numerics;
+using System.Runtime.InteropServices;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.ConformanceTests;
@@ -18,6 +19,103 @@ public sealed class SilkMeshPreparationNativeTests
             texCoord2f[] primvars:st = [(0,0),(1,0),(1,1),(0,1)] (interpolation = "faceVarying")
         }
         """;
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, "texture")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "texture")]
+    [Arguments(SilkGraphicsBackend.D3D12, "staging")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "staging")]
+    public async Task EnvironmentRefusalKeepsOldPixelsAndReplaysRetirementBeforeNativeAdvance(
+        SilkGraphicsBackend backend, string kind)
+    {
+        const string dome = """
+            def DomeLight "Environment" {
+                asset inputs:texture:file = @before.hdr@
+                token inputs:texture:format = "latlong"
+                float inputs:intensity = 1
+                float inputs:specular = 0
+            }
+            """;
+        using Fixture fixture = Create(dome + "\n" + Mesh + "\n" +
+            Mesh.Replace("\"Mesh\"", "\"Removed\"", StringComparison.Ordinal));
+        string root = Path.GetDirectoryName(fixture.Path)!;
+        await File.WriteAllTextAsync(Path.Combine(root, "before.hdr"), "owned-before-environment-stamp");
+        await File.WriteAllTextAsync(Path.Combine(root, "after.hdr"), "owned-after-environment-stamp");
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textures = new SilkGpuTextureBudget(16_777_216);
+        var staging = new SilkGpuStagingBudget(16_777_216);
+        textures.ConfigureDevice(device);
+        staging.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device,
+            backend == SilkGraphicsBackend.D3D12 ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV,
+            (path, _) =>
+            {
+                float[] pixels = new float[8 * 4 * 4];
+                bool before = path.Contains("before", StringComparison.Ordinal);
+                for (int index = 0; index < pixels.Length; index += 4)
+                {
+                    pixels[index + (before ? 0 : 2)] = 1f;
+                    pixels[index + 3] = 1f;
+                }
+                return new SilkDecodedImage(8, 4, MemoryMarshal.AsBytes(pixels.AsSpan()).ToArray(),
+                    SilkTextureFormat.Rgba32Float);
+            });
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        using OpenUsdSilkPage initial = session.Sync(32, 32, camera: camera);
+        renderer.ApplyPage(initial);
+        await Assert.That(renderer.GpuResources.EnvironmentBinding.Enabled).IsTrue();
+        byte[] beforePixels = SilkFrameCapture.CaptureRetained(
+            renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
+        const int center = (16 * 32 + 16) * 4;
+        await Assert.That(beforePixels[center]).IsGreaterThan(beforePixels[center + 2]);
+        ulong revision = renderer.Scene.Revision;
+        await scheduler.InvokeAsync(stage =>
+        {
+            var environment = OpenUsd.Lux.UsdLuxDomeLight.Wrap(stage.GetPrim("/Environment"));
+            environment.TextureFile = new UsdAssetPath("after.hdr");
+            stage.RemovePrim("/Removed");
+        });
+        using OpenUsdSilkPage update = session.Sync(32, 32, camera: camera);
+        IDisposable reserve() => kind == "staging"
+            ? staging.Reserve(staging.MaximumBytes - staging.Usage.ReservedBytes - 1)
+            : textures.Reserve(new SilkTextureDescriptor(
+                checked((uint)((textures.MaximumBytes - textures.Usage.ReservedBytes) / 16)),
+                1, SilkTextureFormat.Rgba32Float, SilkTextureUsage.Sampled), 1);
+        bool expected(Exception? error) => kind == "staging"
+            ? error is SilkGpuStagingBudgetExceededException
+            : error is SilkGpuTextureBudgetExceededException;
+        using (IDisposable pressure = reserve())
+        {
+            Exception? error = await Assert.That(() => renderer.ApplyPage(update)).ThrowsException();
+            await Assert.That(expected(error)).IsTrue();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+            await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/Removed", 0))).IsTrue();
+        }
+        byte[] refused = SilkFrameCapture.CaptureRetained(
+            renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
+        await Assert.That(refused.SequenceEqual(beforePixels)).IsTrue();
+        update.Dispose();
+        using (IDisposable pressure = reserve())
+        {
+            Exception? error = await Assert.That(() => session.Sync(32, 32, camera: camera)).ThrowsException();
+            await Assert.That(expected(error)).IsTrue();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+        }
+        using OpenUsdSilkPage retry = session.Sync(32, 32, camera: camera);
+        renderer.ApplyPage(retry);
+        await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/Removed", 0))).IsFalse();
+        byte[] afterPixels = SilkFrameCapture.CaptureRetained(
+            renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
+        await Assert.That(afterPixels[center + 2]).IsGreaterThan(afterPixels[center]);
+        renderer.Dispose();
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
 
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12, "texture")]

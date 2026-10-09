@@ -466,6 +466,35 @@ environment/shadow/frame resource allocated later in rendering.
 changed file with no USD material delta, including retained binding during refusal and
 the later successful cache replacement.
 
+Environment-page tests preserve published maps, dome membership and uploads across GPU
+texture, staging, later allocation and later mesh refusals, including environment
+retirement. `EnvironmentRefusalKeepsOldPixelsAndReplaysRetirementBeforeNativeAdvance`
+requires exact old pixels and successful changed-color replay on actual D3D12/Vulkan
+devices. Decoded environment-source tests enforce one-image-at-a-time ownership and
+check that mean-radiance caching releases the decoded-image lease.
+Prefilter tests require exact one-byte-below refusal for grouped and ungrouped workspace
+peaks, byte-identical admitted output, shared ownership through eviction, and rollback
+that restores old cache entries and releases candidate pixels. An undercounted-workspace
+negative control must fail both threshold cases.
+
+`SilkDisplacementTests` checks exact RGBA8/HDR decode, row-scratch and height-field
+overlap, one-byte-below refusal, unchanged displaced vertices, and warm cache reuse.
+It also checks cache eviction with page rollback, explicit retry refusal after decode
+or buffer creation, last-owner release, and cleanup after malformed/non-finite images.
+These are pixel-ownership gates; per-point geometry arrays are not included in that pool.
+`DisplacementPixelRefusalKeepsPublishedPixelsUntilRetry` additionally requires exact
+old pixels during refusal and exact new control pixels after retry on D3D12/Vulkan.
+
+`SilkShadowAdmissionTests` verifies real shadow pixels, quota refusal, retry and descriptor
+retirement on both backends. The core shadow suite checks charged two-atlas reuse and
+failure-atomic shadow-instance buffer growth. Controlled negative probes catch early
+environment-map release, bypassed shadow transactions and the former dispose-before-grow
+buffer defect; neither limits nor pixel comparisons are relaxed.
+`ShadowAtlasCapacityIsAdmittedBeforePublishingTheCpuAndMeshPage` verifies that atlas
+quota refusal does not publish a prim replacement. `AdmittedSurfaceReplacementRefusalKeepsThePreviousConstantsAndPage`
+checks both old constant-buffer identity and byte content, and the invalid-render-input
+regression checks that no page revision or GPU buffer is published before rejection.
+
 The standard SDK build now includes the pinned storage-admission profile. Native and
 coverage jobs verify its source/header/binary provenance before running bounded crate
 queries. The USDC crop case remains required; it is not replaced by an unbounded read
@@ -477,19 +506,16 @@ dimension access and value-initializes its rank-one remainder fallback while pre
 the full element count. `openusd_sdk_runtime_patch_probe` checks ranks one through four,
 non-divisible shapes, empty arrays and positive timing conversion without disabling
 compiler warnings.
-
 The same probe checks dictionary digit ordering and plugin metadata vector/matrix
 defaults. Schema tuple recursion explicitly checks its fixed dimension storage, and
 digit predicates use logical boolean operators. After an SDK build fails, the build
 script collects remaining Ninja compiler diagnostics but still returns the original
 failure; it does not install or accept a partially built SDK.
-
 The complete diagnostic sweep also guards empty zero-inline-capacity vector moves,
 small clip-time sorting, Vulkan format-table indices and default instancer transforms.
 Patched installed headers are verified alongside the SDK binary; a header drift triggers
 rebuilding rather than reuse. The native probe exercises empty/nonempty vector moves and
 authored clip sample bracketing as well as the shape and metadata cases.
-
 The patch manifest distinguishes installed public headers from private implementation
 headers, which are source-verified but are not required in SDK installations. The full
 Clang diagnostic batch preserves eager boolean side effects and exact format types,

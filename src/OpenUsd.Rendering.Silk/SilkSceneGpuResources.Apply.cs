@@ -16,7 +16,9 @@ public sealed partial class SilkSceneGpuResources
             throw new InvalidOperationException("A GPU scene update is already being prepared.");
         }
         if (delta.MeshUpserts == 0 && delta.MeshRemovals == 0 && delta.MaterialChanges == 0 &&
-            !(prepareMaterialTextures && RequiresTexturePreparation && HasChangedMaterialTextureDependencies()))
+            !(prepareMaterialTextures && RequiresTexturePreparation && HasChangedMaterialTextureDependencies()) &&
+            !RequiresEnvironmentPreparation(scene) &&
+            !(RequiresSurfacePreparation && _surfaceLinkRevision != scene.LightLinks.Revision))
         {
             return null;
         }
@@ -51,11 +53,11 @@ public sealed partial class SilkSceneGpuResources
         private readonly Dictionary<DisplacedPrimKey, DisplacementVerdict?> _verdicts = [];
         private readonly Dictionary<SilkMeshGpuDeformation, SilkMeshGpuDeformation.PreparedPose> _poses = [];
         private readonly Dictionary<string, RenderDiagnostic> _diagnostics;
-        private readonly Dictionary<ulong, (DisplacementCacheEntry Entry, ulong Stamp)> _images;
-        private readonly ulong _imageBytes;
-        private readonly ulong _imageClock;
+        private readonly DisplacementImageCheckpoint _images;
         private readonly bool _deformationDisabled;
         private PreparedTextureUpdate? _textures;
+        private PreparedEnvironmentUpdate? _environment;
+        private PreparedSurfaceUpdate? _surfaces;
         private bool _committed;
         private bool _disposed;
 
@@ -63,15 +65,17 @@ public sealed partial class SilkSceneGpuResources
         {
             _owner = owner;
             _diagnostics = new(owner._diagnostics, StringComparer.Ordinal);
-            _images = owner._displacementImages.ToDictionary(
-                static pair => pair.Key, static pair => (pair.Value, pair.Value.LastUsedStamp));
-            _imageBytes = owner._displacementImageBytes;
-            _imageClock = owner._displacementUseClock;
             _deformationDisabled = owner._deformationDisabled;
+            _images = new(owner);
         }
 
         internal void Prepare(SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures)
         {
+            if (_owner.RequiresEnvironmentPreparation(scene))
+            {
+                _environment = new PreparedEnvironmentUpdate(_owner);
+                _environment.Prepare(scene);
+            }
             if (prepareMaterialTextures && _owner.RequiresTexturePreparation)
             {
                 _textures = new PreparedTextureUpdate(_owner);
@@ -147,6 +151,11 @@ public sealed partial class SilkSceneGpuResources
             }
             _owner._displacementVerdicts.EnsureCapacity(
                 checked(_owner._displacementVerdicts.Count + addedVerdicts));
+            if (_owner.RequiresSurfacePreparation)
+            {
+                _surfaces = new PreparedSurfaceUpdate(_owner);
+                _surfaces.Prepare(scene, delta);
+            }
         }
 
         internal void SetVerdict(DisplacedPrimKey key, DisplacementVerdict? verdict) => _verdicts[key] = verdict;
@@ -211,11 +220,15 @@ public sealed partial class SilkSceneGpuResources
             }
             _owner.Revision++;
             _textures?.Commit();
+            _environment?.Commit();
+            _surfaces?.Commit();
+            _images.Commit();
             _owner._preparing = null;
             _committed = true;
         }
 
         internal bool TexturesPrepared => _textures is not null;
+        internal bool SurfacesPrepared => _surfaces is not null;
 
         public void Dispose()
         {
@@ -248,6 +261,22 @@ public sealed partial class SilkSceneGpuResources
             {
                 (failures ??= []).Add(error);
             }
+            try
+            {
+                _environment?.Dispose();
+            }
+            catch (Exception error)
+            {
+                (failures ??= []).Add(error);
+            }
+            try
+            {
+                _surfaces?.Dispose();
+            }
+            catch (Exception error)
+            {
+                (failures ??= []).Add(error);
+            }
             if (!_committed)
             {
                 _owner._diagnostics.Clear();
@@ -255,16 +284,9 @@ public sealed partial class SilkSceneGpuResources
                 {
                     _owner._diagnostics[key] = diagnostic;
                 }
-                _owner._displacementImages.Clear();
-                foreach ((ulong key, (DisplacementCacheEntry entry, ulong stamp)) in _images)
-                {
-                    entry.LastUsedStamp = stamp;
-                    _owner._displacementImages[key] = entry;
-                }
-                _owner._displacementImageBytes = _imageBytes;
-                _owner._displacementUseClock = _imageClock;
                 _owner._deformationDisabled = _deformationDisabled;
             }
+            _images.Dispose();
             _disposed = true;
             if (failures is not null)
             {

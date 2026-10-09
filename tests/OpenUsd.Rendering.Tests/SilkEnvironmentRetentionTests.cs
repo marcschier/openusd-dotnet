@@ -30,6 +30,296 @@ namespace OpenUsd.Rendering.Tests;
 /// </remarks>
 public sealed class SilkEnvironmentRetentionTests
 {
+    [Test]
+    [Arguments(false, 15_104ul, 2_304ul)]
+    [Arguments(true, 25_600ul, 4_608ul)]
+    public async Task PrefilterAccountsForWorkspaceOutputAndGroupScratchBeforeAllocation(
+        bool grouped, ulong peak, ulong outputBytes)
+    {
+        using SilkDecodedImage image = Constant(8, 4, 1);
+        SilkEnvironmentSource[] sources =
+            [new(image, SilkColorSpace.Raw, Matrix4x4.Identity, Vector3.One, Vector3.One)];
+        var options = new SilkEnvironmentPrefilterOptions
+        {
+            RadianceWidth = 16,
+            IrradianceWidth = 8,
+            SpecularSliceCount = 2
+        };
+        var insufficient = new SilkCpuTextureBudget(peak - 1);
+        await Assert.That(() => SilkEnvironmentPrefilter.Build(sources, options, grouped, insufficient))
+            .Throws<SilkCpuTextureBudgetExceededException>();
+        await Assert.That(insufficient.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(insufficient.Usage.ReservationCount).IsEqualTo(0ul);
+
+        var budget = new SilkCpuTextureBudget(peak);
+        using SilkEnvironmentMaps expected = SilkEnvironmentPrefilter.Build(sources, options, grouped);
+        using SilkEnvironmentMaps maps = SilkEnvironmentPrefilter.Build(sources, options, grouped, budget);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(peak);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(outputBytes);
+        await Assert.That(maps.IrradiancePixels.SequenceEqual(expected.IrradiancePixels)).IsTrue();
+        await Assert.That(maps.SpecularPixels.SequenceEqual(expected.SpecularPixels)).IsTrue();
+        IDisposable retained = maps.AcquirePixelOwnership()!;
+        maps.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(outputBytes);
+        retained.Dispose();
+        retained.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(() => maps.AcquirePixelOwnership()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task PrefilterCacheEvictionKeepsPublishedMapBytesChargedUntilTheLastOwnerReleases()
+    {
+        var budget = new SilkCpuTextureBudget(100_000);
+        using SilkDecodedImage image = Constant(8, 4, 1);
+        SilkEnvironmentSource[] sources =
+            [new(image, SilkColorSpace.Raw, Matrix4x4.Identity, Vector3.One, Vector3.One)];
+        var options = new SilkEnvironmentPrefilterOptions
+        {
+            RadianceWidth = 16,
+            IrradianceWidth = 8,
+            SpecularSliceCount = 2
+        };
+        var cache = new SilkEnvironmentLightingCache(capacity: 1);
+        using SilkEnvironmentMaps first = SilkEnvironmentPrefilter.Build(sources, options, cpuBudget: budget);
+        cache.Add("first", first);
+        using IDisposable published = first.AcquirePixelOwnership()!;
+        first.Dispose();
+        using SilkEnvironmentMaps second = SilkEnvironmentPrefilter.Build(sources, options, cpuBudget: budget);
+        cache.Add("second", second);
+        second.Dispose();
+        await Assert.That(cache.TryGet("first")).IsNull();
+        await Assert.That(cache.TryGet("second")).IsSameReferenceAs(second);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(first.ByteSize + second.ByteSize);
+        cache.Clear();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(first.ByteSize);
+        published.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task PrefilterCacheRollbackRestoresEvictedOwnershipAndReleasesCandidatePixels()
+    {
+        var budget = new SilkCpuTextureBudget(100_000);
+        using SilkDecodedImage image = Constant(8, 4, 1);
+        SilkEnvironmentSource[] sources =
+            [new(image, SilkColorSpace.Raw, Matrix4x4.Identity, Vector3.One, Vector3.One)];
+        var options = new SilkEnvironmentPrefilterOptions
+        {
+            RadianceWidth = 16,
+            IrradianceWidth = 8,
+            SpecularSliceCount = 2
+        };
+        var cache = new SilkEnvironmentLightingCache(capacity: 1);
+        using SilkEnvironmentMaps original = SilkEnvironmentPrefilter.Build(sources, options, cpuBudget: budget);
+        cache.Add("original", original);
+        original.Dispose();
+        using SilkEnvironmentLightingCache.Checkpoint checkpoint = cache.Capture();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(original.ByteSize);
+        using SilkEnvironmentMaps candidate = SilkEnvironmentPrefilter.Build(sources, options, cpuBudget: budget);
+        cache.Add("candidate", candidate);
+        candidate.Dispose();
+        await Assert.That(cache.TryGet("original")).IsNull();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(original.ByteSize + candidate.ByteSize);
+        checkpoint.Restore();
+        checkpoint.Dispose();
+        await Assert.That(cache.TryGet("original")).IsSameReferenceAs(original);
+        await Assert.That(cache.TryGet("candidate")).IsNull();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(original.ByteSize);
+        await Assert.That(() => candidate.AcquirePixelOwnership()).Throws<ObjectDisposedException>();
+        cache.Clear();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(2_260_991ul, false)]
+    [Arguments(2_260_992ul, true)]
+    public async Task DecodedEnvironmentSourcesAreAdmittedAndReleasedBeforeTheNextDome(
+        ulong capacity, bool admitted)
+    {
+        using var device = new EnvironmentDevice();
+        var budget = new SilkCpuTextureBudget(capacity);
+        budget.ConfigureDevice(device);
+        int allocated = 0;
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Unbounded environment decoding must not run."),
+            imageDescriber: _ => new SilkImageDescription(512, 256, SilkTextureFormat.Rgba32Float),
+            environmentStampReader: _ => new SilkEnvironmentAssetStamp(1, 1),
+            cpuTextureBudget: budget,
+            ownedImageDecoder: (_, _, owner) =>
+            {
+                IDisposable reservation = owner.Reserve(2_097_152);
+                allocated++;
+                SilkDecodedImage image = Constant(512, 256, 1);
+                image.OwnReservation(reservation);
+                return image;
+            });
+        var scene = new SilkSceneState();
+        using var page = new OpenUsdSilkPage(24, 1,
+            [.. Upsert(DomePath, TexturePath), .. Upsert(SecondDomePath, SecondTexturePath)], 2);
+        void apply()
+        {
+            using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
+            using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(scene, cpu.Delta);
+            gpu?.Commit();
+            cpu.Commit();
+        }
+        if (admitted)
+        {
+            apply();
+            await Assert.That(allocated).IsEqualTo(2);
+            await Assert.That(resources.EnvironmentLitDomes).IsEquivalentTo([DomePath, SecondDomePath]);
+            await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(2_260_992ul);
+            await Assert.That(budget.Usage.ReservedBytes)
+                .IsEqualTo(SilkEnvironmentPrefilterOptions.Default.PrefilteredByteSize);
+        }
+        else
+        {
+            await Assert.That(apply).Throws<SilkCpuTextureBudgetExceededException>();
+            await Assert.That(allocated).IsEqualTo(0);
+            await Assert.That(scene.Environments).IsEmpty();
+            await Assert.That(resources.EnvironmentLitDomes).IsEmpty();
+            await Assert.That(device.CreatedTextureCount).IsEqualTo(0);
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.EnvironmentBudgetExceeded);
+        }
+        resources.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task MeanRadianceCacheRetainsTheMeanButNotDecodedPixelOwnership()
+    {
+        var budget = new SilkCpuTextureBudget(512);
+        var cache = new SilkEnvironmentMeanRadianceCache(512);
+        int decodes = 0;
+        SilkDecodedImage decode(string _, bool __)
+        {
+            IDisposable reservation = budget.Reserve(512);
+            decodes++;
+            SilkDecodedImage image = Constant(8, 4, 1);
+            image.OwnReservation(reservation);
+            return image;
+        }
+        var stamp = new SilkEnvironmentAssetStamp(1, 1);
+        Vector3 first = cache.Resolve(TexturePath, SilkColorSpace.Raw, stamp, decode);
+        Vector3 second = cache.Resolve(TexturePath, SilkColorSpace.Raw, stamp, decode);
+        await Assert.That(first).IsEqualTo(Vector3.One);
+        await Assert.That(second).IsEqualTo(first);
+        await Assert.That(decodes).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments("texture")]
+    [Arguments("upload")]
+    [Arguments("late-allocation")]
+    [Arguments("late-mesh")]
+    [Arguments("retirement-mesh")]
+    public async Task RefusedEnvironmentPageKeepsPublishedMapsAndDomeMembershipUntilRetry(string refusal)
+    {
+        using var device = new EnvironmentDevice();
+        var budget = new SilkGpuTextureBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        using SilkSceneGpuResources resources = CreateResources(device);
+        var scene = new SilkSceneState();
+        void apply(OpenUsdSilkPage page)
+        {
+            using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
+            using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(scene, cpu.Delta);
+            gpu?.Commit();
+            cpu.Commit();
+            resources.CompleteApply(scene, cpu.Delta, gpu?.TexturesPrepared == true);
+        }
+        using var first = new OpenUsdSilkPage(24, 1, Upsert(DomePath, TexturePath), 1);
+        apply(first);
+        using var originalCommands = new EnvironmentCommandList();
+        resources.BindEnvironment(originalCommands);
+        ISilkGraphicsTexture irradiance =
+            originalCommands.Textures[SilkBindingLayoutDescriptor.EnvironmentIrradianceTextureBinding];
+        ISilkGraphicsTexture specular =
+            originalCommands.Textures[SilkBindingLayoutDescriptor.EnvironmentSpecularTextureBinding];
+        SilkEnvironmentFrameBinding binding = resources.EnvironmentBinding;
+        ulong reserved = budget.Usage.ReservedBytes;
+        ulong revision = scene.EnvironmentRevision;
+        bool retireOnly = refusal == "retirement-mesh";
+        using var update = retireOnly
+            ? new OpenUsdSilkPage(24, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
+            : new OpenUsdSilkPage(24, 2,
+                [.. Remove(DomePath), .. Upsert(SecondDomePath, SecondTexturePath), .. LinkedMesh()], 3);
+        IDisposable? pressure = refusal == "texture"
+            ? budget.Reserve(new SilkTextureDescriptor(
+                checked((uint)((budget.MaximumBytes - reserved) / 16)),
+                1, SilkTextureFormat.Rgba32Float, SilkTextureUsage.Sampled), 1)
+            : null;
+        device.RefuseSubmission = refusal == "upload";
+        device.RefuseBuffers = refusal is "late-mesh" or "retirement-mesh";
+        device.FailTextureOrdinal = refusal == "late-allocation" ? device.CreatedTextureCount + 2 : 0;
+        try
+        {
+            Exception? error = await Assert.That(() => apply(update)).ThrowsException();
+            bool expected = refusal switch
+            {
+                "texture" => error is SilkGpuTextureBudgetExceededException,
+                "upload" => error is SilkGpuStagingBudgetExceededException,
+                _ => error?.GetType() == typeof(InvalidOperationException)
+            };
+            await Assert.That(expected).IsTrue();
+            await Assert.That(scene.EnvironmentRevision).IsEqualTo(revision);
+            await Assert.That(scene.Environments.ContainsKey(DomePath)).IsTrue();
+            await Assert.That(scene.Environments.ContainsKey(SecondDomePath)).IsFalse();
+            await Assert.That(scene.Meshes).IsEmpty();
+            await Assert.That(resources.Meshes).IsEmpty();
+            await Assert.That(resources.EnvironmentBinding).IsEqualTo(binding);
+            await Assert.That(resources.EnvironmentLitDomes).IsEquivalentTo([DomePath]);
+            using var after = new EnvironmentCommandList();
+            resources.PrepareEnvironmentLighting(scene);
+            resources.BindEnvironment(after);
+            await Assert.That(after.Textures[SilkBindingLayoutDescriptor.EnvironmentIrradianceTextureBinding])
+                .IsSameReferenceAs(irradiance);
+            await Assert.That(after.Textures[SilkBindingLayoutDescriptor.EnvironmentSpecularTextureBinding])
+                .IsSameReferenceAs(specular);
+            await Assert.That(((EnvironmentTexture)irradiance).Released).IsFalse();
+            await Assert.That(((EnvironmentTexture)specular).Released).IsFalse();
+            using var upload = new EnvironmentCommandList();
+            resources.UploadEnvironment(upload);
+            await Assert.That(upload.Uploads).IsEmpty();
+        }
+        finally
+        {
+            pressure?.Dispose();
+            device.RefuseSubmission = false;
+            device.RefuseBuffers = false;
+            device.FailTextureOrdinal = 0;
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        apply(update);
+        if (retireOnly)
+        {
+            await Assert.That(resources.EnvironmentLitDomes).IsEmpty();
+            await Assert.That(resources.EnvironmentBinding.Enabled).IsFalse();
+        }
+        else
+        {
+            await Assert.That(resources.EnvironmentLitDomes).IsEquivalentTo([SecondDomePath]);
+        }
+        await Assert.That(resources.Meshes.Count).IsEqualTo(1);
+        await Assert.That(((EnvironmentTexture)irradiance).Released).IsTrue();
+        await Assert.That(((EnvironmentTexture)specular).Released).IsTrue();
+        ulong retiredBytes = retireOnly
+            ? SilkMipChainLayout.GetLogicalByteSize(irradiance.Width, irradiance.Height,
+                irradiance.Format, irradiance.MipLevelCount) +
+              SilkMipChainLayout.GetLogicalByteSize(specular.Width, specular.Height,
+                specular.Format, specular.MipLevelCount)
+            : 0;
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(
+            reserved - retiredBytes + (retireOnly ? 8ul : 0ul));
+        resources.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
     private const string DomePath = "/World/Lights/Dome";
     private const string SecondDomePath = "/World/Lights/Dome2";
     private const string TexturePath = "/assets/studio.hdr";
@@ -2169,8 +2459,11 @@ public sealed class SilkEnvironmentRetentionTests
     }
 
     private sealed class EnvironmentDevice
-        : ISilkGraphicsDevice, ISilkSelectionOutlineGraphicsDevice, ISilkDeviceLossGraphicsDevice
+        : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkSelectionOutlineGraphicsDevice,
+          ISilkDeviceLossGraphicsDevice, ISilkTextureAdmissionDevice, ISilkCpuTextureAdmissionDevice
     {
+        internal bool RefuseSubmission { get; set; }
+        internal bool RefuseBuffers { get; set; }
         public ulong DeviceLossGeneration { get; set; }
 
         internal bool RefuseTextures { get; init; }
@@ -2237,11 +2530,16 @@ public sealed class SilkEnvironmentRetentionTests
                 throw new InvalidOperationException(
                     $"This device refuses texture {CreatedTextureCount}.");
             }
-            return new EnvironmentTexture(descriptor, this);
+            IDisposable? reservation = ReserveTextureAllocation(descriptor);
+            var texture = new EnvironmentTexture(descriptor, this);
+            texture.OwnTextureReservation(reservation);
+            return texture;
         }
 
         public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
-            new EnvironmentBuffer(size, usage);
+            RefuseBuffers
+                ? throw new InvalidOperationException("Injected mesh allocation failure after environment preparation.")
+                : new EnvironmentBuffer(size, usage);
 
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
         {
@@ -2288,7 +2586,16 @@ public sealed class SilkEnvironmentRetentionTests
             SilkSelectionOutlineBindingDescriptor descriptor) => throw new NotSupportedException();
 
         public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) =>
-            throw new NotSupportedException();
+            RefuseSubmission
+                ? throw new SilkGpuStagingBudgetExceededException(4, 4, 4)
+                : new EnvironmentSubmission();
+
+        private sealed class EnvironmentSubmission : ISilkGraphicsSubmission
+        {
+            public bool IsCompleted => true;
+            public void Wait() { }
+            public void Dispose() { }
+        }
 
         public void WaitIdle()
         {
@@ -2304,13 +2611,18 @@ public sealed class SilkEnvironmentRetentionTests
         EnvironmentDevice device)
         : SilkGraphicsTextureBase(descriptor)
     {
+        internal bool Released { get; private set; }
         public override void ReadbackForTesting(Span<byte> destination) =>
             throw new NotSupportedException();
 
         public override void ReadbackForTesting(Span<float> destination) =>
             throw new NotSupportedException();
 
-        protected override void ReleaseNative() => device.DisposedTextureCount++;
+        protected override void ReleaseNative()
+        {
+            Released = true;
+            device.DisposedTextureCount++;
+        }
     }
 
     private sealed class EnvironmentSampler(

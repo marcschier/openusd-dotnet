@@ -13,10 +13,11 @@ public interface ISilkCpuTextureAdmissionDevice
     void ConfigureCpuTextureBudget(SilkCpuTextureBudget budget);
 }
 
-/// <summary>A shared logical ceiling for owned managed material-pixel and transfer-copy buffers.</summary>
+/// <summary>A shared logical ceiling for owned decoded pixels and material/transfer-copy buffers.</summary>
 /// <remarks>
 /// Admission precedes allocation and tracks ownership, not garbage-collector residency.
-/// Native codec scratch, environment/displacement caches and source geometry are separate domains.
+/// Includes prefilter working arrays, shared environment pixels and cached displacement height texels.
+/// Native codec scratch, per-point displacement amounts and source geometry are separate domains.
 /// </remarks>
 public sealed class SilkCpuTextureBudget
 {

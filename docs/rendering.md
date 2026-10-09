@@ -211,10 +211,48 @@ Changed texture dependencies on a quiet page also use this transaction. Under ad
 standalone retained rendering reuses its published cache rather than retrying file reload
 outside the page journal; the next page application performs the admitted reload.
 
+Authored environment replacements and retirements now participate in the same page
+preparation. Old irradiance/specular maps and samplers remain owned until candidate
+allocation and upload complete; a later material or mesh failure restores the previous
+environment membership, bindings and upload state. Required environment stand-ins and
+samplers are admitted before publishing a drawable page. Retained rendering does not
+retry an environment file replacement outside the page journal.
+
+Decoded dome images share the CPU pixel pool and release their ownership before the next
+dome is decoded. The mean-radiance cache retains only its computed mean, not the decoded
+image reservation. Prefilter accumulation arrays, per-dome groups, convolution lattices,
+temporary group images and retained map pixels are admitted before allocation too.
+Cache entries, published maps and rollback snapshots share one payload charge; eviction
+does not return credit while a published view still owns the pixels. Failed page
+preparation restores the prior cache owners and releases newly prepared payloads.
+
+Displacement decoding, row-flip scratch and converted height texels use the same CPU
+pixel pool. Cache eviction, explicit texture retries and page rollback share ownership:
+old height fields stay charged until the rollback snapshot or cache releases its final
+lease. Changed image dimensions or format after preflight refuse an admitted page;
+quota refusal never substitutes undisplaced geometry. Invalid or non-finite images
+retain the existing named fallback behavior and release all temporary pixel ownership.
+
+With an admission policy, shadow-map cache updates render into an unpublished atlas
+candidate instead of overwriting the current atlas. Failed allocation/submission retains
+the prior shadow binding and pixels. Same-size updates reuse two charged atlas slots;
+resolution changes retire the old size only after successful replacement. Shadow-instance
+buffer growth also allocates and writes its candidate before releasing the prior buffer.
+The renderer admits atlas/stand-in/sampler capacity before publishing a page, so texture
+quota refusal can still roll back CPU state and pending mesh retirements. Shadow raster
+work and caster batching remain later steps; atlas-capacity admission is not whole-frame
+publication.
+
+Frame-buffer creation and per-material/link-mask surface-constant creation are likewise
+prepared before page commit under admission. A changed surface allocates and writes its
+replacement before retiring the published block. Failed preparation restores old constant
+buffers and masks. Render target dimensions and render options are checked before sync
+or page application rather than after publishing the rejected input.
+
 This is not complete process-memory or whole-frame admission. Native Hio/codec scratch,
-environment and displacement caches, general source/SDK memory, and frame resources
-such as shadows are distinct domains. Environment/shadow/frame-wide atomic publication
-and host configuration remain pending; these material guarantees do not claim that
+per-point displacement amounts, general source/SDK memory, static lookup tables and remaining
+frame resources are distinct domains. Whole-frame publication and host configuration
+remain pending; these scoped guarantees do not claim that
 every later render or device-loss failure is reversible.
 
 ### Native-to-managed page acknowledgement

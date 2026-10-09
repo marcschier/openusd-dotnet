@@ -413,6 +413,65 @@ internal static class SilkDisplacementRenderConformance
             .Because("the repaired frame must draw the surface the height field asks for");
     }
 
+    internal static async Task PixelRefusalKeepsPublishedDisplacementUntilRetry(
+        Func<ISilkGraphicsDevice> createDevice, SilkShaderBinaryFormat shaderFormat)
+    {
+        using ISilkGraphicsDevice device = createDevice();
+        var budget = new SilkCpuTextureBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device, shaderFormat,
+            (_, _) => throw new InvalidOperationException("Unbounded displacement decode."),
+            cpuTextureBudget: budget,
+            ownedImageDecoder: (asset, srgb, owner) =>
+            {
+                IDisposable reservation = owner.Reserve(16);
+                try
+                {
+                    SilkDecodedImage image = HeightDecoder(asset, srgb);
+                    image.OwnReservation(reservation);
+                    return image;
+                }
+                catch
+                {
+                    reservation.Dispose();
+                    throw;
+                }
+            });
+        byte[] initial =
+        [
+            .. Frame(), .. Material(textureAsset: HeightAsset),
+            .. Quad("/Quad", QuadPoints(), QuadNormals())
+        ];
+        using var first = new OpenUsdSilkPage(24, 1, initial, 3);
+        renderer.ApplyPage(first);
+        byte[] before = RenderInto(renderer, color, depth);
+        await Assert.That(CountLit(before)).IsGreaterThan(100);
+        ulong retained = budget.Usage.ReservedBytes;
+        await Assert.That(retained).IsGreaterThanOrEqualTo(16ul);
+        using var changed = new OpenUsdSilkPage(24, 2,
+            Material(textureAsset: HeightAsset, textureScale: 0.5f), 1);
+        using (budget.Reserve(budget.MaximumBytes - retained - 15))
+        {
+            await Assert.That(() => renderer.ApplyPage(changed)).Throws<SilkCpuTextureBudgetExceededException>();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+            await Assert.That(RenderInto(renderer, color, depth).SequenceEqual(before)).IsTrue();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(budget.MaximumBytes - 15);
+        }
+        renderer.ApplyPage(changed);
+        byte[] after = RenderInto(renderer, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
+        await Assert.That(after.SequenceEqual(before)).IsFalse();
+        byte[] control = Render(createDevice, shaderFormat,
+            Material(textureAsset: HeightAsset, textureScale: 0.5f),
+            Quad("/Quad", QuadPoints(), QuadNormals()));
+        await Assert.That(after.SequenceEqual(control)).IsTrue();
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
     private static byte[] Render(
         Func<ISilkGraphicsDevice> createDevice,
         SilkShaderBinaryFormat shaderFormat,

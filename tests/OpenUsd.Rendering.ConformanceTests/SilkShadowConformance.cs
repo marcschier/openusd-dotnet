@@ -74,6 +74,41 @@ internal static class SilkShadowConformance
     private const float TiltedLightTiltX = 0.6f;
     private const float TiltedLightTiltY = 0.2f;
 
+    internal static async Task AdmissionRefusalKeepsPriorPixelsUntilTheShadowCandidateCompletes(
+        ISilkGraphicsDevice device, SilkGpuTextureBudget budget)
+    {
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size, Size, SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        SilkMeshRendererConformance.Apply(renderer, 1,
+            CreateShadowLightFrame(), CreateReceiver(), CreateCaster(x: 0), CreateShadow());
+        _ = renderer.Render(color, depth);
+        byte[] before = ReadPixels(color);
+        await AssertShadowed(before, ShadowedX, "admitted original shadow");
+        ulong count = renderer.ShadowMapRenderCount;
+        ulong reserved = budget.Usage.ReservedBytes;
+        SilkMeshRendererConformance.Apply(renderer, 2, CreateCaster(x: 0.6));
+        using (IDisposable pressure = budget.Reserve(new SilkTextureDescriptor(
+            checked((uint)((budget.MaximumBytes - budget.Usage.ReservedBytes) / 4)),
+            1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
+        {
+            await Assert.That(() => renderer.Render(color, depth)).Throws<SilkGpuTextureBudgetExceededException>();
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(count);
+            await Assert.That(renderer.ShadowMapCount).IsEqualTo(1);
+            await Assert.That(ReadPixels(color).SequenceEqual(before)).IsTrue();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(count + 1);
+        await AssertLit(ReadPixels(color), ShadowedX, "receiver after admitted shadow retry");
+        ulong ready = budget.Usage.ReservedBytes;
+        _ = renderer.Render(color, depth);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(ready);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(count + 1);
+    }
+
     internal static async Task AnAuthoredDistantLightCastsAMeasurableShadow(
         ISilkGraphicsDevice device)
     {

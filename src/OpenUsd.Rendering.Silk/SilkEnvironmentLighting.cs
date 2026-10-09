@@ -281,8 +281,27 @@ internal readonly record struct SilkEnvironmentSource(
 /// poisons every filtered neighbourhood.
 /// </para>
 /// </remarks>
-internal sealed class SilkEnvironmentMaps
+internal sealed class SilkEnvironmentMaps : IDisposable
 {
+    private SilkSharedReservation? _pixelOwnership;
+    private IDisposable? _initialOwnership;
+
+    internal void OwnPixelReservation(IDisposable reservation)
+    {
+        if (_pixelOwnership is not null)
+        {
+            throw new InvalidOperationException("Environment pixels already have an owner.");
+        }
+        var shared = new SilkSharedReservation(reservation);
+        IDisposable initial = shared.Acquire();
+        _pixelOwnership = shared;
+        _initialOwnership = initial;
+    }
+
+    internal IDisposable? AcquirePixelOwnership() => _pixelOwnership?.Acquire();
+
+    public void Dispose() => Interlocked.Exchange(ref _initialOwnership, null)?.Dispose();
+
     /// <summary>The pixel format every environment resource uses.</summary>
     internal const SilkTextureFormat Format = SilkTextureFormat.Rgba16Float;
 
@@ -932,6 +951,7 @@ internal static class SilkEnvironmentPrefilter
     /// Whether to bake one independently selectable group per dome beside the
     /// composed one, which is what a per-draw dome link mask selects between.
     /// </param>
+    /// <param name="cpuBudget">Optional shared reservation pool for workspace and retained output pixels.</param>
     /// <remarks>
     /// <paramref name="perDomeGroups"/> is deliberately a decision of the caller
     /// rather than something inferred from the source count. A scene that authors
@@ -947,7 +967,8 @@ internal static class SilkEnvironmentPrefilter
     internal static SilkEnvironmentMaps Build(
         IEnumerable<SilkEnvironmentSource> sources,
         SilkEnvironmentPrefilterOptions options,
-        bool perDomeGroups = false)
+        bool perDomeGroups = false,
+        SilkCpuTextureBudget? cpuBudget = null)
     {
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(options);
@@ -961,6 +982,8 @@ internal static class SilkEnvironmentPrefilter
         uint width = options.RadianceWidth;
         uint height = options.RadianceHeight;
         int binCount = checked((int)(width * height));
+        using var workspace = new PrefilterWorkspace(cpuBudget);
+        workspace.Reserve(checked((ulong)binCount * 10 * sizeof(double)));
         double[] diffuseBase = new double[binCount * 3];
         double[] specularBase = new double[binCount * 3];
         double[] domeBins = new double[binCount * 3];
@@ -982,6 +1005,10 @@ internal static class SilkEnvironmentPrefilter
             Array.Clear(domeBins);
             Array.Clear(domeWeights);
             Resample(source, width, height, domeBins, domeWeights);
+            if (perDomeGroups)
+            {
+                workspace.Reserve(checked((ulong)binCount * 6 * sizeof(double)));
+            }
             double[]? ownDiffuse = perDomeGroups ? new double[binCount * 3] : null;
             double[]? ownSpecular = perDomeGroups ? new double[binCount * 3] : null;
             for (int bin = 0; bin < binCount; bin++)
@@ -1035,28 +1062,62 @@ internal static class SilkEnvironmentPrefilter
         domeDiffuse.Add(diffuseBase);
         domeSpecular.Add(specularBase);
 
-        byte[] irradiance = BuildIrradianceGroups(
-            perDomeGroups ? domeDiffuse : [diffuseBase],
-            width,
-            height,
-            options.IrradianceWidth,
-            options.IrradianceHeight);
-        byte[] specular = BuildSpecularGroups(
-            perDomeGroups ? domeSpecular : [specularBase],
-            width,
-            height,
-            options.SpecularSliceCount);
-        return new SilkEnvironmentMaps(
-            options.IrradianceWidth,
-            options.IrradianceHeight,
-            irradiance,
-            width,
-            height,
-            options.SpecularSliceCount,
-            specular,
-            domeCount,
-            (uint)groupCount,
-            (uint)(groupCount - 1));
+        IDisposable? output = cpuBudget?.Reserve(options.GetPrefilteredByteSize(groupCount));
+        try
+        {
+            byte[] irradiance = BuildIrradianceGroups(
+                perDomeGroups ? domeDiffuse : [diffuseBase],
+                width,
+                height,
+                options.IrradianceWidth,
+                options.IrradianceHeight,
+                cpuBudget);
+            byte[] specular = BuildSpecularGroups(
+                perDomeGroups ? domeSpecular : [specularBase],
+                width,
+                height,
+                options.SpecularSliceCount,
+                cpuBudget);
+            var maps = new SilkEnvironmentMaps(
+                options.IrradianceWidth,
+                options.IrradianceHeight,
+                irradiance,
+                width,
+                height,
+                options.SpecularSliceCount,
+                specular,
+                domeCount,
+                (uint)groupCount,
+                (uint)(groupCount - 1));
+            if (output is not null)
+            {
+                maps.OwnPixelReservation(output);
+                output = null;
+            }
+            return maps;
+        }
+        finally
+        {
+            output?.Dispose();
+        }
+    }
+
+    private sealed class PrefilterWorkspace(SilkCpuTextureBudget? budget) : IDisposable
+    {
+        private List<IDisposable>? _owners;
+
+        internal void Reserve(ulong bytes)
+        {
+            if (budget is null)
+            {
+                return;
+            }
+            _owners ??= [];
+            _owners.EnsureCapacity(checked(_owners.Count + 1));
+            _owners.Add(budget.Reserve(bytes));
+        }
+
+        public void Dispose() => SilkCpuTextureBudget.ReleaseCopies(ref _owners);
     }
 
     /// <summary>Bakes one irradiance image per group into one stacked atlas.</summary>
@@ -1065,14 +1126,16 @@ internal static class SilkEnvironmentPrefilter
         uint radianceWidth,
         uint radianceHeight,
         uint width,
-        uint height)
+        uint height,
+        SilkCpuTextureBudget? cpuBudget)
     {
         if (groups.Count == 1)
         {
-            return BuildIrradiance(groups[0], radianceWidth, radianceHeight, width, height);
+            return BuildIrradiance(groups[0], radianceWidth, radianceHeight, width, height, cpuBudget);
         }
 
         int groupBytes = checked((int)(width * height * 8));
+        using IDisposable? scratch = cpuBudget?.Reserve((ulong)groupBytes);
         byte[] pixels = new byte[checked(groupBytes * groups.Count)];
         for (int group = 0; group < groups.Count; group++)
         {
@@ -1081,7 +1144,8 @@ internal static class SilkEnvironmentPrefilter
                 radianceWidth,
                 radianceHeight,
                 width,
-                height);
+                height,
+                cpuBudget);
             baked.CopyTo(pixels, group * groupBytes);
         }
         return pixels;
@@ -1092,18 +1156,20 @@ internal static class SilkEnvironmentPrefilter
         List<double[]> groups,
         uint width,
         uint height,
-        uint sliceCount)
+        uint sliceCount,
+        SilkCpuTextureBudget? cpuBudget)
     {
         if (groups.Count == 1)
         {
-            return BuildSpecularSlices(groups[0], width, height, sliceCount);
+            return BuildSpecularSlices(groups[0], width, height, sliceCount, cpuBudget);
         }
 
         int groupBytes = checked((int)(width * height * sliceCount * 8));
+        using IDisposable? scratch = cpuBudget?.Reserve((ulong)groupBytes);
         byte[] pixels = new byte[checked(groupBytes * groups.Count)];
         for (int group = 0; group < groups.Count; group++)
         {
-            byte[] baked = BuildSpecularSlices(groups[group], width, height, sliceCount);
+            byte[] baked = BuildSpecularSlices(groups[group], width, height, sliceCount, cpuBudget);
             baked.CopyTo(pixels, group * groupBytes);
         }
         return pixels;
@@ -1208,9 +1274,11 @@ internal static class SilkEnvironmentPrefilter
         uint radianceWidth,
         uint radianceHeight,
         uint width,
-        uint height)
+        uint height,
+        SilkCpuTextureBudget? cpuBudget)
     {
         int binCount = checked((int)(radianceWidth * radianceHeight));
+        using IDisposable? lattice = cpuBudget?.Reserve(checked((ulong)binCount * (12 + sizeof(double))));
         (Vector3[] directions, double[] solidAngles) =
             BuildLattice(radianceWidth, radianceHeight);
 
@@ -1247,9 +1315,11 @@ internal static class SilkEnvironmentPrefilter
         double[] radiance,
         uint width,
         uint height,
-        uint sliceCount)
+        uint sliceCount,
+        SilkCpuTextureBudget? cpuBudget)
     {
         int sliceTexels = checked((int)(width * height));
+        using IDisposable? lattice = cpuBudget?.Reserve(checked((ulong)sliceTexels * (12 + sizeof(double))));
         byte[] pixels = new byte[checked(sliceTexels * (int)sliceCount * 8)];
         Span<Half> halves = MemoryMarshal.Cast<byte, Half>(pixels.AsSpan());
 
@@ -1671,6 +1741,64 @@ internal sealed class SilkEnvironmentLightingCache
     /// <summary>Gets the number of entries evicted since construction.</summary>
     internal int EvictionCount { get; private set; }
 
+    internal Checkpoint Capture() => new(this);
+
+    internal sealed class Checkpoint : IDisposable
+    {
+        private readonly SilkEnvironmentLightingCache _owner;
+        private readonly Dictionary<string, Entry> _saved = new(StringComparer.Ordinal);
+        private readonly ulong _clock;
+        private readonly ulong _bytes;
+        private bool _disposed;
+
+        internal Checkpoint(SilkEnvironmentLightingCache owner)
+        {
+            _owner = owner;
+            _clock = owner._clock;
+            _bytes = owner._bytes;
+            _saved.EnsureCapacity(owner._entries.Count);
+            try
+            {
+                foreach (var pair in owner._entries)
+                {
+                    _saved.Add(pair.Key, new Entry(pair.Value.Maps) { LastUsed = pair.Value.LastUsed });
+                }
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
+
+        internal void Restore()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _owner.Clear();
+            foreach (var pair in _saved)
+            {
+                _owner._entries.Add(pair.Key, pair.Value);
+            }
+            _owner._clock = _clock;
+            _owner._bytes = _bytes;
+            _saved.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            foreach (Entry entry in _saved.Values)
+            {
+                entry.Dispose();
+            }
+            _saved.Clear();
+        }
+    }
+
     /// <summary>Returns the prefiltered environment for one identity, building it once.</summary>
     /// <param name="identity">The composed cache identity.</param>
     /// <param name="build">The prefilter, invoked at most once per identity.</param>
@@ -1686,7 +1814,7 @@ internal sealed class SilkEnvironmentLightingCache
             return cached;
         }
 
-        SilkEnvironmentMaps maps = build();
+        using SilkEnvironmentMaps maps = build();
         BuildCount++;
         Add(identity, maps);
         return maps;
@@ -1733,8 +1861,18 @@ internal sealed class SilkEnvironmentLightingCache
             throw new SilkEnvironmentBudgetExceededException(identity, size, _byteBudget);
         }
 
-        Evict(size);
-        _entries[identity] = new Entry(maps) { LastUsed = ++_clock };
+        _entries.EnsureCapacity(checked(_entries.Count + 1));
+        var entry = new Entry(maps) { LastUsed = ++_clock };
+        try
+        {
+            Evict(size);
+            _entries.Add(identity, entry);
+        }
+        catch
+        {
+            entry.Dispose();
+            throw;
+        }
         _bytes += size;
     }
 
@@ -1744,6 +1882,10 @@ internal sealed class SilkEnvironmentLightingCache
     /// <summary>Drops every retained environment.</summary>
     internal void Clear()
     {
+        foreach (Entry entry in _entries.Values)
+        {
+            entry.Dispose();
+        }
         _entries.Clear();
         _bytes = 0;
     }
@@ -1767,17 +1909,22 @@ internal sealed class SilkEnvironmentLightingCache
             {
                 return;
             }
-            _bytes -= _entries[oldestKey].Maps.ByteSize;
+            Entry removed = _entries[oldestKey];
+            _bytes -= removed.Maps.ByteSize;
             _entries.Remove(oldestKey);
+            removed.Dispose();
             EvictionCount++;
         }
     }
 
-    private sealed class Entry(SilkEnvironmentMaps maps)
+    private sealed class Entry(SilkEnvironmentMaps maps) : IDisposable
     {
+        private IDisposable? _ownership = maps.AcquirePixelOwnership();
         internal SilkEnvironmentMaps Maps { get; } = maps;
 
         internal ulong LastUsed { get; set; }
+
+        public void Dispose() => Interlocked.Exchange(ref _ownership, null)?.Dispose();
     }
 }
 

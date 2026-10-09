@@ -9,6 +9,42 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkMeshRendererTests
 {
     [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task InvalidRenderInputsRefuseBeforePublishingOrAllocatingThePage(
+        bool invalidOptions, bool capture)
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var color = new ValidationTexture(4, 4, SilkTextureFormat.Rgba8Unorm);
+        using var depth = new ValidationTexture(invalidOptions ? 4u : 2u, 4, SilkTextureFormat.D32Float);
+        using var page = new OpenUsdSilkPage(24, 1,
+            [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        SilkMeshRenderOptions options = invalidOptions
+            ? SilkMeshRenderOptions.Default with { ClearDepth = float.NaN }
+            : SilkMeshRenderOptions.Default;
+        Action render = capture
+            ? () => renderer.ApplyAndRenderForDisplayCapture(page, color, depth, options)
+            : () => renderer.ApplyAndRender(page, color, depth, options);
+        Exception? error = await Assert.That(render).ThrowsException();
+        await Assert.That(error is ArgumentException).IsTrue();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(0ul);
+        await Assert.That(renderer.Scene.Meshes).IsEmpty();
+        await Assert.That(renderer.GpuResources.Meshes).IsEmpty();
+        await Assert.That(device.Buffers).IsEmpty();
+    }
+
+    private sealed class ValidationTexture(uint width, uint height, SilkTextureFormat format)
+        : SilkGraphicsTextureBase(width, height, format)
+    {
+        public override void ReadbackForTesting(Span<byte> destination) => throw new NotSupportedException();
+        public override void ReadbackForTesting(Span<float> destination) => throw new NotSupportedException();
+        protected override void ReleaseNative() { }
+    }
+
+    [Test]
     [Arguments(0, false)]
     [Arguments(1, false)]
     [Arguments(2, false)]

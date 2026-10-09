@@ -663,6 +663,7 @@ public sealed class SilkMeshRenderer :
         {
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
+            ValidateOptions(options ?? SilkMeshRenderOptions.Default);
             using OpenUsdSilkPage page = session.Sync(
                 checked((int)colorTarget.Width),
                 checked((int)colorTarget.Height),
@@ -693,6 +694,7 @@ public sealed class SilkMeshRenderer :
         {
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
+            ValidateOptions(options ?? SilkMeshRenderOptions.Default);
             using OpenUsdSilkPage page = session.Sync(
                 checked((int)colorTarget.Width),
                 checked((int)colorTarget.Height),
@@ -718,6 +720,8 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
+            ValidateTargets(colorTarget, depthTarget);
+            ValidateOptions(options ?? SilkMeshRenderOptions.Default);
             ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
             return RenderCore(
                 colorTarget,
@@ -741,6 +745,8 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
+            ValidateTargets(colorTarget, depthTarget);
+            ValidateOptions(options ?? SilkMeshRenderOptions.Default);
             ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
             return RenderCore(
                 colorTarget,
@@ -831,6 +837,8 @@ public sealed class SilkMeshRenderer :
         lock (_gate)
         {
             ThrowIfDisposed();
+            ValidateTargets(colorTarget, depthTarget);
+            ValidateOptions(options);
             ApplyPage(page, options.UseSceneMaterials);
             return RenderCore(
                 colorTarget,
@@ -1966,7 +1974,9 @@ public sealed class SilkMeshRenderer :
                 staged = true;
                 using SilkSceneGpuResources.PreparedMeshUpdate? gpu =
                     GpuResources.Prepare(Scene, scene.Delta, useSceneMaterials);
+                using SilkShadowMapCache.PreparedCapacity? shadow = _shadowMaps.PrepareCapacity(Scene);
                 gpu?.Commit();
+                shadow?.Commit();
                 scene.Commit();
                 committed = true;
                 _rejectedPage = null;
@@ -1974,7 +1984,8 @@ public sealed class SilkMeshRenderer :
                 {
                     _selectionResolutionDirty = true;
                 }
-                GpuResources.CompleteApply(Scene, scene.Delta, gpu?.TexturesPrepared == true);
+                GpuResources.CompleteApply(
+                    Scene, scene.Delta, gpu?.TexturesPrepared == true, gpu?.SurfacesPrepared == true);
             }
             catch (Exception preparationFailure)
             {

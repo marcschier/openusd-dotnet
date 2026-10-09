@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Numerics;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.Tests;
@@ -28,6 +29,140 @@ namespace OpenUsd.Rendering.Tests;
 /// </remarks>
 public sealed class SilkShadowAtlasRetentionTests
 {
+    [Test]
+    public async Task ShadowAtlasCapacityIsAdmittedBeforePublishingTheCpuAndMeshPage()
+    {
+        using var device = new ShadowDevice(SilkGraphicsBackend.D3D12);
+        var budget = new SilkGpuTextureBudget(33_554_432);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(24, 1,
+            [.. HighShadowFrame(1), .. SilkTransactionalApplyTests.Mesh("/Old", 1)], 2);
+        renderer.ApplyPage(first);
+        SilkMeshGpuResource original = renderer.GpuResources.Meshes.Values.Single();
+        ulong revision = renderer.Scene.Revision;
+        ulong reserved = budget.Usage.ReservedBytes;
+        using var update = new OpenUsdSilkPage(24, 2,
+            [.. HighShadowFrame(1), .. HighShadowTable(1, 0), .. HighShadowMeshRemoval("/Old"),
+                .. SilkTransactionalApplyTests.Mesh("/New", 2)], 4);
+        using (IDisposable pressure = budget.Reserve(new SilkTextureDescriptor(
+            checked((uint)((budget.MaximumBytes - reserved) / 4)), 1,
+            SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
+        {
+            await Assert.That(() => renderer.ApplyPage(update)).Throws<SilkGpuTextureBudgetExceededException>();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+            await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/Old", 0))).IsTrue();
+            await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/New", 0))).IsFalse();
+            await Assert.That(renderer.GpuResources.Meshes.Values.Single()).IsSameReferenceAs(original);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        renderer.ApplyPage(update);
+        await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/New", 0))).IsTrue();
+        await Assert.That(renderer.Scene.MeshesByPath.ContainsKey(("/Old", 0))).IsFalse();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved + 4_194_304ul);
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ShadowInstanceGrowthRefusalPreservesThePublishedBufferAndCanRetry(bool failWrite)
+    {
+        using var fixture = new ShadowFixture();
+        fixture.Resources.Apply(fixture.Scene,
+            fixture.Scene.Apply(SilkTransactionalApplyTests.Mesh("/Caster", 1), 1, 1));
+        SilkMeshGpuResource mesh = fixture.Resources.Meshes.Values.Single();
+        SilkShadowCaster[] first = [new(mesh, Matrix4x4.Identity)];
+        var original = (ShadowBuffer)mesh.Geometry.RequireShadowInstanceBuffer(fixture.Device, first);
+        byte[] before = new byte[checked((int)original.Size)];
+        original.ReadbackForTesting(before);
+        int live = fixture.Device.LiveBufferCount;
+        fixture.Device.RefuseNextBuffer = !failWrite;
+        fixture.Device.RefuseBufferWrites = failWrite;
+        SilkShadowCaster[] grown =
+        [
+            new(mesh, Matrix4x4.CreateTranslation(2, 0, 0)),
+            new(mesh, Matrix4x4.CreateTranslation(4, 0, 0))
+        ];
+        await Assert.That(() => mesh.Geometry.RequireShadowInstanceBuffer(fixture.Device, grown))
+            .Throws<InvalidOperationException>();
+        fixture.Device.RefuseBufferWrites = false;
+        await Assert.That(original.IsDisposed).IsFalse();
+        await Assert.That(mesh.Geometry.ShadowInstanceBuffer).IsSameReferenceAs(original);
+        await Assert.That(fixture.Device.LiveBufferCount).IsEqualTo(live);
+        byte[] after = new byte[before.Length];
+        original.ReadbackForTesting(after);
+        await Assert.That(after.SequenceEqual(before)).IsTrue();
+        ISilkGraphicsBuffer replacement = mesh.Geometry.RequireShadowInstanceBuffer(fixture.Device, grown);
+        await Assert.That(replacement.Size).IsEqualTo(2 * original.Size);
+        await Assert.That(original.IsDisposed).IsTrue();
+        await Assert.That(fixture.Device.LiveBufferCount).IsEqualTo(live);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AdmittedShadowReplacementRefusalKeepsThePreviousAtlasAndBinding(bool failSubmission)
+    {
+        using var fixture = new ShadowFixture();
+        var budget = new SilkGpuTextureBudget(33_554_432);
+        budget.ConfigureDevice(fixture.Device);
+        fixture.Prepare();
+        ShadowTexture original = fixture.BindAndCaptureAtlas();
+        SilkShadowFrameBinding binding = fixture.Cache.Binding;
+        ulong revision = fixture.Cache.BindingRevision;
+        ulong charged = budget.Usage.ReservedBytes;
+        fixture.Resolution = 1024;
+        IDisposable? pressure = failSubmission ? null : budget.Reserve(
+            SilkTextureDescriptor.SampledDepthTarget(2048, 2048), 1);
+        fixture.Device.RefuseSubmission = failSubmission;
+        try
+        {
+            await Assert.That(fixture.Prepare).Throws<InvalidOperationException>();
+            await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(original);
+            await Assert.That(original.IsDisposed).IsFalse();
+            await Assert.That(fixture.Cache.Binding).IsSameReferenceAs(binding);
+            await Assert.That(fixture.Cache.BindingRevision).IsEqualTo(revision);
+            await Assert.That(fixture.Cache.RenderCount).IsEqualTo(1ul);
+        }
+        finally
+        {
+            pressure?.Dispose();
+            fixture.Device.RefuseSubmission = false;
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(charged);
+        fixture.Prepare();
+        await Assert.That(fixture.BindAndCaptureAtlas().Width).IsEqualTo(2048u);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(2ul);
+        await Assert.That(original.IsDisposed).IsTrue();
+        fixture.Cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task AdmittedMovingShadowsReuseTwoChargedAtlasSlots()
+    {
+        using var fixture = new ShadowFixture();
+        var budget = new SilkGpuTextureBudget(16_777_216);
+        budget.ConfigureDevice(fixture.Device);
+        fixture.Prepare();
+        ShadowTexture first = fixture.BindAndCaptureAtlas();
+        fixture.Scene.AdvanceGeometryRevisionForRebuild();
+        fixture.Prepare();
+        ShadowTexture second = fixture.BindAndCaptureAtlas();
+        await Assert.That(second).IsNotSameReferenceAs(first);
+        fixture.Scene.AdvanceGeometryRevisionForRebuild();
+        fixture.Prepare();
+        await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(first);
+        await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(2);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(8_388_608ul);
+        fixture.Cache.Dispose();
+        await Assert.That(first.IsDisposed).IsTrue();
+        await Assert.That(second.IsDisposed).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
     [Test]
     public async Task AReusedAtlasIsRenderedOnceUntilSomethingChanges()
     {
@@ -442,10 +577,15 @@ public sealed class SilkShadowAtlasRetentionTests
     }
 
     internal sealed class ShadowDevice(SilkGraphicsBackend backend)
-        : ISilkGraphicsDevice,
+        : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkTextureAdmissionDevice,
             ISilkDeviceLossGraphicsDevice,
             ISilkSelectionOutlineGraphicsDevice
     {
+        private readonly List<ShadowBuffer> _buffers = [];
+        internal bool RefuseNextBuffer { get; set; }
+        internal bool RefuseBufferWrites { get; set; }
+        internal bool RefuseSubmission { get; set; }
+        internal int LiveBufferCount => _buffers.Count(buffer => !buffer.IsDisposed);
         public ulong DeviceLossGeneration { get; set; }
 
         public ulong SelectionOutlineDeviceGeneration { get; set; }
@@ -503,11 +643,23 @@ public sealed class SilkShadowAtlasRetentionTests
             {
                 CreatedStandInTextureCount++;
             }
-            return new ShadowTexture(descriptor);
+            IDisposable? reservation = ReserveTextureAllocation(descriptor);
+            var texture = new ShadowTexture(descriptor);
+            texture.OwnTextureReservation(reservation);
+            return texture;
         }
 
-        public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
-            new ShadowBuffer(size, usage);
+        public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage)
+        {
+            if (RefuseNextBuffer)
+            {
+                RefuseNextBuffer = false;
+                throw new InvalidOperationException("Injected shadow buffer allocation refusal.");
+            }
+            var buffer = new ShadowBuffer(size, usage, this);
+            _buffers.Add(buffer);
+            return buffer;
+        }
 
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
         {
@@ -556,6 +708,10 @@ public sealed class SilkShadowAtlasRetentionTests
         public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
         {
             ArgumentNullException.ThrowIfNull(commandList);
+            if (RefuseSubmission)
+            {
+                throw new InvalidOperationException("Injected shadow submission refusal.");
+            }
             return new ShadowSubmission();
         }
 
@@ -601,27 +757,17 @@ public sealed class SilkShadowAtlasRetentionTests
     }
 
     internal sealed class ShadowTexture(SilkTextureDescriptor descriptor)
-        : ISilkGraphicsTexture
+        : SilkGraphicsTextureBase(descriptor)
     {
         internal bool IsDisposed { get; private set; }
 
-        public uint Width => descriptor.Width;
-
-        public uint Height => descriptor.Height;
-
-        public SilkTextureFormat Format => descriptor.Format;
-
-        public SilkTextureUsage Usage => descriptor.Usage;
-
-        public uint MipLevelCount => descriptor.MipLevelCount;
-
-        public void ReadbackForTesting(Span<byte> destination) =>
+        public override void ReadbackForTesting(Span<byte> destination) =>
             throw new NotSupportedException();
 
-        public void ReadbackForTesting(Span<float> destination) =>
+        public override void ReadbackForTesting(Span<float> destination) =>
             throw new NotSupportedException();
 
-        public void Dispose() => IsDisposed = true;
+        protected override void ReleaseNative() => IsDisposed = true;
     }
 
     internal sealed class ShadowSampler(SilkSamplerDescriptor descriptor)
@@ -634,23 +780,32 @@ public sealed class SilkShadowAtlasRetentionTests
         public void Dispose() => IsDisposed = true;
     }
 
-    private sealed class ShadowBuffer(nuint size, SilkBufferUsage usage)
+    private sealed class ShadowBuffer(nuint size, SilkBufferUsage usage, ShadowDevice device)
         : ISilkGraphicsBuffer
     {
         private readonly byte[] _bytes = new byte[checked((int)size)];
+        internal bool IsDisposed { get; private set; }
 
         public nuint Size => size;
 
         public SilkBufferUsage Usage => usage;
 
-        public void Write(ReadOnlySpan<byte> data, nuint offset = 0) =>
+        public void Write(ReadOnlySpan<byte> data, nuint offset = 0)
+        {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            if (device.RefuseBufferWrites)
+            {
+                throw new InvalidOperationException("Injected shadow buffer write refusal.");
+            }
             data.CopyTo(_bytes.AsSpan(checked((int)offset)));
+        }
 
         public void ReadbackForTesting(Span<byte> destination) =>
             _bytes.AsSpan(0, destination.Length).CopyTo(destination);
 
         public void Dispose()
         {
+            IsDisposed = true;
         }
     }
 

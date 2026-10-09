@@ -7,6 +7,27 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkCpuTextureBudgetTests
 {
     [Test]
+    public async Task SharedPixelOwnersChargeOnceAcrossConcurrentLeasesAndRejectReacquisitionAfterRelease()
+    {
+        var budget = new SilkCpuTextureBudget(16);
+        var shared = new SilkSharedReservation(budget.Reserve(16));
+        IDisposable retained = shared.Acquire();
+        Parallel.For(0, 128, _ =>
+        {
+            IDisposable lease = shared.Acquire();
+            lease.Dispose();
+            lease.Dispose();
+        });
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        retained.Dispose();
+        retained.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+        await Assert.That(shared.Acquire).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
     public async Task FullWidthCpuOwnershipAndSnapshotsRemainExactAcrossTransfers()
     {
         var budget = new SilkCpuTextureBudget(ulong.MaxValue);

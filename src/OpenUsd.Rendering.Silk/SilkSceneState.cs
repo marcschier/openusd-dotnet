@@ -3044,7 +3044,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private const float MaxMaterialAnisotropy = 8f;
 
     private readonly ISilkGraphicsDevice _device;
-    private readonly Func<string, bool, SilkDecodedImage> _imageDecoder;
+    private readonly Func<string, bool, SilkDecodedImage> _budgetedImageDecoder;
     private readonly SilkCpuTextureBudget? _cpuTextureBudget;
     private readonly Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? _ownedImageDecoder;
     private readonly Func<string, SilkImageDescription> _imageDescriber;
@@ -3091,6 +3091,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private readonly Dictionary<string, RenderDiagnostic> _diagnostics =
         new(StringComparer.Ordinal);
     private ISilkGraphicsBuffer? _frameBuffer;
+    private bool _frameBufferInitialized;
     private readonly byte[] _frameBytes = new byte[SilkFrameUniformWriter.ByteSize];
     private ulong _frameRevision = ulong.MaxValue;
     private ulong _frameEnvironmentRevision = ulong.MaxValue;
@@ -3112,6 +3113,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         (string Asset, SilkEnvironmentAssetStamp Stamp),
         SilkImageDescription?> _environmentDescriptions = [];
     private SilkEnvironmentMaps? _environmentPayload;
+    private IDisposable? _environmentPayloadOwnership;
     private readonly HashSet<string> _environmentLitDomes = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -3379,7 +3381,6 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(imageDecoder);
         _device = device;
-        _imageDecoder = imageDecoder;
         cpuTextureBudget?.ConfigureDevice(device);
         cpuTextureBudget = (device as SilkGraphicsDeviceLifetimeBase)?.GetCpuTextureBudgetForAllocation()
             ?? cpuTextureBudget;
@@ -3389,6 +3390,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         _cpuTextureBudget = cpuTextureBudget;
         _ownedImageDecoder = ownedImageDecoder;
+        _budgetedImageDecoder = cpuTextureBudget is null ? imageDecoder : DecodeOwnedImage;
         // A describer reads an image's declared shape without decoding it, which
         // is what lets the displacement budgets be enforced before an allocation.
         // A caller that supplied its own decoder but no describer gets one backed
@@ -3396,7 +3398,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         // case that needs the preflight measured on its own supplies both.
         _imageDescriber = imageDescriber ?? (asset =>
         {
-            SilkDecodedImage decoded = imageDecoder(asset, false);
+            using SilkDecodedImage decoded = _budgetedImageDecoder(asset, false);
             return new SilkImageDescription(decoded.Width, decoded.Height, decoded.Format);
         });
         _udimResolver = udimResolver ?? SilkNativeImageDecoder.ResolveUdimTiles;
@@ -3460,9 +3462,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             AddDiagnostic(cpuCode, string.Empty, RenderDiagnosticSeverity.Information,
                 string.Create(CultureInfo.InvariantCulture,
-                    $"Shared owned managed material-pixel ceiling={cpu.MaximumBytes} bytes. ") +
-                "Includes decoded pixels, mips, UDIM atlases and device command copies; excludes native codec " +
-                "scratch, environment/displacement caches and source geometry. Logical ownership, not process RSS.");
+                    $"Shared owned managed pixel ceiling={cpu.MaximumBytes} bytes. ") +
+                "Includes decoded pixels, mips, atlases, prefilter workspace/output and command copies; excludes " +
+                "native codec scratch, displacement caches and source geometry. Not process RSS.");
         }
         const string admissionCode = "HDSILK_GPU_BUFFER_ADMISSION";
         if (_device is ISilkBufferAdmissionDevice { GpuBufferBudget: { } budget } &&
@@ -3558,6 +3560,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(scene);
 
         RetryTransaction transaction = BeginRetryTransaction();
+        using DisplacementImageCheckpoint images = transaction.DisplacementImages;
         var replacements = new List<(ulong Id, SilkMeshGpuResource Resource)>();
         try
         {
@@ -3593,6 +3596,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         Revision++;
         scene.AdvanceGeometryRevisionForRebuild();
+        images.Commit();
         foreach (SilkMeshGpuResource resource in retired)
         {
             DisposeMesh(resource);
@@ -3614,14 +3618,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         List<ulong> DisplacedMeshIds,
         Dictionary<TextureCacheKey, TextureCacheEntry> FailedTextures,
         Dictionary<string, RenderDiagnostic> Diagnostics,
-        Dictionary<ulong, DisplacementCacheEntry> DisplacementImages,
         Dictionary<DisplacedPrimKey, DisplacementVerdict> Verdicts,
         Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> Geometries,
-        ulong DisplacementImageBytes,
-        ulong DisplacementUseClock,
         ulong VerdictRevision,
         ulong ReportedRevision,
-        ulong ReportedShadowRevision);
+        ulong ReportedShadowRevision,
+        DisplacementImageCheckpoint DisplacementImages);
 
     private RetryTransaction BeginRetryTransaction()
     {
@@ -3638,16 +3640,14 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             displaced,
             new Dictionary<TextureCacheKey, TextureCacheEntry>(_failedTextures),
             new Dictionary<string, RenderDiagnostic>(_diagnostics, StringComparer.Ordinal),
-            new Dictionary<ulong, DisplacementCacheEntry>(_displacementImages),
             new Dictionary<DisplacedPrimKey, DisplacementVerdict>(_displacementVerdicts),
             _geometries.ToDictionary(
                 static pair => pair.Key,
                 static pair => new List<SilkMeshGpuGeometryResource>(pair.Value)),
-            _displacementImageBytes,
-            _displacementUseClock,
             _displacementVerdictRevision,
             _displacementReportedRevision,
-            _displacementReportedShadowRevision);
+            _displacementReportedShadowRevision,
+            new DisplacementImageCheckpoint(this));
 
         // Moved aside, not disposed: a rollback puts these back, and a commit
         // disposes them once the replacements that made them obsolete exist.
@@ -3672,11 +3672,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             _diagnostics[pair.Key] = pair.Value;
         }
-        _displacementImages.Clear();
-        foreach (KeyValuePair<ulong, DisplacementCacheEntry> pair in transaction.DisplacementImages)
-        {
-            _displacementImages[pair.Key] = pair.Value;
-        }
+        transaction.DisplacementImages.Dispose();
         _displacementVerdicts.Clear();
         foreach (KeyValuePair<DisplacedPrimKey, DisplacementVerdict> pair in transaction.Verdicts)
         {
@@ -3688,8 +3684,6 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             _geometries[pair.Key] = pair.Value;
         }
-        _displacementImageBytes = transaction.DisplacementImageBytes;
-        _displacementUseClock = transaction.DisplacementUseClock;
         _displacementVerdictRevision = transaction.VerdictRevision;
         _displacementReportedRevision = transaction.ReportedRevision;
         _displacementReportedShadowRevision = transaction.ReportedShadowRevision;
@@ -3715,6 +3709,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// </remarks>
     private void DiscardDisplacementImages()
     {
+        foreach (DisplacementCacheEntry entry in _displacementImages.Values)
+        {
+            entry.Dispose();
+        }
         _displacementImages.Clear();
         _displacementImageBytes = 0;
     }
@@ -3800,16 +3798,20 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(scene);
         using PreparedMeshUpdate? prepared = Prepare(scene, delta);
         prepared?.Commit();
-        CompleteApply(scene, delta, prepared?.TexturesPrepared == true);
+        CompleteApply(scene, delta, prepared?.TexturesPrepared == true, prepared?.SurfacesPrepared == true);
     }
 
-    internal void CompleteApply(SilkSceneState scene, SilkSceneDelta delta, bool texturesPrepared = false)
+    internal void CompleteApply(
+        SilkSceneState scene, SilkSceneDelta delta, bool texturesPrepared = false, bool surfacesPrepared = false)
     {
         if (delta.MaterialChanges != 0)
         {
-            foreach (string path in delta.ChangedMaterialPaths.Span)
+            if (!surfacesPrepared)
             {
-                RemoveSurfaceBuffers(path);
+                foreach (string path in delta.ChangedMaterialPaths.Span)
+                {
+                    RemoveSurfaceBuffers(path);
+                }
             }
             if (!texturesPrepared)
             {
@@ -3891,11 +3893,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(scene);
         SilkFrameState frame = scene.Frame;
         Vector3 environmentAmbient = RequireEnvironmentAmbient(scene);
-        bool created = _frameBuffer is null;
+        bool created = _frameBuffer is null || !_frameBufferInitialized;
         _frameBuffer ??= CreateTrackedBuffer(
             SilkFrameUniformWriter.ByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        if (_frameRevision != frame.Revision ||
+        if (created || _frameRevision != frame.Revision ||
             _frameEnvironmentRevision != scene.EnvironmentRevision ||
             _frameEnvironmentAmbientRevision != _environmentAmbientRevision ||
             _frameEnvironmentBindingRevision != _environmentBindingRevision ||
@@ -3916,9 +3918,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 _environmentDomeAmbient);
             if (created || !constants.SequenceEqual(_frameBytes))
             {
+                _frameBufferInitialized = false;
                 WriteTracked(_frameBuffer, constants);
                 constants.CopyTo(_frameBytes);
             }
+            _frameBufferInitialized = true;
             _frameRevision = frame.Revision;
             _frameEnvironmentRevision = scene.EnvironmentRevision;
             _frameEnvironmentAmbientRevision = _environmentAmbientRevision;
@@ -4035,20 +4039,33 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return;
         }
 
-        _shadowCasterDiagnosticRevision = revision;
-        RemoveDiagnostics(
-            static code => code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
-        foreach (string path in paths)
+        var previous = new Dictionary<string, RenderDiagnostic>(_diagnostics, StringComparer.Ordinal);
+        try
         {
-            AddDiagnostic(
-                SilkRenderDiagnosticCodes.ShadowCasterUnsupported,
-                path,
-                RenderDiagnosticSeverity.Warning,
-                $"Prim '{path}' casts no shadow because its material is opacity-masked. " +
-                "The depth-only shadow caster program binds no material and cannot " +
-                "discard a fragment, so drawing it would cast the solid shadow of its " +
-                "geometry rather than of its visible coverage. The prim is still lit " +
-                "and still receives shadows.");
+            RemoveDiagnostics(
+                static code => code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
+            foreach (string path in paths)
+            {
+                AddDiagnostic(
+                    SilkRenderDiagnosticCodes.ShadowCasterUnsupported,
+                    path,
+                    RenderDiagnosticSeverity.Warning,
+                    $"Prim '{path}' casts no shadow because its material is opacity-masked. " +
+                    "The depth-only shadow caster program binds no material and cannot " +
+                    "discard a fragment, so drawing it would cast the solid shadow of its " +
+                    "geometry rather than of its visible coverage. The prim is still lit " +
+                    "and still receives shadows.");
+            }
+            _shadowCasterDiagnosticRevision = revision;
+        }
+        catch
+        {
+            _diagnostics.Clear();
+            foreach (var pair in previous)
+            {
+                _diagnostics.Add(pair.Key, pair.Value);
+            }
+            throw;
         }
     }
 
@@ -4315,7 +4332,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 environment.TexturePath,
                 environment.SourceColorSpace,
                 _environmentStampReader(environment.TexturePath),
-                _imageDecoder,
+                _budgetedImageDecoder,
                 TryDescribeEnvironment);
 
             // The prefilter refused this source and the fallback has just read it.
@@ -4553,6 +4570,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scene);
         ulong deviceGeneration = SilkDeviceGeneration.Read(_device);
+        if (_environmentPreparation is null && RequiresTexturePreparation &&
+            _environmentLightingRevision != ulong.MaxValue &&
+            _environmentLightingDeviceGeneration == deviceGeneration)
+        {
+            return;
+        }
         if (_environmentLightingDeviceGeneration != deviceGeneration)
         {
             // A device loss invalidates every environment-owned GPU object, not
@@ -4568,9 +4591,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         // dictionary iteration order. The bake is a sum, so the order does not
         // change the result, but it does change the cache identity, and an
         // identity that depended on hash ordering would miss at random.
-        SilkEnvironmentData[] published = [.. scene.Environments
-            .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
-            .Select(static pair => pair.Value)];
+        SilkEnvironmentData[] published = PublishedEnvironments(scene);
 
         // The authored fact, recorded before anything is resolved. Every dome
         // hdSilk publishes as an environment record is a dome the author placed,
@@ -4680,6 +4701,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             EnsureEnvironmentTextures(maps, identity, candidates);
         }
         catch (Exception exception) when (
+            _environmentPreparation is null &&
             exception is not (SilkGpuBufferBudgetExceededException or SilkGpuTextureBudgetExceededException or
                 SilkGpuStagingBudgetExceededException or SilkCpuTextureBudgetExceededException) &&
             exception is (InvalidOperationException or NotSupportedException or
@@ -4702,6 +4724,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 "mean-radiance ambient term.");
             InvalidateEnvironmentAmbient(previousLit);
             return;
+        }
+        finally
+        {
+            maps.Dispose();
         }
 
         foreach (SilkEnvironmentData dome in candidates)
@@ -4973,7 +4999,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             maps = SilkEnvironmentPrefilter.Build(
                 stream,
                 _environmentPrefilterOptions,
-                perDomeGroups);
+                perDomeGroups,
+                _cpuTextureBudget);
             _environmentLighting.CountBuild();
         }
         catch (ArgumentException) when (stream.SkippedIndices.Count == candidates.Count)
@@ -5009,49 +5036,61 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             identity = string.Empty;
             return null;
         }
-        EnvironmentDecodeCount += stream.DecodeCount;
-        EnvironmentDecodedBytes += stream.DecodedBytes;
-
-        // Every dome the stream could not read has already been diagnosed against
-        // its own prim. Removing them here is what keeps the retained identity a
-        // description of the payload rather than of the request.
-        if (stream.SkippedIndices.Count > 0)
-        {
-            for (int index = candidates.Count - 1; index >= 0; index--)
-            {
-                if (stream.SkippedIndices.Contains(index))
-                {
-                    // Recorded so that the mean-radiance fallback can contradict
-                    // it: a source the prefilter could not read and the fallback
-                    // then reads was unavailable transiently, not unreadable, and
-                    // the directional response must not be settled on that.
-                    _ = _environmentPrefilterSkipped.Add(candidates[index].Path);
-                    candidates.RemoveAt(index);
-                }
-            }
-            if (candidates.Count == 0)
-            {
-                identity = string.Empty;
-                return null;
-            }
-            identity = ComposeEnvironmentIdentity(candidates, perDomeGroups);
-            if (_environmentLighting.TryGet(identity) is { } reused)
-            {
-                return reused;
-            }
-        }
-
+        bool transferred = false;
         try
         {
-            _environmentLighting.Add(identity, maps);
+            EnvironmentDecodeCount += stream.DecodeCount;
+            EnvironmentDecodedBytes += stream.DecodedBytes;
+
+            // Every dome the stream could not read has already been diagnosed against
+            // its own prim. Removing them here is what keeps the retained identity a
+            // description of the payload rather than of the request.
+            if (stream.SkippedIndices.Count > 0)
+            {
+                for (int index = candidates.Count - 1; index >= 0; index--)
+                {
+                    if (stream.SkippedIndices.Contains(index))
+                    {
+                        // Recorded so that the mean-radiance fallback can contradict
+                        // it: a source the prefilter could not read and the fallback
+                        // then reads was unavailable transiently, not unreadable, and
+                        // the directional response must not be settled on that.
+                        _ = _environmentPrefilterSkipped.Add(candidates[index].Path);
+                        candidates.RemoveAt(index);
+                    }
+                }
+                if (candidates.Count == 0)
+                {
+                    identity = string.Empty;
+                    return null;
+                }
+                identity = ComposeEnvironmentIdentity(candidates, perDomeGroups);
+                if (_environmentLighting.TryGet(identity) is { } reused)
+                {
+                    return reused;
+                }
+            }
+
+            try
+            {
+                _environmentLighting.Add(identity, maps);
+            }
+            catch (SilkEnvironmentBudgetExceededException)
+            {
+                // Retaining it is what exceeded the budget, not producing it. The
+                // payload is still correct, so the frame uses it and simply does not
+                // keep it; the next revision rebuilds.
+            }
+            transferred = true;
+            return maps;
         }
-        catch (SilkEnvironmentBudgetExceededException)
+        finally
         {
-            // Retaining it is what exceeded the budget, not producing it. The
-            // payload is still correct, so the frame uses it and simply does not
-            // keep it; the next revision rebuilds.
+            if (!transferred)
+            {
+                maps.Dispose();
+            }
         }
-        return maps;
     }
 
     /// <summary>Composes the cache identity of one accepted candidate set.</summary>
@@ -5203,7 +5242,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 SilkEnvironmentSource? source = TryOpen(index);
                 if (source is { } opened)
                 {
-                    yield return opened;
+                    using (opened.Image)
+                    {
+                        yield return opened;
+                    }
                 }
             }
         }
@@ -5224,6 +5266,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             SilkEnvironmentData dome = candidates[index];
             SilkEnvironmentPrefilterOptions options = owner._environmentPrefilterOptions;
+            SilkDecodedImage? image = null;
             try
             {
                 SilkImageDescription? description =
@@ -5236,7 +5279,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 // what proves no prefix is re-read: a decode that threw still
                 // opened and traversed the file.
                 DecodeCount++;
-                SilkDecodedImage image = owner._imageDecoder(dome.TexturePath, false);
+                image = owner._budgetedImageDecoder(dome.TexturePath, false);
                 ulong decodedBytes = checked((ulong)image.Pixels.LongLength);
                 DecodedBytes = checked(DecodedBytes + decodedBytes);
 
@@ -5265,12 +5308,14 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 // directional response away from the valid ones.
                 SilkEnvironmentPrefilter.ValidateSource(image, colorSpace);
 
-                return new SilkEnvironmentSource(
+                var result = new SilkEnvironmentSource(
                     image,
                     colorSpace,
                     dome.LightToWorld,
                     dome.AmbientEmissionScale,
                     dome.SpecularEmissionScale);
+                image = null;
+                return result;
             }
             catch (SilkEnvironmentBudgetExceededException exception)
             {
@@ -5311,6 +5356,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                     $"texture: {exception.Message} It falls back to its " +
                     "mean-radiance ambient term.");
                 return null;
+            }
+            finally
+            {
+                image?.Dispose();
             }
         }
     }
@@ -5398,8 +5447,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             throw;
         }
 
-        _environmentIrradianceTexture?.Dispose();
-        _environmentSpecularTexture?.Dispose();
+        ReleaseEnvironmentResource(_environmentIrradianceTexture);
+        ReleaseEnvironmentResource(_environmentSpecularTexture);
         _environmentIrradianceTexture = irradiance;
         _environmentSpecularTexture = specular;
         if (brdf is not null)
@@ -5410,7 +5459,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         _environmentSampler ??= sampler;
         _environmentBrdfSampler ??= brdfSampler;
-        _environmentPayload = maps;
+        SetEnvironmentPayload(maps);
         _environmentUploadedIdentity = identity;
         _environmentMapsUploaded = false;
         // A recorded upload of the payload this call just replaced targets a
@@ -5473,11 +5522,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
     private void ReleaseEnvironmentMaps()
     {
-        _environmentIrradianceTexture?.Dispose();
+        ReleaseEnvironmentResource(_environmentIrradianceTexture);
         _environmentIrradianceTexture = null;
-        _environmentSpecularTexture?.Dispose();
+        ReleaseEnvironmentResource(_environmentSpecularTexture);
         _environmentSpecularTexture = null;
-        _environmentPayload = null;
+        SetEnvironmentPayload(null);
         _environmentUploadedIdentity = null;
         _environmentMapsUploaded = false;
         _environmentMapsUploadPending = false;
@@ -5527,13 +5576,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private void ReleaseEnvironmentDeviceResources()
     {
         ReleaseEnvironmentMaps();
-        _environmentStandIn?.Dispose();
+        ReleaseEnvironmentResource(_environmentStandIn);
         _environmentStandIn = null;
-        _environmentSampler?.Dispose();
+        ReleaseEnvironmentResource(_environmentSampler);
         _environmentSampler = null;
-        _environmentBrdfSampler?.Dispose();
+        ReleaseEnvironmentResource(_environmentBrdfSampler);
         _environmentBrdfSampler = null;
-        _environmentBrdfTexture?.Dispose();
+        ReleaseEnvironmentResource(_environmentBrdfTexture);
         _environmentBrdfTexture = null;
         _environmentBrdfUploaded = false;
         _environmentBrdfUploadPending = false;
@@ -5686,7 +5735,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             if (_surfaceBuffers.Remove(key, out SurfaceBuffer surface))
             {
-                surface.Buffer?.Dispose();
+                ReleaseSurfaceBuffer(surface.Buffer);
             }
         }
     }
@@ -5784,6 +5833,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 return retainedDefault;
             }
 
+            _surfaceBuffers.EnsureCapacity(checked(_surfaceBuffers.Count + 1));
             ISilkGraphicsBuffer createdDefault = CreateSurfaceBuffer(null, light, masks);
             _surfaceBuffers[defaultKey] = new SurfaceBuffer(createdDefault, 0);
             return createdDefault;
@@ -5811,6 +5861,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             if (existing.MaterialHash != material.StableHash)
             {
+                if (_surfacePreparation is not null)
+                {
+                    ISilkGraphicsBuffer replacement = CreateSurfaceBuffer(material, light, masks);
+                    ReleaseSurfaceBuffer(retained);
+                    _surfaceBuffers[key] = new SurfaceBuffer(replacement, material.StableHash);
+                    return replacement;
+                }
                 // The material changed in place, so refresh the block rather than
                 // allocating a second buffer for the same path.
                 WriteSurface(retained, material, light, masks);
@@ -5820,6 +5877,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return retained;
         }
 
+        _surfaceBuffers.EnsureCapacity(checked(_surfaceBuffers.Count + 1));
         ISilkGraphicsBuffer created = CreateSurfaceBuffer(material, light, masks);
         _surfaceBuffers[key] = new SurfaceBuffer(created, material.StableHash);
         return created;
@@ -5848,7 +5906,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             if (_surfaceBuffers.Remove(key, out SurfaceBuffer surface))
             {
-                surface.Buffer?.Dispose();
+                ReleaseSurfaceBuffer(surface.Buffer);
             }
         }
     }
@@ -5865,6 +5923,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 SilkSurfaceUniformWriter.ByteSize,
                 SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             WriteSurface(buffer, material, light, masks);
+            _surfacePreparation?.Track(buffer);
             return buffer;
         }
         catch
@@ -6248,10 +6307,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture,
         SilkColorSpace effectiveColorSpace)
     {
-        SilkDecodedImage image = _cpuTextureBudget is null
-            ? _imageDecoder(asset, effectiveColorSpace == SilkColorSpace.Srgb)
-            : (_ownedImageDecoder ?? throw new InvalidOperationException("The bounded image decoder is unavailable."))(
-                asset, effectiveColorSpace == SilkColorSpace.Srgb, _cpuTextureBudget);
+        SilkDecodedImage image = _budgetedImageDecoder(asset, effectiveColorSpace == SilkColorSpace.Srgb);
         try
         {
             ValidateDecodedImage(image);
@@ -6266,6 +6322,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             throw;
         }
     }
+
+    private SilkDecodedImage DecodeOwnedImage(string asset, bool linearize) =>
+        (_ownedImageDecoder ?? throw new InvalidOperationException("The bounded image decoder is unavailable."))(
+            asset, linearize,
+            _cpuTextureBudget ?? throw new InvalidOperationException("The CPU pixel budget is unavailable."));
 
     private SilkDecodedImage CreateUdimAtlas(
         SilkMaterialTexture texture,
@@ -7308,9 +7369,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         _surfaceBuffers.Clear();
         ClearTextureCache();
-        _displacementImages.Clear();
+        DiscardDisplacementImages();
         _displacementVerdicts.Clear();
-        _displacementImageBytes = 0;
         foreach (ISilkGraphicsSampler sampler in _samplers.Values)
         {
             sampler.Dispose();
@@ -7802,24 +7862,35 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return deferred;
         }
 
-        SilkDecodedImage image;
+        SilkDecodedImage? decoded = null;
         try
         {
-            image = _imageDecoder(texture.Asset, effectiveColorSpace == SilkColorSpace.Srgb);
-            ValidateDecodedImage(image);
+            decoded = _budgetedImageDecoder(texture.Asset, effectiveColorSpace == SilkColorSpace.Srgb);
+            ValidateDecodedImage(decoded);
             _displacementImageDecodes++;
         }
         catch (Exception exception) when (IsUnreadableImage(exception))
         {
+            decoded?.Dispose();
             field = CreateDisplacementFallbackField(texture, plan.Identity, channel);
             return field is null
                 ? SilkDisplacementFallback.NonFiniteAmount
                 : SilkDisplacementFallback.TextureUnavailable;
         }
+        catch
+        {
+            decoded?.Dispose();
+            throw;
+        }
+        using SilkDecodedImage image = decoded;
         if (image.Width != description.Width ||
             image.Height != description.Height ||
             image.Format != description.Format)
         {
+            if (_cpuTextureBudget is not null)
+            {
+                throw new InvalidDataException("The displacement image changed shape after its admission preflight.");
+            }
             // The header and the decode disagreed. The bound is re-applied to
             // what was actually produced rather than trusting the preflight.
             if (!TryBoundDisplacementImage(
@@ -7830,49 +7901,56 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             }
         }
 
-        FlipRows(image.Pixels, image.Width, image.Height, image.Format);
+        FlipRows(image.Pixels, image.Width, image.Height, image.Format, _cpuTextureBudget);
         // Raw sampled values, with no affine folded in: the authored scale and
         // bias belong after filtering, where UsdUVTexture puts them and where a
         // transparent-black border receives the bias exactly once.
-        float[] texels = new float[texelCount];
-        if (image.Format == SilkTextureFormat.Rgba32Float)
+        ulong bytes = checked((ulong)texelCount * sizeof(float));
+        IDisposable? reservation = _cpuTextureBudget?.Reserve(bytes);
+        try
         {
-            ReadOnlySpan<float> values = MemoryMarshal.Cast<byte, float>(image.Pixels);
-            for (int texel = 0; texel < texels.Length; texel++)
+            float[] texels = new float[texelCount];
+            if (image.Format == SilkTextureFormat.Rgba32Float)
             {
-                float value = values[(texel * 4) + channel];
-                if (!float.IsFinite(value))
+                ReadOnlySpan<float> values = MemoryMarshal.Cast<byte, float>(image.Pixels);
+                for (int texel = 0; texel < texels.Length; texel++)
                 {
-                    return SilkDisplacementFallback.NonFiniteAmount;
+                    float value = values[(texel * 4) + channel];
+                    if (!float.IsFinite(value))
+                    {
+                        return SilkDisplacementFallback.NonFiniteAmount;
+                    }
+                    texels[texel] = value;
                 }
-                texels[texel] = value;
             }
-        }
-        else
-        {
-            for (int texel = 0; texel < texels.Length; texel++)
+            else
             {
-                texels[texel] = image.Pixels[(texel * 4) + channel] / 255f;
+                for (int texel = 0; texel < texels.Length; texel++)
+                {
+                    texels[texel] = image.Pixels[(texel * 4) + channel] / 255f;
+                }
             }
-        }
 
-        var resolved = SilkDisplacementField.Textured(
-            texels,
-            checked((int)image.Width),
-            checked((int)image.Height),
-            wrapS,
-            wrapT,
-            plan.UvTransform ?? IdentityUvTransform,
-            scale,
-            bias,
-            texture.UvPrimvar,
-            plan.Identity);
-        RetainDisplacementImage(
-            plan.Identity,
-            resolved,
-            checked((ulong)texels.Length * sizeof(float)));
-        field = resolved;
-        return SilkDisplacementFallback.None;
+            var resolved = SilkDisplacementField.Textured(
+                texels,
+                checked((int)image.Width),
+                checked((int)image.Height),
+                wrapS,
+                wrapT,
+                plan.UvTransform ?? IdentityUvTransform,
+                scale,
+                bias,
+                texture.UvPrimvar,
+                plan.Identity);
+            RetainDisplacementImage(plan.Identity, resolved, bytes, reservation);
+            reservation = null;
+            field = resolved;
+            return SilkDisplacementFallback.None;
+        }
+        finally
+        {
+            reservation?.Dispose();
+        }
     }
 
     /// <summary>
@@ -8039,7 +8117,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return false;
         }
         ulong retainedBytes = texels * sizeof(float);
-        if (retainedBytes > MaximumDisplacementImageBytes)
+        if (retainedBytes > _maximumDisplacementImageBytes)
         {
             return false;
         }
@@ -8071,14 +8149,16 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private void RetainDisplacementImage(
         ulong identity,
         SilkDisplacementField field,
-        ulong bytes)
+        ulong bytes,
+        IDisposable? reservation)
     {
-        _displacementImages[identity] = new DisplacementCacheEntry(field, bytes)
+        _displacementImages.EnsureCapacity(checked(_displacementImages.Count + 1));
+        _displacementImages.Add(identity, new DisplacementCacheEntry(field, bytes, reservation)
         {
             LastUsedStamp = _displacementUseClock
-        };
+        });
         _displacementImageBytes = checked(_displacementImageBytes + bytes);
-        while (_displacementImageBytes > MaximumDisplacementImageBytes &&
+        while (_displacementImageBytes > _maximumDisplacementImageBytes &&
             _displacementImages.Count > 1)
         {
             ulong oldestKey = 0;
@@ -8101,6 +8181,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             }
             _displacementImages.Remove(oldestKey);
             _displacementImageBytes -= oldest.Bytes;
+            oldest.Dispose();
         }
     }
 
@@ -8109,12 +8190,15 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// prove the bounded refusal without publishing millions of points or
     /// materializing a hostile image.
     /// </summary>
-    internal void SetDisplacementBudgetsForTesting(int maximumPoints, int maximumTexels)
+    internal void SetDisplacementBudgetsForTesting(
+        int maximumPoints, int maximumTexels, ulong maximumImageBytes = MaximumDisplacementImageBytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumPoints);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumTexels);
+        ArgumentOutOfRangeException.ThrowIfZero(maximumImageBytes);
         _maximumDisplacedPoints = maximumPoints;
         _maximumDisplacementTexels = maximumTexels;
+        _maximumDisplacementImageBytes = maximumImageBytes;
     }
 
     /// <summary>Gets the decoded bytes the displacement image cache retains.</summary>
@@ -8467,6 +8551,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// </summary>
     private const ulong MaximumDisplacementImageBytes = 64UL * 1024 * 1024;
 
+    private ulong _maximumDisplacementImageBytes = MaximumDisplacementImageBytes;
+
     /// <summary>
     /// The affine a displacement field samples through when the material folded
     /// none of its own.
@@ -8483,13 +8569,99 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         int VertexCount,
         float MaximumDisplacement);
 
-    private sealed class DisplacementCacheEntry(SilkDisplacementField field, ulong bytes)
+    private sealed class DisplacementCacheEntry : IDisposable
     {
-        internal SilkDisplacementField Field { get; } = field;
+        private readonly SilkSharedReservation? _pixels;
+        private readonly IDisposable? _ownership;
 
-        internal ulong Bytes { get; } = bytes;
+        internal DisplacementCacheEntry(SilkDisplacementField field, ulong bytes, IDisposable? reservation)
+        {
+            Field = field;
+            Bytes = bytes;
+            _pixels = reservation is null ? null : new(reservation);
+            _ownership = _pixels?.Acquire();
+        }
+
+        private DisplacementCacheEntry(DisplacementCacheEntry previous)
+        {
+            Field = previous.Field;
+            Bytes = previous.Bytes;
+            LastUsedStamp = previous.LastUsedStamp;
+            _pixels = previous._pixels;
+            _ownership = _pixels?.Acquire();
+        }
+
+        internal SilkDisplacementField Field { get; }
+
+        internal ulong Bytes { get; }
 
         internal ulong LastUsedStamp { get; set; }
+
+        internal DisplacementCacheEntry Retain() => new(this);
+
+        public void Dispose() => _ownership?.Dispose();
+    }
+
+    private sealed class DisplacementImageCheckpoint : IDisposable
+    {
+        private readonly SilkSceneGpuResources _owner;
+        private readonly Dictionary<ulong, DisplacementCacheEntry> _entries;
+        private readonly ulong _bytes;
+        private readonly ulong _clock;
+        private bool _committed;
+        private bool _disposed;
+
+        internal DisplacementImageCheckpoint(SilkSceneGpuResources owner)
+        {
+            _owner = owner;
+            _bytes = owner._displacementImageBytes;
+            _clock = owner._displacementUseClock;
+            _entries = new(owner._displacementImages.Count);
+            try
+            {
+                foreach ((ulong key, DisplacementCacheEntry entry) in owner._displacementImages)
+                {
+                    _entries.Add(key, entry.Retain());
+                }
+            }
+            catch
+            {
+                foreach (DisplacementCacheEntry entry in _entries.Values)
+                {
+                    entry.Dispose();
+                }
+                throw;
+            }
+        }
+
+        internal void Commit() => _committed = true;
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            if (_committed)
+            {
+                foreach (DisplacementCacheEntry entry in _entries.Values)
+                {
+                    entry.Dispose();
+                }
+            }
+            else
+            {
+                _owner.DiscardDisplacementImages();
+                foreach ((ulong key, DisplacementCacheEntry entry) in _entries)
+                {
+                    _owner._displacementImages.Add(key, entry);
+                }
+                _owner._displacementImageBytes = _bytes;
+                _owner._displacementUseClock = _clock;
+            }
+            _entries.Clear();
+            _disposed = true;
+        }
     }
 
     /// <summary>
@@ -9427,27 +9599,48 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         int required = checked(casters.Count * SilkSceneUniformWriter.ByteSize);
         if (casters.Count > _shadowInstanceCapacity)
         {
-            ShadowInstanceBuffer?.Dispose();
-            _shadowInstanceCapacity = Math.Max(casters.Count, _shadowInstanceCapacity * 2);
-            ShadowInstanceBuffer = device.CreateBuffer(
-                checked((nuint)(_shadowInstanceCapacity * SilkSceneUniformWriter.ByteSize)),
+            int capacity = Math.Max(casters.Count, checked(_shadowInstanceCapacity * 2));
+            int bytes = checked(capacity * SilkSceneUniformWriter.ByteSize);
+            ISilkGraphicsBuffer replacement = device.CreateBuffer(
+                checked((nuint)bytes),
                 SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-            _shadowInstanceBytes =
-                new byte[_shadowInstanceCapacity * SilkSceneUniformWriter.ByteSize];
+            byte[] staging;
+            try
+            {
+                staging = new byte[bytes];
+                WriteShadowInstances(casters, staging);
+                replacement.Write(staging.AsSpan(0, required));
+            }
+            catch
+            {
+                replacement.Dispose();
+                throw;
+            }
+            ISilkGraphicsBuffer? previous = ShadowInstanceBuffer;
+            ShadowInstanceBuffer = replacement;
+            _shadowInstanceCapacity = capacity;
+            _shadowInstanceBytes = staging;
+            previous?.Dispose();
+            return replacement;
         }
 
-        for (int index = 0; index < casters.Count; index++)
-        {
-            SilkShadowInstanceWriter.Write(
-                casters[index].ObjectToLightClip,
-                _shadowInstanceBytes.AsSpan(
-                    index * SilkSceneUniformWriter.ByteSize,
-                    SilkSceneUniformWriter.ByteSize));
-        }
+        WriteShadowInstances(casters, _shadowInstanceBytes);
         ISilkGraphicsBuffer buffer = ShadowInstanceBuffer ??
             throw new InvalidOperationException("The shadow instance buffer was not created.");
         buffer.Write(_shadowInstanceBytes.AsSpan(0, required));
         return buffer;
+    }
+
+    private static void WriteShadowInstances(IReadOnlyList<SilkShadowCaster> casters, Span<byte> destination)
+    {
+        for (int index = 0; index < casters.Count; index++)
+        {
+            SilkShadowInstanceWriter.Write(
+                casters[index].ObjectToLightClip,
+                destination.Slice(
+                    index * SilkSceneUniformWriter.ByteSize,
+                    SilkSceneUniformWriter.ByteSize));
+        }
     }
 
     /// <summary>
