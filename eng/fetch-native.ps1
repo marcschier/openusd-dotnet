@@ -315,6 +315,7 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
     $codecDependencies = @'
 LIBDEFLATE_URL = "locked-libdeflate"
 IMATH_URL = "locked-imath"
+ZSTD_URL = "locked-zstd"
 
 def InstallLibdeflate(context, force, buildArgs):
     with CurrentWorkingDirectory(DownloadURL(LIBDEFLATE_URL, context, force)):
@@ -332,6 +333,15 @@ def InstallImath(context, force, buildArgs):
 
 IMATH = Dependency("Imath", InstallImath, "include/Imath/ImathConfig.h")
 
+def InstallZstd(context, force, buildArgs):
+    source = DownloadURL(ZSTD_URL, context, force)
+    with CurrentWorkingDirectory(os.path.join(source, "build", "cmake")):
+        RunCMake(context, force, buildArgs + [
+            '-DZSTD_BUILD_SHARED=ON', '-DZSTD_BUILD_STATIC=OFF',
+            '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF'])
+
+ZSTD = Dependency("zstd", InstallZstd, "include/zstd.h")
+
 '@
     $openExrMarker = 'def InstallOpenEXR(context, force, buildArgs):'
     if (-not $content.Contains($openExrMarker) -or -not $content.Contains('requiredDependencies = [TBB]'))
@@ -339,7 +349,7 @@ IMATH = Dependency("Imath", InstallImath, "include/Imath/ImathConfig.h")
         throw 'The upstream build script is missing the reviewed codec dependency insertion points.'
     }
     $content = $content.Replace($openExrMarker, $codecDependencies.Replace("`r`n", "`n") + "`n" + $openExrMarker)
-    $content = $content.Replace('requiredDependencies = [TBB]', 'requiredDependencies = [TBB, LIBDEFLATE, IMATH]')
+    $content = $content.Replace('requiredDependencies = [TBB]', 'requiredDependencies = [TBB, LIBDEFLATE, IMATH, ZSTD]')
     $content = $content.Replace('-DOPENEXR_FORCE_INTERNAL_IMATH=ON', '-DOPENEXR_FORCE_INTERNAL_IMATH=OFF')
 
     $dependencyVariables = @{
@@ -360,6 +370,7 @@ IMATH = Dependency("Imath", InstallImath, "include/Imath/ImathConfig.h")
         MaterialX = 'MATERIALX_URL'
         libdeflate = 'LIBDEFLATE_URL'
         Imath = 'IMATH_URL'
+        zstd = 'ZSTD_URL'
     }
     foreach ($group in $lock.dependencies | Group-Object name)
     {

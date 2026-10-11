@@ -110,7 +110,7 @@
     <_OpenUsdImathRuntimeLibrary Include="$(OpenUsdInstallRoot)/bin/Imath*.dll;$(OpenUsdInstallRoot)/lib/libImath*.so;$(OpenUsdInstallRoot)/lib/libImath*.so.*;$(OpenUsdInstallRoot)/lib/libImath*.dylib" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
-    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/bin/OpenEXR-3_5.dll;$(OpenUsdInstallRoot)/bin/Iex-3_5.dll;$(OpenUsdInstallRoot)/bin/IlmThread-3_5.dll;$(OpenUsdInstallRoot)/bin/Imath-3_2.dll;$(OpenUsdInstallRoot)/bin/deflate.dll;$(OpenUsdInstallRoot)/bin/z.dll" />
+    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/bin/OpenEXR-3_5.dll;$(OpenUsdInstallRoot)/bin/Iex-3_5.dll;$(OpenUsdInstallRoot)/bin/IlmThread-3_5.dll;$(OpenUsdInstallRoot)/bin/Imath-3_2.dll;$(OpenUsdInstallRoot)/bin/deflate.dll;$(OpenUsdInstallRoot)/bin/zstd.dll;$(OpenUsdInstallRoot)/bin/z.dll" />
     <_OpenUsdVulkanRuntimeLibrary Include="$(OpenUsdVulkanRuntimeLibrary)" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_dotnet.dll" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_hydra.dll;$(OpenUsdShimInstallRoot)/bin/openusd_hdsilk.dll;$(OpenUsdShimInstallRoot)/bin/openusd_storm_child.dll" />

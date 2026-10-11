@@ -33,7 +33,7 @@ hash, the upstream build-script hash, every direct dependency archive hash, and 
 toolchain matrix.
 
 The verified upstream build script binds every native dependency URL and version to the lock,
-including the separately built Imath and libdeflate required by current OpenEXR and Ptex.
+including separately built Imath, libdeflate and Zstandard required by current OpenEXR and Ptex.
 Those inputs stay in the OpenUSD prefix rather than resolving from the quarantined Cesium tree.
 The dependency archives and build-script transformation are hash-verified before compilation.
 

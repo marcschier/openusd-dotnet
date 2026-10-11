@@ -719,6 +719,7 @@ public sealed partial class RuntimePackageTests
                     "runtimes/win-x64/native/IlmThread-3_5.dll",
                     "runtimes/win-x64/native/Imath-3_2.dll",
                     "runtimes/win-x64/native/deflate.dll",
+                    "runtimes/win-x64/native/zstd.dll",
                     "runtimes/win-x64/native/MaterialXCore.dll",
                     "runtimes/win-x64/native/OpenColorIO_2_6.dll",
                     "runtimes/win-x64/native/openusd_dotnet.dll",
@@ -766,6 +767,7 @@ public sealed partial class RuntimePackageTests
                 "IlmThread-3_5.dll",
                 "Imath-3_2.dll",
                 "deflate.dll",
+                "zstd.dll",
                 "OpenColorIO_2_6.dll",
                 "openusd_dotnet.dll",
                 "usd_ms.dll",
@@ -8667,6 +8669,7 @@ public sealed partial class RuntimePackageTests
         WriteTestFile(Path.Combine(installRoot, "bin", "IlmThread-3_5.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "Imath-3_2.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "deflate.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "zstd.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_6.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "z.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd_ms.dll"));

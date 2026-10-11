@@ -43,7 +43,7 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "915da91ca4e1cdee111d0aa003fe888e2eb9712b0cd2f606438461959d8efb11"
+        "value": "d67ab577f4efd4fb31e9ae39570e9e3a31b7a368191e54e40f3e559046273245"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
@@ -1026,6 +1026,42 @@
         {
           "name": "openusd:platforms",
           "value": "win-x64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:zstd:1.5.7:win-x64,linux-x64,osx-arm64",
+      "name": "zstd",
+      "version": "1.5.7",
+      "purl": "pkg:github/facebook/zstd@f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7897BC5D620580D9B7CD3539C44B59D78F3657D33663FE97A145E07B4EBD69A4"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/facebook/zstd/archive/refs/tags/v1.5.7.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
         }
       ]
     },
@@ -2833,6 +2869,7 @@
         "native:Draco:1.5.7:win-x64,linux-x64,osx-arm64",
         "native:libdeflate:1.26:win-x64,linux-x64,osx-arm64",
         "native:Imath:3.2.3:win-x64,linux-x64,osx-arm64",
+        "native:zstd:1.5.7:win-x64,linux-x64,osx-arm64",
         "native:Vulkan-Headers:6802bb4733b63ed5efd3adb308a6c885ef180ea1",
         "native:Vulkan-Loader:fa218055ff4948b159f31d43f800c808a13d51df",
         "native:shaderc-source-manifest:75137cca3b41a59b8b3e5c42177da8a9490c042f",
@@ -3221,6 +3258,10 @@
     },
     {
       "ref": "native:Imath:3.2.3:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:zstd:1.5.7:win-x64,linux-x64,osx-arm64",
       "dependsOn": []
     },
     {

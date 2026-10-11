@@ -10,7 +10,7 @@
     "extractDirectory": "OpenUSD-ee47c679abde5b467a7b6a41f3b2285564a4222e",
     "buildScript": "build_scripts/build_usd.py",
     "buildScriptSha256": "E2F0C4858834D39F9D803B0B0FF1922EE74084287267CBE159D5B3AA99A515F1",
-    "patchedBuildScriptSha256": "262D7469F630330C67BB9ABF4E156DC47C5E50F392F5A8FF9793A87FDDA5CD6E",
+    "patchedBuildScriptSha256": "B18016E862522BE1D3F6DEC52892219DE77ACE890F92A8662093184C7F2965D7",
     "runtimePatchLockSha256": "0A106E9326EB461572B1E41D85B27D77004CC9078AC4651B0CF7D447AF9FE941",
     "storageAdmissionPatchLockSha256": "1E6280DBC19E3C9DBAD1004D5F5B78474D564D54097448E0B6F3BF425DE1874D",
     "patches": [
@@ -439,6 +439,21 @@
       "url": "https://github.com/AcademySoftwareFoundation/Imath/archive/refs/tags/v3.2.3.zip",
       "archiveName": "v3.2.3.zip",
       "sha256": "A2B711354FC249A274B4813FCD7A4A55DED9401E65C642144F4F8D51710F2F06",
+      "license": "BSD-3-Clause",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7",
+      "tag": "v1.5.7",
+      "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "url": "https://github.com/facebook/zstd/archive/refs/tags/v1.5.7.zip",
+      "archiveName": "v1.5.7.zip",
+      "sha256": "7897BC5D620580D9B7CD3539C44B59D78F3657D33663FE97A145E07B4EBD69A4",
       "license": "BSD-3-Clause",
       "platforms": [
         "win-x64",
