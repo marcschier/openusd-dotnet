@@ -351,11 +351,26 @@ jobs:
           ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
       - name: Run macOS native CTest
         if: runner.os == 'macOS'
-        run: >
-          ctest
-          --test-dir native/build/shim/osx-arm64
-          --no-tests=error
-          --output-on-failure
+        run: |
+          mkdir -p artifacts/native-ctest
+          ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure &
+          ctest_pid=$!
+          (
+            while kill -0 "$ctest_pid" 2>/dev/null; do
+              probe_pid=$(ps -axo pid=,ppid=,command= | awk -v parent="$ctest_pid" \
+                '$2 == parent && /openusd_property_admission_probe.* layer-error-list$/ { print $1; exit }')
+              if [ -n "$probe_pid" ]; then
+                sample "$probe_pid" 1 10 -file artifacts/native-ctest/layer-error-list.sample.txt
+                exit
+              fi
+              sleep 1
+            done
+          ) &
+          sampler_pid=$!
+          status=0
+          wait "$ctest_pid" || status=$?
+          wait "$sampler_pid"
+          exit "$status"
       - name: Execute staged NativeAOT probes
         shell: pwsh
         run: |
@@ -386,6 +401,7 @@ jobs:
           name: openusd-native-diagnostics-${{ matrix.rid }}
           path: |
             artifacts/native-ctest-xvfb.log
+            artifacts/native-ctest/
             artifacts/native-probe/${{ matrix.rid }}
             artifacts/silk-probe/${{ matrix.rid }}
           if-no-files-found: warn
