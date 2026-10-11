@@ -223,7 +223,7 @@
     },
     {
       "path": "eng/shaders/validate-workflow-paths.ps1",
-      "sha256": "4e300b83b6423d71363c1b57ad877c34e85275414a7f4d0b54c7382e98dc44e3"
+      "sha256": "2d337f1431ff25fa0b323d5643d34f11bed7b60f7190598289e5fab561a949ed"
     },
     {
       "path": "eng/shaders/verify-checked.ps1",

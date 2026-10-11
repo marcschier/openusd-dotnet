@@ -62,7 +62,7 @@ if ($lineEndingChecks.Count -ne 3)
 }
 $fullHistoryCheckouts = [regex]::Matches(
     $content,
-    '(?ms)uses:\s+actions/checkout@[0-9a-f]{40}\s+# v4\s*\r?\n' +
+    '(?ms)uses:\s+actions/checkout@[0-9a-f]{40}\s+# v7\.0\.1\s*\r?\n' +
         '\s+with:\s*\r?\n\s+fetch-depth:\s+0')
 if ($fullHistoryCheckouts.Count -ne 3)
 {
