@@ -625,7 +625,7 @@ openusd_status InitializeStormRenderer(
     {
         WriteError(
             error,
-            "OpenUSD v26.05 Glf/Garch supports GLX contexts only on Linux; "
+            "OpenUSD v26.08 Glf/Garch supports GLX contexts only on Linux; "
             "the current OpenGL context is non-GLX (typically Wayland EGL).");
         return OPENUSD_STATUS_NATIVE_ERROR;
     }
