@@ -29,9 +29,9 @@ struct ShadowVertexOutput_0
     float4 position_2;
 };
 
-[[vertex]] shadowVertexMain_Result_0 shadowVertexMain(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], ShadowInstanceParameters_natural_0 device* shadowInstanceParameters_0 [[buffer(6)]])
+[[vertex]] shadowVertexMain_Result_0 shadowVertexMain(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], uint base_instance_0 [[base_instance]], ShadowInstanceParameters_natural_0 device* shadowInstanceParameters_0 [[buffer(6)]])
 {
-    ShadowInstanceParameters_natural_0 instance_0 = shadowInstanceParameters_0[instanceId_0];
+    ShadowInstanceParameters_natural_0 instance_0 = shadowInstanceParameters_0[instanceId_0 - base_instance_0];
     thread ShadowVertexOutput_0 output_0;
     (&output_0)->position_2 = (((float4(_S1.position_1, 1.0f)) * (matrix<float,int(4),int(4)> (instance_0.objectToLightClip_0.data_0[int(0)][int(0)], instance_0.objectToLightClip_0.data_0[int(0)][int(1)], instance_0.objectToLightClip_0.data_0[int(0)][int(2)], instance_0.objectToLightClip_0.data_0[int(0)][int(3)], instance_0.objectToLightClip_0.data_0[int(1)][int(0)], instance_0.objectToLightClip_0.data_0[int(1)][int(1)], instance_0.objectToLightClip_0.data_0[int(1)][int(2)], instance_0.objectToLightClip_0.data_0[int(1)][int(3)], instance_0.objectToLightClip_0.data_0[int(2)][int(0)], instance_0.objectToLightClip_0.data_0[int(2)][int(1)], instance_0.objectToLightClip_0.data_0[int(2)][int(2)], instance_0.objectToLightClip_0.data_0[int(2)][int(3)], instance_0.objectToLightClip_0.data_0[int(3)][int(0)], instance_0.objectToLightClip_0.data_0[int(3)][int(1)], instance_0.objectToLightClip_0.data_0[int(3)][int(2)], instance_0.objectToLightClip_0.data_0[int(3)][int(3)]))));
     thread shadowVertexMain_Result_0 _S2;

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "toolchain": {
-    "slangVersion": "2026.13.1",
-    "slangCommit": "c0952c29d3664b60ada5e5edb3fff9ffd6f98d2d",
-    "spirvToolsVersion": "vulkan-sdk-1.4.350.1",
-    "spirvToolsCommit": "0539c81f69a3daeb706fd3477dca61435b475156",
+    "slangVersion": "2026.19",
+    "slangCommit": "0fb6b7587a94fa33d88141ec9930766eedc6f59a",
+    "spirvToolsVersion": "v2026.4",
+    "spirvToolsCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
     "shaderModel": "6.0",
     "shaderModelToken": "6_0",
     "direct3DFormat": "DXIL",

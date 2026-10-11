@@ -53,12 +53,12 @@ struct VertexOutput_0
     float4 worldTangent_1;
 };
 
-[[vertex]] vertexMain_uv_normal_Result_0 vertexMain_uv_normal(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], InstanceParameters_natural_0 device* instanceParameters_1 [[buffer(6)]], uint32_t device* frameParameters_1 [[buffer(8)]])
+[[vertex]] vertexMain_uv_normal_Result_0 vertexMain_uv_normal(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], uint base_instance_0 [[base_instance]], InstanceParameters_natural_0 device* instanceParameters_1 [[buffer(6)]], uint32_t device* frameParameters_1 [[buffer(8)]])
 {
     thread KernelContext_0 kernelContext_0;
     (&kernelContext_0)->instanceParameters_0 = instanceParameters_1;
     (&kernelContext_0)->frameParameters_0 = frameParameters_1;
-    InstanceParameters_natural_0 instance_0 = instanceParameters_1[instanceId_0];
+    InstanceParameters_natural_0 instance_0 = instanceParameters_1[instanceId_0 - base_instance_0];
     float _S2 = as_type<float>(frameParameters_1[(0U)>>2]);
     float _S3 = as_type<float>((&kernelContext_0)->frameParameters_0[(4U)>>2]);
     float _S4 = as_type<float>((&kernelContext_0)->frameParameters_0[(8U)>>2]);
