@@ -54,7 +54,7 @@ and `buildTransitive` targets instead of managed `lib` or `ref` assemblies. Thei
 covered by package layout, native ABI, native-loader, and package-only execution gates.
 
 Package versions are derived by the repository versioning configuration. Upstream OpenUSD has a
-separate locked version in `eng/openusd.lock.json`; the current lock is OpenUSD 26.05 at a specific
+separate locked version in `eng/openusd.lock.json`; the current lock is OpenUSD 26.08 at a specific
 commit and archive hash.
 
 ## Generated data interop

@@ -20,8 +20,6 @@ public:
     {
         if (_taskControllerSceneIndex)
             return _taskControllerSceneIndex->GetRenderOutputSettings(PXR_NS::HdAovTokens->color);
-        if (_taskController)
-            return _taskController->GetRenderOutputSettings(PXR_NS::HdAovTokens->color);
         return {};
     }
 
@@ -37,8 +35,6 @@ public:
         }
         if (_taskControllerSceneIndex)
             _taskControllerSceneIndex->SetRenderOutputSettings(PXR_NS::HdAovTokens->color, color);
-        else if (_taskController)
-            _taskController->SetRenderOutputSettings(PXR_NS::HdAovTokens->color, color);
         return true;
     }
 
@@ -52,19 +48,13 @@ public:
         {
             return true;
         }
-        // OpenUSD 26.05 disables viewport AOV selection for multiple outputs.
+        // OpenUSD 26.08 disables viewport AOV selection for multiple outputs.
         // Its protected controller extension seam lets this project preserve
         // color presentation without dropping the simultaneously rendered AOVs.
         if (_taskControllerSceneIndex)
         {
             ConfigureSampling(*_taskControllerSceneIndex, outputs, multisampled);
             _taskControllerSceneIndex->SetViewportRenderOutput(PXR_NS::HdAovTokens->color);
-            return true;
-        }
-        if (_taskController)
-        {
-            ConfigureSampling(*_taskController, outputs, multisampled);
-            _taskController->SetViewportRenderOutput(PXR_NS::HdAovTokens->color);
             return true;
         }
         return false;

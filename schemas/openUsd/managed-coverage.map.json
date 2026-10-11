@@ -22,6 +22,9 @@
     "transformStackOnly": "The facade authors and reads the composed local transform and the reset-xform-stack flag; the raw xformOp stack order is not surfaced."
   },
   "schemas": {
+    "UsdGeomBackPlateAPI": {
+      "uncovered": "noFacade"
+    },
     "UsdGeomBasisCurves": {
       "managedTypes": ["OpenUsd.Geom.UsdGeomBasisCurves"],
       "properties": {
@@ -162,6 +165,7 @@
         "model:drawMode": "DrawMode"
       },
       "propertyExceptions": {
+        "model:cardVisibility": "genericAccessorOnly",
         "model:cardTextureXNeg": "genericAccessorOnly",
         "model:cardTextureXPos": "genericAccessorOnly",
         "model:cardTextureYNeg": "genericAccessorOnly",

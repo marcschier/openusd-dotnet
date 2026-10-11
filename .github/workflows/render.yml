@@ -172,7 +172,7 @@ jobs:
           path: |
             native/install/win-x64
             native/install/shim/win-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
             native/build/shim/win-x64
           key: >-
             native-win-x64-${{ hashFiles(
@@ -591,7 +591,7 @@ jobs:
           path: |
             native/install/win-x64
             native/install/shim/win-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
             native/build/shim/win-x64
           key: >-
             native-win-x64-${{ hashFiles(
@@ -863,7 +863,7 @@ jobs:
           path: |
             native/install/linux-x64
             native/install/shim/linux-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
             native/build/shim/linux-x64
           key: >-
             native-linux-x64-${{ hashFiles(
@@ -1456,7 +1456,7 @@ jobs:
           path: |
             native/install/osx-arm64
             native/install/shim/osx-arm64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
             native/build/shim/osx-arm64
           key: >-
             native-osx-arm64-${{ hashFiles(

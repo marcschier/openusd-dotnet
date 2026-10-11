@@ -53,7 +53,7 @@ internal static class Program
         if (decision.UsesXWaylandFallback)
         {
             ViewerStartupOptions.WriteStatus(
-                "Storm Wayland fallback: OpenUSD v26.05 Linux Glf/Garch is " +
+                "Storm Wayland fallback: OpenUSD v26.08 Linux Glf/Garch is " +
                 $"GLX-only; DISPLAY={decision.Display}; " +
                 $"WAYLAND_DISPLAY={decision.WaylandDisplay}");
         }

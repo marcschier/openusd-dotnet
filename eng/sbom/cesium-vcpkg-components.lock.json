@@ -4,7 +4,7 @@
   "source": "eng/cesium.lock.json",
   "vcpkg": {
     "repository": "https://github.com/microsoft/vcpkg.git",
-    "baseline": "56bb2411609227288b70117ead2c47585ba07713"
+    "baseline": "e456309491fd875487bf02b8a0dca76c1b1b00cc"
   },
   "directVcpkgDependencies": [
     "ada-url",
@@ -41,13 +41,13 @@
   "components": [
     {
       "name": "abseil",
-      "version": "20260107.1#2",
+      "version": "20260107.1#3",
       "license": "Apache-2.0",
       "features": ""
     },
     {
       "name": "ada-url",
-      "version": "3.4.4",
+      "version": "4.0.0",
       "license": "MIT OR Apache-2.0",
       "features": ""
     },
@@ -77,31 +77,31 @@
     },
     {
       "name": "cpp-httplib",
-      "version": "0.43.1",
+      "version": "0.59.0",
       "license": "MIT",
       "features": "brotli"
     },
     {
       "name": "curl",
-      "version": "8.19.0",
+      "version": "8.22.0#1",
       "license": "curl AND ISC AND BSD-3-Clause",
       "features": "non-http,openssl,ssl,sspi"
     },
     {
       "name": "doctest",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "license": "MIT",
       "features": ""
     },
     {
       "name": "draco",
-      "version": "1.5.7",
+      "version": "1.5.7#1",
       "license": "Apache-2.0",
       "features": ""
     },
     {
       "name": "earcut-hpp",
-      "version": "2.2.4",
+      "version": "3.2.4",
       "license": "ISC",
       "features": ""
     },
@@ -119,7 +119,7 @@
     },
     {
       "name": "fmt",
-      "version": "12.1.0",
+      "version": "12.2.0#1",
       "license": "MIT",
       "features": ""
     },
@@ -137,8 +137,8 @@
     },
     {
       "name": "libjpeg-turbo",
-      "version": "3.1.4.1",
-      "license": "BSD-3-Clause",
+      "version": "3.2.0#1",
+      "license": "BSD-3-Clause AND IJG",
       "features": ""
     },
     {
@@ -148,14 +148,20 @@
       "features": ""
     },
     {
+      "name": "libspng",
+      "version": "0.7.4#1",
+      "license": "BSD-2-Clause AND libpng-2.0",
+      "features": ""
+    },
+    {
       "name": "libwebp",
-      "version": "1.6.0#2",
+      "version": "1.6.0#3",
       "license": "BSD-3-Clause",
       "features": "libwebpmux,nearlossless,simd,unicode"
     },
     {
       "name": "meshoptimizer",
-      "version": "1.1",
+      "version": "1.3",
       "license": "MIT",
       "features": ""
     },
@@ -167,19 +173,19 @@
     },
     {
       "name": "ms-gsl",
-      "version": "4.2.1",
+      "version": "4.2.2",
       "license": "MIT",
       "features": ""
     },
     {
       "name": "opengl-registry",
-      "version": "2026-01-26",
+      "version": "2026-08-03",
       "license": "NOASSERTION",
       "features": ""
     },
     {
       "name": "openssl",
-      "version": "3.6.2",
+      "version": "3.6.5#1",
       "license": "Apache-2.0",
       "features": ""
     },
@@ -191,7 +197,7 @@
     },
     {
       "name": "rapidjson",
-      "version": "2025-02-26",
+      "version": "2025-02-26#1",
       "license": "MIT",
       "features": ""
     },
@@ -203,7 +209,7 @@
     },
     {
       "name": "spdlog",
-      "version": "1.17.0",
+      "version": "1.17.0#1",
       "license": "MIT",
       "features": "fmt,tz-offset"
     },
@@ -215,14 +221,14 @@
     },
     {
       "name": "sqlite3",
-      "version": "3.53.0",
+      "version": "3.53.4#2",
       "license": "blessing",
       "features": "json1"
     },
     {
       "name": "stb",
-      "version": "2024-07-29#1",
-      "license": "MIT OR CC-PDDC",
+      "version": "2026-08-02",
+      "license": "None",
       "features": ""
     },
     {
@@ -233,7 +239,7 @@
     },
     {
       "name": "zlib",
-      "version": "1.3.2",
+      "version": "1.3.2#2",
       "license": "Zlib",
       "features": ""
     },

@@ -284,7 +284,7 @@ public sealed class DataApiNativeCoverageTests
             Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "bin"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "lib"),
-            Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.321.0", "Bin")
+            Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.363.0", "Bin")
         ];
         string prefix = string.Join(
             Path.PathSeparator,

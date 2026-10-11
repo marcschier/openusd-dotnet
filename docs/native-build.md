@@ -27,13 +27,19 @@ contents.
 
 ## Locked inputs
 
-The native runtime is pinned to OpenUSD v26.05 commit
-`2095fafafd033fa23386d7ec6d58c7cc33974518`. `eng/openusd.lock.json` records the OpenUSD archive
+The native runtime is pinned to OpenUSD v26.08 commit
+`ee47c679abde5b467a7b6a41f3b2285564a4222e`. `eng/openusd.lock.json` records the OpenUSD archive
 hash, the upstream build-script hash, every direct dependency archive hash, and the platform
 toolchain matrix.
 
+The verified upstream build script binds every native dependency URL and version to the lock,
+including the separately built Imath and libdeflate required by current OpenEXR and Ptex.
+Those inputs stay in the OpenUSD prefix rather than resolving from the quarantined Cesium tree.
+The dependency archives and build-script transformation are hash-verified before compilation.
+
 The fetch step applies verified compatibility patches to the upstream build script: Windows Boost
-bootstrap is launched through `cmd.exe` with the `vc143` toolset, Boost is bound to the `cl.exe`
+bootstrap is launched through `cmd.exe` with the `vc143` or `vc145` toolset for the configured
+Visual Studio version, and Boost is bound to the `cl.exe`
 already configured by the developer shell, existing lean Boost installs are rejected when OpenVDB
 needs `boost_iostreams`, Alembic's install root is passed to USD configure so the Ogawa-only build
 does not require HDF5, and the locked Windows monolithic profile is permitted to build the Draco
@@ -105,9 +111,11 @@ sidecars and actual missing/drifted binary files in isolated copies.
 ## Cesium-native quarantine
 
 `eng/cesium.lock.json` is separate from `eng/openusd.lock.json` by design. The Cesium lock pins
-cesium-native v0.63.0 by commit and archive SHA-256, and it pins vcpkg manifest resolution to
-baseline `56bb2411609227288b70117ead2c47585ba07713`. `eng/fetch-cesium-native.ps1` verifies the
-source archive, verifies the upstream `vcpkg.json` and `vcpkg-configuration.json` hashes, checks out
+cesium-native v0.65.0 by commit and archive SHA-256, and it pins vcpkg manifest resolution to
+baseline `e456309491fd875487bf02b8a0dca76c1b1b00cc`. `eng/fetch-cesium-native.ps1` verifies the
+source archive and upstream `vcpkg.json` and `vcpkg-configuration.json` hashes, then replaces only
+the verified upstream registry baseline with the current locked baseline and verifies its patched
+configuration hash. It checks out
 that exact vcpkg commit under `native/.cache`, and bootstraps the tool from the pinned tree. vcpkg
 then resolves the manifest from that baseline plus cesium-native's overlay ports/triplets, so the
 resolved port versions and port git-tree hashes are reproducible in `vcpkg-manifest-install.log`.
@@ -219,7 +227,7 @@ Build from a Visual Studio developer shell:
 ./eng/build-native.ps1 -Rid win-x64
 ```
 
-If `VULKAN_SDK` is not set, the build wrapper creates the required 1.4.321.0 headers, loader,
+If `VULKAN_SDK` is not set, the build wrapper creates the required 1.4.363.0 headers, loader,
 shaderc, and VMA headers under `native/install` from the exact source revisions in the lock file. It
 does not require a machine-wide LunarG installation.
 

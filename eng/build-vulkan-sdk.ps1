@@ -2,9 +2,9 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 [CmdletBinding()]
 param(
-    [string]$SourceRoot = (Join-Path $PSScriptRoot '../native/src/vulkan-sdk-1.4.321.0'),
-    [string]$BuildRoot = (Join-Path $PSScriptRoot '../native/build/vulkan-sdk-1.4.321.0'),
-    [string]$InstallRoot = (Join-Path $PSScriptRoot '../native/install/vulkan-sdk-1.4.321.0'),
+    [string]$SourceRoot = (Join-Path $PSScriptRoot '../native/src/vulkan-sdk-1.4.363.0'),
+    [string]$BuildRoot = (Join-Path $PSScriptRoot '../native/build/vulkan-sdk-1.4.363.0'),
+    [string]$InstallRoot = (Join-Path $PSScriptRoot '../native/install/vulkan-sdk-1.4.363.0'),
     [int]$Jobs = [Environment]::ProcessorCount
 )
 

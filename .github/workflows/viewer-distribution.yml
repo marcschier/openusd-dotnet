@@ -115,7 +115,7 @@ jobs:
           path: |
             native/install/${{ matrix.rid }}
             native/install/shim/${{ matrix.rid }}
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
             native/build/shim/${{ matrix.rid }}
           key: >-
             native-${{ matrix.rid }}-${{ hashFiles(

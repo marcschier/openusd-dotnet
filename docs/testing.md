@@ -325,7 +325,7 @@ to be fetched again. Point `VULKAN_SDK` at an existing one:
 
 ```
 $env:OPENUSD_ROOT = '<repo>/native/install/win-x64'
-$env:VULKAN_SDK   = '<repo>/native/install/vulkan-sdk-1.4.321.0'
+$env:VULKAN_SDK   = '<repo>/native/install/vulkan-sdk-1.4.363.0'
 ```
 
 This matters more than it looks: without it the native probes cannot run at all,

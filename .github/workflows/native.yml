@@ -168,7 +168,7 @@ jobs:
           path: |
             native/install/${{ matrix.rid }}
             native/install/shim/${{ matrix.rid }}
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
             native/build/shim/${{ matrix.rid }}
           key: >-
             native-${{ matrix.rid }}-${{ hashFiles(
@@ -225,7 +225,7 @@ jobs:
         with:
           path: |
             native/install/linux-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
           key: >-
             openusd-install-linux-x64-${{ hashFiles(
               'eng/openusd.install.lock.json',
@@ -312,7 +312,7 @@ jobs:
         # reads. Stating that prefix in one place is what keeps this job and the
         # packaging agreeing about it.
         run: |
-          $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.321.0).Path
+          $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.363.0).Path
           ./eng/build-physx-native.ps1 -Rid win-x64
           ./eng/build-physx-shim.ps1 -Rid win-x64
           ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64-physx

@@ -1,5 +1,9 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+#if defined(_WIN32) && !defined(NOMINMAX)
+#define NOMINMAX
+#endif
+
 #include "openusd_hydra.h"
 #include "context_support.h"
 #include "openusd_physics_override_scene_index.h"

@@ -409,6 +409,7 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
                 dependency["name"],
                 dependency.get("version"),
                 purl=github_purl(dependency.get("url", ""), dependency.get("tag"), dependency.get("commit")),
+                licenses=[dependency["license"]] if "license" in dependency else None,
                 external_refs=source_refs(dependency),
                 hashes={"SHA-256": dependency["sha256"]} if "sha256" in dependency else None,
                 properties=props,

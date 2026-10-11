@@ -72,7 +72,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            native/.cache/vcpkg-56bb24116092
+            native/.cache/vcpkg-e456309491fd
             native/install/cesium/${{ matrix.rid }}
             native/build/cesium/${{ matrix.rid }}
             native/build/cesium-probe/${{ matrix.rid }}

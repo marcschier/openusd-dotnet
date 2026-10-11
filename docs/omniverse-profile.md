@@ -9,9 +9,9 @@ narrative detail and [`docs/support-manifest.md`](support-manifest.md) for the f
 
 ## Dependency baselines
 
-- **`openusd`** (runtime-pinned, version `26.05`)
+- **`openusd`** (runtime-pinned, version `26.08`)
   Pinned OpenUSD core version this runtime builds against and this profile targets for interchange.
-- **`materialx`** (runtime-pinned, version `1.39.4`)
+- **`materialx`** (runtime-pinned, version `1.39.5`)
   Pinned MaterialX SDK version behind the bounded MaterialX projection; MaterialX 1.39 adds the OpenPBR node
   definitions this profile's accepted corpus targets.
 - **`kit-baseline`** (external-optional, version `pending`)

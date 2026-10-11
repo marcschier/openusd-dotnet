@@ -1,3 +1,15 @@
+--- a/pxr/imaging/plugin/hioOiio/CMakeLists.txt
++++ b/pxr/imaging/plugin/hioOiio/CMakeLists.txt
+@@ -1,5 +1,9 @@
+ set(PXR_PREFIX pxr/imaging)
+ set(PXR_PACKAGE hioOiio)
+ 
++if(MSVC)
++    add_compile_options(/utf-8)
++endif()
++
+ if (NOT ${PXR_BUILD_GPU_SUPPORT})
+     message(STATUS
 --- a/pxr/base/arch/timing.cpp
 +++ b/pxr/base/arch/timing.cpp
 @@ -23,8 +23,10 @@
@@ -60,24 +72,22 @@
                  }
 --- a/pxr/usd/sdf/schema.cpp
 +++ b/pxr/usd/sdf/schema.cpp
-@@ -1538,7 +1538,10 @@
+@@ -1540,8 +1540,10 @@
              context->AppendValue(values->front());
              values->pop_front();
          }
--    } else if (static_cast<size_t>(level) < context->valueTupleDimensions.size) {
-+    } else if (level >= 0 &&
-+               static_cast<size_t>(level) < sizeof(context->valueTupleDimensions.d) /
-+                   sizeof(context->valueTupleDimensions.d[0]) &&
-+               static_cast<size_t>(level) < context->valueTupleDimensions.size) {
+-    } else if (level < context->valueTupleDimensions.size) {
++    } else if (level < sizeof(context->valueTupleDimensions.d) /
++                    sizeof(context->valueTupleDimensions.d[0]) &&
++               level < context->valueTupleDimensions.size) {
+         TF_AXIOM(level < std::size(context->valueTupleDimensions.d));
          context->BeginTuple();
          for (size_t i = 0; i < context->valueTupleDimensions.d[level]; i++) {
              _AddValuesToValueContext(values, context, level + 1);
 --- a/pxr/usd/usd/clip.cpp
 +++ b/pxr/usd/usd/clip.cpp
-@@ -430,7 +430,15 @@
-         return true;
-     }
- 
+@@ -477,5 +477,13 @@
+     TF_AXIOM(numTimes <= bracketingTimes.size());
 -    std::sort(bracketingTimes.begin(), bracketingTimes.begin() + numTimes);
 +    for (size_t i = 1; i < numTimes; ++i) {
 +        const ExternalTime value = bracketingTimes[i];
@@ -91,11 +101,6 @@
      auto uniqueIt = std::unique(
          bracketingTimes.begin(), bracketingTimes.begin() + numTimes);
      return _GetBracketingTimeSamples(
-@@ -985,4 +993,3 @@
-     VtValue*) const;
- 
- PXR_NAMESPACE_CLOSE_SCOPE
--
 --- a/pxr/base/tf/smallVector.h
 +++ b/pxr/base/tf/smallVector.h
 @@ -81,6 +81,9 @@
@@ -133,9 +138,7 @@
                     VtVec3fArray const &translate,
 --- a/pxr/imaging/hdx/unitTestDelegate.h
 +++ b/pxr/imaging/hdx/unitTestDelegate.h
-@@ -218,7 +218,7 @@
-     };
-     
+@@ -229,5 +229,5 @@
      struct _Instancer {
 -        _Instancer() { }
 +        _Instancer() : rootTransform(1.0f) { }

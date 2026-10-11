@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-static_assert(PXR_VERSION == 2605, "Review bounded array-edit admission when updating the pinned SDK.");
+static_assert(PXR_VERSION == 2608, "Review bounded array-edit admission when updating the pinned SDK.");
 
 namespace OpenUsdRenderInput
 {

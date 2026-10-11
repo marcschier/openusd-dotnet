@@ -6,6 +6,7 @@ param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
     [string]$NativeRoot = (Join-Path $PSScriptRoot '../native'),
+    [string]$SdkSourceRoot,
     [string]$SdkBuildRoot,
     [string]$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'),
     [switch]$SdkOnly,
@@ -24,7 +25,8 @@ if (-not $SdkOnly -and $NativeRoot -cne [IO.Path]::GetFullPath((Join-Path $repoR
     throw 'A custom NativeRoot currently requires -SdkOnly; build project shims in their isolated CMake graph.'
 }
 $cacheRoot = Join-Path $NativeRoot 'downloads'
-$sourceRoot = Join-Path $NativeRoot 'src'
+$sourceRoot = if ([string]::IsNullOrWhiteSpace($SdkSourceRoot)) { Join-Path $NativeRoot 'src' }
+    else { [IO.Path]::GetFullPath($SdkSourceRoot) }
 $buildRoot = if ([string]::IsNullOrWhiteSpace($SdkBuildRoot)) { Join-Path $NativeRoot "build/$Rid" }
     else { [IO.Path]::GetFullPath($SdkBuildRoot) }
 $installRoot = Join-Path $NativeRoot "install/$Rid"

@@ -2835,7 +2835,7 @@ the runtime shader service, and D3D12 translates the generated SPIR-V with SPIRV
 with DXC. The page payload is still content-addressed and asynchronous on the managed side; the checked offline shader
 payload remains authoritative for built-in shaders and supplies the placeholder while generated programs compile.
 
-MaterialX 1.39.4 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
+MaterialX 1.39.5 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
 families for this design are GLSL, Vulkan GLSL, ESSL, WGSL, MSL, OSL, and MDL. Vulkan therefore goes
 through `VkShaderGenerator` and glslang; Metal goes through `MslShaderGenerator`; D3D12 has no direct
 MaterialX-to-HLSL path and uses SPIRV-Cross to HLSL followed by DXC. The MDL SDK is BSD-3-Clause and has HLSL and GLSL
@@ -3340,7 +3340,7 @@ device allocates no map and diagnoses every shadow-enabled light. Storm's own of
 remains unusable as a reference (see "hdSilk UsdLux lights"), so all of the above is gated
 analytically rather than against Storm.
 
-Storm ABI v8 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
+Storm ABI v8 implements nearest-hit primitive picking with the pinned OpenUSD v26.08
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical
 top-left pixel to the exact viewport, time, camera bytes, state/optional scene revision, and (for a
 child) context generation. The one-pixel projection uses the OpenUSD test bounds
@@ -3423,7 +3423,7 @@ must be rendered inside Storm or use separate native popup windows. The host can
 is active, but transparent Avalonia overlays over a visible Storm child are unsupported.
 
 The previous Avalonia `OpenGlControlBase` path remains as a compatibility and test path. `windows-wgl` and the
-shared-stage WGL soak force Avalonia to a WGL 4.6/4.5 compatibility profile because OpenUSD 26.05 HgiGL requires GL 4.5
+shared-stage WGL soak force Avalonia to a WGL 4.6/4.5 compatibility profile because OpenUSD 26.08 HgiGL requires GL 4.5
 and compatibility-only state such as `GL_POINT_SMOOTH` and `GL_MAX_CLIP_PLANES`. `openusd_hydra` creates
 `UsdImagingGLEngine` while that Avalonia context is current and presents through `HgiInterop` without CPU readback.
 
@@ -3459,7 +3459,7 @@ maximum packed RGBA values. Callers may explicitly request a bounded pixel copy 
 for screenshot artifacts. Capture fails before any completed frame and is never called by the
 interactive render loop.
 
-OpenUSD v26.05 does not provide a Linux EGL platform-context adapter. Its Linux Glf/Garch path is GLX, so the Viewer
+OpenUSD v26.08 does not provide a Linux EGL platform-context adapter. Its Linux Glf/Garch path is GLX, so the Viewer
 intentionally fixes its Linux shell to X11. This also lets one process hide/show the Storm GLX child while Vulkan
 opaque-FD composition is active.
 

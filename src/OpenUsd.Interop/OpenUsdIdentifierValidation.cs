@@ -4,8 +4,8 @@ using System.Text;
 
 namespace OpenUsd.Interop;
 
-// Unicode XID ranges mirror OpenUSD v26.05 commit
-// 2095fafafd033fa23386d7ec6d58c7cc33974518.
+// Unicode XID ranges mirror OpenUSD v26.08 commit
+// ee47c679abde5b467a7b6a41f3b2285564a4222e.
 // Source SHA-256: 670f938063c8a9ff18328a68fbe7ebb0a8829b4dfe7015297cddc3713bba335d.
 internal static class OpenUsdIdentifierValidation
 {

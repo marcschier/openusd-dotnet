@@ -808,7 +808,7 @@ public sealed class VolumeRenderingConformanceTests
             Path.Combine(root, "native", "install", "win-x64", "lib"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "bin"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "lib"),
-            Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.321.0", "Bin"),
+            Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.363.0", "Bin"),
         ];
         string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         string prefix = string.Join(

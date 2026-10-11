@@ -1,18 +1,18 @@
 {
   "$schemaVersion": 1,
   "openUsd": {
-    "version": "26.05",
-    "tag": "v26.05",
-    "commit": "2095fafafd033fa23386d7ec6d58c7cc33974518",
-    "archiveUrl": "https://codeload.github.com/PixarAnimationStudios/OpenUSD/tar.gz/2095fafafd033fa23386d7ec6d58c7cc33974518",
-    "archiveName": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518.tar.gz",
-    "archiveSha256": "694274F5B5751BA49C229F8413B4437E83AD8CD9472FCCE943DE577D42D7DE31",
-    "extractDirectory": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518",
+    "version": "26.08",
+    "tag": "v26.08",
+    "commit": "ee47c679abde5b467a7b6a41f3b2285564a4222e",
+    "archiveUrl": "https://codeload.github.com/PixarAnimationStudios/OpenUSD/tar.gz/ee47c679abde5b467a7b6a41f3b2285564a4222e",
+    "archiveName": "OpenUSD-ee47c679abde5b467a7b6a41f3b2285564a4222e.tar.gz",
+    "archiveSha256": "F6466C187F6A15982137893B0A2088BAD1019294BA4F8906351EB67D03F143B7",
+    "extractDirectory": "OpenUSD-ee47c679abde5b467a7b6a41f3b2285564a4222e",
     "buildScript": "build_scripts/build_usd.py",
-    "buildScriptSha256": "258C2BD80974154C00B8CB7D6CA19257D6E1878BDBDCE6501DDF18A5E230C629",
-    "patchedBuildScriptSha256": "11C753DF035D6FC47B4D061FB0FEDE78CAC89F1D4BF814460C3401FB14B73E35",
-    "runtimePatchLockSha256": "EF95E9F597599A3D2EE1B5660C4E20CCCC0FF96C5BEB91636DC145E9F5D49A6E",
-    "storageAdmissionPatchLockSha256": "5F98554255B95E647EAAE53964448158B58FF53CA2854614E670F1E9FE53447E",
+    "buildScriptSha256": "E2F0C4858834D39F9D803B0B0FF1922EE74084287267CBE159D5B3AA99A515F1",
+    "patchedBuildScriptSha256": "262D7469F630330C67BB9ABF4E156DC47C5E50F392F5A8FF9793A87FDDA5CD6E",
+    "runtimePatchLockSha256": "0A106E9326EB461572B1E41D85B27D77004CC9078AC4651B0CF7D447AF9FE941",
+    "storageAdmissionPatchLockSha256": "1E6280DBC19E3C9DBAD1004D5F5B78474D564D54097448E0B6F3BF425DE1874D",
     "patches": [
       {
         "id": "windows-python-3.13-batch-launch",
@@ -45,39 +45,43 @@
       {
         "id": "openvdb-root-for-usd-configure",
         "description": "Pass the locked OpenVDB install root into USD configure so hioOpenVDB never resolves from a system or vcpkg tree."
+      },
+      {
+        "id": "locked-dependency-source-selection",
+        "description": "Bind every dependency source URL and Boost/Ptex version in the verified upstream build script to the reviewed stable versions and archives in this lock."
       }
     ],
     "license": "Apache-2.0"
   },
   "vulkanSdk": {
-    "version": "1.4.321.0",
-    "windowsConfigUrl": "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/config.json",
-    "windowsConfigSha256": "D3DCE5C4CDCFBAA298FD1F70511A942B27331F45F05C877D10484AE882765CAE",
+    "version": "1.4.363.0",
+    "windowsConfigUrl": "https://sdk.lunarg.com/sdk/download/1.4.363.0/windows/config.json",
+    "windowsConfigSha256": "5A4D3EE31F3C215FD8A370B90F785325DEECD5276D59FA56BEF0204DCC6EDA8C",
     "repositories": [
       {
         "name": "Vulkan-Headers",
         "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
-        "commit": "2cd90f9d20df57eac214c148f3aed885372ddcfe"
+        "commit": "6802bb4733b63ed5efd3adb308a6c885ef180ea1"
       },
       {
         "name": "Vulkan-Loader",
         "url": "https://github.com/KhronosGroup/Vulkan-Loader.git",
-        "commit": "da8d2caad9341ca8c5a7c3deba217d7da50a7c24"
+        "commit": "fa218055ff4948b159f31d43f800c808a13d51df"
       },
       {
         "name": "shaderc-source-manifest",
         "url": "https://github.com/google/shaderc.git",
-        "commit": "a298b382ea7af052b549c08a799a56e9ec4bf471"
+        "commit": "75137cca3b41a59b8b3e5c42177da8a9490c042f"
       },
       {
         "name": "VulkanMemoryAllocator",
         "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git",
-        "commit": "1d8f600fd424278486eade7ed3e877c99f0846b1"
+        "commit": "3aa921224c154a0d2c43912bc88e1c42ce1f7607"
       },
       {
         "name": "Vulkan-Utility-Libraries",
         "url": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git",
-        "commit": "ec329e2721921f79743b90307ee047d08e057788"
+        "commit": "57f01541b3959f2528f769043396e882851a7e75"
       }
     ]
   },
@@ -120,7 +124,7 @@
         "zlib": "bundled",
         "compiler": "Visual Studio 2022 17.14",
         "cmake": "3.30.4",
-        "vulkanSdk": "1.4.321.0"
+        "vulkanSdk": "1.4.363.0"
       },
       "linux-x64": {
         "graphics": [
@@ -130,7 +134,7 @@
         "zlib": "system",
         "compiler": "GCC 11.5.0",
         "cmake": "3.30.4",
-        "vulkanSdk": "1.4.321.0",
+        "vulkanSdk": "1.4.363.0",
         "compatibilityTarget": "glibc 2.28"
       },
       "osx-arm64": {
@@ -148,244 +152,279 @@
   "dependencies": [
     {
       "name": "oneTBB",
-      "version": "2021.12.0",
-      "tag": "v2021.12.0",
-      "commit": "9afd759b72c0c233cd5ea3c3c06b0894c9da9c54",
-      "url": "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.12.0.zip",
-      "archiveName": "v2021.12.0.zip",
-      "sha256": "FE6CA052B5BDD2C6E0616B360C9B0DCBCC46E01BBD0AA8FD0517C17FC58931DB",
+      "version": "2023.1.0",
+      "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2023.1.0.zip",
+      "archiveName": "v2023.1.0.zip",
+      "sha256": "0712621D19D2FBC1DC0D4E964BF8D9592C78D79F62991D2173BAD741A7461C4A",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v2023.1.0",
+      "commit": "3046c8b0c29df995980003ea24f4d78c80ec0c8d"
     },
     {
       "name": "zlib",
-      "version": "1.2.13",
-      "tag": "v1.2.13",
-      "commit": "04f42ceca40f73e2978b50e93806c2a18c1281fc",
-      "url": "https://github.com/madler/zlib/archive/v1.2.13.zip",
-      "archiveName": "v1.2.13.zip",
-      "sha256": "C2856951BBF30E30861ACE3765595D86BA13F2CF01279D901F6C62258C57F4FF",
+      "version": "1.3.2",
+      "url": "https://github.com/madler/zlib/archive/refs/tags/v1.3.2.zip",
+      "archiveName": "v1.3.2.zip",
+      "sha256": "31FD9FEE98812ABCF147D0E103BC4D2F983C35A8D7A807A328A299F3A74E0050",
       "platforms": [
         "win-x64"
-      ]
+      ],
+      "tag": "v1.3.2",
+      "commit": "da607da739fa6047df13e66a2af6b8bec7c2a498"
     },
     {
       "name": "Boost",
-      "version": "1.86.0",
-      "url": "https://archives.boost.io/release/1.86.0/source/boost_1_86_0.zip",
-      "archiveName": "boost_1_86_0.zip",
-      "sha256": "CD20A5694E753683E1DC2EE10E2D1BB11704E65893EBCC6CED234BA68E5D8646",
+      "version": "1.92.0",
+      "url": "https://archives.boost.io/release/1.92.0/source/boost_1_92_0.zip",
+      "archiveName": "boost_1_92_0.zip",
+      "sha256": "C46BAEE75ED4B558CF6553630D0615A147ED582812917B57E6F0839D1954549F",
       "platforms": [
         "win-x64"
-      ]
+      ],
+      "tag": "boost-1.92.0",
+      "commit": "afdfa32505af73e3d208144b3f623f0096cb62b6"
     },
     {
       "name": "Boost",
-      "version": "1.80.0",
-      "url": "https://archives.boost.io/release/1.80.0/source/boost_1_80_0.zip",
-      "archiveName": "boost_1_80_0.zip",
-      "sha256": "E34756F63ABE8AC34B35352743F17D061FCC825969A2DD8458264EDB38781782",
+      "version": "1.92.0",
+      "url": "https://archives.boost.io/release/1.92.0/source/boost_1_92_0.zip",
+      "archiveName": "boost_1_92_0.zip",
+      "sha256": "C46BAEE75ED4B558CF6553630D0615A147ED582812917B57E6F0839D1954549F",
       "platforms": [
         "linux-x64"
-      ]
+      ],
+      "tag": "boost-1.92.0",
+      "commit": "afdfa32505af73e3d208144b3f623f0096cb62b6"
     },
     {
       "name": "Boost",
-      "version": "1.82.0",
-      "url": "https://archives.boost.io/release/1.82.0/source/boost_1_82_0.zip",
-      "archiveName": "boost_1_82_0.zip",
-      "sha256": "F7C9E28D242ABCD7A2C1B962039FCDD463CA149D1883C3A950BBCC0CE6F7C6D9",
+      "version": "1.92.0",
+      "url": "https://archives.boost.io/release/1.92.0/source/boost_1_92_0.zip",
+      "archiveName": "boost_1_92_0.zip",
+      "sha256": "C46BAEE75ED4B558CF6553630D0615A147ED582812917B57E6F0839D1954549F",
       "platforms": [
         "osx-arm64"
-      ]
+      ],
+      "tag": "boost-1.92.0",
+      "commit": "afdfa32505af73e3d208144b3f623f0096cb62b6"
     },
     {
       "name": "libjpeg-turbo",
-      "version": "2.0.1",
-      "tag": "2.0.1",
-      "commit": "bb3d325624526c91646bb9af9578d7198c082d51",
-      "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.zip",
-      "archiveName": "2.0.1.zip",
-      "sha256": "DAB9F12655D244B9F8E6C88FCEDF4B109560B7B2C5429B85E92792008A28954B",
+      "version": "3.2.0",
+      "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.2.0.zip",
+      "archiveName": "3.2.0.zip",
+      "sha256": "1B4C2CB6CBA1CA5E53B9E85EEEAB02154CAB4B70894C96E97A9C747A26D19D63",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "3.2.0",
+      "commit": "c85e6b905bf237038faa936dab160ebfc5da0344"
     },
     {
       "name": "libtiff",
-      "version": "4.0.7",
-      "tag": "v4.0.7",
-      "commit": "884f973652b8b020e533b1e340da3ef4bcd1d925",
-      "url": "https://gitlab.com/libtiff/libtiff/-/archive/v4.0.7/libtiff-v4.0.7.zip",
-      "archiveName": "libtiff-v4.0.7.zip",
-      "sha256": "53531D33D1FD3B4303520D53FDC146FBD117AB39BA8B6C6359483AF0064276FF",
+      "version": "4.7.2",
+      "url": "https://gitlab.com/libtiff/libtiff/-/archive/v4.7.2/libtiff-v4.7.2.zip",
+      "archiveName": "libtiff-v4.7.2.zip",
+      "sha256": "8BE052B0B1CD57D48A9D24A89025654BD974FAC2777EFA7304A35C4A3B95DB2A",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v4.7.2",
+      "commit": "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d"
     },
     {
       "name": "libpng",
-      "version": "1.6.47",
-      "tag": "v1.6.47",
-      "commit": "872555f4ba910252783af1507f9e7fe1653be252",
-      "url": "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip",
-      "archiveName": "v1.6.47.zip",
-      "sha256": "D7EFC089968972FB79A4AB71BD9311F56C58A51B858A17BAB85D806EC48CC77A",
+      "version": "1.6.59",
+      "url": "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.59.zip",
+      "archiveName": "v1.6.59.zip",
+      "sha256": "6FD97A1E5E2AC55CEC0A538A9800A351EB3844086736291844EBD12DB72BA433",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v1.6.59",
+      "commit": "cd952f49f95bb27154ae77dbb103032d95f6e580"
     },
     {
       "name": "OpenEXR",
-      "version": "3.1.13",
-      "tag": "v3.1.13",
-      "commit": "fad1d1a9dc188aceabbea1313580d73b7236b79b",
-      "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.1.13.zip",
-      "archiveName": "v3.1.13.zip",
-      "sha256": "28CD733DBF1E25B942BD31594FFD29C85929822C85116EEDA9A67B71FA0B13E8",
+      "version": "3.5.2",
+      "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.5.2.zip",
+      "archiveName": "v3.5.2.zip",
+      "sha256": "D883261377CF895A4FED407872D128FA185A5D207409D287C1DD9A93FF018975",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v3.5.2",
+      "commit": "69b2604fc76e370615438bdc8d2cd95b9349c12e"
     },
     {
       "name": "OpenImageIO",
-      "version": "2.5.16.0",
-      "tag": "v2.5.16.0",
-      "commit": "73acd658769be18eeb618791a11ecbfad8c2372c",
-      "url": "https://github.com/OpenImageIO/oiio/archive/refs/tags/v2.5.16.0.zip",
-      "archiveName": "v2.5.16.0.zip",
-      "sha256": "867C32FC6FC4ACF286B0018A8582DC799779CEDCA41549BF5D19C5BE004DD207",
+      "version": "3.2.1.1",
+      "url": "https://github.com/AcademySoftwareFoundation/OpenImageIO/archive/refs/tags/v3.2.1.1.zip",
+      "archiveName": "v3.2.1.1.zip",
+      "sha256": "E718BD8AD45E9C329825F5EC942C2D2087EC65EEC63A3DB94004474857E64FEB",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v3.2.1.1",
+      "commit": "83caf2f044abfb3ffe87e3e8bdbc893e3cfbb4ca"
     },
     {
       "name": "OpenColorIO",
-      "version": "2.2.1",
-      "tag": "v2.2.1",
-      "commit": "d1ef24cbf8021f642e42f45f50c2cd4cc77141ce",
-      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.2.1.zip",
-      "archiveName": "v2.2.1",
-      "sha256": "BE58D991A9449631D14C605F24ECC0FAC9CB7E03A289A9D289359C7A7BAE945F",
+      "version": "2.6.0",
+      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.6.0.zip",
+      "archiveName": "v2.6.0.zip",
+      "sha256": "0EC8D47621813A3E050AEF945E4B243BA992A9EC0DF5AA9B00AE0D65ADBB6D8C",
       "platforms": [
         "win-x64",
         "linux-x64"
-      ]
+      ],
+      "tag": "v2.6.0",
+      "commit": "10a43ec1df03d072ca9a9e2fb3f26e454b0900d8"
     },
     {
       "name": "OpenColorIO",
-      "version": "2.4.2",
-      "tag": "v2.4.2",
-      "commit": "6918fad3f5d22ac3ef2397c754bf4268c2b58dd0",
-      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.4.2.zip",
-      "archiveName": "v2.4.2",
-      "sha256": "0A30F0BB8DD2E436B0751CD9DA1B67A4186FF36AB41A7114B662E02F87E0D1F0",
+      "version": "2.6.0",
+      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.6.0.zip",
+      "archiveName": "v2.6.0.zip",
+      "sha256": "0EC8D47621813A3E050AEF945E4B243BA992A9EC0DF5AA9B00AE0D65ADBB6D8C",
       "platforms": [
         "osx-arm64"
-      ]
+      ],
+      "tag": "v2.6.0",
+      "commit": "10a43ec1df03d072ca9a9e2fb3f26e454b0900d8"
     },
     {
       "name": "OpenSubdiv",
-      "version": "3.6.1",
-      "tag": "v3_6_1",
-      "commit": "f26d0dedeaf846ea321865a527bb4489691c2f04",
-      "url": "https://github.com/PixarAnimationStudios/OpenSubdiv/archive/v3_6_1.zip",
-      "archiveName": "v3_6_1.zip",
-      "sha256": "F2A42D8AF5B3E1D51B9D6B243C1C3BAC9D6044E3715CD19968723B49231039CC",
+      "version": "3.7.0",
+      "url": "https://github.com/PixarAnimationStudios/OpenSubdiv/archive/refs/tags/v3_7_0.zip",
+      "archiveName": "v3_7_0.zip",
+      "sha256": "151433C35AFA0F4206423758C0AD5CE5A37E4988D8760CE6D775BA951291C782",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v3_7_0",
+      "commit": "9dab8a47bfbb1388ec8388fe61f5f916e6123f38"
     },
     {
       "name": "MaterialX",
-      "version": "1.39.4",
-      "tag": "v1.39.4",
-      "commit": "270b5cf2ae2be24a3b6ef4b0569f1c93038dda1d",
-      "url": "https://github.com/AcademySoftwareFoundation/MaterialX/archive/v1.39.4.zip",
-      "archiveName": "v1.39.4.zip",
-      "sha256": "3910B2498D7DA6C8E5AC150B9E6A74E530626044309EDB077829C024ED691E0E",
+      "version": "1.39.5",
+      "url": "https://github.com/AcademySoftwareFoundation/MaterialX/archive/refs/tags/v1.39.5.zip",
+      "archiveName": "v1.39.5.zip",
+      "sha256": "830B33E96069A69440DF175D8AB0951B292893030D825235FBB3B3F846604DDA",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v1.39.5",
+      "commit": "7b64921ef1d42f2d57871e9d2c43dc11f041f26b"
     },
     {
       "name": "Ptex",
-      "version": "2.4.2",
-      "tag": "v2.4.2",
-      "commit": "4e970554cea68eb5f2173bf261b61404fd9cc772",
-      "url": "https://github.com/wdas/ptex/archive/refs/tags/v2.4.2.zip",
-      "archiveName": "v2.4.2.zip",
-      "sha256": "83A0DAC7DFE993970DA6384888A49CB3A7CD8952B3B615A6C1A5E356259E78AA",
+      "version": "2.5.4",
+      "url": "https://github.com/wdas/ptex/archive/refs/tags/v2.5.4.zip",
+      "archiveName": "v2.5.4.zip",
+      "sha256": "0652152B4B9F84F6B26EDD9A6EB67F8AECF44EAFD14DDB5EA5481BBDD7D8763C",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
-    },
-    {
-      "name": "Blosc",
-      "version": "1.20.1",
-      "tag": "v1.20.1",
-      "commit": "a44e961498cdca2eb893fa897cd15dd007fad496",
-      "url": "https://github.com/Blosc/c-blosc/archive/v1.20.1.zip",
-      "archiveName": "v1.20.1.zip",
-      "sha256": "9717F7C9D8288C343A743618E8D47ACEA48F835306782F2F9EBF825CC8DFAA34",
-      "platforms": [
-        "win-x64",
-        "linux-x64"
-      ]
+      ],
+      "tag": "v2.5.4",
+      "commit": "42787491dbea182e339074d305b782b14f1ca2be"
     },
     {
       "name": "Blosc",
       "version": "1.21.6",
+      "url": "https://github.com/Blosc/c-blosc/archive/refs/tags/v1.21.6.zip",
+      "archiveName": "v1.21.6.zip",
+      "sha256": "1919C97D55023C04AA8771EA8235B63E9DA3C22E3D2A68340B33710D19C2A2EB",
+      "platforms": [
+        "win-x64",
+        "linux-x64"
+      ],
       "tag": "v1.21.6",
-      "commit": "616f4b7343a8479f7e71dd3d7025bd92c9a6bbd0",
-      "url": "https://github.com/Blosc/c-blosc/archive/v1.21.6.zip",
+      "commit": "616f4b7343a8479f7e71dd3d7025bd92c9a6bbd0"
+    },
+    {
+      "name": "Blosc",
+      "version": "1.21.6",
+      "url": "https://github.com/Blosc/c-blosc/archive/refs/tags/v1.21.6.zip",
       "archiveName": "v1.21.6.zip",
       "sha256": "1919C97D55023C04AA8771EA8235B63E9DA3C22E3D2A68340B33710D19C2A2EB",
       "platforms": [
         "osx-arm64"
-      ]
+      ],
+      "tag": "v1.21.6",
+      "commit": "616f4b7343a8479f7e71dd3d7025bd92c9a6bbd0"
     },
     {
       "name": "OpenVDB",
-      "version": "10.1.0",
-      "tag": "v10.1.0",
-      "commit": "87a508ca48a69f06d149be6cb0d8289fc1314f72",
-      "url": "https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v10.1.0.zip",
-      "archiveName": "v10.1.0.zip",
-      "sha256": "611B319B30F73C9739882BAD2FF9AD3200E12409003AB6F64E2CCCDB899B4896",
+      "version": "13.1.0",
+      "url": "https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v13.1.0.zip",
+      "archiveName": "v13.1.0.zip",
+      "sha256": "1E67429ECC7205E05A3B1E9A91CBDD61CC4A46988404555A6B8DCD36AB50C3C4",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
-      ]
+      ],
+      "tag": "v13.1.0",
+      "commit": "e26f5a569201d3236e0c30580572101022d3d754"
     },
     {
       "name": "Alembic",
-      "version": "1.8.5",
-      "tag": "1.8.5",
-      "commit": "f4e3cc33e4270ade9d076a2cac7a2a4409c61675",
-      "url": "https://github.com/alembic/alembic/archive/refs/tags/1.8.5.zip",
-      "archiveName": "1.8.5.zip",
-      "sha256": "9196561B785102B48A731359642E9FBDF62C3A5183DE5CACA7C6F03292F474DF",
+      "version": "1.8.12",
+      "url": "https://github.com/alembic/alembic/archive/refs/tags/1.8.12.zip",
+      "archiveName": "1.8.12.zip",
+      "sha256": "87F84C0C44300BA9AFFE013D62C79D30466046AA23FA04A6DFC246240F58EFFD",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ],
+      "tag": "1.8.12",
+      "commit": "6f59e4d0c9012c67e242da510b31d96504db8e01"
+    },
+    {
+      "name": "Draco",
+      "version": "1.5.7",
+      "url": "https://github.com/google/draco/archive/refs/tags/1.5.7.zip",
+      "archiveName": "1.5.7.zip",
+      "sha256": "27B72BA2D5FF3D0A9814AD40D4CB88F8DC89A35491C0866D952473F8F9416B77",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ],
+      "tag": "1.5.7",
+      "commit": "8786740086a9f4d83f44aa83badfbea4dce7a1b5"
+    },
+    {
+      "name": "libdeflate",
+      "version": "1.26",
+      "tag": "v1.26",
+      "commit": "92e6a0db9fa848d742f9eb286c92afc60f2c3dda",
+      "url": "https://github.com/ebiggers/libdeflate/archive/refs/tags/v1.26.zip",
+      "archiveName": "v1.26.zip",
+      "sha256": "CC64B9177E8C7EED2D3960A3DD9B0AA061DDC4C43C9067AF1209E208E4A8144F",
+      "license": "MIT",
       "platforms": [
         "win-x64",
         "linux-x64",
@@ -393,13 +432,14 @@
       ]
     },
     {
-      "name": "Draco",
-      "version": "1.5.6",
-      "tag": "1.5.6",
-      "commit": "9f856abaafb4b39f1f013763ff061522e0261c6f",
-      "url": "https://github.com/google/draco/archive/refs/tags/1.5.6.zip",
-      "archiveName": "1.5.6.zip",
-      "sha256": "40ED351FBB4EE4E37D84197A3394567C2F6E4B444F693C1FD37C7BDFC961B0EA",
+      "name": "Imath",
+      "version": "3.2.3",
+      "tag": "v3.2.3",
+      "commit": "5f27ba266d3ea1565e912570c30b5eafc89959f1",
+      "url": "https://github.com/AcademySoftwareFoundation/Imath/archive/refs/tags/v3.2.3.zip",
+      "archiveName": "v3.2.3.zip",
+      "sha256": "A2B711354FC249A274B4813FCD7A4A55DED9401E65C642144F4F8D51710F2F06",
+      "license": "BSD-3-Clause",
       "platforms": [
         "win-x64",
         "linux-x64",

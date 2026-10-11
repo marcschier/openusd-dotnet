@@ -214,7 +214,7 @@ jobs:
         with:
           path: |
             native/install/linux-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
           # Saved by the linux-x64 job of .github/workflows/native.yml. That key
           # and path list must stay character-identical to this one: hashFiles
           # over a different file list yields a different digest, so any drift
@@ -255,7 +255,7 @@ jobs:
         shell: pwsh
         run: |
           $env:OPENUSD_ROOT = Join-Path $PWD 'native/install/linux-x64'
-          $env:VULKAN_SDK = Join-Path $PWD 'native/install/vulkan-sdk-1.4.321.0'
+          $env:VULKAN_SDK = Join-Path $PWD 'native/install/vulkan-sdk-1.4.363.0'
           Push-Location native
           try {
             cmake --preset linux-x64
