@@ -603,14 +603,18 @@ public sealed partial class MetalSilkGraphicsDevice
                         // to be 256-byte aligned, and a tightly packed chain
                         // satisfies neither past the base level.
                         uploadBuffers.EnsureCapacity(checked(uploadBuffers.Count + 1));
-                        MetalStagingResource upload;
                         int byteCount = checked((int)MetalMipCopyPlan.GetStagingByteSize(uploadPlans));
-                        using (IDisposable? reservation = GetCpuTextureBudgetForAllocation()?.Reserve((ulong)byteCount))
+                        MetalStagingResource upload = CreateTextureUpload(checked((ulong)byteCount));
+                        try
                         {
-                            byte[] staged = new byte[byteCount];
                             MetalMipCopyPlan.Stage(uploadPlans, uploadTexture.Width, uploadTexture.Height,
-                                uploadTexture.Format, command.Data!, staged);
-                            upload = CreateTextureUpload(staged);
+                                uploadTexture.Format, command.Data!,
+                                new Span<byte>((void*)upload.Buffer.Contents, byteCount));
+                        }
+                        catch
+                        {
+                            upload.Dispose();
+                            throw;
                         }
                         uploadBuffers.Add(upload);
                         MTLBlitCommandEncoder blitEncoder =
@@ -1408,16 +1412,30 @@ public sealed partial class MetalSilkGraphicsDevice
 
     private unsafe MetalStagingResource CreateTextureUpload(ReadOnlySpan<byte> source)
     {
-        IDisposable? reservation = ReserveStagingAllocation(checked((ulong)source.Length));
+        MetalStagingResource upload = CreateTextureUpload(checked((ulong)source.Length));
+        try
+        {
+            source.CopyTo(new Span<byte>((void*)upload.Buffer.Contents, source.Length));
+            return upload;
+        }
+        catch
+        {
+            upload.Dispose();
+            throw;
+        }
+    }
+
+    private MetalStagingResource CreateTextureUpload(ulong byteCount)
+    {
+        IDisposable? reservation = ReserveStagingAllocation(byteCount);
         MTLBuffer upload = default;
         try
         {
-            upload = _device.NewBuffer(checked((ulong)source.Length), MTLResourceOptions.ResourceStorageModeShared);
+            upload = _device.NewBuffer(byteCount, MTLResourceOptions.ResourceStorageModeShared);
             if (upload.NativePtr == 0)
             {
                 throw new InvalidOperationException("Could not create a Metal upload buffer.");
             }
-            source.CopyTo(new Span<byte>((void*)upload.Contents, source.Length));
             return new MetalStagingResource(upload, reservation);
         }
         catch

@@ -175,8 +175,8 @@ Failed upload preparation returns every charge acquired before submission; an un
 D3D12 readback retained for later teardown retains its charge too.
 
 The staging pool does not charge public `CreateBuffer` payloads or GPU texture storage
-again. It also does not cover CPU command-data copies, decoded images, Metal's managed
-repacking array, native memory-allocation alignment or driver overhead. Vulkan's internal
+again. It also does not cover CPU command-data copies, decoded images, native
+memory-allocation alignment or driver overhead. Vulkan's internal
 host-visible picking uniform buffers belong to this pool. Metal shared textures can be
 read directly without allocating a staging buffer and therefore incur no fictitious
 readback charge. Unsupported devices and late/replacement configuration fail explicitly.
@@ -189,8 +189,9 @@ Configure `SilkCpuTextureBudget` on a built-in device before constructing scene 
 or recording texture copies. Alternatively pass it with `SilkTextureResidencyOptions`
 to the renderer or scene-resource constructor. The shared pool admits native-decoder
 output arrays before allocation, decoded-image/mip-chain overlap, UDIM tiles and their
-atlas, row-flip scratch, fallback pixels, raw volume arrays, RHI texture-command copies
-and Metal's managed aligned transfer array. Native decode validates that its output
+atlas, row-flip scratch, fallback pixels, raw volume arrays and RHI texture-command copies.
+Metal repacks aligned mip rows directly into its admitted shared native staging buffer,
+without another managed transfer array or duplicate CPU charge. Native decode validates that its output
 dimensions still match the admitted destination. Raw volume reads require the declared
 length before allocating and reject an inconsistent stream.
 
