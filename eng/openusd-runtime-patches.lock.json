@@ -28,7 +28,7 @@
     {
       "id": "strict-compiler-portability",
       "path": "eng\\patches\\openusd\\strict-compiler-portability.patch",
-      "sha256": "2B76D9A29187F289FBAEAA719B7C152AF0AC94C355AD297C3E874C43635CB143",
+      "sha256": "D527C116B3AFDC4AABEC3ED103E24F48DDD15125449DCF4FEC1027CCDBE39213",
       "files": [
         {
           "path": "pxr\\base\\arch\\timing.cpp",
@@ -226,6 +226,31 @@
           "path": "pxr\\imaging\\plugin\\hioOiio\\CMakeLists.txt",
           "beforeSha256": "D5217AF0833A98D1AD329566428865F1B8F7C7E38D1A16538914D0B241D1765F",
           "afterSha256": "D0FA80BF1504E36A8E97680DC9F7431EBCC92702996BE69AE7EEF8FAB96B46EF"
+        },
+        {
+          "path": "pxr\\base\\ts\\spline.cpp",
+          "beforeSha256": "FDA7F1F3DFBC72E4CC58031D288D2325DA8B3DCED7DB0CF00E1042D0A166CFC8",
+          "afterSha256": "C1496A8BAA4C75BE0441104C2A91EDFF3E5F1A4F02F45C5C911214491DF81C92"
+        },
+        {
+          "path": "pxr\\usd\\usd\\namespaceEditor.cpp",
+          "beforeSha256": "449107F33E97CF92AD2230ECD5CECC7920C01AA105DAC39B550B8BD7F4C9B0CE",
+          "afterSha256": "008E4C3AF5C4D59B6E966180BB228006427E7DCF0B555E818C7FCFA5194ABB89"
+        },
+        {
+          "path": "pxr\\usd\\usdUtils\\dependencies.cpp",
+          "beforeSha256": "945E69645001A6BD5A2F25B88E759FD614C0E1ECF861AFDFA965962A88643FDE",
+          "afterSha256": "97BE6E87488FC2455A28E5C8C5052F34D00F5A7FF443FFCD934E64D1CCCBB9DB"
+        },
+        {
+          "path": "pxr\\imaging\\hd\\meshTopology.h",
+          "beforeSha256": "8BFE3377EEBDF818019EAFF790C65EA884C5EAB2F4548260AF4EA01BF2DA185D",
+          "afterSha256": "45694C28376CBD90909C48D061347002EB786206FC6EF7784D9C1C66B59201F3"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\backPlateAPIAdapter.h",
+          "beforeSha256": "521AD402C7CAECB9B0B2AB9089EFFA68F14CB1E2CAE7A6DBB9B6E4ACE7D255A7",
+          "afterSha256": "E2635BF0055E6DA38048B2819F5C6069F0A9FA4154E77EC36F2ABA92FD775C35"
         }
       ]
     }

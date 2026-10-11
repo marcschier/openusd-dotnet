@@ -1,3 +1,64 @@
+--- a/pxr/base/ts/spline.cpp
++++ b/pxr/base/ts/spline.cpp
+@@ -28,14 +28,6 @@
+ PXR_NAMESPACE_OPEN_SCOPE
+ 
+-namespace {
+-
+-// Constants for constructing GfInterval objects
+-constexpr bool OPEN = false;
+-constexpr bool CLOSED = true;
+-
+-} // annonymous namespace
+-
+ TF_REGISTRY_FUNCTION(TfType)
+ {
+     TfType::Define<TsSpline>();
+ }
+--- a/pxr/usd/usd/namespaceEditor.cpp
++++ b/pxr/usd/usd/namespaceEditor.cpp
+@@ -201,5 +201,5 @@
+     // Ignore logical operators.
+-    auto logic = [&xf](Op op, int argIndex) {};
++    auto logic = [](Op op, int argIndex) {};
+ 
+     // Collect the expression reference path.
+     auto mapRef =
+--- a/pxr/usd/usdUtils/dependencies.cpp
++++ b/pxr/usd/usdUtils/dependencies.cpp
+@@ -49,5 +49,6 @@
+     public UsdUtils_ReadOnlyLocalizationClient
+ {
+ public:
++    using UsdUtils_ReadOnlyLocalizationClient::PathShouldResolve;
+     UsdUtils_ComputeAllDependenciesClient(
+         const std::function<UsdUtilsProcessingFunc> &processingFunc)
+--- a/pxr/imaging/hd/meshTopology.h
++++ b/pxr/imaging/hd/meshTopology.h
+@@ -121,5 +121,5 @@
+     /// Returns the hash value of this topology to be used for instancing.
+     HD_API
+-    virtual ID ComputeHash() const;
++    ID ComputeHash() const override;
+ 
+     /// Equality check between two mesh topologies.
+--- a/pxr/usdImaging/usdImaging/backPlateAPIAdapter.h
++++ b/pxr/usdImaging/usdImaging/backPlateAPIAdapter.h
+@@ -27,5 +27,5 @@
+             UsdPrim const& prim,
+             TfToken const& subprim,
+             TfToken const& appliedInstanceName,
+-            const UsdImagingDataSourceStageGlobals &stageGlobals);
++            const UsdImagingDataSourceStageGlobals &stageGlobals) override;
+ 
+@@ -35,6 +35,6 @@
+             TfToken const& subprim,
+             TfToken const& appliedInstanceName,
+             TfTokenVector const& properties,
+-            UsdImagingPropertyInvalidationType invalidationType);
++            UsdImagingPropertyInvalidationType invalidationType) override;
+ };
+ 
 --- a/pxr/imaging/plugin/hioOiio/CMakeLists.txt
 +++ b/pxr/imaging/plugin/hioOiio/CMakeLists.txt
 @@ -1,5 +1,9 @@
