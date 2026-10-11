@@ -1462,6 +1462,11 @@ stable-read leases**, USDA/text-USD source layers, and concrete filesystem asset
 document is platform-neutral; verified source opening/import on other platforms is explicitly
 unsupported rather than relying on unproved read stability.
 
+The package-only NativeAOT scheduler-retirement probe retains the verified-review retirement
+checks on Windows. On Linux and macOS it executes required native-capability checks, ordinary
+source opening, the explicit verified-open refusal, and source-byte preservation. This is an
+executed unsupported-platform contract, not a verified-origin lease or a silently skipped probe.
+
 Start provenance before authoring:
 
 ```csharp

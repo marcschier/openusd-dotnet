@@ -102,7 +102,7 @@ remains a later phase and is out of scope for this package.
 | Executable samples and probes | — | — | ✅ | Development and evidence projects |
 | Runtime asset package projects | Carrier | — | — | Assets are RID-specific |
 
-Repository development uses SDK `10.0.301`, even when compiling `net8.0` and `net9.0` targets.
+Repository development uses SDK `10.0.401`, even when compiling `net8.0` and `net9.0` targets.
 
 ## Runtime identifiers
 

@@ -86,9 +86,9 @@ archive publication, not for the first time inside a tag release.
 
 ## Managed test runner
 
-With the pinned .NET SDK 10.0.301 global Microsoft.Testing.Platform runner and TUnit
-1.59, `dotnet test` can launch test DLLs through the wrong path, report zero executed
-tests, and exit with code 5. Build first and run the generated test applications
+Earlier .NET 10 Microsoft.Testing.Platform and TUnit combinations could launch test DLLs
+through the wrong path, report zero executed tests, and exit with code 5. The repository runner
+continues to require real execution counts. Build first and run the generated test applications
 directly instead:
 
 ```powershell
@@ -252,7 +252,7 @@ timings:
   -ArtifactsPath artifacts/performance
 ```
 
-The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
+The suite requires .NET SDK 10.0.401 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
 The curated Storm/hdSilk parity capture remains the render gate for the 25 scene set. In addition to
@@ -1946,6 +1946,10 @@ The parity scenes were measured on Windows with the staged Storm runtime from
 SwiftShader. Each gated scene must keep at least 0.18 adjusted-IoU separation
 between the correct capture and the closest vertical, horizontal, transpose, or
 camera-shift perturbation before it can use the 0.92 threshold.
+
+The dependency-upgrade candidate pins Mesa WGL 26.2.4. The historical measurement above is not
+relabeled: qualification must execute the existing scenes and unchanged thresholds with the new
+verified runtime.
 
 | Scene | Correct | Vertical | Horizontal | Transpose | Shift | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |

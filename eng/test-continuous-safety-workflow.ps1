@@ -56,7 +56,7 @@ $parityRunner = Get-Content (
     Join-Path $repoRoot 'eng/run-parity-capture.ps1') -Raw
 $solution = Get-Content (Join-Path $repoRoot 'OpenUsd.slnx') -Raw
 
-Assert-Contains $ciWorkflow 'dotnet-version: 10.0.301' 'Managed CI workflow'
+Assert-Contains $ciWorkflow 'dotnet-version: 10.0.401' 'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow '10.0.x' 'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
@@ -79,7 +79,7 @@ Assert-Contains $ciWorkflow 'OPENUSD_PARITY_CAPTURE_REQUIRED: ''1''' 'Managed CI
 Assert-Contains $ciWorkflow 'x11-utils xvfb zlib1g-dev' 'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4' `
+    'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2' `
     'Managed CI workflow'
 Assert-Contains `
     $parityRunner `
@@ -108,15 +108,15 @@ Assert-Contains `
 Assert-Contains $ciWorkflow '--managed-safety' 'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4' `
+    'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' `
     'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    'actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4' `
+    'actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0' `
     'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    'actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5' `
+    'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0' `
     'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow 'actions/checkout@v4' 'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow 'actions/setup-dotnet@v4' 'Managed CI workflow'
@@ -183,11 +183,11 @@ Assert-Contains `
     'Linux RHI workflow'
 Assert-Contains `
     $rhiLinuxWorkflow `
-    'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4' `
+    'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' `
     'Linux RHI workflow'
 Assert-Contains `
     $rhiLinuxWorkflow `
-    'actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4' `
+    'actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0' `
     'Linux RHI workflow'
 Assert-DoesNotContain `
     $rhiLinuxWorkflow `

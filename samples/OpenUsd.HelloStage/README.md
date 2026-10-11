@@ -11,7 +11,7 @@ managed facade and does not call the C ABI directly.
 
 ## Prerequisites and matching native runtime
 
-- .NET SDK 10.0.301.
+- .NET SDK 10.0.401.
 - A writable output location.
 - A platform NativeAOT toolchain only when publishing.
 - The Core native runtime matching the process. Prefer `OpenUsd.Runtime.Core`; explicit packages are

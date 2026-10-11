@@ -75,7 +75,7 @@ and render gates that run before releases. The details and caveats live in
 
 ## 🚀 Start from source
 
-The repository pins .NET SDK `10.0.301`. The managed baseline does not build OpenUSD itself:
+The repository pins .NET SDK `10.0.401`. The managed baseline does not build OpenUSD itself:
 
 ```shell
 git clone https://github.com/marcschier/openusd-dotnet.git
@@ -86,7 +86,7 @@ dotnet build OpenUsd.slnx -c Release
 dotnet build samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj -c Release -f net10.0
 ```
 
-`dotnet --version` must print `10.0.301`. If it is unavailable, use `./eng/install-dotnet.ps1` on
+`dotnet --version` must print `10.0.401`. If it is unavailable, use `./eng/install-dotnet.ps1` on
 Windows or `bash ./eng/install-dotnet.sh` on macOS/Linux. Managed projects compile without OpenUSD;
 executing `OpenUsd.HelloStage` requires the matching Core runtime.
 

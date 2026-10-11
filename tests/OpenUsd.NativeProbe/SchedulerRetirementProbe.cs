@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using OpenUsd.Editing;
+using OpenUsd.Interop;
 
 namespace OpenUsd.NativeProbe;
 
@@ -14,6 +15,48 @@ internal static class SchedulerRetirementProbe
         await File.WriteAllTextAsync(path, sourceText).ConfigureAwait(false);
         try
         {
+            if (!OperatingSystem.IsWindows())
+            {
+                if ((OpenUsdNativeRuntime.Capabilities & OpenUsdNativeContract.RequiredCapabilities) !=
+                    OpenUsdNativeContract.RequiredCapabilities)
+                {
+                    throw new InvalidOperationException(
+                        "The platform is missing the required native ABI capabilities.");
+                }
+                using (UsdStage ordinary = UsdStage.Open(path))
+                {
+                    if (ordinary.GetPrim("/World").GetDouble("weight") != 7)
+                    {
+                        throw new InvalidOperationException(
+                            "Ordinary source opening failed on the unsupported review platform.");
+                    }
+                }
+
+                OpenUsdNativeException? refusal = null;
+                try
+                {
+                    await using UsdStageScheduler unsupported = UsdStageScheduler.OpenForReview(path, 1, 2);
+                }
+                catch (OpenUsdNativeException error)
+                {
+                    refusal = error;
+                }
+                if (refusal is not { Status: OpenUsdNativeStatus.NativeError } ||
+                    !refusal.Message.Contains("requires Windows stable-read leases", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Verified source opening must explicitly refuse the unsupported platform.", refusal);
+                }
+                if (await File.ReadAllTextAsync(path).ConfigureAwait(false) != sourceText)
+                {
+                    throw new InvalidOperationException("Refused verified source opening changed the source file.");
+                }
+                Console.WriteLine(
+                    "VERIFIED_REVIEW_PLATFORM_REFUSAL_OK: native capabilities, ordinary Open, " +
+                    "explicit Windows-lease refusal, unchanged source.");
+                return;
+            }
+
             await using UsdStageScheduler scheduler = UsdStageScheduler.OpenForReview(path, 1, 2);
             UsdReviewSourceBinding binding = await scheduler.InvokeAsync(
                 static stage => stage.CaptureReviewSourceBinding()).ConfigureAwait(false);

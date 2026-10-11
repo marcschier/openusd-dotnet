@@ -54,7 +54,7 @@ public sealed partial class SilkHdrColorCapturePackageTests
             string[] sdkPaths = Path.IsPathFullyQualified(host) ? [Path.GetDirectoryName(host)!, "$host$"] : ["$host$"];
             await File.WriteAllTextAsync(Path.Combine(root, "global.json"), JsonSerializer.Serialize(new
             {
-                sdk = new { version = "10.0.301", rollForward = "disable", paths = sdkPaths }
+                sdk = new { version = "10.0.401", rollForward = "disable", paths = sdkPaths }
             }));
             await File.WriteAllTextAsync(Path.Combine(root, "CaptureConsumer.cs"), ConsumerSource);
             var start = new ProcessStartInfo(host)

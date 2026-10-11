@@ -83,7 +83,7 @@
       },
       {
         "name": "openusd:input:global.json:sha256",
-        "value": "60797e87793072fab653b0a8b38f7577d75a681747392c3909e9663b79d24a93"
+        "value": "b5c918f4ada3b34583ff5c442038f433712346c2ccd496b660e4f53560377559"
       },
       {
         "name": "openusd:input:version.json:sha256",
@@ -111,7 +111,7 @@
         },
         {
           "name": "openusd:unresolved",
-          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.301 but does not record the restored runtime pack version."
+          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.401 but does not record the restored runtime pack version."
         }
       ]
     },

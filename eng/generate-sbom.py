@@ -330,6 +330,7 @@ def refresh_vcpkg_components(cache_root: Path, output: Path) -> None:
 
 def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
     version = read_json("version.json")["version"]
+    sdk_version = read_json("global.json")["sdk"]["version"]
     openusd = read_json("eng/openusd.install.lock.json")
     cesium = read_json("eng/cesium.lock.json")
     physx = read_json("eng/physx.lock.json")
@@ -375,7 +376,7 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
                 "openusd:release-artifact": "Viewer self-contained bundle",
                 "openusd:unresolved": (
                     "Exact runtime pack patch is selected by the pinned .NET SDK during restore; "
-                    "the repository pins SDK 10.0.301 but does not record the restored runtime "
+                    f"the repository pins SDK {sdk_version} but does not record the restored runtime "
                     "pack version."
                 ),
             },
