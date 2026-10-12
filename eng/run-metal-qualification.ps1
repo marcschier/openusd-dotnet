@@ -81,8 +81,9 @@ try
             }
             $plugins = Join-Path $publish 'plugin/usd'
             New-Item -ItemType Directory -Path $plugins -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $repoRoot 'native/install/osx-arm64/lib/usd') `
+                -Destination (Join-Path $publish 'usd') -Recurse -Force
             foreach ($root in @(
-                (Join-Path $repoRoot 'native/install/osx-arm64/lib/usd'),
                 (Join-Path $repoRoot 'native/install/osx-arm64/plugin/usd'),
                 (Join-Path $repoRoot 'native/install/shim/osx-arm64/plugin/usd')))
             {
