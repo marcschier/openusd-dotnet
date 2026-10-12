@@ -209,6 +209,10 @@ internal sealed partial class ViewerRenderCoordinator : IAsyncDisposable
                 FormatThreadStatus());
             coordinator.PublishResult("Renderer initialization", initialization);
             ViewerStartupOptions.WriteStatus(
+                $"[DEBUG-openusd-workspace] requested={requestedBackend?.ToString() ?? "Auto"}; " +
+                $"active={initialization.ActiveBackend?.Name ?? "unavailable"}; " +
+                $"reason={FormatDiagnostics(initialization.Diagnostics)}");
+            ViewerStartupOptions.WriteStatus(
                 "Renderer coordinator: initialized backend returning " +
                 FormatThreadStatus());
             ViewerStartupOptions.WriteStatus(

@@ -95,6 +95,8 @@ extraction. Empty input leaves ordinary gates unchanged.
 
 The runner creates a new `RUNNER_TEMP` child, verifies actual checkout/native/shader identities and
 executes both normal managed and NativeAOT programs without loader overrides or zombie diagnostics.
+Staging applies the existing runtime-package hdSilk manifest transform for the flat native layout,
+verifies that `Root` and `LibraryPath` resolve the exact staged library, and records both hashes.
 It independently decodes the two captured PNGs and requires nonuniform viewport interiors with
 different pixels, repeated presentation and drained native session/page/ring allocations. Payload
 source and generated outputs are removed after execution; hashes, logs and pixel/lifetime evidence

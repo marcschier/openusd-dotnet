@@ -338,9 +338,43 @@ try
         $env:OPENUSD_SOAK_ARTIFACT = Join-Path $publishRoot 'shared-stage-soak.json'
         Set-OpenUsdSoakIdentityEnvironment $repoRoot $executable
 
-        $process = Start-Process $executable -PassThru `
-            -ArgumentList @('--shared-stage-soak', '--soak-seconds', $SoakSeconds,
-                '--soak-artifact', $env:OPENUSD_SOAK_ARTIFACT) `
+        $launchExecutable = $executable
+        $launchArguments = @('--shared-stage-soak', '--soak-seconds', $SoakSeconds,
+            '--soak-artifact', $env:OPENUSD_SOAK_ARTIFACT)
+        if ($IsLinux -and $env:OPENUSD_NATIVE_ABORT_TRACE -eq '1')
+        {
+            $debugger = Get-Command gdb -CommandType Application -ErrorAction SilentlyContinue
+            if ($null -eq $debugger)
+            {
+                throw 'Native abort text capture requires an already-installed gdb; no tools were installed.'
+            }
+            $launchExecutable = $debugger.Source
+            $launchArguments = @(
+                '--batch', '--return-child-result',
+                '-ex', '"set pagination off"',
+                '-ex', '"set print thread-events off"',
+                '-ex', '"set print frame-arguments none"',
+                '-ex', '"handle SIGPIPE nostop noprint pass"',
+                '-ex', '"handle SIGSEGV nostop noprint pass"',
+                '-ex', '"handle SIGFPE nostop noprint pass"',
+                '-ex', '"handle SIGILL nostop noprint pass"',
+                '-ex', '"handle SIG34 nostop noprint pass"',
+                '-ex', '"handle SIGABRT stop print pass"',
+                '-ex', '"run"',
+                '-ex', '"bt 32"',
+                '-ex', '"thread apply all bt 4"',
+                '-ex', '"continue"',
+                '-ex', (
+                    '"python c=gdb.parse_and_eval(''$_exitcode''); ' +
+                    's=gdb.parse_and_eval(''$_exitsignal''); ' +
+                    'e=int(c) if c.type.code != gdb.TYPE_CODE_VOID else ' +
+                    '128+int(s) if s.type.code != gdb.TYPE_CODE_VOID else 1; ' +
+                    'gdb.execute(''quit ''+str(e))"'),
+                '--args', $executable) + $launchArguments
+            Write-Host "[DEBUG-openusd-x11] Capturing bounded abort backtraces with $($debugger.Source)."
+        }
+        $process = Start-Process $launchExecutable -PassThru `
+            -ArgumentList $launchArguments `
             -RedirectStandardOutput $stdoutFile `
             -RedirectStandardError $stderrFile
         $deadlineSeconds = if ($SmokeSeconds -gt 0)
@@ -610,7 +644,14 @@ finally
 {
     if ($process -is [System.Diagnostics.Process] -and -not $process.HasExited)
     {
-        Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+        if ($SharedStageSoak -and $IsLinux -and $env:OPENUSD_NATIVE_ABORT_TRACE -eq '1')
+        {
+            $process.Kill($true)
+        }
+        else
+        {
+            Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+        }
         $process.WaitForExit()
     }
     $env:PATH = $oldPath

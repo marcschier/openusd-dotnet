@@ -1095,6 +1095,8 @@ jobs:
       - name: Execute mandatory isolated X11 shared-stage soak
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          OPENUSD_NATIVE_ABORT_TRACE: '1'
         run: >
           ./eng/run-platform-smoke.ps1
           -Platform linux-x11

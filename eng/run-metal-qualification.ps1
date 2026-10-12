@@ -92,6 +92,20 @@ try
                     Get-ChildItem -LiteralPath $root | Copy-Item -Destination $plugins -Recurse -Force
                 }
             }
+            $hdSilkMetadata = Join-Path $plugins 'hdSilk/resources/plugInfo.json'
+            & (Join-Path $repoRoot 'src/OpenUsd.Runtime.Packaging/Set-HdSilkPackageLibraryPath.ps1') `
+                -SourcePath $hdSilkMetadata -DestinationPath $hdSilkMetadata `
+                -LibraryPath '../../../libopenusd_hdsilk.dylib'
+            $descriptor = Get-Content -LiteralPath $hdSilkMetadata -Raw | ConvertFrom-Json
+            $pluginRoot = [IO.Path]::GetFullPath(
+                (Join-Path (Split-Path $hdSilkMetadata) $descriptor.Plugins[0].Root))
+            $pluginLibrary = [IO.Path]::GetFullPath(
+                (Join-Path $pluginRoot $descriptor.Plugins[0].LibraryPath))
+            if ($pluginLibrary -cne (Join-Path $publish 'libopenusd_hdsilk.dylib') -or
+                -not (Test-Path -LiteralPath $pluginLibrary -PathType Leaf))
+            {
+                throw 'The staged hdSilk manifest does not resolve the exact flat published native library.'
+            }
             $executable = Join-Path $publish 'OpenUsd.Metal.MainLoopQualification'
             $output = Join-Path $evidence $mode
             New-Item -ItemType Directory -Path $output -Force | Out-Null
@@ -101,6 +115,9 @@ try
                     ForEach-Object { @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash } })
             $execution.executableSha256 = (Get-FileHash -LiteralPath $executable).Hash
             $execution.libraries = $libraries
+            $execution.pluginMetadataSha256 = (Get-FileHash -LiteralPath $hdSilkMetadata).Hash
+            $execution.pluginLibraryPath = [IO.Path]::GetRelativePath($publish, $pluginLibrary)
+            $execution.pluginLibrarySha256 = (Get-FileHash -LiteralPath $pluginLibrary).Hash
             $start = [Diagnostics.ProcessStartInfo]::new($executable)
             $start.WorkingDirectory = $publish
             $start.UseShellExecute = $false
