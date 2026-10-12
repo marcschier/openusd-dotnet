@@ -1602,6 +1602,8 @@ internal sealed class ViewerSwitchingEvidenceSession
     private static string[] GetLoadedArtifactPaths(string root)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Bundled assemblies have no file location; the loaded native image remains in process.Modules.
+#if !OPENUSD_VIEWER_SINGLE_FILE
         foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             string location = assembly.Location;
@@ -1613,6 +1615,7 @@ internal sealed class ViewerSwitchingEvidenceSession
                 paths.Add(Path.GetFullPath(location));
             }
         }
+#endif
         using Process process = Process.GetCurrentProcess();
         foreach (ProcessModule module in process.Modules)
         {

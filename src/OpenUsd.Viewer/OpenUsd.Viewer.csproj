@@ -29,6 +29,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(PublishAot)' == 'true' or '$(PublishSingleFile)' == 'true'">
+    <DefineConstants>$(DefineConstants);OPENUSD_VIEWER_SINGLE_FILE</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="Assets\ReviewScene.usda" />
     <PackageReference Include="Avalonia" />

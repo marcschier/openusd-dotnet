@@ -86,8 +86,9 @@ Cocoa main loop, including retained camera changes and captured pixels. A consol
 or zombie diagnostics cannot establish that autorelease-pool drains are safe.
 
 The existing render workflow accepts an optional manual-only `metal-qualification-harness` input.
-It is canonical base64 containing at most 32 KiB of ZIP data and exactly two regular root files,
-`Program.cs` and `Harness.csproj`, with a combined expanded limit of 64 KiB. The project must match
+It is canonical base64 containing at most 32 KiB of ZIP data and exactly two regular root files:
+the temporary entry point and project allowlisted in `eng/decode-metal-qualification.py`, with a
+combined expanded limit of 64 KiB. The project must match
 the approved SDK/central-pinning template and reference only the existing Viewer project. Duplicate,
 extra, nested, absolute, traversing, encrypted, symlink, ZIP64 and oversized entries fail before
 extraction. Empty input leaves ordinary gates unchanged.
@@ -298,8 +299,10 @@ its SHA-256 to the install metadata, OpenUSD commit, ABI versions, and lock hash
 `eng/test-render-native-archive.ps1` proves the producer and consumer preserve
 safe subtrees, hashes, headers, Unix links, and executable modes.
 
-Package and render workflow dispatches can consume an artifact from a successful
+Package, render and Viewer distribution workflow dispatches can consume an artifact from a successful
 native workflow run by passing its numeric run ID as `native-pipeline-run-id`.
+Viewer dispatch validates that the producer is the successful native workflow in the same repository,
+with the exact checkout SHA and all three RID jobs successful, before downloading its archives.
 The workflow downloads `openusd-native-<rid>`, verifies the sidecar, and routes the
 local archive through `eng/prepare-workflow-native-input.ps1`. Existing external
 HTTPS archive URL plus SHA-256 inputs remain available after GitHub artifacts expire.
