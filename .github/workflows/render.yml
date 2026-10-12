@@ -66,6 +66,10 @@ on:
         description: Native artifact workflow run ID to consume instead of URL archives
         required: false
         type: string
+      metal-qualification-harness:
+        description: Optional bounded base64 ZIP with Program.cs and approved Harness.csproj for manual macOS qualification
+        required: false
+        type: string
   # Render was release-only until 0.6.0-alpha and hid stale shared-stage soak
   # ABI constants plus capability regressions until the release gate. Native
   # changes arrive through the verified archive producer instead of rebuilding
@@ -1591,6 +1595,15 @@ jobs:
           ./eng/native-install-metadata.ps1 `
             -Operation Verify `
             -Rid osx-arm64
+      - name: Execute optional normal managed and NativeAOT Metal main-loop qualification
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs['metal-qualification-harness'] != '' &&
+          steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          OPENUSD_METAL_QUALIFICATION_ZIP: ${{ inputs['metal-qualification-harness'] }}
+        run: ./eng/run-metal-qualification.ps1
       - id: cesium-vcpkg-cache
         if: steps.native-ready.outputs.ready == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1782,6 +1795,7 @@ jobs:
             artifacts/storm-native-child-macos
             artifacts/parity-capture/osx-arm64
             artifacts/metal-composition-probe/osx-arm64
+            artifacts/metal-main-loop-qualification
             artifacts/package-macos-storm-child
             artifacts/native-input/osx-arm64/source.json
             eng/shaders/out/render-macos

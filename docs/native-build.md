@@ -85,6 +85,20 @@ Qualification must exercise normal managed and NativeAOT public-presenter render
 Cocoa main loop, including retained camera changes and captured pixels. A console-only Metal probe
 or zombie diagnostics cannot establish that autorelease-pool drains are safe.
 
+The existing render workflow accepts an optional manual-only `metal-qualification-harness` input.
+It is canonical base64 containing at most 32 KiB of ZIP data and exactly two regular root files,
+`Program.cs` and `Harness.csproj`, with a combined expanded limit of 64 KiB. The project must match
+the approved SDK/central-pinning template and reference only the existing Viewer project. Duplicate,
+extra, nested, absolute, traversing, encrypted, symlink, ZIP64 and oversized entries fail before
+extraction. Empty input leaves ordinary gates unchanged.
+
+The runner creates a new `RUNNER_TEMP` child, verifies actual checkout/native/shader identities and
+executes both normal managed and NativeAOT programs without loader overrides or zombie diagnostics.
+It independently decodes the two captured PNGs and requires nonuniform viewport interiors with
+different pixels, repeated presentation and drained native session/page/ring allocations. Payload
+source and generated outputs are removed after execution; hashes, logs and pixel/lifetime evidence
+are retained in the render artifact. This is library-harness evidence, not an actual UaLens pass.
+
 ## Isolated storage-admission SDK profile
 
 The render-specification deferred-input profile uses the same OpenUSD commit and dependency set,
