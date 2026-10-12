@@ -72,6 +72,16 @@ Qualification must relocate the complete paired closure away from the build tree
 environment overrides, resolve every bundled ELF dependency and execute actual ordinary Open
 and rendering probes. Environment-assisted staged probes alone are not relocatability evidence.
 
+## SDK list-edit validation
+
+The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream
+quadratic pairwise scan. Item equality, the known-valid common prefix, first-duplicate diagnostics
+and subsequent schema-validation order are preserved for all supported list editor policies.
+The temporary membership set is released before schema validation and on failure. Property-query
+admission quotas, stored composition-error checks and their unchanged fixtures are unaffected.
+The source patch, installed public header and monolithic binary remain guarded by the runtime patch
+lock and SDK provenance; changing the patch invalidates the native install cache.
+
 ## Metal wrapper ownership
 
 SharpMetal 1.1.0's convenience factories wrap borrowed, autoreleased Objective-C objects without

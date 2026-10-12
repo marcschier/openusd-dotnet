@@ -4,6 +4,18 @@
   "accessorVersion": 1,
   "patches": [
     {
+      "id": "list-edit-validation",
+      "path": "eng\\patches\\openusd\\list-edit-validation.patch",
+      "sha256": "75D2FB74BCEBA0E6C60A08139DF982BAC59828CB3FDEBBE1EA209686F8011711",
+      "files": [
+        {
+          "path": "pxr\\usd\\sdf\\listEditor.h",
+          "beforeSha256": "7EEF72360953BF81ABE3643765A6263539C2E755EFDE96B57E72B15306FCB93B",
+          "afterSha256": "10AC680F1E7A94F4EB86720564BD5FE865979E5ED88DDB3880E8B85FDCF53076"
+        }
+      ]
+    },
+    {
       "id": "storm-aov-restoration",
       "path": "eng\\patches\\openusd\\storm-aov-restoration.patch",
       "sha256": "2B3BE96FAAD822BF0D29752020864F7E07FF7EDA2630EECF5325ECDE6EC20F9F",

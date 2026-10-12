@@ -1,0 +1,45 @@
+--- a/pxr/usd/sdf/listEditor.h
++++ b/pxr/usd/sdf/listEditor.h
+@@ -8,6 +8,7 @@
+ #define PXR_USD_SDF_LIST_EDITOR_H
+ 
+ #include "pxr/pxr.h"
++#include "pxr/base/tf/hash.h"
+ #include "pxr/base/tf/token.h"
+ #include "pxr/usd/sdf/allowed.h"
+ #include "pxr/usd/sdf/declareHandles.h"
+@@ -18,6 +19,7 @@
+ 
+ #include <functional>
+ #include <optional>
++#include <unordered_set>
+ 
+ PXR_NAMESPACE_OPEN_SCOPE
+ 
+@@ -211,8 +213,7 @@
+                                const value_vector_type& newValues) const
+     {
+         // Disallow duplicate items from being stored in the new list
+-        // editor values. This is O(n^2), but we expect the number of elements
+-        // stored to be small enough that this won't matter.
++        // editor values, using expected linear-time membership checks.
+         //
+         // XXX: 
+         // We assume that duplicate data items are never allowed to be
+@@ -234,10 +235,12 @@
+             ++oldValuesTail, ++newValuesTail;
+         }
+ 
+-        for (auto i = newValuesTail; i != newEnd; ++i) {
+-            // Have to check unmatched new items for dupes.
+-            for (auto j = newValues.begin(); j != i; ++j) {
+-                if (*i == *j) {
++        if (newValuesTail != newEnd) {
++            std::unordered_set<value_type, TfHash> seen;
++            seen.reserve(newValues.size());
++            seen.insert(newValues.begin(), newValuesTail);
++            for (auto i = newValuesTail; i != newEnd; ++i) {
++                if (!seen.insert(*i).second) {
+                     TF_CODING_ERROR("Duplicate item '%s' not allowed for "
+                                     "field '%s' on <%s>",
+                                     TfStringify(*i).c_str(),
