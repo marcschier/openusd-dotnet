@@ -53,6 +53,38 @@ OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings lock
 compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,
 examples, tutorials, tools, documentation, Embree, and RenderMan are excluded.
 
+## Linux runtime paths
+
+The Linux SDK build injects the locked `eng/cmake/LinuxRuntime.cmake` policy into every
+upstream CMake configuration. Its deferred target walk runs after USD's `_pxr_install_rpath`
+and dependency overrides, setting library RUNPATH to `$ORIGIN` and executable RUNPATH to
+`$ORIGIN/../lib` without appending build-machine link paths. Windows and macOS are unchanged.
+
+Before recording SDK binary provenance, `eng/normalize-linux-runtime.py` finalizes every
+installed dynamic ELF, including non-CMake Boost outputs. It rejects absolute dependency names,
+removes legacy RPATH and validates the exact relative RUNPATH. Linux builds require `patchelf`
+and `readelf`. Policy hashes are part of both native locks, so previous install caches cannot
+certify the corrected closure. Finalization precedes runtime/storage binary-hash generation;
+published artifacts must never be patched after that provenance is recorded.
+
+Core and Imaging place their shared libraries together in the consumer's native directory.
+Qualification must relocate the complete paired closure away from the build tree, remove loader
+environment overrides, resolve every bundled ELF dependency and execute actual ordinary Open
+and rendering probes. Environment-assisted staged probes alone are not relocatability evidence.
+
+## Metal wrapper ownership
+
+SharpMetal 1.1.0's convenience factories wrap borrowed, autoreleased Objective-C objects without
+retaining them, while wrapper `Dispose` sends `release`. The Metal backend acquires its own retain
+at construction for those descriptors, command buffers, encoders, URLs and `NSString` conversions
+that it later disposes. The existing submission owner releases its command buffer after completion;
+failure paths release the same owned reference. `new`/`alloc` resources and borrowed attachment
+getters retain their existing ownership.
+
+Qualification must exercise normal managed and NativeAOT public-presenter rendering through the
+Cocoa main loop, including retained camera changes and captured pixels. A console-only Metal probe
+or zombie diagnostics cannot establish that autorelease-pool drains are safe.
+
 ## Isolated storage-admission SDK profile
 
 The render-specification deferred-input profile uses the same OpenUSD commit and dependency set,

@@ -17,7 +17,7 @@ if (-not $IsLinux)
 $installHint = @(
     'sudo apt-get update && sudo apt-get install -y',
     'git tar python3 python-is-python3 build-essential cmake ninja-build',
-    'pkg-config libx11-dev libxt-dev'
+    'pkg-config patchelf binutils libx11-dev libxt-dev'
 ) -join ' '
 $requiredCommands = @(
     'git',
@@ -27,7 +27,9 @@ $requiredCommands = @(
     'ninja',
     'gcc',
     'g++',
-    'pkg-config'
+    'pkg-config',
+    'patchelf',
+    'readelf'
 )
 $missingCommands = @(
     foreach ($command in $requiredCommands)

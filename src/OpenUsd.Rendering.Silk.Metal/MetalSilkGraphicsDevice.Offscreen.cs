@@ -34,11 +34,11 @@ public sealed partial class MetalSilkGraphicsDevice
         try
         {
             reservation = ReserveTextureAllocation(descriptor);
-            nativeDescriptor = MTLTextureDescriptor.Texture2DDescriptor(
+            nativeDescriptor = MetalObjectOwnership.Retain(MTLTextureDescriptor.Texture2DDescriptor(
                 GetNativeFormat(descriptor.Format),
                 descriptor.Width,
                 descriptor.Height,
-                descriptor.MipLevelCount > 1);
+                descriptor.MipLevelCount > 1));
             nativeDescriptor.MipmapLevelCount = descriptor.MipLevelCount;
             nativeDescriptor.SampleCount = 1;
             nativeDescriptor.StorageMode = MTLStorageMode.Shared;
@@ -347,7 +347,7 @@ public sealed partial class MetalSilkGraphicsDevice
             dependentRegistered = true;
 
             nativeSubmissionAttempted = true;
-            commandBuffer = _queue.CommandBuffer();
+            commandBuffer = MetalObjectOwnership.Retain(_queue.CommandBuffer());
             if (commandBuffer.NativePtr == 0)
             {
                 throw new InvalidOperationException("Could not create a Metal command buffer.");
@@ -429,7 +429,7 @@ public sealed partial class MetalSilkGraphicsDevice
                                 command.PickCoordinate,
                                 pickReadback.RowPitch);
                             MTLBlitCommandEncoder pickBlitEncoder =
-                                commandBuffer.BlitCommandEncoder();
+                                MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
                             if (pickBlitEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -618,7 +618,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         }
                         uploadBuffers.Add(upload);
                         MTLBlitCommandEncoder blitEncoder =
-                            commandBuffer.BlitCommandEncoder();
+                            MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
                         if (blitEncoder.NativePtr == 0)
                         {
                             throw new InvalidOperationException(
@@ -652,7 +652,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         MetalStagingResource volumeUpload = CreateTextureUpload(command.Data!);
                         uploadBuffers.Add(volumeUpload);
                         MTLBlitCommandEncoder volumeEncoder =
-                            commandBuffer.BlitCommandEncoder();
+                            MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
                         if (volumeEncoder.NativePtr == 0)
                         {
                             throw new InvalidOperationException(
@@ -701,7 +701,7 @@ public sealed partial class MetalSilkGraphicsDevice
                                 alpha = command.Color.Alpha
                             };
                             MTLRenderCommandEncoder colorEncoder =
-                                commandBuffer.RenderCommandEncoder(colorDescriptor);
+                                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(colorDescriptor));
                             if (colorEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -728,7 +728,7 @@ public sealed partial class MetalSilkGraphicsDevice
                             attachment.StoreAction = MTLStoreAction.Store;
                             attachment.ClearDepth = command.Depth;
                             MTLRenderCommandEncoder depthEncoder =
-                                commandBuffer.RenderCommandEncoder(depthDescriptor);
+                                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(depthDescriptor));
                             if (depthEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -826,7 +826,7 @@ public sealed partial class MetalSilkGraphicsDevice
                             depth.StoreAction = MTLStoreAction.Store;
 
                             MTLRenderCommandEncoder encoder =
-                                commandBuffer.RenderCommandEncoder(renderDescriptor);
+                                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(renderDescriptor));
                             if (encoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -1017,7 +1017,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         }
                         if (computeEncoder.NativePtr == 0)
                         {
-                            computeEncoder = commandBuffer.ComputeCommandEncoder();
+                            computeEncoder = MetalObjectOwnership.Retain(commandBuffer.ComputeCommandEncoder());
                             if (computeEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -1297,7 +1297,7 @@ public sealed partial class MetalSilkGraphicsDevice
             color.StoreAction = MTLStoreAction.Store;
 
             MTLRenderCommandEncoder encoder =
-                commandBuffer.RenderCommandEncoder(renderDescriptor);
+                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(renderDescriptor));
             if (encoder.NativePtr == 0)
             {
                 throw new InvalidOperationException(
@@ -1361,7 +1361,7 @@ public sealed partial class MetalSilkGraphicsDevice
             color.StoreAction = MTLStoreAction.Store;
 
             MTLRenderCommandEncoder encoder =
-                commandBuffer.RenderCommandEncoder(renderDescriptor);
+                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(renderDescriptor));
             if (encoder.NativePtr == 0)
             {
                 throw new InvalidOperationException(

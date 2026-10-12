@@ -74,8 +74,9 @@ public sealed partial class MetalSilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
-            NSURL url = NSURL.FileURLWithPath(path);
+            NSString path = MetalObjectOwnership.Retain(NSString.String(
+                Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
+            NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
             try
             {
                 NSError error = default;
@@ -155,12 +156,12 @@ public sealed partial class MetalSilkGraphicsDevice
             {
                 throw new InvalidOperationException("Could not create a Metal readback buffer.");
             }
-            commandBuffer = _queue.CommandBuffer();
+            commandBuffer = MetalObjectOwnership.Retain(_queue.CommandBuffer());
             if (commandBuffer.NativePtr == 0)
             {
                 throw new InvalidOperationException("Could not create a Metal command buffer.");
             }
-            MTLBlitCommandEncoder encoder = commandBuffer.BlitCommandEncoder();
+            MTLBlitCommandEncoder encoder = MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
             if (encoder.NativePtr == 0)
             {
                 throw new InvalidOperationException(

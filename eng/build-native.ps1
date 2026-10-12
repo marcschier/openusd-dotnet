@@ -37,6 +37,23 @@ if ([string]::IsNullOrWhiteSpace($PatchLockPath))
 }
 $openUsdSource = Join-Path $sourceRoot $lock.openUsd.extractDirectory
 $buildScript = Join-Path $openUsdSource $lock.openUsd.buildScript
+$cmakeBuildArguments = '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
+if ($Rid -eq 'linux-x64')
+{
+    $linuxPolicy = Join-Path $PSScriptRoot 'cmake/LinuxRuntime.cmake'
+    $linuxFinalizer = Join-Path $PSScriptRoot 'normalize-linux-runtime.py'
+    foreach ($input in @(
+        @{ Path = $linuxPolicy; Hash = $lock.openUsd.linuxRuntimePolicy.cmakeSha256 },
+        @{ Path = $linuxFinalizer; Hash = $lock.openUsd.linuxRuntimePolicy.finalizerSha256 }))
+    {
+        if ((Get-FileHash -LiteralPath $input.Path).Hash -cne $input.Hash)
+        {
+            throw "The Linux runtime policy does not match the locked build inputs: $($input.Path)"
+        }
+    }
+    $cmakeBuildArguments += (
+        ' -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="' + $linuxPolicy.Replace('\', '/') + '"')
+}
 
 $arguments = @(
     $installRoot,
@@ -45,7 +62,7 @@ $arguments = @(
     '--inst', $installRoot,
     '--build-variant', 'release',
     '--generator', 'Ninja',
-    '--cmake-build-args=-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+    "--cmake-build-args=$cmakeBuildArguments",
     '--build-monolithic',
     '--no-tests',
     '--no-examples',
@@ -272,6 +289,15 @@ if ($LASTEXITCODE -ne 0)
         & cmake --build $sdkBuildRoot --config Release --parallel $Jobs -- -k 0
     }
     exit $buildFailure
+}
+
+if ($Rid -eq 'linux-x64')
+{
+    & python $linuxFinalizer --sdk-root $installRoot
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Linux ELF runtime finalization failed with exit code $LASTEXITCODE."
+    }
 }
 
 & (Join-Path $PSScriptRoot 'sdk-runtime-patch-metadata.ps1') -Operation Write `

@@ -111,8 +111,9 @@ public sealed partial class MetalSilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
-            NSURL url = NSURL.FileURLWithPath(path);
+            NSString path = MetalObjectOwnership.Retain(NSString.String(
+                Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
+            NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
             try
             {
                 NSError error = default;
@@ -261,7 +262,8 @@ public sealed partial class MetalSilkGraphicsDevice
     {
         if (descriptor.EntryPoint == "main")
         {
-            NSString source = System.Text.Encoding.UTF8.GetString(descriptor.Code.Span);
+            NSString source = MetalObjectOwnership.Retain(NSString.String(
+                System.Text.Encoding.UTF8.GetString(descriptor.Code.Span)));
             try
             {
                 NSError error = default;
@@ -280,8 +282,9 @@ public sealed partial class MetalSilkGraphicsDevice
             }
         }
 
-        NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
-        NSURL url = NSURL.FileURLWithPath(path);
+        NSString path = MetalObjectOwnership.Retain(NSString.String(
+            Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
+        NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
         try
         {
             NSError error = default;

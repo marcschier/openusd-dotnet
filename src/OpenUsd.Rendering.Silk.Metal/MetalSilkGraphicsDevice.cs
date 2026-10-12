@@ -158,14 +158,20 @@ public sealed partial class MetalSilkGraphicsDevice
     public void WaitIdle()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        MTLCommandBuffer commandBuffer = _queue.CommandBuffer();
+        MTLCommandBuffer commandBuffer = MetalObjectOwnership.Retain(_queue.CommandBuffer());
         if (commandBuffer.NativePtr == 0)
         {
             throw new InvalidOperationException("Could not create a Metal command buffer.");
         }
-        commandBuffer.Commit();
-        commandBuffer.WaitUntilCompleted();
-        commandBuffer.Dispose();
+        try
+        {
+            commandBuffer.Commit();
+            commandBuffer.WaitUntilCompleted();
+        }
+        finally
+        {
+            commandBuffer.Dispose();
+        }
     }
 
     /// <inheritdoc/>

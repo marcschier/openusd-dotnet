@@ -295,8 +295,9 @@ public sealed partial class MetalSilkGraphicsDevice
     private MTLLibrary LoadPinnedMetalLibrary()
     {
         SilkCheckedShaderAssets.ValidatePinnedMetalLibrary();
-        NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
-        NSURL url = NSURL.FileURLWithPath(path);
+        NSString path = MetalObjectOwnership.Retain(NSString.String(
+            Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
+        NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
         try
         {
             NSError error = default;

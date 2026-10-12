@@ -962,7 +962,7 @@ jobs:
           (env.NATIVE_SOURCE == 'build')
         run: >-
           sudo apt-get install -y
-          build-essential cmake ninja-build pkg-config libxt-dev
+          build-essential cmake ninja-build pkg-config libxt-dev patchelf binutils
       - name: Validate Linux native prerequisite preflight contract
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

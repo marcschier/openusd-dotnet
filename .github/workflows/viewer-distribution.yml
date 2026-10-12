@@ -158,7 +158,7 @@ jobs:
           clang
           libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libwayland-dev zlib1g-dev
-          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
+          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev patchelf binutils
       - name: Preflight Linux native build prerequisites
         if: >-
           matrix.rid == 'linux-x64' &&

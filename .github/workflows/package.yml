@@ -303,7 +303,7 @@ jobs:
           env.DEFER_ON_NATIVE_CACHE_MISS != 'true'
         run: >-
           sudo apt-get install -y
-          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
+          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev patchelf binutils
       - name: Validate Linux native prerequisite preflight contract
         if: matrix.rid == 'linux-x64'
         shell: pwsh
@@ -526,6 +526,43 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/run-silk-probe.ps1 -Rid ${{ matrix.rid }}
+      - name: Verify relocated Linux ELF closure and NativeAOT Open without loader overrides
+        if: runner.os == 'Linux' && steps.native-ready.outputs.ready == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import tempfile
+
+          repository = Path.cwd()
+          clean = Path(tempfile.mkdtemp(prefix="openusd-clean-", dir=os.environ["RUNNER_TEMP"]))
+          environment = {"PATH": "/usr/bin:/bin", "HOME": str(clean), "LANG": "C.UTF-8"}
+          try:
+              for root in (repository / "native/install/linux-x64/lib",
+                           repository / "native/install/shim/linux-x64/lib"):
+                  for library in root.iterdir():
+                      if library.is_file() and ".so" in library.name:
+                          shutil.copyfile(library, clean / library.name)
+              shutil.copytree(repository / "native/install/linux-x64/lib/usd", clean / "usd")
+              executable = clean / "OpenUsd.NativeProbe"
+              shutil.copy2(repository / "artifacts/native-probe/linux-x64/OpenUsd.NativeProbe", executable)
+              print("source=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
+              for library in sorted(clean.glob("*.so*")):
+                  result = subprocess.run(["ldd", str(library)], env=environment,
+                                          capture_output=True, text=True, check=True)
+                  print(library.name + " sha256=" + hashlib.sha256(library.read_bytes()).hexdigest())
+                  if "not found" in result.stdout:
+                      raise RuntimeError(library.name + "\n" + result.stdout)
+              subprocess.run([str(executable), "--properties", str(clean / "usd"),
+                              str(clean / "properties")], cwd=clean, env=environment, check=True)
+              print("CLEAN_LINUX_ELF_CLOSURE_AND_NATIVEAOT_OPEN_OK")
+          finally:
+              shutil.rmtree(clean)
+          PY
       - name: Build package tests
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
