@@ -82,6 +82,20 @@ This does not expand authored-source admission: the warehouse acquisition guard 
 source paths reaching 260 characters, unsafe names, traversal and reparse roots before SDK use.
 The guarded Windows-only helper remains inside the native SDK behind the project-owned C ABI.
 
+The current Windows stage-create investigation temporarily enables
+`OPENUSD_CREATE_LOCK_TRACE` in the existing native managed-coverage step. Only creation failures
+emit uniquely tagged own create/save/read-lease lifetime counts and at most four exact target/temp
+identity records. Paths must be absolute, physical and inside that run's native-test work directory;
+the temporary file must match the SDK's exact sibling naming contract. No lease flags are changed.
+
+The existing managed-test runner performs a post-failure Restart Manager observation for those
+validated file pairs, capped at two paths and 16 PID/creation-time entries per query. Query errors,
+excess entries or late results leave ownership unknown and preserve the original failing exit.
+The two-second checks are between synchronous API calls, not cancellation of an API call; the
+existing job deadline still applies. No Restart Manager code or background query runs in the
+native library, and no processes or locks are manipulated. Post-failure observations do not prove
+exclusive ownership at the failure instant. This temporary trace must be removed after diagnosis.
+
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream

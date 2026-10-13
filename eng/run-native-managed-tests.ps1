@@ -32,6 +32,176 @@ $physxShimRoot = Join-Path $repoRoot "native/install/shim/$Rid-physx"
 # scheduling around it, so suites can run concurrently again.
 $stageRoot = Join-Path $repoRoot "artifacts/native-managed-tests/$Rid-$PID"
 
+function Write-PostFailureLockObservation
+{
+    param([object[]]$Output, [string]$OwnedWorkRoot, [int]$OriginalExitCode)
+
+    Write-Host (
+        "[DEBUG-openusd-create-lock] post-failure-observation original-exit=$OriginalExitCode " +
+        'query-is-not-live-failure-owner-proof; synchronous-RM-APIs-are-not-cancellable')
+    try
+    {
+        $root = [IO.Path]::GetFullPath($OwnedWorkRoot)
+        $prefix = $root + [IO.Path]::DirectorySeparatorChar
+        $records = @($Output | ForEach-Object { [string]$_ } | Where-Object {
+            $_ -match '\[DEBUG-openusd-create-lock\] owned-target-hex=' } | Select-Object -First 4)
+        if ($records.Count -eq 0)
+        {
+            Write-Host '[DEBUG-openusd-create-lock] post-failure=no-validated-path-record owner=not-established'
+            return
+        }
+        if (-not ('OpenUsdPostFailureLockObservation' -as [type]))
+        {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+
+public static class OpenUsdPostFailureLockObservation
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UniqueProcess { public uint Pid; public FILETIME Created; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessInfo
+    {
+        public UniqueProcess Process;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string Application;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string Service;
+        public uint Type, Status, Session;
+        [MarshalAs(UnmanagedType.Bool)] public bool Restartable;
+    }
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RmStartSession(out uint session, uint flags, char[] key);
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RmRegisterResources(uint session, uint files, string[] names,
+        uint applications, IntPtr processes, uint services, IntPtr serviceNames);
+    [DllImport("rstrtmgr.dll")]
+    private static extern uint RmGetList(uint session, out uint needed, ref uint count,
+        [In, Out] ProcessInfo[] processes, ref uint reasons);
+    [DllImport("rstrtmgr.dll")]
+    private static extern uint RmEndSession(uint session);
+
+    public static string Query(string target, string temporary)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+        uint result = RmStartSession(out uint session, 0, new char[33]);
+        if (result != 0) return $"query=session-failed code={result} owner=not-established";
+        string report;
+        uint cleanup;
+        try
+        {
+            if (DateTime.UtcNow >= deadline)
+                report = "query=deadline-before-registration owner=not-established";
+            else
+            {
+                result = RmRegisterResources(session, 2, new[] { target, temporary }, 0, IntPtr.Zero, 0, IntPtr.Zero);
+                if (result != 0) report = $"query=registration-failed code={result} owner=not-established";
+                else if (DateTime.UtcNow >= deadline)
+                    report = "query=deadline-before-list owner=not-established";
+                else
+                {
+                    var entries = new ProcessInfo[16];
+                    uint count = 16, reasons = 0;
+                    result = RmGetList(session, out uint needed, ref count, entries, ref reasons);
+                    if (DateTime.UtcNow >= deadline)
+                        report = "query=deadline-after-list owner=not-established";
+                    else if (result != 0 || count > 16)
+                        report = $"query={(result == 234 ? "pid-cap-exceeded" : "list-failed")} " +
+                            $"code={result} owner=not-established";
+                    else
+                    {
+                        report = $"query=completed registered=2 observed-lockers={count} " +
+                            $"post-failure-utc={DateTime.UtcNow:O}";
+                        for (int index = 0; index < count; index++)
+                        {
+                            var process = entries[index].Process;
+                            ulong created = ((ulong)(uint)process.Created.dwHighDateTime << 32) |
+                                (uint)process.Created.dwLowDateTime;
+                            report += $"\n[DEBUG-openusd-create-lock] locker-pid={process.Pid} " +
+                                $"creation-filetime={created}";
+                        }
+                    }
+                }
+            }
+        }
+        finally { cleanup = RmEndSession(session); }
+        return report + (cleanup == 0 ? "" : $"\nquery=session-cleanup-failed code={cleanup}");
+    }
+}
+'@
+        }
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        foreach ($record in $records)
+        {
+            if ($watch.ElapsedMilliseconds -ge 2000)
+            {
+                Write-Host '[DEBUG-openusd-create-lock] post-failure=between-query-deadline owner=not-established'
+                break
+            }
+            $match = [regex]::Match($record,
+                '\[DEBUG-openusd-create-lock\] owned-target-hex=([0-9a-f]{2,2048}) owned-temp-hex=([0-9a-f]{2,2048})(?:\s|$)')
+            if (-not $match.Success) { throw 'Malformed bounded owned-file record.' }
+            $names = @()
+            foreach ($hex in @($match.Groups[1].Value, $match.Groups[2].Value))
+            {
+                $relative = [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromHexString($hex))
+                if ([IO.Path]::IsPathRooted($relative) -or $relative.Length -gt 1024 -or
+                    $relative -match '[:/<>|"*?\x00-\x1f]' -or
+                    @($relative.Split('\') | Where-Object { $_ -in @('', '.', '..') -or $_ -match '[ .]$' }).Count)
+                {
+                    throw 'Owned-file record contains an unsafe relative path.'
+                }
+                $file = [IO.Path]::GetFullPath((Join-Path $root $relative))
+                if (-not $file.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -or
+                    -not [string]::Equals($file, (Join-Path $root $relative), [StringComparison]::OrdinalIgnoreCase))
+                {
+                    throw 'Owned-file record escaped its exact native-test work root.'
+                }
+                $components = [Collections.Generic.List[string]]::new()
+                $components.Add($file)
+                $ancestor = [IO.Path]::GetDirectoryName($file)
+                for ($depth = 0; $depth -lt 32 -and $ancestor; $depth++)
+                {
+                    $components.Add($ancestor)
+                    $ancestor = [IO.Path]::GetDirectoryName($ancestor)
+                }
+                if ($ancestor) { throw 'Owned-file physical path depth exceeds its bound.' }
+                foreach ($component in $components)
+                {
+                    if (Test-Path -LiteralPath $component)
+                    {
+                        if ((Get-Item -LiteralPath $component -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+                        {
+                            throw 'Owned-file record traverses a reparse point.'
+                        }
+                    }
+                    elseif ($component -ne $file) { throw 'Owned-file parent is missing.' }
+                }
+                $names += $file
+            }
+            $stem = [IO.Path]::GetFileNameWithoutExtension($names[0])
+            if ([IO.Path]::GetDirectoryName($names[0]) -cne [IO.Path]::GetDirectoryName($names[1]) -or
+                [string]::IsNullOrEmpty([IO.Path]::GetExtension($names[0])) -or
+                $stem -match '^(?i:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$' -or
+                [IO.Path]::GetFileName($names[1]) -cnotmatch ('^' + [regex]::Escape($stem) + '\.[A-Za-z0-9]{6}$'))
+            {
+                throw 'Owned-file record does not identify the exact SDK sibling temporary file.'
+            }
+            Write-Host ('[DEBUG-openusd-create-lock] ' +
+                [OpenUsdPostFailureLockObservation]::Query($names[0], $names[1]))
+        }
+    }
+    catch
+    {
+        Write-Host ('[DEBUG-openusd-create-lock] post-failure=query-or-path-validation-failed ' +
+            "original-exit=$OriginalExitCode owner=not-established error-type=$($_.Exception.GetType().Name)")
+    }
+    finally
+    {
+        Write-Host "[DEBUG-openusd-create-lock] original-exit-preserved=$OriginalExitCode"
+    }
+}
+
 function Assert-Directory
 {
     param(
@@ -196,13 +366,29 @@ try
     $env:OPENUSD_TEST_WORK_ROOT = $workRoot
     $env:OPENUSD_REQUIRE_NATIVE_PHYSICS = if ($stagedPhysics) { '1' } else { '0' }
 
-    & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
-        -Project $Project `
-        -Framework $Framework `
-        -Configuration $Configuration `
-        -MinimumExpectedTests $MinimumExpectedTests `
-        -TestArguments $TestArguments 2>&1 | Tee-Object -Variable stageRunOutput
-    $stageExitCode = $LASTEXITCODE
+    $stageExitCode = $null
+    $stageRunOutput = @()
+    try
+    {
+        & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
+            -Project $Project `
+            -Framework $Framework `
+            -Configuration $Configuration `
+            -MinimumExpectedTests $MinimumExpectedTests `
+            -TestArguments $TestArguments 2>&1 | Tee-Object -Variable stageRunOutput
+        $stageExitCode = $LASTEXITCODE
+    }
+    finally
+    {
+        $originalExit = $LASTEXITCODE
+        if ($IsWindows -and $env:OPENUSD_CREATE_LOCK_TRACE -eq '1' -and
+            ($null -eq $stageExitCode -or $stageExitCode -ne 0))
+        {
+            Write-PostFailureLockObservation -Output $stageRunOutput -OwnedWorkRoot $workRoot `
+                -OriginalExitCode $originalExit
+        }
+        $global:LASTEXITCODE = $originalExit
+    }
 
     # A staged runtime that mass-skips is the most dangerous failure this script can produce: the
     # run reports "Passed" with zero failures while silently exercising almost nothing, and a green

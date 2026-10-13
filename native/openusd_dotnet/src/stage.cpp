@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/common.h"
+#include "internal/windows_create_lock_trace.h"
 
 #include "pxr/usd/sdf/listOp.h"
 #include "pxr/usd/usd/tokens.h"
@@ -114,7 +115,14 @@ openusd_status openusd_stage_create_new(
         return Guard(error, [&]()
         {
             TfErrorMark mark;
+#if defined(_WIN32)
+            OpenUsdCreateLockTrace::WriteScope createTrace(OpenUsdCreateLockTrace::Creates,
+                OpenUsdCreateLockTrace::CreateBegins, OpenUsdCreateLockTrace::CreateEnds);
+#endif
             UsdStageRefPtr value = UsdStage::CreateNew(path);
+#if defined(_WIN32)
+            const DWORD createReturnError = GetLastError();
+#endif
             if (!value || !mark.IsClean())
             {
                 std::string message = ConsumeErrors(mark);
@@ -123,6 +131,9 @@ openusd_status openusd_stage_create_new(
                     message = std::string("Could not create stage: ") + path;
                 }
                 WriteError(error, message);
+#if defined(_WIN32)
+                OpenUsdCreateLockTrace::Failure(path, message, createReturnError);
+#endif
                 return OPENUSD_STATUS_NATIVE_ERROR;
             }
 
@@ -638,6 +649,10 @@ openusd_status openusd_stage_save(
         return Guard(error, [&]()
         {
             TfErrorMark mark;
+#if defined(_WIN32)
+            OpenUsdCreateLockTrace::WriteScope saveTrace(OpenUsdCreateLockTrace::Saves,
+                OpenUsdCreateLockTrace::SaveBegins, OpenUsdCreateLockTrace::SaveEnds);
+#endif
             const bool saved = stage->value->GetRootLayer()->Save();
             if (!saved || !mark.IsClean())
             {

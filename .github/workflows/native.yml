@@ -333,6 +333,7 @@ jobs:
         # agreeing on bin\Release, as package.yml already does.
         env:
           Platform: ''
+          OPENUSD_CREATE_LOCK_TRACE: '1'
         run: |
           dotnet build `
             tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
