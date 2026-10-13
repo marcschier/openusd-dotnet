@@ -1882,8 +1882,10 @@ An element index never travels without a `SelectionElementKind` that says what i
 none: it reports `SelectionElementKind.Unspecified`, which preserves the index without claiming it
 is a face. `RenderPickResult.Hit` resolves an unspecified kind against the request's own target --
 the one place the answer is known -- and publishes the *normalized* item, so no consumer ever
-receives a bare index. A stated kind that disagrees with the target is still refused. A complete
-instancing chain is built with the named factories `SelectionItem.FromInstancerContext(primPath,
+receives a bare index. A stated kind that disagrees with the target is still refused.
+Element-kind validation uses explicit membership rather than reflection-backed enum metadata,
+so value-only hit and stale factories do not allocate when that runtime cache is reclaimed.
+A complete instancing chain is built with the named factories `SelectionItem.FromInstancerContext(primPath,
 instancerContext)` and `SelectionItem.FromInstancerContext(primPath, instancerContext, elementIndex,
 elementKind)`; they are factories rather than constructor overloads because a chain-shaped
 constructor and the four-parameter one are both applicable to a call passing `null` for the second

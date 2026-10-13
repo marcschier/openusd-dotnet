@@ -82,50 +82,6 @@ This does not expand authored-source admission: the warehouse acquisition guard 
 source paths reaching 260 characters, unsafe names, traversal and reparse roots before SDK use.
 The guarded Windows-only helper remains inside the native SDK behind the project-owned C ABI.
 
-The current Windows stage-create investigation temporarily enables
-`OPENUSD_CREATE_LOCK_TRACE` in the existing native managed-coverage step. Only creation failures
-emit uniquely tagged own create/save/read-lease lifetime counts and at most four exact target/temp
-identity records. Paths must be absolute, physical and inside that run's native-test work directory;
-the temporary file must match the SDK's exact sibling naming contract. No lease flags are changed.
-
-The existing managed-test runner performs a post-failure Restart Manager observation for those
-validated file pairs, capped at two paths and 16 PID/creation-time entries per query. Query errors,
-excess entries or late results leave ownership unknown and preserve the original failing exit.
-The two-second checks are between synchronous API calls, not cancellation of an API call; the
-existing job deadline still applies. No Restart Manager code or background query runs in the
-native library, and no processes or locks are manipulated. Post-failure observations do not prove
-exclusive ownership at the failure instant. This temporary trace must be removed after diagnosis.
-
-The temporary guarded `windows-sdk-write-failure-observation` patch enables
-`OPENUSD_SDK_WRITE_TRACE` only in that coverage step. It records an immediate failed `MoveFileExW`
-error and the original retry index, the existing first-attempt permission check's result and return
-state, and the SDK `fclose` outcome captured before a later rename failure. The captured states are
-not replaced by the wrapper's delayed error state. Original results, diagnostics, `errno`,
-`GetLastError`, permission-check order and the existing initial attempt plus 15 retries
-(16 attempts total, with the existing 20-ms waits) remain unchanged. A successful permission
-check's residual last-error state is not permission denial. Successful closes record only their
-actual zero result after a later failed rename; no error state is attributed to that success.
-There are no extra file, path-resolution, permission or locker queries, threads or API callbacks.
-Only bounded ASCII absolute paths beneath the owned native-test work root and the exact six-character
-SDK sibling name are logged as relative hex identities, capped at 64 records; other paths are not
-observed. This changes the guarded SDK patch/cache profile but not the public/private header inventory.
-The SDK observation patch, environment and documentation must be removed after root proof.
-
-The existing Windows CTest route also temporarily observes only the original
-`openusd_render_admission_targets-deleted` probe when explicitly enabled. It records at most 64
-tagged C ABI register/open/query/release phase events, actual mapped probe/core/SDK paths inside
-approved repository-owned roots, and a 64 KiB slice of that run's `LastTest.log`. Recorded SHA-256
-hashes are measured after CTest; they are distinguished from paths observed at registration.
-Missing module or stack observations remain unknown. Test fixtures and the original 120-second
-deadline, complete ordinary/PhysX variants and authoritative CTest exit are unchanged.
-
-Only an already-installed CDB whose actual help advertises non-suspending `-pvr` may sample the
-exact direct CTest child after PID, creation time, executable and case revalidation. At 60 seconds
-it requests only the main-thread 32-frame text stack and `qd` detach; a five-second helper expiry
-ends only the separately owned debugger, never the probe or CTest. Suspending `-pv` is not used,
-no debugger is installed, and absent, late or failed observations do not alter test results.
-These phase/runner diagnostics are temporary and must also be removed before final release.
-
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream
@@ -141,8 +97,8 @@ after binding that load's resolver context. Repeated resolution inside the load 
 scoped-cache contract. The added scope ends before the next input load, so it does not retain
 misses across later file creation, cwd changes or context changes between loads. Any enclosing
 caller-managed cache retains its existing SDK contract. Resolvers with their own caching retain
-their callbacks and balanced scope
-notifications. The context binder outlives the cache, and diagnostics retain their existing paths.
+their callbacks and balanced scope notifications. The context binder outlives the cache, and
+diagnostics retain their existing paths.
 
 ## Metal wrapper ownership
 

@@ -1,7 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/common.h"
-#include "internal/windows_admission_phase_trace.h"
 #include "internal/layer_edit.h"
 #include "internal/render_array_edit.h"
 #include "internal/property_composition.h"
@@ -1134,7 +1133,6 @@ openusd_status openusd_render_get_specification(
     openusd_render_specification_view* view,
     openusd_error_buffer* error)
 {
-    OpenUsdAdmissionTrace::Scope phase("render-query");
     // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
@@ -1213,18 +1211,14 @@ openusd_status openusd_render_get_specification(
             WriteError(error, "No valid UsdRenderSettings prim exists at " + path + ".");
             return OPENUSD_STATUS_NOT_FOUND;
         }
-        OpenUsdAdmissionTrace::Phase("render-query", "prim-admission-start");
         inputs.admission.Prim(settingsPrim, PrimRole::Settings);
-        OpenUsdAdmissionTrace::Phase("render-query", "prim-admission-done");
         const UsdRenderSettings settings(settingsPrim);
         if (!settings)
         {
             WriteError(error, "No valid UsdRenderSettings prim exists at " + path + ".");
             return OPENUSD_STATUS_NOT_FOUND;
         }
-        OpenUsdAdmissionTrace::Phase("render-query", "validate-inputs-start");
         ValidateInputs(settings, inputs);
-        OpenUsdAdmissionTrace::Phase("render-query", "validate-inputs-done");
         // A nonempty filter containing the empty namespace requests no renderer-specific
         // attribute values. We preserve their names separately, without fetching arbitrary Vt values.
         const UsdRenderSpec spec = UsdRenderComputeSpec(settings, TfTokenVector{TfToken()});
@@ -1263,6 +1257,5 @@ openusd_status openusd_render_get_specification(
 
 void openusd_render_specification_release(openusd_render_specification* specification)
 {
-    OpenUsdAdmissionTrace::Scope phase("render-release");
     delete specification;
 }

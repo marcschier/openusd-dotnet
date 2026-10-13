@@ -19,7 +19,6 @@ on:
       - 'eng/patches/openusd/list-edit-validation.patch'
       - 'eng/patches/openusd/windows-resource-path-consistency.patch'
       - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
-      - 'eng/patches/openusd/windows-sdk-write-failure-observation.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
@@ -61,7 +60,6 @@ on:
       - 'eng/patches/openusd/list-edit-validation.patch'
       - 'eng/patches/openusd/windows-resource-path-consistency.patch'
       - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
-      - 'eng/patches/openusd/windows-sdk-write-failure-observation.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
@@ -287,8 +285,6 @@ jobs:
       - name: Run Windows native CTest
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          OPENUSD_ADMISSION_CTEST_TRACE: '1'
         # This unfiltered run is the adapter-absent half of the MDL evidence:
         # the default configuration registers hdsilk_probe without
         # HDSILK_PROBE_MDL_ADAPTER, so it asserts the state every base package
@@ -315,8 +311,6 @@ jobs:
       - name: Build and test optional PhysX shim
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          OPENUSD_ADMISSION_CTEST_TRACE: '1'
         # The install prefix lives in eng/build-physx-shim.ps1 rather than here.
         # The physics preset configures the whole native project, so installing it
         # over native/install/shim/win-x64 would replace archive-verified core,
@@ -339,8 +333,6 @@ jobs:
         # agreeing on bin\Release, as package.yml already does.
         env:
           Platform: ''
-          OPENUSD_CREATE_LOCK_TRACE: '1'
-          OPENUSD_SDK_WRITE_TRACE: '1'
         run: |
           dotnet build `
             tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
@@ -365,26 +357,7 @@ jobs:
           ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
       - name: Run macOS native CTest
         if: runner.os == 'macOS'
-        run: |
-          mkdir -p artifacts/native-ctest
-          ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure &
-          ctest_pid=$!
-          (
-            while kill -0 "$ctest_pid" 2>/dev/null; do
-              probe_pid=$(ps -axo pid=,ppid=,command= | awk -v parent="$ctest_pid" \
-                '$2 == parent && /openusd_property_admission_probe.* layer-error-list$/ { print $1; exit }')
-              if [ -n "$probe_pid" ]; then
-                sample "$probe_pid" 1 10 -file artifacts/native-ctest/layer-error-list.sample.txt
-                exit
-              fi
-              sleep 1
-            done
-          ) &
-          sampler_pid=$!
-          status=0
-          wait "$ctest_pid" || status=$?
-          wait "$sampler_pid"
-          exit "$status"
+        run: ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
       - name: Execute staged NativeAOT probes
         shell: pwsh
         run: |
@@ -415,7 +388,6 @@ jobs:
           name: openusd-native-diagnostics-${{ matrix.rid }}
           path: |
             artifacts/native-ctest-xvfb.log
-            artifacts/native-ctest/
             artifacts/native-probe/${{ matrix.rid }}
             artifacts/silk-probe/${{ matrix.rid }}
           if-no-files-found: warn

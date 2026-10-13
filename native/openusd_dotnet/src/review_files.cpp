@@ -1,6 +1,5 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 #include "internal/review_document.h"
-#include "internal/windows_create_lock_trace.h"
 
 #include <filesystem>
 
@@ -20,26 +19,11 @@ struct FileReadScope::Impl
 #if defined(_WIN32)
     std::map<std::string, HANDLE> files;
 #endif
-    Impl() : previous(current)
-    {
-        current = this;
-#if defined(_WIN32)
-        OpenUsdCreateLockTrace::LeaseScopes.fetch_add(1, std::memory_order_relaxed);
-#endif
-    }
+    Impl() : previous(current) { current = this; }
     ~Impl()
     {
 #if defined(_WIN32)
-        for (const auto& file : files)
-        {
-            if (CloseHandle(file.second))
-            {
-                OpenUsdCreateLockTrace::Leases.fetch_sub(1, std::memory_order_relaxed);
-                OpenUsdCreateLockTrace::LeaseCloses.fetch_add(1, std::memory_order_relaxed);
-            }
-            else { OpenUsdCreateLockTrace::LeaseCloseErrors.fetch_add(1, std::memory_order_relaxed); }
-        }
-        OpenUsdCreateLockTrace::LeaseScopes.fetch_sub(1, std::memory_order_relaxed);
+        for (const auto& file : files) { CloseHandle(file.second); }
 #endif
         current = previous;
     }
@@ -67,8 +51,6 @@ void FileReadScope::Retain(const std::string& path)
     }
     try { scope->files.emplace(path, handle); }
     catch (...) { CloseHandle(handle); throw; }
-    OpenUsdCreateLockTrace::Leases.fetch_add(1, std::memory_order_relaxed);
-    OpenUsdCreateLockTrace::LeaseOpens.fetch_add(1, std::memory_order_relaxed);
 #else
     (void)path;
     throw std::runtime_error("Verified source opening currently requires Windows stable-read leases. The URD1 codec is platform-neutral; ordinary Open remains available on this platform.");

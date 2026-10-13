@@ -161,7 +161,7 @@ $workRoot = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$ru
 $environmentNames = @('PATH', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
-    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'OPENUSD_STATUS_FILE', 'OPENUSD_LOG_FILE') +
+    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT') +
     @($scenarios | ForEach-Object { $_.Flag })
 $previous = @{}
 foreach ($name in $environmentNames)
@@ -186,8 +186,6 @@ try
     foreach ($entry in $selected)
     {
         $logPath = Join-Path $evidenceRoot "$($entry.Id).log"
-        $env:OPENUSD_STATUS_FILE = Join-Path $evidenceRoot "$($entry.Id)-status.txt"
-        $env:OPENUSD_LOG_FILE = Join-Path $evidenceRoot "$($entry.Id)-trace.log"
         [Environment]::SetEnvironmentVariable($entry.Flag, '1', 'Process')
         $watch = [Diagnostics.Stopwatch]::StartNew()
         try
@@ -219,11 +217,6 @@ try
         }
         finally
         {
-            if (Test-Path -LiteralPath $env:OPENUSD_STATUS_FILE)
-            {
-                Write-Host "[DEBUG-openusd-workspace] scenario=$($entry.Id) initialization and frame status:"
-                Get-Content -LiteralPath $env:OPENUSD_STATUS_FILE -Tail 80 | Write-Host
-            }
             [Environment]::SetEnvironmentVariable($entry.Flag, '0', 'Process')
         }
     }

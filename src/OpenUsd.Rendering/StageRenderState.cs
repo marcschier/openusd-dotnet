@@ -788,7 +788,7 @@ public readonly record struct SelectionItem
         {
             throw new ArgumentOutOfRangeException(nameof(elementIndex));
         }
-        if (!Enum.IsDefined(elementKind))
+        if (!IsKnownElementKind(elementKind))
         {
             throw new ArgumentOutOfRangeException(nameof(elementKind));
         }
@@ -821,7 +821,7 @@ public readonly record struct SelectionItem
             }
         }
         if ((ElementKind == SelectionElementKind.None) != (ElementIndex is null) ||
-            !Enum.IsDefined(ElementKind))
+            !IsKnownElementKind(ElementKind))
         {
             throw new ArgumentException(
                 "The selection item contains invalid instance or element identity.",
@@ -834,6 +834,14 @@ public readonly record struct SelectionItem
                 "Selection instance and element indices must be non-negative.");
         }
     }
+
+    private static bool IsKnownElementKind(SelectionElementKind kind) =>
+        kind is
+            SelectionElementKind.None or
+            SelectionElementKind.Face or
+            SelectionElementKind.Edge or
+            SelectionElementKind.Point or
+            SelectionElementKind.Unspecified;
 }
 
 /// <summary>

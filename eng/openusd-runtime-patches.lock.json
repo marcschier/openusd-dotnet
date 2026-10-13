@@ -4,23 +4,6 @@
   "accessorVersion": 1,
   "patches": [
     {
-      "id": "windows-sdk-write-failure-observation",
-      "path": "eng\\patches\\openusd\\windows-sdk-write-failure-observation.patch",
-      "sha256": "030D23ECF68EB06818F9D7E6A0BF00390F8C59AB62FFB7A206404F22E437F868",
-      "files": [
-        {
-          "path": "pxr\\base\\tf\\atomicRenameUtil.cpp",
-          "beforeSha256": "6D59C76FD799ABEF512847A5662DA678A225E52643AD7A2687B55A0756ED0B14",
-          "afterSha256": "E884CD308B2ECAD9DC14914354581126462AB3270DC443B051A87F43DE968140"
-        },
-        {
-          "path": "pxr\\base\\tf\\safeOutputFile.cpp",
-          "beforeSha256": "25D683451A5E0EDC0F96F0A96B2E3BA211E484466191FB3841FDDD550FED5D18",
-          "afterSha256": "A186811CA9F38F542BD322BCFD68A34F92E797504A50C59332923C910598125D"
-        }
-      ]
-    },
-    {
       "id": "scoped-sublayer-resolution",
       "path": "eng\\patches\\openusd\\scoped-sublayer-resolution.patch",
       "sha256": "175C42ED22E0E9200698DB5FB51EEA25B56E6831B541F18A2F9877487D6F86BF",
