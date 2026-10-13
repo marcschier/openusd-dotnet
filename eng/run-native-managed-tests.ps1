@@ -111,14 +111,30 @@ public static class OpenUsdPostFailureLockObservation
                     else
                     {
                         report = $"query=completed registered=2 observed-lockers={count} " +
-                            $"post-failure-utc={DateTime.UtcNow:O}";
+                            $"post-failure-utc={DateTime.UtcNow:O} instantaneous-owner=not-established";
                         for (int index = 0; index < count; index++)
                         {
                             var process = entries[index].Process;
                             ulong created = ((ulong)(uint)process.Created.dwHighDateTime << 32) |
                                 (uint)process.Created.dwLowDateTime;
-                            report += $"\n[DEBUG-openusd-create-lock] locker-pid={process.Pid} " +
-                                $"creation-filetime={created}";
+                            try
+                            {
+                                using (var observed = System.Diagnostics.Process.GetProcessById(
+                                    checked((int)process.Pid)))
+                                {
+                                    if ((ulong)observed.StartTime.ToUniversalTime().ToFileTimeUtc() != created)
+                                    {
+                                        report += "\n[DEBUG-openusd-create-lock] pid-creation-mismatch owner=unknown";
+                                        continue;
+                                    }
+                                }
+                                report += $"\n[DEBUG-openusd-create-lock] locker-pid={process.Pid} " +
+                                    $"creation-filetime={created} creation-reverified=True";
+                            }
+                            catch (System.Exception)
+                            {
+                                report += "\n[DEBUG-openusd-create-lock] pid-creation-unavailable owner=unknown";
+                            }
                         }
                     }
                 }
@@ -186,6 +202,11 @@ public static class OpenUsdPostFailureLockObservation
                 [IO.Path]::GetFileName($names[1]) -cnotmatch ('^' + [regex]::Escape($stem) + '\.[A-Za-z0-9]{6}$'))
             {
                 throw 'Owned-file record does not identify the exact SDK sibling temporary file.'
+            }
+            if (-not (Test-Path -LiteralPath $names[1] -PathType Leaf))
+            {
+                Write-Host '[DEBUG-openusd-create-lock] post-failure=sibling-no-longer-present owner=unknown'
+                continue
             }
             Write-Host ('[DEBUG-openusd-create-lock] ' +
                 [OpenUsdPostFailureLockObservation]::Query($names[0], $names[1]))
@@ -367,7 +388,7 @@ try
     $env:OPENUSD_REQUIRE_NATIVE_PHYSICS = if ($stagedPhysics) { '1' } else { '0' }
 
     $stageExitCode = $null
-    $stageRunOutput = @()
+    $stageRunOutput = [Collections.Generic.List[object]]::new()
     try
     {
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
@@ -375,7 +396,10 @@ try
             -Framework $Framework `
             -Configuration $Configuration `
             -MinimumExpectedTests $MinimumExpectedTests `
-            -TestArguments $TestArguments 2>&1 | Tee-Object -Variable stageRunOutput
+            -TestArguments $TestArguments 2>&1 | ForEach-Object {
+                $stageRunOutput.Add($_)
+                $_
+            }
         $stageExitCode = $LASTEXITCODE
     }
     finally
@@ -384,7 +408,7 @@ try
         if ($IsWindows -and $env:OPENUSD_CREATE_LOCK_TRACE -eq '1' -and
             ($null -eq $stageExitCode -or $stageExitCode -ne 0))
         {
-            Write-PostFailureLockObservation -Output $stageRunOutput -OwnedWorkRoot $workRoot `
+            Write-PostFailureLockObservation -Output $stageRunOutput.ToArray() -OwnedWorkRoot $workRoot `
                 -OriginalExitCode $originalExit
         }
         $global:LASTEXITCODE = $originalExit
@@ -415,7 +439,7 @@ try
     {
         $totalTests = 0
         $skippedTests = 0
-        foreach ($line in @($stageRunOutput))
+        foreach ($line in $stageRunOutput)
         {
             $text = [string]$line
             if ($text -match '^\s*total:\s*(\d+)\s*$')

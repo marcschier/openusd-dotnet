@@ -285,6 +285,8 @@ jobs:
       - name: Run Windows native CTest
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          OPENUSD_ADMISSION_CTEST_TRACE: '1'
         # This unfiltered run is the adapter-absent half of the MDL evidence:
         # the default configuration registers hdsilk_probe without
         # HDSILK_PROBE_MDL_ADAPTER, so it asserts the state every base package
@@ -311,6 +313,8 @@ jobs:
       - name: Build and test optional PhysX shim
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          OPENUSD_ADMISSION_CTEST_TRACE: '1'
         # The install prefix lives in eng/build-physx-shim.ps1 rather than here.
         # The physics preset configures the whole native project, so installing it
         # over native/install/shim/win-x64 would replace archive-verified core,

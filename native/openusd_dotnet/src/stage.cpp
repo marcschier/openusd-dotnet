@@ -2,6 +2,7 @@
 
 #include "internal/common.h"
 #include "internal/windows_create_lock_trace.h"
+#include "internal/windows_admission_phase_trace.h"
 
 #include "pxr/usd/sdf/listOp.h"
 #include "pxr/usd/usd/tokens.h"
@@ -11,6 +12,7 @@ openusd_status openusd_stage_open(
     openusd_stage** stage,
     openusd_error_buffer* error)
 {
+    OpenUsdAdmissionTrace::Scope phase("stage-open");
     // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
@@ -163,6 +165,7 @@ openusd_status openusd_stage_retain(
 
 void openusd_stage_release(openusd_stage* stage)
 {
+    OpenUsdAdmissionTrace::Scope phase("stage-release");
     ReleaseStageReference(stage);
 }
 

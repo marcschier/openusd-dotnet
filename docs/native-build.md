@@ -96,6 +96,21 @@ existing job deadline still applies. No Restart Manager code or background query
 native library, and no processes or locks are manipulated. Post-failure observations do not prove
 exclusive ownership at the failure instant. This temporary trace must be removed after diagnosis.
 
+The existing Windows CTest route also temporarily observes only the original
+`openusd_render_admission_targets-deleted` probe when explicitly enabled. It records at most 64
+tagged C ABI register/open/query/release phase events, actual mapped probe/core/SDK paths inside
+approved repository-owned roots, and a 64 KiB slice of that run's `LastTest.log`. Recorded SHA-256
+hashes are measured after CTest; they are distinguished from paths observed at registration.
+Missing module or stack observations remain unknown. Test fixtures and the original 120-second
+deadline, complete ordinary/PhysX variants and authoritative CTest exit are unchanged.
+
+Only an already-installed CDB whose actual help advertises non-suspending `-pvr` may sample the
+exact direct CTest child after PID, creation time, executable and case revalidation. At 60 seconds
+it requests only the main-thread 32-frame text stack and `qd` detach; a five-second helper expiry
+ends only the separately owned debugger, never the probe or CTest. Suspending `-pv` is not used,
+no debugger is installed, and absent, late or failed observations do not alter test results.
+These phase/runner diagnostics are temporary and must also be removed before final release.
+
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream

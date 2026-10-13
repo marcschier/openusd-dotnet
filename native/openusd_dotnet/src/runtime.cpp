@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/common.h"
+#include "internal/windows_admission_phase_trace.h"
 
 namespace
 {
@@ -105,6 +106,10 @@ openusd_status openusd_register_plugins(
     size_t* plugin_count,
     openusd_error_buffer* error)
 {
+    OpenUsdAdmissionTrace::Scope phase("plugin-register");
+#if defined(_WIN32)
+    OpenUsdAdmissionTrace::Modules(reinterpret_cast<const void*>(&openusd_register_plugins));
+#endif
     // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
