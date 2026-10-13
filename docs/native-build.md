@@ -72,6 +72,16 @@ Qualification must relocate the complete paired closure away from the build tree
 environment overrides, resolve every bundled ELF dependency and execute actual ordinary Open
 and rendering probes. Environment-assisted staged probes alone are not relocatability evidence.
 
+## Windows bundled resource paths
+
+The SDK's Windows attribute queries use the same normalized extended-length path conversion as
+`ArchOpenFile`. Bundled schema files can therefore be resolved and opened consistently under the
+legacy host path policy without changing the registry or the application manifest. Logical paths
+used for diagnostics, network and reparse handling retain their existing representation.
+This does not expand authored-source admission: the warehouse acquisition guard still refuses
+source paths reaching 260 characters, unsafe names, traversal and reparse roots before SDK use.
+The guarded Windows-only helper remains inside the native SDK behind the project-owned C ABI.
+
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream
@@ -81,6 +91,14 @@ The temporary membership set is released before schema validation and on failure
 admission quotas, stored composition-error checks and their unchanged fixtures are unaffected.
 The source patch, installed public header and monolithic binary remain guarded by the runtime patch
 lock and SDK provenance; changing the patch invalidates the native install cache.
+
+Sublayer-change loading also opens an existing `ArResolverScopedCache` for each individual load
+after binding that load's resolver context. Repeated resolution inside the load follows the SDK's
+scoped-cache contract. The added scope ends before the next input load, so it does not retain
+misses across later file creation, cwd changes or context changes between loads. Any enclosing
+caller-managed cache retains its existing SDK contract. Resolvers with their own caching retain
+their callbacks and balanced scope
+notifications. The context binder outlives the cache, and diagnostics retain their existing paths.
 
 ## Metal wrapper ownership
 

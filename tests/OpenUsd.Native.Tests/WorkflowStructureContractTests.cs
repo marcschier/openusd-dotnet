@@ -83,7 +83,8 @@ public sealed class WorkflowStructureContractTests
             "pxr/imaging/hgiGL/scopedStateHolder.h",
             "pxr/usd/sdf/crateFile.h"
         ]);
-        await Assert.That(publicHeaders).Count().IsEqualTo(11);
+        await Assert.That(publicHeaders).Count().IsEqualTo(12);
+        await Assert.That(publicHeaders).Contains("pxr/base/arch/fileSystem.h");
         await Assert.That(publicHeaders).Contains("pxr/usd/sdf/listEditor.h");
         await Assert.That(publicHeaders).Contains("pxr/imaging/hd/meshTopology.h");
         await Assert.That(publicHeaders).Contains("pxr/usdImaging/usdImaging/backPlateAPIAdapter.h");

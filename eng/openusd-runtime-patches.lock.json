@@ -4,6 +4,40 @@
   "accessorVersion": 1,
   "patches": [
     {
+      "id": "scoped-sublayer-resolution",
+      "path": "eng\\patches\\openusd\\scoped-sublayer-resolution.patch",
+      "sha256": "175C42ED22E0E9200698DB5FB51EEA25B56E6831B541F18A2F9877487D6F86BF",
+      "files": [
+        {
+          "path": "pxr\\usd\\pcp\\changes.cpp",
+          "beforeSha256": "3ABF18D20F05CBB7337328D08F8073A2885360658A73996E865989D9DFE53769",
+          "afterSha256": "CC171EF5FF5575BE952E435C48843AB015121037B072651F4B2C7390FC90B04F"
+        }
+      ]
+    },
+    {
+      "id": "windows-resource-path-consistency",
+      "path": "eng\\patches\\openusd\\windows-resource-path-consistency.patch",
+      "sha256": "E7D6C46FE54A70934AB62B2F0A3500CDE558752AB6BF42AA159494ED253309B5",
+      "files": [
+        {
+          "path": "pxr\\base\\arch\\fileSystem.cpp",
+          "beforeSha256": "624C0F92F3C736DD99DF929E72DBB1E18F02C0798B4E859CB400A0F10500C4E5",
+          "afterSha256": "22890D1572965480D8FBF776CA4B8B4ED3EE36697ABC08D59C7EFE4EC8A26717"
+        },
+        {
+          "path": "pxr\\base\\arch\\fileSystem.h",
+          "beforeSha256": "C54EDA414C8F99AC4D62664C6A0222766ECE66824EF4F6A4E9AB3E9A2EC964D1",
+          "afterSha256": "03F961F4B0786156203DE0451320F317FC4813194DBDB5CD99A47BCE6D292BE0"
+        },
+        {
+          "path": "pxr\\base\\tf\\fileUtils.cpp",
+          "beforeSha256": "06D15BDEB098AC117FCE28B45E7112B19069C935E10AE412E7C8E09AB4768A2E",
+          "afterSha256": "3B8600A1BAE692D26314004566A43AEA785E3332078CB0B0C932389EE8B33F7F"
+        }
+      ]
+    },
+    {
       "id": "list-edit-validation",
       "path": "eng\\patches\\openusd\\list-edit-validation.patch",
       "sha256": "75D2FB74BCEBA0E6C60A08139DF982BAC59828CB3FDEBBE1EA209686F8011711",

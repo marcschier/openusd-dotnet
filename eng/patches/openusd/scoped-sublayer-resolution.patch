@@ -1,0 +1,26 @@
+--- a/pxr/usd/pcp/changes.cpp
++++ b/pxr/usd/pcp/changes.cpp
+@@ -21,6 +21,7 @@
+ #include "pxr/usd/sdf/fileFormat.h"
+ #include "pxr/usd/sdf/layer.h"
+ #include "pxr/usd/ar/resolverContextBinder.h"
++#include "pxr/usd/ar/resolverScopedCache.h"
+ #include "pxr/base/tf/envSetting.h"
+ #include "pxr/base/trace/trace.h"
+ 
+@@ -2290,6 +2291,7 @@
+     // Bind the resolver context.
+     const ArResolverContextBinder binder(
+         cache->GetLayerStackIdentifier().pathResolverContext);
++    const ArResolverScopedCache resolverCache;
+ 
+     // Load the layer.
+     SdfLayerRefPtr sublayer;
+@@ -2322,6 +2324,7 @@
+     // Bind the resolver context.
+     const ArResolverContextBinder binder(
+         cache->GetLayerStackIdentifier().pathResolverContext);
++    const ArResolverScopedCache resolverCache;
+ 
+     // Load the layer.
+     SdfLayerRefPtr sublayer;
