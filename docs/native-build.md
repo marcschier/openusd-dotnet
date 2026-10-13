@@ -96,6 +96,21 @@ existing job deadline still applies. No Restart Manager code or background query
 native library, and no processes or locks are manipulated. Post-failure observations do not prove
 exclusive ownership at the failure instant. This temporary trace must be removed after diagnosis.
 
+The temporary guarded `windows-sdk-write-failure-observation` patch enables
+`OPENUSD_SDK_WRITE_TRACE` only in that coverage step. It records an immediate failed `MoveFileExW`
+error and the original retry index, the existing first-attempt permission check's result and return
+state, and the SDK `fclose` outcome captured before a later rename failure. The captured states are
+not replaced by the wrapper's delayed error state. Original results, diagnostics, `errno`,
+`GetLastError`, permission-check order and the existing initial attempt plus 15 retries
+(16 attempts total, with the existing 20-ms waits) remain unchanged. A successful permission
+check's residual last-error state is not permission denial. Successful closes record only their
+actual zero result after a later failed rename; no error state is attributed to that success.
+There are no extra file, path-resolution, permission or locker queries, threads or API callbacks.
+Only bounded ASCII absolute paths beneath the owned native-test work root and the exact six-character
+SDK sibling name are logged as relative hex identities, capped at 64 records; other paths are not
+observed. This changes the guarded SDK patch/cache profile but not the public/private header inventory.
+The SDK observation patch, environment and documentation must be removed after root proof.
+
 The existing Windows CTest route also temporarily observes only the original
 `openusd_render_admission_targets-deleted` probe when explicitly enabled. It records at most 64
 tagged C ABI register/open/query/release phase events, actual mapped probe/core/SDK paths inside
