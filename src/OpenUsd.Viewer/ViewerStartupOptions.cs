@@ -1,9 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Diagnostics;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
 
@@ -12,8 +9,6 @@ namespace OpenUsd.Viewer;
 internal static class ViewerStartupOptions
 {
     private static readonly object StatusGate = new();
-    private static int _qualificationModuleObservations;
-    private static bool _qualificationObservationEnabled;
 
     internal static string? PluginPath { get; private set; }
 
@@ -270,9 +265,6 @@ internal static class ViewerStartupOptions
         PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
         StagePath = Environment.GetEnvironmentVariable("OPENUSD_STAGE_PATH");
         StatusFile = Environment.GetEnvironmentVariable("OPENUSD_STATUS_FILE");
-        _qualificationObservationEnabled = OperatingSystem.IsWindows() &&
-            Environment.GetEnvironmentVariable("OPENUSD_VIEWER_QUALIFICATION_OBSERVATION") == "1" &&
-            Assembly.GetEntryAssembly()?.GetName().Name == "OpenUsd.Viewer.Tests";
         LogFile = Environment.GetEnvironmentVariable("OPENUSD_LOG_FILE");
         SoakArtifactPath = Environment.GetEnvironmentVariable("OPENUSD_SOAK_ARTIFACT");
         SharedStageSoak = IsEnabled(
@@ -568,11 +560,6 @@ internal static class ViewerStartupOptions
 
     internal static void WriteStatus(string status)
     {
-        if (_qualificationObservationEnabled && OperatingSystem.IsWindows())
-        {
-            WriteQualificationStatus(status);
-            return;
-        }
         if (!string.IsNullOrWhiteSpace(StatusFile))
         {
             try
@@ -590,98 +577,6 @@ internal static class ViewerStartupOptions
             {
                 Trace.WriteLine($"Could not write viewer status: {exception.Message}");
             }
-        }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void WriteQualificationStatus(string status)
-    {
-        int systemError = Marshal.GetLastSystemError();
-        int pinvokeError = Marshal.GetLastPInvokeError();
-        try
-        {
-            if (string.IsNullOrWhiteSpace(StatusFile))
-            {
-                return;
-            }
-            lock (StatusGate)
-            {
-                string statusPath = StatusFile;
-                const int maximumBytes = 65536;
-                const string prefix = "[DEBUG-viewer-qualification] ";
-                if (File.Exists(statusPath) && new FileInfo(statusPath).Length >= maximumBytes)
-                {
-                    return;
-                }
-                string bounded = status.Length <= 512 ? status : status[..512] + " [truncated]";
-                string observation = string.Empty;
-                if (_qualificationModuleObservations < 2 &&
-                    (status.StartsWith("Renderer initialization:", StringComparison.Ordinal) ||
-                     status.StartsWith("Renderer frame rendered:", StringComparison.Ordinal)))
-                {
-                    _qualificationModuleObservations++;
-                    string? expectedHost = Environment.GetEnvironmentVariable("OPENUSD_VIEWER_QUALIFICATION_HOST");
-                    using Process owned = Process.GetCurrentProcess();
-                    DateTime created = owned.StartTime.ToUniversalTime();
-                    string? actualHost = owned.MainModule?.FileName;
-                    if (actualHost is null || expectedHost is null ||
-                        !actualHost.Equals(expectedHost, StringComparison.OrdinalIgnoreCase))
-                    {
-                        observation = prefix + "module=UNKNOWN; original-host-identity-unavailable";
-                    }
-                    else
-                    {
-                        ProcessModule? gl = owned.Modules.Cast<ProcessModule>().SingleOrDefault(
-                            module => module.ModuleName.Equals("opengl32.dll", StringComparison.OrdinalIgnoreCase));
-                        observation = owned.Id != Environment.ProcessId ||
-                            owned.StartTime.ToUniversalTime() != created ||
-                            owned.MainModule?.FileName is not { } recheckedHost ||
-                            !recheckedHost.Equals(expectedHost, StringComparison.OrdinalIgnoreCase)
-                                ? prefix + "module=UNKNOWN; original-host-identity-race"
-                                : prefix + $"pid={owned.Id}; createdUtc={created:O}; " +
-                                  $"host={Path.GetFileName(actualHost)}; requested={Renderer}; " +
-                                  (gl is null
-                                      ? "opengl=UNKNOWN"
-                                      : $"opengl={gl.FileName}; mappedBase=0x{gl.BaseAddress:X}; " +
-                                        $"mappedBytes={gl.ModuleMemorySize}; " +
-                                        "mapped-path-observation-only; no-memory-image-hash");
-                    }
-                }
-                string text = prefix + bounded + Environment.NewLine +
-                    (observation.Length == 0 ? string.Empty : observation + Environment.NewLine);
-                int written = File.Exists(statusPath) ? checked((int)new FileInfo(statusPath).Length) : 0;
-                int available = maximumBytes - written;
-                if (System.Text.Encoding.UTF8.GetByteCount(text) > available)
-                {
-                    text = prefix + "output-truncated; further-observations-UNKNOWN" + Environment.NewLine;
-                    if (System.Text.Encoding.UTF8.GetByteCount(text) > available)
-                    {
-                        return;
-                    }
-                }
-                File.AppendAllText(statusPath, text);
-            }
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            Trace.WriteLine("[DEBUG-viewer-qualification] module=UNKNOWN; observation-unavailable");
-        }
-        catch (InvalidOperationException)
-        {
-            Trace.WriteLine("[DEBUG-viewer-qualification] module=UNKNOWN; original-host-exited");
-        }
-        catch (IOException)
-        {
-            Trace.WriteLine("[DEBUG-viewer-qualification] module=UNKNOWN; observation-io-error");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            Trace.WriteLine("[DEBUG-viewer-qualification] module=UNKNOWN; observation-access-error");
-        }
-        finally
-        {
-            Marshal.SetLastSystemError(systemError);
-            Marshal.SetLastPInvokeError(pinvokeError);
         }
     }
 

@@ -19,7 +19,6 @@ on:
       - 'eng/patches/openusd/list-edit-validation.patch'
       - 'eng/patches/openusd/windows-resource-path-consistency.patch'
       - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
-      - 'eng/patches/openusd/windows-sdk-write-failure-observation.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
@@ -61,7 +60,6 @@ on:
       - 'eng/patches/openusd/list-edit-validation.patch'
       - 'eng/patches/openusd/windows-resource-path-consistency.patch'
       - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
-      - 'eng/patches/openusd/windows-sdk-write-failure-observation.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
@@ -335,7 +333,6 @@ jobs:
         # agreeing on bin\Release, as package.yml already does.
         env:
           Platform: ''
-          OPENUSD_SDK_WRITE_TRACE: '1'
         run: |
           dotnet build `
             tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `

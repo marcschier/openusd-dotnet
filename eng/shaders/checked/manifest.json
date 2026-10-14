@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "475b63fc739d191b181865d729e8d71425cd7e6672c6a5c1b3987601abf0331f"
+      "sha256": "7b949c21b35ea96f737f17a128f70e28a6888c9d3f5c5e8321be0623b3787bc9"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "6a9b9706120160d420180f958a746c3888bf553fa8eb5a0a31e524d03a1cac7e"
+      "sha256": "6061e68c1b99590dd1dd0c53eb3db02d1f0ec6ec7e31cd35e4e468a868c559ad"
     },
     {
       "path": ".github/workflows/shaders.yml",

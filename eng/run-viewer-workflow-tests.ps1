@@ -161,8 +161,7 @@ $workRoot = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$ru
 $environmentNames = @('PATH', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
-    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'OPENUSD_STATUS_FILE',
-    'OPENUSD_VIEWER_QUALIFICATION_HOST') +
+    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT') +
     @($scenarios | ForEach-Object { $_.Flag })
 $previous = @{}
 foreach ($name in $environmentNames)
@@ -187,11 +186,6 @@ try
     foreach ($entry in $selected)
     {
         $logPath = Join-Path $evidenceRoot "$($entry.Id).log"
-        if ($entry.Id -eq 'workspace' -and $env:OPENUSD_VIEWER_QUALIFICATION_OBSERVATION -eq '1')
-        {
-            $env:OPENUSD_STATUS_FILE = Join-Path $evidenceRoot 'workspace-initialization-observation.log'
-            $env:OPENUSD_VIEWER_QUALIFICATION_HOST = $dotnet
-        }
         [Environment]::SetEnvironmentVariable($entry.Flag, '1', 'Process')
         $watch = [Diagnostics.Stopwatch]::StartNew()
         try
@@ -224,8 +218,6 @@ try
         finally
         {
             [Environment]::SetEnvironmentVariable($entry.Flag, '0', 'Process')
-            [Environment]::SetEnvironmentVariable('OPENUSD_STATUS_FILE', $previous['OPENUSD_STATUS_FILE'], 'Process')
-            [Environment]::SetEnvironmentVariable('OPENUSD_VIEWER_QUALIFICATION_HOST', $previous['OPENUSD_VIEWER_QUALIFICATION_HOST'], 'Process')
         }
     }
     $sourcesAfter = @(Get-FileRecords @(Get-WorkflowSourcePaths))

@@ -82,23 +82,6 @@ This does not expand authored-source admission: the warehouse acquisition guard 
 source paths reaching 260 characters, unsafe names, traversal and reparse roots before SDK use.
 The guarded Windows-only helper remains inside the native SDK behind the project-owned C ABI.
 
-## Temporary Windows SDK failure observation
-
-The temporary `windows-sdk-write-failure-observation` patch is enabled only in the existing
-Windows PhysX managed-coverage step through `OPENUSD_SDK_WRITE_TRACE=1`. Its two CPP seams record
-the failed `MoveFileExW` attempt index and immediate Win32/errno values, the existing first
-permission check's Boolean result separately from residual last-error state, and the SDK-owned
-`fclose` result captured before a later rename failure. Permission true is success, and a zero
-close has no applicable error state. Initial attempt plus 15 retries remains exactly 16 attempts
-with unchanged 20-ms waits, order, share flags, leases, security guards and error behavior.
-Success makes no observer calls. No extra path/permission/locker queries, threads or tools run.
-Only validated owned-work-root six-character sibling names are emitted as relative hex identities,
-at most 64 records. Hex is encoding, not redaction; no account/root/environment or credential data
-is included. Synthetic source-lock 32 and destination-lock 5 controls validate the signal, not a
-hosted owner's identity. The sharing origin remains unknown until actual failure evidence supports
-a cause. This patch changes the exact SDK/cache/source-binary profile but no public/private headers;
-remove the patch, flag and temporary documentation before final clean qualification and release.
-
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream
