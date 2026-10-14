@@ -209,8 +209,8 @@ public sealed partial class MetalSilkGraphicsDevice
     internal void ReleaseDependentObject() => ReleaseDependentLifetime();
 
     private bool TryBeginDispose() => TryBeginLifetimeDispose(
-        "Cannot dispose the Metal device while buffers, textures, pipelines, " +
-        "pick readbacks, selection resources, submissions, or samplers are alive.");
+        "Cannot dispose the Metal device while buffers, textures, or submissions are alive; " +
+        "this also includes pipelines, pick readbacks, selection resources, and samplers.");
 }
 
 [SupportedOSPlatform("macos")]

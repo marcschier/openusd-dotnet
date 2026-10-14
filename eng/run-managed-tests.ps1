@@ -456,5 +456,5 @@ if ($failures.Count -gt 0)
     {
         Write-Error "[managed-tests] $failure" -ErrorAction Continue
     }
-    exit 1
+    throw "[managed-tests] $($failures.Count) test run(s) failed; later commands must not replace this verdict."
 }

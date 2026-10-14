@@ -123,6 +123,17 @@ jobs:
           ./eng/run-managed-tests.ps1 `
             -Project $projects `
             -Configuration Release
+      - name: Execute original Vulkan platform-partition evidence
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: ./eng/run-platform-conformance.ps1 -Partition Vulkan -Configuration Release
+      - name: Upload original Vulkan platform-partition evidence
+        if: always() && runner.os != 'macOS'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vulkan-platform-methods-${{ runner.os }}-${{ github.run_id }}
+          path: artifacts/platform-conformance
+          if-no-files-found: warn
       - name: Confirm macOS compile-only coverage
         if: runner.os == 'macOS'
         run: >

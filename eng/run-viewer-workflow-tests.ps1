@@ -13,6 +13,7 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$Configuration = 'Release',
     [switch]$SkipBuild,
+    [switch]$MesaWgl,
     [switch]$ListScenarios
 )
 
@@ -161,7 +162,11 @@ $workRoot = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$ru
 $environmentNames = @('PATH', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
-    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT') +
+    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'GALLIUM_DRIVER',
+    'MESA_GL_VERSION_OVERRIDE', 'MESA_GLSL_VERSION_OVERRIDE', 'LIBGL_ALWAYS_SOFTWARE',
+    'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
+    'OPENUSD_MESA_WGL_ARCHIVE_SHA256', 'OPENUSD_MESA_WGL_ARCHIVE_URL',
+    'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256') +
     @($scenarios | ForEach-Object { $_.Flag })
 $previous = @{}
 foreach ($name in $environmentNames)
@@ -169,8 +174,35 @@ foreach ($name in $environmentNames)
     $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $results = [Collections.Generic.List[object]]::new()
+$ownedMesaCopy = $null
 try
 {
+    if ($MesaWgl)
+    {
+        $mesa = & (Join-Path $PSScriptRoot 'prepare-mesa-wgl-test-runtime.ps1') `
+            -Root (Join-Path $evidenceRoot 'mesa-wgl-runtime') -Rid win-x64 -Activate -Preflight
+        $sourceOpenGl = Join-Path $mesa 'opengl32.dll'
+        $hostOpenGl = Join-Path $assemblyDirectory 'opengl32.dll'
+        $expectedOpenGl = (Get-FileHash -LiteralPath $sourceOpenGl -Algorithm SHA256).Hash
+        if (Test-Path -LiteralPath $hostOpenGl)
+        {
+            if ((Get-FileHash -LiteralPath $hostOpenGl -Algorithm SHA256).Hash -cne $expectedOpenGl)
+            {
+                throw 'The Viewer test host already contains an unrelated OpenGL library; do not replace it.'
+            }
+        }
+        else
+        {
+            Copy-Item -LiteralPath $sourceOpenGl -Destination $hostOpenGl
+            $ownedMesaCopy = $hostOpenGl
+        }
+        if ((Get-FileHash -LiteralPath $hostOpenGl -Algorithm SHA256).Hash -cne $expectedOpenGl)
+        {
+            throw 'The original Viewer test host Mesa library failed byte verification.'
+        }
+        Write-Host "[viewer-workflows] pinned-test-host-opengl32=$hostOpenGl sha256=$expectedOpenGl"
+        $binariesBefore = @(Get-FileRecords @(Get-WorkflowBinaryPaths))
+    }
     $env:PATH = "$(Join-Path $runtime 'bin');$(Join-Path $runtime 'lib');$env:PATH"
     $env:OPENUSD_VIEWER_TEST_NATIVE_ROOT = $runtime
     $env:OPENUSD_PLUGIN_PATH = Join-Path $runtime 'plugin\usd'
@@ -227,6 +259,21 @@ try
         ($binariesBefore | ConvertTo-Json -Depth 4 -Compress) -cne
         ($binariesAfter | ConvertTo-Json -Depth 4 -Compress))
     {
+        $beforeRecords = @($sourcesBefore + $binariesBefore | ForEach-Object { [pscustomobject]$_ })
+        $afterRecords = @($sourcesAfter + $binariesAfter | ForEach-Object { [pscustomobject]$_ })
+        $drift = @(Compare-Object -ReferenceObject $beforeRecords `
+            -DifferenceObject $afterRecords -Property path, sha256)
+        [ordered]@{
+            sourceBefore = $sourcesBefore
+            sourceAfter = $sourcesAfter
+            binariesBefore = $binariesBefore
+            binariesAfter = $binariesAfter
+        } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $evidenceRoot 'identity-snapshots.json')
+        $drift | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidenceRoot 'identity-drift.json')
+        foreach ($entry in $drift)
+        {
+            Write-Host "[viewer-workflows] identity-drift=$($entry.path) sha256=$($entry.sha256)"
+        }
         throw 'Source or executed runtime/test binaries changed during the Viewer workflows; rerun on stable inputs.'
     }
     $summary = [ordered]@{
@@ -267,6 +314,14 @@ finally
         {
             [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
         }
+    }
+    if ($null -ne $ownedMesaCopy)
+    {
+        if ((Get-FileHash -LiteralPath $ownedMesaCopy -Algorithm SHA256).Hash -cne $expectedOpenGl)
+        {
+            throw 'The owned Mesa host copy changed unexpectedly; leave it in place for diagnosis.'
+        }
+        Remove-Item -LiteralPath $ownedMesaCopy
     }
     if ([IO.Directory]::Exists($workRoot))
     {

@@ -381,7 +381,8 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
                         renderSubmission = SubmitTriangle(
                             _device,
                             _pipeline!,
-                            metalFrame);
+                            metalFrame,
+                            producerValue);
                     }
                     else
                     {
@@ -395,10 +396,10 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
                                 useCount,
                                 cancellationToken));
                         RecordRenderCallback(rendered);
+                        signalCommand = _device.SubmitEventSignal(
+                            metalFrame.SharedEvent,
+                            producerValue);
                     }
-                    signalCommand = _device.SubmitEventSignal(
-                        metalFrame.SharedEvent,
-                        producerValue);
                     metalFrame.SetSubmission(
                         new MetalCompositionSubmission(
                             renderSubmission,
@@ -644,7 +645,8 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
     private static ISilkGraphicsSubmission SubmitTriangle(
         MetalSilkGraphicsDevice device,
         MetalCompositionPipelineResources pipeline,
-        MetalCompositionPresentationFrame frame)
+        MetalCompositionPresentationFrame frame,
+        ulong producerValue)
     {
         using ISilkGraphicsCommandList commands = device.CreateCommandList();
         commands.ClearColor(frame.Color, new SilkColor(0, 0, 0, 1));
@@ -675,7 +677,7 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
             pipeline.FrameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
-        return device.Submit(commands);
+        return device.SubmitPresentation(commands, frame.SharedEvent, producerValue);
     }
 
     private (ulong Producer, ulong Consumer) ReserveTimelineValues()
@@ -1191,16 +1193,27 @@ internal sealed class MetalCompositionSubmission : IDisposable
         Exception? failure = null;
         try
         {
-            _signalCommand.WaitUntilCompleted();
-            if (_signalCommand.Status == MTLCommandBufferStatus.Error)
+            if (_signalCommand.NativePtr != 0)
             {
-                failure = new InvalidOperationException(
-                    "The Metal presentation signal submission failed.");
+                _signalCommand.WaitUntilCompleted();
+                if (_signalCommand.Status == MTLCommandBufferStatus.Error)
+                {
+                    failure = new InvalidOperationException(
+                        "The Metal presentation signal submission failed.");
+                }
             }
+            _renderSubmission?.Wait();
+        }
+        catch (Exception exception)
+        {
+            failure = failure is null ? exception : new AggregateException(failure, exception);
         }
         finally
         {
-            _signalCommand.Dispose();
+            if (_signalCommand.NativePtr != 0)
+            {
+                _signalCommand.Dispose();
+            }
             try
             {
                 _renderSubmission?.Dispose();

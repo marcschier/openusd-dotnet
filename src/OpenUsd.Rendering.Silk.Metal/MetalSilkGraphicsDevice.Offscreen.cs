@@ -234,7 +234,25 @@ public sealed partial class MetalSilkGraphicsDevice
     }
 
     /// <inheritdoc/>
-    public unsafe ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
+    public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) =>
+        SubmitCore(commandList, default, 0);
+
+    internal ISilkGraphicsSubmission SubmitPresentation(
+        ISilkGraphicsCommandList commandList,
+        MTLSharedEvent sharedEvent,
+        ulong signalValue)
+    {
+        if (sharedEvent.NativePtr == 0 || signalValue == 0)
+        {
+            throw new ArgumentException("A presentation submission requires a shared event and signal value.");
+        }
+        return SubmitCore(commandList, sharedEvent, signalValue);
+    }
+
+    private unsafe MetalSilkGraphicsSubmission SubmitCore(
+        ISilkGraphicsCommandList commandList,
+        MTLSharedEvent sharedEvent,
+        ulong signalValue)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commandList);
@@ -1103,6 +1121,10 @@ public sealed partial class MetalSilkGraphicsDevice
                     computeEncoder.Dispose();
                     computeEncoder = default;
                 }
+            }
+            if (sharedEvent.NativePtr != 0)
+            {
+                commandBuffer.EncodeSignalEvent(sharedEvent, signalValue);
             }
             commandBuffer.Commit();
             var completion = new MetalSubmissionCompletion(

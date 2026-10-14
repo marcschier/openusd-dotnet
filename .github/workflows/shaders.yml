@@ -303,10 +303,7 @@ jobs:
             -c Release `
             -f net10.0 `
             -p:OpenUsdRequireMetalShaderLibrary=true
-          ./eng/run-managed-tests.ps1 `
-            -Project $project `
-            -Framework net10.0 `
-            -Configuration Release
+          ./eng/run-platform-conformance.ps1 -Partition Metal -Configuration Release
           ./eng/run-managed-tests.ps1 `
             -Project $project `
             -Framework net10.0 `
@@ -363,4 +360,5 @@ jobs:
             eng/shaders/out/checked-payload/osx-arm64/mesh.symbols.txt
             eng/shaders/out/metal-package/*.nupkg
             eng/shaders/out/logs/macos
+            artifacts/platform-conformance
           if-no-files-found: warn

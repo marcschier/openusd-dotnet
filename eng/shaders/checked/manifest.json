@@ -31,7 +31,7 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "0a0695e5187e1992c1ee2c3ebd88708727c6dab3f76eea42d2f1c42677a1581d"
+      "sha256": "77c309e65aa967a178000586556623aa220f173f22b934b95d19e17df4bdd1ec"
     },
     {
       "path": ".github/workflows/native.yml",
@@ -51,11 +51,31 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "6061e68c1b99590dd1dd0c53eb3db02d1f0ec6ec7e31cd35e4e468a868c559ad"
+      "sha256": "d36a8aff0bef6451d9312cc00eb4b4cfe1d963640bbb2a63e4ecfa5dbfa6c853"
     },
     {
       "path": ".github/workflows/shaders.yml",
-      "sha256": "df5ff6a3582464e620de77794577f4bdfe2cb3356d4c9d8ce2a3130ee95d6965"
+      "sha256": "431976c39b4918df5279bb4232096ddf6c1c2b8592801cc3ea3854c414903984"
+    },
+    {
+      "path": "eng/mesa-wgl-test-runtime.lock.json",
+      "sha256": "3e28a3e7d0b9e4bc20133cb4af075c0f90187b20d8465245687c80f04bbac63c"
+    },
+    {
+      "path": "eng/prepare-mesa-wgl-test-runtime.ps1",
+      "sha256": "99b1dca80f59220bfad0943d7feabdbebb22c7267f96300fc5d9ed39ad5e329c"
+    },
+    {
+      "path": "eng/run-managed-tests.ps1",
+      "sha256": "c1e221c2d347b26334e884ebaad780fc0d4a14704055a214e2fbaa4a9b93f908"
+    },
+    {
+      "path": "eng/run-platform-conformance.ps1",
+      "sha256": "c05d596fec3aa09d136480db48c931288ee0fe4b7fde484a34605312fbbfc573"
+    },
+    {
+      "path": "eng/run-viewer-workflow-tests.ps1",
+      "sha256": "743320e3005e597cdd8928dd5897bfa252f7066299adc267416f34ea4c8c2bc1"
     },
     {
       "path": "eng/shaders/.gitignore",
@@ -107,7 +127,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "895f8533805897c1f75305fac14d7644969f7fdd8bd6da42e422b73cb2c820c2"
+      "sha256": "065275ae3da6e04537b8685eb6181bb6319afba8bbedebd32cda3108b6094345"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",

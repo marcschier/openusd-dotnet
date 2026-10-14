@@ -86,7 +86,7 @@ archive publication, not for the first time inside a tag release.
 
 ## Managed test runner
 
-Earlier .NET 10 Microsoft.Testing.Platform and TUnit combinations could launch test DLLs
+Earlier `dotnet test` integrations with .NET 10 Microsoft.Testing.Platform and TUnit could launch test DLLs
 through the wrong path, report zero executed tests, and exit with code 5. The repository runner
 continues to require real execution counts. Build first and run the generated test applications
 directly instead:
@@ -1649,6 +1649,19 @@ The default red-triangle producer binds the checked mesh instance, surface and f
 slots (6, 7 and 8) using the shared uniform writers and normal buffer admission/ownership.
 Its original timeline, pixel and lifecycle assertions remain required independently of the
 optional retained-render main-loop harness.
+The default producer encodes its timeline signal in the same Metal command buffer as the draw,
+so resource leases, draw completion and presentation readiness share one submission boundary.
+The test runner raises a terminating error after failed test executions: subsequent successful
+commands cannot overwrite an earlier failure in a calling workflow.
+`eng/run-platform-conformance.ps1` assigns nine explicitly named, unchanged Vulkan methods to
+both supported Windows/Linux CI routes and requires exact method-level pass/no-skip receipts.
+macOS excludes only those nine methods, leaving every other Metal and renderer-neutral method
+selected, including the original five-second IOSurface and submission-lifetime contracts.
+New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
+The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer
+test-host directory through `-MesaWgl`, not only the separate parity runtime's `bin` directory.
+An unrelated pre-existing host DLL is refused; a DLL copied by this invocation is removed after
+the unchanged workflows finish. Ordinary manual runs retain the host's system OpenGL by default.
 
 The shader workflow is also the required hosted Metal picking gate. After staging the real
 the combined library, it runs Metal conformance for nearest-depth overlap, physical top-left coordinate
