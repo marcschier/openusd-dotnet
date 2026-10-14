@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "43b98d1389b75c0f120ea9066c0a93f680e1745c1533f4beccaa454241980568"
+      "sha256": "6a9b9706120160d420180f958a746c3888bf553fa8eb5a0a31e524d03a1cac7e"
     },
     {
       "path": ".github/workflows/shaders.yml",

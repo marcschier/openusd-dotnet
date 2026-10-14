@@ -3,6 +3,7 @@
 """Temporary, single owned post-failure replay; never changes the original verdict."""
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -20,16 +21,19 @@ TEXT_LIMIT = 65536
 
 def process_identity(pid):
     stat = Path(f"/proc/{pid}/stat").read_text()
+    fields = stat.rsplit(")", 1)[1].split()
     return {
         "pid": pid,
-        "startTicks": stat.rsplit(")", 1)[1].split()[19],
+        "startTicks": fields[19],
+        "parentPid": int(fields[1]),
         "exe": os.path.realpath(f"/proc/{pid}/exe"),
     }
 
 
 def same_process(expected):
     try:
-        return process_identity(expected["pid"]) == expected
+        actual = process_identity(expected["pid"])
+        return all(actual[key] == expected[key] for key in ("pid", "startTicks", "exe"))
     except (FileNotFoundError, ProcessLookupError):
         return False
 
@@ -80,30 +84,40 @@ def supported_debugger(gdb):
     return True
 
 
-def fingerprint(executable):
+def fingerprint(executable, stage=None, plugin=None, working_directory=None):
     root = executable.parent
-    paths = [executable]
-    for relative in (
-        "OpenUsd.Viewer.App.dll", "OpenUsd.Viewer.dll",
-        "OpenUsd.Interop.dll", "OpenUsd.Rendering.dll", "OpenUsd.Rendering.Storm.dll",
-        "OpenUsd.Rendering.Silk.dll", "OpenUsd.Rendering.Silk.Vulkan.dll",
-        "libvulkan.so", "libvk_swiftshader.so",
-        "bin/libopenusd_dotnet.so", "bin/libopenusd_storm_child.so", "bin/libopenusd_hydra.so",
-        "lib/libopenusd_dotnet.so", "lib/libopenusd_storm_child.so", "lib/libopenusd_hydra.so",
-        "lib/libusd_ms.so", "plugin/usd/plugInfo.json", "usd/plugInfo.json",
-    ):
-        candidate = root / relative
-        if candidate.is_file():
-            paths.append(candidate)
-    shader_root = root / "OpenUsd.Rendering.Silk"
-    if shader_root.is_dir():
-        paths.extend(sorted(shader_root.glob("*.spv")))
-    records = []
-    for path in paths:
-        with path.open("rb") as stream:
-            digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        records.append({"path": str(path.relative_to(root)), "sha256": digest})
-    return records
+    groups = {"executable": [executable], "runtimeAndShaderContainers": [
+        path for path in root.iterdir() if path.is_file() and
+        (path.suffix in (".dll", ".so", ".spv", ".metallib") or ".so." in path.name)]}
+    for name, folder in (("nativeBin", root / "bin"), ("nativeLib", root / "lib"),
+                         ("builtinResources", root / "usd")):
+        groups[name] = sorted(path for path in folder.rglob("*") if path.is_file()) if folder.is_dir() else []
+    if stage is not None and plugin is not None:
+        stage = stage.resolve(strict=True)
+        plugin = plugin.resolve(strict=True)
+        if not stage.is_relative_to(root) or not plugin.is_relative_to(root):
+            raise ValueError("Only the owned staged input/resource paths may be observed.")
+        groups["stage"] = [stage]
+        groups["pluginResources"] = sorted(path for path in plugin.rglob("*") if path.is_file())
+    result = {}
+    for name, paths in groups.items():
+        digest = hashlib.sha256()
+        for path in sorted(paths):
+            if not path.resolve(strict=True).is_relative_to(root):
+                raise ValueError("An observed resource escaped the owned staged runtime.")
+            with path.open("rb") as stream:
+                value = hashlib.file_digest(stream, "sha256").hexdigest()
+            digest.update(str(path.relative_to(root)).encode() + b"\0" + value.encode() + b"\n")
+        result[name] = {"fileCount": len(paths), "pathAndContentSha256": digest.hexdigest()}
+    result["workingDirectory"] = str(working_directory.resolve(strict=True)) if working_directory else None
+    result["approvedDisplayContext"] = {
+        name: os.environ.get(name) for name in (
+            "DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "LIBGL_ALWAYS_SOFTWARE",
+            "MESA_GL_VERSION_OVERRIDE", "MESA_GLSL_VERSION_OVERRIDE",
+            "OPENUSD_RENDERER", "OPENUSD_VIEWER_PLATFORM",
+        )
+    }
+    return result
 
 
 def cleanup_owned(debugger, debugger_identity, inferior_record, executable):
@@ -111,7 +125,7 @@ def cleanup_owned(debugger, debugger_identity, inferior_record, executable):
     if inferior_record.is_file():
         try:
             candidate = json.loads(inferior_record.read_text())
-            if candidate["exe"] == str(executable):
+            if candidate["exe"] == str(executable) and candidate.get("parentPid") == debugger.pid:
                 candidates.append(candidate)
         except (ValueError, KeyError):
             print(PREFIX + '{"status":"UNKNOWN","reason":"owned-inferior-record-incomplete"}')
@@ -120,7 +134,7 @@ def cleanup_owned(debugger, debugger_identity, inferior_record, executable):
         try:
             for value in children.read_text().split():
                 candidate = process_identity(int(value))
-                if candidate["exe"] == str(executable):
+                if candidate["exe"] == str(executable) and candidate["parentPid"] == debugger.pid:
                     candidates.append(candidate)
         except (FileNotFoundError, ProcessLookupError):
             pass
@@ -132,8 +146,10 @@ def cleanup_owned(debugger, debugger_identity, inferior_record, executable):
     debugger.wait(timeout=2)
 
 
-def observe(executable, working_directory, output, original_exit, original_arguments):
-    result = {"status": "UNKNOWN", "originalExit": original_exit, "authoritativeVerdict": "original-failure"}
+def observe(executable, working_directory, output, original_exit, original_arguments,
+            original_inputs=None, stage=None, plugin=None):
+    result = {"status": "UNKNOWN", "originalExit": original_exit, "authoritativeVerdict": "original-failure",
+              "evidenceKind": "separate-owned-startup-REPLAY; not-original-abort-stack-or-qualified-execution"}
     if original_exit != 134:
         result["reason"] = "not-the-approved-original-abort"
         return result
@@ -145,6 +161,14 @@ def observe(executable, working_directory, output, original_exit, original_argum
     executable = executable.resolve(strict=True)
     if output.parent.resolve(strict=True) != executable.parent:
         raise ValueError("Only the owned original executable directory may contain replay evidence.")
+    if original_inputs is None or stage is None or plugin is None:
+        result["reason"] = "original-input-snapshot-missing"
+        return result
+    original = json.loads(original_inputs.read_text())
+    before = fingerprint(executable, stage, plugin, working_directory)
+    if original.get("status") != "recorded-original-inputs" or original.get("inputs") != before:
+        result["reason"] = "original-executable-runtime-plugin-shader-stage-or-display-context-mismatch"
+        return result
     gdb = shutil.which("gdb")
     if gdb is None:
         result["reason"] = "already-installed-gdb-absent"
@@ -154,7 +178,6 @@ def observe(executable, working_directory, output, original_exit, original_argum
         result["reason"] = "installed-gdb-help-or-command-support-unknown"
         return result
     output.mkdir(parents=True, exist_ok=False)
-    before = fingerprint(executable)
     inferior_record = output / "owned-inferior.json"
     fault_record = output / "owned-fault.json"
     script = output / "observer.gdb"
@@ -170,9 +193,10 @@ def observe(executable, working_directory, output, original_exit, original_argum
         "    if not pid: return\n"
         "    try:\n"
         "        stat = open('/proc/%d/stat' % pid).read()\n"
-        "        identity = {'pid': pid, 'startTicks': stat.rsplit(')', 1)[1].split()[19], "
+        "        fields = stat.rsplit(')', 1)[1].split()\n"
+        "        identity = {'pid': pid, 'startTicks': fields[19], 'parentPid': int(fields[1]), "
         "'exe': os.path.realpath('/proc/%d/exe' % pid)}\n"
-        f"        if identity['exe'] == {str(executable)!r}:\n"
+        f"        if identity['exe'] == {str(executable)!r} and identity['parentPid'] == os.getpid():\n"
         f"            with open({str(inferior_record) + '.tmp'!r}, 'w') as stream: json.dump(identity, stream)\n"
         f"            os.replace({str(inferior_record) + '.tmp'!r}, {str(inferior_record)!r})\n"
         "    except (FileNotFoundError, ProcessLookupError): pass\n"
@@ -206,6 +230,8 @@ def observe(executable, working_directory, output, original_exit, original_argum
     arguments = list(original_arguments)
     if "--soak-artifact" in arguments:
         arguments[arguments.index("--soak-artifact") + 1] = environment["OPENUSD_SOAK_ARTIFACT"]
+    started = time.monotonic()
+    result["replayStartedAtUtc"] = datetime.now(timezone.utc).isoformat()
     debugger = subprocess.Popen(
         [gdb, "--nx", "--batch", f"--command={script}", "--args", str(executable), *arguments],
         cwd=working_directory, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -214,11 +240,11 @@ def observe(executable, working_directory, output, original_exit, original_argum
     try:
         identity = process_identity(debugger.pid)
         result["ownedDebugger"] = identity
-        raw, truncated, expired = collect_bounded(debugger, 5)
+        raw, truncated, expired = collect_bounded(debugger, max(0, 5 - (time.monotonic() - started)))
         record = json.loads(fault_record.read_text()) if fault_record.is_file() and fault_record.stat().st_size <= TEXT_LIMIT else None
-        if record is not None and not record["truncated"] and record["signal"] == "SIGABRT" and inferior_record.is_file():
+        if not expired and not truncated and record is not None and not record["truncated"] and record["signal"] == "SIGABRT" and inferior_record.is_file():
             owned = json.loads(inferior_record.read_text())
-            if owned["exe"] == str(executable) and owned["pid"] == record["pid"]:
+            if owned["exe"] == str(executable) and owned["pid"] == record["pid"] and owned.get("parentPid") == debugger.pid:
                 result["ownedInferior"] = owned
                 (output / "faulting-thread.txt").write_text(record["frames"], encoding="utf-8")
                 result.update({"status": "observed-owned-replay-abort", "stackFramesMaximum": 32})
@@ -231,7 +257,7 @@ def observe(executable, working_directory, output, original_exit, original_argum
                 raise RuntimeError("Owned debugger identity could not be established.")
         else:
             cleanup_owned(debugger, identity, inferior_record, executable)
-    after = fingerprint(executable)
+    after = fingerprint(executable, stage, plugin, working_directory)
     result.update({"filesUnchanged": before == after, "fileHashes": before,
                    "identityMeaning": "owned replay PID/start/exe; file hashes are not mapped image hashes"})
     if before != after:
@@ -247,10 +273,22 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--original-exit", type=int, required=True)
     parser.add_argument("--arguments-json", required=True)
+    parser.add_argument("--original-inputs", type=Path)
+    parser.add_argument("--stage", type=Path)
+    parser.add_argument("--plugin", type=Path)
+    parser.add_argument("--record-original", action="store_true")
     args = parser.parse_args()
     try:
-        result = observe(args.executable, args.working_directory, args.output, args.original_exit,
-                         json.loads(args.arguments_json))
+        if args.record_original:
+            if args.stage is None or args.plugin is None or args.output.parent.resolve() != args.executable.parent.resolve():
+                raise ValueError("Original snapshot paths are not owned.")
+            result = {"status": "recorded-original-inputs",
+                      "recordedAtUtc": datetime.now(timezone.utc).isoformat(),
+                      "inputs": fingerprint(args.executable.resolve(strict=True), args.stage, args.plugin, args.working_directory)}
+            args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        else:
+            result = observe(args.executable, args.working_directory, args.output, args.original_exit,
+                             json.loads(args.arguments_json), args.original_inputs, args.stage, args.plugin)
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
         result = {"status": "UNKNOWN", "originalExit": args.original_exit,
                   "reason": "diagnostic-observation-error", "authoritativeVerdict": "original-failure"}
