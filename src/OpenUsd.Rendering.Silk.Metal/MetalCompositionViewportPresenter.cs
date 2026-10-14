@@ -664,6 +664,15 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
         commands.SetVertexBuffer(pipeline.Vertices);
         commands.SetIndexBuffer(pipeline.Indices);
         commands.SetUniformBuffer(0, 0, pipeline.Uniforms);
+        commands.SetStorageBuffer(0, 6, pipeline.Uniforms);
+        commands.SetStorageBuffer(
+            0,
+            SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+            pipeline.SurfaceConstants);
+        commands.SetStorageBuffer(
+            0,
+            SilkBindingLayoutDescriptor.FrameParametersBinding,
+            pipeline.FrameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
         return device.Submit(commands);
@@ -1222,7 +1231,9 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
         ISilkGraphicsPipeline pipeline,
         ISilkGraphicsBuffer vertices,
         ISilkGraphicsBuffer indices,
-        ISilkGraphicsBuffer uniforms)
+        ISilkGraphicsBuffer uniforms,
+        ISilkGraphicsBuffer surfaceConstants,
+        ISilkGraphicsBuffer frameConstants)
     {
         VertexShader = vertexShader;
         FragmentShader = fragmentShader;
@@ -1232,6 +1243,8 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
         Vertices = vertices;
         Indices = indices;
         Uniforms = uniforms;
+        SurfaceConstants = surfaceConstants;
+        FrameConstants = frameConstants;
     }
 
     internal ISilkGraphicsShaderModule VertexShader { get; }
@@ -1250,6 +1263,10 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
 
     internal ISilkGraphicsBuffer Uniforms { get; }
 
+    internal ISilkGraphicsBuffer SurfaceConstants { get; }
+
+    internal ISilkGraphicsBuffer FrameConstants { get; }
+
     internal static MetalCompositionPipelineResources Create(
         MetalSilkGraphicsDevice device)
     {
@@ -1261,6 +1278,8 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
         ISilkGraphicsBuffer? vertices = null;
         ISilkGraphicsBuffer? indices = null;
         ISilkGraphicsBuffer? uniforms = null;
+        ISilkGraphicsBuffer? surfaceConstants = null;
+        ISilkGraphicsBuffer? frameConstants = null;
         try
         {
             vertexShader = device.CreateShaderModule(
@@ -1289,12 +1308,18 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                 SilkBufferUsage.Index | SilkBufferUsage.Upload);
             uniforms = device.CreateBuffer(
                 80,
-                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+                SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+            surfaceConstants = device.CreateBuffer(
+                SilkSurfaceUniformWriter.ByteSize,
+                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+            frameConstants = device.CreateBuffer(
+                SilkFrameUniformWriter.ByteSize,
+                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             vertices.Write(MemoryMarshal.AsBytes<float>(
             [
-                -0.75f, -0.75f, 0, 1, 0, 0,
-                 0.00f,  0.75f, 0, 1, 0, 0,
-                 0.75f, -0.75f, 0, 1, 0, 0
+                -0.75f, -0.75f, 0, 0, 0, 1,
+                 0.00f,  0.75f, 0, 0, 0, 1,
+                 0.75f, -0.75f, 0, 0, 0, 1
             ]));
             indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
             uniforms.Write(MemoryMarshal.AsBytes<float>(
@@ -1303,8 +1328,22 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                 0, 1, 0, 0,
                 0, 0, 1, 0,
                 0, 0, 0, 1,
-                1, 1, 1, 1
+                1, 0, 0, 1
             ]));
+            Span<byte> surfaceValues = stackalloc byte[SilkSurfaceUniformWriter.ByteSize];
+            SilkSurfaceUniformWriter.Write(
+                null,
+                RenderHeadlight.Deterministic,
+                surfaceValues);
+            surfaceConstants.Write(surfaceValues);
+            var frameValues = new byte[SilkFrameUniformWriter.ByteSize];
+            SilkFrameUniformWriter.Write(
+                new SilkFrameState(),
+                frameValues,
+                flipClipSpaceY: false,
+                RenderOutputTransform.Identity,
+                exposure: 0);
+            frameConstants.Write(frameValues);
             return new MetalCompositionPipelineResources(
                 vertexShader,
                 fragmentShader,
@@ -1313,11 +1352,15 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                 pipeline,
                 vertices,
                 indices,
-                uniforms);
+                uniforms,
+                surfaceConstants,
+                frameConstants);
         }
         catch (Exception creationFailure)
         {
             Exception? cleanupFailure = null;
+            DisposeOptionalResource(frameConstants, ref cleanupFailure);
+            DisposeOptionalResource(surfaceConstants, ref cleanupFailure);
             DisposeOptionalResource(uniforms, ref cleanupFailure);
             DisposeOptionalResource(indices, ref cleanupFailure);
             DisposeOptionalResource(vertices, ref cleanupFailure);
@@ -1340,6 +1383,8 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
     public void Dispose()
     {
         Exception? failure = null;
+        DisposeResource(FrameConstants, ref failure);
+        DisposeResource(SurfaceConstants, ref failure);
         DisposeResource(Uniforms, ref failure);
         DisposeResource(Indices, ref failure);
         DisposeResource(Vertices, ref failure);

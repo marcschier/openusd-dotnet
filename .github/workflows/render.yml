@@ -316,6 +316,8 @@ jobs:
       - name: Execute native Viewer document and inspector workflows
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          OPENUSD_VIEWER_QUALIFICATION_OBSERVATION: '1'
         run: |
           .\eng\run-viewer-workflow-tests.ps1 `
             -NativeRuntimeRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\parity-capture\win-x64\runtime') `
@@ -1095,6 +1097,8 @@ jobs:
       - name: Execute mandatory isolated X11 shared-stage soak
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION: '1'
         run: >
           ./eng/run-platform-smoke.ps1
           -Platform linux-x11
@@ -1666,9 +1670,17 @@ jobs:
           (steps.macos-cgl.outputs.available == 'true')
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid osx-arm64 -Configuration Release
+      - name: Stage macOS hdSilk volume runtime
+        id: macos-volume-runtime
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
       - name: Execute actual IOSurface Metal composition tests
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          OPENUSD_PLUGIN_PATH: ${{ steps.macos-volume-runtime.outputs.plugin }}
+          DYLD_LIBRARY_PATH: ${{ steps.macos-volume-runtime.outputs.library-path }}
         run: |
           $conformanceProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
           $viewerProject = 'tests/OpenUsd.Viewer.Tests/OpenUsd.Viewer.Tests.csproj'
@@ -1708,15 +1720,6 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/MetalCompositionViewportLifecycleTests/*')
-      - name: Stage macOS hdSilk volume runtime
-        id: macos-volume-runtime
-        if: steps.native-ready.outputs.ready == 'true'
-        shell: pwsh
-        # Staged here rather than reusing the CGL parity capture's runtime, because that
-        # capture runs only when resolve-macos-cgl-capability.ps1 proves hosted CGL works.
-        # The Metal volume gates do not touch OpenGL, so binding them to that capability
-        # would make a Metal pixel gate vanish whenever hosted CGL regressed.
-        run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
       - name: Execute macOS sampled OpenVDB volume conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

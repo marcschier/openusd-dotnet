@@ -1643,6 +1643,25 @@ switches in one Avalonia process:
 ./eng/run-storm-native-child-macos.ps1 -SwitchCount 100 -SurvivalSeconds 90 -NativeSource build
 ```
 
+The CGL-independent hdSilk runtime is staged before the Metal composition and MaterialX checks,
+with plugin metadata and its resolved native library hashes recorded in `runtime.json`.
+The default red-triangle producer binds the checked mesh instance, surface and frame storage
+slots (6, 7 and 8) using the shared uniform writers and normal buffer admission/ownership.
+Its original timeline, pixel and lifecycle assertions remain required independently of the
+optional retained-render main-loop harness.
+
+The temporary qualification observations are not release evidence. The Windows workspace
+route records bounded existing initialization/fallback/first-frame status and the exact
+owned host's OpenGL mapped path, without copying a Mesa DLL or changing the original test.
+After an original Linux X11 Viewer exit 134, a single separately owned GDB replay may capture
+only the SIGABRT faulting thread (32 frames, no arguments/locals, 64 KiB text, five-second
+execution ceiling). The installed debugger must advertise the required options and commands;
+absence, unsupported commands, races and diagnostic errors remain `UNKNOWN`. The original
+failure, 90-second soak, and all test deadlines remain authoritative. No dumps, installations,
+all-thread inspection or replay loop are permitted. The uniquely tagged
+`DEBUG-viewer-qualification` and `DEBUG-viewer-linux-abort` code and route flags must be removed
+before final clean qualification.
+
 The shader workflow is also the required hosted Metal picking gate. After staging the real
 the combined library, it runs Metal conformance for nearest-depth overlap, physical top-left coordinate
 mapping, token-zero miss, stale resize and simulated command-failure generation, nullable hit

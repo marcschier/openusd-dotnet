@@ -603,8 +603,43 @@ try
 }
 catch
 {
+    $originalFailure = $_
+    $originalNativeExit = $LASTEXITCODE
     Write-ViewerDiagnostics
-    throw
+    try
+    {
+        if ($IsLinux -and $SharedStageSoak -and
+            $env:OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION -eq '1' -and
+            $process -is [Diagnostics.Process] -and $process.HasExited -and $process.ExitCode -eq 134)
+        {
+            $originalExit = $process.ExitCode
+            $observerPython = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($null -eq $observerPython)
+            {
+                Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; existing-python-absent; original-exit=134'
+            }
+            else
+            {
+                & $observerPython.Source (Join-Path $PSScriptRoot 'observe-viewer-linux-abort.py') `
+                    --executable $executable --working-directory $repoRoot `
+                    --output (Join-Path $publishRoot 'owned-abort-observation') `
+                    --original-exit $originalExit `
+                    --arguments-json (@('--shared-stage-soak', '--soak-seconds', [string]$SoakSeconds,
+                        '--soak-artifact', $env:OPENUSD_SOAK_ARTIFACT) | ConvertTo-Json -Compress)
+                if ($LASTEXITCODE -ne 0)
+                {
+                    Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; diagnostic-helper-error; original-exit=134'
+                }
+            }
+        }
+    }
+    catch [Management.Automation.RuntimeException]
+    {
+        Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; diagnostic-invocation-error; original-exit=134'
+    }
+    $global:LASTEXITCODE = $originalNativeExit
+    throw $originalFailure
 }
 finally
 {
