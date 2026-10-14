@@ -4054,6 +4054,14 @@ public sealed partial class MainWindow : Window, IDisposable
 
         if (callback is not null)
         {
+            if (ViewerReleaseGateObservation.IsEnabled)
+            {
+                ViewerReleaseGateObservation.Write("original-stage-ready",
+                    $"requested={ViewerStartupOptions.Renderer} selected={GetSelectedBackend()} " +
+                    $"controls={ViewportHost.AttachedControlCount} visible={ViewportHost.VisibleControlCount} " +
+                    $"storm={ViewportHost.GetActiveStormNavigationSource() is not null} status={RendererStatus.Text}");
+                ViewerReleaseGateObservation.WriteOwnedWindowsModules();
+            }
             ViewerStageSession session = CreateHostSession(coordinator, stagePath);
             ViewerHostCallbackScope scope = _hostCallbacks ??
                 throw new InvalidOperationException("The document host callback scope is unavailable.");

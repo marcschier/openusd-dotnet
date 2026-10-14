@@ -31,7 +31,7 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "77c309e65aa967a178000586556623aa220f173f22b934b95d19e17df4bdd1ec"
+      "sha256": "e5b1520bb5480e5211a8e1d1655010fba021e79392ec1c68106e9632cfc66208"
     },
     {
       "path": ".github/workflows/native.yml",
@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "d36a8aff0bef6451d9312cc00eb4b4cfe1d963640bbb2a63e4ecfa5dbfa6c853"
+      "sha256": "f8ddbf10b591e310883d1444ac2e52601f0a7191961eb0ef9904a6f93b5a6af7"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -60,6 +60,14 @@
     {
       "path": "eng/mesa-wgl-test-runtime.lock.json",
       "sha256": "3e28a3e7d0b9e4bc20133cb4af075c0f90187b20d8465245687c80f04bbac63c"
+    },
+    {
+      "path": "eng/observe-viewer-linux-abort.py",
+      "sha256": "dce1842ec07ee2e82641b369157c658d8b9eedd151087898577f504a4b6e51a4"
+    },
+    {
+      "path": "eng/observe-viewer-navigation-allocation.ps1",
+      "sha256": "96987870e353e2c4ab6d022bcc3cb5b5b6f68a813de9e201109d1704b90e20b6"
     },
     {
       "path": "eng/prepare-mesa-wgl-test-runtime.ps1",
@@ -76,6 +84,10 @@
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
       "sha256": "743320e3005e597cdd8928dd5897bfa252f7066299adc267416f34ea4c8c2bc1"
+    },
+    {
+      "path": "eng/run-viewer.ps1",
+      "sha256": "4bab2b07845964d83ca95a89271221b3c12d4906009c79bc6a23759b7806e153"
     },
     {
       "path": "eng/shaders/.gitignore",
@@ -127,7 +139,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "065275ae3da6e04537b8685eb6181bb6319afba8bbedebd32cda3108b6094345"
+      "sha256": "f8f4f8abd09131e1321f929829dfeddf24f17186eddb853530cc5fe154c03063"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",

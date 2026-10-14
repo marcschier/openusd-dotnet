@@ -1661,6 +1661,14 @@ The partition receipt accounts for every selected namespace/class/method from co
 including parameterized cases and existing prerequisite skips. Missing methods, ambiguous case
 identities and failed results refuse qualification. The complete first-partition TUnit report is
 copied and hash-verified before another invocation can overwrite the runner's usual report path.
+
+Release-failure observations retain the original failed verdict. The bounded Windows attachment
+observer records only the owned request/backend and three named mapped modules. Allocation traces
+run only after the original navigation case fails and are diagnostic replays, not replacement gates;
+GC allocation ticks are sampled and cannot account for every byte in the original measured window.
+The existing Linux observer runs once only after original exit 134, with unchanged input hashes,
+already-installed GDB, a five-second replay limit and at most 32 argument-free fault-thread frames.
+These temporary observers must be removed before final clean-source release qualification.
 New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
 The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer
 test-host directory through `-MesaWgl`, not only the separate parity runtime's `bin` directory.
