@@ -642,13 +642,15 @@ internal static class ViewerStartupOptions
                                   $"host={Path.GetFileName(actualHost)}; requested={Renderer}; " +
                                   (gl is null
                                       ? "opengl=UNKNOWN"
-                                      : $"opengl={gl.FileName}; mappedBase=0x{gl.BaseAddress:X}; mappedBytes={gl.ModuleMemorySize}; " +
+                                      : $"opengl={gl.FileName}; mappedBase=0x{gl.BaseAddress:X}; " +
+                                        $"mappedBytes={gl.ModuleMemorySize}; " +
                                         "mapped-path-observation-only; no-memory-image-hash");
                     }
                 }
                 string text = prefix + bounded + Environment.NewLine +
                     (observation.Length == 0 ? string.Empty : observation + Environment.NewLine);
-                int available = maximumBytes - (File.Exists(statusPath) ? checked((int)new FileInfo(statusPath).Length) : 0);
+                int written = File.Exists(statusPath) ? checked((int)new FileInfo(statusPath).Length) : 0;
+                int available = maximumBytes - written;
                 if (System.Text.Encoding.UTF8.GetByteCount(text) > available)
                 {
                     text = prefix + "output-truncated; further-observations-UNKNOWN" + Environment.NewLine;
