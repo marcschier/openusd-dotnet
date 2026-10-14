@@ -1657,6 +1657,10 @@ commands cannot overwrite an earlier failure in a calling workflow.
 both supported Windows/Linux CI routes and requires exact method-level pass/no-skip receipts.
 macOS excludes only those nine methods, leaving every other Metal and renderer-neutral method
 selected, including the original five-second IOSurface and submission-lifetime contracts.
+The partition receipt accounts for every selected namespace/class/method from compiled metadata,
+including parameterized cases and existing prerequisite skips. Missing methods, ambiguous case
+identities and failed results refuse qualification. The complete first-partition TUnit report is
+copied and hash-verified before another invocation can overwrite the runner's usual report path.
 New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
 The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer
 test-host directory through `-MesaWgl`, not only the separate parity runtime's `bin` directory.
