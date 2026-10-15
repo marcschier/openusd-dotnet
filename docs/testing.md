@@ -1659,6 +1659,8 @@ The CGL-independent hdSilk runtime is staged before the Metal composition and Ma
 with plugin metadata and its resolved native library hashes recorded in `runtime.json`.
 The default red-triangle producer binds the checked mesh instance, surface and frame storage
 slots (6, 7 and 8) using the shared uniform writers and normal buffer admission/ownership.
+Its material is explicitly an unlit RGBA color pattern, not the default dielectric material;
+scene material lighting and the canonical shared headlight are unchanged.
 Its original timeline, pixel and lifecycle assertions remain required independently of the
 optional retained-render main-loop harness.
 The default producer encodes its timeline signal in the same Metal command buffer as the draw,

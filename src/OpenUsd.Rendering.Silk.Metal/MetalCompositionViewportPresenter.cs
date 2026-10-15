@@ -1344,9 +1344,8 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                 1, 0, 0, 1
             ]));
             Span<byte> surfaceValues = stackalloc byte[SilkSurfaceUniformWriter.ByteSize];
-            SilkSurfaceUniformWriter.Write(
-                null,
-                RenderHeadlight.Deterministic,
+            SilkSurfaceUniformWriter.WriteUnlitDiagnosticColor(
+                new System.Numerics.Vector4(1, 0, 0, 1),
                 surfaceValues);
             surfaceConstants.Write(surfaceValues);
             var frameValues = new byte[SilkFrameUniformWriter.ByteSize];

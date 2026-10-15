@@ -22,6 +22,7 @@
 namespace OpenUsdOwnedAdmissionObservation
 {
 inline std::atomic<unsigned> records{0};
+inline std::atomic<unsigned> failedRecords{0};
 
 enum class Kind { Render, Property, StageRelease };
 
@@ -57,10 +58,17 @@ inline void Write(const char (&phase)[Count]) noexcept
         line[sizeof(line) - 1] = '\n';
 #if defined(_WIN32)
         DWORD written = 0;
-        WriteFile(GetStdHandle(STD_ERROR_HANDLE), line, static_cast<DWORD>(sizeof(line)), &written, nullptr);
+        const bool complete = WriteFile(
+            GetStdHandle(STD_ERROR_HANDLE), line, static_cast<DWORD>(sizeof(line)), &written, nullptr) != 0 &&
+            written == sizeof(line);
 #else
-        static_cast<void>(::write(STDERR_FILENO, line, sizeof(line)));
+        const auto written = ::write(STDERR_FILENO, line, sizeof(line));
+        const bool complete = written >= 0 && static_cast<std::size_t>(written) == sizeof(line);
 #endif
+        if (!complete)
+        {
+            failedRecords.fetch_add(1, std::memory_order_relaxed);
+        }
     }
     errno = savedErrno;
 #if defined(_WIN32)

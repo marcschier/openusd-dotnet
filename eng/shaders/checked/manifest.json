@@ -279,7 +279,7 @@
     },
     {
       "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
-      "sha256": "aa8ec021b97f4fa98e355053ce653c40d6fc26a0a986dc72a5a6c871f3f6ce73"
+      "sha256": "af6ce3a67eed858cfa15ba9199590deadcc611e85a53affa7461bc63beecee3f"
     },
     {
       "path": "native/openusd_dotnet/src/property_composition.cpp",
