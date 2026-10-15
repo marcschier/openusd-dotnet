@@ -150,7 +150,8 @@ struct FrameVectorView
 
     __subscript(uint index) -> float4
     {
-        get { return frameParameters.Load<float4>(byteOffset + index * 16); }
+        [ForceInline]
+        get() { return frameParameters.Load<float4>(byteOffset + index * 16); }
     }
 };
 

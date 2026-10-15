@@ -98,6 +98,8 @@ views and load a vector only for the light being evaluated. They do not first ma
 original fields, offsets and strides, including every explicit environment/dome scalar read.
 Frame writers, resource bindings and lifetimes are unchanged. D3D12 and Vulkan retain their
 byte-identical checked assets.
+The per-light accessor is forced inline so separately compiled fragment AIR files do not export
+colliding helper symbols into the combined `mesh.metallib`.
 
 ### The sampled density volume is its own fragment program
 
