@@ -87,7 +87,17 @@ The Metal mesh vertex permutations load `clipToEye` and `eyeToWorld` directly fr
 frame buffer at byte offsets 0 and 12512. Loading the complete 15296-byte frame instead makes
 Slang expand unused lighting, shadow and dome arrays into thousands of MSL word loads. The two
 matrix loads retain the row-major wire layout, eye positions and world-space shading basis.
-Fragment programs, frame writers, resource bindings, DXIL and SPIR-V are unchanged.
+Frame writers, resource bindings, DXIL and SPIR-V are unchanged.
+
+### Metal fragments read light vectors on demand
+
+Metal mesh fragments retain the existing raw frame buffer at index 8. Small clipping, camera,
+shadow and dome blocks are loaded normally; bounded light arrays remain read-only byte-offset
+views and load a vector only for the light being evaluated. They do not first materialize all
+128 lights' vectors and shadow slots into per-fragment values. The 15296-byte frame keeps its
+original fields, offsets and strides, including every explicit environment/dome scalar read.
+Frame writers, resource bindings and lifetimes are unchanged. D3D12 and Vulkan retain their
+byte-identical checked assets.
 
 ### The sampled density volume is its own fragment program
 
