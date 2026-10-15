@@ -381,6 +381,13 @@ finally
     Pop-Location
 }
 
+& python (Join-Path $PSScriptRoot 'generate-native-notices.py') write `
+    --rid $Rid --install-root $installRoot --native-root $NativeRoot --cache-root $cacheRoot
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Generating the complete locked native redistribution notices failed.'
+}
+
 & (Join-Path $PSScriptRoot 'native-install-metadata.ps1') `
     -Operation Write `
     -Rid $Rid

@@ -31,15 +31,15 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "f66a757319b59855177a1a8714fd82b806518ef5c5316d7c5cabc36d2eccc010"
+      "sha256": "0736ba03ffe6ac57bfd6910ba2446ea4a9dac7bc325a6d228db701c2592eda7e"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "ad5c90525e50409f633c3a56d64cf92a491f091ffa3ddd8e9cac9bb97e174084"
+      "sha256": "1c85495b487880b57a1dd30166594e8c2e7301f7adca15caeef8c2de3f05f5c4"
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "29f58bde3f8c3bc9bd3d4af64cef1c6dbbf907246fce8b00f18af0cc09ad1e64"
+      "sha256": "c6586478ef9123963629660f55f1f5d0c1095dc4635a2b9fc1b49902aa879ef5"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -51,23 +51,39 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "f8ddbf10b591e310883d1444ac2e52601f0a7191961eb0ef9904a6f93b5a6af7"
+      "sha256": "bfe2f7e3c45f1f1f1e04b79d272eb796412a0d0ca4ee10ac16a848138741969f"
     },
     {
       "path": ".github/workflows/shaders.yml",
       "sha256": "431976c39b4918df5279bb4232096ddf6c1c2b8592801cc3ea3854c414903984"
     },
     {
+      "path": "LICENSE",
+      "sha256": "3ca5820f4e4ef7c9af0964693010df197f2665445fac35aeb73effeb39a2cb70"
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "8cf9675718eed89f801ec0406e5b0079d39f22ddcbe81a66b17178ad82ccfe36"
+    },
+    {
       "path": "eng/build-native.ps1",
-      "sha256": "64d330582d01facd5f3eeeff15b1a51c11a81dbbf7ff4fbfe57af127ba32197d"
+      "sha256": "978a5b64fac7a8bf6e306c5c0f2d3a6084996007d336724f2db5ba9a269edec0"
     },
     {
       "path": "eng/build-vulkan-sdk.ps1",
-      "sha256": "e6a6a7fe2c8455e24698e2eb1a922b9c4d19883966cfbeb44e27e7b8a973d303"
+      "sha256": "705f788ab45ad01fa423318d2012f48a860c06a337e35913ccde3b95348609e9"
     },
     {
       "path": "eng/cmake/ShaderCompiler.cmake",
       "sha256": "a85cf43c7a23b22efe2ce8e2db6b95eb0ab9d8d9e541b07da308620c069e013b"
+    },
+    {
+      "path": "eng/generate-native-notices.py",
+      "sha256": "2cd09b5f0c43840f2c671237dbeda08220fe89ce6d4664041bb68b10f224058f"
+    },
+    {
+      "path": "eng/generate-sbom.py",
+      "sha256": "a07ff4d862685d13980e5ef37ca71cc0fa2a4c1fb6e7ba064ab9171045e6435c"
     },
     {
       "path": "eng/mesa-wgl-test-runtime.lock.json",
@@ -80,6 +96,14 @@
     {
       "path": "eng/observe-viewer-navigation-allocation.ps1",
       "sha256": "5832302fc5329c315eb81251ce01c62a268531f5b37b16ad6fcde3416b25f6a5"
+    },
+    {
+      "path": "eng/pack-packages.ps1",
+      "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
+    },
+    {
+      "path": "eng/patches/shaderc/spirv-tools-parsed-operand-break.patch",
+      "sha256": "b0ee4928e0aed0a4b1641195f75c308e799ee785581ad65dff582dcd37d49ef6"
     },
     {
       "path": "eng/prepare-mesa-wgl-test-runtime.ps1",
@@ -104,6 +128,10 @@
     {
       "path": "eng/run-windows-native-tests.ps1",
       "sha256": "5e4a185344b1a189aa81e6d49bb0ffb1fd27f47d1971c48ed4d480ac933495a5"
+    },
+    {
+      "path": "eng/shaderc-source-patches.lock.json",
+      "sha256": "92bd28dc11ee14790fa783e7115907ceb252913ae543136a4af2e6579580bd3a"
     },
     {
       "path": "eng/shaders/.gitignore",
@@ -155,7 +183,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "7bf8396dbd2ba339b71455e98d738745ed6952379b43a67716731e2ee6fe0f69"
+      "sha256": "91741229f5306cf8ba3e2f5b717d3a1e5c992d4c819aad39a0fe9a6ee4699886"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -291,7 +319,7 @@
     },
     {
       "path": "native/CMakePresets.json",
-      "sha256": "2e83761c78a3e8596d0ec987014208da685f883d5af4982d8d506ac967ecc5e7"
+      "sha256": "1847618f52425a099c829582bc037a54a7b20ed123013a941e52e98b6d0ab07e"
     },
     {
       "path": "native/hdSilk/CMakeLists.txt",

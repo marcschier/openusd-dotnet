@@ -38,6 +38,18 @@
     "zlib-ng",
     "zstd"
   ],
+  "overlaySource": {
+    "commit": "1bca8021711294cc83a5a032599ac72d9b3166c9",
+    "archiveSha256": "A031DF5027348B425A109DCD4F25066A48D32614C5A1076502B54A2ACC86F630",
+    "ports": [
+      {
+        "name": "ktx",
+        "path": "extern/vcpkg/ports/ktx",
+        "manifestSha256": "649e69c1af393d5470a178d31d3888542ffb30fc001c563cca65876d41d3191b",
+        "portfileSha256": "636b8bb2a3884e8bc42cb60ae9f8f3a44c2685684dbcf317d76c7e077a070733"
+      }
+    ]
+  },
   "components": [
     {
       "name": "abseil",
@@ -106,12 +118,6 @@
       "features": ""
     },
     {
-      "name": "egl-registry",
-      "version": "2025-05-27",
-      "license": "Apache-2.0",
-      "features": ""
-    },
-    {
       "name": "expected-lite",
       "version": "0.10.0",
       "license": "BSL-1.0",
@@ -131,9 +137,10 @@
     },
     {
       "name": "ktx",
-      "version": "4.4.2",
-      "license": "None",
-      "features": ""
+      "version": "4.4.2-plus-vcpkg-patches-2",
+      "license": "NOASSERTION",
+      "features": "",
+      "overlay": "extern/vcpkg/ports/ktx"
     },
     {
       "name": "libjpeg-turbo",
@@ -175,12 +182,6 @@
       "name": "ms-gsl",
       "version": "4.2.2",
       "license": "MIT",
-      "features": ""
-    },
-    {
-      "name": "opengl-registry",
-      "version": "2026-08-03",
-      "license": "NOASSERTION",
       "features": ""
     },
     {
@@ -228,7 +229,7 @@
     {
       "name": "stb",
       "version": "2026-08-02",
-      "license": "None",
+      "license": "NOASSERTION",
       "features": ""
     },
     {

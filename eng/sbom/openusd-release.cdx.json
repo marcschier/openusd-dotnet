@@ -30,6 +30,14 @@
         "value": "448e1406f7a34664f3269c7b5e1ffa2e4a661a694036fb675ce60cd0385f1e20"
       },
       {
+        "name": "openusd:input:eng/generate-native-notices.py:sha256",
+        "value": "2cd09b5f0c43840f2c671237dbeda08220fe89ce6d4664041bb68b10f224058f"
+      },
+      {
+        "name": "openusd:input:eng/generate-sbom.py:sha256",
+        "value": "a07ff4d862685d13980e5ef37ca71cc0fa2a4c1fb6e7ba064ab9171045e6435c"
+      },
+      {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
         "value": "cef8931283c495043bac1a503a8a341b832231ab58270614a4c545f60352e665"
       },
@@ -43,11 +51,11 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "b2d91104d21faaecc9060042958ed8d8da8d04e1ea0e9d6ff9edd9121d8cbe5c"
+        "value": "4ab6efb60945c48b1ad9070b1f001bae05e9983adba9293c112b9e7c38eb2bb3"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "348d82c1db3a325c26920ff449c9540deb6c7c47291844000433c99c4c5efceb"
+        "value": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
       },
       {
         "name": "openusd:input:eng/patches/openusd/render-product-hash-adl.patch:sha256",
@@ -66,6 +74,10 @@
         "value": "d527c116b3afdc4aabec3ed103e24f48ddd15125449dcf4fec1027ccdbe39213"
       },
       {
+        "name": "openusd:input:eng/patches/shaderc/spirv-tools-parsed-operand-break.patch:sha256",
+        "value": "b0ee4928e0aed0a4b1641195f75c308e799ee785581ad65dff582dcd37d49ef6"
+      },
+      {
         "name": "openusd:input:eng/physx.lock.json:sha256",
         "value": "e96c3291e2895a1ffecdaac1ce95323e6614b68193ead0c3368314823866fff8"
       },
@@ -75,7 +87,11 @@
       },
       {
         "name": "openusd:input:eng/sbom/cesium-vcpkg-components.lock.json:sha256",
-        "value": "07e292289d9ba06a6d851396f5f38d50afb49e093e3df27ae97ea05ab2b9260f"
+        "value": "525c55083ecc31a071278d146289689b624cd0fc0fa106300014625e3b2800b7"
+      },
+      {
+        "name": "openusd:input:eng/shaderc-source-patches.lock.json:sha256",
+        "value": "92bd28dc11ee14790fa783e7115907ceb252913ae543136a4af2e6579580bd3a"
       },
       {
         "name": "openusd:input:eng/shaders/toolchain.lock.json:sha256",
@@ -704,6 +720,80 @@
     },
     {
       "type": "library",
+      "bom-ref": "native:SPIRV-Headers:04fd3caa1e8267e4d95c806cad901181728e1006",
+      "name": "SPIRV-Headers",
+      "version": "04fd3caa1e8267e4d95c806cad901181728e1006",
+      "purl": "pkg:github/KhronosGroup/SPIRV-Headers@04fd3caa1e8267e4d95c806cad901181728e1006",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/KhronosGroup/SPIRV-Headers.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json; eng/generate-sbom.py"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest",
+          "value": "75137cca3b41a59b8b3e5c42177da8a9490c042f"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest-sha256",
+          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+        },
+        {
+          "name": "openusd:role",
+          "value": "native shader compiler source"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:SPIRV-Tools:ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+      "name": "SPIRV-Tools",
+      "version": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+      "purl": "pkg:github/KhronosGroup/SPIRV-Tools@ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/KhronosGroup/SPIRV-Tools.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json; eng/generate-sbom.py"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest",
+          "value": "75137cca3b41a59b8b3e5c42177da8a9490c042f"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest-sha256",
+          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+        },
+        {
+          "name": "openusd:role",
+          "value": "native shader compiler source"
+        },
+        {
+          "name": "openusd:source-repair",
+          "value": "eng/shaderc-source-patches.lock.json"
+        },
+        {
+          "name": "openusd:source-repair-sha256",
+          "value": "92BD28DC11EE14790FA783E7115907CEB252913AE543136A4AF2E6579580BD3A"
+        },
+        {
+          "name": "openusd:repaired-source-sha256",
+          "value": "2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "native:Vulkan-Headers:6802bb4733b63ed5efd3adb308a6c885ef180ea1",
       "name": "Vulkan-Headers",
       "version": "6802bb4733b63ed5efd3adb308a6c885ef180ea1",
@@ -823,6 +913,37 @@
         {
           "name": "openusd:source",
           "value": "eng/cesium.lock.json"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:glslang:e1b562a8bed273a02f30b59b66a5d499793cede5",
+      "name": "glslang",
+      "version": "e1b562a8bed273a02f30b59b66a5d499793cede5",
+      "purl": "pkg:github/KhronosGroup/glslang@e1b562a8bed273a02f30b59b66a5d499793cede5",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/KhronosGroup/glslang.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json; eng/generate-sbom.py"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest",
+          "value": "75137cca3b41a59b8b3e5c42177da8a9490c042f"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest-sha256",
+          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+        },
+        {
+          "name": "openusd:role",
+          "value": "native shader compiler source"
         }
       ]
     },
@@ -997,6 +1118,37 @@
         {
           "name": "openusd:vulkanSdk",
           "value": "1.4.363.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:shaderc:b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
+      "name": "shaderc",
+      "version": "b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
+      "purl": "pkg:github/google/shaderc@b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/google/shaderc.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json; eng/generate-sbom.py"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest",
+          "value": "75137cca3b41a59b8b3e5c42177da8a9490c042f"
+        },
+        {
+          "name": "openusd:shaderc-source-manifest-sha256",
+          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+        },
+        {
+          "name": "openusd:role",
+          "value": "native shader compiler source"
         }
       ]
     },
@@ -1923,7 +2075,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -1947,7 +2099,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -1971,7 +2123,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -1995,7 +2147,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2019,7 +2171,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2043,7 +2195,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2067,7 +2219,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2091,7 +2243,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2115,7 +2267,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2139,7 +2291,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2163,7 +2315,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2181,37 +2333,13 @@
     },
     {
       "type": "library",
-      "bom-ref": "vcpkg:egl-registry",
-      "name": "egl-registry",
-      "version": "2025-05-27",
-      "properties": [
-        {
-          "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
-        },
-        {
-          "name": "openusd:vcpkg-baseline",
-          "value": "e456309491fd875487bf02b8a0dca76c1b1b00cc"
-        },
-        {
-          "name": "openusd:vcpkg-features",
-          "value": ""
-        },
-        {
-          "name": "openusd:license",
-          "value": "Apache-2.0"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "vcpkg:expected-lite",
       "name": "expected-lite",
       "version": "0.10.0",
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2235,7 +2363,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2259,7 +2387,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2279,11 +2407,11 @@
       "type": "library",
       "bom-ref": "vcpkg:ktx",
       "name": "ktx",
-      "version": "4.4.2",
+      "version": "4.4.2-plus-vcpkg-patches-2",
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2295,7 +2423,19 @@
         },
         {
           "name": "openusd:license",
-          "value": "None"
+          "value": "NOASSERTION"
+        },
+        {
+          "name": "openusd:vcpkg-overlay",
+          "value": "extern/vcpkg/ports/ktx"
+        },
+        {
+          "name": "openusd:overlay-source-commit",
+          "value": "1bca8021711294cc83a5a032599ac72d9b3166c9"
+        },
+        {
+          "name": "openusd:overlay-source-archive-sha256",
+          "value": "A031DF5027348B425A109DCD4F25066A48D32614C5A1076502B54A2ACC86F630"
         }
       ]
     },
@@ -2307,7 +2447,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2331,7 +2471,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2355,7 +2495,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2379,7 +2519,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2403,7 +2543,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2427,7 +2567,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2451,7 +2591,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2469,37 +2609,13 @@
     },
     {
       "type": "library",
-      "bom-ref": "vcpkg:opengl-registry",
-      "name": "opengl-registry",
-      "version": "2026-08-03",
-      "properties": [
-        {
-          "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
-        },
-        {
-          "name": "openusd:vcpkg-baseline",
-          "value": "e456309491fd875487bf02b8a0dca76c1b1b00cc"
-        },
-        {
-          "name": "openusd:vcpkg-features",
-          "value": ""
-        },
-        {
-          "name": "openusd:license",
-          "value": "NOASSERTION"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "vcpkg:openssl",
       "name": "openssl",
       "version": "3.6.5#1",
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2523,7 +2639,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2547,7 +2663,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2571,7 +2687,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2595,7 +2711,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2619,7 +2735,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2643,7 +2759,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2667,7 +2783,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2679,7 +2795,7 @@
         },
         {
           "name": "openusd:license",
-          "value": "None"
+          "value": "NOASSERTION"
         }
       ]
     },
@@ -2691,7 +2807,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2715,7 +2831,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2739,7 +2855,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2763,7 +2879,7 @@
       "properties": [
         {
           "name": "openusd:source",
-          "value": "eng/cesium.lock.json"
+          "value": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json"
         },
         {
           "name": "openusd:vcpkg-baseline",
@@ -2875,6 +2991,10 @@
         "native:shaderc-source-manifest:75137cca3b41a59b8b3e5c42177da8a9490c042f",
         "native:VulkanMemoryAllocator:3aa921224c154a0d2c43912bc88e1c42ce1f7607",
         "native:Vulkan-Utility-Libraries:57f01541b3959f2528f769043396e882851a7e75",
+        "native:shaderc:b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
+        "native:glslang:e1b562a8bed273a02f30b59b66a5d499793cede5",
+        "native:SPIRV-Tools:ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+        "native:SPIRV-Headers:04fd3caa1e8267e4d95c806cad901181728e1006",
         "native:cesium-native",
         "vcpkg:abseil",
         "vcpkg:ada-url",
@@ -2887,7 +3007,6 @@
         "vcpkg:doctest",
         "vcpkg:draco",
         "vcpkg:earcut-hpp",
-        "vcpkg:egl-registry",
         "vcpkg:expected-lite",
         "vcpkg:fmt",
         "vcpkg:glm",
@@ -2899,7 +3018,6 @@
         "vcpkg:meshoptimizer",
         "vcpkg:modp-base64",
         "vcpkg:ms-gsl",
-        "vcpkg:opengl-registry",
         "vcpkg:openssl",
         "vcpkg:picosha2",
         "vcpkg:rapidjson",
@@ -3285,6 +3403,22 @@
       "dependsOn": []
     },
     {
+      "ref": "native:shaderc:b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:glslang:e1b562a8bed273a02f30b59b66a5d499793cede5",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:SPIRV-Tools:ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:SPIRV-Headers:04fd3caa1e8267e4d95c806cad901181728e1006",
+      "dependsOn": []
+    },
+    {
       "ref": "native:cesium-native",
       "dependsOn": []
     },
@@ -3333,10 +3467,6 @@
       "dependsOn": []
     },
     {
-      "ref": "vcpkg:egl-registry",
-      "dependsOn": []
-    },
-    {
       "ref": "vcpkg:expected-lite",
       "dependsOn": []
     },
@@ -3378,10 +3508,6 @@
     },
     {
       "ref": "vcpkg:ms-gsl",
-      "dependsOn": []
-    },
-    {
-      "ref": "vcpkg:opengl-registry",
       "dependsOn": []
     },
     {

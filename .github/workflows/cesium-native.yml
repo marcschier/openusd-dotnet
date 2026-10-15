@@ -9,6 +9,10 @@ on:
       - 'eng/cesium.lock.json'
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
+      - 'eng/generate-native-notices.py'
+      - 'eng/sbom/cesium-vcpkg-components.lock.json'
+      - 'LICENSE'
+      - 'NOTICE'
       - 'native/cesium_probe/**'
   pull_request:
     branches: [ master, main ]
@@ -17,6 +21,10 @@ on:
       - 'eng/cesium.lock.json'
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
+      - 'eng/generate-native-notices.py'
+      - 'eng/sbom/cesium-vcpkg-components.lock.json'
+      - 'LICENSE'
+      - 'NOTICE'
       - 'native/cesium_probe/**'
 
 permissions:
@@ -81,6 +89,10 @@ jobs:
               'eng/cesium.lock.json',
               'eng/fetch-cesium-native.ps1',
               'eng/build-cesium-native.ps1',
+              'eng/generate-native-notices.py',
+              'eng/sbom/cesium-vcpkg-components.lock.json',
+              'LICENSE',
+              'NOTICE',
               'native/cesium_probe/**'
             ) }}
       - name: Build locked cesium-native

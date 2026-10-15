@@ -177,6 +177,7 @@ jobs:
             native/install/win-x64
             native/install/shim/win-x64
             native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/win-x64
             native/build/shim/win-x64
           key: >-
             native-win-x64-${{ hashFiles(
@@ -184,6 +185,13 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -294,6 +302,9 @@ jobs:
             -Operation Verify `
             -Rid win-x64 `
             -RequireVulkanRuntime:$requireVulkanRuntime
+          python ./eng/generate-native-notices.py verify `
+            --rid win-x64 --install-root native/install/win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Execute staged NativeAOT shared-stage probes
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -599,6 +610,7 @@ jobs:
             native/install/win-x64
             native/install/shim/win-x64
             native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/win-x64
             native/build/shim/win-x64
           key: >-
             native-win-x64-${{ hashFiles(
@@ -606,6 +618,13 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -712,6 +731,9 @@ jobs:
             -Operation Verify `
             -Rid win-x64 `
             -RequireVulkanRuntime:$requireVulkanRuntime
+          python ./eng/generate-native-notices.py verify `
+            --rid win-x64 --install-root native/install/win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Resolve system Vulkan ICD
         if: steps.native-ready.outputs.ready == 'true'
         id: vulkan-icd
@@ -871,6 +893,7 @@ jobs:
             native/install/linux-x64
             native/install/shim/linux-x64
             native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/linux-x64
             native/build/shim/linux-x64
           key: >-
             native-linux-x64-${{ hashFiles(
@@ -878,6 +901,13 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -1015,6 +1045,9 @@ jobs:
           ./eng/native-install-metadata.ps1 `
             -Operation Verify `
             -Rid linux-x64
+          python ./eng/generate-native-notices.py verify `
+            --rid linux-x64 --install-root native/install/linux-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Build Linux package tests for immutable archive
         if: >-
           steps.native-ready.outputs.ready == 'true' &&
@@ -1466,6 +1499,7 @@ jobs:
             native/install/osx-arm64
             native/install/shim/osx-arm64
             native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/osx-arm64
             native/build/shim/osx-arm64
           key: >-
             native-osx-arm64-${{ hashFiles(
@@ -1473,6 +1507,13 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -1600,6 +1641,9 @@ jobs:
           ./eng/native-install-metadata.ps1 `
             -Operation Verify `
             -Rid osx-arm64
+          python ./eng/generate-native-notices.py verify `
+            --rid osx-arm64 --install-root native/install/osx-arm64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Execute optional normal managed and NativeAOT Metal main-loop qualification
         if: >-
           github.event_name == 'workflow_dispatch' &&

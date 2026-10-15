@@ -15,6 +15,28 @@ $lock = Get-Content (Join-Path $PSScriptRoot 'openusd.lock.json') -Raw | Convert
 $SourceRoot = [System.IO.Path]::GetFullPath($SourceRoot)
 $BuildRoot = [System.IO.Path]::GetFullPath($BuildRoot)
 $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$compilerPatchLockPath = Join-Path $repositoryRoot $lock.vulkanSdk.sourcePatchLock
+if ((Get-FileHash -LiteralPath $compilerPatchLockPath).Hash -cne $lock.vulkanSdk.sourcePatchLockSha256)
+{
+    throw 'The shader compiler source-repair profile differs from the native lock.'
+}
+$compilerRepair = Get-Content -LiteralPath $compilerPatchLockPath -Raw | ConvertFrom-Json
+$compilerPatchPath = Join-Path $repositoryRoot $compilerRepair.patch
+if ($compilerRepair.'$schemaVersion' -ne 1 -or
+    $compilerRepair.component -cne 'spirv-tools' -or
+    $compilerRepair.file -cne 'source/parsed_operand.cpp' -or
+    (Get-FileHash -LiteralPath $compilerPatchPath).Hash -cne $compilerRepair.patchSha256)
+{
+    throw 'Invalid or modified shader compiler source repair.'
+}
+
+function Get-CanonicalCompilerSourceHash
+{
+    param([string]$Path)
+    $text = [IO.File]::ReadAllText($Path).Replace("`r`n", "`n")
+    [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text)))
+}
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue))
 {
@@ -98,8 +120,19 @@ foreach ($repository in $lock.vulkanSdk.repositories)
 $shadercManifest = Join-Path $SourceRoot 'shaderc'
 $shadercSource = Join-Path $shadercManifest 'src'
 $knownGood = Get-Content (Join-Path $shadercManifest 'known_good.json') -Raw | ConvertFrom-Json
+$manifestRepository = @($lock.vulkanSdk.repositories |
+    Where-Object name -EQ 'shaderc-source-manifest')
+$repairComponent = @($knownGood.commits | Where-Object name -EQ $compilerRepair.component)
+if ($manifestRepository.Count -ne 1 -or $repairComponent.Count -ne 1 -or
+    $manifestRepository[0].commit -cne $compilerRepair.sourceManifestCommit -or
+    $repairComponent[0].commit -cne $compilerRepair.sourceCommit)
+{
+    throw 'The compiler source repair does not match the exact pinned source graph.'
+}
+$spirvToolsSource = Join-Path $shadercSource $repairComponent[0].subdir
+$compilerRepairSource = Join-Path $spirvToolsSource $compilerRepair.file
 $shadercSourcesCurrent = Test-Path (Join-Path $shadercSource 'CMakeLists.txt')
-if ($ShaderCompilerOnly -and $shadercSourcesCurrent)
+if ($shadercSourcesCurrent)
 {
     foreach ($component in $knownGood.commits)
     {
@@ -134,20 +167,35 @@ if (-not $shadercSourcesCurrent)
         Pop-Location
     }
 }
-if ($ShaderCompilerOnly)
+foreach ($component in $knownGood.commits)
 {
-    foreach ($component in $knownGood.commits)
+    $componentRoot = if ($component.PSObject.Properties.Name -contains 'subdir')
+        { Join-Path $shadercSource $component.subdir }
+        else { $shadercSource }
+    $actualCommit = & git -C $componentRoot rev-parse HEAD
+    $sourceChanges = @(& git -C $componentRoot status --porcelain --untracked-files=no)
+    $reviewedRepair = $component.name -ceq $compilerRepair.component -and
+        $sourceChanges.Count -eq 1 -and $sourceChanges[0] -ceq " M $($compilerRepair.file)" -and
+        (Get-CanonicalCompilerSourceHash $compilerRepairSource) -ceq $compilerRepair.afterSha256
+    if ($LASTEXITCODE -ne 0 -or $actualCommit -cne $component.commit -or
+        ($sourceChanges.Count -ne 0 -and -not $reviewedRepair))
     {
-        $componentRoot = if ($component.PSObject.Properties.Name -contains 'subdir')
-            { Join-Path $shadercSource $component.subdir }
-            else { $shadercSource }
-        $actualCommit = & git -C $componentRoot rev-parse HEAD
-        $sourceChanges = & git -C $componentRoot status --porcelain --untracked-files=no
-        if ($LASTEXITCODE -ne 0 -or $actualCommit -cne $component.commit -or $sourceChanges)
-        {
-            throw "The CPU shader compiler source does not match its locked manifest: $($component.name)."
-        }
+        throw "The shader compiler source does not match its locked manifest: $($component.name)."
     }
+}
+$sourceHash = Get-CanonicalCompilerSourceHash $compilerRepairSource
+if ($sourceHash -ceq $compilerRepair.beforeSha256)
+{
+    $canonical = [IO.File]::ReadAllText($compilerRepairSource).Replace("`r`n", "`n")
+    [IO.File]::WriteAllText($compilerRepairSource, $canonical, [Text.UTF8Encoding]::new($false))
+    & git -C $spirvToolsSource apply --check $compilerPatchPath
+    if ($LASTEXITCODE -ne 0) { throw 'The exact shader compiler repair does not apply.' }
+    & git -C $spirvToolsSource apply --whitespace=error-all $compilerPatchPath
+    if ($LASTEXITCODE -ne 0) { throw 'Applying the exact shader compiler source repair failed.' }
+}
+if ((Get-CanonicalCompilerSourceHash $compilerRepairSource) -cne $compilerRepair.afterSha256)
+{
+    throw 'The shader compiler repair did not produce the reviewed source bytes.'
 }
 
 New-Item -ItemType Directory -Force -Path $BuildRoot,$InstallRoot | Out-Null
@@ -268,6 +316,8 @@ if ($ShaderCompilerOnly)
         sourceManifestSha256 = (Get-FileHash (Join-Path $shadercManifest 'known_good.json')).Hash
         buildScriptSha256 = (Get-FileHash $PSCommandPath).Hash
         compilerPolicySha256 = (Get-FileHash (Join-Path $PSScriptRoot 'cmake/ShaderCompiler.cmake')).Hash
+        sourcePatchLockSha256 = (Get-FileHash $compilerPatchLockPath).Hash
+        repairedSourceSha256 = Get-CanonicalCompilerSourceHash $compilerRepairSource
         components = @($knownGood.commits | Select-Object name, commit)
         library = "lib/$libraryName"
         librarySha256 = (Get-FileHash $installedLibrary).Hash

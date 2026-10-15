@@ -321,6 +321,28 @@ an empty substitute. Metal continues consuming generated MSL; SPIR-V remains a g
 representation of the same supported MaterialX network. GLSL-only compilation disables the
 unused HLSL front end and retains dependency warning levels without shaderc's blanket `-w`.
 The original Metal generation and pixel checks still determine platform acceptance.
+The compiler source-repair profile records an explicit break after SPIRV-Tools' unknown
+floating-point encoding case, replacing fall-through into an empty default break. The reviewed
+one-line repair preserves numeric output while satisfying strict Clang diagnostics; it does
+not suppress warnings. Its exact source revision, patch and pre/post hashes are bound by both
+native lock projections and compiler provenance.
+Optional macOS Cesium/MDL shim configurations keep this independent compiler disabled,
+so SDK-only consumers do not require the unpublished private build prefix.
+
+Full runtime builds generate a project-owned `THIRD-PARTY.md` and
+`.openusd-native-notices.json` in the SDK install. The aggregate preserves complete license,
+copyright and NOTICE texts from hash-verified source archives, pinned compiler repositories
+and the actual installed dependency copyright/SPDX records. It includes OpenUSD's bundled
+license comments and the four compiled shaderc source groups, not shaderc's unused test
+dependencies. Upstream notice documents may also describe conditional source alternatives;
+their inclusion does not claim that every optional source is embedded in every package.
+Cesium and PhysX retain their separate notice filenames; the PhysX overview distinguishes
+the source-built BSD SDK from proprietary GPU/device modules that are never redistributed.
+The aggregate and provenance travel with the cached SDK and immutable archive.
+Real producer/consumer workflows reject stale or missing provenance, and `eng/pack-packages.ps1`
+verifies the full notices before packing and compares the actual packed notice bytes afterwards.
+Bare `dotnet pack` fixture output is not publication qualification. `-SdkOnly` prepares the SDK,
+not a complete publishable runtime; complete the full runtime build before publication.
 
 While those Vulkan sources bootstrap their own dependencies, the log prints
 `error: No such remote 'known-good'`, sometimes several times. It comes from the upstream

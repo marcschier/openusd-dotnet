@@ -259,7 +259,13 @@ jobs:
               'eng/openusd.install.lock.json',
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1'
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
             ) }}
       - name: Verify OpenUSD install cache
         if: steps.openusd-cache.outputs.cache-hit != 'true'

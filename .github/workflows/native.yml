@@ -33,6 +33,12 @@ on:
       - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/cmake/ShaderCompiler.cmake'
+      - 'eng/generate-native-notices.py'
+      - 'eng/shaderc-source-patches.lock.json'
+      - 'eng/patches/shaderc/**'
+      - 'eng/generate-sbom.py'
+      - 'LICENSE'
+      - 'NOTICE'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
       - 'eng/prepare-render-native.ps1'
@@ -75,6 +81,12 @@ on:
       - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/cmake/ShaderCompiler.cmake'
+      - 'eng/generate-native-notices.py'
+      - 'eng/shaderc-source-patches.lock.json'
+      - 'eng/patches/shaderc/**'
+      - 'eng/generate-sbom.py'
+      - 'LICENSE'
+      - 'NOTICE'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
       - 'eng/prepare-render-native.ps1'
@@ -186,6 +198,12 @@ jobs:
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
               'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -241,7 +259,13 @@ jobs:
               'eng/openusd.install.lock.json',
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1'
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
             ) }}
       - name: Fetch locked native sources
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -262,6 +286,12 @@ jobs:
             -Operation Verify `
             -Rid ${{ matrix.rid }} `
             -RequireVulkanRuntime:$IsWindows
+      - name: Verify complete native redistribution notices
+        shell: pwsh
+        run: |
+          python ./eng/generate-native-notices.py verify `
+            --rid ${{ matrix.rid }} --install-root native/install/${{ matrix.rid }}
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Run bounded native fuzzers
         if: runner.os == 'Linux'
         shell: pwsh

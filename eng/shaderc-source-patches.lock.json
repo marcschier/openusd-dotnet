@@ -1,0 +1,12 @@
+{
+  "$schemaVersion": 1,
+  "sourceManifestCommit": "75137cca3b41a59b8b3e5c42177da8a9490c042f",
+  "component": "spirv-tools",
+  "sourceCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+  "description": "Terminate the unknown floating-point encoding case explicitly instead of falling through to an empty default break; preserve numeric output while satisfying strict Clang diagnostics.",
+  "patch": "eng/patches/shaderc/spirv-tools-parsed-operand-break.patch",
+  "patchSha256": "B0EE4928E0AED0A4B1641195F75C308E799EE785581AD65DFF582DCD37D49EF6",
+  "file": "source/parsed_operand.cpp",
+  "beforeSha256": "981A3DB58B1D822581CBF3D1812B8165357E1F2FE5596275F3CEA3259F432ED1",
+  "afterSha256": "2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546"
+}

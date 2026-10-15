@@ -19,6 +19,12 @@ on:
       - 'eng/sign-viewer-bundle.ps1'
       - 'eng/test-viewer-bundle-smoke.ps1'
       - 'eng/pack-packages.ps1'
+      - 'eng/generate-native-notices.py'
+      - 'eng/shaderc-source-patches.lock.json'
+      - 'eng/patches/shaderc/**'
+      - 'eng/generate-sbom.py'
+      - 'LICENSE'
+      - 'NOTICE'
       - 'eng/cesium.lock.json'
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
@@ -125,6 +131,7 @@ jobs:
             native/install/${{ matrix.rid }}
             native/install/shim/${{ matrix.rid }}
             native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/${{ matrix.rid }}
             native/build/shim/${{ matrix.rid }}
           key: >-
             native-${{ matrix.rid }}-${{ hashFiles(
@@ -132,6 +139,13 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-parsed-operand-break.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -274,6 +288,9 @@ jobs:
             -Operation Verify `
             -Rid ${{ matrix.rid }} `
             -RequireVulkanRuntime:$requireVulkanRuntime
+          python ./eng/generate-native-notices.py verify `
+            --rid ${{ matrix.rid }} --install-root native/install/${{ matrix.rid }}
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - id: cesium-vcpkg-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
