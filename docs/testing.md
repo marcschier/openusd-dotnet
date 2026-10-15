@@ -616,6 +616,9 @@ per native process around render-specification entry, borrowed target access, ta
 return and stage release. It logs no paths or values, preserves Win32 error state and `errno`, and
 does not change tests, the 120-second timeout or the original query-only memory quota. These
 observations distinguish future phases; a later pass alone does not establish the timeout's cause.
+The analogous macOS qualification opt-in records property-snapshot entry/return, borrowed stored
+composition-error access/count/refusal/return and stage release, using the same fixed-label cap
+and preserving `errno`. It does not format error objects or change the original CTest invocation.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It
@@ -1692,6 +1695,8 @@ Release-failure observations retain the original failed verdict. The bounded Win
 observer records only the owned request/backend and three named mapped modules. Allocation traces
 run only after the original navigation case fails and are diagnostic replays, not replacement gates;
 GC allocation ticks are sampled and cannot account for every byte in the original measured window.
+On managed CI failure, the original raw TUnit and captured-output HTML reports are uploaded
+immediately after the original test step, before any diagnostic invocation can overwrite them.
 The existing Linux observer runs once only after original exit 134, with unchanged input hashes,
 already-installed GDB, a five-second replay limit and at most 32 argument-free fault-thread frames.
 If PATH discovery fails, it checks only the enumerated standard and versioned GNU GDB locations;

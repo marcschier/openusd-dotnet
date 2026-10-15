@@ -357,6 +357,8 @@ jobs:
           ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
       - name: Run macOS native CTest
         if: runner.os == 'macOS'
+        env:
+          OPENUSD_DOTNET_OWN_PROPERTY_PHASES: '1'
         run: ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
       - name: Execute staged NativeAOT probes
         shell: pwsh

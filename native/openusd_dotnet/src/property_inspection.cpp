@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/property_inspection.h"
+#include "internal/owned_admission_observation.h"
 #include "pxr/base/tf/unicodeUtils.h"
 
 namespace OpenUsdProperties
@@ -88,6 +89,7 @@ openusd_status openusd_stage_get_prim_property_snapshot(
     openusd_property_view* view, openusd_error_buffer* error)
 {
     // OUTER_ABI_GUARD
+    const OpenUsdOwnedAdmissionObservation::PropertyCall observation;
     return Guard(error, [&]() -> openusd_status
     {
         const bool validView = view != nullptr && IsAligned(view) &&

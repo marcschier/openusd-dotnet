@@ -2,6 +2,10 @@
 #pragma once
 
 #include <cstddef>
+#include <atomic>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -11,27 +15,39 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <atomic>
-#include <cerrno>
-#include <cstring>
+#else
+#include <unistd.h>
 #endif
 
 namespace OpenUsdOwnedAdmissionObservation
 {
-#if defined(_WIN32)
 inline std::atomic<unsigned> records{0};
-#endif
 
-template <std::size_t Count>
+enum class Kind { Render, Property, StageRelease };
+
+inline bool Enabled(const char* name) noexcept
+{
+#if defined(_WIN32)
+    char value[2]{};
+    return GetEnvironmentVariableA(name, value, sizeof(value)) == 1 && value[0] == '1';
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr && value[0] == '1' && value[1] == '\0';
+#endif
+}
+
+template <Kind Observation = Kind::Render, std::size_t Count>
 inline void Write(const char (&phase)[Count]) noexcept
 {
     static_assert(Count <= 32, "Admission observations must be bounded fixed labels.");
 #if defined(_WIN32)
     const DWORD savedError = GetLastError();
+#endif
     const int savedErrno = errno;
-    char enabled[2]{};
-    if (GetEnvironmentVariableA("OPENUSD_DOTNET_OWN_ADMISSION_PHASES", enabled, sizeof(enabled)) == 1 &&
-        enabled[0] == '1' && records.load(std::memory_order_relaxed) < 64 &&
+    const bool enabled =
+        (Observation != Kind::Property && Enabled("OPENUSD_DOTNET_OWN_ADMISSION_PHASES")) ||
+        (Observation != Kind::Render && Enabled("OPENUSD_DOTNET_OWN_PROPERTY_PHASES"));
+    if (enabled && records.load(std::memory_order_relaxed) < 64 &&
         records.fetch_add(1, std::memory_order_relaxed) < 64)
     {
         constexpr char prefix[] = "[OWN-admission-phase] ";
@@ -39,13 +55,16 @@ inline void Write(const char (&phase)[Count]) noexcept
         std::memcpy(line, prefix, sizeof(prefix) - 1);
         std::memcpy(line + sizeof(prefix) - 1, phase, Count - 1);
         line[sizeof(line) - 1] = '\n';
+#if defined(_WIN32)
         DWORD written = 0;
         WriteFile(GetStdHandle(STD_ERROR_HANDLE), line, static_cast<DWORD>(sizeof(line)), &written, nullptr);
+#else
+        static_cast<void>(::write(STDERR_FILENO, line, sizeof(line)));
+#endif
     }
     errno = savedErrno;
+#if defined(_WIN32)
     SetLastError(savedError);
-#else
-    static_cast<void>(phase);
 #endif
 }
 
@@ -54,5 +73,12 @@ class SpecificationCall final
 public:
     SpecificationCall() noexcept { Write("get-specification.entry"); }
     ~SpecificationCall() { Write("get-specification.return"); }
+};
+
+class PropertyCall final
+{
+public:
+    PropertyCall() noexcept { Write<Kind::Property>("property-snapshot.entry"); }
+    ~PropertyCall() { Write<Kind::Property>("property-snapshot.return"); }
 };
 }

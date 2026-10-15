@@ -31,11 +31,11 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "e5b1520bb5480e5211a8e1d1655010fba021e79392ec1c68106e9632cfc66208"
+      "sha256": "f66a757319b59855177a1a8714fd82b806518ef5c5316d7c5cabc36d2eccc010"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "d677fe940f612be7b9c0dcbf8a40771e58d7306c7ef49e3328c6243852cf2c48"
+      "sha256": "d141021dcd3ee2c5da3bc181c1f8a630cc869109229b17e5f3a1985ec559d88f"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -143,7 +143,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "3569cb76ee882ee14d65c92c0deabfc5fd86ed23736c8eba9adc86d30cbbe277"
+      "sha256": "d4ba9e56919e0ab80f885cbe82c43a126334a0cb5ee6f95939b766f0bb824203"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -279,7 +279,15 @@
     },
     {
       "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
-      "sha256": "7e9243f59d1d021d975de892895f1102cde84e5db90d9ceb8668550180ce7a01"
+      "sha256": "aa8ec021b97f4fa98e355053ce653c40d6fc26a0a986dc72a5a6c871f3f6ce73"
+    },
+    {
+      "path": "native/openusd_dotnet/src/property_composition.cpp",
+      "sha256": "dd54d3b3c37b6bcbc72de56990543db484581d538ae47d940b7429a6fc47ec35"
+    },
+    {
+      "path": "native/openusd_dotnet/src/property_inspection.cpp",
+      "sha256": "fe39e5d40cb00a29e050a12856e1b0dc945460e9d791ebf88f7cb01ff4bb007a"
     },
     {
       "path": "native/openusd_dotnet/src/render_specification.cpp",
@@ -287,7 +295,7 @@
     },
     {
       "path": "native/openusd_dotnet/src/stage.cpp",
-      "sha256": "916e56a28ce62276875cc54a4dd6466033c578bca792382858e9df7527ea40c0"
+      "sha256": "b2bb965caa648d6d0eacc61dec0a046ad6b86046e471e7a7e1d81d01d7d0063e"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",

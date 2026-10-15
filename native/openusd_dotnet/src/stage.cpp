@@ -153,9 +153,11 @@ openusd_status openusd_stage_retain(
 
 void openusd_stage_release(openusd_stage* stage)
 {
-    OpenUsdOwnedAdmissionObservation::Write("stage-release.entry");
+    OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::StageRelease>(
+        "stage-release.entry");
     ReleaseStageReference(stage);
-    OpenUsdOwnedAdmissionObservation::Write("stage-release.return");
+    OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::StageRelease>(
+        "stage-release.return");
 }
 
 openusd_status openusd_stage_access_begin(

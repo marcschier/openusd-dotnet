@@ -74,6 +74,8 @@ REQUIRED_CHECKED_INPUTS = (
     "native/openusd_dotnet/src/internal/owned_admission_observation.h",
     "native/openusd_dotnet/src/render_specification.cpp",
     "native/openusd_dotnet/src/stage.cpp",
+    "native/openusd_dotnet/src/property_inspection.cpp",
+    "native/openusd_dotnet/src/property_composition.cpp",
     "eng/shaders/.gitignore",
     "eng/shaders/build-shaders.ps1",
     "eng/shaders/build-toolchain.ps1",
