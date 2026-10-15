@@ -326,6 +326,20 @@ if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
         -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource -PatchLockPath $PatchLockPath
 }
 $shimInstallRoot = Join-Path $NativeRoot "install/shim/$Rid"
+if ($Rid -eq 'osx-arm64')
+{
+    $shadercRoot = Join-Path $NativeRoot "install/shaderc/$Rid"
+    & (Join-Path $PSScriptRoot 'build-vulkan-sdk.ps1') `
+        -ShaderCompilerOnly `
+        -ReuseExistingDependencies:$ReuseExistingDependencies `
+        -BuildRoot (Join-Path $NativeRoot "build/shaderc/$Rid") `
+        -InstallRoot $shadercRoot `
+        -Jobs $Jobs | Out-Host
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'The private locked MaterialX SPIR-V compiler build failed.'
+    }
+}
 $env:OPENUSD_ROOT = $installRoot
 Push-Location (Join-Path $repoRoot 'native')
 try

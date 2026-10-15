@@ -24,7 +24,7 @@ namespace OpenUsdOwnedAdmissionObservation
 inline std::atomic<unsigned> records{0};
 inline std::atomic<unsigned> failedRecords{0};
 
-enum class Kind { Render, Property, StageRelease };
+enum class Kind { Render, Property, StageRelease, Storm };
 
 inline bool Enabled(const char* name) noexcept
 {
@@ -46,8 +46,11 @@ inline void Write(const char (&phase)[Count]) noexcept
 #endif
     const int savedErrno = errno;
     const bool enabled =
-        (Observation != Kind::Property && Enabled("OPENUSD_DOTNET_OWN_ADMISSION_PHASES")) ||
-        (Observation != Kind::Render && Enabled("OPENUSD_DOTNET_OWN_PROPERTY_PHASES"));
+        ((Observation == Kind::Render || Observation == Kind::StageRelease) &&
+            Enabled("OPENUSD_DOTNET_OWN_ADMISSION_PHASES")) ||
+        ((Observation == Kind::Property || Observation == Kind::StageRelease) &&
+            Enabled("OPENUSD_DOTNET_OWN_PROPERTY_PHASES")) ||
+        (Observation == Kind::Storm && Enabled("OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION"));
     if (enabled && records.load(std::memory_order_relaxed) < 64 &&
         records.fetch_add(1, std::memory_order_relaxed) < 64)
     {
@@ -88,5 +91,12 @@ class PropertyCall final
 public:
     PropertyCall() noexcept { Write<Kind::Property>("property-snapshot.entry"); }
     ~PropertyCall() { Write<Kind::Property>("property-snapshot.return"); }
+};
+
+class StormRenderCall final
+{
+public:
+    StormRenderCall() noexcept { Write<Kind::Storm>("storm-render.entry"); }
+    ~StormRenderCall() { Write<Kind::Storm>("storm-render.return"); }
 };
 }

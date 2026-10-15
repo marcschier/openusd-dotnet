@@ -308,6 +308,20 @@ If `VULKAN_SDK` is not set, the build wrapper creates the required 1.4.363.0 hea
 shaderc, and VMA headers under `native/install` from the exact source revisions in the lock file. It
 does not require a machine-wide LunarG installation.
 
+The standard macOS shim also publishes real portable MaterialX SPIR-V alongside its MSL
+source. This is CPU shader compilation, not Vulkan rendering: OpenUSD remains built with
+`--no-vulkan`, and the macOS graphics profile remains OpenGL/Metal. The wrapper builds only
+the static compiler from the existing locked shaderc source manifest into the private
+`native/install/shaderc/osx-arm64` prefix. It does not fetch or build Vulkan headers, the
+loader or VMA in that mode. The prefix retains the exact component commits and static-library
+hash in `shaderc-provenance.json`; it is not a runtime package payload.
+`OPENUSD_WITH_MATERIALX_SPIRV` controls this compiler capability independently of
+`OPENUSD_WITH_VULKAN`. A missing private compiler fails configuration rather than publishing
+an empty substitute. Metal continues consuming generated MSL; SPIR-V remains a genuine portable
+representation of the same supported MaterialX network. GLSL-only compilation disables the
+unused HLSL front end and retains dependency warning levels without shaderc's blanket `-w`.
+The original Metal generation and pixel checks still determine platform acceptance.
+
 While those Vulkan sources bootstrap their own dependencies, the log prints
 `error: No such remote 'known-good'`, sometimes several times. It comes from the upstream
 dependency scripts, not from this repository, and it does not affect the build: the pinned commits

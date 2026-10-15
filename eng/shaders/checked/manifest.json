@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "d141021dcd3ee2c5da3bc181c1f8a630cc869109229b17e5f3a1985ec559d88f"
+      "sha256": "ad5c90525e50409f633c3a56d64cf92a491f091ffa3ddd8e9cac9bb97e174084"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -56,6 +56,18 @@
     {
       "path": ".github/workflows/shaders.yml",
       "sha256": "431976c39b4918df5279bb4232096ddf6c1c2b8592801cc3ea3854c414903984"
+    },
+    {
+      "path": "eng/build-native.ps1",
+      "sha256": "64d330582d01facd5f3eeeff15b1a51c11a81dbbf7ff4fbfe57af127ba32197d"
+    },
+    {
+      "path": "eng/build-vulkan-sdk.ps1",
+      "sha256": "e6a6a7fe2c8455e24698e2eb1a922b9c4d19883966cfbeb44e27e7b8a973d303"
+    },
+    {
+      "path": "eng/cmake/ShaderCompiler.cmake",
+      "sha256": "a85cf43c7a23b22efe2ce8e2db6b95eb0ab9d8d9e541b07da308620c069e013b"
     },
     {
       "path": "eng/mesa-wgl-test-runtime.lock.json",
@@ -143,7 +155,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "d4ba9e56919e0ab80f885cbe82c43a126334a0cb5ee6f95939b766f0bb824203"
+      "sha256": "7bf8396dbd2ba339b71455e98d738745ed6952379b43a67716731e2ee6fe0f69"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -278,8 +290,16 @@
       "sha256": "edc55570fcac281d31a4eb25ddb0e680baa0b72de7dfea258ec823ccae72074f"
     },
     {
+      "path": "native/CMakePresets.json",
+      "sha256": "2e83761c78a3e8596d0ec987014208da685f883d5af4982d8d506ac967ecc5e7"
+    },
+    {
+      "path": "native/hdSilk/CMakeLists.txt",
+      "sha256": "b3ae42649d0c272f1cf8773634e16007c65e21ba852606f157606c8555a5af67"
+    },
+    {
       "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
-      "sha256": "af6ce3a67eed858cfa15ba9199590deadcc611e85a53affa7461bc63beecee3f"
+      "sha256": "62305e88e2aa9f7b7590b5d5cde504716aa95ed70750f4c114b733122b6df10b"
     },
     {
       "path": "native/openusd_dotnet/src/property_composition.cpp",
@@ -296,6 +316,10 @@
     {
       "path": "native/openusd_dotnet/src/stage.cpp",
       "sha256": "b2bb965caa648d6d0eacc61dec0a046ad6b86046e471e7a7e1d81d01d7d0063e"
+    },
+    {
+      "path": "native/openusd_hydra/src/openusd_hydra.cpp",
+      "sha256": "4217a098c5e682517f10bb0506b27673e9847e441b90ce8c1dd85866d5630f03"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",

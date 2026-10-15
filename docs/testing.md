@@ -1703,6 +1703,11 @@ The existing Linux observer runs once only after original exit 134, with unchang
 already-installed GDB, a five-second replay limit and at most 32 argument-free fault-thread frames.
 If PATH discovery fails, it checks only the enumerated standard and versioned GNU GDB locations;
 it does not scan the filesystem, install a debugger or substitute another debugger.
+With the same Linux observation flag, the primary Storm render call also retains up to 64
+fixed-label native records around stage access, camera, lighting, engine draw and convergence.
+The records preserve error state, include no paths or values, and change no locks, lifetimes or
+render calls. They distinguish a future original failure boundary without claiming that a later
+pass explains the previous abort, or that an unexecuted replay produced a fault stack.
 These temporary observers must be removed before final clean-source release qualification.
 New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
 The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer

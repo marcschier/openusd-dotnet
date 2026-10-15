@@ -32,6 +32,7 @@ on:
       - 'eng/fetch-mdl-sdk.ps1'
       - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
+      - 'eng/cmake/ShaderCompiler.cmake'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
       - 'eng/prepare-render-native.ps1'
@@ -73,6 +74,7 @@ on:
       - 'eng/fetch-mdl-sdk.ps1'
       - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
+      - 'eng/cmake/ShaderCompiler.cmake'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
       - 'eng/prepare-render-native.ps1'
@@ -175,6 +177,7 @@ jobs:
             native/install/${{ matrix.rid }}
             native/install/shim/${{ matrix.rid }}
             native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/${{ matrix.rid }}
             native/build/shim/${{ matrix.rid }}
           key: >-
             native-${{ matrix.rid }}-${{ hashFiles(
@@ -182,6 +185,7 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
