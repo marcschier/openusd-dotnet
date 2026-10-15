@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "20a11f83b509ab609e392998b32367e0dd357f3db869e87476b0e0fc33edaa34"
+      "sha256": "d677fe940f612be7b9c0dcbf8a40771e58d7306c7ef49e3328c6243852cf2c48"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -90,6 +90,10 @@
       "sha256": "4bab2b07845964d83ca95a89271221b3c12d4906009c79bc6a23759b7806e153"
     },
     {
+      "path": "eng/run-windows-native-tests.ps1",
+      "sha256": "5e4a185344b1a189aa81e6d49bb0ffb1fd27f47d1971c48ed4d480ac933495a5"
+    },
+    {
       "path": "eng/shaders/.gitignore",
       "sha256": "ba555f74960d262cd5ddeeeffad65c4455728e20aa94b0907ad8b7e46a5addb3"
     },
@@ -139,7 +143,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "6911c4238bd73c15af85f5f3e6e93947ca93fd27a45f507d2116bd06218cd4b2"
+      "sha256": "3569cb76ee882ee14d65c92c0deabfc5fd86ed23736c8eba9adc86d30cbbe277"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -272,6 +276,18 @@
     {
       "path": "eng/shaders/write-host-toolchain.ps1",
       "sha256": "edc55570fcac281d31a4eb25ddb0e680baa0b72de7dfea258ec823ccae72074f"
+    },
+    {
+      "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
+      "sha256": "7e9243f59d1d021d975de892895f1102cde84e5db90d9ceb8668550180ce7a01"
+    },
+    {
+      "path": "native/openusd_dotnet/src/render_specification.cpp",
+      "sha256": "486dc5af0fd32f13ab2e11fb3584adf640e2302485febbff1771679d2d607801"
+    },
+    {
+      "path": "native/openusd_dotnet/src/stage.cpp",
+      "sha256": "916e56a28ce62276875cc54a4dd6466033c578bca792382858e9df7527ea40c0"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",

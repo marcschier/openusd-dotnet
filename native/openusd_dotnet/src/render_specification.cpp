@@ -4,6 +4,7 @@
 #include "internal/layer_edit.h"
 #include "internal/render_array_edit.h"
 #include "internal/property_composition.h"
+#include "internal/owned_admission_observation.h"
 
 #include "pxr/base/tf/unicodeUtils.h"
 #include "pxr/base/vt/arrayEdit.h"
@@ -544,10 +545,13 @@ private:
     {
         VtValue value;
         _budget.Visit();
+        OpenUsdOwnedAdmissionObservation::Write("targets.borrow.entry");
         if (!data->Has(property, SdfFieldKeys->TargetPaths, &value))
         {
+            OpenUsdOwnedAdmissionObservation::Write("targets.borrow.absent");
             return;
         }
+        OpenUsdOwnedAdmissionObservation::Write("targets.borrow.return");
         if (!value.IsHolding<SdfPathListOp>())
         {
             throw std::invalid_argument("Render relationship targetPaths must be a path list operation.");
@@ -555,16 +559,19 @@ private:
         const SdfPathListOp& ops = value.UncheckedGet<SdfPathListOp>();
         const SdfPathVector* lists[] = {&ops.GetExplicitItems(), &ops.GetAddedItems(),
             &ops.GetPrependedItems(), &ops.GetAppendedItems(), &ops.GetDeletedItems(), &ops.GetOrderedItems()};
+        OpenUsdOwnedAdmissionObservation::Write("targets.count.entry");
         for (const SdfPathVector* paths : lists)
         {
             if (paths->size() > OPENUSD_RENDER_SPECIFICATION_MAX_RELATIONSHIP_TARGETS -
                 _budget.relationshipTargets)
             {
+                OpenUsdOwnedAdmissionObservation::Write("targets.count.rejected");
                 throw std::length_error("Render specification exceeds the relationship-target admission budget.");
             }
             _budget.relationshipTargets += paths->size();
             source.targets += paths->size();
         }
+        OpenUsdOwnedAdmissionObservation::Write("targets.count.return");
         for (const SdfPathVector* paths : lists)
         {
             for (const SdfPath& path : *paths)
@@ -1134,6 +1141,7 @@ openusd_status openusd_render_get_specification(
     openusd_error_buffer* error)
 {
     // OUTER_ABI_GUARD
+    const OpenUsdOwnedAdmissionObservation::SpecificationCall observation;
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         uint32_t size = 0;

@@ -5,7 +5,8 @@ param(
     [string]$BuildRoot = (Join-Path $PSScriptRoot '..\native\build\shim\win-x64'),
     [string]$RuntimeRoot = (Join-Path $PSScriptRoot '..\artifacts\windows-native-tests\mesa'),
     [string]$Configuration = 'Release',
-    [string]$TestFilter
+    [string]$TestFilter,
+    [switch]$ObserveAdmissionPhases
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +44,8 @@ $directories = @($stormTests | ForEach-Object {
 
 $names = @('PATH', 'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256',
     'OPENUSD_MESA_WGL_ARCHIVE_URL', 'OPENUSD_MESA_WGL_ARCHIVE_SHA256',
-    'GALLIUM_DRIVER', 'LIBGL_ALWAYS_SOFTWARE', 'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE')
+    'GALLIUM_DRIVER', 'LIBGL_ALWAYS_SOFTWARE', 'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
+    'OPENUSD_DOTNET_OWN_ADMISSION_PHASES')
 $previous = @{}
 foreach ($name in $names)
 {
@@ -85,6 +87,10 @@ try
     {
         $arguments += @('-R', $TestFilter)
     }
+    if ($ObserveAdmissionPhases)
+    {
+        $env:OPENUSD_DOTNET_OWN_ADMISSION_PHASES = '1'
+    }
     & $ctest @arguments
     $exitCode = $LASTEXITCODE
 }
@@ -105,7 +111,17 @@ finally
     {
         foreach ($name in $names)
         {
-            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+            if ($null -eq $previous[$name])
+            {
+                if (Test-Path -LiteralPath "Env:$name")
+                {
+                    Remove-Item -LiteralPath "Env:$name"
+                }
+            }
+            else
+            {
+                [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+            }
         }
     }
 }

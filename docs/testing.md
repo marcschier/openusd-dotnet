@@ -611,6 +611,11 @@ The native workflow's always-upload diagnostics retain the default and PhysX bui
 separate `Testing` directories, including CTest's `LastTest.log` and `LastTestsFailed.log`.
 Those paths preserve future failure evidence without changing any test command, timeout or verdict;
 they do not recover files from an already completed runner that did not upload them.
+The temporary `-ObserveAdmissionPhases` qualification option emits at most 64 fixed-label records
+per native process around render-specification entry, borrowed target access, target-count admission,
+return and stage release. It logs no paths or values, preserves Win32 error state and `errno`, and
+does not change tests, the 120-second timeout or the original query-only memory quota. These
+observations distinguish future phases; a later pass alone does not establish the timeout's cause.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It
