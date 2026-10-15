@@ -1661,6 +1661,14 @@ The partition receipt accounts for every selected namespace/class/method from co
 including parameterized cases and existing prerequisite skips. Missing methods, ambiguous case
 identities and failed results refuse qualification. The complete first-partition TUnit report is
 copied and hash-verified before another invocation can overwrite the runner's usual report path.
+The Mesa-backed Windows Viewer fixture runs the existing built test application host, not
+`dotnet.exe test.dll`: Windows resolves the native child's OpenGL import from the executable's
+AppDir before other search roots. The fixture's verified Mesa DLL therefore shares the real
+process AppDir. `DOTNET_ROOT_X64` and `DOTNET_ROOT` select the same repository-resolved runtime
+used by ordinary tests and are restored afterward; other test routes retain their original host.
+The fixture rebuilds that host with the existing Viewer application's supported-OS, as-invoker
+and PerMonitorV2 manifest. Incremental DLL-only execution and an unmanifested apphost are different
+loader/window-host contracts and cannot substitute for this native desktop fixture.
 
 Release-failure observations retain the original failed verdict. The bounded Windows attachment
 observer records only the owned request/backend and three named mapped modules. Allocation traces

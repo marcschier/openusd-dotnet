@@ -15,12 +15,18 @@ param(
     [ValidateRange(1, [int]::MaxValue)]
     [int]$MinimumExpectedTests = 1,
 
+    [switch]$UseWindowsAppHost,
+
     [Alias('TestArgs')]
     [string[]]$TestArguments = @()
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if ($UseWindowsAppHost -and -not $IsWindows)
+{
+    throw 'The Windows native-loader test fixture requires a Windows application host.'
+}
 . (Join-Path $PSScriptRoot 'vulkan-test-runtime-registry.ps1')
 
 # Resolve the repository-pinned host explicitly rather than trusting PATH.
@@ -366,7 +372,20 @@ foreach ($run in $runs)
         'off'
     )
     $arguments += $TestArguments
+    $testHost = $script:DotnetHost
+    if ($UseWindowsAppHost)
+    {
+        $testHost = [IO.Path]::ChangeExtension($run.Dll, '.exe')
+        if (-not (Test-Path -LiteralPath $testHost -PathType Leaf))
+        {
+            throw "The original built Windows test application host is missing: $testHost"
+        }
+        $arguments = @($arguments | Select-Object -Skip 1)
+        Write-Host "[managed-tests] Windows native-loader AppDir=$([IO.Path]::GetDirectoryName($testHost))"
+    }
     $oldVulkanEnvironment = @{}
+    $oldDotnetRootX64 = [Environment]::GetEnvironmentVariable('DOTNET_ROOT_X64', 'Process')
+    $oldDotnetRoot = [Environment]::GetEnvironmentVariable('DOTNET_ROOT', 'Process')
     $driverRegistration = $null
     foreach ($name in $vulkanEnvironmentNames)
     {
@@ -376,6 +395,12 @@ foreach ($run in $runs)
     }
     try
     {
+        if ($UseWindowsAppHost)
+        {
+            $selectedRuntimeRoot = [IO.Path]::GetDirectoryName($script:DotnetHost)
+            [Environment]::SetEnvironmentVariable('DOTNET_ROOT_X64', $selectedRuntimeRoot, 'Process')
+            [Environment]::SetEnvironmentVariable('DOTNET_ROOT', $selectedRuntimeRoot, 'Process')
+        }
         try
         {
             $swiftShaderIcd = Prepare-PackagedSwiftShaderIcd `
@@ -398,11 +423,13 @@ foreach ($run in $runs)
             Write-Host "[managed-tests] Using packaged SwiftShader ICD: $swiftShaderIcd"
         }
 
-        & $script:DotnetHost @arguments
+        & $testHost @arguments
         $exitCode = $LASTEXITCODE
     }
     finally
     {
+        [Environment]::SetEnvironmentVariable('DOTNET_ROOT_X64', $oldDotnetRootX64, 'Process')
+        [Environment]::SetEnvironmentVariable('DOTNET_ROOT', $oldDotnetRoot, 'Process')
         try
         {
             Restore-VulkanTestRuntimeDriver -State $driverRegistration

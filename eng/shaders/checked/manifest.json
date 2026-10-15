@@ -67,7 +67,7 @@
     },
     {
       "path": "eng/observe-viewer-navigation-allocation.ps1",
-      "sha256": "96987870e353e2c4ab6d022bcc3cb5b5b6f68a813de9e201109d1704b90e20b6"
+      "sha256": "5832302fc5329c315eb81251ce01c62a268531f5b37b16ad6fcde3416b25f6a5"
     },
     {
       "path": "eng/prepare-mesa-wgl-test-runtime.ps1",
@@ -75,7 +75,7 @@
     },
     {
       "path": "eng/run-managed-tests.ps1",
-      "sha256": "c1e221c2d347b26334e884ebaad780fc0d4a14704055a214e2fbaa4a9b93f908"
+      "sha256": "e8183690b15b57561aecbe2ce6ac388b99577c14ef726e2e2b11215c8b21349f"
     },
     {
       "path": "eng/run-platform-conformance.ps1",
@@ -83,7 +83,7 @@
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
-      "sha256": "743320e3005e597cdd8928dd5897bfa252f7066299adc267416f34ea4c8c2bc1"
+      "sha256": "125e47e309c781d0dc78cd8f48f92dc44286197fb2a3ea030a436fc52d966834"
     },
     {
       "path": "eng/run-viewer.ps1",
@@ -139,7 +139,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "f8f4f8abd09131e1321f929829dfeddf24f17186eddb853530cc5fe154c03063"
+      "sha256": "6911c4238bd73c15af85f5f3e6e93947ca93fd27a45f507d2116bd06218cd4b2"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -276,6 +276,10 @@
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",
       "sha256": "7879b0d218bf2ea539f1af9e94e46b3610fba1195a7bc665c351fb9e1e6878db"
+    },
+    {
+      "path": "src/OpenUsd.Viewer.App/app.manifest",
+      "sha256": "54eae075f26b67db85d94616d4f47298377a67dfb6cb7f07b1229faa12f7400b"
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",

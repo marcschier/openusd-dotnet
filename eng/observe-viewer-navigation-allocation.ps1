@@ -10,7 +10,8 @@ $assembly = Join-Path $repo 'tests\OpenUsd.Viewer.Tests\bin\Release\net10.0\Open
 $report = Join-Path (Split-Path $assembly) 'TestResults\OpenUsd.Viewer.Tests-windows-net10.0.tunit-report.json'
 $original = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
 $failure = @($original.groups | ForEach-Object tests | Where-Object {
-    $_.methodName -ceq 'StormNavigationTrackingAllocatesNothingAfterWarmup' -and $_.status -ceq 'failed'
+    $_.methodName -ceq 'StormNavigationTrackingAllocatesNothingAfterWarmup' -and
+        $_.status -cin @('failed', 'error')
 })
 if ($failure.Count -ne 1)
 {

@@ -111,7 +111,18 @@ $sourcePaths = @(Get-WorkflowSourcePaths)
 $sourcesBefore = @(Get-FileRecords $sourcePaths)
 if (-not $SkipBuild)
 {
-    $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q 2>&1)
+    $fixtureBuildArguments = @()
+    if ($MesaWgl)
+    {
+        $manifest = Join-Path $repoRoot 'src\OpenUsd.Viewer.App\app.manifest'
+        if (-not (Test-Path -LiteralPath $manifest -PathType Leaf))
+        {
+            throw 'The existing supported Windows application-host manifest is unavailable.'
+        }
+        $fixtureBuildArguments = @('-t:Rebuild', "-p:ApplicationManifest=$manifest")
+    }
+    $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q `
+        @fixtureBuildArguments 2>&1)
     if ($LASTEXITCODE -ne 0 -and ($buildOutput -join "`n") -match '\bNETSDK1004\b')
     {
         & $dotnet restore $project -v:q
@@ -119,7 +130,8 @@ if (-not $SkipBuild)
         {
             throw 'Restoring the missing Viewer workflow assets failed.'
         }
-        $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q 2>&1)
+        $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q `
+            @fixtureBuildArguments 2>&1)
     }
     $buildOutput | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0)
@@ -137,6 +149,10 @@ $assemblyDirectory = Split-Path -Parent $target[0]
 function Get-WorkflowBinaryPaths
 {
     @(
+        if ($MesaWgl)
+        {
+            Get-Item -LiteralPath ([IO.Path]::ChangeExtension($target[0], '.exe'))
+        }
         Get-ChildItem -LiteralPath $assemblyDirectory -File -Filter '*.dll'
         Get-ChildItem -LiteralPath (Join-Path $runtime 'bin') -File -Filter '*.dll'
         Get-ChildItem -LiteralPath (Join-Path $runtime 'lib') -File -Filter '*.dll'
@@ -223,7 +239,8 @@ try
         try
         {
             & $runner -Project $project -Framework net10.0 -Configuration $Configuration `
-                -MinimumExpectedTests 1 -TestArguments @('--treenode-filter', "/*/*/$($entry.Class)/*") `
+                -UseWindowsAppHost:$MesaWgl -MinimumExpectedTests 1 `
+                -TestArguments @('--treenode-filter', "/*/*/$($entry.Class)/*") `
                 *>&1 | Tee-Object -FilePath $logPath
             if ($LASTEXITCODE -ne 0)
             {

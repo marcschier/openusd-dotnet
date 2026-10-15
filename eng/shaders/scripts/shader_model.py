@@ -69,6 +69,7 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/observe-viewer-navigation-allocation.ps1",
     "eng/prepare-mesa-wgl-test-runtime.ps1",
     "eng/mesa-wgl-test-runtime.lock.json",
+    "src/OpenUsd.Viewer.App/app.manifest",
     "eng/shaders/.gitignore",
     "eng/shaders/build-shaders.ps1",
     "eng/shaders/build-toolchain.ps1",
