@@ -31,11 +31,11 @@
       },
       {
         "name": "openusd:input:eng/generate-native-notices.py:sha256",
-        "value": "2cd09b5f0c43840f2c671237dbeda08220fe89ce6d4664041bb68b10f224058f"
+        "value": "564eb6a5fab5115b55d94b9b84e8b570b375b55934a00f03830cb7a9caa01bba"
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
-        "value": "a07ff4d862685d13980e5ef37ca71cc0fa2a4c1fb6e7ba064ab9171045e6435c"
+        "value": "5f7d5b9abb7fb2d055c584e95c0a72aebfd4a72b58fd9d14b4b9bbc4b25dc426"
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
@@ -51,7 +51,7 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "4ab6efb60945c48b1ad9070b1f001bae05e9983adba9293c112b9e7c38eb2bb3"
+        "value": "ecc719aea73763a6ec0ccd45be26e9e0fd3848007e1ca22ea2ef4a86f65e03ea"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
@@ -74,8 +74,12 @@
         "value": "d527c116b3afdc4aabec3ed103e24f48ddd15125449dcf4fec1027ccdbe39213"
       },
       {
-        "name": "openusd:input:eng/patches/shaderc/spirv-tools-parsed-operand-break.patch:sha256",
-        "value": "b0ee4928e0aed0a4b1641195f75c308e799ee785581ad65dff582dcd37d49ef6"
+        "name": "openusd:input:eng/patches/shaderc/shaderc-zero-padded-string-copy.patch:sha256",
+        "value": "b475d7338356914c10efdef2bf234688dc783e7f410bf29b179a3027534d7440"
+      },
+      {
+        "name": "openusd:input:eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch:sha256",
+        "value": "ae4963541d9e12a9051f7f5d0e5a0bca88b0d766a3503e5889ca04cbf129c509"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",
@@ -91,7 +95,7 @@
       },
       {
         "name": "openusd:input:eng/shaderc-source-patches.lock.json:sha256",
-        "value": "92bd28dc11ee14790fa783e7115907ceb252913ae543136a4af2e6579580bd3a"
+        "value": "77b4ea1b430a291218a1a3fe8df230eae7978dc395e6e7ad470006092d5e220f"
       },
       {
         "name": "openusd:input:eng/shaders/toolchain.lock.json:sha256",
@@ -784,11 +788,11 @@
         },
         {
           "name": "openusd:source-repair-sha256",
-          "value": "92BD28DC11EE14790FA783E7115907CEB252913AE543136A4AF2E6579580BD3A"
+          "value": "77B4EA1B430A291218A1A3FE8DF230EAE7978DC395E6E7AD470006092D5E220F"
         },
         {
-          "name": "openusd:repaired-source-sha256",
-          "value": "2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546"
+          "name": "openusd:repaired-sources",
+          "value": "{\"source/opt/convert_to_sampled_image_pass.cpp\": \"2D9914C90974EE51782516B5D504CFD6E296E1365E18C666B472A3401F56A5A2\", \"source/opt/upgrade_memory_model.cpp\": \"AA2A5F824FA6BDB1B2B6ED84A7CE964F60E1D49C057CF50008AA5EE6BC625076\", \"source/parsed_operand.cpp\": \"2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546\", \"source/val/validate_composites.cpp\": \"F25EB9902DF12A50BC15821149D4C921DC6848F964F4B8D84EA52A12D77BA2C6\", \"source/val/validate_interfaces.cpp\": \"B5CAB44B5033B2F03DA87A294C262E15F5DAE6E2038CA23FBB1052E816754A23\", \"source/val/validate_memory.cpp\": \"3E46F5051380EA42C6197010EF7CEA1A39D02C8B0491CCA297F4B32ECD1B68B3\", \"source/val/validate_mode_setting.cpp\": \"E3A5C409C80C50E0ADB62BD178C0F7904527F74994B94078EE205E27F947E96F\", \"source/val/validate_primitives.cpp\": \"6156FFA71E95BAACEFAABD27E4F437C43C280F26DA4979DFEAB7B2C06DF6F5D7\"}"
         }
       ]
     },
@@ -1149,6 +1153,18 @@
         {
           "name": "openusd:role",
           "value": "native shader compiler source"
+        },
+        {
+          "name": "openusd:source-repair",
+          "value": "eng/shaderc-source-patches.lock.json"
+        },
+        {
+          "name": "openusd:source-repair-sha256",
+          "value": "77B4EA1B430A291218A1A3FE8DF230EAE7978DC395E6E7AD470006092D5E220F"
+        },
+        {
+          "name": "openusd:repaired-sources",
+          "value": "{\"libshaderc_util/src/compiler.cc\": \"2C0B6065E651F988270306AF4C9B3314BA95918C491D0C91518491F2B3166941\"}"
         }
       ]
     },

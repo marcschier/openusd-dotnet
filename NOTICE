@@ -29,9 +29,9 @@ Native MaterialX shader compilation also uses shaderc, glslang, SPIRV-Tools, and
 resolved from the pinned shaderc known-good manifest. The release SBOM records their individual
 source revisions separately from that manifest and from the offline shader toolchain. The macOS
 compiler is a private, statically linked CPU component; it does not enable a Vulkan graphics runtime.
-SPIRV-Tools includes the project-owned explicit numeric-case break recorded in
-eng/shaderc-source-patches.lock.json. This source repair preserves numeric output and upstream
-copyright/license texts; its exact pre/post and patch hashes are recorded in build provenance and SBOM.
+Compiler sources include the reviewed empty-default switch exits and zero-padded string-copy repairs
+recorded in eng/shaderc-source-patches.lock.json. These preserve behavior and upstream copyright/license
+texts; their exact component revisions, pre/post and patch hashes are recorded in build provenance and SBOM.
 
 The quarantined cesium-native build is separate from the core runtime and is built from CesiumGS
 cesium-native v0.65.0, licensed under Apache-2.0. Its published runtime packages contain the separate

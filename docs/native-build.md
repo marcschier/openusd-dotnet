@@ -321,11 +321,12 @@ an empty substitute. Metal continues consuming generated MSL; SPIR-V remains a g
 representation of the same supported MaterialX network. GLSL-only compilation disables the
 unused HLSL front end and retains dependency warning levels without shaderc's blanket `-w`.
 The original Metal generation and pixel checks still determine platform acceptance.
-The compiler source-repair profile records an explicit break after SPIRV-Tools' unknown
-floating-point encoding case, replacing fall-through into an empty default break. The reviewed
-one-line repair preserves numeric output while satisfying strict Clang diagnostics; it does
-not suppress warnings. Its exact source revision, patch and pre/post hashes are bound by both
-native lock projections and compiler provenance.
+The compiler source-repair profile records explicit exits where SPIRV-Tools switch cases
+otherwise fall through into empty default breaks. Shaderc's string conversion also preserves
+its existing first-NUL termination and zero padding without deprecated CRT copying.
+These reviewed repairs preserve behavior under strict diagnostics rather than suppressing warnings.
+Their exact component revisions, patches and file pre/post hashes are bound by both native lock
+projections and compiler provenance.
 Optional macOS Cesium/MDL shim configurations keep this independent compiler disabled,
 so SDK-only consumers do not require the unpublished private build prefix.
 

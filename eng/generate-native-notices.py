@@ -82,11 +82,12 @@ def profile(family: str, rid: str) -> dict[str, Any]:
             repair = data.compiler_source_repair(lock)
         except data.SbomGenerationError as error:
             raise NoticeError(str(error)) from error
-        inputs += [lock["vulkanSdk"]["sourcePatchLock"], repair["patch"]]
-        value["compilerSourceRepair"] = {
-            "component": repair["component"], "sourceCommit": repair["sourceCommit"],
-            "afterSha256": repair["afterSha256"],
-        }
+        inputs += [lock["vulkanSdk"]["sourcePatchLock"]] + [item["patch"] for item in repair["components"]]
+        value["compilerSourceRepairs"] = [
+            {"component": item["component"], "sourceCommit": item["sourceCommit"],
+             "files": {entry["file"]: entry["afterSha256"] for entry in item["files"]}}
+            for item in repair["components"]
+        ]
     elif family == "cesium":
         inputs.append("eng/sbom/cesium-vcpkg-components.lock.json")
     else:
@@ -287,7 +288,7 @@ def collect(args: argparse.Namespace) -> list[dict[str, Any]]:
         for name, repository, commit in data.SHADERC_COMPILED_SOURCES:
             url = f"https://github.com/{repository}.git"
             source_reference = url + "@" + commit
-            if name == "SPIRV-Tools":
+            if name in ("SPIRV-Tools", "shaderc"):
                 source_reference += "; project source repair " + lock["vulkanSdk"]["sourcePatchLockSha256"]
             components.append(component(
                 name, source_reference,

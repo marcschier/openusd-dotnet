@@ -70,7 +70,7 @@
   "vulkanSdk": {
     "version": "1.4.363.0",
     "sourcePatchLock": "eng/shaderc-source-patches.lock.json",
-    "sourcePatchLockSha256": "92BD28DC11EE14790FA783E7115907CEB252913AE543136A4AF2E6579580BD3A",
+    "sourcePatchLockSha256": "77B4EA1B430A291218A1A3FE8DF230EAE7978DC395E6E7AD470006092D5E220F",
     "windowsConfigUrl": "https://sdk.lunarg.com/sdk/download/1.4.363.0/windows/config.json",
     "windowsConfigSha256": "5A4D3EE31F3C215FD8A370B90F785325DEECD5276D59FA56BEF0204DCC6EDA8C",
     "repositories": [

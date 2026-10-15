@@ -1,12 +1,68 @@
 {
-  "$schemaVersion": 1,
+  "$schemaVersion": 3,
   "sourceManifestCommit": "75137cca3b41a59b8b3e5c42177da8a9490c042f",
-  "component": "spirv-tools",
-  "sourceCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
-  "description": "Terminate the unknown floating-point encoding case explicitly instead of falling through to an empty default break; preserve numeric output while satisfying strict Clang diagnostics.",
-  "patch": "eng/patches/shaderc/spirv-tools-parsed-operand-break.patch",
-  "patchSha256": "B0EE4928E0AED0A4B1641195F75C308E799EE785581AD65DFF582DCD37D49EF6",
-  "file": "source/parsed_operand.cpp",
-  "beforeSha256": "981A3DB58B1D822581CBF3D1812B8165357E1F2FE5596275F3CEA3259F432ED1",
-  "afterSha256": "2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546"
+  "description": "Make empty-default switch exits explicit and preserve zero-padded first-NUL string copying without deprecated CRT calls. All source repairs preserve behavior under strict diagnostics.",
+  "components": [
+    {
+      "component": "spirv-tools",
+      "sourceCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+      "patch": "eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch",
+      "patchSha256": "AE4963541D9E12A9051F7F5D0E5A0BCA88B0D766A3503E5889CA04CBF129C509",
+      "files": [
+        {
+          "file": "source/parsed_operand.cpp",
+          "beforeSha256": "981A3DB58B1D822581CBF3D1812B8165357E1F2FE5596275F3CEA3259F432ED1",
+          "afterSha256": "2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546"
+        },
+        {
+          "file": "source/val/validate_composites.cpp",
+          "beforeSha256": "A3D9351B41F005BC329B80355DA19158FEE74F471D62DB9F41CB78E57DFAF635",
+          "afterSha256": "F25EB9902DF12A50BC15821149D4C921DC6848F964F4B8D84EA52A12D77BA2C6"
+        },
+        {
+          "file": "source/val/validate_interfaces.cpp",
+          "beforeSha256": "7AA80DE73AC80A9571133D639D854DAF0730E28BE69C14010639E0D632EA285B",
+          "afterSha256": "B5CAB44B5033B2F03DA87A294C262E15F5DAE6E2038CA23FBB1052E816754A23"
+        },
+        {
+          "file": "source/val/validate_memory.cpp",
+          "beforeSha256": "BAEBB48EAC8093B634F23E31064F87880F89FCD25CDD539A8515D6633D13E7FF",
+          "afterSha256": "3E46F5051380EA42C6197010EF7CEA1A39D02C8B0491CCA297F4B32ECD1B68B3"
+        },
+        {
+          "file": "source/val/validate_mode_setting.cpp",
+          "beforeSha256": "2AAAADD770DE9A6FF42031DB7D1ACD932A5689B5FF8C985C33E25E7C863B2B4C",
+          "afterSha256": "E3A5C409C80C50E0ADB62BD178C0F7904527F74994B94078EE205E27F947E96F"
+        },
+        {
+          "file": "source/val/validate_primitives.cpp",
+          "beforeSha256": "FC20962862A07B9D9D847F928BF515FF6274B7A3F804AA4E610BC88C227D568B",
+          "afterSha256": "6156FFA71E95BAACEFAABD27E4F437C43C280F26DA4979DFEAB7B2C06DF6F5D7"
+        },
+        {
+          "file": "source/opt/convert_to_sampled_image_pass.cpp",
+          "beforeSha256": "11D528E00D54722CD888EA15A105F4E8BC5ACFC9572B119CA3E24414738633E5",
+          "afterSha256": "2D9914C90974EE51782516B5D504CFD6E296E1365E18C666B472A3401F56A5A2"
+        },
+        {
+          "file": "source/opt/upgrade_memory_model.cpp",
+          "beforeSha256": "1740B4708D9162C06180925FB1A5A196ADDE9B8A4BE9E903808C717CF9424F5F",
+          "afterSha256": "AA2A5F824FA6BDB1B2B6ED84A7CE964F60E1D49C057CF50008AA5EE6BC625076"
+        }
+      ]
+    },
+    {
+      "component": "shaderc",
+      "sourceCommit": "b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc",
+      "patch": "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
+      "patchSha256": "B475D7338356914C10EFDEF2BF234688DC783E7F410BF29B179A3027534D7440",
+      "files": [
+        {
+          "file": "libshaderc_util/src/compiler.cc",
+          "beforeSha256": "F686006470D1F3539423E2BA720F8D845083FE3CADFB6273E738D2C9BFFBB5F4",
+          "afterSha256": "2C0B6065E651F988270306AF4C9B3314BA95918C491D0C91518491F2B3166941"
+        }
+      ]
+    }
+  ]
 }

@@ -46,7 +46,8 @@ PINNED_INPUTS = [
     "eng/generate-sbom.py",
     "eng/generate-native-notices.py",
     "eng/shaderc-source-patches.lock.json",
-    "eng/patches/shaderc/spirv-tools-parsed-operand-break.patch",
+    "eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch",
+    "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
 ]
 
 SHADERC_SOURCE_MANIFEST_COMMIT = "75137cca3b41a59b8b3e5c42177da8a9490c042f"
@@ -85,13 +86,21 @@ def compiler_source_repair(lock: dict[str, Any]) -> dict[str, Any]:
     if sha256_file(REPO_ROOT / sdk["sourcePatchLock"]) != sdk["sourcePatchLockSha256"].lower():
         raise SbomGenerationError("The compiler source-repair profile differs from the native lock.")
     repair = read_json(sdk["sourcePatchLock"])
-    expected_commit = next(commit for name, _, commit in SHADERC_COMPILED_SOURCES if name == "SPIRV-Tools")
-    if (repair.get("$schemaVersion") != 1 or
-            repair.get("sourceManifestCommit") != SHADERC_SOURCE_MANIFEST_COMMIT or
-            repair.get("component") != "spirv-tools" or repair.get("sourceCommit") != expected_commit or
-            repair.get("file") != "source/parsed_operand.cpp" or
-            sha256_file(REPO_ROOT / repair["patch"]) != repair["patchSha256"].lower()):
+    components = repair.get("components", [])
+    expected = {name.lower(): commit for name, _, commit in SHADERC_COMPILED_SOURCES}
+    if (repair.get("$schemaVersion") != 3 or not components or
+            len({item["component"] for item in components}) != len(components) or
+            repair.get("sourceManifestCommit") != SHADERC_SOURCE_MANIFEST_COMMIT):
         raise SbomGenerationError("The exact reviewed compiler source repair is absent or modified.")
+    for item in components:
+        files = item.get("files", [])
+        if (item["component"] not in {"spirv-tools", "shaderc"} or
+                item["sourceCommit"] != expected.get(item["component"]) or
+                not files or len({entry["file"] for entry in files}) != len(files) or
+                any(not re.fullmatch(r"(?:source|libshaderc_util)/(?:[a-z_]+/)*[a-z_]+\.(?:cpp|cc)", entry["file"])
+                    for entry in files) or
+                sha256_file(REPO_ROOT / item["patch"]) != item["patchSha256"].lower()):
+            raise SbomGenerationError("The exact reviewed compiler source repair is absent or modified.")
     return repair
 
 
@@ -600,11 +609,14 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
             "openusd:shaderc-source-manifest-sha256": SHADERC_SOURCE_MANIFEST_SHA256,
             "openusd:role": "native shader compiler source",
         }
-        if name == "SPIRV-Tools":
+        repairs = [item for item in source_repair["components"] if item["component"] == name.lower()]
+        if repairs:
             properties.update({
                 "openusd:source-repair": openusd["vulkanSdk"]["sourcePatchLock"],
                 "openusd:source-repair-sha256": openusd["vulkanSdk"]["sourcePatchLockSha256"],
-                "openusd:repaired-source-sha256": source_repair["afterSha256"],
+                "openusd:repaired-sources": json.dumps(
+                    {item["file"]: item["afterSha256"] for item in repairs[0]["files"]}, sort_keys=True
+                ),
             })
         add_component(
             components,
