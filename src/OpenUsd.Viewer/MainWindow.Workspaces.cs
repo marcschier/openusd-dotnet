@@ -3,6 +3,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 
 namespace OpenUsd.Viewer;
 
@@ -152,6 +153,23 @@ public sealed partial class MainWindow
         bool stage = ReferenceEquals(sender, StagePanelSplitter);
         ColumnDefinition target = stage ? StagePanelGridColumn : InspectorPanelGridColumn;
         ColumnDefinition peer = stage ? InspectorPanelGridColumn : StagePanelGridColumn;
+        if (sender is GridSplitter splitter && !splitter.Classes.Contains(":pressed") &&
+            e is KeyEventArgs { Key: Key.Left or Key.Right, KeyDeviceType: KeyDeviceType.Keyboard } key)
+        {
+            double delta = key.Key == Key.Right ? splitter.KeyboardIncrement : -splitter.KeyboardIncrement;
+            if (splitter.UseLayoutRounding)
+            {
+                delta = LayoutHelper.RoundLayoutValue(delta, LayoutHelper.GetLayoutScale(splitter));
+            }
+            // GridSplitter uses fitted ActualWidth, which can discard a larger saved request.
+            target.Width = new GridLength(Math.Clamp(
+                target.Width.Value + (stage ? delta : -delta),
+                ViewerSettings.MinimumPanelWidth,
+                ViewerSettings.MaximumPanelWidth));
+            UpdateWorkspacePanelBudget();
+            key.Handled = true;
+            return;
+        }
         // The passive fit cap must not become a permanent limit on an operator's resize.
         target.MaxWidth = Math.Clamp(
             Math.Max(360, Bounds.Width - 430) - peer.ActualWidth,
