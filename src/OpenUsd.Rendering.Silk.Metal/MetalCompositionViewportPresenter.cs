@@ -1334,7 +1334,7 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                  0.00f,  0.75f, 0, 0, 0, 1,
                  0.75f, -0.75f, 0, 0, 0, 1
             ]));
-            indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
+            indices.Write(MemoryMarshal.AsBytes<uint>([0, 2, 1]));
             uniforms.Write(MemoryMarshal.AsBytes<float>(
             [
                 1, 0, 0, 0,
