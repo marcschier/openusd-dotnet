@@ -607,6 +607,10 @@ RGBA companion and in a subsequent ordinary frame. The pinned SDK runtime patch
 preserves empty output lists and clears stale AOV task-context handles before early
 return; the shim restores the prior presentation mode. An unpatched SDK fails this
 pixel test and lacks the required `.openusd-runtime-patches.json` provenance.
+The native workflow's always-upload diagnostics retain the default and PhysX build trees'
+separate `Testing` directories, including CTest's `LastTest.log` and `LastTestsFailed.log`.
+Those paths preserve future failure evidence without changing any test command, timeout or verdict;
+they do not recover files from an already completed runner that did not upload them.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It

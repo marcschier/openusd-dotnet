@@ -388,6 +388,8 @@ jobs:
           name: openusd-native-diagnostics-${{ matrix.rid }}
           path: |
             artifacts/native-ctest-xvfb.log
+            native/build/shim/${{ matrix.rid }}/Testing/
+            native/build/shim/${{ matrix.rid }}-physx/Testing/
             artifacts/native-probe/${{ matrix.rid }}
             artifacts/silk-probe/${{ matrix.rid }}
           if-no-files-found: warn
