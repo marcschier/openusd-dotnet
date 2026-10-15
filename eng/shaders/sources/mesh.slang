@@ -321,11 +321,26 @@ Texture2D<float4> environmentBrdf : register(t19);
 #endif
 
 #if VERTEX_STAGE
+#if OPENUSD_TARGET_METAL
+struct VertexFrameMatrices
+{
+    float4x4 clipToEye;
+    float4x4 eyeToWorld;
+};
+#endif
+
 [shader("vertex")]
 VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_InstanceID)
 {
     InstanceParameters instance = instanceParameters[instanceId];
+#if OPENUSD_TARGET_METAL
+    // Loading the whole frame expands unused lighting, shadow and dome arrays in MSL.
+    VertexFrameMatrices frame;
+    frame.clipToEye = frameParameters.Load<float4x4>(0);
+    frame.eyeToWorld = frameParameters.Load<float4x4>(224 + 6 * 16 * MaximumDirectLights);
+#else
     FrameParameters frame = frameParameters.Load<FrameParameters>(0);
+#endif
     VertexOutput output;
     float4 clipPosition = mul(instance.objectToClip, float4(input.position, 1.0));
     float4 eyePosition = mul(frame.clipToEye, clipPosition);

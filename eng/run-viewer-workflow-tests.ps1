@@ -174,8 +174,9 @@ if (Test-Path -LiteralPath $evidenceRoot)
     throw "Use a new evidence directory; existing output will not be overwritten: $evidenceRoot"
 }
 New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
-$workRoot = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$runId-").FullName
-$environmentNames = @('PATH', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
+$workDirectory = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$runId-")
+$workRoot = (Get-Item -LiteralPath $workDirectory.FullName).FullName
+$environmentNames = @('PATH', 'TEMP', 'TMP', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
     'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'GALLIUM_DRIVER',
@@ -224,6 +225,8 @@ try
     $env:OPENUSD_PLUGIN_PATH = Join-Path $runtime 'plugin\usd'
     $env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH
     $env:OPENUSD_TEST_WORK_ROOT = $workRoot
+    $env:TEMP = $workRoot
+    $env:TMP = $workRoot
     $env:OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT = $evidenceRoot
     $env:OPENUSD_VIEWER_CAPTURE_RENDERER = $CaptureRenderer
     $env:OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT = $evidenceRoot
@@ -256,12 +259,33 @@ try
             {
                 throw "Workflow '$($entry.Id)' did not provide one complete no-skip execution summary."
             }
+            $reports = @(
+                @{ source = 'OpenUsd.Viewer.Tests-windows-net10.0.tunit-report.json'
+                    name = "$($entry.Id).tunit-report.json" },
+                @{ source = 'OpenUsd.Viewer.Tests-windows-net10.0-report.html'
+                    name = "$($entry.Id).report.html" }
+            )
+            foreach ($report in $reports)
+            {
+                $original = Join-Path $assemblyDirectory "TestResults\$($report.source)"
+                $copy = Join-Path $evidenceRoot $report.name
+                $report.sha256 = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash.ToLowerInvariant()
+                Copy-Item -LiteralPath $original -Destination $copy
+                if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -cne $report.sha256)
+                {
+                    throw "Workflow '$($entry.Id)' report changed while retaining its evidence."
+                }
+            }
             $results.Add([ordered]@{
                 scenario = $entry.Id
                 testClass = $entry.Class
                 passed = [int]$passed[0].Groups[1].Value
                 elapsedMilliseconds = $watch.ElapsedMilliseconds
                 logSha256 = (Get-FileHash -LiteralPath $logPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                rawReport = $reports[0].name
+                rawReportSha256 = $reports[0].sha256
+                htmlReport = $reports[1].name
+                htmlReportSha256 = $reports[1].sha256
             })
         }
         finally

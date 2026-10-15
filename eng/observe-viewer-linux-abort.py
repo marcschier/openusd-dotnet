@@ -17,6 +17,11 @@ import time
 
 PREFIX = "[DEBUG-viewer-linux-abort] "
 TEXT_LIMIT = 65536
+GDB_LOCATIONS = (
+    "/usr/bin/gdb", "/bin/gdb", "/usr/local/bin/gdb",
+    "/usr/bin/gdb-12", "/usr/bin/gdb-13", "/usr/bin/gdb-14",
+    "/usr/bin/gdb-15", "/usr/bin/gdb-16", "/usr/bin/gdb-17",
+)
 
 
 def process_identity(pid):
@@ -170,6 +175,9 @@ def observe(executable, working_directory, output, original_exit, original_argum
         result["reason"] = "original-executable-runtime-plugin-shader-stage-or-display-context-mismatch"
         return result
     gdb = shutil.which("gdb")
+    if gdb is None:
+        gdb = next((path for path in GDB_LOCATIONS if os.path.isfile(path) and os.access(path, os.X_OK)), None)
+        result["explicitInstalledDebuggerLocationsChecked"] = list(GDB_LOCATIONS)
     if gdb is None:
         result["reason"] = "already-installed-gdb-absent"
         return result

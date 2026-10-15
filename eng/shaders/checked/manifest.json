@@ -63,7 +63,7 @@
     },
     {
       "path": "eng/observe-viewer-linux-abort.py",
-      "sha256": "dce1842ec07ee2e82641b369157c658d8b9eedd151087898577f504a4b6e51a4"
+      "sha256": "ebaf58f2b57c4272c95b4c4509b2d77731614abe66f084c098667e1eae5979dd"
     },
     {
       "path": "eng/observe-viewer-navigation-allocation.ps1",
@@ -83,7 +83,7 @@
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
-      "sha256": "125e47e309c781d0dc78cd8f48f92dc44286197fb2a3ea030a436fc52d966834"
+      "sha256": "1d5745276c792d9e9d7491c0e2c76b2f78a989b5c49fd909dd3b86f4cd27f7d4"
     },
     {
       "path": "eng/run-viewer.ps1",
@@ -175,7 +175,7 @@
     },
     {
       "path": "eng/shaders/sources/mesh.slang",
-      "sha256": "83668b8005956e058832fd88a8a73c15453d446bb6d9461492029333a1238558"
+      "sha256": "8d4be8ab6c7f3bd371cf5f6de43b2e823671783f4f15524b2360ba58a17314cc"
     },
     {
       "path": "eng/shaders/sources/pick.fragment.slang",
@@ -464,8 +464,8 @@
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.metal",
-          "sha256": "9bce42a5e9111a1f90c2e96b4a82f9791d08547d6e282a5093c75f973e957d08",
-          "size": 333263
+          "sha256": "fe80011f77c3af98b6fdbf37287ab822389195ab0f57948c91c11f368aa289c9",
+          "size": 7283
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.reflection.json",
@@ -654,8 +654,8 @@
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.uv.metal",
-          "sha256": "2c1b8fbc6c54c8d8d902048b1c3d24c0649090ae65bced77ca0cca5de374cd5a",
-          "size": 333475
+          "sha256": "11d22e0d6dab874118c3e7bca0afb9a0599c91a053c141697d248c2088be521e",
+          "size": 7493
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.uv.reflection.json",
@@ -847,8 +847,8 @@
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.metal",
-          "sha256": "21e5e912b6416c65b8d2a9509bac2fb3194515d392078e42e38d375fabbe2fca",
-          "size": 333999
+          "sha256": "40a776172930ef8d1c09bd7680506eb95415a0c96d9c1696df8ab3f0c473a777",
+          "size": 8013
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.reflection.json",

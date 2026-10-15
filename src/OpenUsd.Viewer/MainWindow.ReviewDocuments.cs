@@ -150,6 +150,7 @@ public sealed partial class MainWindow
         }
         catch (Exception exception) when (exception is OpenUsdNativeException or NotSupportedException)
         {
+            ViewerStartupOptions.WriteStatus($"Verified review opening refused: {exception.Message}");
             ViewerDocumentActionChoice choice = await ShowDocumentActionAsync(
                 "Verified review opening was refused",
                 $"{exception.Message}\n\nThe current document has not been discarded. " +

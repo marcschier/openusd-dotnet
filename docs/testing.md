@@ -1669,6 +1669,15 @@ used by ordinary tests and are restored afterward; other test routes retain thei
 The fixture rebuilds that host with the existing Viewer application's supported-OS, as-invoker
 and PerMonitorV2 manifest. Incremental DLL-only execution and an unmanifested apphost are different
 loader/window-host contracts and cannot substitute for this native desktop fixture.
+`-SkipBuild` requires that manifested host to be prebuilt; a general solution build can replace it
+with the test project's ordinary unmanifested executable.
+The temporary source root uses the existing directory's actual filesystem spelling, not an
+environment-provided case alias. Native verified-source anchor and alias checks remain unchanged.
+Scoped `TEMP` and `TMP` point to that same owned root for fixtures that create temporary directories
+directly; their prior process values are restored with the other fixture environment.
+Each successful scenario retains its hash-verified raw TUnit and HTML reports before the next
+process can overwrite the runner's usual paths. The HTML report also preserves captured diagnostic
+output that is not included in TUnit's machine-readable JSON report.
 
 Release-failure observations retain the original failed verdict. The bounded Windows attachment
 observer records only the owned request/backend and three named mapped modules. Allocation traces
@@ -1676,6 +1685,8 @@ run only after the original navigation case fails and are diagnostic replays, no
 GC allocation ticks are sampled and cannot account for every byte in the original measured window.
 The existing Linux observer runs once only after original exit 134, with unchanged input hashes,
 already-installed GDB, a five-second replay limit and at most 32 argument-free fault-thread frames.
+If PATH discovery fails, it checks only the enumerated standard and versioned GNU GDB locations;
+it does not scan the filesystem, install a debugger or substitute another debugger.
 These temporary observers must be removed before final clean-source release qualification.
 New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
 The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer
