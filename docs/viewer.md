@@ -319,6 +319,9 @@ the requested timeline time, labeled **Time N snapshot (not live)**. Moving the 
 animation does not issue property queries or silently change that snapshot; click Current frame
 again to resample. **Default** returns to USD default-time values. Search and paging stay cached;
 ordinary property edits and undo refresh the selected time without changing the chosen mode.
+Explicit snapshot reads remain available during a read-only document-state refresh: both reads
+are serialized by the stage scheduler, and a refresh for an older inspection time cannot replace
+the requested snapshot. Document mutations and edit-target changes still disable snapshot reads.
 
 Ordinary USDA values and common USDC scalars are supported. Lazy crate arrays/path lists,
 value-clip evaluation, array edits, asset expressions, and other unadmitted materialization retain
