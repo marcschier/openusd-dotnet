@@ -105,24 +105,35 @@ producers. Linux's narrow key retains the exact eleven inputs and two paths shar
 
 ## Temporary SDK Render observation
 
-The temporary SDK-only Render observer is default-off. In its selected Linux original-process
-mode it emits at most 64 fixed records through one hidden helper/counter in monolithic `usd_ms`:
+The temporary SDK-only observer is default-off. The original Linux desktop invocation and original
+full macOS native CTest invocation select it without changing arguments, selection or deadlines.
+The original Windows PhysX full invocation can also select it with `-ObserveSdkPhases`; the ordinary
+Windows invocation and Linux native selection stay unchanged. With that option absent, inherited
+SDK and other mode flags are not cleared or reinterpreted. With both observation options supplied,
+SDK-only wins; all prior flag states are restored after the same discovery/full-run and Mesa staging.
+It emits at most 64 fixed records through one hidden helper/counter in monolithic `usd_ms`:
 four whole-Render boundaries, five whole-HdEngine-execution boundaries outside task loops, four
 whole nonempty HgiGL graphics-submission boundaries and two device-submit boundaries outside its
-operation loop. These fifteen fixed labels share the same total budget, not one budget per source
-file or submission. The helper stays byte-identical in existing `layer.cpp`; declarations/calls
-occupy the two existing `engine.cpp` files plus `graphicsCmds.cpp` and `device.cpp`.
+operation loop, plus two whole-sublayer-setter and six stage-destructor/close/wait boundaries.
+All twenty-three fixed names across six existing C++ files share the same total budget, not a
+budget per source, frame or submission. The helper/counter stays byte-identical in `layer.cpp`;
+only fixed calls and the stage declaration are added, without a second helper or header.
 It adds no SDK header, export, wait, scope, lifetime or public layout. Each record uses one checked
 stderr write, no C++ allocation and preserved `errno`/Win32 error state. SDK mode suppresses all
 project C ABI phases and both Viewer observers, including inherited legacy flags, and disables the
-old abort replay path. Original inputs, calls, selectors, process tree and timeouts are unchanged.
-No setter or stage-teardown observer is included. The final Render marker precedes path-vector
+old abort replay path. The Mac wrapper restores absent, empty and prior observation variables even
+when the same original CTest command fails, and preserves its exit code. The final Render marker precedes path-vector
 destruction; the final HdEngine marker precedes function/caller-vector cleanup. Argument construction
 and temporary `UsdPrim` disposal remain outside these labels. Device SubmitOps is shared by graphics
 and blit, so its labels can precede task execution. Graphics ops-return precedes state-guard and
 caller command-owner/vector cleanup; execute-phase tracing remains another possible interval.
 Repeated submissions can exhaust the unchanged 64-record budget: no absence-at-cap inference is
 valid. Detection still does not identify a task, driver or the original corrupting write.
+The setter-return marker follows the complete original proxy-assignment expression, not the
+caller's resumption. Stage-close body exit precedes scope cleanup and deferred destruction;
+destructor body exit precedes member/base destruction. The wait markers bracket the existing
+dispatcher scope exit without introducing or changing a wait. These boundaries do not establish
+which instruction stalled or explain the prior 86.36-second pass or 120.03-second timeout.
 Fresh SDK binaries and all original native/consumer gates, followed by
 removal and clean-source qualification, remain mandatory; source-data controls are not acceptance.
 

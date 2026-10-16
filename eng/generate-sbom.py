@@ -47,6 +47,7 @@ PINNED_INPUTS = [
     "eng/generate-native-notices.py",
     "eng/patches/openusd/sdk-render-phase-observation.patch",
     "eng/patches/openusd/sdk-submission-phase-observation.patch",
+    "eng/patches/openusd/sdk-primary-phase-observation.patch",
     "eng/shaderc-source-patches.lock.json",
     "eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch",
     "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",

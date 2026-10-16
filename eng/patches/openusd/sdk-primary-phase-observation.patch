@@ -1,0 +1,70 @@
+diff --git a/pxr/usd/usd/stage.cpp b/pxr/usd/usd/stage.cpp
+index 70bafef..0d8ff07 100644
+--- a/pxr/usd/usd/stage.cpp
++++ b/pxr/usd/usd/stage.cpp
+@@ -102,6 +102,27 @@
+ #include <utility>
+ #include <vector>
+ 
++#include <cstddef>
++
++#if defined(__GNUC__) && !defined(_WIN32)
++namespace OpenUsdOwnedSdkPhaseObservation __attribute__((visibility("hidden")))
++#else
++namespace OpenUsdOwnedSdkPhaseObservation
++#endif
++{
++namespace Detail
++{
++void Write(const char* phase, std::size_t count) noexcept;
++}
++
++template <std::size_t Count>
++inline void Write(const char (&phase)[Count]) noexcept
++{
++    static_assert(Count <= 32, "SDK observations must use bounded fixed labels.");
++    Detail::Write(phase, Count);
++}
++}
++
+ PXR_NAMESPACE_OPEN_SCOPE
+ 
+ using std::pair;
+@@ -908,16 +929,19 @@ UsdStage::UsdStage(const SdfLayerRefPtr& rootLayer,
+ 
+ UsdStage::~UsdStage()
+ {
++    OpenUsdOwnedSdkPhaseObservation::Write("sdk-stage-dtor.body-entry");
+     TF_DEBUG(USD_STAGE_LIFETIMES).Msg(
+         "UsdStage::~UsdStage(rootLayer=@%s@, sessionLayer=@%s@)\n",
+         _rootLayer ? _rootLayer->GetIdentifier().c_str() : "<null>",
+         _sessionLayer ? _sessionLayer->GetIdentifier().c_str() : "<null>");
+     _Close();
++    OpenUsdOwnedSdkPhaseObservation::Write("sdk-stage-dtor.body-exit");
+ }
+ 
+ void
+ UsdStage::_Close()
+ {
++    OpenUsdOwnedSdkPhaseObservation::Write("sdk-stage-close.entry");
+     TfScopedVar<bool> resetIsClosing(_isClosingStage, true);
+ 
+     TF_PY_ALLOW_THREADS_IN_SCOPE();
+@@ -959,7 +983,9 @@ UsdStage::_Close()
+                 wd.Run([this]() { _sessionLayer.Reset(); });
+                 wd.Run([this]() { _rootLayer.Reset(); });
+                 _editTarget = UsdEditTarget();
++                OpenUsdOwnedSdkPhaseObservation::Write("sdk-stage-wait.entry");
+             }
++            OpenUsdOwnedSdkPhaseObservation::Write("sdk-stage-wait.return");
+         });
+ 
+     WorkSwapDestroyAsync(_primMap);
+@@ -968,6 +994,7 @@ UsdStage::_Close()
+     // reflected to python, the identity management stuff can blow up (since it
+     // accesses python).
+     //WorkSwapDestroyAsync(_layersAndNoticeKeys);
++    OpenUsdOwnedSdkPhaseObservation::Write("sdk-stage-close.body-exit");
+ }
+ 
+ namespace {

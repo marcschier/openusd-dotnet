@@ -303,13 +303,13 @@
     {
       "id": "temporary-sdk-render-phase-observation",
       "path": "eng\\patches\\openusd\\sdk-render-phase-observation.patch",
-      "sha256": "5FF47459F48DB967ECE9136AD513ABCC3E0DDD87D18CC5DB769E07D91BBC310B",
+      "sha256": "F8344F49DD47636B482C7531B1B2608F1E4FD7A9342EEDDF698B3FD639C51032",
       "files": [
         {
           "path": "pxr\\usd\\sdf\\layer.cpp",
           "installedHeader": false,
           "beforeSha256": "D16D8F8D180AAE5353D232AB9FA9C70AE85C362CB1C6D73B0C1E1F8C84FD7440",
-          "afterSha256": "F743AAFA7CD68748D8C3448E1EE8E42F5C7A0F8771331C00C1673D1EEBE8FAB3"
+          "afterSha256": "AF896EFC8976A79327CF5A059824DDFD567E62B7CA3AF6587D308F6B220A1205"
         },
         {
           "path": "pxr\\usdImaging\\usdImagingGL\\engine.cpp",
@@ -341,6 +341,19 @@
           "installedHeader": false,
           "beforeSha256": "F58E4980AF3D9983F4F909C5D921DD38AF7DBCA5957A3B8D3CEB6AA71EA66474",
           "afterSha256": "7C8F1EE911EF9296CD20491AADC7D572D362DC63F8C02ED665AA19461F5FC280"
+        }
+      ]
+    },
+    {
+      "id": "temporary-sdk-primary-phase-observation",
+      "path": "eng\\patches\\openusd\\sdk-primary-phase-observation.patch",
+      "sha256": "DB08A1543AC1C6A84EBC2266F44D32442A1C5BDB785E472CBD958EE9F8629DBB",
+      "files": [
+        {
+          "path": "pxr\\usd\\usd\\stage.cpp",
+          "installedHeader": false,
+          "beforeSha256": "A209CD1C5B99E829CC5B0F5CE821EB19727B1E476CEC45651D5FCFFC60612E22",
+          "afterSha256": "022123099952B365C13CC28F4188C74BC22302D8C1B0A94506C0041FC9961A28"
         }
       ]
     }

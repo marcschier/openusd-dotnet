@@ -1747,6 +1747,17 @@ all project C ABI phases and the old Viewer release-gate observer; with neither 
 observation semantics remain unchanged. Default-off performs no dimension snapshots or formatting.
 This is temporary geometry evidence, not renderer conformance or a saved-view root-cause repair.
 
+The temporary SDK-only selection around the original full Mac native CTest command restores all
+seven prior observation-variable presence/value states in `finally`, including absent and empty
+values, then preserves the original command's nonzero exit. It introduces no filtered or additional
+test/discovery invocation, timeout or test-source change. The original Windows PhysX full run can
+select the same mode via `-ObserveSdkPhases` in its existing runner, without changing discovery,
+arguments, test count or Mesa staging; ordinary Windows and Linux native selection stay unchanged.
+The option is default-off and leaves inherited flags unchanged when absent. Its two setter and six
+stage markers share the existing SDK logger and 64-record process
+budget with the other fifteen names; body/dispatcher markers do not prove caller/member/deferred
+cleanup completion or locate the original timeout. Original native conformance remains required.
+
 Release-failure observations retain the original failed verdict. The bounded Windows attachment
 observer records only the owned request/backend and three named mapped modules. Allocation traces
 run only after the original navigation case fails and are diagnostic replays, not replacement gates;

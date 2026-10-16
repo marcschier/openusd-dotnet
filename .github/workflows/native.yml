@@ -21,6 +21,7 @@ on:
       - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
       - 'eng/patches/openusd/sdk-render-phase-observation.patch'
       - 'eng/patches/openusd/sdk-submission-phase-observation.patch'
+      - 'eng/patches/openusd/sdk-primary-phase-observation.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
@@ -71,6 +72,7 @@ on:
       - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
       - 'eng/patches/openusd/sdk-render-phase-observation.patch'
       - 'eng/patches/openusd/sdk-submission-phase-observation.patch'
+      - 'eng/patches/openusd/sdk-primary-phase-observation.patch'
       - 'eng/apply-openusd-source-patches.ps1'
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
@@ -563,7 +565,7 @@ jobs:
           $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.363.0).Path
           ./eng/build-physx-native.ps1 -Rid win-x64
           ./eng/build-physx-shim.ps1 -Rid win-x64
-          ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64-physx -ObserveAdmissionPhases
+          ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64-physx -ObserveSdkPhases
       - name: Run PhysX shim managed coverage tests
         if: runner.os == 'Windows'
         shell: pwsh
@@ -599,9 +601,52 @@ jobs:
           ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
       - name: Run macOS native CTest
         if: runner.os == 'macOS'
-        env:
-          OPENUSD_DOTNET_OWN_PROPERTY_PHASES: '1'
-        run: ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
+        shell: pwsh
+        run: |
+          $names = @('OPENUSD_DOTNET_OWN_SDK_PHASES', 'OPENUSD_DOTNET_OWN_ADMISSION_PHASES',
+            'OPENUSD_DOTNET_OWN_PROPERTY_PHASES', 'OPENUSD_DOTNET_OWN_HIERARCHY_PHASES',
+            'OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION', 'OPENUSD_VIEWER_VIEWPORT_OBSERVATION',
+            'OPENUSD_VIEWER_OWN_ROOT_OBSERVATION')
+          $previous = @{}
+          foreach ($name in $names)
+          {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+          }
+          $exitCode = 1
+          try
+          {
+            foreach ($name in $names)
+            {
+              if ($name -eq 'OPENUSD_DOTNET_OWN_SDK_PHASES')
+              {
+                [Environment]::SetEnvironmentVariable($name, '1', 'Process')
+              }
+              elseif (Test-Path -LiteralPath "Env:$name")
+              {
+                Remove-Item -LiteralPath "Env:$name"
+              }
+            }
+            ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
+            $exitCode = $LASTEXITCODE
+          }
+          finally
+          {
+            foreach ($name in $names)
+            {
+              if ($null -eq $previous[$name])
+              {
+                if (Test-Path -LiteralPath "Env:$name")
+                {
+                  Remove-Item -LiteralPath "Env:$name"
+                }
+              }
+              else
+              {
+                [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+              }
+            }
+          }
+          if ($exitCode -ne 0) { exit $exitCode }
       - name: Execute staged NativeAOT probes
         shell: pwsh
         run: |

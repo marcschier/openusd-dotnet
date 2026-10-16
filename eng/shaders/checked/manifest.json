@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "ab242a62bc03dbedc7e4b7b38e7c52dccbfb5c4e6fc32faf438f280f2b841178"
+      "sha256": "41492c04878aaee103eefe76f979548e6de60d18fb5bfd2a2bf36b6f3e08b441"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -87,7 +87,7 @@
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "7b6612e4aa9d4d09fafc372822a100cab45ec813532ad050c75ef7e4a47311b2"
+      "sha256": "afb2dc981fb626bc96141b1dc026dcc8c7bfac23cf48fe7258b2c30627747023"
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
@@ -107,15 +107,19 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "72def3a5331a591a3ea236f4a9650921ade49ffa59db958823a9b248f59ab63c"
+      "sha256": "43c1091c89e8025f2fee0481cfffff7b2bf051fc0fe2e20f57fcc1fde10edae7"
     },
     {
       "path": "eng/pack-packages.ps1",
       "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
     },
     {
+      "path": "eng/patches/openusd/sdk-primary-phase-observation.patch",
+      "sha256": "db08a1543ac1c6a84ebc2266f44d32442a1c5bdb785e472cbd958ee9f8629dbb"
+    },
+    {
       "path": "eng/patches/openusd/sdk-render-phase-observation.patch",
-      "sha256": "5ff47459f48db967ece9136ad513abcc3e0ddd87d18cc5db769e07d91bbc310b"
+      "sha256": "f8344f49dd47636b482c7531b1b2608f1e4fd7a9342eeddf698b3fd639c51032"
     },
     {
       "path": "eng/patches/openusd/sdk-submission-phase-observation.patch",
@@ -151,7 +155,7 @@
     },
     {
       "path": "eng/run-windows-native-tests.ps1",
-      "sha256": "9fac8f0fabb934dc8380995f802a6bbd336fe348374d769d6d5a7c51c8fd738c"
+      "sha256": "bff335a899b3e3d9719dcc4f7bf5d18bb30d8ed99ca5da1b05b5fd0603362ca7"
     },
     {
       "path": "eng/shaderc-source-patches.lock.json",
@@ -207,7 +211,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "380dd33b5facd600c0f363d7ca427b51c54d3c1b87655ab87fdfb82440d53892"
+      "sha256": "7802efb04a30b0d07f4c8e16226b9c484ef4f908a7901ad5eab0d928c26e68e0"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
