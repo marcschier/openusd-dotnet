@@ -134,6 +134,11 @@ caller's resumption. Stage-close body exit precedes scope cleanup and deferred d
 destructor body exit precedes member/base destruction. The wait markers bracket the existing
 dispatcher scope exit without introducing or changing a wait. These boundaries do not establish
 which instruction stalled or explain the prior 86.36-second pass or 120.03-second timeout.
+These temporary source patches use portable unified diffs without Git diff/index metadata.
+The real fetch graph extracts the SDK tar inside the parent checkout, without a nested `.git`;
+Git-format relative paths can be skipped there despite a zero apply exit. Exact postimage checks
+must remain fail-closed. Source-DATA qualification therefore uses that extracted-tar topology,
+not an initialized nested repository, and verifies every runtime/storage postimage.
 Fresh SDK binaries and all original native/consumer gates, followed by
 removal and clean-source qualification, remain mandatory; source-data controls are not acceptance.
 

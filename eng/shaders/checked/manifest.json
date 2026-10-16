@@ -107,7 +107,7 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "43c1091c89e8025f2fee0481cfffff7b2bf051fc0fe2e20f57fcc1fde10edae7"
+      "sha256": "90565f8761a8478e1d058787fadcff795f73255f782cc07b42aca8c21358901b"
     },
     {
       "path": "eng/pack-packages.ps1",
@@ -115,11 +115,11 @@
     },
     {
       "path": "eng/patches/openusd/sdk-primary-phase-observation.patch",
-      "sha256": "db08a1543ac1c6a84ebc2266f44d32442a1c5bdb785e472cbd958ee9f8629dbb"
+      "sha256": "785d283b84d9fc2439661a8b6e15a2967153fc201d4c360fe40eae315ab8d71f"
     },
     {
       "path": "eng/patches/openusd/sdk-render-phase-observation.patch",
-      "sha256": "f8344f49dd47636b482c7531b1b2608f1e4fd7a9342eeddf698b3fd639c51032"
+      "sha256": "96bae19dd97acea70c63dd11ab3c8d13cf4a2ce647f0a8552f5c2fcb1079bfbf"
     },
     {
       "path": "eng/patches/openusd/sdk-submission-phase-observation.patch",

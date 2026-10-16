@@ -1,5 +1,3 @@
-diff --git a/pxr/usd/usd/stage.cpp b/pxr/usd/usd/stage.cpp
-index 70bafef..0d8ff07 100644
 --- a/pxr/usd/usd/stage.cpp
 +++ b/pxr/usd/usd/stage.cpp
 @@ -102,6 +102,27 @@

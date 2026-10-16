@@ -1,5 +1,3 @@
-diff --git a/pxr/imaging/hd/engine.cpp b/pxr/imaging/hd/engine.cpp
-index befcb82..c5e15dd 100644
 --- a/pxr/imaging/hd/engine.cpp
 +++ b/pxr/imaging/hd/engine.cpp
 @@ -21,6 +21,27 @@
@@ -70,8 +68,6 @@ index befcb82..c5e15dd 100644
  }
  
  void
-diff --git a/pxr/usd/sdf/layer.cpp b/pxr/usd/sdf/layer.cpp
-index 85ec361..9a6479b 100644
 --- a/pxr/usd/sdf/layer.cpp
 +++ b/pxr/usd/sdf/layer.cpp
 @@ -71,6 +71,108 @@ using std::vector;
@@ -193,8 +189,6 @@ index 85ec361..9a6479b 100644
  }
  
  size_t
-diff --git a/pxr/usdImaging/usdImagingGL/engine.cpp b/pxr/usdImaging/usdImagingGL/engine.cpp
-index a6c4443..b4d024d 100644
 --- a/pxr/usdImaging/usdImagingGL/engine.cpp
 +++ b/pxr/usdImaging/usdImagingGL/engine.cpp
 @@ -70,6 +70,27 @@
