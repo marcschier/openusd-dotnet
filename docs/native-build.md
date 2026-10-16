@@ -91,6 +91,14 @@ compiler. A wide-cache hit uses a lookup-only narrow action, never a second rest
 verified wide data. An exact narrow miss is saved once at that boundary even if a later test fails.
 Prefix inspection includes hidden metadata and compiler members through explicit literal paths;
 missing or empty members and mismatched hashes/provenance remain hard failures.
+The locked shaderc source manifest is pinned to canonical Git-blob LF bytes (`8FFA9158...`).
+The receipt writer retains its actual raw-byte digest; the Mac CPU-pair verifier accepts only that
+exact committed LF digest. Windows CRLF bytes (`6CF717A5...`) and other representations fail;
+no JSON or whitespace normalization is used to manufacture an identity match.
+Before any comparison failure, existing native-probe diagnostics retain a bounded allowlisted
+projection of the actual receipt, its raw SHA-256/length and field-specific comparisons.
+Schema, source commits, build/policy/profile identities, repaired sources and library byte hashes
+remain exact checks; diagnostic retention is not SDK or conformance acceptance.
 This is build reuse, not conformance or a failed final archive. The five-path native cache retains
 its final-success post-save, and package/render consumers still require all three qualified native
 producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.

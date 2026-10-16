@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "fc752331fb88ced38b5d782f6561802d8ce5008c965777ae4641c2f5265edd6d"
+      "sha256": "62d1eeeec7531c31ba1cc6d383bb10a180182ed2cb17ec3ba8e9985b41236590"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -56,6 +56,10 @@
     {
       "path": ".github/workflows/shaders.yml",
       "sha256": "431976c39b4918df5279bb4232096ddf6c1c2b8592801cc3ea3854c414903984"
+    },
+    {
+      "path": ".github/workflows/viewer-distribution.yml",
+      "sha256": "9f86add6cb2526d073f4898e18bd783e5b3147115c6484c814d0b25244b9b54c"
     },
     {
       "path": "LICENSE",
@@ -83,7 +87,7 @@
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "965a70e6e71a91299ce53fcfa640d349c0844e6467909549a1e07c6533bb1fe0"
+      "sha256": "8203fef0ec0e4bca3f7c999dbddb2898d74c60626e3fd1f50cebb03908690e49"
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
@@ -199,7 +203,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "40e47c8e41c3a94975e452e2ccead5153bcc0ad392b31781430aaf7d4dbf8550"
+      "sha256": "3f22003476c2fa15c10c5850f4d743167de222f12320fe5fe15bdd59ad22ae2f"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -332,6 +336,14 @@
     {
       "path": "eng/shaders/write-host-toolchain.ps1",
       "sha256": "edc55570fcac281d31a4eb25ddb0e680baa0b72de7dfea258ec823ccae72074f"
+    },
+    {
+      "path": "eng/verify-private-shaderc-cache.ps1",
+      "sha256": "482bda421a97ccdf0c795d20ee8b39dab201b4feb4fec7c0888e68dcf46fbf93"
+    },
+    {
+      "path": "eng/viewer-input-readiness.ps1",
+      "sha256": "e29596d1f3d9430d45553ad5eccb15eaae3ebcf6c394191ada3d0c1db7453399"
     },
     {
       "path": "native/CMakePresets.json",

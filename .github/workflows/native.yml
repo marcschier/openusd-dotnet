@@ -464,35 +464,7 @@ jobs:
           }
           if ($rid -eq 'osx-arm64')
           {
-            $receipt = Get-Content "$compiler/shaderc-provenance.json" -Raw | ConvertFrom-Json
-            $manifest = @($lock.vulkanSdk.repositories | Where-Object name -CEQ 'shaderc-source-manifest')
-            if ($manifest.Count -ne 1 -or $receipt.schemaVersion -ne 1 -or
-                $receipt.kind -cne 'cpu-only-static-shaderc' -or
-                $receipt.sourceManifestCommit -cne $manifest[0].commit -or
-                $receipt.sourceManifestSha256 -cne '6CF717A56592553E7D88FDA3C01E74529054FECBC2CA6DDE31CBF305B9FC276F' -or
-                $receipt.buildScriptSha256 -cne (Get-FileHash eng/build-vulkan-sdk.ps1).Hash -or
-                $receipt.compilerPolicySha256 -cne (Get-FileHash eng/cmake/ShaderCompiler.cmake).Hash -or
-                $receipt.sourcePatchLockSha256 -cne $lock.vulkanSdk.sourcePatchLockSha256 -or
-                $receipt.library -cne 'lib/libshaderc_combined.a' -or
-                $receipt.librarySha256 -cne (Get-FileHash "$compiler/lib/libshaderc_combined.a").Hash)
-            {
-              throw 'The private CPU shader compiler cache provenance differs from its exact locked build.'
-            }
-            $profile = Get-Content $lock.vulkanSdk.sourcePatchLock -Raw | ConvertFrom-Json
-            $expected = @(
-              foreach ($component in $profile.components)
-              {
-                foreach ($file in $component.files)
-                {
-                  "$($component.component)|$($file.file)|$($file.afterSha256)"
-                }
-              })
-            $actual = @($receipt.repairedSources | ForEach-Object {
-              "$($_.component)|$($_.file)|$($_.sha256)" })
-            if (@(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object) -CaseSensitive).Count -ne 0)
-            {
-              throw 'The private CPU compiler cache lacks the exact reviewed repaired-source inventory.'
-            }
+            ./eng/verify-private-shaderc-cache.ps1 -CompilerRoot $compiler
           }
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: >-

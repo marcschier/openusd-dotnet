@@ -3,6 +3,15 @@
 Use this guide to choose the smallest local gate for a change and to understand how reusable
 workflows combine managed, native, shader, package, render, and performance evidence for release.
 
+The package-only Viewer smoke matrix consumes one complete local feed from three RID pack legs:
+Linux also supplies shared managed packages, and macOS supplies Metal. Its non-matrix input barrier
+requires the three same-run/source artifacts and successful actual packing/upload steps before
+enabling any smoke leg. A missing artifact alone is an error, not a deferral. Only a successful
+pack leg with explicit unavailable-native-input deferral evidence may defer the complete matrix;
+failed/cancelled producers and duplicate, expired or mismatched artifacts fail visibly. Original
+bundle/smoke commands and strict local OpenUsd package-source mapping are unchanged. Viewer
+distribution remains outside the six publication gates, but its applicable PR check must pass.
+
 **On this page:** [Workflow graph](#workflow-and-evidence-graph) ·
 [Managed runner](#managed-test-runner) · [Performance](#performance-safety-gates) ·
 [Fuzzing](#native-stagelayer-fuzzing) · [Continuous render](#continuous-render-gates) ·

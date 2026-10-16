@@ -16,6 +16,7 @@ on:
     paths: &viewer-distribution-paths
       - '.github/workflows/viewer-distribution.yml'
       - 'eng/publish-viewer-bundle.ps1'
+      - 'eng/viewer-input-readiness.ps1'
       - 'eng/sign-viewer-bundle.ps1'
       - 'eng/test-viewer-bundle-smoke.ps1'
       - 'eng/pack-packages.ps1'
@@ -366,12 +367,67 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  viewer-input-readiness:
+    name: verify complete Viewer package inputs
+    needs: pack-viewer-inputs
+    if: >-
+      always() &&
+      (github.event_name != 'workflow_run' ||
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.complete-inputs.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
+      - name: Validate complete same-run Viewer inputs
+        id: complete-inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./eng/viewer-input-readiness.ps1
+          $api = "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $run = gh api $api | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.id -ne [long]$env:GITHUB_RUN_ID -or
+              $run.head_sha -cne $env:WORKFLOW_HEAD_SHA)
+          {
+            throw 'Viewer input readiness workflow-run/source identity differs.'
+          }
+          $jobs = gh api "$api/jobs?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
+          $artifacts = gh api "$api/artifacts?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer input-artifact evidence.' }
+          $result = Get-ViewerInputReadiness -WorkflowRun $run -JobsResponse $jobs -ArtifactsResponse $artifacts
+          $directory = 'artifacts/viewer-input-readiness'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $result | ConvertTo-Json -Depth 6 | Set-Content "$directory/readiness.json"
+          "ready=$($result.ready.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
+          if (-not $result.ready)
+          {
+            Write-Host ('::notice::VIEWER_SMOKE_DEFERRED: successful pack legs explicitly deferred inputs for ' +
+              ($result.explicitlyDeferredRids -join ', ') + '; the complete local feed is not available.')
+          }
+      - name: Upload Viewer input readiness evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openusd-viewer-input-readiness
+          path: artifacts/viewer-input-readiness
+          if-no-files-found: warn
+          retention-days: 14
+
   viewer-distribution:
     name: viewer distribution ${{ matrix.rid }}
-    needs: pack-viewer-inputs
+    needs: [ pack-viewer-inputs, viewer-input-readiness ]
     # Skips rather than fails when the pack job deferred: there is nothing to
     # smoke, and workflow_run re-runs both once the native archive exists.
-    if: needs.pack-viewer-inputs.outputs.ready == 'true'
+    if: needs.pack-viewer-inputs.outputs.ready == 'true' && needs.viewer-input-readiness.outputs.ready == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -503,10 +559,11 @@ jobs:
 
   viewer-distribution-smoke-passed:
     name: viewer distribution smoke passed
-    needs: [ pack-viewer-inputs, viewer-distribution ]
+    needs: [ pack-viewer-inputs, viewer-input-readiness, viewer-distribution ]
     if: >-
       always() &&
       needs.pack-viewer-inputs.outputs.ready == 'true' &&
+      needs.viewer-input-readiness.outputs.ready == 'true' &&
       needs.viewer-distribution.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -520,10 +577,12 @@ jobs:
 
   viewer-distribution-smoke-deferred:
     name: viewer distribution smoke deferred (native artifacts unavailable)
-    needs: pack-viewer-inputs
+    needs: [ pack-viewer-inputs, viewer-input-readiness ]
     if: >-
       always() &&
-      needs.pack-viewer-inputs.outputs.ready != 'true'
+      needs.viewer-input-readiness.result == 'success' &&
+      (needs.pack-viewer-inputs.outputs.ready != 'true' ||
+       needs.viewer-input-readiness.outputs.ready != 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Report deferred smoke

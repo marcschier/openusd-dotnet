@@ -35,7 +35,7 @@
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
-        "value": "965a70e6e71a91299ce53fcfa640d349c0844e6467909549a1e07c6533bb1fe0"
+        "value": "8203fef0ec0e4bca3f7c999dbddb2898d74c60626e3fd1f50cebb03908690e49"
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
@@ -749,7 +749,7 @@
         },
         {
           "name": "openusd:shaderc-source-manifest-sha256",
-          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+          "value": "8ffa915811760a266e2eb5b683eff227bb0fe077ea722fc5b9ac7d681f60e534"
         },
         {
           "name": "openusd:role",
@@ -780,7 +780,7 @@
         },
         {
           "name": "openusd:shaderc-source-manifest-sha256",
-          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+          "value": "8ffa915811760a266e2eb5b683eff227bb0fe077ea722fc5b9ac7d681f60e534"
         },
         {
           "name": "openusd:role",
@@ -947,7 +947,7 @@
         },
         {
           "name": "openusd:shaderc-source-manifest-sha256",
-          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+          "value": "8ffa915811760a266e2eb5b683eff227bb0fe077ea722fc5b9ac7d681f60e534"
         },
         {
           "name": "openusd:role",
@@ -1152,7 +1152,7 @@
         },
         {
           "name": "openusd:shaderc-source-manifest-sha256",
-          "value": "6cf717a56592553e7d88fda3c01e74529054fecbc2ca6dde31cbf305b9fc276f"
+          "value": "8ffa915811760a266e2eb5b683eff227bb0fe077ea722fc5b9ac7d681f60e534"
         },
         {
           "name": "openusd:role",
