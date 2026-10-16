@@ -616,9 +616,25 @@ per native process around render-specification entry, borrowed target access, ta
 return and stage release. It logs no paths or values, preserves Win32 error state and `errno`, and
 does not change tests, the 120-second timeout or the original query-only memory quota. These
 observations distinguish future phases; a later pass alone does not establish the timeout's cause.
+The same Windows option enables `OPENUSD_DOTNET_OWN_HIERARCHY_PHASES` across each original full
+ordinary and PhysX CTest invocation. This adds only hierarchy-snapshot entry/return, stage-guard
+entry/entered and stage-release labels within the same per-process 64-record cap. The inherited
+marker is restored to its prior absent, empty or nonempty state in `finally`. No executable-name
+detection, filtered or additional test invocation, generated test environment, lock or lifetime
+change is involved. A missing hierarchy entry distinguishes a preceding phase; a guard entry
+without its entered label distinguishes the stage-guard boundary. Neither identifies a root cause.
+Hierarchy owner-release labels bracket the original deletion only for nonnull owners; null quota
+releases remain no-ops and consume no records. In the original hierarchy probe, the main snapshot
+stays alive across scaling and the scaling snapshot across the long-name fixture. The first real
+owner disposal fits the original 64-record cap; the final main-owner labels can be truncated.
 The analogous macOS qualification opt-in records property-snapshot entry/return, borrowed stored
 composition-error access/count/refusal/return and stage release, using the same fixed-label cap
 and preserving `errno`. It does not format error objects or change the original CTest invocation.
+Property owner-release entry/return observations also delimit the existing flat snapshot deletion.
+The getter's outermost scope-return marker follows its guard and stage-lock cleanup, but does not
+prove caller resumption or owner disposal. In the layer-error-list probe it first describes the
+warm-up getter; the caller then disposes that snapshot before authoring the resident error fixture.
+A second getter entry is needed before attributing an observation to the actual admission query.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It

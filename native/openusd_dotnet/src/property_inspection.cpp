@@ -173,5 +173,9 @@ openusd_status openusd_stage_get_prim_property_snapshot(
 
 void openusd_property_snapshot_release(openusd_property_snapshot* snapshot)
 {
+    OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Property>(
+        "property-owner-release.entry");
     delete snapshot;
+    OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Property>(
+        "property-owner-release.return");
 }

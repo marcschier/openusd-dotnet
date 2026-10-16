@@ -45,7 +45,7 @@ $directories = @($stormTests | ForEach-Object {
 $names = @('PATH', 'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256',
     'OPENUSD_MESA_WGL_ARCHIVE_URL', 'OPENUSD_MESA_WGL_ARCHIVE_SHA256',
     'GALLIUM_DRIVER', 'LIBGL_ALWAYS_SOFTWARE', 'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
-    'OPENUSD_DOTNET_OWN_ADMISSION_PHASES')
+    'OPENUSD_DOTNET_OWN_ADMISSION_PHASES', 'OPENUSD_DOTNET_OWN_HIERARCHY_PHASES')
 $previous = @{}
 foreach ($name in $names)
 {
@@ -90,6 +90,7 @@ try
     if ($ObserveAdmissionPhases)
     {
         $env:OPENUSD_DOTNET_OWN_ADMISSION_PHASES = '1'
+        $env:OPENUSD_DOTNET_OWN_HIERARCHY_PHASES = '1'
     }
     & $ctest @arguments
     $exitCode = $LASTEXITCODE

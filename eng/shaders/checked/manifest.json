@@ -131,7 +131,7 @@
     },
     {
       "path": "eng/run-windows-native-tests.ps1",
-      "sha256": "5e4a185344b1a189aa81e6d49bb0ffb1fd27f47d1971c48ed4d480ac933495a5"
+      "sha256": "9fac8f0fabb934dc8380995f802a6bbd336fe348374d769d6d5a7c51c8fd738c"
     },
     {
       "path": "eng/shaderc-source-patches.lock.json",
@@ -187,7 +187,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "edb6bbcf7b2f0c8e78eef3fbc3ece92b91012f7f42c5254d309e5ba382d0d3ac"
+      "sha256": "2be2467a5af8f0ff595214c4d452989f0ab594c693daef059c6d0c0f8d9aafdd"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -330,8 +330,12 @@
       "sha256": "b3ae42649d0c272f1cf8773634e16007c65e21ba852606f157606c8555a5af67"
     },
     {
+      "path": "native/openusd_dotnet/src/hierarchy.cpp",
+      "sha256": "76a0a694096cc4f22b0243c0ce215dd36876e8421d91b7daeb7149d7ee03700f"
+    },
+    {
       "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
-      "sha256": "62305e88e2aa9f7b7590b5d5cde504716aa95ed70750f4c114b733122b6df10b"
+      "sha256": "557fe1896437154b0d95882a60714fc95ed980dec0c2f2e433106f92d1342271"
     },
     {
       "path": "native/openusd_dotnet/src/property_composition.cpp",
@@ -339,7 +343,7 @@
     },
     {
       "path": "native/openusd_dotnet/src/property_inspection.cpp",
-      "sha256": "fe39e5d40cb00a29e050a12856e1b0dc945460e9d791ebf88f7cb01ff4bb007a"
+      "sha256": "eb961dff61c07075ca758d391fdca3b16e7894b11b5f8666f02ab28ae5413cda"
     },
     {
       "path": "native/openusd_dotnet/src/render_specification.cpp",

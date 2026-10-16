@@ -24,7 +24,7 @@ namespace OpenUsdOwnedAdmissionObservation
 inline std::atomic<unsigned> records{0};
 inline std::atomic<unsigned> failedRecords{0};
 
-enum class Kind { Render, Property, StageRelease, Storm };
+enum class Kind { Render, Property, StageRelease, Storm, Hierarchy };
 
 inline bool Enabled(const char* name) noexcept
 {
@@ -50,6 +50,8 @@ inline void Write(const char (&phase)[Count]) noexcept
             Enabled("OPENUSD_DOTNET_OWN_ADMISSION_PHASES")) ||
         ((Observation == Kind::Property || Observation == Kind::StageRelease) &&
             Enabled("OPENUSD_DOTNET_OWN_PROPERTY_PHASES")) ||
+        ((Observation == Kind::Hierarchy || Observation == Kind::StageRelease) &&
+            Enabled("OPENUSD_DOTNET_OWN_HIERARCHY_PHASES")) ||
         (Observation == Kind::Storm && Enabled("OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION"));
     if (enabled && records.load(std::memory_order_relaxed) < 64 &&
         records.fetch_add(1, std::memory_order_relaxed) < 64)
@@ -91,6 +93,13 @@ class PropertyCall final
 public:
     PropertyCall() noexcept { Write<Kind::Property>("property-snapshot.entry"); }
     ~PropertyCall() { Write<Kind::Property>("property-snapshot.return"); }
+};
+
+class HierarchyCall final
+{
+public:
+    HierarchyCall() noexcept { Write<Kind::Hierarchy>("hierarchy-snapshot.entry"); }
+    ~HierarchyCall() { Write<Kind::Hierarchy>("hierarchy-snapshot.return"); }
 };
 
 class StormRenderCall final

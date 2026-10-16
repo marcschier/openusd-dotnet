@@ -85,6 +85,7 @@ REQUIRED_CHECKED_INPUTS = (
     "native/CMakePresets.json",
     "native/hdSilk/CMakeLists.txt",
     "native/openusd_dotnet/src/internal/owned_admission_observation.h",
+    "native/openusd_dotnet/src/hierarchy.cpp",
     "native/openusd_dotnet/src/render_specification.cpp",
     "native/openusd_dotnet/src/stage.cpp",
     "native/openusd_hydra/src/openusd_hydra.cpp",

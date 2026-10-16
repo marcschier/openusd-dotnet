@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/hierarchy.h"
+#include "internal/owned_admission_observation.h"
 #include "pxr/base/tf/unicodeUtils.h"
 
 namespace OpenUsdHierarchy
@@ -176,6 +177,7 @@ openusd_status openusd_stage_get_hierarchy_snapshot(
     openusd_hierarchy_view* view,
     openusd_error_buffer* error)
 {
+    const OpenUsdOwnedAdmissionObservation::HierarchyCall observation;
     // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
@@ -194,8 +196,12 @@ openusd_status openusd_stage_get_hierarchy_snapshot(
             WriteError(error, "A valid stage, aligned hierarchy outputs and bounded version 1 limits are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
+        OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Hierarchy>(
+            "hierarchy-guard.entry");
         const openusd_status status = GuardStage(stage, error, [&]() -> openusd_status
         {
+            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Hierarchy>(
+                "hierarchy-guard.entered");
             if (stage == nullptr || !stage->value)
             {
                 WriteError(error, "A valid stage is required for a hierarchy snapshot.");
@@ -236,5 +242,12 @@ openusd_status openusd_stage_get_hierarchy_snapshot(
 
 void openusd_hierarchy_snapshot_release(openusd_hierarchy_snapshot* snapshot)
 {
+    const bool owned = snapshot != nullptr;
+    if (owned)
+        OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Hierarchy>(
+            "hierarchy-owner-release.entry");
     delete snapshot;
+    if (owned)
+        OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Hierarchy>(
+            "hierarchy-owner-release.return");
 }
