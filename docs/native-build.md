@@ -89,6 +89,8 @@ complete redistribution notices and both mandatory SDK/compiler prefixes have be
 Linux and Windows use the SDK plus Vulkan SDK; macOS uses the SDK plus its private CPU-only shader
 compiler. A wide-cache hit uses a lookup-only narrow action, never a second restore over the
 verified wide data. An exact narrow miss is saved once at that boundary even if a later test fails.
+Prefix inspection includes hidden metadata and compiler members through explicit literal paths;
+missing or empty members and mismatched hashes/provenance remain hard failures.
 This is build reuse, not conformance or a failed final archive. The five-path native cache retains
 its final-success post-save, and package/render consumers still require all three qualified native
 producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.

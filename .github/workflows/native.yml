@@ -457,7 +457,7 @@ jobs:
           foreach ($file in $required)
           {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
-                (Get-Item -LiteralPath $file).Length -eq 0)
+                (Get-Item -LiteralPath $file -Force).Length -eq 0)
             {
               throw "The verified SDK build-cache pair is incomplete: $file"
             }
