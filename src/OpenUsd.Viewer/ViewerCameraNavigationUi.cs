@@ -545,6 +545,15 @@ internal sealed class ViewerCameraNavigationUiAdapter
 
     internal ViewerStageCameraModeState StageCameraMode => _stageCamera;
 
+    internal ViewportDimensions Viewport
+    {
+        get
+        {
+            _uiThread.VerifyAccess();
+            return _controller.Viewport;
+        }
+    }
+
     internal ViewerCameraBookmarkUiState CaptureSavedViewState()
     {
         _uiThread.VerifyAccess();

@@ -45,6 +45,7 @@ PINNED_INPUTS = [
     "eng/sbom/cesium-vcpkg-components.lock.json",
     "eng/generate-sbom.py",
     "eng/generate-native-notices.py",
+    "eng/patches/openusd/sdk-render-phase-observation.patch",
     "eng/shaderc-source-patches.lock.json",
     "eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch",
     "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",

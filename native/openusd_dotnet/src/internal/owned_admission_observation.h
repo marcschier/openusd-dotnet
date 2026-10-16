@@ -45,14 +45,15 @@ inline void Write(const char (&phase)[Count]) noexcept
     const DWORD savedError = GetLastError();
 #endif
     const int savedErrno = errno;
-    const bool enabled =
+    const bool enabled = !Enabled("OPENUSD_DOTNET_OWN_SDK_PHASES") &&
+        !Enabled("OPENUSD_VIEWER_VIEWPORT_OBSERVATION") && (
         ((Observation == Kind::Render || Observation == Kind::StageRelease) &&
             Enabled("OPENUSD_DOTNET_OWN_ADMISSION_PHASES")) ||
         ((Observation == Kind::Property || Observation == Kind::StageRelease) &&
             Enabled("OPENUSD_DOTNET_OWN_PROPERTY_PHASES")) ||
         ((Observation == Kind::Hierarchy || Observation == Kind::StageRelease) &&
             Enabled("OPENUSD_DOTNET_OWN_HIERARCHY_PHASES")) ||
-        (Observation == Kind::Storm && Enabled("OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION"));
+        (Observation == Kind::Storm && Enabled("OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION")));
     if (enabled && records.load(std::memory_order_relaxed) < 64 &&
         records.fetch_add(1, std::memory_order_relaxed) < 64)
     {

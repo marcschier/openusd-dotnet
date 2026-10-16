@@ -19,6 +19,7 @@ public sealed partial class MainWindow
     private Task _savedViewsRefreshTask = Task.CompletedTask;
     private CancellationTokenSource? _savedViewRecallCancellation;
     private Task _savedViewRecallDrained = Task.CompletedTask;
+    private ViewportDimensions _viewportObservationBookmark;
 
     private void WireSavedViewCommands()
     {
@@ -214,6 +215,7 @@ public sealed partial class MainWindow
             ViewerRenderCoordinator coordinator = _coordinator!;
             StageRenderState state = coordinator.CurrentState;
             ViewerCameraBookmarkUiState ui = _cameraNavigation.CaptureSavedViewState();
+            ObserveViewportDimensions(ViewerViewportEvent.CaptureBegin, coordinator);
             UsdReviewSourceBinding binding = editor.CameraBookmarkSourceBinding;
             ViewerCameraBookmark bookmark = await coordinator.Scheduler.InvokeAsync(stage =>
             {
@@ -247,6 +249,11 @@ public sealed partial class MainWindow
             {
                 throw new InvalidOperationException(
                     "The camera changed while saving the view. Try again when it settles.");
+            }
+            if (ViewerViewportObservation.IsEnabled)
+            {
+                _viewportObservationBookmark = bookmark.Viewport;
+                ObserveViewportDimensions(ViewerViewportEvent.CaptureReturn, coordinator);
             }
             return bookmark;
         }
@@ -361,6 +368,11 @@ public sealed partial class MainWindow
             }
             previous = _cameraNavigation.CaptureSavedViewState();
             cancellation.Token.ThrowIfCancellationRequested();
+            if (ViewerViewportObservation.IsEnabled)
+            {
+                _viewportObservationBookmark = bookmark.Viewport;
+                ObserveViewportDimensions(ViewerViewportEvent.RecallBegin, coordinator);
+            }
             ViewerStatus.Text = "Recalling saved view...";
             HierarchyState.Text = ViewerStatus.Text;
             await coordinator.RecallCameraBookmarkAsync(bookmark,
@@ -428,9 +440,45 @@ public sealed partial class MainWindow
                 }
                 finally
                 {
+                    if (ViewerViewportObservation.IsEnabled && coordinator is not null)
+                    {
+                        _viewportObservationBookmark = bookmark.Viewport;
+                        ObserveViewportDimensions(ViewerViewportEvent.RecallEnd, coordinator);
+                    }
                     drained.TrySetResult();
                 }
             }
+        }
+    }
+
+    private void ObserveViewportDimensions(
+        ViewerViewportEvent kind,
+        ViewerRenderCoordinator coordinator,
+        ViewportDimensions? knownUi = null)
+    {
+        if (!ViewerViewportObservation.IsEnabled)
+        {
+            return;
+        }
+        int systemError = System.Runtime.InteropServices.Marshal.GetLastSystemError();
+        int pinvokeError = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
+        try
+        {
+            double scaling = TopLevel.GetTopLevel(ViewportHost)?.RenderScaling ?? 1;
+            ViewportDimensions ui = knownUi ?? ViewportPixelMath.ToPixels(
+                ViewportHost.Bounds.Width, ViewportHost.Bounds.Height, scaling);
+            ViewerViewportObservation.Write(
+                kind, ui, coordinator.CurrentState.Viewport, _cameraNavigation.Viewport,
+                _viewportObservationBookmark);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            ViewerViewportObservation.RecordFailure();
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.SetLastSystemError(systemError);
+            System.Runtime.InteropServices.Marshal.SetLastPInvokeError(pinvokeError);
         }
     }
 

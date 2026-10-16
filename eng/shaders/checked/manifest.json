@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "8dd271a3080b6500d07959e531c4871d4bd9cd174ad34c8d91a96b815a2ceeed"
+      "sha256": "d5b6b956f9b65212901cc24e675248ae7c313f27b0047c5b923f1abc76065216"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "c2c565bde8c9126be6be9f7a862cb3b28cd1177c3a06ea570ac35c0eeec27604"
+      "sha256": "a927a61c586998afaf32721b404311c31814cba10d444be8025cad17e712c9f0"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -63,7 +63,7 @@
     },
     {
       "path": "NOTICE",
-      "sha256": "5b52cba6a1a315d0aeaf4192a1464c81dd6317c769b98f4945afa552ec78e737"
+      "sha256": "10d2c78d7c0e8cf0e891b9504fcb8f4da5deaf0a74dca5646943e8aac387c08b"
     },
     {
       "path": "eng/build-native.ps1",
@@ -79,11 +79,15 @@
     },
     {
       "path": "eng/generate-native-notices.py",
-      "sha256": "564eb6a5fab5115b55d94b9b84e8b570b375b55934a00f03830cb7a9caa01bba"
+      "sha256": "cd7b06054b07f346309836485733b7329c8a209c57430e0b4e4f05a4ad323e38"
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "5f7d5b9abb7fb2d055c584e95c0a72aebfd4a72b58fd9d14b4b9bbc4b25dc426"
+      "sha256": "965a70e6e71a91299ce53fcfa640d349c0844e6467909549a1e07c6533bb1fe0"
+    },
+    {
+      "path": "eng/managed-workflow-reports.ps1",
+      "sha256": "5f4772bfa2118f414bdb4d35adde182e67f0805b79c9f966e9a25197bd5e4551"
     },
     {
       "path": "eng/mesa-wgl-test-runtime.lock.json",
@@ -98,8 +102,16 @@
       "sha256": "5832302fc5329c315eb81251ce01c62a268531f5b37b16ad6fcde3416b25f6a5"
     },
     {
+      "path": "eng/openusd-runtime-patches.lock.json",
+      "sha256": "38983fc2d6b55a0955369aa34cbd052762a2a3c640c3b9b70a7d408e2a92244f"
+    },
+    {
       "path": "eng/pack-packages.ps1",
       "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
+    },
+    {
+      "path": "eng/patches/openusd/sdk-render-phase-observation.patch",
+      "sha256": "5ff47459f48db967ece9136ad513abcc3e0ddd87d18cc5db769e07d91bbc310b"
     },
     {
       "path": "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
@@ -123,11 +135,11 @@
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
-      "sha256": "1d5745276c792d9e9d7491c0e2c76b2f78a989b5c49fd909dd3b86f4cd27f7d4"
+      "sha256": "8eaf4cce7f591d7a9630dcfe11d83ce56b2bbf22461532597171d5d8834b8b7e"
     },
     {
       "path": "eng/run-viewer.ps1",
-      "sha256": "4bab2b07845964d83ca95a89271221b3c12d4906009c79bc6a23759b7806e153"
+      "sha256": "90c9fae2678de9e843b85ed3505d4d5cca5886263c5d1b73f83420ff448e419d"
     },
     {
       "path": "eng/run-windows-native-tests.ps1",
@@ -187,7 +199,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "2be2467a5af8f0ff595214c4d452989f0ab594c693daef059c6d0c0f8d9aafdd"
+      "sha256": "40e47c8e41c3a94975e452e2ccead5153bcc0ad392b31781430aaf7d4dbf8550"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -330,12 +342,16 @@
       "sha256": "b3ae42649d0c272f1cf8773634e16007c65e21ba852606f157606c8555a5af67"
     },
     {
+      "path": "native/hdSilk/src/materialXBridge.cpp",
+      "sha256": "9b9f052fc1078a24596196be7969d72608718a1fe86b690807b86d8c7bbd3a27"
+    },
+    {
       "path": "native/openusd_dotnet/src/hierarchy.cpp",
       "sha256": "76a0a694096cc4f22b0243c0ce215dd36876e8421d91b7daeb7149d7ee03700f"
     },
     {
       "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
-      "sha256": "557fe1896437154b0d95882a60714fc95ed980dec0c2f2e433106f92d1342271"
+      "sha256": "56c463c85d35dd3854653350cecf5b9b50dad04ef125e7863df37a3e03874434"
     },
     {
       "path": "native/openusd_dotnet/src/property_composition.cpp",
@@ -358,12 +374,44 @@
       "sha256": "4217a098c5e682517f10bb0506b27673e9847e441b90ce8c1dd85866d5630f03"
     },
     {
+      "path": "src/OpenUsd.Rendering.Silk.Metal/MetalObjectOwnership.cs",
+      "sha256": "a0fe6517e1701e781710af04f9897c4dd9674e3d81769e7a2e0660143d51973b"
+    },
+    {
+      "path": "src/OpenUsd.Rendering.Silk.Metal/MetalSilkGraphicsDevice.Pipeline.cs",
+      "sha256": "b836d168f58d5dfe94ac5101b94640db2ed8175bb9369b3cb44b71932826666a"
+    },
+    {
+      "path": "src/OpenUsd.Rendering.Silk.Metal/MetalSilkGraphicsDevice.cs",
+      "sha256": "bdbb78d0d54cc9001d7f1d23cffabb45dbd9da389fc9726ae413b26842c7a624"
+    },
+    {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",
       "sha256": "7879b0d218bf2ea539f1af9e94e46b3610fba1195a7bc665c351fb9e1e6878db"
     },
     {
       "path": "src/OpenUsd.Viewer.App/app.manifest",
       "sha256": "54eae075f26b67db85d94616d4f47298377a67dfb6cb7f07b1229faa12f7400b"
+    },
+    {
+      "path": "src/OpenUsd.Viewer/MainWindow.CameraBookmarks.cs",
+      "sha256": "02e2aa57c24b4a04a394e28aa71ecbbdcc43064124e37e75115876baf315dfb7"
+    },
+    {
+      "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
+      "sha256": "b2a0dc9e1f40c5f33f24e24c8453f5c0aa1c2616582614e3eff943c49d50a8a2"
+    },
+    {
+      "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",
+      "sha256": "24d16f6d7288d7f0d6533aa7acedd51c10339530f4fd61a46e7a4d555d9e38ec"
+    },
+    {
+      "path": "src/OpenUsd.Viewer/ViewerReleaseGateObservation.cs",
+      "sha256": "94daa0c92d88eb6d7cfabfc2fe7f9fd48c8798c9199e05af9414362568fbfff4"
+    },
+    {
+      "path": "src/OpenUsd.Viewer/ViewerViewportObservation.cs",
+      "sha256": "4218aa9c2c0eedfa11a74a93fba96d573e9352796fdf3094def93c08841a4ce3"
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",

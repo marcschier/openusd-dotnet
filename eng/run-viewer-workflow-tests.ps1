@@ -98,7 +98,8 @@ function Get-WorkflowSourcePaths
     $paths = @(& git -C $repoRoot ls-files --cached --others --exclude-standard -- `
         'src' 'native\openusd_dotnet' 'native\openusd_storm_child' 'native\openusd_hydra' `
         'native\include' 'native\private' 'tests\OpenUsd.Viewer.Tests' `
-        'eng\run-viewer-workflow-tests.ps1' 'eng\run-managed-tests.ps1' 'eng\openusd.lock.json' `
+        'eng\run-viewer-workflow-tests.ps1' 'eng\managed-workflow-reports.ps1' `
+        'eng\run-managed-tests.ps1' 'eng\openusd.lock.json' `
         'Directory.Build.props' 'Directory.Build.targets' 'Directory.Packages.props' 'global.json')
     if ($LASTEXITCODE -ne 0 -or $paths.Count -eq 0)
     {
@@ -146,6 +147,8 @@ if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or -not (Test-Path -LiteralPath
     throw 'The built net10.0 Viewer test assembly could not be resolved.'
 }
 $assemblyDirectory = Split-Path -Parent $target[0]
+. (Join-Path $PSScriptRoot 'managed-workflow-reports.ps1')
+
 function Get-WorkflowBinaryPaths
 {
     @(
@@ -183,7 +186,9 @@ $environmentNames = @('PATH', 'TEMP', 'TMP', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 
     'MESA_GL_VERSION_OVERRIDE', 'MESA_GLSL_VERSION_OVERRIDE', 'LIBGL_ALWAYS_SOFTWARE',
     'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
     'OPENUSD_MESA_WGL_ARCHIVE_SHA256', 'OPENUSD_MESA_WGL_ARCHIVE_URL',
-    'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256') +
+    'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256',
+    'OPENUSD_DOTNET_OWN_SDK_PHASES', 'OPENUSD_VIEWER_VIEWPORT_OBSERVATION',
+    'OPENUSD_VIEWER_OWN_ROOT_OBSERVATION') +
     @($scenarios | ForEach-Object { $_.Flag })
 $previous = @{}
 foreach ($name in $environmentNames)
@@ -236,57 +241,13 @@ try
     }
     foreach ($entry in $selected)
     {
-        $logPath = Join-Path $evidenceRoot "$($entry.Id).log"
         [Environment]::SetEnvironmentVariable($entry.Flag, '1', 'Process')
-        $watch = [Diagnostics.Stopwatch]::StartNew()
         try
         {
-            & $runner -Project $project -Framework net10.0 -Configuration $Configuration `
-                -UseWindowsAppHost:$MesaWgl -MinimumExpectedTests 1 `
-                -TestArguments @('--treenode-filter', "/*/*/$($entry.Class)/*") `
-                *>&1 | Tee-Object -FilePath $logPath
-            if ($LASTEXITCODE -ne 0)
-            {
-                throw "Viewer workflow '$($entry.Id)' failed; see $logPath"
-            }
-            $log = [IO.File]::ReadAllText($logPath)
-            $passed = [regex]::Matches($log, '(?m)^\s*succeeded:\s*(\d+)\s*$')
-            $failed = [regex]::Matches($log, '(?m)^\s*failed:\s*(\d+)\s*$')
-            $skipped = [regex]::Matches($log, '(?m)^\s*skipped:\s*(\d+)\s*$')
-            if ($passed.Count -ne 1 -or $failed.Count -ne 1 -or $skipped.Count -ne 1 -or
-                [int]$passed[0].Groups[1].Value -lt 1 -or [int]$failed[0].Groups[1].Value -ne 0 -or
-                [int]$skipped[0].Groups[1].Value -ne 0)
-            {
-                throw "Workflow '$($entry.Id)' did not provide one complete no-skip execution summary."
-            }
-            $reports = @(
-                @{ source = 'OpenUsd.Viewer.Tests-windows-net10.0.tunit-report.json'
-                    name = "$($entry.Id).tunit-report.json" },
-                @{ source = 'OpenUsd.Viewer.Tests-windows-net10.0-report.html'
-                    name = "$($entry.Id).report.html" }
-            )
-            foreach ($report in $reports)
-            {
-                $original = Join-Path $assemblyDirectory "TestResults\$($report.source)"
-                $copy = Join-Path $evidenceRoot $report.name
-                $report.sha256 = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash.ToLowerInvariant()
-                Copy-Item -LiteralPath $original -Destination $copy
-                if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -cne $report.sha256)
-                {
-                    throw "Workflow '$($entry.Id)' report changed while retaining its evidence."
-                }
-            }
-            $results.Add([ordered]@{
-                scenario = $entry.Id
-                testClass = $entry.Class
-                passed = [int]$passed[0].Groups[1].Value
-                elapsedMilliseconds = $watch.ElapsedMilliseconds
-                logSha256 = (Get-FileHash -LiteralPath $logPath -Algorithm SHA256).Hash.ToLowerInvariant()
-                rawReport = $reports[0].name
-                rawReportSha256 = $reports[0].sha256
-                htmlReport = $reports[1].name
-                htmlReportSha256 = $reports[1].sha256
-            })
+            $result = Invoke-ManagedWorkflowScenario -Runner $runner -Project $project `
+                -AssemblyDirectory $assemblyDirectory -EvidenceRoot $evidenceRoot -Entry $entry `
+                -Configuration $Configuration -MesaWgl:$MesaWgl
+            $results.Add($result)
         }
         finally
         {

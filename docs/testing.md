@@ -1705,9 +1705,28 @@ The temporary source root uses the existing directory's actual filesystem spelli
 environment-provided case alias. Native verified-source anchor and alias checks remain unchanged.
 Scoped `TEMP` and `TMP` point to that same owned root for fixtures that create temporary directories
 directly; their prior process values are restored with the other fixture environment.
-Each successful scenario retains its hash-verified raw TUnit and HTML reports before the next
-process can overwrite the runner's usual paths. The HTML report also preserves captured diagnostic
-output that is not included in TUnit's machine-readable JSON report.
+Each scenario retains its hash-verified raw TUnit and HTML reports before the next process can
+overwrite the runner's usual paths, including test, minimum-execution and unexpected-skip failures.
+Pre-existing reports are separated as prior evidence before invocation; missing current reports
+cannot qualify as current output. Report-retention errors are explicit, preserve the original
+failing exit or exception, and fail qualification if execution otherwise succeeded. The HTML report
+also preserves captured diagnostic output that is not included in TUnit's machine-readable report.
+The macOS composition step uses the same retention boundary for each of its four original filtered
+invocations, before the next invocation can replace the reports. Its original executed-test minimum,
+platform-skip policy, selectors and ordering remain unchanged; the always-upload diagnostics include
+the separate per-invocation reports even when a later composition invocation fails.
+
+The temporary `OPENUSD_VIEWER_VIEWPORT_OBSERVATION=1` mode records only capture, resize and recall
+boundaries, with four integer width/height pairs: UI physical pixels, cached coordinator state,
+managed navigation state and the window-local captured or recalled bookmark. It performs no
+backend or SDK query and does not relax the exact integer aspect predicate. A process emits at most
+64 ASCII records, including a terminal limit record, each at most 256 bytes and together at most
+16 KiB. A single captured stderr write is attempted per record; I/O or disposed-writer failures
+are counted without retry, and both system and cached P/Invoke last-error states are preserved.
+SDK-only observation takes priority over this Viewer-only mode. Either selected mode suppresses
+all project C ABI phases and the old Viewer release-gate observer; with neither selected, legacy
+observation semantics remain unchanged. Default-off performs no dimension snapshots or formatting.
+This is temporary geometry evidence, not renderer conformance or a saved-view root-cause repair.
 
 Release-failure observations retain the original failed verdict. The bounded Windows attachment
 observer records only the owned request/backend and three named mapped modules. Allocation traces

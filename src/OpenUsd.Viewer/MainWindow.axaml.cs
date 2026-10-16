@@ -2341,11 +2341,13 @@ public sealed partial class MainWindow : Window, IDisposable
             ViewportHost.Bounds.Height,
             scaling);
         ViewerCameraResizeUpdate cameraResize = _cameraNavigation.Resize(viewport);
+        ObserveViewportDimensions(ViewerViewportEvent.ResizeBegin, coordinator, viewport);
         if (IsAutomatedViewerRun())
         {
             await coordinator.MutateStateAsync(
                 state => state.WithViewport(viewport),
                 cancellationToken);
+            ObserveViewportDimensions(ViewerViewportEvent.ResizeReturn, coordinator);
             return;
         }
 
@@ -2354,6 +2356,7 @@ public sealed partial class MainWindow : Window, IDisposable
         await coordinator.MutateStateAsync(
             state => ViewerCameraStateMutation.ApplyResize(state.WithViewport(viewport), cameraResize),
             cancellationToken);
+        ObserveViewportDimensions(ViewerViewportEvent.ResizeReturn, coordinator);
         UpdateCameraStatus();
         UpdateViewportDisplayAvailability();
         bool stageCameraActive = _stageCameraMode.GetView().IsActive;

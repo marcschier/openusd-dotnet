@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using SharpMetal.Foundation;
 using SharpMetal.Metal;
@@ -14,6 +15,17 @@ internal static class MetalObjectOwnership
     // Acquire our own +1 before a wrapper is stored or balanced by Dispose.
     private static nint Retain(nint handle) =>
         handle == 0 ? 0 : ObjectiveC.IntPtr_objc_msgSend(handle, new Selector("retain"));
+
+    internal static string? GetString(NSString value)
+    {
+        if (value.NativePtr == 0)
+        {
+            return null;
+        }
+        // SharpMetal's UTF-16 conversion does not reserve a terminator in its buffer.
+        nint utf8 = ObjectiveC.IntPtr_objc_msgSend(value.NativePtr, new Selector("UTF8String"));
+        return Marshal.PtrToStringUTF8(utf8);
+    }
 
     internal static MTLTextureDescriptor Retain(MTLTextureDescriptor value) => new(Retain(value.NativePtr));
     internal static MTLCommandBuffer Retain(MTLCommandBuffer value) => new(Retain(value.NativePtr));

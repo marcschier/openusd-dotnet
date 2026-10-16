@@ -8,7 +8,7 @@ namespace OpenUsd.Viewer;
 
 internal static class ViewerReleaseGateObservation
 {
-    private static readonly bool Enabled =
+    private static readonly bool Enabled = !ViewerViewportObservation.IsExclusiveModeSelected &&
         Environment.GetEnvironmentVariable("OPENUSD_VIEWER_OWN_ROOT_OBSERVATION") == "1";
     private static int _records;
 

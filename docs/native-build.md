@@ -82,6 +82,33 @@ This does not expand authored-source admission: the warehouse acquisition guard 
 source paths reaching 260 characters, unsafe names, traversal and reparse roots before SDK use.
 The guarded Windows-only helper remains inside the native SDK behind the project-owned C ABI.
 
+## SDK build-cache boundary
+
+The native workflow persists a narrow SDK-build cache only after the installed SDK metadata,
+complete redistribution notices and both mandatory SDK/compiler prefixes have been verified.
+Linux and Windows use the SDK plus Vulkan SDK; macOS uses the SDK plus its private CPU-only shader
+compiler. A wide-cache hit uses a lookup-only narrow action, never a second restore over the
+verified wide data. An exact narrow miss is saved once at that boundary even if a later test fails.
+This is build reuse, not conformance or a failed final archive. The five-path native cache retains
+its final-success post-save, and package/render consumers still require all three qualified native
+producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.
+
+## Temporary SDK Render observation
+
+The temporary SDK-only Render observer is default-off. In its selected Linux original-process
+mode it emits at most 64 fixed records through one hidden helper/counter in monolithic `usd_ms`:
+four whole-Render boundaries and five whole-HdEngine-execution boundaries outside task loops.
+The helper lives in existing `layer.cpp`; only the two existing `engine.cpp` files add labels.
+It adds no SDK header, export, wait, scope, lifetime or public layout. Each record uses one checked
+stderr write, no C++ allocation and preserved `errno`/Win32 error state. SDK mode suppresses all
+project C ABI phases and both Viewer observers, including inherited legacy flags, and disables the
+old abort replay path. Original inputs, calls, selectors, process tree and timeouts are unchanged.
+No setter or stage-teardown observer is included. The final Render marker precedes path-vector
+destruction; the final HdEngine marker precedes function/caller-vector cleanup. Argument construction
+and temporary `UsdPrim` disposal remain outside these labels. Detection still does not identify the
+original corrupting write. Fresh SDK binaries and all original native/consumer gates, followed by
+removal and clean-source qualification, remain mandatory; source-data controls are not acceptance.
+
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream
@@ -108,6 +135,21 @@ at construction for those descriptors, command buffers, encoders, URLs and `NSSt
 that it later disposes. The existing submission owner releases its command buffer after completion;
 failure paths release the same owned reference. `new`/`alloc` resources and borrowed attachment
 getters retain their existing ownership.
+
+Borrowed native strings are copied through `UTF8String`, without transferring ownership or using
+SharpMetal's UTF-16 buffer conversion. Metal library and graphics-pipeline failures preserve the
+native `NSError` code and localized description when provided. Generated shader source is not
+explicitly dumped, and retaining a compiler diagnostic does not establish that compilation or
+rendering succeeded.
+
+The [Metal language specification](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf#page=13)
+forbids a function identifier named `main`. The constant-folded MaterialX unlit fragment therefore
+declares `hdSilkMaterialXFragmentMain` and uses the standard Metal 2.2
+[`[[host_name("main")]]` attribute](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf#page=132)
+to preserve the renderer's existing logical entry name.
+Generated MSL bytes already participate in the persisted material-program cache key, so this
+source change invalidates prior generated programs without changing the SPIR-V/DXIL entry names
+or their cache salts. Compiler and original pixel-test acceptance remain separate requirements.
 
 Qualification must exercise normal managed and NativeAOT public-presenter rendering through the
 Cocoa main loop, including retained camera changes and captured pixels. A console-only Metal probe

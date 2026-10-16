@@ -58,7 +58,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 .TryGetCapabilityRejectionReason(out tablesRejection);
         }
         Capabilities = new SilkGraphicsCapabilities(
-            device.Name.ToString() ?? "Metal Device",
+            MetalObjectOwnership.GetString(device.Name) ?? "Metal Device",
             "Metal",
             SupportsCompute: true,
             IsSoftware: false)

@@ -240,14 +240,15 @@ jobs:
       # `openusd-cache` step in ci.yml, because hashFiles over a different file
       # list yields a different digest and the restore would silently never hit.
       #
-      # It must not run when the native cache above hit. Both write
-      # native/install/linux-x64, and this narrower key excludes the shim
-      # headers, so restoring it second overwrites the freshly cached
-      # .openusd-install-metadata.json with an older one. Release run
-      # 31249949333 failed exactly that way: the shim was ABI 5 but the
-      # clobbered sidecar still said 4, and the build that would have rewritten
-      # it was skipped because the native cache had hit.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # A wide hit must never be overwritten by a narrow restore. Separate
+      # lookup-only branches inspect the SDK key without downloading it, so
+      # verified wide data can also fill an absent SDK pair. Each RID saves
+      # that pair exactly once after metadata and full notices pass, before
+      # later tests. The wide cache keeps its final-success-only post-save.
+      # Linux retains ci.yml's exact eleven inputs/two paths. Windows uses
+      # the same SDK/Vulkan closure; macOS also binds its CPU compiler policy.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: sdk-linux-restore
         if: >-
           matrix.rid == 'linux-x64' &&
           steps.native-cache.outputs.cache-hit != 'true'
@@ -261,6 +262,126 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: sdk-linux-lookup
+        if: >-
+          matrix.rid == 'linux-x64' &&
+          steps.native-cache.outputs.cache-hit == 'true'
+        with:
+          lookup-only: true
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: >-
+            openusd-install-linux-x64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: sdk-win-restore
+        if: >-
+          matrix.rid == 'win-x64' &&
+          steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            native/install/win-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: >-
+            openusd-install-win-x64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: sdk-win-lookup
+        if: >-
+          matrix.rid == 'win-x64' &&
+          steps.native-cache.outputs.cache-hit == 'true'
+        with:
+          lookup-only: true
+          path: |
+            native/install/win-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: >-
+            openusd-install-win-x64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: sdk-mac-restore
+        if: >-
+          matrix.rid == 'osx-arm64' &&
+          steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            native/install/osx-arm64
+            native/install/shaderc/osx-arm64
+          key: >-
+            openusd-install-osx-arm64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: sdk-mac-lookup
+        if: >-
+          matrix.rid == 'osx-arm64' &&
+          steps.native-cache.outputs.cache-hit == 'true'
+        with:
+          lookup-only: true
+          path: |
+            native/install/osx-arm64
+            native/install/shaderc/osx-arm64
+          key: >-
+            openusd-install-osx-arm64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
               'eng/generate-native-notices.py',
               'eng/shaderc-source-patches.lock.json',
               'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
@@ -294,6 +415,115 @@ jobs:
           python ./eng/generate-native-notices.py verify `
             --rid ${{ matrix.rid }} --install-root native/install/${{ matrix.rid }}
           if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
+      - name: Verify complete SDK build-cache pair
+        shell: pwsh
+        run: |
+          $lock = Get-Content eng/openusd.install.lock.json -Raw | ConvertFrom-Json
+          $rid = '${{ matrix.rid }}'
+          $sdk = "native/install/$rid"
+          $required = @(
+            "$sdk/.openusd-install-metadata.json",
+            "$sdk/.openusd-runtime-patches.json",
+            "$sdk/.openusd-storage-admission.json",
+            "$sdk/.openusd-native-notices.json",
+            "$sdk/THIRD-PARTY.md")
+          if ($rid -eq 'osx-arm64')
+          {
+            $compiler = "native/install/shaderc/$rid"
+            $required += @(
+              "$compiler/include/shaderc/shaderc.hpp",
+              "$compiler/lib/libshaderc_combined.a",
+              "$compiler/shaderc-provenance.json")
+          }
+          else
+          {
+            $compiler = "native/install/vulkan-sdk-$($lock.vulkanSdk.version)"
+            $include = if ($rid -eq 'win-x64') { 'Include' } else { 'include' }
+            $lib = if ($rid -eq 'win-x64') { 'Lib' } else { 'lib' }
+            $required += @(
+              "$compiler/$include/vulkan/vulkan.h",
+              "$compiler/$include/vulkan/vk_enum_string_helper.h",
+              "$compiler/$include/vma/vk_mem_alloc.h")
+            $required += if ($rid -eq 'win-x64')
+            {
+              @("$compiler/$lib/shaderc_combined.lib", "$compiler/$lib/shaderc_combinedd.lib",
+                "$compiler/Bin/vulkan-1.dll")
+            }
+            else
+            {
+              @("$compiler/$lib/libshaderc_combined.a", "$compiler/$lib/libvulkan.so")
+            }
+          }
+          foreach ($file in $required)
+          {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
+                (Get-Item -LiteralPath $file).Length -eq 0)
+            {
+              throw "The verified SDK build-cache pair is incomplete: $file"
+            }
+          }
+          if ($rid -eq 'osx-arm64')
+          {
+            $receipt = Get-Content "$compiler/shaderc-provenance.json" -Raw | ConvertFrom-Json
+            $manifest = @($lock.vulkanSdk.repositories | Where-Object name -CEQ 'shaderc-source-manifest')
+            if ($manifest.Count -ne 1 -or $receipt.schemaVersion -ne 1 -or
+                $receipt.kind -cne 'cpu-only-static-shaderc' -or
+                $receipt.sourceManifestCommit -cne $manifest[0].commit -or
+                $receipt.sourceManifestSha256 -cne '6CF717A56592553E7D88FDA3C01E74529054FECBC2CA6DDE31CBF305B9FC276F' -or
+                $receipt.buildScriptSha256 -cne (Get-FileHash eng/build-vulkan-sdk.ps1).Hash -or
+                $receipt.compilerPolicySha256 -cne (Get-FileHash eng/cmake/ShaderCompiler.cmake).Hash -or
+                $receipt.sourcePatchLockSha256 -cne $lock.vulkanSdk.sourcePatchLockSha256 -or
+                $receipt.library -cne 'lib/libshaderc_combined.a' -or
+                $receipt.librarySha256 -cne (Get-FileHash "$compiler/lib/libshaderc_combined.a").Hash)
+            {
+              throw 'The private CPU shader compiler cache provenance differs from its exact locked build.'
+            }
+            $profile = Get-Content $lock.vulkanSdk.sourcePatchLock -Raw | ConvertFrom-Json
+            $expected = @(
+              foreach ($component in $profile.components)
+              {
+                foreach ($file in $component.files)
+                {
+                  "$($component.component)|$($file.file)|$($file.afterSha256)"
+                }
+              })
+            $actual = @($receipt.repairedSources | ForEach-Object {
+              "$($_.component)|$($_.file)|$($_.sha256)" })
+            if (@(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object) -CaseSensitive).Count -ne 0)
+            {
+              throw 'The private CPU compiler cache lacks the exact reviewed repaired-source inventory.'
+            }
+          }
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: >-
+          success() && matrix.rid == 'linux-x64' &&
+          steps.sdk-linux-restore.outputs.cache-hit != 'true' &&
+          steps.sdk-linux-lookup.outputs.cache-hit != 'true'
+        with:
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: ${{ steps.sdk-linux-restore.outputs.cache-primary-key || steps.sdk-linux-lookup.outputs.cache-primary-key }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: >-
+          success() && matrix.rid == 'win-x64' &&
+          steps.sdk-win-restore.outputs.cache-hit != 'true' &&
+          steps.sdk-win-lookup.outputs.cache-hit != 'true'
+        with:
+          path: |
+            native/install/win-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: ${{ steps.sdk-win-restore.outputs.cache-primary-key || steps.sdk-win-lookup.outputs.cache-primary-key }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: >-
+          success() && matrix.rid == 'osx-arm64' &&
+          steps.sdk-mac-restore.outputs.cache-hit != 'true' &&
+          steps.sdk-mac-lookup.outputs.cache-hit != 'true'
+        with:
+          path: |
+            native/install/osx-arm64
+            native/install/shaderc/osx-arm64
+          key: ${{ steps.sdk-mac-restore.outputs.cache-primary-key || steps.sdk-mac-lookup.outputs.cache-primary-key }}
       - name: Run bounded native fuzzers
         if: runner.os == 'Linux'
         shell: pwsh

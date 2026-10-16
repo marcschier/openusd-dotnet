@@ -6,6 +6,9 @@ This repository is an independent .NET integration for OpenUSD. It is not affili
 The native runtime is built from Pixar OpenUSD, licensed under the Apache License 2.0. Exact source
 URLs, revisions, and archive SHA-256 hashes are pinned in eng/openusd.lock.json and
 eng/openusd.install.lock.json.
+Project-owned SDK modifications are identified by eng/openusd-runtime-patches.lock.json, including
+exact source pre/post hashes. Their profile and full license provenance remain bound to the native
+build, complete redistribution notices, and release SBOM.
 
 Runtime packages also include THIRD-PARTY-NOTICES.md generated from the locked native install.
 Those notices provide attribution and license text. The release also publishes

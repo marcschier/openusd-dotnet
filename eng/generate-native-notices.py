@@ -72,6 +72,22 @@ def profile(family: str, rid: str) -> dict[str, Any]:
         inputs.append("eng/generate-sbom.py")
         data = snapshot()
         lock = read_json(ROOT / "eng" / lock_file)
+        runtime_path = "eng/openusd-runtime-patches.lock.json"
+        runtime = read_json(ROOT / runtime_path)
+        if (digest((ROOT / runtime_path).read_bytes()) != lock["openUsd"]["runtimePatchLockSha256"].lower()
+                or runtime.get("schemaVersion") != 1
+                or runtime.get("sourceCommit") != lock["openUsd"]["commit"]):
+            raise NoticeError("The SDK runtime source profile differs from its exact native lock.")
+        inputs.append(runtime_path)
+        for patch in runtime["patches"]:
+            path = patch["path"].replace("\\", "/")
+            if digest((ROOT / path).read_bytes()) != patch["sha256"].lower():
+                raise NoticeError("An SDK runtime source patch differs from its reviewed profile.")
+            inputs.append(path)
+        value["sdkRuntimeSourceRepairs"] = {
+            entry["path"].replace("\\", "/"): entry["afterSha256"]
+            for patch in runtime["patches"] for entry in patch["files"]
+        }
         manifests = [x for x in lock["vulkanSdk"]["repositories"]
                      if x["name"] == "shaderc-source-manifest"]
         if len(manifests) != 1 or manifests[0]["commit"] != data.SHADERC_SOURCE_MANIFEST_COMMIT:
@@ -262,7 +278,8 @@ def collect(args: argparse.Namespace) -> list[dict[str, Any]]:
     lock = read_json(ROOT / "eng" / f"{lock_name}.lock.json")
     if args.family == "openusd":
         upstream = lock["openUsd"]
-        components.append(component("OpenUSD", upstream["archiveUrl"],
+        components.append(component("OpenUSD", upstream["archiveUrl"] +
+                                    "; project SDK source profile " + upstream["runtimePatchLockSha256"],
                                     archive_documents(args.cache_root, upstream, openusd=True)))
         for item in lock["dependencies"]:
             if args.rid in item["platforms"]:

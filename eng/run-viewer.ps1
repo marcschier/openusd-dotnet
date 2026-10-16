@@ -339,7 +339,9 @@ try
         $env:OPENUSD_SOAK_ARTIFACT = Join-Path $publishRoot 'shared-stage-soak.json'
         Set-OpenUsdSoakIdentityEnvironment $repoRoot $executable
 
-        if ($IsLinux -and $env:OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION -eq '1')
+        if ($IsLinux -and $env:OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION -eq '1' -and
+            $env:OPENUSD_DOTNET_OWN_SDK_PHASES -ne '1' -and
+            $env:OPENUSD_VIEWER_VIEWPORT_OBSERVATION -ne '1')
         {
             $originalAbortInputs = Join-Path $publishRoot (
                 "original-abort-inputs-" + [Guid]::NewGuid().ToString('N') + '.json')
@@ -639,6 +641,8 @@ catch
     {
         if ($IsLinux -and $SharedStageSoak -and
             $env:OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION -eq '1' -and
+            $env:OPENUSD_DOTNET_OWN_SDK_PHASES -ne '1' -and
+            $env:OPENUSD_VIEWER_VIEWPORT_OBSERVATION -ne '1' -and
             $process -is [Diagnostics.Process] -and $process.HasExited -and $process.ExitCode -eq 134 -and
             $null -eq $passedStatus -and
             (-not (Test-Path -LiteralPath $statusFile) -or
