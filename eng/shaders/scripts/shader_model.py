@@ -66,6 +66,7 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/build-vulkan-sdk.ps1",
     "eng/cmake/ShaderCompiler.cmake",
     "eng/patches/openusd/sdk-render-phase-observation.patch",
+    "eng/patches/openusd/sdk-submission-phase-observation.patch",
     "eng/openusd-runtime-patches.lock.json",
     "eng/generate-native-notices.py",
     "eng/shaderc-source-patches.lock.json",

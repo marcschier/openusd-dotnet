@@ -324,6 +324,25 @@
           "afterSha256": "43F68158D11FEB9550BA8EB97C72894388784B9FFFF911DCD278D87CB7D07D5C"
         }
       ]
+    },
+    {
+      "id": "temporary-sdk-submission-phase-observation",
+      "path": "eng\\patches\\openusd\\sdk-submission-phase-observation.patch",
+      "sha256": "EBA2CA35B42DA6FBD65F0B9A44CEFFE431B9CFC8E7DA7370267A995D122F170C",
+      "files": [
+        {
+          "path": "pxr\\imaging\\hgiGL\\graphicsCmds.cpp",
+          "installedHeader": false,
+          "beforeSha256": "25F2FCA9AF9769976E30FFD33573B8CB3F5DC49CE16106CA97F9209994BB82DE",
+          "afterSha256": "B38FCAA6D2A532636939A7495E0A664A706B80BA54F9C1C6D460E699B6DC03F2"
+        },
+        {
+          "path": "pxr\\imaging\\hgiGL\\device.cpp",
+          "installedHeader": false,
+          "beforeSha256": "F58E4980AF3D9983F4F909C5D921DD38AF7DBCA5957A3B8D3CEB6AA71EA66474",
+          "afterSha256": "7C8F1EE911EF9296CD20491AADC7D572D362DC63F8C02ED665AA19461F5FC280"
+        }
+      ]
     }
   ]
 }

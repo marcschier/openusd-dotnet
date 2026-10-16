@@ -107,16 +107,23 @@ producers. Linux's narrow key retains the exact eleven inputs and two paths shar
 
 The temporary SDK-only Render observer is default-off. In its selected Linux original-process
 mode it emits at most 64 fixed records through one hidden helper/counter in monolithic `usd_ms`:
-four whole-Render boundaries and five whole-HdEngine-execution boundaries outside task loops.
-The helper lives in existing `layer.cpp`; only the two existing `engine.cpp` files add labels.
+four whole-Render boundaries, five whole-HdEngine-execution boundaries outside task loops, four
+whole nonempty HgiGL graphics-submission boundaries and two device-submit boundaries outside its
+operation loop. These fifteen fixed labels share the same total budget, not one budget per source
+file or submission. The helper stays byte-identical in existing `layer.cpp`; declarations/calls
+occupy the two existing `engine.cpp` files plus `graphicsCmds.cpp` and `device.cpp`.
 It adds no SDK header, export, wait, scope, lifetime or public layout. Each record uses one checked
 stderr write, no C++ allocation and preserved `errno`/Win32 error state. SDK mode suppresses all
 project C ABI phases and both Viewer observers, including inherited legacy flags, and disables the
 old abort replay path. Original inputs, calls, selectors, process tree and timeouts are unchanged.
 No setter or stage-teardown observer is included. The final Render marker precedes path-vector
 destruction; the final HdEngine marker precedes function/caller-vector cleanup. Argument construction
-and temporary `UsdPrim` disposal remain outside these labels. Detection still does not identify the
-original corrupting write. Fresh SDK binaries and all original native/consumer gates, followed by
+and temporary `UsdPrim` disposal remain outside these labels. Device SubmitOps is shared by graphics
+and blit, so its labels can precede task execution. Graphics ops-return precedes state-guard and
+caller command-owner/vector cleanup; execute-phase tracing remains another possible interval.
+Repeated submissions can exhaust the unchanged 64-record budget: no absence-at-cap inference is
+valid. Detection still does not identify a task, driver or the original corrupting write.
+Fresh SDK binaries and all original native/consumer gates, followed by
 removal and clean-source qualification, remain mandatory; source-data controls are not acceptance.
 
 ## SDK list-edit validation

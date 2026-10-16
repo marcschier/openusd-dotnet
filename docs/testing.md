@@ -1726,9 +1726,19 @@ platform-skip policy, selectors and ordering remain unchanged; the always-upload
 the separate per-invocation reports even when a later composition invocation fails.
 
 The temporary `OPENUSD_VIEWER_VIEWPORT_OBSERVATION=1` mode records only capture, resize and recall
-boundaries, with four integer width/height pairs: UI physical pixels, cached coordinator state,
-managed navigation state and the window-local captured or recalled bookmark. It performs no
-backend or SDK query and does not relax the exact integer aspect predicate. A process emits at most
+boundaries. The `px` fields `u`, `s`, `n` and `b` are UI, cached coordinator, managed navigation and
+window-local bookmark width/height pairs. At those same UI-thread events, `w` records requested
+window Width/Height followed by actual ClientSize, `p` records actual stage/inspector column widths,
+and `c` records main-content width/height. Bounds duplicates are omitted to preserve the record cap.
+These layout values are converted from DIPs with the full captured render scale, using ceiling
+(positive values are at least one pixel), as for viewport pixels; zero remains zero. The diagnostic
+`z~` scale uses invariant G5 formatting only for display, never for conversion or application state.
+`A` denotes NaN/Auto where applicable, `?` unavailable data or invalid conversion scale, `I`/`-I`
+infinite input, `N` negative dimensions and `O` finite input outside the scaled Int32 pixel range.
+No value is silently clamped or truncated. A longest-label record with all 16 pixel integers at
+Int32.MaxValue and a 12-character scale fits below 256 ASCII bytes. Sampling is synchronous and
+window-local; default-off performs no UI snapshot. It performs no backend or SDK query and does not
+relax the exact integer aspect predicate. A process emits at most
 64 ASCII records, including a terminal limit record, each at most 256 bytes and together at most
 16 KiB. A single captured stderr write is attempted per record; I/O or disposed-writer failures
 are counted without retry, and both system and cached P/Invoke last-error states are preserved.

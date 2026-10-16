@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "62d1eeeec7531c31ba1cc6d383bb10a180182ed2cb17ec3ba8e9985b41236590"
+      "sha256": "ab242a62bc03dbedc7e4b7b38e7c52dccbfb5c4e6fc32faf438f280f2b841178"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -87,7 +87,7 @@
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "8203fef0ec0e4bca3f7c999dbddb2898d74c60626e3fd1f50cebb03908690e49"
+      "sha256": "7b6612e4aa9d4d09fafc372822a100cab45ec813532ad050c75ef7e4a47311b2"
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
@@ -107,7 +107,7 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "38983fc2d6b55a0955369aa34cbd052762a2a3c640c3b9b70a7d408e2a92244f"
+      "sha256": "72def3a5331a591a3ea236f4a9650921ade49ffa59db958823a9b248f59ab63c"
     },
     {
       "path": "eng/pack-packages.ps1",
@@ -116,6 +116,10 @@
     {
       "path": "eng/patches/openusd/sdk-render-phase-observation.patch",
       "sha256": "5ff47459f48db967ece9136ad513abcc3e0ddd87d18cc5db769e07d91bbc310b"
+    },
+    {
+      "path": "eng/patches/openusd/sdk-submission-phase-observation.patch",
+      "sha256": "eba2ca35b42da6fbd65f0b9a44ceffe431b9cfc8e7da7370267a995d122f170c"
     },
     {
       "path": "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
@@ -203,7 +207,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "3f22003476c2fa15c10c5850f4d743167de222f12320fe5fe15bdd59ad22ae2f"
+      "sha256": "380dd33b5facd600c0f363d7ca427b51c54d3c1b87655ab87fdfb82440d53892"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -407,7 +411,7 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.CameraBookmarks.cs",
-      "sha256": "02e2aa57c24b4a04a394e28aa71ecbbdcc43064124e37e75115876baf315dfb7"
+      "sha256": "266832fe3186ea1167d708df22fc9e22dace4fd4c1209f478461cd957e8c534a"
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
@@ -423,7 +427,7 @@
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerViewportObservation.cs",
-      "sha256": "4218aa9c2c0eedfa11a74a93fba96d573e9352796fdf3094def93c08841a4ce3"
+      "sha256": "fba9bb4577438239f12f6ffa0681a061dc71e1855ae9c7f39e66fccf4df6057e"
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",

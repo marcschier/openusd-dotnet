@@ -464,12 +464,19 @@ public sealed partial class MainWindow
         int pinvokeError = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
         try
         {
+            Avalonia.Threading.Dispatcher.UIThread.VerifyAccess();
             double scaling = TopLevel.GetTopLevel(ViewportHost)?.RenderScaling ?? 1;
             ViewportDimensions ui = knownUi ?? ViewportPixelMath.ToPixels(
                 ViewportHost.Bounds.Width, ViewportHost.Bounds.Height, scaling);
+            var client = ClientSize;
+            var content = MainContentGrid.Bounds;
+            var layout = new ViewerViewportLayout(
+                Width, Height, client.Width, client.Height,
+                StagePanelGridColumn.ActualWidth, InspectorPanelGridColumn.ActualWidth,
+                content.Width, content.Height, scaling);
             ViewerViewportObservation.Write(
                 kind, ui, coordinator.CurrentState.Viewport, _cameraNavigation.Viewport,
-                _viewportObservationBookmark);
+                _viewportObservationBookmark, layout);
         }
         catch (ArgumentOutOfRangeException)
         {
