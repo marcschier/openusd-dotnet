@@ -107,8 +107,8 @@ producers. Linux's narrow key retains the exact eleven inputs and two paths shar
 
 The temporary SDK-only observer is default-off. The original Linux desktop invocation and original
 full macOS native CTest invocation select it without changing arguments, selection or deadlines.
-The original Windows PhysX full invocation can also select it with `-ObserveSdkPhases`; the ordinary
-Windows invocation and Linux native selection stay unchanged. With that option absent, inherited
+The original ordinary Windows and PhysX full invocations select it with `-ObserveSdkPhases`;
+Linux native selection stays unchanged. With that option absent, inherited
 SDK and other mode flags are not cleared or reinterpreted. With both observation options supplied,
 SDK-only wins; all prior flag states are restored after the same discovery/full-run and Mesa staging.
 It emits at most 64 fixed records through one hidden helper/counter in monolithic `usd_ms`:
