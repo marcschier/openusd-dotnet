@@ -5,9 +5,7 @@ param(
     [string]$BuildRoot = (Join-Path $PSScriptRoot '..\native\build\shim\win-x64'),
     [string]$RuntimeRoot = (Join-Path $PSScriptRoot '..\artifacts\windows-native-tests\mesa'),
     [string]$Configuration = 'Release',
-    [string]$TestFilter,
-    [switch]$ObserveAdmissionPhases,
-    [switch]$ObserveSdkPhases
+    [string]$TestFilter
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,14 +43,7 @@ $directories = @($stormTests | ForEach-Object {
 
 $names = @('PATH', 'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256',
     'OPENUSD_MESA_WGL_ARCHIVE_URL', 'OPENUSD_MESA_WGL_ARCHIVE_SHA256',
-    'GALLIUM_DRIVER', 'LIBGL_ALWAYS_SOFTWARE', 'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
-    'OPENUSD_DOTNET_OWN_ADMISSION_PHASES', 'OPENUSD_DOTNET_OWN_HIERARCHY_PHASES')
-if ($ObserveSdkPhases)
-{
-    $names += @('OPENUSD_DOTNET_OWN_SDK_PHASES', 'OPENUSD_DOTNET_OWN_PROPERTY_PHASES',
-        'OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION', 'OPENUSD_VIEWER_VIEWPORT_OBSERVATION',
-        'OPENUSD_VIEWER_OWN_ROOT_OBSERVATION')
-}
+    'GALLIUM_DRIVER', 'LIBGL_ALWAYS_SOFTWARE', 'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE')
 $previous = @{}
 foreach ($name in $names)
 {
@@ -93,28 +84,6 @@ try
     if ($TestFilter)
     {
         $arguments += @('-R', $TestFilter)
-    }
-    if ($ObserveSdkPhases)
-    {
-        foreach ($name in @('OPENUSD_DOTNET_OWN_SDK_PHASES', 'OPENUSD_DOTNET_OWN_ADMISSION_PHASES',
-            'OPENUSD_DOTNET_OWN_HIERARCHY_PHASES', 'OPENUSD_DOTNET_OWN_PROPERTY_PHASES',
-            'OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION', 'OPENUSD_VIEWER_VIEWPORT_OBSERVATION',
-            'OPENUSD_VIEWER_OWN_ROOT_OBSERVATION'))
-        {
-            if ($name -eq 'OPENUSD_DOTNET_OWN_SDK_PHASES')
-            {
-                [Environment]::SetEnvironmentVariable($name, '1', 'Process')
-            }
-            elseif (Test-Path -LiteralPath "Env:$name")
-            {
-                Remove-Item -LiteralPath "Env:$name"
-            }
-        }
-    }
-    elseif ($ObserveAdmissionPhases)
-    {
-        $env:OPENUSD_DOTNET_OWN_ADMISSION_PHASES = '1'
-        $env:OPENUSD_DOTNET_OWN_HIERARCHY_PHASES = '1'
     }
     & $ctest @arguments
     $exitCode = $LASTEXITCODE

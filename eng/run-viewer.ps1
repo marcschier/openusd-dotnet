@@ -268,7 +268,6 @@ $oldEvidenceScenario = $env:OPENUSD_VIEWER_EVIDENCE_SCENARIO
 $oldStageCameraPath = $env:OPENUSD_VIEWER_STAGE_CAMERA_PATH
 $oldPickSmokePath = $env:OPENUSD_VIEWER_PICK_SMOKE_PATH
 $process = $null
-$originalAbortInputs = $null
 
 function Write-ViewerDiagnostics
 {
@@ -338,36 +337,6 @@ try
             [System.Globalization.CultureInfo]::InvariantCulture)
         $env:OPENUSD_SOAK_ARTIFACT = Join-Path $publishRoot 'shared-stage-soak.json'
         Set-OpenUsdSoakIdentityEnvironment $repoRoot $executable
-
-        if ($IsLinux -and $env:OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION -eq '1' -and
-            $env:OPENUSD_DOTNET_OWN_SDK_PHASES -ne '1' -and
-            $env:OPENUSD_VIEWER_VIEWPORT_OBSERVATION -ne '1')
-        {
-            $originalAbortInputs = Join-Path $publishRoot (
-                "original-abort-inputs-" + [Guid]::NewGuid().ToString('N') + '.json')
-            $snapshotExit = $LASTEXITCODE
-            try
-            {
-                $snapshotPython = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
-                    Select-Object -First 1
-                if ($null -ne $snapshotPython)
-                {
-                    & $snapshotPython.Source (Join-Path $PSScriptRoot 'observe-viewer-linux-abort.py') `
-                        --record-original --executable $executable --working-directory $repoRoot `
-                        --output $originalAbortInputs --original-exit 0 --arguments-json '[]' `
-                        --stage $stagedStage --plugin $pluginPath
-                }
-                else
-                {
-                    Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; original-input-snapshot-helper-absent'
-                }
-            }
-            catch [Management.Automation.RuntimeException]
-            {
-                Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; original-input-snapshot-error'
-            }
-            $global:LASTEXITCODE = $snapshotExit
-        }
 
         $process = Start-Process $executable -PassThru `
             -ArgumentList @('--shared-stage-soak', '--soak-seconds', $SoakSeconds,
@@ -634,57 +603,8 @@ try
 }
 catch
 {
-    $originalFailure = $_
-    $originalNativeExit = $LASTEXITCODE
     Write-ViewerDiagnostics
-    try
-    {
-        if ($IsLinux -and $SharedStageSoak -and
-            $env:OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION -eq '1' -and
-            $env:OPENUSD_DOTNET_OWN_SDK_PHASES -ne '1' -and
-            $env:OPENUSD_VIEWER_VIEWPORT_OBSERVATION -ne '1' -and
-            $process -is [Diagnostics.Process] -and $process.HasExited -and $process.ExitCode -eq 134 -and
-            $null -eq $passedStatus -and
-            (-not (Test-Path -LiteralPath $statusFile) -or
-                -not (Select-String -LiteralPath $statusFile -Pattern '^Shared-stage soak passed:' -Quiet)))
-        {
-            $originalExit = $process.ExitCode
-            if ([string]::IsNullOrWhiteSpace($originalAbortInputs) -or
-                -not (Test-Path -LiteralPath $originalAbortInputs -PathType Leaf))
-            {
-                Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; original-input-snapshot-missing; original-exit=134'
-            }
-            else
-            {
-                $observerPython = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
-                    Select-Object -First 1
-                if ($null -eq $observerPython)
-                {
-                    Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; existing-python-absent; original-exit=134'
-                }
-                else
-                {
-                    & $observerPython.Source (Join-Path $PSScriptRoot 'observe-viewer-linux-abort.py') `
-                        --executable $executable --working-directory $repoRoot `
-                        --output (Join-Path $publishRoot 'owned-abort-observation') `
-                        --original-exit $originalExit `
-                        --original-inputs $originalAbortInputs --stage $stagedStage --plugin $pluginPath `
-                        --arguments-json (@('--shared-stage-soak', '--soak-seconds', [string]$SoakSeconds,
-                            '--soak-artifact', $env:OPENUSD_SOAK_ARTIFACT) | ConvertTo-Json -Compress)
-                    if ($LASTEXITCODE -ne 0)
-                    {
-                        Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; diagnostic-helper-error; original-exit=134'
-                    }
-                }
-            }
-        }
-    }
-    catch [Management.Automation.RuntimeException]
-    {
-        Write-Host '[DEBUG-viewer-linux-abort] status=UNKNOWN; diagnostic-invocation-error; original-exit=134'
-    }
-    $global:LASTEXITCODE = $originalNativeExit
-    throw $originalFailure
+    throw
 }
 finally
 {

@@ -620,30 +620,6 @@ The native workflow's always-upload diagnostics retain the default and PhysX bui
 separate `Testing` directories, including CTest's `LastTest.log` and `LastTestsFailed.log`.
 Those paths preserve future failure evidence without changing any test command, timeout or verdict;
 they do not recover files from an already completed runner that did not upload them.
-The temporary `-ObserveAdmissionPhases` qualification option emits at most 64 fixed-label records
-per native process around render-specification entry, borrowed target access, target-count admission,
-return and stage release. It logs no paths or values, preserves Win32 error state and `errno`, and
-does not change tests, the 120-second timeout or the original query-only memory quota. These
-observations distinguish future phases; a later pass alone does not establish the timeout's cause.
-The same Windows option enables `OPENUSD_DOTNET_OWN_HIERARCHY_PHASES` across each original full
-ordinary and PhysX CTest invocation. This adds only hierarchy-snapshot entry/return, stage-guard
-entry/entered and stage-release labels within the same per-process 64-record cap. The inherited
-marker is restored to its prior absent, empty or nonempty state in `finally`. No executable-name
-detection, filtered or additional test invocation, generated test environment, lock or lifetime
-change is involved. A missing hierarchy entry distinguishes a preceding phase; a guard entry
-without its entered label distinguishes the stage-guard boundary. Neither identifies a root cause.
-Hierarchy owner-release labels bracket the original deletion only for nonnull owners; null quota
-releases remain no-ops and consume no records. In the original hierarchy probe, the main snapshot
-stays alive across scaling and the scaling snapshot across the long-name fixture. The first real
-owner disposal fits the original 64-record cap; the final main-owner labels can be truncated.
-The analogous macOS qualification opt-in records property-snapshot entry/return, borrowed stored
-composition-error access/count/refusal/return and stage release, using the same fixed-label cap
-and preserving `errno`. It does not format error objects or change the original CTest invocation.
-Property owner-release entry/return observations also delimit the existing flat snapshot deletion.
-The getter's outermost scope-return marker follows its guard and stage-lock cleanup, but does not
-prove caller resumption or owner disposal. In the layer-error-list probe it first describes the
-warm-up getter; the caller then disposes that snapshot before authoring the resident error fixture.
-A second getter entry is needed before attributing an observation to the actual admission query.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It
@@ -1725,55 +1701,9 @@ invocations, before the next invocation can replace the reports. Its original ex
 platform-skip policy, selectors and ordering remain unchanged; the always-upload diagnostics include
 the separate per-invocation reports even when a later composition invocation fails.
 
-The temporary `OPENUSD_VIEWER_VIEWPORT_OBSERVATION=1` mode records only capture, resize and recall
-boundaries. The `px` fields `u`, `s`, `n` and `b` are UI, cached coordinator, managed navigation and
-window-local bookmark width/height pairs. At those same UI-thread events, `w` records requested
-window Width/Height followed by actual ClientSize, `p` records actual stage/inspector column widths,
-and `c` records main-content width/height. Bounds duplicates are omitted to preserve the record cap.
-These layout values are converted from DIPs with the full captured render scale, using ceiling
-(positive values are at least one pixel), as for viewport pixels; zero remains zero. The diagnostic
-`z~` scale uses invariant G5 formatting only for display, never for conversion or application state.
-`A` denotes NaN/Auto where applicable, `?` unavailable data or invalid conversion scale, `I`/`-I`
-infinite input, `N` negative dimensions and `O` finite input outside the scaled Int32 pixel range.
-No value is silently clamped or truncated. A longest-label record with all 16 pixel integers at
-Int32.MaxValue and a 12-character scale fits below 256 ASCII bytes. Sampling is synchronous and
-window-local; default-off performs no UI snapshot. It performs no backend or SDK query and does not
-relax the exact integer aspect predicate. A process emits at most
-64 ASCII records, including a terminal limit record, each at most 256 bytes and together at most
-16 KiB. A single captured stderr write is attempted per record; I/O or disposed-writer failures
-are counted without retry, and both system and cached P/Invoke last-error states are preserved.
-SDK-only observation takes priority over this Viewer-only mode. Either selected mode suppresses
-all project C ABI phases and the old Viewer release-gate observer; with neither selected, legacy
-observation semantics remain unchanged. Default-off performs no dimension snapshots or formatting.
-This is temporary geometry evidence, not renderer conformance or a saved-view root-cause repair.
 
-The temporary SDK-only selection around the original full Mac native CTest command restores all
-seven prior observation-variable presence/value states in `finally`, including absent and empty
-values, then preserves the original command's nonzero exit. It introduces no filtered or additional
-test/discovery invocation, timeout or test-source change. The original Windows PhysX full run can
-select the same mode via `-ObserveSdkPhases` in its existing runner, without changing discovery,
-arguments, test count or Mesa staging; ordinary Windows and Linux native selection stay unchanged.
-The option is default-off and leaves inherited flags unchanged when absent. Its two setter and six
-stage markers share the existing SDK logger and 64-record process
-budget with the other fifteen names; body/dispatcher markers do not prove caller/member/deferred
-cleanup completion or locate the original timeout. Original native conformance remains required.
-
-Release-failure observations retain the original failed verdict. The bounded Windows attachment
-observer records only the owned request/backend and three named mapped modules. Allocation traces
-run only after the original navigation case fails and are diagnostic replays, not replacement gates;
-GC allocation ticks are sampled and cannot account for every byte in the original measured window.
 On managed CI failure, the original raw TUnit and captured-output HTML reports are uploaded
-immediately after the original test step, before any diagnostic invocation can overwrite them.
-The existing Linux observer runs once only after original exit 134, with unchanged input hashes,
-already-installed GDB, a five-second replay limit and at most 32 argument-free fault-thread frames.
-If PATH discovery fails, it checks only the enumerated standard and versioned GNU GDB locations;
-it does not scan the filesystem, install a debugger or substitute another debugger.
-With the same Linux observation flag, the primary Storm render call also retains up to 64
-fixed-label native records around stage access, camera, lighting, engine draw and convergence.
-The records preserve error state, include no paths or values, and change no locks, lifetimes or
-render calls. They distinguish a future original failure boundary without claiming that a later
-pass explains the previous abort, or that an unexecuted replay produced a fault stack.
-These temporary observers must be removed before final clean-source release qualification.
+immediately after the original test step, so later commands cannot replace the failed evidence.
 New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
 The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer
 test-host directory through `-MesaWgl`, not only the separate parity runtime's `bin` directory.

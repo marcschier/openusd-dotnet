@@ -301,12 +301,6 @@ internal sealed class StormNativeControlHost : NativeControlHost
 
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
-        if (ViewerReleaseGateObservation.IsEnabled)
-        {
-            ViewerReleaseGateObservation.Write("storm-create",
-                $"parent={parent.Handle} descriptor={parent.HandleDescriptor}");
-            ViewerReleaseGateObservation.WriteOwnedWindowsModules();
-        }
         VerifyUiThread();
         bool windows = OperatingSystem.IsWindows() &&
             string.Equals(parent.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase);
@@ -337,12 +331,6 @@ internal sealed class StormNativeControlHost : NativeControlHost
                 ref _frameAdapter,
                 new OpenUsdStormFrameAdapter(session));
             Volatile.Write(ref _session, session);
-            if (ViewerReleaseGateObservation.IsEnabled)
-            {
-                ViewerReleaseGateObservation.Write("storm-created",
-                    $"child={session.Window} visible={IsVisible}");
-                ViewerReleaseGateObservation.WriteOwnedWindowsModules();
-            }
             session.SetVisible(IsVisible);
             if (linux)
             {
@@ -361,7 +349,6 @@ internal sealed class StormNativeControlHost : NativeControlHost
         }
         catch (Exception exception)
         {
-            ViewerReleaseGateObservation.Write("storm-create-failed", exception.ToString());
             _initialized.TrySetException(exception);
             throw;
         }

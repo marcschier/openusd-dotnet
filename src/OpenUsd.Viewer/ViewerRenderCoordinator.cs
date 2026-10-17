@@ -564,12 +564,6 @@ internal sealed partial class ViewerRenderCoordinator : IAsyncDisposable
         string fallback = FormatDiagnostics(result.Diagnostics);
         foreach (RenderBackendDiagnostic diagnostic in result.Diagnostics.Entries)
         {
-            if (ViewerReleaseGateObservation.IsEnabled)
-            {
-                ViewerReleaseGateObservation.Write("original-backend-diagnostic",
-                    $"operation={operation} backend={diagnostic.Backend} code={diagnostic.Code} " +
-                    $"message={diagnostic.Message}");
-            }
             ViewerStartupOptions.WriteStatus(
                 $"{operation} diagnostic: {diagnostic.Backend?.ToString() ?? "none"}; " +
                 $"{diagnostic.Code}; {diagnostic.Message}");

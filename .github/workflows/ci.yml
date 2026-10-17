@@ -134,17 +134,6 @@ jobs:
             tests/**/TestResults/*-report.html
           if-no-files-found: warn
           retention-days: 14
-      - name: Observe exact original failed navigation allocation
-        if: failure() && runner.os == 'Windows' && steps.original-managed-tests.outcome == 'failure'
-        shell: pwsh
-        run: ./eng/observe-viewer-navigation-allocation.ps1
-      - name: Upload original navigation allocation observation
-        if: always() && runner.os == 'Windows'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: original-navigation-allocation-${{ github.run_id }}
-          path: artifacts/viewer-navigation-allocation
-          if-no-files-found: warn
       - name: Execute original Vulkan platform-partition evidence
         if: runner.os != 'macOS'
         shell: pwsh

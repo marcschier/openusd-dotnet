@@ -35,7 +35,7 @@
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
-        "value": "afb2dc981fb626bc96141b1dc026dcc8c7bfac23cf48fe7258b2c30627747023"
+        "value": "b2a112ae6e3f7ec7d07c526dce287a9e4c3e3e477446b0cd808dbf6c504f34a5"
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
@@ -43,7 +43,7 @@
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",
-        "value": "82c26073bde81432555967970f107defab31757546e521ef6f41913c97320971"
+        "value": "e922869d0164211d6370d832f08dba6c5e3697cc7d12bbfe793b687a5a1dfb0a"
       },
       {
         "name": "openusd:input:eng/openusd-storage-admission.lock.json:sha256",
@@ -51,7 +51,7 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "d8c16f112b2714e4de925d5a8689f62dda61ce86497bab432c61cf63b1d0e5fb"
+        "value": "ecc719aea73763a6ec0ccd45be26e9e0fd3848007e1ca22ea2ef4a86f65e03ea"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
@@ -60,18 +60,6 @@
       {
         "name": "openusd:input:eng/patches/openusd/render-product-hash-adl.patch:sha256",
         "value": "7ca3394cf068da773a6563421907a3378194cb7080c51c112a446d0090f74df9"
-      },
-      {
-        "name": "openusd:input:eng/patches/openusd/sdk-primary-phase-observation.patch:sha256",
-        "value": "56e2a4a1da53c15727f5b5f992fee73c1e347ca2ac8053cb79871747704d443d"
-      },
-      {
-        "name": "openusd:input:eng/patches/openusd/sdk-render-phase-observation.patch:sha256",
-        "value": "96bae19dd97acea70c63dd11ab3c8d13cf4a2ce647f0a8552f5c2fcb1079bfbf"
-      },
-      {
-        "name": "openusd:input:eng/patches/openusd/sdk-submission-phase-observation.patch:sha256",
-        "value": "eba2ca35b42da6fbd65f0b9a44ceffe431b9cfc8e7da7370267a995d122f170c"
       },
       {
         "name": "openusd:input:eng/patches/openusd/storage-admission-v1.patch:sha256",

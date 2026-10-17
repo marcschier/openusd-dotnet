@@ -1,7 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "internal/common.h"
-#include "internal/owned_admission_observation.h"
 
 #include "pxr/usd/sdf/listOp.h"
 #include "pxr/usd/usd/tokens.h"
@@ -153,11 +152,7 @@ openusd_status openusd_stage_retain(
 
 void openusd_stage_release(openusd_stage* stage)
 {
-    OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::StageRelease>(
-        "stage-release.entry");
     ReleaseStageReference(stage);
-    OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::StageRelease>(
-        "stage-release.return");
 }
 
 openusd_status openusd_stage_access_begin(

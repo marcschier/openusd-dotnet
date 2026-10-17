@@ -103,50 +103,6 @@ This is build reuse, not conformance or a failed final archive. The five-path na
 its final-success post-save, and package/render consumers still require all three qualified native
 producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.
 
-## Temporary SDK Render observation
-
-The temporary SDK-only observer is default-off. The original Linux desktop invocation and original
-full macOS native CTest invocation select it without changing arguments, selection or deadlines.
-The original ordinary Windows and PhysX full invocations select it with `-ObserveSdkPhases`;
-Linux native selection stays unchanged. With that option absent, inherited
-SDK and other mode flags are not cleared or reinterpreted. With both observation options supplied,
-SDK-only wins; all prior flag states are restored after the same discovery/full-run and Mesa staging.
-It emits at most 64 fixed records through one hidden helper/counter in monolithic `usd_ms`:
-four whole-Render boundaries, five whole-HdEngine-execution boundaries outside task loops, four
-whole nonempty HgiGL graphics-submission boundaries and two device-submit boundaries outside its
-operation loop, plus two whole-sublayer-setter, six stage-destructor/close/wait and two whole
-sublayer-list-editor `_OnEdit` boundaries outside its item loop.
-All twenty-five fixed names across seven existing C++ files share the same total budget, not a
-budget per source, frame or submission. The helper/counter stays byte-identical in `layer.cpp`;
-only fixed calls and declarations are added, without a second helper or header.
-It adds no SDK header, export, wait, scope, lifetime or public layout. Each record uses one checked
-stderr write, no C++ allocation and preserved `errno`/Win32 error state. SDK mode suppresses all
-project C ABI phases and both Viewer observers, including inherited legacy flags, and disables the
-old abort replay path. The Mac wrapper restores absent, empty and prior observation variables even
-when the same original CTest command fails, and preserves its exit code. The final Render marker precedes path-vector
-destruction; the final HdEngine marker precedes function/caller-vector cleanup. Argument construction
-and temporary `UsdPrim` disposal remain outside these labels. Device SubmitOps is shared by graphics
-and blit, so its labels can precede task execution. Graphics ops-return precedes state-guard and
-caller command-owner/vector cleanup; execute-phase tracing remains another possible interval.
-Repeated submissions can exhaust the unchanged 64-record budget: no absence-at-cap inference is
-valid. Detection still does not identify a task, driver or the original corrupting write.
-The setter-return marker follows the complete original proxy-assignment expression, not the
-caller's resumption. Stage-close body exit precedes scope cleanup and deferred destruction;
-destructor body exit precedes member/base destruction. The wait markers bracket the existing
-dispatcher scope exit without introducing or changing a wait. These boundaries do not establish
-which instruction stalled or explain the prior 86.36-second pass or 120.03-second timeout.
-The `_OnEdit` normal-body end follows the complete offset `SetField` call, before local vector
-destruction and caller change-block/proxy cleanup. Its existing offset-consistency early return
-does not emit that normal-body label. Missing labels also retain I/O and shared-budget caveats;
-neither marker identifies a blocked instruction or changes list assignment, notification or query.
-These temporary source patches use portable unified diffs without Git diff/index metadata.
-The real fetch graph extracts the SDK tar inside the parent checkout, without a nested `.git`;
-Git-format relative paths can be skipped there despite a zero apply exit. Exact postimage checks
-must remain fail-closed. Source-DATA qualification therefore uses that extracted-tar topology,
-not an initialized nested repository, and verifies every runtime/storage postimage.
-Fresh SDK binaries and all original native/consumer gates, followed by
-removal and clean-source qualification, remain mandatory; source-data controls are not acceptance.
-
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream

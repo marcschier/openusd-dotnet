@@ -299,69 +299,6 @@
           "afterSha256": "E2635BF0055E6DA38048B2819F5C6069F0A9FA4154E77EC36F2ABA92FD775C35"
         }
       ]
-    },
-    {
-      "id": "temporary-sdk-render-phase-observation",
-      "path": "eng\\patches\\openusd\\sdk-render-phase-observation.patch",
-      "sha256": "96BAE19DD97ACEA70C63DD11AB3C8D13CF4A2CE647F0A8552F5C2FCB1079BFBF",
-      "files": [
-        {
-          "path": "pxr\\usd\\sdf\\layer.cpp",
-          "installedHeader": false,
-          "beforeSha256": "D16D8F8D180AAE5353D232AB9FA9C70AE85C362CB1C6D73B0C1E1F8C84FD7440",
-          "afterSha256": "AF896EFC8976A79327CF5A059824DDFD567E62B7CA3AF6587D308F6B220A1205"
-        },
-        {
-          "path": "pxr\\usdImaging\\usdImagingGL\\engine.cpp",
-          "installedHeader": false,
-          "beforeSha256": "4152D3ED92C1D3BD5FE296F07A729AA69C87C9D3AE88E3F7DD3B1AC83D2D6BF2",
-          "afterSha256": "F1335CBEBD73FD5613E070C291E9822BCECF146C11820702D335A8E9F0EA2F40"
-        },
-        {
-          "path": "pxr\\imaging\\hd\\engine.cpp",
-          "installedHeader": false,
-          "beforeSha256": "2F2D8AC77A149EAEC170AC682E0779F7EFC2E7E3CC99F28A7ECD07DB3A37A3E9",
-          "afterSha256": "43F68158D11FEB9550BA8EB97C72894388784B9FFFF911DCD278D87CB7D07D5C"
-        }
-      ]
-    },
-    {
-      "id": "temporary-sdk-submission-phase-observation",
-      "path": "eng\\patches\\openusd\\sdk-submission-phase-observation.patch",
-      "sha256": "EBA2CA35B42DA6FBD65F0B9A44CEFFE431B9CFC8E7DA7370267A995D122F170C",
-      "files": [
-        {
-          "path": "pxr\\imaging\\hgiGL\\graphicsCmds.cpp",
-          "installedHeader": false,
-          "beforeSha256": "25F2FCA9AF9769976E30FFD33573B8CB3F5DC49CE16106CA97F9209994BB82DE",
-          "afterSha256": "B38FCAA6D2A532636939A7495E0A664A706B80BA54F9C1C6D460E699B6DC03F2"
-        },
-        {
-          "path": "pxr\\imaging\\hgiGL\\device.cpp",
-          "installedHeader": false,
-          "beforeSha256": "F58E4980AF3D9983F4F909C5D921DD38AF7DBCA5957A3B8D3CEB6AA71EA66474",
-          "afterSha256": "7C8F1EE911EF9296CD20491AADC7D572D362DC63F8C02ED665AA19461F5FC280"
-        }
-      ]
-    },
-    {
-      "id": "temporary-sdk-primary-phase-observation",
-      "path": "eng\\patches\\openusd\\sdk-primary-phase-observation.patch",
-      "sha256": "56E2A4A1DA53C15727F5B5F992FEE73C1E347CA2AC8053CB79871747704D443D",
-      "files": [
-        {
-          "path": "pxr\\usd\\usd\\stage.cpp",
-          "installedHeader": false,
-          "beforeSha256": "A209CD1C5B99E829CC5B0F5CE821EB19727B1E476CEC45651D5FCFFC60612E22",
-          "afterSha256": "022123099952B365C13CC28F4188C74BC22302D8C1B0A94506C0041FC9961A28"
-        },
-        {
-          "path": "pxr\\usd\\sdf\\subLayerListEditor.cpp",
-          "installedHeader": false,
-          "beforeSha256": "8264B4E13FBCD110DB6D362FF7EEE958A2E8FFB2BEDD91CA7200EB3BE75525F9",
-          "afterSha256": "E92977BA8583684B8D46EC6F50D9F666F5337D38EDCEBB45E61F14C41FB4F7CC"
-        }
-      ]
     }
   ]
 }

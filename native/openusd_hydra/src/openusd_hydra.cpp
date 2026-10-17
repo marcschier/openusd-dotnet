@@ -13,7 +13,6 @@
 
 #include "openusd_storm_aov_internal.h"
 #include "openusd_storm_engine.h"
-#include "../../openusd_dotnet/src/internal/owned_admission_observation.h"
 
 #include "pxr/base/arch/defines.h"
 #include "pxr/base/gf/frustum.h"
@@ -1043,7 +1042,6 @@ openusd_status openusd_storm_render_v2(
     int32_t* converged,
     openusd_error_buffer* error)
 {
-    OpenUsdOwnedAdmissionObservation::StormRenderCall observation;
     if (converged != nullptr)
     {
         *converged = 0;
@@ -1080,12 +1078,8 @@ openusd_status openusd_storm_render_v2(
 
     return Guard(error, [&]()
     {
-        OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-            "storm-render.access-entry");
-        const openusd_status status = WithStageAccess(renderer->stage_core, error, [&](openusd_stage_access*)
+        return WithStageAccess(renderer->stage_core, error, [&](openusd_stage_access*)
         {
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.borrowed");
             TfErrorMark mark;
             glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
             glViewport(0, 0, width, height);
@@ -1095,8 +1089,6 @@ openusd_status openusd_storm_render_v2(
 
             GfMatrix4d view(1.0);
             GfMatrix4d projection(1.0);
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.camera-entry");
             ResolveCamera(*camera, width, height, view, projection);
 
             renderer->engine->SetCameraState(view, projection);
@@ -1106,12 +1098,8 @@ openusd_status openusd_storm_render_v2(
                 GfVec4d(0.0, 0.0, width, height));
             renderer->engine->SetPresentationOutput(
                 HgiTokens->OpenGL, VtValue(framebuffer));
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.camera-return");
             const bool useSceneLights =
                 (revision_flags & OPENUSD_STORM_RENDER_USE_SCENE_LIGHTS) != 0;
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.lighting-entry");
             if (useSceneLights)
             {
                 const StormSceneLighting lighting =
@@ -1132,8 +1120,6 @@ openusd_status openusd_storm_render_v2(
                         kStormHeadlight.ambient,
                         1.0f));
             }
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.lighting-return");
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
@@ -1144,11 +1130,7 @@ openusd_status openusd_storm_render_v2(
             parameters.clearColor = GfVec4f(0.055f, 0.055f, 0.055f, 1.0f);
             ApplyClipPlanes(*camera, parameters);
             renderer->last_render_clip_plane_count = parameters.clipPlanes.size();
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.draw-entry");
             renderer->engine->Render(renderer->stage->GetPseudoRoot(), parameters);
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.draw-return");
             if (!mark.IsClean())
             {
                 WriteError(error, ConsumeErrors(mark));
@@ -1163,16 +1145,9 @@ openusd_status openusd_storm_render_v2(
             renderer->rendered_scene_revision = scene_revision;
             renderer->rendered_revision_flags = revision_flags;
             renderer->has_rendered_state = true;
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.converged-entry");
             *converged = renderer->engine->IsConverged() ? 1 : 0;
-            OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-                "storm-render.converged-return");
             return OPENUSD_STATUS_OK;
         });
-        OpenUsdOwnedAdmissionObservation::Write<OpenUsdOwnedAdmissionObservation::Kind::Storm>(
-            "storm-render.access-return");
-        return status;
     });
 }
 

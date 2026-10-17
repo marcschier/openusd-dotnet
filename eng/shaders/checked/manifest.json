@@ -31,11 +31,11 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "c118c399188f8f15f62c2a898a8b3a2b37d076894c7e45cd6994c51f6ffc0860"
+      "sha256": "97114667e524d9e62264239244cd33180cc4f40ff411a11529c57960b46936e6"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "d38084f90f9e3c5e397af7b0044ac47aa1243c4805099b5286e55fecf7cb3463"
+      "sha256": "2666d1dac3a16fe3d0e26c89237e243069c4566827398ed5942f86313a35858b"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "a927a61c586998afaf32721b404311c31814cba10d444be8025cad17e712c9f0"
+      "sha256": "e89ec1963a1d50346167e8474903cefb6aa359ad93424ee3d8dc0d97a7c6f8b7"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -87,7 +87,7 @@
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "afb2dc981fb626bc96141b1dc026dcc8c7bfac23cf48fe7258b2c30627747023"
+      "sha256": "b2a112ae6e3f7ec7d07c526dce287a9e4c3e3e477446b0cd808dbf6c504f34a5"
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
@@ -98,32 +98,12 @@
       "sha256": "3e28a3e7d0b9e4bc20133cb4af075c0f90187b20d8465245687c80f04bbac63c"
     },
     {
-      "path": "eng/observe-viewer-linux-abort.py",
-      "sha256": "ebaf58f2b57c4272c95b4c4509b2d77731614abe66f084c098667e1eae5979dd"
-    },
-    {
-      "path": "eng/observe-viewer-navigation-allocation.ps1",
-      "sha256": "5832302fc5329c315eb81251ce01c62a268531f5b37b16ad6fcde3416b25f6a5"
-    },
-    {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "82c26073bde81432555967970f107defab31757546e521ef6f41913c97320971"
+      "sha256": "e922869d0164211d6370d832f08dba6c5e3697cc7d12bbfe793b687a5a1dfb0a"
     },
     {
       "path": "eng/pack-packages.ps1",
       "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
-    },
-    {
-      "path": "eng/patches/openusd/sdk-primary-phase-observation.patch",
-      "sha256": "56e2a4a1da53c15727f5b5f992fee73c1e347ca2ac8053cb79871747704d443d"
-    },
-    {
-      "path": "eng/patches/openusd/sdk-render-phase-observation.patch",
-      "sha256": "96bae19dd97acea70c63dd11ab3c8d13cf4a2ce647f0a8552f5c2fcb1079bfbf"
-    },
-    {
-      "path": "eng/patches/openusd/sdk-submission-phase-observation.patch",
-      "sha256": "eba2ca35b42da6fbd65f0b9a44ceffe431b9cfc8e7da7370267a995d122f170c"
     },
     {
       "path": "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
@@ -147,15 +127,15 @@
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
-      "sha256": "8eaf4cce7f591d7a9630dcfe11d83ce56b2bbf22461532597171d5d8834b8b7e"
+      "sha256": "adac4a53a0c99bf3f7a7ae3820b91262ae96976dcc92dfa090ad730df00510dd"
     },
     {
       "path": "eng/run-viewer.ps1",
-      "sha256": "90c9fae2678de9e843b85ed3505d4d5cca5886263c5d1b73f83420ff448e419d"
+      "sha256": "59f9a77b57ea2c37ba1c156b0baf45dc681fbe5e5c699e0c3a357f5776336285"
     },
     {
       "path": "eng/run-windows-native-tests.ps1",
-      "sha256": "bff335a899b3e3d9719dcc4f7bf5d18bb30d8ed99ca5da1b05b5fd0603362ca7"
+      "sha256": "8d80ac6fb1b32b72d6f1e08664ef56f0141364a9ff7ee8189f6c2ff76ad185af"
     },
     {
       "path": "eng/shaderc-source-patches.lock.json",
@@ -211,7 +191,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "7802efb04a30b0d07f4c8e16226b9c484ef4f908a7901ad5eab0d928c26e68e0"
+      "sha256": "dc5cd555e51e010bc43169ccb922009c7032be2d746c55738722647ee41b55d4"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -366,34 +346,6 @@
       "sha256": "9b9f052fc1078a24596196be7969d72608718a1fe86b690807b86d8c7bbd3a27"
     },
     {
-      "path": "native/openusd_dotnet/src/hierarchy.cpp",
-      "sha256": "76a0a694096cc4f22b0243c0ce215dd36876e8421d91b7daeb7149d7ee03700f"
-    },
-    {
-      "path": "native/openusd_dotnet/src/internal/owned_admission_observation.h",
-      "sha256": "56c463c85d35dd3854653350cecf5b9b50dad04ef125e7863df37a3e03874434"
-    },
-    {
-      "path": "native/openusd_dotnet/src/property_composition.cpp",
-      "sha256": "dd54d3b3c37b6bcbc72de56990543db484581d538ae47d940b7429a6fc47ec35"
-    },
-    {
-      "path": "native/openusd_dotnet/src/property_inspection.cpp",
-      "sha256": "eb961dff61c07075ca758d391fdca3b16e7894b11b5f8666f02ab28ae5413cda"
-    },
-    {
-      "path": "native/openusd_dotnet/src/render_specification.cpp",
-      "sha256": "486dc5af0fd32f13ab2e11fb3584adf640e2302485febbff1771679d2d607801"
-    },
-    {
-      "path": "native/openusd_dotnet/src/stage.cpp",
-      "sha256": "b2bb965caa648d6d0eacc61dec0a046ad6b86046e471e7a7e1d81d01d7d0063e"
-    },
-    {
-      "path": "native/openusd_hydra/src/openusd_hydra.cpp",
-      "sha256": "4217a098c5e682517f10bb0506b27673e9847e441b90ce8c1dd85866d5630f03"
-    },
-    {
       "path": "src/OpenUsd.Rendering.Silk.Metal/MetalObjectOwnership.cs",
       "sha256": "a0fe6517e1701e781710af04f9897c4dd9674e3d81769e7a2e0660143d51973b"
     },
@@ -415,23 +367,15 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.CameraBookmarks.cs",
-      "sha256": "266832fe3186ea1167d708df22fc9e22dace4fd4c1209f478461cd957e8c534a"
+      "sha256": "8b444f37cfec412c6c8dc1a4b7676f5186e2be41d2b03edef3410b6be096d43d"
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
-      "sha256": "b2a0dc9e1f40c5f33f24e24c8453f5c0aa1c2616582614e3eff943c49d50a8a2"
+      "sha256": "ddd77d792c3bfc1aa76e87130b6cda3e89e174ee804eafd218d2ffbb566d0014"
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",
-      "sha256": "24d16f6d7288d7f0d6533aa7acedd51c10339530f4fd61a46e7a4d555d9e38ec"
-    },
-    {
-      "path": "src/OpenUsd.Viewer/ViewerReleaseGateObservation.cs",
-      "sha256": "94daa0c92d88eb6d7cfabfc2fe7f9fd48c8798c9199e05af9414362568fbfff4"
-    },
-    {
-      "path": "src/OpenUsd.Viewer/ViewerViewportObservation.cs",
-      "sha256": "fba9bb4577438239f12f6ffa0681a061dc71e1855ae9c7f39e66fccf4df6057e"
+      "sha256": "ff3139afefdf605939b293216e4814120c6fa7b84983c09a2a993c47d8853f75"
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
