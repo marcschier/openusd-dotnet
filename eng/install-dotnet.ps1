@@ -6,10 +6,10 @@ param()
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $installDir = Join-Path $repoRoot '.dotnet'
-$version = '10.0.301'
+$version = '10.0.401'
 $installScript = Join-Path $env:TEMP "dotnet-install-$([guid]::NewGuid()).ps1"
 $errorMessage = (
-    'Required .NET SDK 10.0.301 not found. Run ./eng/install-dotnet.ps1 ' +
+    'Required .NET SDK 10.0.401 not found. Run ./eng/install-dotnet.ps1 ' +
     'or ./eng/install-dotnet.sh.')
 
 Push-Location $repoRoot
@@ -54,9 +54,11 @@ try
                 -Value $entry.Value
         }
     }
-    $globalJson |
-        ConvertTo-Json -Depth 10 |
-        Set-Content -LiteralPath 'global.json' -Encoding utf8NoBOM
+    $jsonText = ($globalJson | ConvertTo-Json -Depth 10).Replace("`r`n", "`n") + "`n"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $repoRoot 'global.json'),
+        $jsonText,
+        [System.Text.UTF8Encoding]::new($false))
 
     Write-Output "Installed repository-local .NET SDK $installedVersion."
 }

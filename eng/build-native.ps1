@@ -6,6 +6,7 @@ param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
     [string]$NativeRoot = (Join-Path $PSScriptRoot '../native'),
+    [string]$SdkSourceRoot,
     [string]$SdkBuildRoot,
     [string]$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'),
     [switch]$SdkOnly,
@@ -24,7 +25,8 @@ if (-not $SdkOnly -and $NativeRoot -cne [IO.Path]::GetFullPath((Join-Path $repoR
     throw 'A custom NativeRoot currently requires -SdkOnly; build project shims in their isolated CMake graph.'
 }
 $cacheRoot = Join-Path $NativeRoot 'downloads'
-$sourceRoot = Join-Path $NativeRoot 'src'
+$sourceRoot = if ([string]::IsNullOrWhiteSpace($SdkSourceRoot)) { Join-Path $NativeRoot 'src' }
+    else { [IO.Path]::GetFullPath($SdkSourceRoot) }
 $buildRoot = if ([string]::IsNullOrWhiteSpace($SdkBuildRoot)) { Join-Path $NativeRoot "build/$Rid" }
     else { [IO.Path]::GetFullPath($SdkBuildRoot) }
 $installRoot = Join-Path $NativeRoot "install/$Rid"
@@ -35,6 +37,23 @@ if ([string]::IsNullOrWhiteSpace($PatchLockPath))
 }
 $openUsdSource = Join-Path $sourceRoot $lock.openUsd.extractDirectory
 $buildScript = Join-Path $openUsdSource $lock.openUsd.buildScript
+$cmakeBuildArguments = '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
+if ($Rid -eq 'linux-x64')
+{
+    $linuxPolicy = Join-Path $PSScriptRoot 'cmake/LinuxRuntime.cmake'
+    $linuxFinalizer = Join-Path $PSScriptRoot 'normalize-linux-runtime.py'
+    foreach ($input in @(
+        @{ Path = $linuxPolicy; Hash = $lock.openUsd.linuxRuntimePolicy.cmakeSha256 },
+        @{ Path = $linuxFinalizer; Hash = $lock.openUsd.linuxRuntimePolicy.finalizerSha256 }))
+    {
+        if ((Get-FileHash -LiteralPath $input.Path).Hash -cne $input.Hash)
+        {
+            throw "The Linux runtime policy does not match the locked build inputs: $($input.Path)"
+        }
+    }
+    $cmakeBuildArguments += (
+        ' -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="' + $linuxPolicy.Replace('\', '/') + '"')
+}
 
 $arguments = @(
     $installRoot,
@@ -43,7 +62,7 @@ $arguments = @(
     '--inst', $installRoot,
     '--build-variant', 'release',
     '--generator', 'Ninja',
-    '--cmake-build-args=-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+    "--cmake-build-args=$cmakeBuildArguments",
     '--build-monolithic',
     '--no-tests',
     '--no-examples',
@@ -272,6 +291,15 @@ if ($LASTEXITCODE -ne 0)
     exit $buildFailure
 }
 
+if ($Rid -eq 'linux-x64')
+{
+    & python $linuxFinalizer --sdk-root $installRoot
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Linux ELF runtime finalization failed with exit code $LASTEXITCODE."
+    }
+}
+
 & (Join-Path $PSScriptRoot 'sdk-runtime-patch-metadata.ps1') -Operation Write `
     -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource
 
@@ -298,6 +326,20 @@ if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
         -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource -PatchLockPath $PatchLockPath
 }
 $shimInstallRoot = Join-Path $NativeRoot "install/shim/$Rid"
+if ($Rid -eq 'osx-arm64')
+{
+    $shadercRoot = Join-Path $NativeRoot "install/shaderc/$Rid"
+    & (Join-Path $PSScriptRoot 'build-vulkan-sdk.ps1') `
+        -ShaderCompilerOnly `
+        -ReuseExistingDependencies:$ReuseExistingDependencies `
+        -BuildRoot (Join-Path $NativeRoot "build/shaderc/$Rid") `
+        -InstallRoot $shadercRoot `
+        -Jobs $Jobs | Out-Host
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'The private locked MaterialX SPIR-V compiler build failed.'
+    }
+}
 $env:OPENUSD_ROOT = $installRoot
 Push-Location (Join-Path $repoRoot 'native')
 try
@@ -337,6 +379,13 @@ try
 finally
 {
     Pop-Location
+}
+
+& python (Join-Path $PSScriptRoot 'generate-native-notices.py') write `
+    --rid $Rid --install-root $installRoot --native-root $NativeRoot --cache-root $cacheRoot
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Generating the complete locked native redistribution notices failed.'
 }
 
 & (Join-Path $PSScriptRoot 'native-install-metadata.ps1') `

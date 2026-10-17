@@ -32,7 +32,7 @@ from such a failure lives in `LiveAuthoringSessionCoordinator`, which moves the 
 
 ## Prerequisites and matching native runtime
 
-- .NET SDK 10.0.301.
+- .NET SDK 10.0.401.
 - No native runtime for a managed build or queue/validation/data-model tests.
 - A matching Core runtime when an executable creates or opens a stage.
 - A platform NativeAOT toolchain when publishing an executable.

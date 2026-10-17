@@ -104,11 +104,55 @@ $delegates = @(Get-ChildItem -LiteralPath $pluginPath -Recurse -File -Filter 'pl
 $hasDelegate = $delegates.Count -gt 0
 $hasOpenVdb = (Get-ChildItem -LiteralPath $pluginPath -Recurse -File -Filter 'plugInfo.json' |
     Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match 'hioOpenVDB' }).Count -gt 0
+$expectedDelegateLibrary = switch ($Rid)
+{
+    'win-x64' { Join-Path $binTarget 'openusd_hdsilk.dll' }
+    'linux-x64' { Join-Path $libTarget 'libopenusd_hdsilk.so' }
+    'osx-arm64' { Join-Path $libTarget 'libopenusd_hdsilk.dylib' }
+}
+$pathComparison = if ($IsWindows)
+{
+    [StringComparison]::OrdinalIgnoreCase
+}
+else
+{
+    [StringComparison]::Ordinal
+}
+$delegateLibraries = @(
+    foreach ($metadata in $delegates)
+    {
+        $descriptor = Get-Content -LiteralPath $metadata.FullName -Raw | ConvertFrom-Json
+        foreach ($plugin in @($descriptor.Plugins | Where-Object Name -EQ 'hdSilk'))
+        {
+            $declaredRoot = [IO.Path]::GetFullPath(
+                (Join-Path $metadata.DirectoryName $plugin.Root))
+            $declaredLibrary = [IO.Path]::GetFullPath(
+                (Join-Path $declaredRoot $plugin.LibraryPath))
+            if (-not $declaredLibrary.Equals($expectedDelegateLibrary, $pathComparison) -or
+                -not (Test-Path -LiteralPath $declaredLibrary -PathType Leaf))
+            {
+                throw "The staged hdSilk metadata does not resolve its matched runtime library: $declaredLibrary"
+            }
+            [ordered]@{
+                metadata = [IO.Path]::GetRelativePath($stageRoot, $metadata.FullName)
+                metadataSha256 = (Get-FileHash -LiteralPath $metadata.FullName -Algorithm SHA256).Hash
+                library = [IO.Path]::GetRelativePath($stageRoot, $declaredLibrary)
+                librarySha256 = (Get-FileHash -LiteralPath $declaredLibrary -Algorithm SHA256).Hash
+            }
+        }
+    }
+)
 
 $libraryPath = ($libTarget, $binTarget) -join [System.IO.Path]::PathSeparator
 Write-Host "[hdsilk-runtime] rid=$Rid root=$stageRoot"
 Write-Host "[hdsilk-runtime] plugin=$pluginPath hdSilk=$hasDelegate hioOpenVDB=$hasOpenVdb"
 Write-Host "[hdsilk-runtime] libraryPath=$libraryPath"
+foreach ($entry in $delegateLibraries)
+{
+    Write-Host (
+        "[hdsilk-runtime] metadata=$($entry.metadata) sha256=$($entry.metadataSha256) " +
+        "declaredLibrary=$($entry.library) sha256=$($entry.librarySha256)")
+}
 if (-not $hasDelegate)
 {
     Write-Host (
@@ -136,6 +180,7 @@ if ($env:GITHUB_OUTPUT)
     lib = $libTarget
     libraryPath = $libraryPath
     hdSilk = $hasDelegate
+    declaredDelegateLibraries = $delegateLibraries
     hioOpenVdb = $hasOpenVdb
 } | ConvertTo-Json -Depth 4 |
     Set-Content (Join-Path $stageRoot 'runtime.json')

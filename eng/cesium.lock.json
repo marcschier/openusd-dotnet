@@ -1,20 +1,22 @@
 {
   "$schemaVersion": 1,
   "cesiumNative": {
-    "version": "0.63.0",
-    "tag": "v0.63.0",
-    "commit": "b4137763914820b01a42b52ee886a55b036cd6ac",
-    "archiveUrl": "https://codeload.github.com/CesiumGS/cesium-native/tar.gz/b4137763914820b01a42b52ee886a55b036cd6ac",
-    "archiveName": "cesium-native-b4137763914820b01a42b52ee886a55b036cd6ac.tar.gz",
-    "archiveSha256": "3E756FB8EE9FB69167215D038E79AB50E60AD524F970481F14309E687B887B3B",
-    "extractDirectory": "cesium-native-b4137763914820b01a42b52ee886a55b036cd6ac",
+    "version": "0.65.0",
+    "tag": "v0.65.0",
+    "commit": "1bca8021711294cc83a5a032599ac72d9b3166c9",
+    "archiveUrl": "https://codeload.github.com/CesiumGS/cesium-native/tar.gz/1bca8021711294cc83a5a032599ac72d9b3166c9",
+    "archiveName": "cesium-native-1bca8021711294cc83a5a032599ac72d9b3166c9.tar.gz",
+    "archiveSha256": "A031DF5027348B425A109DCD4F25066A48D32614C5A1076502B54A2ACC86F630",
+    "extractDirectory": "cesium-native-1bca8021711294cc83a5a032599ac72d9b3166c9",
     "license": "Apache-2.0",
     "vcpkgManifestSha256": "2F529DE1FE288DFCE61D46753B52C3AF3BDFC6D2CB760773DB5D0381C756A777",
-    "vcpkgConfigurationSha256": "8634F6384DD267AD98E81C4964C4F5BEEC550BEA08D27495DD2DE77D93B344F7"
+    "vcpkgConfigurationSha256": "8634F6384DD267AD98E81C4964C4F5BEEC550BEA08D27495DD2DE77D93B344F7",
+    "upstreamVcpkgBaseline": "56bb2411609227288b70117ead2c47585ba07713",
+    "patchedVcpkgConfigurationSha256": "666CDB9ECAEDE5ECCDE72BDC3E7680D18D2D6CB568A413D38FB7BA336E62DA00"
   },
   "vcpkg": {
     "repository": "https://github.com/microsoft/vcpkg.git",
-    "baseline": "56bb2411609227288b70117ead2c47585ba07713",
+    "baseline": "e456309491fd875487bf02b8a0dca76c1b1b00cc",
     "manifestMode": true,
     "windowsTriplet": "x64-windows-static-md",
     "linuxTriplet": "x64-linux",

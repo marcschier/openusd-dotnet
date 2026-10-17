@@ -26,9 +26,9 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $repoRoot
 
 $sdkVersion = (& dotnet --version).Trim()
-if ($sdkVersion -cne '10.0.301')
+if ($sdkVersion -cne '10.0.401')
 {
-    throw "Performance gates require .NET SDK 10.0.301; found '$sdkVersion'."
+    throw "Performance gates require .NET SDK 10.0.401; found '$sdkVersion'."
 }
 
 $Mode = if ($Mode.Equals('Artifacts', [StringComparison]::OrdinalIgnoreCase))

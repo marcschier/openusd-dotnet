@@ -157,28 +157,13 @@ if (Test-Path $vcpkgHeaderRoot)
     Copy-Item (Join-Path $vcpkgHeaderRoot '*') (Join-Path $installRoot 'include') -Recurse -Force
 }
 
-$noticePath = Join-Path $installRoot 'THIRD-PARTY-CESIUM.md'
-$noticeLines = @(
-    '# cesium-native third-party notices',
-    '',
-    "cesium-native $($lock.cesiumNative.tag) is licensed under Apache-2.0.",
-    "Source: $($lock.cesiumNative.archiveUrl)",
-    "SHA-256: $($lock.cesiumNative.archiveSha256)",
-    '',
-    "vcpkg baseline: $($lock.vcpkg.baseline)",
-    ''
-)
-$copyrightFiles = Get-ChildItem (Join-Path $vcpkgInstalledRoot 'share') -Filter copyright -Recurse |
-    Sort-Object FullName
-foreach ($copyrightFile in $copyrightFiles)
+& python (Join-Path $PSScriptRoot 'generate-native-notices.py') write `
+    --family cesium --rid $Rid --install-root $installRoot --cache-root $cacheRoot `
+    --share-root (Join-Path $vcpkgInstalledRoot 'share')
+if ($LASTEXITCODE -ne 0)
 {
-    $packageName = Split-Path $copyrightFile.DirectoryName -Leaf
-    $noticeLines += "## $packageName"
-    $noticeLines += ''
-    $noticeLines += Get-Content $copyrightFile.FullName -Raw
-    $noticeLines += ''
+    throw 'Generating the complete Cesium source and dependency redistribution notices failed.'
 }
-[System.IO.File]::WriteAllLines($noticePath, $noticeLines, [System.Text.UTF8Encoding]::new($false))
 
 if (-not $SkipSmokeProbe)
 {

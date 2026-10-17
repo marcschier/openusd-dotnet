@@ -27,13 +27,19 @@ contents.
 
 ## Locked inputs
 
-The native runtime is pinned to OpenUSD v26.05 commit
-`2095fafafd033fa23386d7ec6d58c7cc33974518`. `eng/openusd.lock.json` records the OpenUSD archive
+The native runtime is pinned to OpenUSD v26.08 commit
+`ee47c679abde5b467a7b6a41f3b2285564a4222e`. `eng/openusd.lock.json` records the OpenUSD archive
 hash, the upstream build-script hash, every direct dependency archive hash, and the platform
 toolchain matrix.
 
+The verified upstream build script binds every native dependency URL and version to the lock,
+including separately built Imath, libdeflate and Zstandard required by current OpenEXR and Ptex.
+Those inputs stay in the OpenUSD prefix rather than resolving from the quarantined Cesium tree.
+The dependency archives and build-script transformation are hash-verified before compilation.
+
 The fetch step applies verified compatibility patches to the upstream build script: Windows Boost
-bootstrap is launched through `cmd.exe` with the `vc143` toolset, Boost is bound to the `cl.exe`
+bootstrap is launched through `cmd.exe` with the `vc143` or `vc145` toolset for the configured
+Visual Studio version, and Boost is bound to the `cl.exe`
 already configured by the developer shell, existing lean Boost installs are rejected when OpenVDB
 needs `boost_iostreams`, Alembic's install root is passed to USD configure so the Ogawa-only build
 does not require HDF5, and the locked Windows monolithic profile is permitted to build the Draco
@@ -46,6 +52,119 @@ The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm,
 OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings locked Blosc
 compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,
 examples, tutorials, tools, documentation, Embree, and RenderMan are excluded.
+
+## Linux runtime paths
+
+The Linux SDK build injects the locked `eng/cmake/LinuxRuntime.cmake` policy into every
+upstream CMake configuration. Its deferred target walk runs after USD's `_pxr_install_rpath`
+and dependency overrides, setting library RUNPATH to `$ORIGIN` and executable RUNPATH to
+`$ORIGIN/../lib` without appending build-machine link paths. Windows and macOS are unchanged.
+
+Before recording SDK binary provenance, `eng/normalize-linux-runtime.py` finalizes every
+installed dynamic ELF, including non-CMake Boost outputs. It rejects absolute dependency names,
+removes legacy RPATH and validates the exact relative RUNPATH. Linux builds require `patchelf`
+and `readelf`. Policy hashes are part of both native locks, so previous install caches cannot
+certify the corrected closure. Finalization precedes runtime/storage binary-hash generation;
+published artifacts must never be patched after that provenance is recorded.
+
+Core and Imaging place their shared libraries together in the consumer's native directory.
+Qualification must relocate the complete paired closure away from the build tree, remove loader
+environment overrides, resolve every bundled ELF dependency and execute actual ordinary Open
+and rendering probes. Environment-assisted staged probes alone are not relocatability evidence.
+
+## Windows bundled resource paths
+
+The SDK's Windows attribute queries use the same normalized extended-length path conversion as
+`ArchOpenFile`. Bundled schema files can therefore be resolved and opened consistently under the
+legacy host path policy without changing the registry or the application manifest. Logical paths
+used for diagnostics, network and reparse handling retain their existing representation.
+This does not expand authored-source admission: the warehouse acquisition guard still refuses
+source paths reaching 260 characters, unsafe names, traversal and reparse roots before SDK use.
+The guarded Windows-only helper remains inside the native SDK behind the project-owned C ABI.
+
+## SDK build-cache boundary
+
+The native workflow persists a narrow SDK-build cache only after the installed SDK metadata,
+complete redistribution notices and both mandatory SDK/compiler prefixes have been verified.
+Linux and Windows use the SDK plus Vulkan SDK; macOS uses the SDK plus its private CPU-only shader
+compiler. A wide-cache hit uses a lookup-only narrow action, never a second restore over the
+verified wide data. An exact narrow miss is saved once at that boundary even if a later test fails.
+Prefix inspection includes hidden metadata and compiler members through explicit literal paths;
+missing or empty members and mismatched hashes/provenance remain hard failures.
+The locked shaderc source manifest is pinned to canonical Git-blob LF bytes (`8FFA9158...`).
+The receipt writer retains its actual raw-byte digest; the Mac CPU-pair verifier accepts only that
+exact committed LF digest. Windows CRLF bytes (`6CF717A5...`) and other representations fail;
+no JSON or whitespace normalization is used to manufacture an identity match.
+Before any comparison failure, existing native-probe diagnostics retain a bounded allowlisted
+projection of the actual receipt, its raw SHA-256/length and field-specific comparisons.
+Schema, source commits, build/policy/profile identities, repaired sources and library byte hashes
+remain exact checks; diagnostic retention is not SDK or conformance acceptance.
+This is build reuse, not conformance or a failed final archive. The five-path native cache retains
+its final-success post-save, and package/render consumers still require all three qualified native
+producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.
+
+## SDK list-edit validation
+
+The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream
+quadratic pairwise scan. Item equality, the known-valid common prefix, first-duplicate diagnostics
+and subsequent schema-validation order are preserved for all supported list editor policies.
+The temporary membership set is released before schema validation and on failure. Property-query
+admission quotas, stored composition-error checks and their unchanged fixtures are unaffected.
+The source patch, installed public header and monolithic binary remain guarded by the runtime patch
+lock and SDK provenance; changing the patch invalidates the native install cache.
+
+Sublayer-change loading also opens an existing `ArResolverScopedCache` for each individual load
+after binding that load's resolver context. Repeated resolution inside the load follows the SDK's
+scoped-cache contract. The added scope ends before the next input load, so it does not retain
+misses across later file creation, cwd changes or context changes between loads. Any enclosing
+caller-managed cache retains its existing SDK contract. Resolvers with their own caching retain
+their callbacks and balanced scope notifications. The context binder outlives the cache, and
+diagnostics retain their existing paths.
+
+## Metal wrapper ownership
+
+SharpMetal 1.1.0's convenience factories wrap borrowed, autoreleased Objective-C objects without
+retaining them, while wrapper `Dispose` sends `release`. The Metal backend acquires its own retain
+at construction for those descriptors, command buffers, encoders, URLs and `NSString` conversions
+that it later disposes. The existing submission owner releases its command buffer after completion;
+failure paths release the same owned reference. `new`/`alloc` resources and borrowed attachment
+getters retain their existing ownership.
+
+Borrowed native strings are copied through `UTF8String`, without transferring ownership or using
+SharpMetal's UTF-16 buffer conversion. Metal library and graphics-pipeline failures preserve the
+native `NSError` code and localized description when provided. Generated shader source is not
+explicitly dumped, and retaining a compiler diagnostic does not establish that compilation or
+rendering succeeded.
+
+The [Metal language specification](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf#page=13)
+forbids a function identifier named `main`. The constant-folded MaterialX unlit fragment therefore
+declares `hdSilkMaterialXFragmentMain` and uses the standard Metal 2.2
+[`[[host_name("main")]]` attribute](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf#page=132)
+to preserve the renderer's existing logical entry name.
+Generated MSL bytes already participate in the persisted material-program cache key, so this
+source change invalidates prior generated programs without changing the SPIR-V/DXIL entry names
+or their cache salts. Compiler and original pixel-test acceptance remain separate requirements.
+
+Qualification must exercise normal managed and NativeAOT public-presenter rendering through the
+Cocoa main loop, including retained camera changes and captured pixels. A console-only Metal probe
+or zombie diagnostics cannot establish that autorelease-pool drains are safe.
+
+The existing render workflow accepts an optional manual-only `metal-qualification-harness` input.
+It is canonical base64 containing at most 32 KiB of ZIP data and exactly two regular root files:
+the temporary entry point and project allowlisted in `eng/decode-metal-qualification.py`, with a
+combined expanded limit of 64 KiB. The project must match
+the approved SDK/central-pinning template and reference only the existing Viewer project. Duplicate,
+extra, nested, absolute, traversing, encrypted, symlink, ZIP64 and oversized entries fail before
+extraction. Empty input leaves ordinary gates unchanged.
+
+The runner creates a new `RUNNER_TEMP` child, verifies actual checkout/native/shader identities and
+executes both normal managed and NativeAOT programs without loader overrides or zombie diagnostics.
+Staging applies the existing runtime-package hdSilk manifest transform for the flat native layout,
+verifies that `Root` and `LibraryPath` resolve the exact staged library, and records both hashes.
+It independently decodes the two captured PNGs and requires nonuniform viewport interiors with
+different pixels, repeated presentation and drained native session/page/ring allocations. Payload
+source and generated outputs are removed after execution; hashes, logs and pixel/lifetime evidence
+are retained in the render artifact. This is library-harness evidence, not an actual UaLens pass.
 
 ## Isolated storage-admission SDK profile
 
@@ -105,9 +224,11 @@ sidecars and actual missing/drifted binary files in isolated copies.
 ## Cesium-native quarantine
 
 `eng/cesium.lock.json` is separate from `eng/openusd.lock.json` by design. The Cesium lock pins
-cesium-native v0.63.0 by commit and archive SHA-256, and it pins vcpkg manifest resolution to
-baseline `56bb2411609227288b70117ead2c47585ba07713`. `eng/fetch-cesium-native.ps1` verifies the
-source archive, verifies the upstream `vcpkg.json` and `vcpkg-configuration.json` hashes, checks out
+cesium-native v0.65.0 by commit and archive SHA-256, and it pins vcpkg manifest resolution to
+baseline `e456309491fd875487bf02b8a0dca76c1b1b00cc`. `eng/fetch-cesium-native.ps1` verifies the
+source archive and upstream `vcpkg.json` and `vcpkg-configuration.json` hashes, then replaces only
+the verified upstream registry baseline with the current locked baseline and verifies its patched
+configuration hash. It checks out
 that exact vcpkg commit under `native/.cache`, and bootstraps the tool from the pinned tree. vcpkg
 then resolves the manifest from that baseline plus cesium-native's overlay ports/triplets, so the
 resolved port versions and port git-tree hashes are reproducible in `vcpkg-manifest-install.log`.
@@ -219,9 +340,46 @@ Build from a Visual Studio developer shell:
 ./eng/build-native.ps1 -Rid win-x64
 ```
 
-If `VULKAN_SDK` is not set, the build wrapper creates the required 1.4.321.0 headers, loader,
+If `VULKAN_SDK` is not set, the build wrapper creates the required 1.4.363.0 headers, loader,
 shaderc, and VMA headers under `native/install` from the exact source revisions in the lock file. It
 does not require a machine-wide LunarG installation.
+
+The standard macOS shim also publishes real portable MaterialX SPIR-V alongside its MSL
+source. This is CPU shader compilation, not Vulkan rendering: OpenUSD remains built with
+`--no-vulkan`, and the macOS graphics profile remains OpenGL/Metal. The wrapper builds only
+the static compiler from the existing locked shaderc source manifest into the private
+`native/install/shaderc/osx-arm64` prefix. It does not fetch or build Vulkan headers, the
+loader or VMA in that mode. The prefix retains the exact component commits and static-library
+hash in `shaderc-provenance.json`; it is not a runtime package payload.
+`OPENUSD_WITH_MATERIALX_SPIRV` controls this compiler capability independently of
+`OPENUSD_WITH_VULKAN`. A missing private compiler fails configuration rather than publishing
+an empty substitute. Metal continues consuming generated MSL; SPIR-V remains a genuine portable
+representation of the same supported MaterialX network. GLSL-only compilation disables the
+unused HLSL front end and retains dependency warning levels without shaderc's blanket `-w`.
+The original Metal generation and pixel checks still determine platform acceptance.
+The compiler source-repair profile records explicit exits where SPIRV-Tools switch cases
+otherwise fall through into empty default breaks. Shaderc's string conversion also preserves
+its existing first-NUL termination and zero padding without deprecated CRT copying.
+These reviewed repairs preserve behavior under strict diagnostics rather than suppressing warnings.
+Their exact component revisions, patches and file pre/post hashes are bound by both native lock
+projections and compiler provenance.
+Optional macOS Cesium/MDL shim configurations keep this independent compiler disabled,
+so SDK-only consumers do not require the unpublished private build prefix.
+
+Full runtime builds generate a project-owned `THIRD-PARTY.md` and
+`.openusd-native-notices.json` in the SDK install. The aggregate preserves complete license,
+copyright and NOTICE texts from hash-verified source archives, pinned compiler repositories
+and the actual installed dependency copyright/SPDX records. It includes OpenUSD's bundled
+license comments and the four compiled shaderc source groups, not shaderc's unused test
+dependencies. Upstream notice documents may also describe conditional source alternatives;
+their inclusion does not claim that every optional source is embedded in every package.
+Cesium and PhysX retain their separate notice filenames; the PhysX overview distinguishes
+the source-built BSD SDK from proprietary GPU/device modules that are never redistributed.
+The aggregate and provenance travel with the cached SDK and immutable archive.
+Real producer/consumer workflows reject stale or missing provenance, and `eng/pack-packages.ps1`
+verifies the full notices before packing and compares the actual packed notice bytes afterwards.
+Bare `dotnet pack` fixture output is not publication qualification. `-SdkOnly` prepares the SDK,
+not a complete publishable runtime; complete the full runtime build before publication.
 
 While those Vulkan sources bootstrap their own dependencies, the log prints
 `error: No such remote 'known-good'`, sometimes several times. It comes from the upstream
@@ -244,8 +402,10 @@ its SHA-256 to the install metadata, OpenUSD commit, ABI versions, and lock hash
 `eng/test-render-native-archive.ps1` proves the producer and consumer preserve
 safe subtrees, hashes, headers, Unix links, and executable modes.
 
-Package and render workflow dispatches can consume an artifact from a successful
+Package, render and Viewer distribution workflow dispatches can consume an artifact from a successful
 native workflow run by passing its numeric run ID as `native-pipeline-run-id`.
+Viewer dispatch validates that the producer is the successful native workflow in the same repository,
+with the exact checkout SHA and all three RID jobs successful, before downloading its archives.
 The workflow downloads `openusd-native-<rid>`, verifies the sidecar, and routes the
 local archive through `eng/prepare-workflow-native-input.ps1`. Existing external
 HTTPS archive URL plus SHA-256 inputs remain available after GitHub artifacts expire.

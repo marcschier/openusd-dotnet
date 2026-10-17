@@ -123,7 +123,9 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
     $oldBootstrap = '            bootstrap = "bootstrap.bat"'
     $previousBootstrap = '            bootstrap = "cmd.exe /d /s /c bootstrap.bat"'
     $secondBootstrap = '            bootstrap = "cmd.exe /d /s /c .\\bootstrap.bat vc143"'
-    $newBootstrap = '            bootstrap = "cmd.exe /d /s /c bootstrap.bat vc143"'
+    $newBootstrap = (
+        '            bootstrap = "cmd.exe /d /s /c bootstrap.bat " + ' +
+        '("vc145" if IsVisualStudio2026OrGreater() else "vc143")')
     if (-not $content.Contains($newBootstrap))
     {
         if ($content.Contains($oldBootstrap))
@@ -153,7 +155,9 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
             '        if Windows():',
             '            PatchFile("project-config.jam",',
             '                      [("using msvc : 14.3 ;",',
-            '                        "using msvc : 14.3 : cl ;")])'
+            '                        "using msvc : 14.3 : cl ;"),',
+            '                       ("using msvc : 14.5 ;",',
+            '                        "using msvc : 14.5 : cl ;")])'
         ) -join "`n"
         if (-not $content.Contains($runBootstrap))
         {
@@ -306,6 +310,112 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
             throw 'The expected Alembic install marker was not found.'
         }
         $content = $content.Replace($alembicPolicyMarker, $alembicPolicyPatched)
+    }
+
+    $codecDependencies = @'
+LIBDEFLATE_URL = "locked-libdeflate"
+IMATH_URL = "locked-imath"
+ZSTD_URL = "locked-zstd"
+
+def InstallLibdeflate(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(LIBDEFLATE_URL, context, force)):
+        RunCMake(context, force, buildArgs + [
+            '-DLIBDEFLATE_BUILD_SHARED_LIB=ON',
+            '-DLIBDEFLATE_BUILD_STATIC_LIB=OFF'])
+
+LIBDEFLATE = Dependency("libdeflate", InstallLibdeflate, "include/libdeflate.h")
+
+def InstallImath(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(IMATH_URL, context, force)):
+        RunCMake(context, force, buildArgs + [
+            '-DBUILD_SHARED_LIBS=ON', '-DBUILD_TESTING=OFF',
+            '-DIMATH_BUILD_PYTHON=OFF'])
+
+IMATH = Dependency("Imath", InstallImath, "include/Imath/ImathConfig.h")
+
+def InstallZstd(context, force, buildArgs):
+    source = DownloadURL(ZSTD_URL, context, force)
+    with CurrentWorkingDirectory(os.path.join(source, "build", "cmake")):
+        RunCMake(context, force, buildArgs + [
+            '-DZSTD_BUILD_SHARED=ON', '-DZSTD_BUILD_STATIC=OFF',
+            '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF'])
+
+ZSTD = Dependency("zstd", InstallZstd, "include/zstd.h")
+
+'@
+    $openExrMarker = 'def InstallOpenEXR(context, force, buildArgs):'
+    if (-not $content.Contains($openExrMarker) -or -not $content.Contains('requiredDependencies = [TBB]'))
+    {
+        throw 'The upstream build script is missing the reviewed codec dependency insertion points.'
+    }
+    $content = $content.Replace($openExrMarker, $codecDependencies.Replace("`r`n", "`n") + "`n" + $openExrMarker)
+    $content = $content.Replace('requiredDependencies = [TBB]', 'requiredDependencies = [TBB, LIBDEFLATE, IMATH, ZSTD]')
+    $content = $content.Replace('-DOPENEXR_FORCE_INTERNAL_IMATH=ON', '-DOPENEXR_FORCE_INTERNAL_IMATH=OFF')
+
+    $dependencyVariables = @{
+        oneTBB = 'ONETBB_URL'
+        zlib = 'ZLIB_URL'
+        'libjpeg-turbo' = 'JPEG_URL'
+        libtiff = 'TIFF_URL'
+        libpng = 'PNG_URL'
+        OpenEXR = 'OPENEXR_URL'
+        Ptex = 'PTEX_URL'
+        Blosc = 'BLOSC_URL'
+        OpenVDB = 'OPENVDB_URL'
+        OpenImageIO = 'OIIO_URL'
+        OpenColorIO = 'OCIO_URL'
+        OpenSubdiv = 'OPENSUBDIV_URL'
+        Alembic = 'ALEMBIC_URL'
+        Draco = 'DRACO_URL'
+        MaterialX = 'MATERIALX_URL'
+        libdeflate = 'LIBDEFLATE_URL'
+        Imath = 'IMATH_URL'
+        zstd = 'ZSTD_URL'
+    }
+    foreach ($group in $lock.dependencies | Group-Object name)
+    {
+        $dependency = $group.Group[0]
+        foreach ($platformDependency in $group.Group)
+        {
+            if ($platformDependency.version -cne $dependency.version -or
+                $platformDependency.url -cne $dependency.url -or
+                $platformDependency.sha256 -cne $dependency.sha256)
+            {
+                throw "The reviewed build-script binding requires one source identity for '$($dependency.name)'."
+            }
+        }
+        if ($dependency.name -eq 'Boost')
+        {
+            $version = $dependency.version.Replace('.', ', ')
+            $content = [regex]::Replace($content, 'BOOST_VERSION = \(\d+, \d+, \d+\)', "BOOST_VERSION = ($version)")
+            $content = [regex]::Replace(
+                $content,
+                'BOOST_SHA256 = "[0-9a-f]+"',
+                "BOOST_SHA256 = `"$($dependency.sha256.ToLowerInvariant())`"")
+            $content = $content.Replace(
+                '"*/libs/*/doc/*",',
+                '"*/libs/*/doc/*",' + "`n" + '        "*/libs/*/test/*",')
+            continue
+        }
+        $variable = $dependencyVariables[$dependency.name]
+        if (-not $variable)
+        {
+            throw "No build-script source binding exists for locked dependency '$($dependency.name)'."
+        }
+        $pattern = '(?m)^(\s*' + [regex]::Escape($variable) + '\s*=\s*)"[^"]+"'
+        if (-not [regex]::IsMatch($content, $pattern))
+        {
+            throw "The upstream build script does not declare locked dependency '$variable'."
+        }
+        $url = [string]$dependency.url
+        $content = [regex]::Replace($content, $pattern, {
+            param($match)
+            $match.Groups[1].Value + '"' + $url + '"'
+        })
+        if ($dependency.name -eq 'Ptex')
+        {
+            $content = [regex]::Replace($content, 'PTEX_VERSION = "[^"]+"', "PTEX_VERSION = `"$($dependency.tag)`"")
+        }
     }
 
     [System.IO.File]::WriteAllText(

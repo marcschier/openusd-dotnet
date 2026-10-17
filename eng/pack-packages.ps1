@@ -275,6 +275,46 @@ else
 # everything the previous scope produced.
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
+function Assert-NativeNotices
+{
+    param([string]$PackageId, [string]$PackagePath)
+
+    if ($PackageId -notmatch '^OpenUsd\.Runtime\.(Core|Imaging|Cesium|Physics)\.(win-x64|linux-x64|osx-arm64)$')
+    {
+        return
+    }
+    $kind = $Matches[1]
+    $runtimeRid = $Matches[2]
+    $families = switch ($kind)
+    {
+        'Cesium' { @('cesium') }
+        'Physics' { @('openusd', 'physx') }
+        default { @('openusd') }
+    }
+    foreach ($family in $families)
+    {
+        $install = switch ($family)
+        {
+            'cesium' { Join-Path $Root "native/install/cesium/$runtimeRid" }
+            'physx' { Join-Path $Root "native/install/physx/$runtimeRid" }
+            default { Join-Path $Root "native/install/$runtimeRid" }
+        }
+        $noticeArguments = @(
+            (Join-Path $PSScriptRoot 'generate-native-notices.py'), 'verify',
+            '--family', $family, '--rid', $runtimeRid, '--install-root', $install
+        )
+        if ($PackagePath)
+        {
+            $noticeArguments += @('--package', $PackagePath)
+        }
+        & python @noticeArguments
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw "The complete locked native notices for '$PackageId' are missing or invalid."
+        }
+    }
+}
+
 foreach ($id in $published)
 {
     $project = Get-PackageProjectPath $id
@@ -283,6 +323,7 @@ foreach ($id in $published)
         throw "The published package '$id' has no project at '$project'."
     }
 
+    Assert-NativeNotices -PackageId $id
     Write-Host "Packing $id" -ForegroundColor Cyan
     $arguments = @(
         'pack'
@@ -304,6 +345,15 @@ foreach ($id in $published)
     if ($LASTEXITCODE -ne 0)
     {
         throw "Packing '$id' failed with exit code $LASTEXITCODE."
+    }
+    if ($id -match '^OpenUsd\.Runtime\.(Core|Imaging|Cesium|Physics)\.(win-x64|linux-x64|osx-arm64)$')
+    {
+        $packed = @(Get-ChildItem -LiteralPath $outputRoot -Filter "$id.*.nupkg" -File)
+        if ($packed.Count -ne 1)
+        {
+            throw "Expected exactly one native package version for '$id' before notice verification."
+        }
+        Assert-NativeNotices -PackageId $id -PackagePath $packed[0].FullName
     }
 }
 

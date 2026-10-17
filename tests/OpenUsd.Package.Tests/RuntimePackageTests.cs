@@ -714,16 +714,18 @@ public sealed partial class RuntimePackageTests
                 [
                     "build/OpenUsd.Runtime.Core.win-x64.runtime-patches.json",
                     "buildTransitive/OpenUsd.Runtime.Core.win-x64.targets",
-                    "runtimes/win-x64/native/OpenEXR-3_1.dll",
-                    "runtimes/win-x64/native/Iex-3_1.dll",
-                    "runtimes/win-x64/native/IlmThread-3_1.dll",
-                    "runtimes/win-x64/native/Imath-3_1.dll",
+                    "runtimes/win-x64/native/OpenEXR-3_5.dll",
+                    "runtimes/win-x64/native/Iex-3_5.dll",
+                    "runtimes/win-x64/native/IlmThread-3_5.dll",
+                    "runtimes/win-x64/native/Imath-3_2.dll",
+                    "runtimes/win-x64/native/deflate.dll",
+                    "runtimes/win-x64/native/zstd.dll",
                     "runtimes/win-x64/native/MaterialXCore.dll",
-                    "runtimes/win-x64/native/OpenColorIO_2_2.dll",
+                    "runtimes/win-x64/native/OpenColorIO_2_6.dll",
                     "runtimes/win-x64/native/openusd_dotnet.dll",
                     "runtimes/win-x64/native/usd_ms.dll",
                     "runtimes/win-x64/native/vulkan-1.dll",
-                    "runtimes/win-x64/native/zlib.dll",
+                    "runtimes/win-x64/native/z.dll",
                     "runtimes/win-x64/resources/usd/plugInfo.json",
                     "runtimes/win-x64/resources/usd/usd/resources/plugInfo.json",
                 ]);
@@ -760,14 +762,16 @@ public sealed partial class RuntimePackageTests
             string[] publishedPaths =
             [
                 "MaterialXCore.dll",
-                "OpenEXR-3_1.dll",
-                "Iex-3_1.dll",
-                "IlmThread-3_1.dll",
-                "Imath-3_1.dll",
-                "OpenColorIO_2_2.dll",
+                "OpenEXR-3_5.dll",
+                "Iex-3_5.dll",
+                "IlmThread-3_5.dll",
+                "Imath-3_2.dll",
+                "deflate.dll",
+                "zstd.dll",
+                "OpenColorIO_2_6.dll",
                 "openusd_dotnet.dll",
                 "usd_ms.dll",
-                "zlib.dll",
+                "z.dll",
                 Path.Combine("usd", "plugInfo.json"),
                 Path.Combine("usd", "usd", "resources", "plugInfo.json"),
             ];
@@ -783,10 +787,10 @@ public sealed partial class RuntimePackageTests
     }
 
     [Test]
-    [Arguments("OpenEXR-3_1.dll")]
-    [Arguments("Iex-3_1.dll")]
-    [Arguments("IlmThread-3_1.dll")]
-    [Arguments("zlib.dll")]
+    [Arguments("OpenEXR-3_5.dll")]
+    [Arguments("Iex-3_5.dll")]
+    [Arguments("IlmThread-3_5.dll")]
+    [Arguments("z.dll")]
     public async Task MissingExrCodecDependencyFailsWindowsCorePackClearly(string dependency)
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -3755,17 +3759,17 @@ public sealed partial class RuntimePackageTests
             {
                 "win-x64" =>
                 [
-                    "runtimes/win-x64/native/Imath-3_1.dll",
-                    "runtimes/win-x64/native/OpenColorIO_2_2.dll",
+                    "runtimes/win-x64/native/Imath-3_2.dll",
+                    "runtimes/win-x64/native/OpenColorIO_2_6.dll",
                 ],
                 "linux-x64" =>
                 [
-                    "runtimes/linux-x64/native/libImath-3_1.so",
+                    "runtimes/linux-x64/native/libImath-3_2.so",
                     "runtimes/linux-x64/native/libOpenColorIO.so",
                 ],
                 "osx-arm64" =>
                 [
-                    "runtimes/osx-arm64/native/libImath-3_1.dylib",
+                    "runtimes/osx-arm64/native/libImath-3_2.dylib",
                     "runtimes/osx-arm64/native/libOpenColorIO.dylib",
                 ],
                 _ => throw new InvalidOperationException(
@@ -8660,12 +8664,14 @@ public sealed partial class RuntimePackageTests
         string installRoot = Path.Combine(workRoot, "native", "install", "win-x64");
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", "win-x64");
         WriteTestFile(Path.Combine(installRoot, "bin", "MaterialXCore.dll"));
-        WriteTestFile(Path.Combine(installRoot, "bin", "OpenEXR-3_1.dll"));
-        WriteTestFile(Path.Combine(installRoot, "bin", "Iex-3_1.dll"));
-        WriteTestFile(Path.Combine(installRoot, "bin", "IlmThread-3_1.dll"));
-        WriteTestFile(Path.Combine(installRoot, "bin", "Imath-3_1.dll"));
-        WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_2.dll"));
-        WriteTestFile(Path.Combine(installRoot, "bin", "zlib.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "OpenEXR-3_5.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "Iex-3_5.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "IlmThread-3_5.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "Imath-3_2.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "deflate.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "zstd.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_6.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "z.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd_ms.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "usd", "resources", "plugInfo.json"), "{}");
@@ -8888,7 +8894,7 @@ public sealed partial class RuntimePackageTests
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", rid);
         string extension = rid == "linux-x64" ? ".so" : ".dylib";
 
-        WriteTestFile(Path.Combine(installRoot, "lib", $"libImath-3_1{extension}"));
+        WriteTestFile(Path.Combine(installRoot, "lib", $"libImath-3_2{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libOpenColorIO{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libusd_ms{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");

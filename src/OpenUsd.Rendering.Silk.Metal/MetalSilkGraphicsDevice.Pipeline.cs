@@ -111,16 +111,17 @@ public sealed partial class MetalSilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
-            NSURL url = NSURL.FileURLWithPath(path);
+            NSString path = MetalObjectOwnership.Retain(NSString.String(
+                Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
+            NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
             try
             {
                 NSError error = default;
                 vertexLibrary = _device.NewLibrary(url, ref error);
                 if (vertexLibrary.NativePtr == 0)
                 {
-                    throw new InvalidOperationException(
-                        "Could not load the pinned Metal shader library.");
+                    throw CreateMetalFailure(
+                        "Could not load the pinned Metal shader library.", error);
                 }
             }
             finally
@@ -190,8 +191,8 @@ public sealed partial class MetalSilkGraphicsDevice
                     ref pipelineError);
                 if (pipeline.NativePtr == 0)
                 {
-                    throw new InvalidOperationException(
-                        "Could not create the checked Metal graphics pipeline.");
+                    throw CreateMetalFailure(
+                        "Could not create the checked Metal graphics pipeline.", pipelineError);
                 }
 
                 depthDescriptor.DepthCompareFunction = MTLCompareFunction.LessEqual;
@@ -261,7 +262,8 @@ public sealed partial class MetalSilkGraphicsDevice
     {
         if (descriptor.EntryPoint == "main")
         {
-            NSString source = System.Text.Encoding.UTF8.GetString(descriptor.Code.Span);
+            NSString source = MetalObjectOwnership.Retain(NSString.String(
+                System.Text.Encoding.UTF8.GetString(descriptor.Code.Span)));
             try
             {
                 NSError error = default;
@@ -269,8 +271,8 @@ public sealed partial class MetalSilkGraphicsDevice
                 MTLLibrary library = _device.NewLibrary(source, options, ref error);
                 if (library.NativePtr == 0)
                 {
-                    throw new InvalidOperationException(
-                        "Could not compile the generated Metal material fragment shader.");
+                    throw CreateMetalFailure(
+                        "Could not compile the generated Metal material fragment shader.", error);
                 }
                 return library;
             }
@@ -280,16 +282,17 @@ public sealed partial class MetalSilkGraphicsDevice
             }
         }
 
-        NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
-        NSURL url = NSURL.FileURLWithPath(path);
+        NSString path = MetalObjectOwnership.Retain(NSString.String(
+            Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
+        NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
         try
         {
             NSError error = default;
             MTLLibrary library = _device.NewLibrary(url, ref error);
             if (library.NativePtr == 0)
             {
-                throw new InvalidOperationException(
-                    "Could not load the pinned Metal shader library.");
+                throw CreateMetalFailure(
+                    "Could not load the pinned Metal shader library.", error);
             }
             return library;
         }
@@ -298,6 +301,21 @@ public sealed partial class MetalSilkGraphicsDevice
             url.Dispose();
             path.Dispose();
         }
+    }
+
+    private static InvalidOperationException CreateMetalFailure(string message, NSError error)
+    {
+        if (error.NativePtr == 0)
+        {
+            return new InvalidOperationException($"{message} Metal did not supply an NSError.");
+        }
+        string? description = MetalObjectOwnership.GetString(error.LocalizedDescription);
+        if (string.IsNullOrEmpty(description))
+        {
+            description = "Metal supplied no localized description.";
+        }
+        return new InvalidOperationException(FormattableString.Invariant(
+            $"{message} Metal error {error.Code}: {description}"));
     }
 
     private static MTLVertexFormat GetFormat(SilkVertexFormat format) =>

@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import difflib
 import hashlib
 import json
 import re
 import sys
+import tarfile
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -41,7 +43,21 @@ PINNED_INPUTS = [
     "eng/pack-packages.ps1",
     "eng/publish-viewer-bundle.ps1",
     "eng/sbom/cesium-vcpkg-components.lock.json",
+    "eng/generate-sbom.py",
+    "eng/generate-native-notices.py",
+    "eng/shaderc-source-patches.lock.json",
+    "eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch",
+    "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
 ]
+
+SHADERC_SOURCE_MANIFEST_COMMIT = "75137cca3b41a59b8b3e5c42177da8a9490c042f"
+SHADERC_SOURCE_MANIFEST_SHA256 = "8ffa915811760a266e2eb5b683eff227bb0fe077ea722fc5b9ac7d681f60e534"
+SHADERC_COMPILED_SOURCES = (
+    ("shaderc", "google/shaderc", "b64fd42c4a2a9d501c47aca5d3571f7673a5e9cc"),
+    ("glslang", "KhronosGroup/glslang", "e1b562a8bed273a02f30b59b66a5d499793cede5"),
+    ("SPIRV-Tools", "KhronosGroup/SPIRV-Tools", "ef96ed763b43b59b33b31b362f09a02b729fa1c9"),
+    ("SPIRV-Headers", "KhronosGroup/SPIRV-Headers", "04fd3caa1e8267e4d95c806cad901181728e1006"),
+)
 
 VCPKG_TRANSITIVE_EXCLUDE = {
     # Build-system helper ports are fetched by vcpkg but are not redistributed in
@@ -63,6 +79,29 @@ def read_json(relative: str) -> dict[str, Any]:
 def sha256_file(path: Path) -> str:
     content = path.read_bytes()
     return hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def compiler_source_repair(lock: dict[str, Any]) -> dict[str, Any]:
+    sdk = lock["vulkanSdk"]
+    if sha256_file(REPO_ROOT / sdk["sourcePatchLock"]) != sdk["sourcePatchLockSha256"].lower():
+        raise SbomGenerationError("The compiler source-repair profile differs from the native lock.")
+    repair = read_json(sdk["sourcePatchLock"])
+    components = repair.get("components", [])
+    expected = {name.lower(): commit for name, _, commit in SHADERC_COMPILED_SOURCES}
+    if (repair.get("$schemaVersion") != 3 or not components or
+            len({item["component"] for item in components}) != len(components) or
+            repair.get("sourceManifestCommit") != SHADERC_SOURCE_MANIFEST_COMMIT):
+        raise SbomGenerationError("The exact reviewed compiler source repair is absent or modified.")
+    for item in components:
+        files = item.get("files", [])
+        if (item["component"] not in {"spirv-tools", "shaderc"} or
+                item["sourceCommit"] != expected.get(item["component"]) or
+                not files or len({entry["file"] for entry in files}) != len(files) or
+                any(not re.fullmatch(r"(?:source|libshaderc_util)/(?:[a-z_]+/)*[a-z_]+\.(?:cpp|cc)", entry["file"])
+                    for entry in files) or
+                sha256_file(REPO_ROOT / item["patch"]) != item["patchSha256"].lower()):
+            raise SbomGenerationError("The exact reviewed compiler source repair is absent or modified.")
+    return repair
 
 
 def normalized_json(data: dict[str, Any]) -> str:
@@ -143,6 +182,87 @@ def github_purl(url: str, version: str | None, commit: str | None) -> str | None
     return f"pkg:github/{match.group('owner')}/{match.group('repo')}@{suffix}" if suffix else None
 
 
+def cesium_overlay_ports(lock: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    source = lock["cesiumNative"]
+    archive = REPO_ROOT / "native" / "downloads" / source["archiveName"]
+    if not archive.is_file():
+        raise SbomGenerationError(
+            f"The pinned Cesium source archive is required to refresh overlay metadata: {archive}. "
+            "Fetch the locked Cesium inputs before --refresh-vcpkg."
+        )
+    digest = hashlib.sha256()
+    with archive.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != source["archiveSha256"].lower():
+        raise SbomGenerationError("The Cesium overlay source archive does not match the pinned SHA-256.")
+    manifests: dict[str, dict[str, Any]] = {}
+    ports = []
+    with tarfile.open(archive, "r:gz") as contents:
+        entries = {entry.name.partition("/")[2]: entry for entry in contents.getmembers()}
+        for path, entry in sorted(entries.items()):
+            prefix = "extern/vcpkg/ports/"
+            if not path.startswith(prefix) or path.count("/") != 4 or not path.endswith("/vcpkg.json"):
+                continue
+            port_path = path.rsplit("/", 1)[0]
+            portfile = entries.get(f"{port_path}/portfile.cmake")
+            if not entry.isfile() or portfile is None or not portfile.isfile():
+                raise SbomGenerationError(f"The Cesium overlay is missing its regular port files: {port_path}")
+            with contents.extractfile(entry) as stream:
+                raw_manifest = stream.read()
+            with contents.extractfile(portfile) as stream:
+                raw_portfile = stream.read()
+            manifest = json.loads(raw_manifest)
+            name = manifest["name"]
+            if name != port_path.rsplit("/", 1)[1] or name in manifests:
+                raise SbomGenerationError(f"Invalid or duplicate Cesium overlay port name: {name}")
+            manifests[name] = manifest
+            ports.append({
+                "name": name,
+                "path": port_path,
+                "manifestSha256": hashlib.sha256(raw_manifest).hexdigest(),
+                "portfileSha256": hashlib.sha256(raw_portfile).hexdigest(),
+            })
+    if not manifests:
+        raise SbomGenerationError("No overlay ports were found in the pinned Cesium source archive.")
+    return manifests, {
+        "commit": source["commit"],
+        "archiveSha256": source["archiveSha256"],
+        "ports": ports,
+    }
+
+
+def vcpkg_platform_matches(expression: str | None, targets: list[set[str]]) -> bool:
+    if expression is None:
+        return True
+    if not re.fullmatch(r"[A-Za-z0-9_!&|()\s]+", expression):
+        raise SbomGenerationError(f"Unsupported vcpkg platform expression: {expression!r}")
+
+    def evaluate(node: ast.AST) -> bool:
+        if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+            return node.value
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not evaluate(node.operand)
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+            values = [evaluate(value) for value in node.values]
+            return all(values) if isinstance(node.op, ast.And) else any(values)
+        raise SbomGenerationError(f"Unsupported vcpkg platform expression: {expression!r}")
+
+    for target in targets:
+        expanded = re.sub(
+            r"[A-Za-z0-9_]+",
+            lambda match: "True" if match.group(0) in target else "False",
+            expression,
+        ).replace("!", " not ").replace("&", " and ").replace("|", " or ").strip()
+        try:
+            parsed = ast.parse(expanded, mode="eval")
+        except SyntaxError as exc:
+            raise SbomGenerationError(f"Invalid vcpkg platform expression: {expression!r}") from exc
+        if evaluate(parsed.body):
+            return True
+    return False
+
+
 class VcpkgRegistry:
     def __init__(self, lock: dict[str, Any], cache_root: Path) -> None:
         self.baseline = lock["vcpkg"]["baseline"]
@@ -150,6 +270,17 @@ class VcpkgRegistry:
         self.cache_root = cache_root / self.baseline
         self.baseline_data: dict[str, Any] | None = None
         self.port_cache: dict[str, dict[str, Any]] = {}
+        self.overlays, self.overlay_source = cesium_overlay_ports(lock)
+        self.targets = []
+        systems = {"win": "windows", "linux": "linux", "osx": "osx"}
+        for rid in lock["profile"]["platforms"]:
+            system, architecture = rid.rsplit("-", 1)
+            if system not in systems:
+                raise SbomGenerationError(f"Unsupported Cesium SBOM target RID: {rid}")
+            flags = {systems[system], architecture, "native", "all"}
+            if lock["profile"]["libraryLinkage"] == "static":
+                flags.add("static")
+            self.targets.append(flags)
 
     def fetch_text(self, relative: str) -> str:
         local = self.cache_root / relative
@@ -187,6 +318,8 @@ class VcpkgRegistry:
 
     def port_manifest(self, name: str) -> dict[str, Any]:
         key = name.lower()
+        if key in self.overlays:
+            return self.overlays[key]
         if key not in self.port_cache:
             self.port_cache[key] = json.loads(self.fetch_text(f"ports/{key}/vcpkg.json"))
         return self.port_cache[key]
@@ -224,7 +357,8 @@ class VcpkgRegistry:
                 for default_feature in manifest.get("default-features", []):
                     if isinstance(default_feature, str):
                         queue.append((name, default_feature))
-                    elif isinstance(default_feature, dict) and "name" in default_feature:
+                    elif (isinstance(default_feature, dict) and "name" in default_feature and
+                            vcpkg_platform_matches(default_feature.get("platform"), self.targets)):
                         queue.append((name, default_feature["name"]))
             if feature:
                 dependencies += manifest.get("features", {}).get(feature, {}).get("dependencies", [])
@@ -232,7 +366,8 @@ class VcpkgRegistry:
                 dep_name: str | None = None
                 if isinstance(dependency, str):
                     dep_name = dependency
-                elif isinstance(dependency, dict) and not dependency.get("host", False):
+                elif (isinstance(dependency, dict) and not dependency.get("host", False) and
+                        vcpkg_platform_matches(dependency.get("platform"), self.targets)):
                     dep_name = dependency.get("name")
                     for dep_feature in dependency.get("features", []):
                         if dep_name:
@@ -243,25 +378,38 @@ class VcpkgRegistry:
         baseline = self.baseline_versions()
         components: list[dict[str, str]] = []
         for name in sorted(selected):
-            entry = baseline.get(name)
-            if not entry:
-                raise ValueError(f"vcpkg baseline {self.baseline} has no version entry for {name}.")
-            version = entry["baseline"]
-            port_version = int(entry.get("port-version", 0))
+            manifest = self.port_manifest(name)
+            if name in self.overlays:
+                versions = [
+                    manifest[key] for key in ("version", "version-semver", "version-date", "version-string")
+                    if key in manifest
+                ]
+                if len(versions) != 1:
+                    raise SbomGenerationError(f"Overlay port {name} must declare exactly one version.")
+                version = versions[0]
+                port_version = int(manifest.get("port-version", 0))
+            else:
+                entry = baseline.get(name)
+                if not entry:
+                    raise SbomGenerationError(f"vcpkg baseline {self.baseline} has no version entry for {name}.")
+                version = entry["baseline"]
+                port_version = int(entry.get("port-version", 0))
             if port_version:
                 version = f"{version}#{port_version}"
-            manifest = self.port_manifest(name)
-            license_value = manifest.get("license", "NOASSERTION")
+            license_value = manifest.get("license") or "NOASSERTION"
             if isinstance(license_value, list):
                 license_value = " AND ".join(license_value)
-            components.append(
-                {
-                    "name": name,
-                    "version": version,
-                    "license": str(license_value),
-                    "features": ",".join(sorted(f for f in selected[name] if f)),
-                }
-            )
+            item = {
+                "name": name,
+                "version": version,
+                "license": str(license_value),
+                "features": ",".join(sorted(f for f in selected[name] if f)),
+            }
+            if name in self.overlays:
+                item["overlay"] = next(
+                    port["path"] for port in self.overlay_source["ports"] if port["name"] == name
+                )
+            components.append(item)
         return components
 
 
@@ -296,6 +444,15 @@ def load_vcpkg_components(path: Path, lock: dict[str, Any]) -> list[dict[str, st
             "eng/cesium.lock.json."
         )
 
+    overlay_source = data.get("overlaySource", {})
+    if (overlay_source.get("commit") != lock["cesiumNative"]["commit"] or
+            overlay_source.get("archiveSha256") != lock["cesiumNative"]["archiveSha256"] or
+            not overlay_source.get("ports")):
+        raise SbomGenerationError(
+            "Resolved Cesium overlay provenance is missing or stale. "
+            "Refresh from the pinned Cesium archive with --refresh-vcpkg."
+        )
+
     components = data.get("components")
     if not isinstance(components, list) or not components:
         raise SbomGenerationError(f"Resolved vcpkg component data at {path} has no components.")
@@ -321,6 +478,7 @@ def refresh_vcpkg_components(cache_root: Path, output: Path) -> None:
             "baseline": lock["vcpkg"]["baseline"],
         },
         "directVcpkgDependencies": lock["directVcpkgDependencies"],
+        "overlaySource": registry.overlay_source,
         "components": components,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -330,6 +488,7 @@ def refresh_vcpkg_components(cache_root: Path, output: Path) -> None:
 
 def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
     version = read_json("version.json")["version"]
+    sdk_version = read_json("global.json")["sdk"]["version"]
     openusd = read_json("eng/openusd.install.lock.json")
     cesium = read_json("eng/cesium.lock.json")
     physx = read_json("eng/physx.lock.json")
@@ -375,7 +534,7 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
                 "openusd:release-artifact": "Viewer self-contained bundle",
                 "openusd:unresolved": (
                     "Exact runtime pack patch is selected by the pinned .NET SDK during restore; "
-                    "the repository pins SDK 10.0.301 but does not record the restored runtime "
+                    f"the repository pins SDK {sdk_version} but does not record the restored runtime "
                     "pack version."
                 ),
             },
@@ -408,6 +567,7 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
                 dependency["name"],
                 dependency.get("version"),
                 purl=github_purl(dependency.get("url", ""), dependency.get("tag"), dependency.get("commit")),
+                licenses=[dependency["license"]] if "license" in dependency else None,
                 external_refs=source_refs(dependency),
                 hashes={"SHA-256": dependency["sha256"]} if "sha256" in dependency else None,
                 properties=props,
@@ -430,6 +590,46 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
             ),
         )
 
+    shaderc_manifests = [
+        repo for repo in openusd["vulkanSdk"]["repositories"]
+        if repo["name"] == "shaderc-source-manifest"
+    ]
+    if (len(shaderc_manifests) != 1 or
+            shaderc_manifests[0]["commit"] != SHADERC_SOURCE_MANIFEST_COMMIT):
+        raise SbomGenerationError(
+            "The shaderc source manifest changed. Refresh the verified compiled-source snapshot "
+            "in eng/generate-sbom.py from the newly pinned known_good.json."
+        )
+    source_repair = compiler_source_repair(openusd)
+    for name, repository, commit in SHADERC_COMPILED_SOURCES:
+        url = f"https://github.com/{repository}.git"
+        properties = {
+            "openusd:source": "eng/openusd.install.lock.json; eng/generate-sbom.py",
+            "openusd:shaderc-source-manifest": SHADERC_SOURCE_MANIFEST_COMMIT,
+            "openusd:shaderc-source-manifest-sha256": SHADERC_SOURCE_MANIFEST_SHA256,
+            "openusd:role": "native shader compiler source",
+        }
+        repairs = [item for item in source_repair["components"] if item["component"] == name.lower()]
+        if repairs:
+            properties.update({
+                "openusd:source-repair": openusd["vulkanSdk"]["sourcePatchLock"],
+                "openusd:source-repair-sha256": openusd["vulkanSdk"]["sourcePatchLockSha256"],
+                "openusd:repaired-sources": json.dumps(
+                    {item["file"]: item["afterSha256"] for item in repairs[0]["files"]}, sort_keys=True
+                ),
+            })
+        add_component(
+            components,
+            component(
+                f"native:{name}:{commit}",
+                name,
+                commit,
+                purl=github_purl(url, None, commit),
+                external_refs=[{"type": "vcs", "url": url}],
+                properties=properties,
+            ),
+        )
+
     cesium_native = cesium["cesiumNative"]
     add_component(
         components,
@@ -445,18 +645,25 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
         ),
     )
     for dependency in load_vcpkg_components(vcpkg_components, cesium):
+        properties = {
+            "openusd:source": "eng/cesium.lock.json; eng/sbom/cesium-vcpkg-components.lock.json",
+            "openusd:vcpkg-baseline": cesium["vcpkg"]["baseline"],
+            "openusd:vcpkg-features": dependency["features"],
+            "openusd:license": dependency["license"],
+        }
+        if "overlay" in dependency:
+            properties.update({
+                "openusd:vcpkg-overlay": dependency["overlay"],
+                "openusd:overlay-source-commit": cesium["cesiumNative"]["commit"],
+                "openusd:overlay-source-archive-sha256": cesium["cesiumNative"]["archiveSha256"],
+            })
         add_component(
             components,
             component(
                 f"vcpkg:{dependency['name']}",
                 dependency["name"],
                 dependency["version"],
-                properties={
-                    "openusd:source": "eng/cesium.lock.json",
-                    "openusd:vcpkg-baseline": cesium["vcpkg"]["baseline"],
-                    "openusd:vcpkg-features": dependency["features"],
-                    "openusd:license": dependency["license"],
-                },
+                properties=properties,
             ),
         )
 

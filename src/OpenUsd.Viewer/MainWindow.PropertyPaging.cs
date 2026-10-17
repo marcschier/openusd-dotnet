@@ -42,7 +42,7 @@ public sealed partial class MainWindow
         _currentInspector is not null && _coordinator is not null &&
         _documentLifetime is { IsCancellationRequested: false } &&
         !_inspectorPropertiesLoading && !_documentBusy && !_shutdownStarted &&
-        !_documentSnapshotRefreshBusy && !_documentEditBusy &&
+        !_documentEditBusy &&
         !_primCommandBusy && !_layerCommandBusy && _documentEditor?.IsSuspended != true;
 
     private void OnInspectorPropertyQueryChanged(object? sender, TextChangedEventArgs e)

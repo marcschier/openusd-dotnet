@@ -42,6 +42,15 @@ internal static class SilkSurfaceUniformWriter
     private const float DefaultIor = 1.5f;
     private const float DefaultClearcoatRoughness = 0.01f;
 
+    internal static void WriteUnlitDiagnosticColor(Vector4 color, Span<byte> destination)
+    {
+        Write(null, RenderHeadlight.Deterministic, destination);
+        WriteVector4(destination, 0,
+            Finite(color.X, "diagnostic red"), Finite(color.Y, "diagnostic green"),
+            Finite(color.Z, "diagnostic blue"), Finite(color.W, "diagnostic opacity"));
+        WriteVector4(destination, 64, 0, DefaultClearcoatRoughness, 2, 0);
+    }
+
     /// <summary>
     /// Writes the block for one material. A mesh with no supported material bound
     /// gets the shared default block, whose shaded flag is zero so the shader falls

@@ -88,12 +88,12 @@ be satisfied by a member that exists on every type and represents nothing.
 
 ## Coverage today
 
-Counts are over the ten libraries the facades claim, from the pinned OpenUSD 26.05
+Counts are over the ten libraries the facades claim, from the pinned OpenUSD 26.08
 registry. "Properties" counts each property once, on the schema that declares it.
 
 | Library | Schemas | Covered | Properties | Mapped | Exceptions | On uncovered schemas |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `usdGeom` | 31 | 25 | 126 | 63 | 49 | 14 |
+| `usdGeom` | 32 | 25 | 140 | 63 | 50 | 27 |
 | `usdShade` | 7 | 6 | 6 | 4 | 1 | 1 |
 | `usdLux` | 21 | 10 | 53 | 20 | 14 | 19 |
 | `usdSkel` | 5 | 5 | 22 | 18 | 4 | 0 |
@@ -103,14 +103,18 @@ registry. "Properties" counts each property once, on the schema that declares it
 | `usdProc` | 1 | 1 | 1 | 1 | 0 | 0 |
 | `usdUI` | 4 | 3 | 13 | 9 | 1 | 3 |
 | `usdPhysics` | 17 | 17 | 54 | 54 | 0 | 0 |
-| **Total** | **113** | **81** | **327** | **205** | **72** | **50** |
+| **Total** | **114** | **81** | **341** | **205** | **73** | **63** |
 
-So 81 of 113 schema types have a managed facade, and 205 of 327 declared properties
-resolve to a typed facade member. The rest is stated, not hidden: 72 properties on
-covered schemas are reachable only through the generic `UsdPrim` typed accessors, and 50
+So 81 of 114 schema types have a managed facade, and 205 of 341 declared properties
+resolve to a typed facade member. The rest is stated, not hidden: 73 properties on
+covered schemas are reachable only through the generic `UsdPrim` typed accessors, and 63
 belong to schemas with no facade at all — the particle-field family added by OpenUSD
 26.05, the light-list and shadow APIs, `UsdGeomScope`, `UsdGeomVisibilityAPI`, and the
 `_1` versioned successors the facades deliberately do not target yet.
+
+OpenUSD 26.08 adds `UsdGeomBackPlateAPI` and `UsdGeomModelAPI.model:cardVisibility`.
+They remain available through generic accessors; this dependency update does not introduce a
+typed facade or change the existing reviewed coverage floors.
 
 `usdPhysics` is the only library at full parity: all 17 schemas and all 54 declared
 properties resolve to `OpenUsd.Physics` facade members, including the two

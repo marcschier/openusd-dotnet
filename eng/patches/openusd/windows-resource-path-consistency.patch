@@ -1,0 +1,39 @@
+--- a/pxr/base/arch/fileSystem.cpp
++++ b/pxr/base/arch/fileSystem.cpp
+@@ -131,6 +131,11 @@
+     return wpath;
+ }
+ } // anon
++std::wstring
++ArchWindowsUtf8ToUtf16Path(const std::string &path)
++{
++    return _MakeWinPath(path.c_str());
++}
+ #endif // ARCH_OS_WINDOWS
+ 
+ FILE* ArchOpenFile(char const* fileName, char const* mode)
+--- a/pxr/base/arch/fileSystem.h
++++ b/pxr/base/arch/fileSystem.h
+@@ -428,6 +428,10 @@
+ /// Converts regular std::string to UTF-16 windows string - Windows-only
+ ARCH_API std::wstring ArchWindowsUtf8ToUtf16(const std::string &str);
+ 
++/// Converts a UTF-8 filesystem path to normalized Win32 extended-length form
++/// when necessary, retaining the filesystem helpers' existing path semantics.
++ARCH_API std::wstring ArchWindowsUtf8ToUtf16Path(const std::string &path);
++
+ #endif
+ 
+ ///@}
+--- a/pxr/base/tf/fileUtils.cpp
++++ b/pxr/base/tf/fileUtils.cpp
+@@ -64,7 +64,8 @@
+         resolveSymlinks = true;
+ 
+     std::wstring pathW = ArchWindowsUtf8ToUtf16(path);
+-    DWORD attribs = GetFileAttributesW(pathW.c_str());
++    DWORD attribs =
++        GetFileAttributesW(ArchWindowsUtf8ToUtf16Path(path).c_str());
+     if (attribs == INVALID_FILE_ATTRIBUTES) {
+         if (attribute == 0 &&
+             (GetLastError() == ERROR_FILE_NOT_FOUND ||

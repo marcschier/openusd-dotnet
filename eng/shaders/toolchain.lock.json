@@ -15,47 +15,46 @@
     }
   },
   "slang": {
-    "version": "2026.13.1",
-    "tag": "v2026.13.1",
-    "commit": "c0952c29d3664b60ada5e5edb3fff9ffd6f98d2d",
+    "version": "2026.19",
+    "tag": "v2026.19",
+    "commit": "0fb6b7587a94fa33d88141ec9930766eedc6f59a",
     "repository": "https://github.com/shader-slang/slang",
     "assets": [
       {
         "rid": "win-x64",
-        "archiveName": "slang-2026.13.1-windows-x86_64.zip",
-        "url": "https://github.com/shader-slang/slang/releases/download/v2026.13.1/slang-2026.13.1-windows-x86_64.zip",
-        "sha256": "fa1c9bcab2cdcd3626f7a1e250dd35d606c1b84745b64627f1dd63fca3746a70"
+        "archiveName": "slang-2026.19-windows-x86_64.zip",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2026.19/slang-2026.19-windows-x86_64.zip",
+        "sha256": "fc922f214b5d115f663932e59e80e0f6b6cc6fae140979cf307da6459b6f8f33"
       },
       {
         "rid": "linux-x64",
-        "archiveName": "slang-2026.13.1-linux-x86_64-glibc-2.27.tar.gz",
-        "url": "https://github.com/shader-slang/slang/releases/download/v2026.13.1/slang-2026.13.1-linux-x86_64-glibc-2.27.tar.gz",
-        "sha256": "f6db08763e38c398086d2b1d785ab7fc190bad27f29992e1be6ca3cc187884d0"
+        "archiveName": "slang-2026.19-linux-x86_64-glibc-2.27.tar.gz",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2026.19/slang-2026.19-linux-x86_64-glibc-2.27.tar.gz",
+        "sha256": "5899bd40c3d1ee60eadd1d1b37acc4e88ae65cc25ac61651534d55b71a85fe75"
       },
       {
         "rid": "osx-arm64",
-        "archiveName": "slang-2026.13.1-macos-aarch64.tar.gz",
-        "url": "https://github.com/shader-slang/slang/releases/download/v2026.13.1/slang-2026.13.1-macos-aarch64.tar.gz",
-        "sha256": "cf58b42ba87f66f58e0de297da57f4a5c92d00b7e7f38a708d2a4244abd8d003"
+        "archiveName": "slang-2026.19-macos-aarch64.tar.gz",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2026.19/slang-2026.19-macos-aarch64.tar.gz",
+        "sha256": "fa46822c92d81404a7951de3746093985c1e6f520f4b533e2aa3bea576f0f2f0"
       }
     ]
   },
   "spirvTools": {
-    "version": "vulkan-sdk-1.4.350.1",
-    "commit": "0539c81f69a3daeb706fd3477dca61435b475156",
+    "version": "v2026.4",
+    "commit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
     "repository": "https://github.com/KhronosGroup/SPIRV-Tools",
-    "archiveName": "spirv-tools-0539c81f69a3daeb706fd3477dca61435b475156.zip",
-    "extractDirectory": "SPIRV-Tools-0539c81f69a3daeb706fd3477dca61435b475156",
-    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Tools/zip/0539c81f69a3daeb706fd3477dca61435b475156",
-    "sha256": "3317e5b55e32e56f9531c4213323e0c6e32ad8a662a983cc07f83b2f00ba6cb3"
+    "archiveName": "spirv-tools-ef96ed763b43b59b33b31b362f09a02b729fa1c9.zip",
+    "extractDirectory": "SPIRV-Tools-ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Tools/zip/ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+    "sha256": "2a7666cfaec2818516019fccb8101a6e57c589417bef83a3c61d19ed63de1c1f"
   },
   "spirvHeaders": {
-    "commit": "ad9184e76a66b1001c29db9b0a3e87f646c64de0",
+    "commit": "496543121ce6419f23d6fa5d7194ba66c36212d2",
     "repository": "https://github.com/KhronosGroup/SPIRV-Headers",
-    "archiveName": "spirv-headers-ad9184e76a66b1001c29db9b0a3e87f646c64de0.zip",
-    "extractDirectory": "SPIRV-Headers-ad9184e76a66b1001c29db9b0a3e87f646c64de0",
-    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/zip/ad9184e76a66b1001c29db9b0a3e87f646c64de0",
-    "sha256": "7d7a8b280a0fc70657a3a380f2d665c7273877b85446def3337f4d49613abade"
+    "archiveName": "spirv-headers-496543121ce6419f23d6fa5d7194ba66c36212d2.zip",
+    "extractDirectory": "SPIRV-Headers-496543121ce6419f23d6fa5d7194ba66c36212d2",
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/zip/496543121ce6419f23d6fa5d7194ba66c36212d2",
+    "sha256": "b33782a6ccd124e6e02634f6382456b0aba2242c6ec5b68d07be20ee77a5b6bc"
   }
 }
-

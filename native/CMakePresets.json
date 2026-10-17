@@ -52,7 +52,9 @@
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT}",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "OPENUSD_WITH_MATERIALX_SPIRV": "ON",
+        "OPENUSD_MATERIALX_SHADERC_ROOT": "${sourceDir}/install/shaderc/osx-arm64"
       }
     },
     {
@@ -82,6 +84,7 @@
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/osx-arm64;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx/share",
         "OPENUSD_WITH_VULKAN": "OFF",
+        "OPENUSD_WITH_MATERIALX_SPIRV": "OFF",
         "OPENUSD_WITH_CESIUM": "ON"
       }
     },
@@ -114,6 +117,7 @@
       "name": "osx-arm64-mdl",
       "inherits": "osx-arm64",
       "cacheVariables": {
+        "OPENUSD_WITH_MATERIALX_SPIRV": "OFF",
         "OPENUSD_WITH_MDL": "ON"
       }
     },

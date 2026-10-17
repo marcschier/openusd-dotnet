@@ -66,6 +66,10 @@ on:
         description: Native artifact workflow run ID to consume instead of URL archives
         required: false
         type: string
+      metal-qualification-harness:
+        description: Optional bounded base64 ZIP with Program.cs and approved Harness.csproj for manual macOS qualification
+        required: false
+        type: string
   # Render was release-only until 0.6.0-alpha and hid stale shared-stage soak
   # ABI constants plus capability regressions until the release gate. Native
   # changes arrive through the verified archive producer instead of rebuilding
@@ -151,28 +155,29 @@ jobs:
       NATIVE_URL: ${{ inputs['windows-native-url'] }}
       NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.301
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+          dotnet-version: 10.0.401
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
         if: env.NATIVE_SOURCE == 'build'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/install/win-x64
             native/install/shim/win-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/win-x64
             native/build/shim/win-x64
           key: >-
             native-win-x64-${{ hashFiles(
@@ -180,6 +185,14 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -258,7 +271,7 @@ jobs:
         if: env.NATIVE_SOURCE == 'build'
       - name: Download verified native pipeline archive
         if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
@@ -290,6 +303,9 @@ jobs:
             -Operation Verify `
             -Rid win-x64 `
             -RequireVulkanRuntime:$requireVulkanRuntime
+          python ./eng/generate-native-notices.py verify `
+            --rid win-x64 --install-root native/install/win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Execute staged NativeAOT shared-stage probes
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -315,7 +331,8 @@ jobs:
         run: |
           .\eng\run-viewer-workflow-tests.ps1 `
             -NativeRuntimeRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\parity-capture\win-x64\runtime') `
-            -OutputRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\viewer-workflows\windows-wgl')
+            -OutputRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\viewer-workflows\windows-wgl') `
+            -MesaWgl
       - name: Execute D3D12 transparent opacity conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -520,7 +537,7 @@ jobs:
           ./eng/assert-volume-evidence.ps1 -Root $volumes -Backend d3d12 -SkipUniformGate
       - name: Upload sampled volume evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-volume-evidence-win-x64-${{ github.run_id }}
           path: |
@@ -529,7 +546,7 @@ jobs:
           if-no-files-found: warn
       - name: Upload diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-windows-wgl-${{ github.run_id }}
           path: |
@@ -542,7 +559,7 @@ jobs:
           if-no-files-found: warn
       - name: Upload adjusted IoU evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-adjusted-iou-win-x64-${{ github.run_id }}
           path: tests/**/parity-capture-adjusted-iou.tsv
@@ -570,28 +587,29 @@ jobs:
       NATIVE_URL: ${{ inputs['windows-native-url'] }}
       NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.301
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+          dotnet-version: 10.0.401
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
         if: env.NATIVE_SOURCE == 'build'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/install/win-x64
             native/install/shim/win-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/win-x64
             native/build/shim/win-x64
           key: >-
             native-win-x64-${{ hashFiles(
@@ -599,6 +617,14 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -673,7 +699,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
       - name: Download verified native pipeline archive
         if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
@@ -705,6 +731,9 @@ jobs:
             -Operation Verify `
             -Rid win-x64 `
             -RequireVulkanRuntime:$requireVulkanRuntime
+          python ./eng/generate-native-notices.py verify `
+            --rid win-x64 --install-root native/install/win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Resolve system Vulkan ICD
         if: steps.native-ready.outputs.ready == 'true'
         id: vulkan-icd
@@ -808,7 +837,7 @@ jobs:
             -FreshProcessCount 15
       - name: Upload mandatory Vulkan evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-windows-vulkan-${{ github.run_id }}
           path: |
@@ -842,28 +871,29 @@ jobs:
       NATIVE_URL: ${{ inputs['linux-native-url'] }}
       NATIVE_SHA256: ${{ inputs['linux-native-sha256'] }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.301
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+          dotnet-version: 10.0.401
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
         if: env.NATIVE_SOURCE == 'build'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/install/linux-x64
             native/install/shim/linux-x64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/linux-x64
             native/build/shim/linux-x64
           key: >-
             native-linux-x64-${{ hashFiles(
@@ -871,6 +901,14 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -962,7 +1000,7 @@ jobs:
           (env.NATIVE_SOURCE == 'build')
         run: >-
           sudo apt-get install -y
-          build-essential cmake ninja-build pkg-config libxt-dev
+          build-essential cmake ninja-build pkg-config libxt-dev patchelf binutils
       - name: Validate Linux native prerequisite preflight contract
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -978,7 +1016,7 @@ jobs:
         run: bash ./eng/test-storm-native-child-linux.sh
       - name: Download verified native pipeline archive
         if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
@@ -1008,6 +1046,9 @@ jobs:
           ./eng/native-install-metadata.ps1 `
             -Operation Verify `
             -Rid linux-x64
+          python ./eng/generate-native-notices.py verify `
+            --rid linux-x64 --install-root native/install/linux-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
       - name: Build Linux package tests for immutable archive
         if: >-
           steps.native-ready.outputs.ready == 'true' &&
@@ -1339,7 +1380,7 @@ jobs:
         run: ./eng/test-ocio-alias-evidence.ps1 -Configuration Release
       - name: Upload OpenColorIO alias evidence
         if: always() && steps.native-ready.outputs.ready == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-ocio-alias-evidence-linux-x64-${{ github.run_id }}
           path: tests/OpenUsd.Rendering.Tests/bin/Release/net10.0/ocio-alias-evidence.txt
@@ -1358,7 +1399,7 @@ jobs:
           -Backend vulkan
       - name: Upload Linux sampled volume evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-volume-evidence-linux-x64-${{ github.run_id }}
           path: |
@@ -1385,7 +1426,7 @@ jobs:
         run: bash ./eng/run-storm-native-child-linux.sh xwayland
       - name: Upload diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-linux-presentation-${{ github.run_id }}
           path: |
@@ -1405,7 +1446,7 @@ jobs:
           if-no-files-found: error
       - name: Upload adjusted IoU evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-adjusted-iou-linux-x64-${{ github.run_id }}
           path: tests/**/parity-capture-adjusted-iou.tsv
@@ -1435,28 +1476,29 @@ jobs:
       OpenUsdRequireMetalShaderLibrary: 'true'
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.301
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+          dotnet-version: 10.0.401
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
         if: env.NATIVE_SOURCE == 'build'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/install/osx-arm64
             native/install/shim/osx-arm64
-            native/install/vulkan-sdk-1.4.321.0
+            native/install/vulkan-sdk-1.4.363.0
+            native/install/shaderc/osx-arm64
             native/build/shim/osx-arm64
           key: >-
             native-osx-arm64-${{ hashFiles(
@@ -1464,6 +1506,14 @@ jobs:
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
+              'eng/cmake/ShaderCompiler.cmake',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE',
               'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
@@ -1561,7 +1611,7 @@ jobs:
             -OutputRoot eng/shaders/out/checked-payload/osx-arm64
       - name: Download verified native pipeline archive
         if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
@@ -1591,9 +1641,21 @@ jobs:
           ./eng/native-install-metadata.ps1 `
             -Operation Verify `
             -Rid osx-arm64
+          python ./eng/generate-native-notices.py verify `
+            --rid osx-arm64 --install-root native/install/osx-arm64
+          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
+      - name: Execute optional normal managed and NativeAOT Metal main-loop qualification
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs['metal-qualification-harness'] != '' &&
+          steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          OPENUSD_METAL_QUALIFICATION_ZIP: ${{ inputs['metal-qualification-harness'] }}
+        run: ./eng/run-metal-qualification.ps1
       - id: cesium-vcpkg-cache
         if: steps.native-ready.outputs.ready == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/.cache/vcpkg-*
@@ -1653,9 +1715,17 @@ jobs:
           (steps.macos-cgl.outputs.available == 'true')
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid osx-arm64 -Configuration Release
+      - name: Stage macOS hdSilk volume runtime
+        id: macos-volume-runtime
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
       - name: Execute actual IOSurface Metal composition tests
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          OPENUSD_PLUGIN_PATH: ${{ steps.macos-volume-runtime.outputs.plugin }}
+          DYLD_LIBRARY_PATH: ${{ steps.macos-volume-runtime.outputs.library-path }}
         run: |
           $conformanceProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
           $viewerProject = 'tests/OpenUsd.Viewer.Tests/OpenUsd.Viewer.Tests.csproj'
@@ -1667,43 +1737,34 @@ jobs:
             -c Release `
             -f net10.0 `
             -p:OpenUsdRequireMetalShaderLibrary=true
-          ./eng/run-managed-tests.ps1 `
-            -Project $conformanceProject `
-            -Framework net10.0 `
-            -Configuration Release `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/MetalCompositionPresentationTests/*')
-          ./eng/run-managed-tests.ps1 `
-            -Project $conformanceProject `
-            -Framework net10.0 `
-            -Configuration Release `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/StormSilkParityCaptureDriverTests/MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
-          ./eng/run-managed-tests.ps1 `
-            -Project $conformanceProject `
-            -Framework net10.0 `
-            -Configuration Release `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/MetalDeviceTests/CompositesStraightAlphaOverDestinationOnMacOS')
-          ./eng/run-managed-tests.ps1 `
-            -Project $viewerProject `
-            -Framework net10.0 `
-            -Configuration Release `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/MetalCompositionViewportLifecycleTests/*')
-      - name: Stage macOS hdSilk volume runtime
-        id: macos-volume-runtime
-        if: steps.native-ready.outputs.ready == 'true'
-        shell: pwsh
-        # Staged here rather than reusing the CGL parity capture's runtime, because that
-        # capture runs only when resolve-macos-cgl-capability.ps1 proves hosted CGL works.
-        # The Metal volume gates do not touch OpenGL, so binding them to that capability
-        # would make a Metal pixel gate vanish whenever hosted CGL regressed.
-        run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
+          . ./eng/managed-workflow-reports.ps1
+          $reports = 'artifacts/managed-workflow-reports/macos-composition'
+          if (Test-Path -LiteralPath $reports) { throw 'Use a fresh macOS composition report root.' }
+          New-Item -ItemType Directory -Path $reports | Out-Null
+          $invocations = @(
+            @{ Id = 'metal-composition'; Class = 'MetalCompositionPresentationTests'
+              Project = $conformanceProject; Assembly = 'OpenUsd.Rendering.ConformanceTests'
+              Filter = '/*/*/MetalCompositionPresentationTests/*' },
+            @{ Id = 'materialx-unlit'; Class = 'StormSilkParityCaptureDriverTests'
+              Project = $conformanceProject; Assembly = 'OpenUsd.Rendering.ConformanceTests'
+              Filter = '/*/*/StormSilkParityCaptureDriverTests/MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal' },
+            @{ Id = 'straight-alpha'; Class = 'MetalDeviceTests'
+              Project = $conformanceProject; Assembly = 'OpenUsd.Rendering.ConformanceTests'
+              Filter = '/*/*/MetalDeviceTests/CompositesStraightAlphaOverDestinationOnMacOS' },
+            @{ Id = 'viewport-lifecycle'; Class = 'MetalCompositionViewportLifecycleTests'
+              Project = $viewerProject; Assembly = 'OpenUsd.Viewer.Tests'
+              Filter = '/*/*/MetalCompositionViewportLifecycleTests/*' }
+          )
+          foreach ($invocation in $invocations)
+          {
+            $assemblyDirectory = Join-Path (Split-Path -Parent $invocation.Project) 'bin/Release/net10.0'
+            Invoke-ManagedWorkflowScenario -Runner './eng/run-managed-tests.ps1' `
+              -Project $invocation.Project -AssemblyDirectory $assemblyDirectory -EvidenceRoot $reports `
+              -Entry $invocation -ReportAssembly $invocation.Assembly -RequireNoSkips:$false `
+              -TestArguments @('--treenode-filter', $invocation.Filter) |
+              ConvertTo-Json -Depth 5 |
+              Set-Content (Join-Path $reports "$($invocation.Id).json")
+          }
       - name: Execute macOS sampled OpenVDB volume conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -1755,7 +1816,7 @@ jobs:
           -SkipDepthGate
       - name: Upload macOS sampled volume evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-volume-evidence-osx-arm64-${{ github.run_id }}
           path: |
@@ -1773,7 +1834,7 @@ jobs:
           -NativeSource $env:NATIVE_SOURCE
       - name: Upload diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-macos-arm64-${{ github.run_id }}
           path: |
@@ -1782,6 +1843,8 @@ jobs:
             artifacts/storm-native-child-macos
             artifacts/parity-capture/osx-arm64
             artifacts/metal-composition-probe/osx-arm64
+            artifacts/metal-main-loop-qualification
+            artifacts/managed-workflow-reports/macos-composition
             artifacts/package-macos-storm-child
             artifacts/native-input/osx-arm64/source.json
             eng/shaders/out/render-macos
@@ -1791,7 +1854,7 @@ jobs:
           if-no-files-found: error
       - name: Upload adjusted IoU evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-adjusted-iou-osx-arm64-${{ github.run_id }}
           path: tests/**/parity-capture-adjusted-iou.tsv

@@ -204,8 +204,8 @@ Assert-Contains $parityCapture '-MinimumExpectedTests $macosCglTestNames.Count' 
 Assert-Contains $parityCapture '-MinimumExpectedTests $linuxGlxTestNames.Count' 'Parity capture runner'
 Assert-Contains $platformSmoke 'prepare-mesa-wgl-test-runtime.ps1' 'Platform smoke runner'
 Assert-Contains $platformSmoke '-Preflight' 'Platform smoke runner'
-Assert-Contains $mesaWglLock 'mesa-llvmpipe-x64-26.1.5.7z' 'Mesa WGL runtime lock'
-Assert-Contains $mesaWglLock 'D9ED92A40F982C5D92C5581D501A7D4CADBF311F20EB3AC2C8C4EB0F55065D21' `
+Assert-Contains $mesaWglLock 'mesa-llvmpipe-x64-26.2.4.7z' 'Mesa WGL runtime lock'
+Assert-Contains $mesaWglLock 'F58FAB8CFFDF02A2B9FF21F4A0DC2162196D84AB08D6C0EAB3315E774EA33082' `
     'Mesa WGL runtime lock'
 
 # The Linux import narrowing is opt-in at exactly its two call sites, X11 and Wayland.

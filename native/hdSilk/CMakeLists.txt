@@ -63,11 +63,46 @@ if(NOT OPENUSD_OPENSUBDIV_CPU_LIBRARY)
         "install prefix (${pxr_DIR}).")
 endif()
 
+option(OPENUSD_WITH_MATERIALX_SPIRV
+    "Compile portable MaterialX SPIR-V payloads without requiring a GPU runtime"
+    ${OPENUSD_WITH_VULKAN})
+set(OPENUSD_MATERIALX_SHADERC_ROOT "" CACHE PATH
+    "Private locked shaderc compiler prefix for builds without Vulkan")
+# The existing Vulkan names describe the generated shader dialect, not a GPU
+# runtime dependency. Native probes use the same real compiler capability.
 set(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
-if(OPENUSD_WITH_VULKAN AND TARGET Vulkan::shaderc_combined)
+if(OPENUSD_WITH_MATERIALX_SPIRV)
+    if(NOT TARGET MaterialXGenGlsl)
+        message(FATAL_ERROR "MaterialX SPIR-V generation requires MaterialXGenGlsl.")
+    endif()
+    if(OPENUSD_WITH_VULKAN)
+        set(OPENUSD_HDSILK_SHADERC_TARGET Vulkan::shaderc_combined)
+    else()
+        if(NOT OPENUSD_MATERIALX_SHADERC_ROOT)
+            message(FATAL_ERROR
+                "MaterialX SPIR-V generation requires the private locked shaderc prefix.")
+        endif()
+        find_path(OPENUSD_MATERIALX_SHADERC_INCLUDE_DIR
+            NAMES shaderc/shaderc.hpp
+            PATHS "${OPENUSD_MATERIALX_SHADERC_ROOT}/include"
+            NO_DEFAULT_PATH NO_CACHE REQUIRED)
+        find_library(OPENUSD_MATERIALX_SHADERC_LIBRARY
+            NAMES shaderc_combined
+            PATHS "${OPENUSD_MATERIALX_SHADERC_ROOT}/lib"
+            NO_DEFAULT_PATH NO_CACHE REQUIRED)
+        if(NOT OPENUSD_MATERIALX_SHADERC_LIBRARY MATCHES "\\.(a|lib)$")
+            message(FATAL_ERROR "The private MaterialX shader compiler must be static.")
+        endif()
+        find_package(Threads REQUIRED)
+        add_library(openusd_materialx_shaderc STATIC IMPORTED)
+        set_target_properties(openusd_materialx_shaderc PROPERTIES
+            IMPORTED_LOCATION "${OPENUSD_MATERIALX_SHADERC_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${OPENUSD_MATERIALX_SHADERC_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES Threads::Threads)
+        set(OPENUSD_HDSILK_SHADERC_TARGET openusd_materialx_shaderc)
+    endif()
     list(APPEND OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS
-        MaterialXGenGlsl
-        Vulkan::shaderc_combined)
+        MaterialXGenGlsl ${OPENUSD_HDSILK_SHADERC_TARGET})
 endif()
 
 set(OPENUSD_HDSILK_MATERIALX_MSL_LIBS)

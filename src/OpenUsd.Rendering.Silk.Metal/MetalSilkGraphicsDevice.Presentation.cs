@@ -82,11 +82,11 @@ public sealed partial class MetalSilkGraphicsDevice
         bool success = false;
         try
         {
-            nativeDescriptor = MTLTextureDescriptor.Texture2DDescriptor(
+            nativeDescriptor = MetalObjectOwnership.Retain(MTLTextureDescriptor.Texture2DDescriptor(
                 MTLPixelFormat.RGBA8Unorm,
                 descriptor.Width,
                 descriptor.Height,
-                false);
+                false));
             nativeDescriptor.StorageMode = MTLStorageMode.Shared;
             nativeDescriptor.Usage =
                 MTLTextureUsage.RenderTarget | MTLTextureUsage.ShaderRead;
@@ -135,7 +135,7 @@ public sealed partial class MetalSilkGraphicsDevice
     internal MTLCommandBuffer SubmitEventSignal(MTLSharedEvent sharedEvent, ulong value)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        MTLCommandBuffer commandBuffer = _queue.CommandBuffer();
+        MTLCommandBuffer commandBuffer = MetalObjectOwnership.Retain(_queue.CommandBuffer());
         if (commandBuffer.NativePtr == 0)
         {
             throw new InvalidOperationException(

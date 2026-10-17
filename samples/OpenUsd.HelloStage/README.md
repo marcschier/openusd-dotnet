@@ -11,7 +11,7 @@ managed facade and does not call the C ABI directly.
 
 ## Prerequisites and matching native runtime
 
-- .NET SDK 10.0.301.
+- .NET SDK 10.0.401.
 - A writable output location.
 - A platform NativeAOT toolchain only when publishing.
 - The Core native runtime matching the process. Prefer `OpenUsd.Runtime.Core`; explicit packages are
@@ -56,11 +56,11 @@ This repository uses:
 <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
 ```
 
-To consume the published packages instead, use one property for the matching version:
+To consume matching repository-built packages instead, use one property for the candidate version:
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.14.0-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.15.0-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
@@ -69,10 +69,10 @@ To consume the published packages instead, use one property for the matching ver
 </ItemGroup>
 ```
 
-The packages are published to NuGet.org, so no feed configuration is required. To test
-repository-built packages before they are published, build them into a local feed and configure
+The candidate `0.15.0-alpha` packages are not claimed as published. Build them into a local feed and configure
 source mapping as described by [Pack](../../docs/packaging.md#pack) and the
-[package-only execution gate](../../docs/packaging.md#package-only-execution-gate). Use the Core
+[package-only execution gate](../../docs/packaging.md#package-only-execution-gate). The published
+`0.14.0-alpha` baseline remains available on NuGet.org without extra feed configuration. Use the Core
 metapackage unless you intentionally pin one RID, and keep every OpenUsd package at the same version.
 The Core package copies native
 libraries and `usd/**` resources to the application output. Program startup registers

@@ -102,7 +102,7 @@ remains a later phase and is out of scope for this package.
 | Executable samples and probes | — | — | ✅ | Development and evidence projects |
 | Runtime asset package projects | Carrier | — | — | Assets are RID-specific |
 
-Repository development uses SDK `10.0.301`, even when compiling `net8.0` and `net9.0` targets.
+Repository development uses SDK `10.0.401`, even when compiling `net8.0` and `net9.0` targets.
 
 ## Runtime identifiers
 
@@ -243,7 +243,7 @@ It also supports a documented MaterialX projection plus generated-source paths f
 `ND_standard_surface_surfaceshader` base colour (scaled by `base`), emission colour (scaled by `emission`), metalness,
 roughness, index of refraction (`specular_IOR`), coat weight and coat roughness, monochrome constant opacity, and normal
 can be constant, driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes;
-`ND_open_pbr_surface_surfaceshader` (OpenPBR Surface 1.1, the identifier the pinned MaterialX 1.39.4 libraries declare)
+`ND_open_pbr_surface_surfaceshader` (OpenPBR Surface 1.1, the identifier the pinned MaterialX 1.39.5 libraries declare)
 projects the same way from `base_color`/`base_weight`, `emission_color`/`emission_luminance`, `base_metalness`,
 `specular_roughness`, `specular_ior`, `coat_weight`, `coat_roughness`, `geometry_opacity`, and `geometry_normal`.
 A chain of constant

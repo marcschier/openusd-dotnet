@@ -13,9 +13,9 @@ namespace OpenUsdReview
 namespace
 {
 // Field applicability and whole-value validators follow sdf/schema.cpp at
-// OpenUSD 26.05, commit 2095fafafd033fa23386d7ec6d58c7cc33974518.
+// OpenUSD 26.08, commit ee47c679abde5b467a7b6a41f3b2285564a4222e.
 // Unlike SdfSchema, these immutable rules never register/discover plugin fields.
-static_assert(PXR_VERSION == 2605, "Revalidate the private inspection rules when upgrading OpenUSD.");
+static_assert(PXR_VERSION == 2608, "Revalidate the private inspection rules when upgrading OpenUSD.");
 static_assert(SdfNumSpecTypes <= 32, "Inspection spec masks require at most 32 spec kinds.");
 
 constexpr uint32_t SpecBit(SdfSpecType type)

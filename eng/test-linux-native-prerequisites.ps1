@@ -94,9 +94,9 @@ if ($lock.profile.enabled -notcontains 'materialX')
     throw 'The locked viewer-standard profile no longer enables MaterialX.'
 }
 $materialX = @($lock.dependencies | Where-Object name -EQ 'MaterialX')
-if ($materialX.Count -ne 1 -or $materialX[0].version -cne '1.39.4')
+if ($materialX.Count -ne 1 -or $materialX[0].version -cne '1.39.5')
 {
-    throw 'The Linux prerequisite contract expects locked MaterialX 1.39.4.'
+    throw 'The Linux prerequisite contract expects locked MaterialX 1.39.5.'
 }
 
 $preflight = Get-Content $preflightPath -Raw

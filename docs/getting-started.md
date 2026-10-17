@@ -22,7 +22,7 @@ The full framework, RID, renderer, and feature status is in [Support matrix](sup
 Every repository build requires:
 
 - Git.
-- .NET SDK `10.0.301`, pinned by [`global.json`](../global.json).
+- .NET SDK `10.0.401`, pinned by [`global.json`](../global.json).
 - PowerShell 7 for the cross-platform engineering scripts.
 
 Native builds additionally require the platform toolchain described in
@@ -50,7 +50,7 @@ dotnet --version
 Expected output:
 
 ```text
-10.0.301
+10.0.401
 ```
 
 ## 3. Build the managed baseline
@@ -220,7 +220,7 @@ hand.
 
 | Symptom | Resolution |
 | --- | --- |
-| SDK selection error | Install or select exactly `10.0.301` |
+| SDK selection error | Install or select exactly `10.0.401` |
 | Native runtime not found | Build the matching RID before native-backed execution |
 | Plugin or schema discovery fails | Use the probe or Viewer staging script; do not flatten resources |
 | `dotnet test` reports zero tests | Use `eng/run-managed-tests.ps1` |

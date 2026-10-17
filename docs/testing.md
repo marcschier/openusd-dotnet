@@ -3,6 +3,15 @@
 Use this guide to choose the smallest local gate for a change and to understand how reusable
 workflows combine managed, native, shader, package, render, and performance evidence for release.
 
+The package-only Viewer smoke matrix consumes one complete local feed from three RID pack legs:
+Linux also supplies shared managed packages, and macOS supplies Metal. Its non-matrix input barrier
+requires the three same-run/source artifacts and successful actual packing/upload steps before
+enabling any smoke leg. A missing artifact alone is an error, not a deferral. Only a successful
+pack leg with explicit unavailable-native-input deferral evidence may defer the complete matrix;
+failed/cancelled producers and duplicate, expired or mismatched artifacts fail visibly. Original
+bundle/smoke commands and strict local OpenUsd package-source mapping are unchanged. Viewer
+distribution remains outside the six publication gates, but its applicable PR check must pass.
+
 **On this page:** [Workflow graph](#workflow-and-evidence-graph) ·
 [Managed runner](#managed-test-runner) · [Performance](#performance-safety-gates) ·
 [Fuzzing](#native-stagelayer-fuzzing) · [Continuous render](#continuous-render-gates) ·
@@ -86,9 +95,9 @@ archive publication, not for the first time inside a tag release.
 
 ## Managed test runner
 
-With the pinned .NET SDK 10.0.301 global Microsoft.Testing.Platform runner and TUnit
-1.59, `dotnet test` can launch test DLLs through the wrong path, report zero executed
-tests, and exit with code 5. Build first and run the generated test applications
+Earlier `dotnet test` integrations with .NET 10 Microsoft.Testing.Platform and TUnit could launch test DLLs
+through the wrong path, report zero executed tests, and exit with code 5. The repository runner
+continues to require real execution counts. Build first and run the generated test applications
 directly instead:
 
 ```powershell
@@ -252,7 +261,7 @@ timings:
   -ArtifactsPath artifacts/performance
 ```
 
-The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
+The suite requires .NET SDK 10.0.401 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
 The curated Storm/hdSilk parity capture remains the render gate for the 25 scene set. In addition to
@@ -325,7 +334,7 @@ to be fetched again. Point `VULKAN_SDK` at an existing one:
 
 ```
 $env:OPENUSD_ROOT = '<repo>/native/install/win-x64'
-$env:VULKAN_SDK   = '<repo>/native/install/vulkan-sdk-1.4.321.0'
+$env:VULKAN_SDK   = '<repo>/native/install/vulkan-sdk-1.4.363.0'
 ```
 
 This matters more than it looks: without it the native probes cannot run at all,
@@ -607,6 +616,10 @@ RGBA companion and in a subsequent ordinary frame. The pinned SDK runtime patch
 preserves empty output lists and clears stale AOV task-context handles before early
 return; the shim restores the prior presentation mode. An unpatched SDK fails this
 pixel test and lacks the required `.openusd-runtime-patches.json` provenance.
+The native workflow's always-upload diagnostics retain the default and PhysX build trees'
+separate `Testing` directories, including CTest's `LastTest.log` and `LastTestsFailed.log`.
+Those paths preserve future failure evidence without changing any test command, timeout or verdict;
+they do not recover files from an already completed runner that did not upload them.
 
 `LateBufferRefusalPreservesEveryPreviouslyPublishedMesh` fails each vertex/index/uniform
 allocation in a multi-mesh replacement, metadata edit, addition and retirement. It
@@ -1643,6 +1656,60 @@ switches in one Avalonia process:
 ./eng/run-storm-native-child-macos.ps1 -SwitchCount 100 -SurvivalSeconds 90 -NativeSource build
 ```
 
+The CGL-independent hdSilk runtime is staged before the Metal composition and MaterialX checks,
+with plugin metadata and its resolved native library hashes recorded in `runtime.json`.
+The default red-triangle producer binds the checked mesh instance, surface and frame storage
+slots (6, 7 and 8) using the shared uniform writers and normal buffer admission/ownership.
+Its material is explicitly an unlit RGBA color pattern, not the default dielectric material;
+scene material lighting and the canonical shared headlight are unchanged.
+Its original timeline, pixel and lifecycle assertions remain required independently of the
+optional retained-render main-loop harness.
+The default producer encodes its timeline signal in the same Metal command buffer as the draw,
+so resource leases, draw completion and presentation readiness share one submission boundary.
+The test runner raises a terminating error after failed test executions: subsequent successful
+commands cannot overwrite an earlier failure in a calling workflow.
+`eng/run-platform-conformance.ps1` assigns nine explicitly named, unchanged Vulkan methods to
+both supported Windows/Linux CI routes and requires exact method-level pass/no-skip receipts.
+macOS excludes only those nine methods, leaving every other Metal and renderer-neutral method
+selected, including the original five-second IOSurface and submission-lifetime contracts.
+The partition receipt accounts for every selected namespace/class/method from compiled metadata,
+including parameterized cases and existing prerequisite skips. Missing methods, ambiguous case
+identities and failed results refuse qualification. The complete first-partition TUnit report is
+copied and hash-verified before another invocation can overwrite the runner's usual report path.
+The Mesa-backed Windows Viewer fixture runs the existing built test application host, not
+`dotnet.exe test.dll`: Windows resolves the native child's OpenGL import from the executable's
+AppDir before other search roots. The fixture's verified Mesa DLL therefore shares the real
+process AppDir. `DOTNET_ROOT_X64` and `DOTNET_ROOT` select the same repository-resolved runtime
+used by ordinary tests and are restored afterward; other test routes retain their original host.
+The fixture rebuilds that host with the existing Viewer application's supported-OS, as-invoker
+and PerMonitorV2 manifest. Incremental DLL-only execution and an unmanifested apphost are different
+loader/window-host contracts and cannot substitute for this native desktop fixture.
+`-SkipBuild` requires that manifested host to be prebuilt; a general solution build can replace it
+with the test project's ordinary unmanifested executable.
+The temporary source root uses the existing directory's actual filesystem spelling, not an
+environment-provided case alias. Native verified-source anchor and alias checks remain unchanged.
+Scoped `TEMP` and `TMP` point to that same owned root for fixtures that create temporary directories
+directly; their prior process values are restored with the other fixture environment.
+Each scenario retains its hash-verified raw TUnit and HTML reports before the next process can
+overwrite the runner's usual paths, including test, minimum-execution and unexpected-skip failures.
+Pre-existing reports are separated as prior evidence before invocation; missing current reports
+cannot qualify as current output. Report-retention errors are explicit, preserve the original
+failing exit or exception, and fail qualification if execution otherwise succeeded. The HTML report
+also preserves captured diagnostic output that is not included in TUnit's machine-readable report.
+The macOS composition step uses the same retention boundary for each of its four original filtered
+invocations, before the next invocation can replace the reports. Its original executed-test minimum,
+platform-skip policy, selectors and ordering remain unchanged; the always-upload diagnostics include
+the separate per-invocation reports even when a later composition invocation fails.
+
+
+On managed CI failure, the original raw TUnit and captured-output HTML reports are uploaded
+immediately after the original test step, so later commands cannot replace the failed evidence.
+New unguarded backend tests remain selected and fail visibly rather than disappearing from coverage.
+The Windows WGL workflow supplies the existing hash-pinned Mesa fixture to the actual Viewer
+test-host directory through `-MesaWgl`, not only the separate parity runtime's `bin` directory.
+An unrelated pre-existing host DLL is refused; a DLL copied by this invocation is removed after
+the unchanged workflows finish. Ordinary manual runs retain the host's system OpenGL by default.
+
 The shader workflow is also the required hosted Metal picking gate. After staging the real
 the combined library, it runs Metal conformance for nearest-depth overlap, physical top-left coordinate
 mapping, token-zero miss, stale resize and simulated command-failure generation, nullable hit
@@ -1946,6 +2013,10 @@ The parity scenes were measured on Windows with the staged Storm runtime from
 SwiftShader. Each gated scene must keep at least 0.18 adjusted-IoU separation
 between the correct capture and the closest vertical, horizontal, transpose, or
 camera-shift perturbation before it can use the 0.92 threshold.
+
+The dependency-upgrade candidate pins Mesa WGL 26.2.4. The historical measurement above is not
+relabeled: qualification must execute the existing scenes and unchanged thresholds with the new
+verified runtime.
 
 | Scene | Correct | Vertical | Horizontal | Transpose | Shift | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
