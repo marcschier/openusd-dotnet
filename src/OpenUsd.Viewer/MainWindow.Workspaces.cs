@@ -61,7 +61,7 @@ public sealed partial class MainWindow
         StagePanelSplitter.AddHandler(KeyDownEvent, PrepareWorkspaceSplitter, RoutingStrategies.Tunnel);
         InspectorPanelSplitter.AddHandler(PointerPressedEvent, PrepareWorkspaceSplitter, RoutingStrategies.Tunnel);
         InspectorPanelSplitter.AddHandler(KeyDownEvent, PrepareWorkspaceSplitter, RoutingStrategies.Tunnel);
-        SizeChanged += (_, _) => UpdateWorkspacePanelBudget();
+        SizeChanged += (_, e) => UpdateWorkspacePanelBudget(e.NewSize.Width - e.PreviousSize.Width);
         SyncWorkspaceMenu();
     }
 
@@ -128,7 +128,7 @@ public sealed partial class MainWindow
         }
     }
 
-    private void UpdateWorkspacePanelBudget()
+    private void UpdateWorkspacePanelBudget(double widthGrowth = double.PositiveInfinity)
     {
         // MaxWidth constrains presentation without replacing the persisted splitter widths.
         double stage = StagePanel.IsVisible ? StagePanelGridColumn.Width.Value : 0;
@@ -142,10 +142,18 @@ public sealed partial class MainWindow
         double scale = extras > 0 ? Math.Min(1, Math.Max(0, available - minimumTotal) / extras) : 1;
         StagePanelGridColumn.MinWidth = stage > 0 ? ViewerSettings.MinimumPanelWidth : 0;
         InspectorPanelGridColumn.MinWidth = inspector > 0 ? ViewerSettings.MinimumPanelWidth : 0;
-        StagePanelGridColumn.MaxWidth = stage > 0
-            ? minimum + (stageExtra * scale) : 0;
-        InspectorPanelGridColumn.MaxWidth = inspector > 0
-            ? minimum + (inspectorExtra * scale) : 0;
+        double stageMaximum = stage > 0 ? minimum + (stageExtra * scale) : 0;
+        double inspectorMaximum = inspector > 0 ? minimum + (inspectorExtra * scale) : 0;
+        double panels = (stage > 0 ? 1 : 0) + (inspector > 0 ? 1 : 0);
+        double panelGrowth = widthGrowth >= 0 && double.IsFinite(widthGrowth)
+            ? widthGrowth * panels / (panels + 1) : double.PositiveInfinity;
+        // Recover fitted panels gradually, sharing window growth with the viewport.
+        // Explicit layout/splitter updates still recalculate their full fit budget.
+        bool shareGrowth = double.IsFinite(panelGrowth) && extras > 0;
+        StagePanelGridColumn.MaxWidth = shareGrowth && stage > 0 && StagePanelGridColumn.MaxWidth >= minimum
+            ? Math.Min(stageMaximum, StagePanelGridColumn.MaxWidth + (panelGrowth * stageExtra / extras)) : stageMaximum;
+        InspectorPanelGridColumn.MaxWidth = shareGrowth && inspector > 0 && InspectorPanelGridColumn.MaxWidth >= minimum
+            ? Math.Min(inspectorMaximum, InspectorPanelGridColumn.MaxWidth + (panelGrowth * inspectorExtra / extras)) : inspectorMaximum;
     }
 
     private void PrepareWorkspaceSplitter(object? sender, RoutedEventArgs e)

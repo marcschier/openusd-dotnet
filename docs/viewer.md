@@ -1384,6 +1384,10 @@ only while its layout matches; manual splitter/tab changes remain custom layouts
 hide developer tabs explicitly, but an existing custom layout keeps its developer-tab choices until
 the operator applies a preset or Reset Layout. On compact windows the displayed panel widths are
 constrained to retain viewport space without overwriting the requested, persisted splitter widths.
+When a compact window widens, fitted panels share the added space with the viewport. Their
+requested widths recover gradually rather than snapping back at the first fully fitting size;
+height-only resizing does not recover panel widths. Explicit layout and splitter changes still
+recalculate the available fit budget.
 Splitter keyboard arrows adjust those requested widths, with the control's normal pixel-rounded
 increment, rather than replacing them with a smaller passively fitted width. The peer panel's
 requested width and compact viewport budget remain intact.
