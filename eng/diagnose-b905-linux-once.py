@@ -1,0 +1,515 @@
+#!/usr/bin/env python3
+"""One approved diagnostic replay on a reconstructed host; never qualification."""
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import resource
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from datetime import datetime, timezone
+
+SOURCE = "b905ec0a04f75de6eb4cfd198707ddf224d1b492"
+ARTIFACT = 12100369571
+RUN = 39030881472
+ZIP_BYTES = 283059814
+ZIP_SHA = "207036d60ffae99a299fa0d82f849da64d7b6c75062e09f7f036518a625a1c6f"
+PREFIX = "artifacts/platform-smoke/linux-x11/viewer/"
+STAGE_SHA = "842943d60c14ddb0cd4552f888520125317be626a2b45d17844787f321da3d83"
+ARCHIVE_MEMBERS, VIEWER_MEMBERS, VIEWER_BYTES = 1440, 736, 634372440
+LIMIT = 65536
+SECONDS = 5
+INNER_SECONDS = 4
+EXPECTED_PACKAGES = {"libgl1-mesa-dri": "25.2.8-0ubuntu0.24.04.4", "xvfb": "2:21.1.12-1ubuntu1.8"}
+HISTORICAL = {"image": "ubuntu-24.04", "imageVersion": "20261012.334.1",
+              "installedRuntime": "10.0.13", "packages": EXPECTED_PACKAGES,
+              "mappedHostHashesAndInheritedEnvironment": "NOT RECORDED"}
+
+
+class Unavailable(Exception):
+    pass
+
+
+def digest(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def identity(pid):
+    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    return {"pid": pid, "start": fields[19], "session": int(fields[3]),
+            "exe": os.path.realpath(f"/proc/{pid}/exe")}
+
+
+def same_process(expected):
+    try:
+        return identity(expected["pid"]) == expected
+    except (FileNotFoundError, ProcessLookupError):
+        return False
+
+
+def cleanup_session(owner):
+    # Each launched supervisor/display owns a new session; never signal a name or an unverified PID.
+    owned = []
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit():
+            try:
+                current = identity(int(entry.name))
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            if current["session"] == owner:
+                owned.append(current)
+    for current in sorted(owned, key=lambda item: item["pid"] == owner):
+        if same_process(current):
+            try:
+                os.kill(current["pid"], signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    return owned
+
+
+def command_text(arguments, timeout=2, cap=8192):
+    process = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               start_new_session=True)
+    result = bytearray()
+    deadline = time.monotonic() + timeout
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map() and time.monotonic() < deadline:
+                for key, _ in selector.select(0.02):
+                    chunk = os.read(key.fd, 4096)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                    else:
+                        result.extend(chunk[:max(0, cap + 1 - len(result))])
+        if process.poll() is None:
+            process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        if process.returncode or len(result) > cap:
+            raise Unavailable("installed-tool-command-failed-or-output-limit")
+        return result.decode("utf-8", errors="strict")
+    except subprocess.TimeoutExpired:
+        raise Unavailable("installed-tool-command-timeout") from None
+    finally:
+        cleanup_session(process.pid)
+        process.wait(timeout=2)
+        process.stdout.close()
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *arguments):
+        return None
+
+
+def acquire_original(destination, token):
+    api = "https://api.github.com/repos/marcschier/openusd-dotnet/actions/artifacts/"
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"}
+    with urllib.request.urlopen(urllib.request.Request(api + str(ARTIFACT), headers=headers), timeout=30) as response:
+        metadata = json.loads(response.read(32769))
+    if (metadata["expired"] or metadata["workflow_run"]["id"] != RUN or
+            metadata["workflow_run"]["head_sha"] != SOURCE or metadata["size_in_bytes"] != ZIP_BYTES or
+            metadata["name"] != f"render-linux-presentation-{RUN}" or metadata["digest"] != "sha256:" + ZIP_SHA):
+        raise Unavailable("source-bound-original-artifact-metadata-mismatch")
+    try:
+        urllib.request.build_opener(NoRedirect()).open(
+            urllib.request.Request(api + str(ARTIFACT) + "/zip", headers=headers), timeout=30)
+    except urllib.error.HTTPError as error:
+        if error.code != 302:
+            raise Unavailable("original-artifact-download-unavailable") from None
+        url = error.headers["Location"]
+    else:
+        raise Unavailable("original-artifact-redirect-missing")
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(
+            (".blob.core.windows.net", ".actions.githubusercontent.com")):
+        raise Unavailable("original-artifact-redirect-host-refused")
+    archive_path = destination / "original.zip"
+    with urllib.request.urlopen(url, timeout=30) as response, archive_path.open("xb") as stream:
+        remaining = ZIP_BYTES
+        while remaining:
+            chunk = response.read(min(1048576, remaining))
+            if not chunk:
+                raise Unavailable("original-artifact-short-download")
+            stream.write(chunk)
+            remaining -= len(chunk)
+        if response.read(1):
+            raise Unavailable("original-artifact-oversize")
+    if digest(archive_path) != ZIP_SHA:
+        raise Unavailable("original-artifact-outer-digest-mismatch")
+    return archive_path
+
+
+def extract_original(archive_path, viewer):
+    entries = []
+    excluded = {"viewer-status.txt", "viewer.log", "viewer.stdout.log", "viewer.stderr.log"}
+    with zipfile.ZipFile(archive_path) as archive:
+        members = archive.infolist()
+        selected = [item for item in members if item.filename.startswith(PREFIX)]
+        if (len(members) != ARCHIVE_MEMBERS or len(selected) != VIEWER_MEMBERS or
+                sum(item.file_size for item in selected) != VIEWER_BYTES):
+            raise Unavailable("original-archive-inventory-mismatch")
+        seen = set()
+        for item in selected:
+            relative = PurePosixPath(item.filename[len(PREFIX):])
+            mode = item.external_attr >> 16
+            if (not relative.parts or relative.is_absolute() or ".." in relative.parts or
+                    "\\" in item.filename or str(relative) in seen or item.is_dir() or
+                    stat.S_ISLNK(mode) or item.flag_bits & 1):
+                raise Unavailable("original-member-path-or-kind-refused")
+            seen.add(str(relative))
+            if str(relative) in excluded:
+                continue
+            target = viewer.joinpath(*relative.parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(item) as source, target.open("xb") as stream:
+                shutil.copyfileobj(source, stream, length=1048576)
+            if target.stat().st_size != item.file_size:
+                raise Unavailable("original-member-length-mismatch")
+            entries.append((str(relative), digest(target)))
+            if str(relative) == "OpenUsd.Viewer.App":
+                stamp = datetime(*item.date_time, tzinfo=timezone.utc).timestamp()
+                os.utime(target, (stamp, stamp))
+    if digest(viewer / "minimal.usda") != STAGE_SHA or len(entries) != VIEWER_MEMBERS - len(excluded):
+        raise Unavailable("original-stage-or-extracted-count-mismatch")
+    (viewer / "OpenUsd.Viewer.App").chmod(0o700)
+    return entries
+
+
+def fingerprint(viewer, entries):
+    hashes = [(relative, digest(viewer.joinpath(*PurePosixPath(relative).parts))) for relative, _ in entries]
+    return hashlib.sha256(json.dumps(sorted(hashes), separators=(",", ":")).encode()).hexdigest()
+
+
+def preflight():
+    os_release = Path("/etc/os-release").read_text()
+    if 'ID=ubuntu' not in os_release or 'VERSION_ID="24.04"' not in os_release:
+        raise Unavailable("required-installed-ubuntu-24.04-unavailable")
+    tools = {name: shutil.which(name) for name in ("gdb", "dotnet", "Xvfb", "xdpyinfo", "dpkg-query")}
+    if not all(tools.values()):
+        raise Unavailable("required-already-installed-tool-unavailable")
+    packages = {}
+    for name, expected in EXPECTED_PACKAGES.items():
+        actual = command_text([tools["dpkg-query"], "-W", "-f=${Version}", name]).strip()
+        if actual != expected:
+            raise Unavailable("required-installed-package-version-unavailable:" + name)
+        packages[name] = actual
+    runtimes = command_text([tools["dotnet"], "--list-runtimes"])
+    matches = [line for line in runtimes.splitlines() if line.startswith("Microsoft.NETCore.App 10.0.")]
+    if not matches or any(line.split()[1] != "10.0.13" for line in matches):
+        raise Unavailable("required-installed-runtime-10.0.13-only-unavailable")
+    runtime_root = Path(matches[0].split("[", 1)[1].rstrip("]")).parent.parent
+    if not (runtime_root / "shared/Microsoft.NETCore.App/10.0.13/libcoreclr.so").is_file():
+        raise Unavailable("installed-runtime-layout-unavailable")
+    capability = command_text([tools["gdb"], "--nx", "--nh", "--batch",
+                               "-iex", "set auto-load off", "-iex", "set debuginfod enabled off",
+                               "-ex", 'python print("B905_GDB_PYTHON_OK")'])
+    if "B905_GDB_PYTHON_OK" not in capability:
+        raise Unavailable("installed-gdb-python-unavailable")
+    return tools, runtime_root, {
+        "kind": "RECONSTRUCTED HOST, NOT HISTORICAL IDENTITY",
+        "imageOS": os.environ.get("ImageOS"), "imageVersion": os.environ.get("ImageVersion"),
+        "runtimeRoot": str(runtime_root), "runtimeVersion": "10.0.13", "packages": packages,
+        "gdbPath": str(Path(tools["gdb"]).resolve()),
+        "gdbSha256": digest(Path(tools["gdb"]).resolve())}
+
+
+def debugger_script(viewer, owned, fault):
+    # Walk ONLY the stopped signal thread's frames. Never request arguments, locals, other threads or dumps.
+    return (
+        "set pagination off\nset confirm off\nset startup-with-shell off\n"
+        "set auto-load off\nset debuginfod enabled off\nset print frame-arguments none\n"
+        "set print entry-values no\nset disable-randomization off\n"
+        "set detach-on-fork off\nhandle SIGABRT stop noprint nopass\n"
+        "python\nimport gdb,json,os,time\n"
+        f"owned_path={str(owned)!r}\nfault_path={str(fault)!r}\n"
+        "def save(path, value):\n"
+        " data=json.dumps(value,ensure_ascii=True).encode()\n"
+        " if len(data)>60000: data=json.dumps({'status':'truncated','frames':[]}).encode()\n"
+        " with open(path+'.tmp','xb') as stream: stream.write(data)\n"
+        " os.replace(path+'.tmp',path)\n"
+        "def record(event):\n"
+        " pid=gdb.selected_inferior().pid\n"
+        " if pid:\n"
+        "  fields=open('/proc/%d/stat'%pid).read().rsplit(')',1)[1].split()\n"
+        "  save(owned_path,{'pid':pid,'start':fields[19],'session':int(fields[3]),\n"
+        "                   'exe':os.path.realpath('/proc/%d/exe'%pid)})\n"
+        "def stopped(event):\n"
+        " if not isinstance(event,gdb.SignalEvent) or event.stop_signal!='SIGABRT': return\n"
+        " record(event)\n"
+        " thread=gdb.selected_thread()\n"
+        " if thread is None: return\n"
+        " if getattr(event,'inferior_thread',None) not in (None,thread): return\n"
+        " save(fault_path+'.started',{'signal':'SIGABRT'})\n"
+        " frames=[]\n"
+        " frame=gdb.newest_frame()\n"
+        " while frame is not None and len(frames)<32:\n"
+        "  item={'pc':hex(frame.pc()),'function':(frame.name() or '??')[:384]}\n"
+        "  line=frame.find_sal()\n"
+        "  if line.symtab: item.update(file=line.symtab.filename[:384],line=line.line)\n"
+        "  frames.append(item)\n"
+        "  frame=frame.older()\n"
+        " pid=gdb.selected_inferior().pid\n"
+        " paths=sorted({line.split(None,5)[5].strip() for line in open('/proc/%d/maps'%pid)\n"
+        "               if len(line.split(None,5))==6 and line.split(None,5)[5].startswith('/')})\n"
+        " save(fault_path,{'status':'fault','signal':'SIGABRT','pid':pid,\n"
+        "                  'thread':thread.global_num,'frames':frames,'mappedPaths':paths,\n"
+        "                  'capturedMonotonic':time.monotonic()})\n"
+        "gdb.events.new_thread.connect(record)\ngdb.events.stop.connect(stopped)\nend\nrun\n")
+
+
+def process_has_terminated(expected):
+    try:
+        fields = Path(f"/proc/{expected['pid']}/stat").read_text().rsplit(")", 1)[1].split()
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+    # An exec/image change is NOT termination. Require exit/death or proof this PID was reused.
+    return fields[19] != expected["start"] or fields[0] in ("Z", "X")
+
+
+def terminate_replay(debugger, debugger_identity, owned, viewer, started):
+    ended, errors = {}, []
+    inferior = None
+    try:
+        if owned.is_file() and owned.stat().st_size <= 4096:
+            candidate = json.loads(owned.read_bytes())
+            if (isinstance(candidate.get("pid"), int) and candidate["pid"] > 0 and
+                    isinstance(candidate.get("start"), str) and candidate["start"].isdigit() and
+                    candidate.get("session") == debugger.pid and
+                    candidate.get("exe") == str(viewer / "OpenUsd.Viewer.App")):
+                inferior = candidate
+        if inferior is None:
+            errors.append("owned-inferior-identity-unavailable")
+        # Signal the already tracked inferior FIRST; do not scan /proc before stopping it.
+        for expected in (inferior, debugger_identity):
+            try:
+                if expected is not None and same_process(expected):
+                    os.kill(expected["pid"], signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                errors.append("tracked-signal-error:" + type(error).__name__)
+        if debugger_identity is None and debugger.poll() is None:
+            errors.append("owned-debugger-identity-unavailable")
+        while True:
+            if inferior is not None and "inferior" not in ended and process_has_terminated(inferior):
+                ended["inferior"] = time.monotonic() - started
+            if "debugger" not in ended and debugger.poll() is not None:
+                ended["debugger"] = time.monotonic() - started
+            elapsed = time.monotonic() - started
+            if "debugger" in ended and (inferior is None or "inferior" in ended):
+                break
+            if elapsed >= SECONDS:
+                errors.append("tracked-process-termination-not-observed-within-five-seconds")
+                break
+            time.sleep(min(0.005, SECONDS - elapsed))
+    except (OSError, ValueError, KeyError) as error:
+        errors.append("tracked-cleanup-error:" + type(error).__name__)
+    measured = max(ended.values()) if set(ended) == {"inferior", "debugger"} else None
+    bounded = measured is not None and measured <= SECONDS and not errors
+    if measured is not None and measured > SECONDS:
+        errors.append("actual-tracked-process-termination-overrun")
+    return {"innerReplaySeconds": INNER_SECONDS, "terminationElapsedSeconds": measured,
+            "inferiorTerminationElapsedSeconds": ended.get("inferior"),
+            "debuggerTerminationElapsedSeconds": ended.get("debugger"),
+            "terminationWithinFiveSeconds": bounded, "constraintFailureReasons": errors}
+
+
+def replay(viewer, workspace, temporary, tools, runtime_root, result):
+    display_process = None
+    debugger = None
+    result.update(status="unavailable", replayCount=0, debuggerLaunchRequests=0)
+    environment = {key: os.environ[key] for key in (
+        "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS", "SESSION_MANAGER") if key in os.environ}
+    environment.update({
+        "PATH": str(viewer / "bin") + ":" + str(viewer / "lib") + ":" + str(viewer) + ":" + os.environ["PATH"],
+        "LD_LIBRARY_PATH": str(viewer / "lib") + ":" + str(viewer / "bin"),
+        "DOTNET_ROOT": str(runtime_root), "DOTNET_ROOT_X64": str(runtime_root),
+        "OPENUSD_PLUGIN_PATH": str(viewer / "plugin/usd"), "OPENUSD_STAGE_PATH": str(viewer / "minimal.usda"),
+        "OPENUSD_STATUS_FILE": "/dev/null", "OPENUSD_LOG_FILE": "/dev/null",
+        "OPENUSD_SHARED_STAGE_SOAK": "1", "OPENUSD_SOAK_SECONDS": "90",
+        "OPENUSD_SOAK_ARTIFACT": str(viewer / "shared-stage-soak.json"),
+        "OPENUSD_SOAK_SOURCE_HASH": ZIP_SHA.upper(),
+        "OPENUSD_SOAK_EXECUTABLE_HASH": digest(viewer / "OpenUsd.Viewer.App").upper(),
+        "OPENUSD_SOAK_EXECUTABLE_TIMESTAMP_UTC": datetime.fromtimestamp(
+            (viewer / "OpenUsd.Viewer.App").stat().st_mtime, timezone.utc).isoformat(),
+        "OPENUSD_RENDERER": "Storm", "OPENUSD_VIEWER_PLATFORM": "linux-x11",
+        "OPENUSD_STORM_NATIVE_WAYLAND": "0", "OPENUSD_DOTNET_OWN_SDK_PHASES": "1",
+        "XDG_SESSION_TYPE": "x11", "LIBGL_ALWAYS_SOFTWARE": "1",
+        "MESA_GL_VERSION_OVERRIDE": "4.5COMPAT", "MESA_GLSL_VERSION_OVERRIDE": "450",
+        "DOTNET_DbgEnableMiniDump": "0", "COMPlus_DbgEnableMiniDump": "0"})
+    environment.pop("WAYLAND_DISPLAY", None)
+    for name in ("DOTNET_ROLL_FORWARD", "DOTNET_ROLL_FORWARD_TO_PRERELEASE", "DOTNET_STARTUP_HOOKS",
+                 "LD_PRELOAD", "OPENUSD_VIEWER_LINUX_ABORT_OBSERVATION", "OPENUSD_VIEWER_VIEWPORT_OBSERVATION"):
+        environment.pop(name, None)
+    for number in range(22000, 22100):
+        if not Path(f"/tmp/.X11-unix/X{number}").exists() and not Path(f"/tmp/.X{number}-lock").exists():
+            environment["DISPLAY"] = f":{number}"
+            break
+    else:
+        raise Unavailable("no-free-reconstructed-display")
+    try:
+        display_process = subprocess.Popen(
+            [tools["Xvfb"], environment["DISPLAY"], "-screen", "0", "1280x720x24", "-ac", "-nolisten", "tcp"],
+            env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        ready_until = time.monotonic() + 3
+        while time.monotonic() < ready_until:
+            if display_process.poll() is not None:
+                raise Unavailable("reconstructed-display-exited")
+            probe = subprocess.run([tools["xdpyinfo"], "-display", environment["DISPLAY"]],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=0.3)
+            if probe.returncode == 0:
+                break
+            time.sleep(0.05)
+        else:
+            raise Unavailable("reconstructed-display-not-ready")
+        owned, fault = temporary / "owned.json", temporary / "fault.json"
+        script = temporary / "once.gdb"
+        script.write_text(debugger_script(viewer, owned, fault), encoding="utf-8")
+        launch = [tools["gdb"], "--nx", "--nh", "--batch", "-iex", "set auto-load off",
+                  "-iex", "set debuginfod enabled off", "--command=" + str(script), "--args",
+                  str(viewer / "OpenUsd.Viewer.App"), "--shared-stage-soak", "--soak-seconds", "90",
+                  "--soak-artifact", str(viewer / "shared-stage-soak.json")]
+        started = time.monotonic()
+        result["debuggerLaunchRequests"] = 1
+        debugger = subprocess.Popen(launch, cwd=workspace, env=environment, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, start_new_session=True)
+        result.update(status="no-fault", replayCount=1)
+        try:
+            debugger_identity = identity(debugger.pid)
+        except (FileNotFoundError, ProcessLookupError):
+            debugger_identity = None
+        while debugger.poll() is None and not fault.exists():
+            remaining = INNER_SECONDS - (time.monotonic() - started)
+            if remaining <= 0:
+                break
+            time.sleep(min(0.005, remaining))
+        result["loopElapsedSeconds"] = time.monotonic() - started
+        result.update(terminate_replay(debugger, debugger_identity, owned, viewer, started))
+        result["innerDeadlineExpired"] = result["loopElapsedSeconds"] >= INNER_SECONDS
+        result["debuggerExit"] = debugger.returncode
+        result["inferiorStartRecorded"] = owned.is_file()
+        if not result["terminationWithinFiveSeconds"]:
+            result.update(status="constraint-failure", faultDiscarded=True)
+        elif not fault.exists() and Path(str(fault) + ".started").exists():
+            result["status"] = "fault-capture-incomplete"
+        elif not fault.exists() and debugger.returncode not in (0, -signal.SIGKILL):
+            result["status"] = "debugger-error-without-approved-fault"
+        elif not fault.exists() and not owned.is_file():
+            result["status"] = "inferior-start-unobserved"
+        if result["terminationWithinFiveSeconds"] and fault.exists() and fault.stat().st_size <= 60000:
+            record = json.loads(fault.read_bytes())
+            owned_record = json.loads(owned.read_bytes()) if owned.is_file() else {}
+            if (record.get("status") == "fault" and record.get("signal") == "SIGABRT" and
+                    len(record.get("frames", [])) <= 32 and owned_record.get("pid") == record["pid"] and
+                    owned_record.get("session") == debugger.pid and
+                    owned_record.get("exe") == str(viewer / "OpenUsd.Viewer.App") and
+                    0 <= record.get("capturedMonotonic", 0) - started <= SECONDS):
+                modules = []
+                for value in record.pop("mappedPaths", []):
+                    path = Path(value)
+                    if path.is_file():
+                        modules.append({"path": value, "sha256": digest(path)})
+                selected_core = [item for item in modules if item["path"].endswith("/libcoreclr.so")]
+                if len(selected_core) != 1 or "/10.0.13/libcoreclr.so" not in selected_core[0]["path"]:
+                    result.update(status="selected-runtime-mismatch", faultDiscarded=True)
+                else:
+                    result.update(status="fault-on-reconstructed-host", fault=record, selectedModules=modules)
+            else:
+                result.update(status="truncated-or-invalid-fault-record")
+        elif result["terminationWithinFiveSeconds"] and fault.exists():
+            result.update(status="fault-record-output-limit")
+        result["reconstructedDisplay"] = {"display": environment["DISPLAY"], "xvfbPid": display_process.pid,
+                                          "historicalDisplayIdentity": "NOT RECORDED; NEW INSTANCE"}
+        result["newEnvironment"] = {key: environment.get(key) for key in (
+            "DOTNET_ROOT", "LD_LIBRARY_PATH", "DISPLAY", "XDG_SESSION_TYPE", "LIBGL_ALWAYS_SOFTWARE",
+            "MESA_GL_VERSION_OVERRIDE", "MESA_GLSL_VERSION_OVERRIDE", "OPENUSD_RENDERER",
+            "OPENUSD_VIEWER_PLATFORM", "OPENUSD_DOTNET_OWN_SDK_PHASES")}
+        result["newInheritedEnvironmentHashes"] = {
+            key: hashlib.sha256(environment[key].encode()).hexdigest() if key in environment else None
+            for key in ("HOME", "PATH", "LANG", "LC_ALL", "TMPDIR", "XDG_RUNTIME_DIR",
+                        "DBUS_SESSION_BUS_ADDRESS", "SESSION_MANAGER")}
+        result["diagnosticSoakIdentityMetadata"] = {
+            "sourceHash": ZIP_SHA.upper(), "meaning": "NEW artifact-derived diagnostic provenance, NOT original sourceHash",
+            "executableHash": environment["OPENUSD_SOAK_EXECUTABLE_HASH"],
+            "executableTimestamp": environment["OPENUSD_SOAK_EXECUTABLE_TIMESTAMP_UTC"],
+            "timestampMeaning": "Fresh staged file metadata restored to original ZIP timestamp; NOT historical subsecond proof"}
+        return result
+    finally:
+        for process in (debugger, display_process):
+            if process is not None:
+                try:
+                    cleanup_session(process.pid)
+                    process.wait(timeout=2)
+                except (OSError, subprocess.SubprocessError) as error:
+                    result.update(status="constraint-failure", faultDiscarded=True,
+                                  finalCleanupError=type(error).__name__)
+                    result.pop("fault", None)
+                    result.pop("selectedModules", None)
+
+
+def write_result(output, result):
+    raw = (json.dumps(result, indent=2, ensure_ascii=True) + "\n").encode()
+    if len(raw) > LIMIT:
+        result = {key: result[key] for key in ("kind", "qualification", "originalSource", "originalRun",
+                                              "originalJob", "originalExit", "replayCount")}
+        result.update(status="public-output-truncated", faultDiscarded=True, publicByteLimit=LIMIT)
+        raw = (json.dumps(result, indent=2) + "\n").encode()
+    with output.open("xb") as stream:
+        stream.write(raw)
+    return result["status"]
+
+
+def main():
+    workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+    output = workspace / "artifacts/b905-diagnostic-only/result.json"
+    if (sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true" or
+            os.environ.get("GITHUB_RUN_ATTEMPT") != "1" or os.environ.get("B905_ONCE_APPROVED") != "true"):
+        raise RuntimeError("Default refusal: exact approved first-attempt diagnostic CI only.")
+    output.parent.mkdir(parents=True, exist_ok=False)
+    with (output.parent / "replay-owner").open("xb") as stream:
+        stream.write(b"ONE diagnostic invocation; never retry this directory or Actions run.\n")
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    result = {"kind": "DIAGNOSTIC ON RECONSTRUCTED HOST/DISPLAY", "qualification": "NEVER QUALIFICATION",
+              "originalSource": SOURCE, "originalRun": RUN, "originalJob": 117390909935,
+              "originalExit": 134, "originalVerdict": "FAIL UNCHANGED", "replayCount": 0,
+              "historicalFacts": HISTORICAL}
+    try:
+        tools, runtime_root, host = preflight()
+        result["newHost"] = host
+        with tempfile.TemporaryDirectory(prefix="b905-once-", dir=workspace) as temporary:
+            temporary = Path(temporary)
+            archive = acquire_original(temporary, os.environ["GH_TOKEN"])
+            viewer = workspace.joinpath(*PurePosixPath(PREFIX).parts)
+            if viewer.exists():
+                raise Unavailable("original-layout-target-already-occupied")
+            entries = extract_original(archive, viewer)
+            before = fingerprint(viewer, entries)
+            result.update(originalZipSha256=ZIP_SHA, originalStageSha256=STAGE_SHA,
+                          extractedFiles=len(entries), artifactDerivedInputFingerprint=before)
+            replay(viewer, workspace, temporary, tools, runtime_root, result)
+            result["inputBytesUnchanged"] = before == fingerprint(viewer, entries)
+            if not result["inputBytesUnchanged"]:
+                result.update(status="input-identity-changed", faultDiscarded=True)
+                result.pop("fault", None)
+    except Unavailable as error:
+        result.update(status="unavailable", reason=str(error))
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError, urllib.error.URLError, zipfile.BadZipFile) as error:
+        result.update(status="diagnostic-error", errorType=type(error).__name__,
+                      reason="Error retained without URL, token, command arguments or locals.")
+    persisted_status = write_result(output, result)
+    return 0 if persisted_status in ("fault-on-reconstructed-host", "no-fault", "unavailable") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
