@@ -66,3 +66,49 @@
  }
  
  namespace {
+--- a/pxr/usd/sdf/subLayerListEditor.cpp
++++ b/pxr/usd/sdf/subLayerListEditor.cpp
+@@ -13,6 +13,27 @@
+ #include "pxr/usd/sdf/primSpec.h"
+ #include "pxr/base/vt/dictionary.h"
+ #include "pxr/base/tf/mallocTag.h"
++
++#include <cstddef>
++
++#if defined(__GNUC__) && !defined(_WIN32)
++namespace OpenUsdOwnedSdkPhaseObservation __attribute__((visibility("hidden")))
++#else
++namespace OpenUsdOwnedSdkPhaseObservation
++#endif
++{
++namespace Detail
++{
++void Write(const char* phase, std::size_t count) noexcept;
++}
++
++template <std::size_t Count>
++inline void Write(const char (&phase)[Count]) noexcept
++{
++    static_assert(Count <= 32, "SDK observations must use bounded fixed labels.");
++    Detail::Write(phase, Count);
++}
++}
+ 
+ PXR_NAMESPACE_OPEN_SCOPE
+ 
+@@ -31,6 +52,7 @@
+     const std::vector<std::string>& oldValues,
+     const std::vector<std::string>& newValues) const
+ {
++    OpenUsdOwnedSdkPhaseObservation::Write("sdf-sublayer-edit.entry");
+     // When sublayer paths are added or removed, we need to keep the
+     // sublayer offsets vector (stored in a separate field) in sync.
+     const SdfLayerOffsetVector oldLayerOffsets = _GetOwner()->
+@@ -60,6 +82,7 @@
+     }
+     
+     _GetOwner()->SetField(SdfFieldKeys->SubLayerOffsets, newLayerOffsets);
++    OpenUsdOwnedSdkPhaseObservation::Write("sdf-sublayer-edit.body-exit");
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE

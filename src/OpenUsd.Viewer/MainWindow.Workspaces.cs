@@ -151,9 +151,11 @@ public sealed partial class MainWindow
         // Explicit layout/splitter updates still recalculate their full fit budget.
         bool shareGrowth = double.IsFinite(panelGrowth) && extras > 0;
         StagePanelGridColumn.MaxWidth = shareGrowth && stage > 0 && StagePanelGridColumn.MaxWidth >= minimum
-            ? Math.Min(stageMaximum, StagePanelGridColumn.MaxWidth + (panelGrowth * stageExtra / extras)) : stageMaximum;
+            ? Math.Min(stageMaximum, StagePanelGridColumn.MaxWidth + (panelGrowth * stageExtra / extras))
+            : stageMaximum;
         InspectorPanelGridColumn.MaxWidth = shareGrowth && inspector > 0 && InspectorPanelGridColumn.MaxWidth >= minimum
-            ? Math.Min(inspectorMaximum, InspectorPanelGridColumn.MaxWidth + (panelGrowth * inspectorExtra / extras)) : inspectorMaximum;
+            ? Math.Min(inspectorMaximum, InspectorPanelGridColumn.MaxWidth + (panelGrowth * inspectorExtra / extras))
+            : inspectorMaximum;
     }
 
     private void PrepareWorkspaceSplitter(object? sender, RoutedEventArgs e)

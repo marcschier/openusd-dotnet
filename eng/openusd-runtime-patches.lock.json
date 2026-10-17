@@ -347,13 +347,19 @@
     {
       "id": "temporary-sdk-primary-phase-observation",
       "path": "eng\\patches\\openusd\\sdk-primary-phase-observation.patch",
-      "sha256": "785D283B84D9FC2439661A8B6E15A2967153FC201D4C360FE40EAE315AB8D71F",
+      "sha256": "56E2A4A1DA53C15727F5B5F992FEE73C1E347CA2AC8053CB79871747704D443D",
       "files": [
         {
           "path": "pxr\\usd\\usd\\stage.cpp",
           "installedHeader": false,
           "beforeSha256": "A209CD1C5B99E829CC5B0F5CE821EB19727B1E476CEC45651D5FCFFC60612E22",
           "afterSha256": "022123099952B365C13CC28F4188C74BC22302D8C1B0A94506C0041FC9961A28"
+        },
+        {
+          "path": "pxr\\usd\\sdf\\subLayerListEditor.cpp",
+          "installedHeader": false,
+          "beforeSha256": "8264B4E13FBCD110DB6D362FF7EEE958A2E8FFB2BEDD91CA7200EB3BE75525F9",
+          "afterSha256": "E92977BA8583684B8D46EC6F50D9F666F5337D38EDCEBB45E61F14C41FB4F7CC"
         }
       ]
     }
