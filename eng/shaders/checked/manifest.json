@@ -43,7 +43,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "88985163858c7899700de2d95215452762f89ffc297155c8d00098250fa71ed4"
+      "sha256": "92460c97157fc7131b8c648b703ab330e9c0d83f997bf0ddc6322cc4303fdefa"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "1e3b1efe8474fcea612bd4e7e399dea7690600f1cf3f7f5f03c34b8c3de17510"
+      "sha256": "d094a93ad1ce7cfae8a927efe0c679e191c9855ced87f04f490cc6217fe45dbd"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -119,7 +119,7 @@
     },
     {
       "path": "eng/pack-packages.ps1",
-      "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
+      "sha256": "0f098c60c30e64815e1ff176423a3a409720a5f3e2686d6e6ed7e36d1721b831"
     },
     {
       "path": "eng/patches/openusd/tf-refptr-last-release-acquire.patch",
