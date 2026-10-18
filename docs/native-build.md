@@ -53,6 +53,25 @@ OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings lock
 compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,
 examples, tutorials, tools, documentation, Embree, and RenderMan are excluded.
 
+## Linux Zstandard and Blosc symbol isolation
+
+The locked Linux profile builds Zstandard with hidden private symbols and protected visibility
+for its declared public API. Blosc is configured to use the exact Zstandard headers and shared
+library from the SDK prefix. The build fails if those files are absent, CMake resolves different
+paths, Blosc exports Zstandard symbols, the linked SONAME is missing, or runtime
+resolution selects another provider. Post-build checks derive the supported public API from the
+pinned headers and verify all declared Zstandard and Blosc exports in the resulting ELF files.
+Windows and macOS build options remain unchanged.
+
+The public-release Linux Core pack is checked again: its Blosc and Zstandard files must match the
+verified SDK bytes, retain the required public exports, and resolve Blosc's `libzstd.so.1`
+dependency to the Zstandard library carried beside it. Synthetic package fixtures do not run this
+native ELF check. This removes Blosc's accidental re-export of its embedded `ZSTD_*` implementation
+while preserving the declared Blosc API and Zstandard API. The authenticated 15-control diagnostic
+reproduced the invalid-free with the original and default-rebuilt codec pair and passed the
+supported protected/external candidates; that minimized control is not a substitute for the
+original Viewer or nondeferred render qualification.
+
 ## Linux runtime paths
 
 The Linux SDK build injects the locked `eng/cmake/LinuxRuntime.cmake` policy into every
@@ -116,13 +135,11 @@ The default/cold path retains those original vendor commands. Changing `build-na
 explicit verified reuse path changes a real input in the existing eleven-input cache key; that
 normally requires a new cold cache before subsequent hits can use the corrected path.
 
-PR 22 has one bounded recipe-equivalence seed for this transition only: exact old/new builder
-hashes, every other SDK input, full RID keys, original cache object/ref and runner image must match
-the reviewed pins. Only an exact new-key miss may restore the single exact previous SDK pair.
-Current strict SDK/compiler/notice verification still precedes reuse, the current C ABI and all
-tests still run, and the verified pair is saved under its actual new key. This is reuse of original
-producer `39112660339` inputs, not a newly compiled SDK or a qualified native result. Drift disables
-the transition; there are no prefix restore keys and it does not make a PR cache visible on main.
+PR 22 used one bounded recipe-equivalence seed for its explicit SDK-reuse change. The seed is tied
+to exact builder/input hashes, RID keys, cache object/ref and runner image, and is not a general
+fallback. The Linux codec correction changes the verified upstream build-script digest and both
+native lock profiles, so the previous seed no longer matches and cannot reuse that SDK. A new
+Linux SDK must be built from the corrected recipe; no prefix restore keys can override that miss.
 
 Linux producer and consumer workflows pin `ubuntu-24.04`, the qualified host baseline, rather than
 following an unannounced `ubuntu-latest` distribution migration. Actual runner-image and compiler

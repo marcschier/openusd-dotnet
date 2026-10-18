@@ -10,7 +10,7 @@
     "extractDirectory": "OpenUSD-ee47c679abde5b467a7b6a41f3b2285564a4222e",
     "buildScript": "build_scripts/build_usd.py",
     "buildScriptSha256": "E2F0C4858834D39F9D803B0B0FF1922EE74084287267CBE159D5B3AA99A515F1",
-    "patchedBuildScriptSha256": "B18016E862522BE1D3F6DEC52892219DE77ACE890F92A8662093184C7F2965D7",
+    "patchedBuildScriptSha256": "082C73899B3B45A0601CC656EBA39EF218A4A885E4FF56A65FB7FA513A50D8FF",
     "runtimePatchLockSha256": "0E3A373F1C5C6861A807BEF64855A19B50821A0B9F8B7FBC839D066EEC648525",
     "storageAdmissionPatchLockSha256": "1E6280DBC19E3C9DBAD1004D5F5B78474D564D54097448E0B6F3BF425DE1874D",
     "linuxRuntimePolicy": {
@@ -53,6 +53,10 @@
       {
         "id": "locked-dependency-source-selection",
         "description": "Bind every dependency source URL and Boost/Ptex version in the verified upstream build script to the reviewed stable versions and archives in this lock."
+      },
+      {
+        "id": "linux-zstd-symbol-isolation",
+        "description": "Build pinned Linux Zstandard with hidden private symbols and protected public APIs; build Blosc only against the exact pinned SDK Zstandard prefix and verify cache resolution, ELF exports, DT_NEEDED and runtime provider."
       }
     ],
     "license": "Apache-2.0"

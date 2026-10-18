@@ -312,6 +312,98 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
         $content = $content.Replace($alembicPolicyMarker, $alembicPolicyPatched)
     }
 
+    $bloscConfigureMarker = '        RunCMake(context, force, buildArgs + macArgs)'
+    $bloscConfigurePatched = @'
+        cmakeArgs = buildArgs + macArgs
+        if Linux():
+            zstdIncludeDir = os.path.join(context.instDir, "include")
+            zstdLibrary = os.path.join(context.instDir, "lib", "libzstd.so")
+            if (not os.path.isfile(os.path.join(zstdIncludeDir, "zstd.h"))
+                    or not os.path.isfile(zstdLibrary)):
+                raise RuntimeError(
+                    "The exact pinned SDK Zstd include/library pair is required by Linux Blosc.")
+            cmakeArgs += [
+                "-DPREFER_EXTERNAL_ZSTD=ON",
+                "-DZSTD_INCLUDE_DIR=" + zstdIncludeDir,
+                "-DZSTD_LIBRARY=" + zstdLibrary]
+        RunCMake(context, force, cmakeArgs)
+        if Linux():
+            import subprocess
+            import re
+            buildDir = os.path.join(context.buildDir, os.path.basename(os.getcwd()))
+            cachePath = os.path.join(buildDir, "CMakeCache.txt")
+            cacheValues = {}
+            with open(cachePath, "r", encoding="utf-8") as cache:
+                for line in cache:
+                    if not line.startswith("//") and ":" in line and "=" in line:
+                        key, value = line.split("=", 1)
+                        cacheValues[key.split(":", 1)[0]] = value.strip()
+            expectedCache = {
+                "PREFER_EXTERNAL_ZSTD": "ON",
+                "ZSTD_INCLUDE_DIR": zstdIncludeDir,
+                "ZSTD_LIBRARY": zstdLibrary}
+            for key, expected in expectedCache.items():
+                actual = cacheValues.get(key)
+                if actual is None:
+                    raise RuntimeError(
+                        "Linux Blosc did not cache required external Zstd setting {}.".format(key))
+                if key == "PREFER_EXTERNAL_ZSTD":
+                    matches = actual.upper() in ("ON", "TRUE", "1")
+                else:
+                    matches = os.path.realpath(actual) == os.path.realpath(expected)
+                if not matches:
+                    raise RuntimeError(
+                        "Linux Blosc resolved {} to {!r}, expected the locked SDK value {!r}."
+                        .format(key, actual, expected))
+
+            bloscLibrary = os.path.join(context.instDir, "lib", "libblosc.so")
+            if not os.path.isfile(bloscLibrary):
+                raise RuntimeError("The Linux Blosc shared library was not installed.")
+            dynamic = subprocess.check_output(
+                ["readelf", "-d", bloscLibrary], text=True, stderr=subprocess.STDOUT)
+            if not re.search(
+                    r"\(NEEDED\).*Shared library: \[libzstd\.so\.1\]", dynamic):
+                raise RuntimeError(
+                    "Linux Blosc does not link to the pinned Zstd shared-library ABI.")
+
+            runtimeEnv = os.environ.copy()
+            runtimeEnv["LD_LIBRARY_PATH"] = os.path.join(context.instDir, "lib")
+            loaded = subprocess.check_output(
+                ["ldd", bloscLibrary], text=True, stderr=subprocess.STDOUT,
+                env=runtimeEnv)
+            provider = re.search(
+                r"^\s*libzstd\.so\.1\s+=>\s+(\S+)", loaded, re.M)
+            if (not provider or
+                    os.path.realpath(provider.group(1)) != os.path.realpath(zstdLibrary)):
+                raise RuntimeError(
+                    "Linux Blosc runtime provider is not the exact pinned SDK Zstd library.")
+
+            symbols = GetElfDynamicSymbols(bloscLibrary)
+            publicHeader = os.path.join(os.getcwd(), "blosc", "blosc.h")
+            with open(publicHeader, "r", encoding="utf-8") as header:
+                expectedApi = set(re.findall(
+                    r"\bBLOSC_EXPORT\s+[^;]*?\b(blosc_[A-Za-z0-9_]+)\s*\(",
+                    header.read(), re.S))
+            missingApi = sorted(expectedApi.difference(symbols))
+            leakedZstd = sorted(
+                name for name in symbols
+                if name.startswith(("ZSTD_", "ZDICT_")))
+            if not expectedApi or missingApi or leakedZstd:
+                raise RuntimeError(
+                    "Linux Blosc ELF API verification failed; missing={}, "
+                    "leakedZstd={}".format(missingApi, leakedZstd))
+'@
+    if (-not $content.Contains('Linux Blosc ELF API verification failed'))
+    {
+        if (-not $content.Contains($bloscConfigureMarker))
+        {
+            throw 'The expected Blosc configure marker was not found.'
+        }
+        $content = $content.Replace(
+            $bloscConfigureMarker,
+            $bloscConfigurePatched.Replace("`r`n", "`n").TrimEnd())
+    }
+
     $codecDependencies = @'
 LIBDEFLATE_URL = "locked-libdeflate"
 IMATH_URL = "locked-imath"
@@ -333,12 +425,67 @@ def InstallImath(context, force, buildArgs):
 
 IMATH = Dependency("Imath", InstallImath, "include/Imath/ImathConfig.h")
 
+def GetElfDynamicSymbols(binaryPath):
+    import subprocess
+    output = subprocess.check_output(
+        ["readelf", "--dyn-syms", "--wide", binaryPath],
+        text=True, stderr=subprocess.STDOUT)
+    symbols = {}
+    for line in output.splitlines():
+        fields = line.split()
+        if (len(fields) >= 8 and fields[0].endswith(":")
+                and fields[6] != "UND" and fields[4] in ("GLOBAL", "WEAK")):
+            symbols[fields[7].split("@", 1)[0]] = fields[5]
+    if not symbols:
+        raise RuntimeError("ELF dynamic symbol table is empty: {}".format(binaryPath))
+    return symbols
+
+def VerifyLinuxZstdApi(context):
+    includeDir = os.path.join(context.instDir, "include")
+    library = os.path.join(context.instDir, "lib", "libzstd.so")
+    if not os.path.isfile(library):
+        raise RuntimeError("The pinned Linux Zstd shared library was not installed.")
+
+    publicApi = set()
+    apiPattern = re.compile(
+        r'\b(?:ZSTDLIB_API|ZDICTLIB_API|ZSTDERRORLIB_API)\s+'
+        r'[^;\n]*(?:\n[ \t]+[^#;\n]+)*?'
+        r'\b((?:ZSTD|ZDICT)_[A-Za-z0-9_]+)\s*\(', re.M)
+    for header in ("zstd.h", "zdict.h", "zstd_errors.h"):
+        path = os.path.join(includeDir, header)
+        if not os.path.isfile(path):
+            raise RuntimeError("The pinned Linux Zstd public header is missing: {}".format(header))
+        with open(path, "r", encoding="utf-8") as source:
+            publicApi.update(apiPattern.findall(source.read()))
+
+    symbols = GetElfDynamicSymbols(library)
+    missing = sorted(publicApi.difference(symbols))
+    wrongVisibility = sorted(
+        name for name in publicApi if symbols.get(name) != "PROTECTED")
+    unprotectedCodecSymbols = sorted(
+        name for name, visibility in symbols.items()
+        if name.startswith(("ZSTD_", "ZDICT_")) and visibility != "PROTECTED")
+    if (not publicApi or missing or wrongVisibility or unprotectedCodecSymbols):
+        raise RuntimeError(
+            "Linux Zstd ELF API verification failed; missing={}, "
+            "wrongVisibility={}, unprotectedCodecSymbols={}".format(
+                missing, wrongVisibility, unprotectedCodecSymbols))
+
 def InstallZstd(context, force, buildArgs):
     source = DownloadURL(ZSTD_URL, context, force)
     with CurrentWorkingDirectory(os.path.join(source, "build", "cmake")):
-        RunCMake(context, force, buildArgs + [
+        cmakeArgs = [
             '-DZSTD_BUILD_SHARED=ON', '-DZSTD_BUILD_STATIC=OFF',
-            '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF'])
+            '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF']
+        if Linux():
+            cmakeArgs += [
+                '-DCMAKE_C_VISIBILITY_PRESET=hidden',
+                '-DZSTDLIB_VISIBLE=protected',
+                '-DZSTDERRORLIB_VISIBLE=protected',
+                '-DZDICTLIB_VISIBLE=protected']
+        RunCMake(context, force, buildArgs + cmakeArgs)
+    if Linux():
+        VerifyLinuxZstdApi(context)
 
 ZSTD = Dependency("zstd", InstallZstd, "include/zstd.h")
 
