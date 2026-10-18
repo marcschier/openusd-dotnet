@@ -51,7 +51,7 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "7bdea2d3b9451dbb2e32606fef014516e1b3cacb976afad60a4fd6f66c60b967"
+        "value": "f1ce8ccf0f5a06b91bce90eaa22cc0b5196319bf614025a12ca36f7bd8a4acad"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",

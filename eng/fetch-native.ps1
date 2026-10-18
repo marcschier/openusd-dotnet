@@ -312,8 +312,24 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
         $content = $content.Replace($alembicPolicyMarker, $alembicPolicyPatched)
     }
 
-    $bloscConfigureMarker = '        RunCMake(context, force, buildArgs + macArgs)'
+    $bloscConfigureMarker = @'
+def InstallBLOSC(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(BLOSC_URL, context, force)):
+        # MacOS we can use the built in Zlib instead of the external one.
+        macArgs = ["-DPREFER_EXTERNAL_ZLIB=ON"]
+        if MacOS() and apple_utils.IsTargetArm(context):
+            # Need to disable SSE for macOS ARM targets.
+            macArgs += ["-DDEACTIVATE_SSE2=ON"]
+        RunCMake(context, force, buildArgs + macArgs)
+'@
     $bloscConfigurePatched = @'
+def InstallBLOSC(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(BLOSC_URL, context, force)):
+        # MacOS we can use the built in Zlib instead of the external one.
+        macArgs = ["-DPREFER_EXTERNAL_ZLIB=ON"]
+        if MacOS() and apple_utils.IsTargetArm(context):
+            # Need to disable SSE for macOS ARM targets.
+            macArgs += ["-DDEACTIVATE_SSE2=ON"]
         cmakeArgs = buildArgs + macArgs
         if Linux():
             zstdIncludeDir = os.path.join(context.instDir, "include")
@@ -393,16 +409,31 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
                     "Linux Blosc ELF API verification failed; missing={}, "
                     "leakedZstd={}".format(missingApi, leakedZstd))
 '@
-    if (-not $content.Contains('Linux Blosc ELF API verification failed'))
+    $bloscConfigureMarker = $bloscConfigureMarker.Replace("`r`n", "`n").TrimEnd()
+    $bloscConfigurePatched = $bloscConfigurePatched.Replace("`r`n", "`n").TrimEnd()
+    $normalizedContent = $content.Replace("`r`n", "`n")
+    $preimageCount = [regex]::Matches(
+        $normalizedContent,
+        [regex]::Escape($bloscConfigureMarker)).Count
+    $postimageCount = [regex]::Matches(
+        $normalizedContent,
+        [regex]::Escape($bloscConfigurePatched)).Count
+    if ($preimageCount -eq 1 -and $postimageCount -eq 0)
     {
-        if (-not $content.Contains($bloscConfigureMarker))
-        {
-            throw 'The expected Blosc configure marker was not found.'
-        }
-        $content = $content.Replace(
-            $bloscConfigureMarker,
-            $bloscConfigurePatched.Replace("`r`n", "`n").TrimEnd())
+        $normalizedContent = $normalizedContent.Replace(
+            $bloscConfigureMarker, $bloscConfigurePatched)
+        $postimageCount = [regex]::Matches(
+            $normalizedContent,
+            [regex]::Escape($bloscConfigurePatched)).Count
+        $preimageCount = [regex]::Matches(
+            $normalizedContent,
+            [regex]::Escape($bloscConfigureMarker)).Count
     }
+    if ($preimageCount -ne 0 -or $postimageCount -ne 1)
+    {
+        throw "Expected exactly one patched Blosc installer and no preimage; found preimage=$preimageCount, postimage=$postimageCount."
+    }
+    $content = $normalizedContent
 
     $codecDependencies = @'
 LIBDEFLATE_URL = "locked-libdeflate"
@@ -491,13 +522,57 @@ ZSTD = Dependency("zstd", InstallZstd, "include/zstd.h")
 
 '@
     $openExrMarker = 'def InstallOpenEXR(context, force, buildArgs):'
-    if (-not $content.Contains($openExrMarker) -or -not $content.Contains('requiredDependencies = [TBB]'))
+    $codecInstallerMarker = 'def InstallZstd(context, force, buildArgs):'
+    $openExrMarkerCount = [regex]::Matches(
+        $content, [regex]::Escape($openExrMarker)).Count
+    $codecInstallerCount = [regex]::Matches(
+        $content, [regex]::Escape($codecInstallerMarker)).Count
+    if ($openExrMarkerCount -ne 1 -or $codecInstallerCount -ne 0)
     {
-        throw 'The upstream build script is missing the reviewed codec dependency insertion points.'
+        throw "Expected one OpenEXR insertion point and no existing codec installer; found openExr=$openExrMarkerCount codec=$codecInstallerCount."
     }
     $content = $content.Replace($openExrMarker, $codecDependencies.Replace("`r`n", "`n") + "`n" + $openExrMarker)
-    $content = $content.Replace('requiredDependencies = [TBB]', 'requiredDependencies = [TBB, LIBDEFLATE, IMATH, ZSTD]')
-    $content = $content.Replace('-DOPENEXR_FORCE_INTERNAL_IMATH=ON', '-DOPENEXR_FORCE_INTERNAL_IMATH=OFF')
+    $codecInstallerCount = [regex]::Matches(
+        $content, [regex]::Escape($codecInstallerMarker)).Count
+    if ($codecInstallerCount -ne 1)
+    {
+        throw "Expected one inserted Zstd installer, found $codecInstallerCount."
+    }
+
+    $requiredDependenciesMarker = 'requiredDependencies = [TBB]'
+    $requiredDependenciesPatched = 'requiredDependencies = [TBB, LIBDEFLATE, IMATH, ZSTD]'
+    $requiredDependenciesMarkerCount = [regex]::Matches(
+        $content, [regex]::Escape($requiredDependenciesMarker)).Count
+    $requiredDependenciesPatchedCount = [regex]::Matches(
+        $content, [regex]::Escape($requiredDependenciesPatched)).Count
+    if ($requiredDependenciesMarkerCount -ne 1 -or $requiredDependenciesPatchedCount -ne 0)
+    {
+        throw "Expected one OpenEXR codec dependency preimage and no postimage; found preimage=$requiredDependenciesMarkerCount postimage=$requiredDependenciesPatchedCount."
+    }
+    $content = $content.Replace(
+        $requiredDependenciesMarker, $requiredDependenciesPatched)
+    if ([regex]::Matches($content, [regex]::Escape($requiredDependenciesMarker)).Count -ne 0 -or
+        [regex]::Matches($content, [regex]::Escape($requiredDependenciesPatched)).Count -ne 1)
+    {
+        throw 'The OpenEXR codec dependency postimage is not unique.'
+    }
+
+    $internalImathMarker = '-DOPENEXR_FORCE_INTERNAL_IMATH=ON'
+    $externalImathPatched = '-DOPENEXR_FORCE_INTERNAL_IMATH=OFF'
+    $internalImathMarkerCount = [regex]::Matches(
+        $content, [regex]::Escape($internalImathMarker)).Count
+    $externalImathPatchedCount = [regex]::Matches(
+        $content, [regex]::Escape($externalImathPatched)).Count
+    if ($internalImathMarkerCount -ne 1 -or $externalImathPatchedCount -ne 0)
+    {
+        throw "Expected one internal-Imath preimage and no external-Imath postimage; found preimage=$internalImathMarkerCount postimage=$externalImathPatchedCount."
+    }
+    $content = $content.Replace($internalImathMarker, $externalImathPatched)
+    if ([regex]::Matches($content, [regex]::Escape($internalImathMarker)).Count -ne 0 -or
+        [regex]::Matches($content, [regex]::Escape($externalImathPatched)).Count -ne 1)
+    {
+        throw 'The OpenEXR Imath selection postimage is not unique.'
+    }
 
     $dependencyVariables = @{
         oneTBB = 'ONETBB_URL'

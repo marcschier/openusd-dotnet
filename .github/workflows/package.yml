@@ -168,8 +168,10 @@ jobs:
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
       DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
+      # workflow_call and workflow_dispatch keep building from source; PR misses do too.
       DEFER_ON_NATIVE_CACHE_MISS: >-
-        ${{ github.event_name == 'push' &&
+        ${{ (github.event_name == 'push' || github.event_name == 'pull_request') &&
+            github.event_name == 'push' &&
             'true' || 'false' }}
       NATIVE_PIPELINE_RUN_ID: >-
         ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
