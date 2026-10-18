@@ -1,39 +1,12 @@
 name: cesium-native artifact pipeline
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ master, main ]
-    paths:
-      - '.github/workflows/cesium-native.yml'
-      - 'eng/cesium.lock.json'
-      - 'eng/fetch-cesium-native.ps1'
-      - 'eng/build-cesium-native.ps1'
-      - 'eng/generate-native-notices.py'
-      - 'eng/sbom/cesium-vcpkg-components.lock.json'
-      - 'LICENSE'
-      - 'NOTICE'
-      - 'native/cesium_probe/**'
-  pull_request:
-    branches: [ master, main ]
-    paths:
-      - '.github/workflows/cesium-native.yml'
-      - 'eng/cesium.lock.json'
-      - 'eng/fetch-cesium-native.ps1'
-      - 'eng/build-cesium-native.ps1'
-      - 'eng/generate-native-notices.py'
-      - 'eng/sbom/cesium-vcpkg-components.lock.json'
-      - 'LICENSE'
-      - 'NOTICE'
-      - 'native/cesium_probe/**'
-
+'on':
+  workflow_dispatch: null
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: cesium-native-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: cesium-sdk-warm-transport-once
+  cancel-in-progress: false
 jobs:
   build:
     name: ${{ matrix.rid }} locked cesium-native
@@ -43,79 +16,129 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - rid: win-x64
-            runner: windows-latest
-          - rid: linux-x64
-            runner: ubuntu-latest
-          - rid: osx-arm64
-            runner: macos-15
+        - rid: linux-x64
+          runner: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.13'
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
-        if: runner.os == 'Windows'
-        with:
-          arch: x64
-      - name: Select Xcode 16.4
-        if: runner.os == 'macOS'
-        run: |
-          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
-          xcodebuild -version
-      - name: Install Linux prerequisites
-        if: runner.os == 'Linux'
-        run: >-
-          sudo apt-get update &&
-          sudo apt-get install -y
-          build-essential cmake ninja-build pkg-config
-      - name: Install macOS prerequisites
-        if: runner.os == 'macOS'
-        run: brew install cmake ninja
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            native/.cache/vcpkg-e456309491fd
-            native/install/cesium/${{ matrix.rid }}
-            native/build/cesium/${{ matrix.rid }}
-            native/build/cesium-probe/${{ matrix.rid }}
-          key: >-
-            cesium-native-${{ matrix.rid }}-${{ hashFiles(
-              'eng/cesium.lock.json',
-              'eng/fetch-cesium-native.ps1',
-              'eng/build-cesium-native.ps1',
-              'eng/generate-native-notices.py',
-              'eng/sbom/cesium-vcpkg-components.lock.json',
-              'LICENSE',
-              'NOTICE',
-              'native/cesium_probe/**'
-            ) }}
-      - name: Build locked cesium-native
-        shell: pwsh
-        run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }}
-      - name: Report Cesium output sizes
-        shell: pwsh
-        run: |
-          # Tee-Object does not create missing parents, so every leg of run
-          # 31210680530 failed here after a successful 18-minute build.
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $install = Get-ChildItem native/install/cesium/${{ matrix.rid }} -Recurse -File |
-            Measure-Object Length -Sum
-          $libraries = Get-ChildItem native/install/cesium/${{ matrix.rid }}/lib -Recurse -File |
-            Measure-Object Length -Sum
-          "install-bytes=$($install.Sum)" | Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt
-          "library-bytes=$($libraries.Sum)" | Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt -Append
-          "package-bytes=deferred-until-c-abi-shim" |
-            Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt -Append
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: openusd-cesium-native-size-${{ matrix.rid }}
-          path: |
-            artifacts/cesium-size-${{ matrix.rid }}.txt
-          if-no-files-found: error
-          retention-days: 30
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+      with:
+        dotnet-version: 10.0.401
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.13'
+    - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+      if: runner.os == 'Windows'
+      with:
+        arch: x64
+    - name: Select Xcode 16.4
+      if: runner.os == 'macOS'
+      run: 'sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+
+        xcodebuild -version
+
+        '
+    - name: Install Linux prerequisites
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build pkg-config
+    - name: Install macOS prerequisites
+      if: runner.os == 'macOS'
+      run: brew install cmake ninja
+    - id: cesium-toolchain
+      name: Bind the Cesium SDK cache to the actual build toolchain
+      shell: pwsh
+      run: python eng/cesium-sdk-artifact.py identity --rid ${{ matrix.rid }}
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: 'native/.cache/vcpkg-e456309491fd
+
+          native/install/cesium/${{ matrix.rid }}
+
+          native/build/cesium/${{ matrix.rid }}
+
+          native/build/cesium-probe/${{ matrix.rid }}
+
+          '
+        key: "cesium-native-v2-${{ matrix.rid }}-${{ steps.cesium-toolchain.outputs.toolchain }}-${{ hashFiles(\n  'eng/cesium.lock.json',\n\
+          \  'eng/fetch-cesium-native.ps1',\n  'eng/build-cesium-native.ps1',\n  'eng/cesium-sdk-artifact.py',\n  'eng/generate-native-notices.py',\n\
+          \  'eng/sbom/cesium-vcpkg-components.lock.json',\n  'LICENSE',\n  'NOTICE',\n  'native/cesium_probe/**'\n) }}"
+    - name: Build locked cesium-native
+      shell: pwsh
+      run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }}
+    - name: Verify complete Cesium redistribution notices
+      shell: pwsh
+      run: 'python eng/generate-native-notices.py verify --family cesium --rid ${{ matrix.rid }} --install-root native/install/cesium/${{
+        matrix.rid }}
+
+        '
+    - name: Create a source-bound compiled Cesium SDK artifact
+      shell: pwsh
+      env:
+        CESIUM_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: 'python eng/cesium-sdk-artifact.py create --rid ${{ matrix.rid }} --source $env:CESIUM_SOURCE_HEAD
+
+        '
+    - name: Upload the verified compiled Cesium SDK
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: openusd-cesium-sdk-${{ matrix.rid }}-${{ github.run_attempt }}
+        path: artifacts/cesium-sdk/${{ matrix.rid }}/*
+        if-no-files-found: error
+        retention-days: 30
+    - name: Report Cesium output sizes
+      shell: pwsh
+      run: "# Tee-Object does not create missing parents, so every leg of run\n# 31210680530 failed here after a successful\
+        \ 18-minute build.\nNew-Item -ItemType Directory -Force -Path artifacts | Out-Null\n$install = Get-ChildItem native/install/cesium/${{\
+        \ matrix.rid }} -Recurse -File |\n  Measure-Object Length -Sum\n$libraries = Get-ChildItem native/install/cesium/${{\
+        \ matrix.rid }}/lib -Recurse -File |\n  Measure-Object Length -Sum\n\"install-bytes=$($install.Sum)\" | Tee-Object\
+        \ -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt\n\"library-bytes=$($libraries.Sum)\" | Tee-Object -FilePath\
+        \ artifacts/cesium-size-${{ matrix.rid }}.txt -Append\n\"package-bytes=deferred-until-c-abi-shim\" |\n  Tee-Object\
+        \ -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt -Append\n"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: openusd-cesium-native-size-${{ matrix.rid }}
+        path: 'artifacts/cesium-size-${{ matrix.rid }}.txt
+
+          '
+        if-no-files-found: error
+        retention-days: 30
+  consumer:
+    name: linux-x64 original Cesium probe after verified SDK import
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.13'
+    - name: Install the same original Linux build prerequisites
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build pkg-config
+    - name: Import the same-run verified SDK instead of compiling it again
+      id: sdk
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CESIUM_SOURCE_HEAD: ${{ github.sha }}
+      run: python eng/cesium-sdk-artifact.py consume --rid linux-x64 --source $env:CESIUM_SOURCE_HEAD --run-id $env:GITHUB_RUN_ID
+    - name: Require an actual immutable SDK import
+      shell: pwsh
+      run: if ('${{ steps.sdk.outputs.reused }}' -ne 'true') { throw 'Transport check did not import an SDK; source fallback
+        is not a warm reuse proof.' }
+    - name: Configure and build the unchanged original Cesium probe against imported files
+      shell: pwsh
+      run: "$sdk = Join-Path $PWD 'native/install/cesium/linux-x64'\n$deps = Join-Path $PWD 'native/build/cesium/linux-x64/vcpkg_installed/x64-linux'\n\
+        cmake -S native/cesium_probe -B artifacts/cesium-import-probe -G Ninja `\n  -DCMAKE_BUILD_TYPE=Release \"-DCMAKE_PREFIX_PATH=$sdk;$deps;$deps/share\"\
+        \ `\n  \"-DZLIB_INCLUDE_DIR=$deps/include\"\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\ncmake --build artifacts/cesium-import-probe\
+        \ --parallel ([Environment]::ProcessorCount)\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+    - name: Execute the whole unchanged original Cesium CTest case
+      run: ctest --test-dir artifacts/cesium-import-probe --output-on-failure
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: cesium-import-original-probe-${{ github.run_id }}
+        path: artifacts/cesium-import-probe/Testing/Temporary/LastTest.log
+        if-no-files-found: warn
