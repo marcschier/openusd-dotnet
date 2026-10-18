@@ -103,6 +103,12 @@ This is build reuse, not conformance or a failed final archive. The five-path na
 its final-success post-save, and package/render consumers still require all three qualified native
 producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.
 
+Linux producer and consumer workflows pin `ubuntu-24.04`, the qualified host baseline, rather than
+following an unannounced `ubuntu-latest` distribution migration. Actual runner-image and compiler
+identities remain part of Cesium artifact provenance; the label alone does not certify a toolchain.
+The two Linux managed-CI status contexts retain their legacy `ubuntu-latest` names because the
+main-branch ruleset requires those exact API names. Their actual runner is explicitly Ubuntu 24.04.
+
 ## Last-reference acquire synchronization
 
 The pinned SDK includes the official OpenUSD `72ff9cee97bb1d5664f00d759e559cd8cd2e8400`
@@ -286,6 +292,37 @@ expected values. It is deliberately stronger than a load-only check.
 install/library byte counts for each RID. Local Windows verification measured `win-x64` at
 1,012,407,536 install bytes and 984,482,970 static-library bytes. Linux and macOS sizes must come
 from CI because they cannot be verified on the Windows workstation.
+
+### Verified compiled Cesium SDK reuse
+
+The Cesium producer retains a separate immutable compiled-SDK artifact after its unchanged
+native probe succeeds. It contains the static SDK, required dependency headers/libraries and
+CMake package exports, not a whole build/probe cache. Every payload file, critical source input,
+RID/triplet, producer source/run/attempt and actual compiler/toolchain/runner-image identity is
+verified before import. CMake exports' referenced debug libraries are retained when required
+for configuration; unused build trees, tools and temporary files are excluded.
+
+Package consumers find exact-source producer artifacts, while release package and pack jobs use
+the same release run. An already queued or running eligible producer is awaited for at most
+90 minutes instead of compiling a duplicate SDK. A warm artifact is imported immediately; no
+eligible producer or missing eligible artifact logs a source-build fallback. A failed producer,
+wait timeout, corruption or provenance/toolchain mismatch fails explicitly.
+
+The compiled-SDK cache binds SDK compile inputs, the original probe and actual toolchain, not
+the artifact metadata helper. That helper remains hash-bound in the immutable artifact manifest.
+Fallback vcpkg caches likewise bind SDK locks and source-build scripts, not C ABI shim wrappers.
+Producer cache hits still run the original fetch/hash/configure/build/notices/probe path.
+
+Package and release pack jobs pass `-PackageConsumer` to the optional shim builders. They retain
+the original configure, build `openusd_cesium` or `openusd_physx` and its declared dependencies,
+and install that module's unchanged library/header rules. Linux also builds and runs the original
+PhysX vehicle probe. PhysX preserves the exact installed Core extraction header and refuses a
+missing or source-mismatched header instead of falling back to a working-tree ABI claim.
+Optional GPU staging remains local-only and is never redistributed.
+
+Native producers omit this switch and retain the full build, install and original native tests.
+Consumers still build the current C ABI shims and run the original PhysX, NativeAOT and package
+gates. Reuse is not package qualification, and cache hits do not replace final release gates.
 
 ## PhysX quarantine
 

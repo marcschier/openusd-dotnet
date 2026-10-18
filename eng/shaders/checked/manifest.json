@@ -30,36 +30,40 @@
   },
   "inputs": [
     {
+      "path": ".github/workflows/cesium-native.yml",
+      "sha256": "b43711532315c6ffd0e94eaff505ae54d23df450e51df27b08b05e1df6abef91"
+    },
+    {
       "path": ".github/workflows/ci.yml",
-      "sha256": "4f2397fb3d93b987149894f64276dca72de75610e59db9d4b62c1a0abcaa5c23"
+      "sha256": "564d1b699b1f1ce5d491bc0f6c40e28b5b6f13021176c63ca7371b0c9d606c86"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "036a3c4a62c8d9e7ffc5a07d01c24334edaff897eb8f9a7083695b49aef3bf8d"
+      "sha256": "e5f7b6d7726684e15d227724ac164a0c6203b6b5f6050bd48056ff7901d46bea"
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "3f713662c6b0f1a2b88bfaf508081de5976dec3afe6ff124641d0db26a65f8cf"
+      "sha256": "88985163858c7899700de2d95215452762f89ffc297155c8d00098250fa71ed4"
     },
     {
       "path": ".github/workflows/performance.yml",
-      "sha256": "d71ef49829f334eb89b6d87d1b415bf83c743d990ca1b2add7f4e7460de02645"
+      "sha256": "fdec4461c45f2319ad652d9ac7735af3e993a4a3275bfd61ba6157ea06adc994"
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "bab79aaac82b706719e807db4ff1d44eab69745a52685a44bb2c1a52a3a75b82"
+      "sha256": "76cda71b1dc3afd0c2baf1e97d47330c643b5ce2243ba530defdadb04ce261ef"
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "e89ec1963a1d50346167e8474903cefb6aa359ad93424ee3d8dc0d97a7c6f8b7"
+      "sha256": "1e3b1efe8474fcea612bd4e7e399dea7690600f1cf3f7f5f03c34b8c3de17510"
     },
     {
       "path": ".github/workflows/shaders.yml",
-      "sha256": "431976c39b4918df5279bb4232096ddf6c1c2b8592801cc3ea3854c414903984"
+      "sha256": "6760e6b1e6e6a5457c33fc6a39ba3c9fca83b569dc2eb7e866f28d6f796b69d9"
     },
     {
       "path": ".github/workflows/viewer-distribution.yml",
-      "sha256": "9f86add6cb2526d073f4898e18bd783e5b3147115c6484c814d0b25244b9b54c"
+      "sha256": "a376280a49a479481f393c2ea50427a74b3c141a021b560bbd0c50544d86ab07"
     },
     {
       "path": "LICENSE",
@@ -70,12 +74,24 @@
       "sha256": "10d2c78d7c0e8cf0e891b9504fcb8f4da5deaf0a74dca5646943e8aac387c08b"
     },
     {
+      "path": "eng/build-cesium-shim.ps1",
+      "sha256": "12468d60abcaf7a012f7e47bf36829be0ff5a9078b9962cec8b6f3697d92c6fa"
+    },
+    {
       "path": "eng/build-native.ps1",
       "sha256": "978a5b64fac7a8bf6e306c5c0f2d3a6084996007d336724f2db5ba9a269edec0"
     },
     {
+      "path": "eng/build-physx-shim.ps1",
+      "sha256": "92e79db516f7fa7b3061177dcc2e1021b8e79ac03829803e1d1d450939a71eab"
+    },
+    {
       "path": "eng/build-vulkan-sdk.ps1",
       "sha256": "b16ee6a1788aee6d2ec1a7bf0ecb326d0f9868d878d6056c21e919323899fc7e"
+    },
+    {
+      "path": "eng/cesium-sdk-artifact.py",
+      "sha256": "ef2575a9b902d905a1c90631cdbf09a23177aa65ab6a9eaa827b4abfc4342cbc"
     },
     {
       "path": "eng/cmake/ShaderCompiler.cmake",
@@ -195,7 +211,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "ca1875b039a022987afdecdc2f3e52b9c5be3b16a5e50bd88922666f4e48027f"
+      "sha256": "57df62890887c46c4663e2c12a8f13281bcd5d48185cc63b6041df2e76b5da86"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -339,7 +355,7 @@
     },
     {
       "path": "eng/wait-openusd-sdk-cache.py",
-      "sha256": "2a29302e05287d14186d06865ba93757005df76febac4fa6ac5771180a5ece34"
+      "sha256": "16a1db13eb5c354324fdc68396c25146ce33e2b91b7266f7f65865b6ea91d9e0"
     },
     {
       "path": "native/CMakePresets.json",

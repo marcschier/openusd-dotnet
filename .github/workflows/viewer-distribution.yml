@@ -68,7 +68,7 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     env:
@@ -374,7 +374,7 @@ jobs:
       always() &&
       (github.event_name != 'workflow_run' ||
        github.event.workflow_run.conclusion == 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       ready: ${{ steps.complete-inputs.outputs.ready }}
     steps:
@@ -437,7 +437,7 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     steps:
@@ -565,7 +565,7 @@ jobs:
       needs.pack-viewer-inputs.outputs.ready == 'true' &&
       needs.viewer-input-readiness.outputs.ready == 'true' &&
       needs.viewer-distribution.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Report smoke success
         run: |
@@ -583,7 +583,7 @@ jobs:
       needs.viewer-input-readiness.result == 'success' &&
       (needs.pack-viewer-inputs.outputs.ready != 'true' ||
        needs.viewer-input-readiness.outputs.ready != 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Report deferred smoke
         run: |

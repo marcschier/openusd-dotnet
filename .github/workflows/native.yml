@@ -133,7 +133,7 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     env:

@@ -1,6 +1,7 @@
 name: cesium-native artifact pipeline
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [ master, main ]
@@ -9,6 +10,7 @@ on:
       - 'eng/cesium.lock.json'
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
+      - 'eng/cesium-sdk-artifact.py'
       - 'eng/generate-native-notices.py'
       - 'eng/sbom/cesium-vcpkg-components.lock.json'
       - 'LICENSE'
@@ -21,6 +23,7 @@ on:
       - 'eng/cesium.lock.json'
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
+      - 'eng/cesium-sdk-artifact.py'
       - 'eng/generate-native-notices.py'
       - 'eng/sbom/cesium-vcpkg-components.lock.json'
       - 'LICENSE'
@@ -46,7 +49,7 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     steps:
@@ -77,6 +80,10 @@ jobs:
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
         run: brew install cmake ninja
+      - id: cesium-toolchain
+        name: Bind the Cesium SDK cache to the actual build toolchain
+        shell: pwsh
+        run: python eng/cesium-sdk-artifact.py identity --rid ${{ matrix.rid }}
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -85,7 +92,7 @@ jobs:
             native/build/cesium/${{ matrix.rid }}
             native/build/cesium-probe/${{ matrix.rid }}
           key: >-
-            cesium-native-${{ matrix.rid }}-${{ hashFiles(
+            cesium-native-v2-${{ matrix.rid }}-${{ steps.cesium-toolchain.outputs.toolchain }}-${{ hashFiles(
               'eng/cesium.lock.json',
               'eng/fetch-cesium-native.ps1',
               'eng/build-cesium-native.ps1',
@@ -98,6 +105,26 @@ jobs:
       - name: Build locked cesium-native
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }}
+      - name: Verify complete Cesium redistribution notices
+        shell: pwsh
+        run: >
+          python eng/generate-native-notices.py verify
+          --family cesium --rid ${{ matrix.rid }}
+          --install-root native/install/cesium/${{ matrix.rid }}
+      - name: Create a source-bound compiled Cesium SDK artifact
+        shell: pwsh
+        env:
+          CESIUM_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >
+          python eng/cesium-sdk-artifact.py create --rid ${{ matrix.rid }}
+          --source $env:CESIUM_SOURCE_HEAD
+      - name: Upload the verified compiled Cesium SDK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openusd-cesium-sdk-${{ matrix.rid }}-${{ github.run_attempt }}
+          path: artifacts/cesium-sdk/${{ matrix.rid }}/*
+          if-no-files-found: error
+          retention-days: 30
       - name: Report Cesium output sizes
         shell: pwsh
         run: |

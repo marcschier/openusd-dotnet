@@ -22,14 +22,29 @@ class CacheReadinessError(RuntimeError):
 
 
 def read_api(repository, token, path):
-    request = urllib.request.Request("https://api.github.com/repos/" + repository + "/" + path, headers={
+    if not path:
+        operation = "repository-metadata"
+    elif path.startswith("actions/workflows/native.yml/runs?"):
+        operation = "native-runs"
+    elif path.startswith("actions/caches?"):
+        operation = "sdk-cache-list"
+    elif path.startswith("actions/runs/") and "/jobs?" in path:
+        operation = "native-jobs"
+    elif re.fullmatch(r"actions/runs/[0-9]+", path):
+        operation = "coverage-run"
+    else:
+        raise CacheReadinessError("Unexpected SDK-readiness metadata operation.")
+    url = "https://api.github.com/repos/" + repository + ("/" + path if path else "")
+    request = urllib.request.Request(url, headers={
         "Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read(4194305)
+    except urllib.error.HTTPError as error:
+        raise CacheReadinessError(f"GitHub SDK-readiness metadata failed: {operation}; HTTP {error.code}.") from None
     except (urllib.error.URLError, TimeoutError):
-        raise CacheReadinessError("GitHub SDK-readiness metadata could not be read.") from None
+        raise CacheReadinessError(f"GitHub SDK-readiness metadata failed: {operation}; transport unavailable.") from None
     if len(raw) > 4194304:
         raise CacheReadinessError("GitHub SDK-readiness metadata exceeded its bound.")
     try:

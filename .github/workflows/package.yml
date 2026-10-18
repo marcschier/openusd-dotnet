@@ -26,6 +26,9 @@ on:
       native-pipeline-run-id:
         required: false
         type: string
+      cesium-pipeline-run-id:
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       linux-native-source:
@@ -154,7 +157,7 @@ jobs:
             runner: windows-latest
             rid: win-x64
           - name: Linux x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             rid: linux-x64
           - name: macOS arm64
             runner: macos-15
@@ -163,6 +166,7 @@ jobs:
       ready: ${{ steps.native-ready.outputs.ready }}
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
+      DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
       DEFER_ON_NATIVE_CACHE_MISS: >-
         ${{ (github.event_name == 'push' || github.event_name == 'pull_request') &&
             'true' || 'false' }}
@@ -463,22 +467,8 @@ jobs:
           python ./eng/generate-native-notices.py verify `
             --rid ${{ matrix.rid }} --install-root native/install/${{ matrix.rid }}
           if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
-      - id: cesium-vcpkg-cache
-        if: steps.native-ready.outputs.ready == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            native/.cache/vcpkg-*
-            native/build/cesium/${{ matrix.rid }}/vcpkg_installed
-          key: >-
-            cesium-vcpkg-${{ matrix.rid }}-${{ hashFiles(
-              'eng/cesium.lock.json',
-              'eng/fetch-cesium-native.ps1',
-              'eng/build-cesium-native.ps1',
-              'eng/build-cesium-shim.ps1'
-            ) }}
-      # Cesium compiles from source even when OpenUSD arrives as a verified
-      # archive, so it needs a toolchain the archive path otherwise does not.
+      # The current Cesium shim still compiles when the verified SDK is reused,
+      # so archive consumers continue to require the platform build toolchain.
       # Kept as its own named step rather than folded into the common install:
       # eng/test-linux-native-prerequisites.ps1 requires the archive-mode
       # prerequisites to stay free of build-only packages, and that contract is
@@ -489,14 +479,48 @@ jobs:
           sudo apt-get install -y
           build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
           libvulkan1
-      - name: Build Cesium native install
+      - id: cesium-sdk
+        name: Import an exact-source verified Cesium SDK when available
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CESIUM_PIPELINE_RUN_ID: ${{ inputs['cesium-pipeline-run-id'] }}
+          CESIUM_SOURCE_HEAD: >-
+            ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha ||
+                github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $arguments = @('consume', '--rid', '${{ matrix.rid }}', '--source', $env:CESIUM_SOURCE_HEAD)
+          if ($env:CESIUM_PIPELINE_RUN_ID) { $arguments += @('--run-id', $env:CESIUM_PIPELINE_RUN_ID) }
+          python eng/cesium-sdk-artifact.py @arguments
+      - id: cesium-vcpkg-cache
+        if: steps.native-ready.outputs.ready == 'true' && steps.cesium-sdk.outputs.reused != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/.cache/vcpkg-*
+            native/build/cesium/${{ matrix.rid }}/vcpkg_installed
+          key: >-
+            cesium-vcpkg-v2-${{ matrix.rid }}-${{ hashFiles(
+              'eng/cesium.lock.json',
+              'eng/fetch-cesium-native.ps1',
+              'eng/build-cesium-native.ps1'
+            ) }}
+      - name: Build Cesium native install
+        if: steps.native-ready.outputs.ready == 'true' && steps.cesium-sdk.outputs.reused != 'true'
+        shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
+      - name: Verify complete Cesium redistribution notices
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: >
+          python eng/generate-native-notices.py verify
+          --family cesium --rid ${{ matrix.rid }}
+          --install-root native/install/cesium/${{ matrix.rid }}
       - name: Build Cesium shim
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
-        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
+        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }} -PackageConsumer
       - id: physx-vcpkg-cache
         if: matrix.rid != 'osx-arm64' && steps.native-ready.outputs.ready == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -505,11 +529,10 @@ jobs:
             native/.cache/vcpkg-*
             native/build/physx/${{ matrix.rid }}/vcpkg_installed
           key: >-
-            physx-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+            physx-vcpkg-v2-${{ matrix.rid }}-${{ hashFiles(
               'eng/physx.lock.json',
               'eng/fetch-physx-native.ps1',
-              'eng/build-physx-native.ps1',
-              'eng/build-physx-shim.ps1'
+              'eng/build-physx-native.ps1'
             ) }}
       # The physics package carries a solver built from source, so the package job builds it here
       # rather than consuming the native archive. The simulation SDK is compiled statically, and
@@ -524,7 +547,7 @@ jobs:
       - name: Build PhysX shim
         if: matrix.rid != 'osx-arm64' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
-        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }}
+        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }} -PackageConsumer
       # The pinned port links PhysXVehicle2 into its aggregate SDK target only on Windows, so the
       # Linux vehicle path is the one that can regress without anyone noticing. This drives a real
       # four wheeled engine drive vehicle on Linux, which is the proof behind the vehicle

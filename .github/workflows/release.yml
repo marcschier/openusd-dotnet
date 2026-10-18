@@ -27,16 +27,20 @@ jobs:
   performance:
     uses: ./.github/workflows/performance.yml
 
+  cesium:
+    uses: ./.github/workflows/cesium-native.yml
+
   # Both of these rebuilt OpenUSD from source on every job, because they guarded
   # their archive path on github.event_name == 'workflow_call'. A called workflow
   # sees the CALLER's event, which here is the tag push, so that guard never fired
   # and the verified openusd-native-<rid> artifacts this run already produced went
   # unused. Pass the run id explicitly instead.
   packages:
-    needs: [ ci, shaders, native ]
+    needs: [ ci, shaders, native, cesium ]
     uses: ./.github/workflows/package.yml
     with:
       native-pipeline-run-id: ${{ github.run_id }}
+      cesium-pipeline-run-id: ${{ github.run_id }}
 
   render:
     needs: packages
@@ -52,7 +56,7 @@ jobs:
     name: aggregate release evidence
     if: always()
     needs: [ ci, shaders, native, performance, packages, render ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Write release gate evidence
@@ -102,6 +106,8 @@ jobs:
 
   pack:
     name: pack ${{ matrix.rid }} packages
+    env:
+      DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
     # Packing is split by platform out of necessity rather than preference. The Metal
     # package embeds the macOS-only mesh.metallib, and the Linux and macOS Imaging
     # packages run ELF and Mach-O validation that only their own platform can perform and
@@ -125,7 +131,7 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     steps:
@@ -183,25 +189,35 @@ jobs:
             -Source archive `
             -PipelineRoot artifacts/native-pipeline/${{ matrix.rid }}
           ./eng/native-install-metadata.ps1 -Operation Verify -Rid ${{ matrix.rid }}
+      - id: cesium-sdk
+        name: Import the same-release verified Cesium SDK
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CESIUM_SOURCE_HEAD: ${{ github.sha }}
+        run: >
+          python eng/cesium-sdk-artifact.py consume --rid ${{ matrix.rid }}
+          --source $env:CESIUM_SOURCE_HEAD --run-id ${{ github.run_id }}
       - id: cesium-vcpkg-cache
+        if: steps.cesium-sdk.outputs.reused != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/.cache/vcpkg-*
             native/build/cesium/${{ matrix.rid }}/vcpkg_installed
           key: >-
-            cesium-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+            cesium-vcpkg-v2-${{ matrix.rid }}-${{ hashFiles(
               'eng/cesium.lock.json',
               'eng/fetch-cesium-native.ps1',
-              'eng/build-cesium-native.ps1',
-              'eng/build-cesium-shim.ps1'
+              'eng/build-cesium-native.ps1'
             ) }}
       - name: Build Cesium native install
+        if: steps.cesium-sdk.outputs.reused != 'true'
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
       - name: Build Cesium shim
         shell: pwsh
-        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
+        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }} -PackageConsumer
       - id: physx-vcpkg-cache
         if: matrix.rid != 'osx-arm64'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -210,11 +226,10 @@ jobs:
             native/.cache/vcpkg-*
             native/build/physx/${{ matrix.rid }}/vcpkg_installed
           key: >-
-            physx-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+            physx-vcpkg-v2-${{ matrix.rid }}-${{ hashFiles(
               'eng/physx.lock.json',
               'eng/fetch-physx-native.ps1',
-              'eng/build-physx-native.ps1',
-              'eng/build-physx-shim.ps1'
+              'eng/build-physx-native.ps1'
             ) }}
       # The physics runtime package is packed by the runtime scope below, so the solver has to
       # exist before it runs. Building it here and not in the managed scope is what keeps every
@@ -227,7 +242,7 @@ jobs:
       - name: Build PhysX shim
         if: matrix.rid != 'osx-arm64'
         shell: pwsh
-        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }}
+        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }} -PackageConsumer
       - name: Pack the runtime packages for this RID
         shell: pwsh
         env:
@@ -282,7 +297,7 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     steps:
@@ -381,7 +396,7 @@ jobs:
   publish:
     name: publish packages
     needs: [ pack, aggregate ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: release
     permissions:
