@@ -1,693 +1,171 @@
-name: native artifact pipeline
-
+name: GitHub feed version preflight (read only)
 on:
-  workflow_call:
   workflow_dispatch:
-  push:
-    branches: [ master, main ]
-    paths:
-      - '.github/workflows/native.yml'
-      - 'eng/openusd.lock.json'
-      - 'eng/openusd.install.lock.json'
-      - 'eng/openusd-runtime-patches.lock.json'
-      - 'eng/patches/openusd/tf-refptr-last-release-acquire.patch'
-      - 'eng/openusd-storage-admission.lock.json'
-      - 'eng/patches/openusd/storage-admission-v1.patch'
-      - 'eng/patches/openusd/render-product-hash-adl.patch'
-      - 'eng/sdk-storage-admission-metadata.ps1'
-      - 'eng/patches/openusd/storm-aov-restoration.patch'
-      - 'eng/patches/openusd/strict-compiler-portability.patch'
-      - 'eng/patches/openusd/list-edit-validation.patch'
-      - 'eng/patches/openusd/windows-resource-path-consistency.patch'
-      - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
-      - 'eng/apply-openusd-source-patches.ps1'
-      - 'eng/sdk-runtime-patch-metadata.ps1'
-      - 'eng/test-sdk-runtime-patch-metadata.ps1'
-      - 'eng/fetch-native.ps1'
-      - 'eng/build-native.ps1'
-      - 'eng/physx.lock.json'
-      - 'eng/fetch-physx-native.ps1'
-      - 'eng/build-physx-native.ps1'
-      - 'eng/build-physx-shim.ps1'
-      - 'eng/mdl.lock.json'
-      - 'eng/fetch-mdl-sdk.ps1'
-      - 'eng/build-mdl-shim.ps1'
-      - 'eng/build-vulkan-sdk.ps1'
-      - 'eng/cmake/ShaderCompiler.cmake'
-      - 'eng/generate-native-notices.py'
-      - 'eng/shaderc-source-patches.lock.json'
-      - 'eng/patches/shaderc/**'
-      - 'eng/generate-sbom.py'
-      - 'LICENSE'
-      - 'NOTICE'
-      - 'eng/check-linux-native-prerequisites.ps1'
-      - 'eng/native-install-metadata.ps1'
-      - 'eng/prepare-render-native.ps1'
-      - 'eng/create-native-archive.ps1'
-      - 'eng/run-native-fuzz.ps1'
-      - 'eng/run-windows-native-tests.ps1'
-      - 'eng/prepare-mesa-wgl-test-runtime.ps1'
-      - 'eng/mesa-wgl-test-runtime.lock.json'
-      - 'eng/native-fuzz-lsan.supp'
-      - 'native/**'
-      - 'test-assets/fuzz-seeds/**'
-      - 'test-assets/omniverse/mdl-only-omnipbr.usda'
-  pull_request:
-    branches: [ master, main ]
-    paths:
-      - '.github/workflows/native.yml'
-      - 'eng/openusd.lock.json'
-      - 'eng/openusd.install.lock.json'
-      - 'eng/openusd-runtime-patches.lock.json'
-      - 'eng/patches/openusd/tf-refptr-last-release-acquire.patch'
-      - 'eng/openusd-storage-admission.lock.json'
-      - 'eng/patches/openusd/storage-admission-v1.patch'
-      - 'eng/patches/openusd/render-product-hash-adl.patch'
-      - 'eng/sdk-storage-admission-metadata.ps1'
-      - 'eng/patches/openusd/storm-aov-restoration.patch'
-      - 'eng/patches/openusd/strict-compiler-portability.patch'
-      - 'eng/patches/openusd/list-edit-validation.patch'
-      - 'eng/patches/openusd/windows-resource-path-consistency.patch'
-      - 'eng/patches/openusd/scoped-sublayer-resolution.patch'
-      - 'eng/apply-openusd-source-patches.ps1'
-      - 'eng/sdk-runtime-patch-metadata.ps1'
-      - 'eng/test-sdk-runtime-patch-metadata.ps1'
-      - 'eng/fetch-native.ps1'
-      - 'eng/build-native.ps1'
-      - 'eng/physx.lock.json'
-      - 'eng/fetch-physx-native.ps1'
-      - 'eng/build-physx-native.ps1'
-      - 'eng/build-physx-shim.ps1'
-      - 'eng/mdl.lock.json'
-      - 'eng/fetch-mdl-sdk.ps1'
-      - 'eng/build-mdl-shim.ps1'
-      - 'eng/build-vulkan-sdk.ps1'
-      - 'eng/cmake/ShaderCompiler.cmake'
-      - 'eng/generate-native-notices.py'
-      - 'eng/shaderc-source-patches.lock.json'
-      - 'eng/patches/shaderc/**'
-      - 'eng/generate-sbom.py'
-      - 'LICENSE'
-      - 'NOTICE'
-      - 'eng/check-linux-native-prerequisites.ps1'
-      - 'eng/native-install-metadata.ps1'
-      - 'eng/prepare-render-native.ps1'
-      - 'eng/create-native-archive.ps1'
-      - 'eng/run-native-fuzz.ps1'
-      - 'eng/run-windows-native-tests.ps1'
-      - 'eng/prepare-mesa-wgl-test-runtime.ps1'
-      - 'eng/mesa-wgl-test-runtime.lock.json'
-      - 'eng/native-fuzz-lsan.supp'
-      - 'native/**'
-      - 'test-assets/fuzz-seeds/**'
-      - 'test-assets/omniverse/mdl-only-omnipbr.usda'
-
-permissions:
-  contents: read
-
-concurrency:
-  group: native-${{ github.ref }}
-  # Not cancelled on main. This pipeline is the only producer of the OpenUSD
-  # install cache that ci.yml's coverage gate restores, and a full run takes
-  # about ninety minutes. Cancelling on every push starves that gate
-  # permanently whenever main is being pushed to faster than the pipeline can
-  # finish, which is exactly what happened while landing the schema wave: six
-  # consecutive runs were cancelled and the cache was never written.
-  #
-  # Cancelling is still right on branches, where runs are superseded quickly
-  # and no cache consumer depends on them. The key is content-addressed over
-  # the abi-free install lock and the build scripts, so a run that completes for
-  # an older commit still produces a cache valid for every later commit with the
-  # same locked install inputs.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-
+permissions: {}
 jobs:
-  build:
-    name: ${{ matrix.rid }} verified native archive
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 420
+  feed-version-read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
-      actions: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: win-x64
-            runner: windows-latest
-          - rid: linux-x64
-            runner: ubuntu-24.04
-          - rid: osx-arm64
-            runner: macos-15
-    env:
-      OpenUsdRequireMetalShaderLibrary: >-
-        ${{ matrix.rid == 'osx-arm64' && 'true' || 'false' }}
+      packages: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.401
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.13'
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
-        if: runner.os == 'Windows'
-        with:
-          arch: x64
-      - name: Select Xcode 16.4
-        if: runner.os == 'macOS'
-        run: |
-          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
-          xcodebuild -version
-      - name: Install Linux native prerequisites
-        if: runner.os == 'Linux'
-        run: >-
-          sudo apt-get update &&
-          sudo apt-get install -y
-          build-essential clang cmake ninja-build pkg-config patchelf binutils
-          libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
-          libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
-          libwayland-dev x11-utils xvfb zlib1g-dev
-      - name: Install macOS native prerequisites
-        if: runner.os == 'macOS'
-        run: brew install cmake ninja
-      - name: Validate Linux prerequisite contract
-        if: runner.os == 'Linux'
-        shell: pwsh
-        run: |
-          ./eng/test-linux-native-prerequisites.ps1
-          ./eng/check-linux-native-prerequisites.ps1
-      - name: Validate archive producer and consumer
-        shell: pwsh
-        run: |
-          ./eng/test-sdk-runtime-patch-metadata.ps1
-          ./eng/test-render-native-archive.ps1
-      - name: Validate native fuzz source contract
-        shell: pwsh
-        run: ./eng/run-native-fuzz.ps1 -SelfTest
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: native-cache
-        with:
-          path: |
-            native/install/${{ matrix.rid }}
-            native/install/shim/${{ matrix.rid }}
-            native/install/vulkan-sdk-1.4.363.0
-            native/install/shaderc/${{ matrix.rid }}
-            native/build/shim/${{ matrix.rid }}
-          key: >-
-            native-${{ matrix.rid }}-${{ hashFiles(
-              'eng/openusd.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/cmake/ShaderCompiler.cmake',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE',
-              'eng/check-linux-native-prerequisites.ps1',
-              'eng/native-install-metadata.ps1',
-              'native/CMakeLists.txt',
-              'native/CMakePresets.json',
-              'native/**/CMakeLists.txt',
-              'native/**/*.cmake',
-              'native/**/*.json',
-              'native/**/*.in',
-              'native/**/resources/**',
-              'native/**/*.c',
-              'native/**/*.cc',
-              'native/**/*.cpp',
-              'native/**/*.cxx',
-              'native/**/*.m',
-              'native/**/*.mm',
-              'native/**/*.h',
-              'native/**/*.hh',
-              'native/**/*.hpp',
-              'native/**/*.hxx',
-              'native/**/*.inc',
-              'native/**/*.inl',
-              '!native/build/**',
-              '!native/install/**',
-              '!native/downloads/**',
-              '!native/src/**',
-              '!native/.cache/**'
-            ) }}
-      # The coverage gate in .github/workflows/ci.yml restores the expensive
-      # OpenUSD install on its own, narrower key: it builds the shim fresh from
-      # the commit under test, so it must not depend on the shim inputs above or
-      # on the ABI section in eng/openusd.lock.json.
-      # This key and path list must stay character-identical to the
-      # `openusd-cache` step in ci.yml, because hashFiles over a different file
-      # list yields a different digest and the restore would silently never hit.
-      #
-      # A wide hit must never be overwritten by a narrow restore. Separate
-      # lookup-only branches inspect the SDK key without downloading it, so
-      # verified wide data can also fill an absent SDK pair. Each RID saves
-      # that pair exactly once after metadata and full notices pass, before
-      # later tests. The wide cache keeps its final-success-only post-save.
-      # Linux retains ci.yml's exact eleven inputs/two paths. Windows uses
-      # the same SDK/Vulkan closure; macOS also binds its CPU compiler policy.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-linux-restore
-        if: >-
-          matrix.rid == 'linux-x64' &&
-          steps.native-cache.outputs.cache-hit != 'true'
-        with:
-          path: |
-            native/install/linux-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: >-
-            openusd-install-linux-x64-${{ hashFiles(
-              'eng/openusd.install.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE'
-            ) }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-linux-lookup
-        if: >-
-          matrix.rid == 'linux-x64' &&
-          steps.native-cache.outputs.cache-hit == 'true'
-        with:
-          lookup-only: true
-          path: |
-            native/install/linux-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: >-
-            openusd-install-linux-x64-${{ hashFiles(
-              'eng/openusd.install.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE'
-            ) }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-win-restore
-        if: >-
-          matrix.rid == 'win-x64' &&
-          steps.native-cache.outputs.cache-hit != 'true'
-        with:
-          path: |
-            native/install/win-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: >-
-            openusd-install-win-x64-${{ hashFiles(
-              'eng/openusd.install.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE'
-            ) }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-win-lookup
-        if: >-
-          matrix.rid == 'win-x64' &&
-          steps.native-cache.outputs.cache-hit == 'true'
-        with:
-          lookup-only: true
-          path: |
-            native/install/win-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: >-
-            openusd-install-win-x64-${{ hashFiles(
-              'eng/openusd.install.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE'
-            ) }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-mac-restore
-        if: >-
-          matrix.rid == 'osx-arm64' &&
-          steps.native-cache.outputs.cache-hit != 'true'
-        with:
-          path: |
-            native/install/osx-arm64
-            native/install/shaderc/osx-arm64
-          key: >-
-            openusd-install-osx-arm64-${{ hashFiles(
-              'eng/openusd.install.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/cmake/ShaderCompiler.cmake',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE'
-            ) }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-mac-lookup
-        if: >-
-          matrix.rid == 'osx-arm64' &&
-          steps.native-cache.outputs.cache-hit == 'true'
-        with:
-          lookup-only: true
-          path: |
-            native/install/osx-arm64
-            native/install/shaderc/osx-arm64
-          key: >-
-            openusd-install-osx-arm64-${{ hashFiles(
-              'eng/openusd.install.lock.json',
-              'eng/fetch-native.ps1',
-              'eng/build-native.ps1',
-              'eng/build-vulkan-sdk.ps1',
-              'eng/cmake/ShaderCompiler.cmake',
-              'eng/generate-native-notices.py',
-              'eng/shaderc-source-patches.lock.json',
-              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
-              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
-              'eng/generate-sbom.py',
-              'LICENSE',
-              'NOTICE'
-            ) }}
-      - name: Select the one exact reviewed previous SDK recipe seed
-        id: sdk-recipe-seed
-        if: >-
-          steps.native-cache.outputs.cache-hit != 'true' &&
-          steps.sdk-linux-restore.outputs.cache-hit != 'true' &&
-          steps.sdk-win-restore.outputs.cache-hit != 'true' &&
-          steps.sdk-mac-restore.outputs.cache-hit != 'true'
-        shell: pwsh
+      - name: Read exact intended package versions
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          REQUESTED_NEW_SDK_KEY: >-
-            ${{ steps.sdk-linux-restore.outputs.cache-primary-key ||
-                steps.sdk-win-restore.outputs.cache-primary-key ||
-                steps.sdk-mac-restore.outputs.cache-primary-key }}
-          MATCHED_NEW_SDK_KEY: >-
-            ${{ steps.sdk-linux-restore.outputs.cache-matched-key ||
-                steps.sdk-win-restore.outputs.cache-matched-key ||
-                steps.sdk-mac-restore.outputs.cache-matched-key }}
-        run: >
-          python eng/select-sdk-recipe-seed.py --rid ${{ matrix.rid }}
-          --new-key $env:REQUESTED_NEW_SDK_KEY
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-previous-win
-        if: matrix.rid == 'win-x64' && steps.sdk-recipe-seed.outputs.eligible == 'true'
-        with:
-          path: |
-            native/install/win-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: ${{ steps.sdk-recipe-seed.outputs.old-key }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-previous-linux
-        if: matrix.rid == 'linux-x64' && steps.sdk-recipe-seed.outputs.eligible == 'true'
-        with:
-          path: |
-            native/install/linux-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: ${{ steps.sdk-recipe-seed.outputs.old-key }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: sdk-previous-mac
-        if: matrix.rid == 'osx-arm64' && steps.sdk-recipe-seed.outputs.eligible == 'true'
-        with:
-          path: |
-            native/install/osx-arm64
-            native/install/shaderc/osx-arm64
-          key: ${{ steps.sdk-recipe-seed.outputs.old-key }}
-      - name: Verify the exact previous SDK recipe seed before use
-        id: sdk-verified-seed
-        if: steps.sdk-recipe-seed.outputs.eligible == 'true'
-        shell: pwsh
-        env:
-          EXPECTED_OLD_SDK_KEY: ${{ steps.sdk-recipe-seed.outputs.old-key }}
-          MATCHED_OLD_SDK_KEY: >-
-            ${{ steps.sdk-previous-linux.outputs.cache-matched-key ||
-                steps.sdk-previous-win.outputs.cache-matched-key ||
-                steps.sdk-previous-mac.outputs.cache-matched-key }}
-          OLD_SDK_EXACT_HIT: >-
-            ${{ steps.sdk-previous-linux.outputs.cache-hit == 'true' ||
-                steps.sdk-previous-win.outputs.cache-hit == 'true' ||
-                steps.sdk-previous-mac.outputs.cache-hit == 'true' }}
+          FEED_READ_TOKEN: ${{ github.token }}
         run: |
-          if ($env:MATCHED_OLD_SDK_KEY -and
-              ($env:MATCHED_OLD_SDK_KEY -cne $env:EXPECTED_OLD_SDK_KEY -or $env:OLD_SDK_EXACT_HIT -cne 'true'))
-          {
-            throw 'The one-time SDK seed restored a non-exact key; no fallback is accepted.'
-          }
-          if ($env:OLD_SDK_EXACT_HIT -ceq 'true')
-          {
-            ./eng/verify-sdk-build-input.ps1 -Rid ${{ matrix.rid }}
-            'reuse=true' >> $env:GITHUB_OUTPUT
-            Write-Host 'SDK_RECIPE_SEED_VERIFIED: original e2e8 producer39112660339 inputs; not newly compiled or qualified.'
-          }
-          else
-          {
-            Write-Host 'SDK_RECIPE_SEED_UNAVAILABLE: exact original cache disappeared; using unchanged cold build.'
-          }
-      - name: Fetch locked native sources
-        if: steps.native-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: ./eng/fetch-native.ps1 -Rid ${{ matrix.rid }}
-      - name: Build locked native install
-        if: steps.native-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $reuse = '${{ steps.sdk-linux-restore.outputs.cache-hit }}' -eq 'true' -or
-            '${{ steps.sdk-win-restore.outputs.cache-hit }}' -eq 'true' -or
-            '${{ steps.sdk-mac-restore.outputs.cache-hit }}' -eq 'true' -or
-            '${{ steps.sdk-verified-seed.outputs.reuse }}' -eq 'true'
-          ./eng/build-native.ps1 -Rid ${{ matrix.rid }} -ReuseVerifiedSdk:$reuse
-      - name: Verify native install metadata
-        shell: pwsh
-        run: |
-          ./eng/sdk-storage-admission-metadata.ps1 `
-            -Operation Verify `
-            -SdkRoot native/install/${{ matrix.rid }} `
-            -Rid ${{ matrix.rid }}
-          ./eng/native-install-metadata.ps1 `
-            -Operation Verify `
-            -Rid ${{ matrix.rid }} `
-            -RequireVulkanRuntime:$IsWindows
-      - name: Verify complete native redistribution notices
-        shell: pwsh
-        run: |
-          python ./eng/generate-native-notices.py verify `
-            --rid ${{ matrix.rid }} --install-root native/install/${{ matrix.rid }}
-          if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
-      - name: Verify complete SDK build-cache pair
-        shell: pwsh
-        run: ./eng/verify-sdk-build-input.ps1 -Rid ${{ matrix.rid }}
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: >-
-          success() && matrix.rid == 'linux-x64' &&
-          steps.sdk-linux-restore.outputs.cache-hit != 'true' &&
-          steps.sdk-linux-lookup.outputs.cache-hit != 'true'
-        with:
-          path: |
-            native/install/linux-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: ${{ steps.sdk-linux-restore.outputs.cache-primary-key || steps.sdk-linux-lookup.outputs.cache-primary-key }}
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: >-
-          success() && matrix.rid == 'win-x64' &&
-          steps.sdk-win-restore.outputs.cache-hit != 'true' &&
-          steps.sdk-win-lookup.outputs.cache-hit != 'true'
-        with:
-          path: |
-            native/install/win-x64
-            native/install/vulkan-sdk-1.4.363.0
-          key: ${{ steps.sdk-win-restore.outputs.cache-primary-key || steps.sdk-win-lookup.outputs.cache-primary-key }}
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: >-
-          success() && matrix.rid == 'osx-arm64' &&
-          steps.sdk-mac-restore.outputs.cache-hit != 'true' &&
-          steps.sdk-mac-lookup.outputs.cache-hit != 'true'
-        with:
-          path: |
-            native/install/osx-arm64
-            native/install/shaderc/osx-arm64
-          key: ${{ steps.sdk-mac-restore.outputs.cache-primary-key || steps.sdk-mac-lookup.outputs.cache-primary-key }}
-      - name: Run bounded native fuzzers
-        if: runner.os == 'Linux'
-        shell: pwsh
-        run: ./eng/run-native-fuzz.ps1 -MaxTotalTime 60
-      - name: Upload native fuzz crash artifacts
-        if: failure() && runner.os == 'Linux'
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          VERSION = "0.15.0-alpha"
+          OWNER = "marcschier"
+          PACKAGES = """OpenUsd
+          OpenUsd.Bridge.Grpc
+          OpenUsd.Bridge.Protocol
+          OpenUsd.Cesium
+          OpenUsd.Interop
+          OpenUsd.LiveAuthoring
+          OpenUsd.Mcp.Tool
+          OpenUsd.Physics
+          OpenUsd.Rendering
+          OpenUsd.Rendering.Silk
+          OpenUsd.Rendering.Silk.D3D12
+          OpenUsd.Rendering.Silk.Metal
+          OpenUsd.Rendering.Silk.Vulkan
+          OpenUsd.Rendering.Storm
+          OpenUsd.Runtime.Cesium
+          OpenUsd.Runtime.Cesium.linux-x64
+          OpenUsd.Runtime.Cesium.osx-arm64
+          OpenUsd.Runtime.Cesium.win-x64
+          OpenUsd.Runtime.Core
+          OpenUsd.Runtime.Core.linux-x64
+          OpenUsd.Runtime.Core.osx-arm64
+          OpenUsd.Runtime.Core.win-x64
+          OpenUsd.Runtime.Imaging
+          OpenUsd.Runtime.Imaging.linux-x64
+          OpenUsd.Runtime.Imaging.osx-arm64
+          OpenUsd.Runtime.Imaging.win-x64
+          OpenUsd.Runtime.Physics
+          OpenUsd.Runtime.Physics.linux-x64
+          OpenUsd.Runtime.Physics.win-x64
+          OpenUsd.Viewer
+          OpenUsd.Viewer.Bridge.Grpc""".split()
+
+          class MetadataError(Exception):
+              def __init__(self, kind, status=None):
+                  super().__init__(kind)
+                  self.kind, self.status = kind, status
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, message, headers, new_url):
+                  return None
+
+          def approved_url(url):
+              try:
+                  parsed = urllib.parse.urlsplit(url)
+                  port = parsed.port
+              except ValueError:
+                  raise MetadataError("unapproved-feed-url") from None
+              if (parsed.scheme != "https" or parsed.hostname != "nuget.pkg.github.com"
+                      or port not in (None, 443) or parsed.username or parsed.password
+                      or parsed.query or parsed.fragment or not parsed.path.startswith("/marcschier/")
+                      or "\\" in parsed.path
+                      or ".." in urllib.parse.unquote(parsed.path).split("/")):
+                  raise MetadataError("unapproved-feed-url")
+              return url
+
+          def read_json(url, token):
+              credentials = base64.b64encode((OWNER + ":" + token).encode()).decode()
+              request = urllib.request.Request(approved_url(url), headers={
+                  "Authorization": "Basic " + credentials,
+                  "Accept": "application/json",
+              })
+              try:
+                  with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+                      if response.status != 200:
+                          raise MetadataError("http", response.status)
+                      data = response.read(1048577)
+                      if len(data) > 1048576:
+                          raise MetadataError("metadata-too-large")
+                      return json.loads(data)
+              except urllib.error.HTTPError as error:
+                  raise MetadataError("http", error.code) from None
+              except (urllib.error.URLError, TimeoutError):
+                  raise MetadataError("network-unavailable") from None
+              except (ValueError, UnicodeError):
+                  raise MetadataError("invalid-json") from None
+
+          def version_result(package, value):
+              if not isinstance(value, dict):
+                  raise MetadataError("invalid-version-inventory")
+              versions = value.get("versions")
+              if (not isinstance(versions, list) or len(versions) > 4096
+                      or any(not isinstance(item, str) or len(item) > 128 for item in versions)):
+                  raise MetadataError("invalid-version-inventory")
+              return {"package": package, "httpStatus": 200, "visibility": "verified",
+                      "versionExists": any(item.casefold() == VERSION for item in versions),
+                      "visibleVersionCount": len(versions)}
+
+          def main():
+              if (os.environ.get("GITHUB_REPOSITORY") != "marcschier/openusd-dotnet"
+                      or os.environ.get("GITHUB_REPOSITORY_ID") != "1309934941"):
+                  raise MetadataError("unexpected-repository")
+              token = os.environ["FEED_READ_TOKEN"]
+              if len(PACKAGES) != 31 or len(set(PACKAGES)) != 31:
+                  raise MetadataError("invalid-intended-package-list")
+              results = []
+              try:
+                  index = read_json("https://nuget.pkg.github.com/marcschier/index.json", token)
+                  if (not isinstance(index, dict) or not isinstance(index.get("resources"), list)
+                          or any(not isinstance(item, dict) for item in index["resources"])):
+                      raise MetadataError("invalid-service-index")
+                  addresses = [item["@id"] for item in index.get("resources", [])
+                               if item.get("@type") == "PackageBaseAddress/3.0.0"]
+                  if len(addresses) != 1:
+                      raise MetadataError("base-address-unavailable")
+                  address = approved_url(addresses[0]).rstrip("/") + "/"
+              except MetadataError as error:
+                  results = [{"package": package, "visibility": "unverified",
+                              "versionExists": None, "errorKind": error.kind,
+                              "httpStatus": error.status} for package in PACKAGES]
+              else:
+                  for package in PACKAGES:
+                      try:
+                          value = read_json(address + package.lower() + "/index.json", token)
+                          results.append(version_result(package, value))
+                      except MetadataError as error:
+                          results.append({"package": package, "visibility": "unverified",
+                                          "versionExists": None, "errorKind": error.kind,
+                                          "httpStatus": error.status})
+              report = {"schemaVersion": 1, "publicationPreflightOnly": True,
+                        "notNativeQualification": True, "version": VERSION,
+                        "runId": os.environ["GITHUB_RUN_ID"],
+                        "sourceHead": os.environ["GITHUB_SHA"],
+                        "intendedCount": 31, "results": results}
+              with Path("feed-version-preflight.json").open("x", encoding="utf-8") as output:
+                  json.dump(report, output, indent=2)
+                  output.write("\n")
+              collisions = [item["package"] for item in results if item["versionExists"] is True]
+              unknown = [item["package"] for item in results if item["versionExists"] is None]
+              print(json.dumps({"version": VERSION, "queriedCount": len(results),
+                                "collisions": collisions, "unverified": unknown}))
+              return 1 if collisions or unknown else 0
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
+      - name: Retain bounded version metadata only
+        if: always() && hashFiles('feed-version-preflight.json') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: openusd-native-fuzz-linux-x64
-          path: artifacts/native-fuzz/linux-x64/
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Build and validate Metal shader library
-        if: runner.os == 'macOS'
-        shell: pwsh
-        run: |
-          ./eng/shaders/fetch-toolchain.ps1 -Rid osx-arm64
-          ./eng/shaders/build-toolchain.ps1 -Rid osx-arm64
-          ./eng/shaders/build-shaders.ps1 `
-            -Rid osx-arm64 `
-            -ArtifactScope Metal `
-            -OutputRoot eng/shaders/out/native-macos
-          ./eng/shaders/prepare-metal-library.ps1 `
-            -OutputRoot eng/shaders/out/checked-payload/osx-arm64
-      - name: Run Windows native CTest
-        if: runner.os == 'Windows'
-        shell: pwsh
-        # This unfiltered run is the adapter-absent half of the MDL evidence:
-        # the default configuration registers hdsilk_probe without
-        # HDSILK_PROBE_MDL_ADAPTER, so it asserts the state every base package
-        # ships in. --no-tests=error keeps it fail-closed -- a build tree that
-        # configured no tests at all would otherwise report success.
-        # Hosted Windows has no WGL 4.5 driver. Stage the already-pinned Mesa
-        # runtime beside the Storm probes so AOV coverage executes rather than skips.
-        run: ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64
-      - name: Build and test optional MDL adapter
-        if: runner.os == 'Windows'
-        shell: pwsh
-        # The adapter is never installed and never packaged, so this step builds
-        # in place and runs the hdSilk probe from the MDL build tree. That probe
-        # is the only place the distillation half of the MDL slice is proven:
-        # the default configuration's probe compiles the adapter-absent checks
-        # alone, because asserting distillation with no adapter asserts nothing.
-        #
-        # The SDK-backed sibling is deliberately not built here. It needs the
-        # ~276 MiB acquisition eng/fetch-mdl-sdk.ps1 performs and a user-supplied
-        # MDL SDK runtime, neither of which any package contains or may contain,
-        # so eng/mdl.lock.json and the support manifest record that slice as
-        # implemented-not-gated rather than claiming a workflow proves it.
-        run: ./eng/build-mdl-shim.ps1 -Rid win-x64 -RunProbe
-      - name: Build and test optional PhysX shim
-        id: original-physx-ctest
-        if: runner.os == 'Windows'
-        shell: pwsh
-        # The install prefix lives in eng/build-physx-shim.ps1 rather than here.
-        # The physics preset configures the whole native project, so installing it
-        # over native/install/shim/win-x64 would replace archive-verified core,
-        # Hydra, hdSilk and Storm child binaries at exactly the paths packaging
-        # reads. Stating that prefix in one place is what keeps this job and the
-        # packaging agreeing about it.
-        run: |
-          $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.363.0).Path
-          ./eng/build-physx-native.ps1 -Rid win-x64
-          ./eng/build-physx-shim.ps1 -Rid win-x64
-          ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64-physx
-      - name: Export exact Windows admission replay inputs (diagnostic only)
-        if: >-
-          always() && runner.os == 'Windows' &&
-          (steps.original-physx-ctest.outcome == 'success' || steps.original-physx-ctest.outcome == 'failure')
-        shell: pwsh
-        env:
-          REPLAY_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-          ORIGINAL_PHYSX_SUITE_OUTCOME: ${{ steps.original-physx-ctest.outcome }}
-        run: >
-          python eng/windows-admission-replay.py --root .
-          --destination artifacts/windows-admission-replay
-          --source $env:REPLAY_SOURCE_HEAD
-          --original-suite-outcome $env:ORIGINAL_PHYSX_SUITE_OUTCOME
-      - name: Upload diagnostic-only exact Windows admission replay
-        if: always() && runner.os == 'Windows' && hashFiles('artifacts/windows-admission-replay/windows-admission-replay.json') != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: openusd-windows-admission-replay-${{ github.run_attempt }}
-          path: artifacts/windows-admission-replay/*
+          name: openusd-feed-version-preflight
+          path: feed-version-preflight.json
           if-no-files-found: error
           retention-days: 7
-      - name: Run PhysX shim managed coverage tests
-        if: runner.os == 'Windows'
-        shell: pwsh
-        # Two things this step must own that the native step above cannot.
-        # Nothing in this job builds managed assemblies, so the test runner had
-        # no DLL to launch. And the MSVC developer environment exports
-        # Platform=x64, which makes MSBuild both write to and resolve TargetPath
-        # under bin\x64\Release; clearing it keeps the build and the runner
-        # agreeing on bin\Release, as package.yml already does.
-        env:
-          Platform: ''
-        run: |
-          dotnet build `
-            tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
-            -c Release
-          ./eng/run-native-managed-tests.ps1 `
-            -Project tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
-            -Rid win-x64 `
-            -Configuration Release `
-            -MinimumExpectedTests 31
-      - name: Run Linux native CTest under Xvfb
-        if: runner.os == 'Linux'
-        run: |
-          export DISPLAY=:94
-          Xvfb "$DISPLAY" -screen 0 1280x720x24 -ac -nolisten tcp \
-            >artifacts/native-ctest-xvfb.log 2>&1 &
-          xvfb_pid=$!
-          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
-          for _ in $(seq 1 100); do
-            xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break
-            sleep 0.05
-          done
-          ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
-      - name: Run macOS native CTest
-        if: runner.os == 'macOS'
-        run: ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
-      - name: Execute staged NativeAOT probes
-        shell: pwsh
-        run: |
-          ./eng/run-native-probe.ps1 `
-            -Rid ${{ matrix.rid }} `
-            -SkipNativeAbiProbe
-          ./eng/run-silk-probe.ps1 -Rid ${{ matrix.rid }}
-      - name: Create immutable native archive
-        shell: pwsh
-        run: |
-          $root = 'artifacts/native-archive/${{ matrix.rid }}'
-          New-Item -ItemType Directory -Force -Path $root | Out-Null
-          ./eng/create-native-archive.ps1 `
-            -Rid ${{ matrix.rid }} `
-            -OutputPath (Join-Path $root 'openusd-native-${{ matrix.rid }}.tar.gz') `
-            -MetadataOutputPath (Join-Path $root 'native-artifact.json')
-      - name: Upload verified native archive
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: openusd-native-${{ matrix.rid }}
-          path: artifacts/native-archive/${{ matrix.rid }}/
-          if-no-files-found: error
-          retention-days: 30
-      - name: Upload native diagnostics
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: openusd-native-diagnostics-${{ matrix.rid }}
-          path: |
-            artifacts/native-ctest-xvfb.log
-            native/build/shim/${{ matrix.rid }}/Testing/
-            native/build/shim/${{ matrix.rid }}-physx/Testing/
-            artifacts/native-probe/${{ matrix.rid }}
-            artifacts/silk-probe/${{ matrix.rid }}
-          if-no-files-found: warn
-          retention-days: 14
