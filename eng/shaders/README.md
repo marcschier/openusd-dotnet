@@ -5,9 +5,9 @@ runtime compiler dependency.
 
 Pinned inputs:
 
-- Slang 2026.13.1 at `c0952c29d3664b60ada5e5edb3fff9ffd6f98d2d`.
-- SPIRV-Tools `vulkan-sdk-1.4.350.1` at
-  `0539c81f69a3daeb706fd3477dca61435b475156`.
+- Slang 2026.19 at `0fb6b7587a94fa33d88141ec9930766eedc6f59a`.
+- SPIRV-Tools `v2026.4` at `ef96ed763b43b59b33b31b362f09a02b729fa1c9`, with the matching
+  SPIRV-Headers `496543121ce6419f23d6fa5d7194ba66c36212d2` from that release's `DEPS`.
 - Vulkan 1.2 / SPIR-V 1.5, Shader Model 6.0, and Metal 2.4.
 - Xcode 16.4 for the macOS-only metallib gate.
 

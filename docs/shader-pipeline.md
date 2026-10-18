@@ -81,6 +81,26 @@ metallib evidence are uploaded for review.
 
 ## Payload contracts
 
+### Metal mesh vertices load only their camera matrices
+
+The Metal mesh vertex permutations load `clipToEye` and `eyeToWorld` directly from the unchanged
+frame buffer at byte offsets 0 and 12512. Loading the complete 15296-byte frame instead makes
+Slang expand unused lighting, shadow and dome arrays into thousands of MSL word loads. The two
+matrix loads retain the row-major wire layout, eye positions and world-space shading basis.
+Frame writers, resource bindings, DXIL and SPIR-V are unchanged.
+
+### Metal fragments read light vectors on demand
+
+Metal mesh fragments retain the existing raw frame buffer at index 8. Small clipping, camera,
+shadow and dome blocks are loaded normally; bounded light arrays remain read-only byte-offset
+views and load a vector only for the light being evaluated. They do not first materialize all
+128 lights' vectors and shadow slots into per-fragment values. The 15296-byte frame keeps its
+original fields, offsets and strides, including every explicit environment/dome scalar read.
+Frame writers, resource bindings and lifetimes are unchanged. D3D12 and Vulkan retain their
+byte-identical checked assets.
+The per-light accessor is forced inline so separately compiled fragment AIR files do not export
+colliding helper symbols into the combined `mesh.metallib`.
+
 ### The sampled density volume is its own fragment program
 
 `mesh.volume.fragment` compiles `mesh.slang` with `VOLUME_DENSITY_TEXTURES=1` and
@@ -107,7 +127,7 @@ and what `MetalSampledVolumeConformanceTests` reads back out of the checked
 
 ### Non-shader files are hashed inputs too
 
-The checked manifest records a SHA-256 for each of its 45 inputs, and several are
+The checked manifest records a SHA-256 for each declared input, and several are
 not shader sources: `.github/workflows/ci.yml`, `release.yml`, `package.yml` and
 `render.yml`, and `tests/OpenUsd.Package.Tests/RuntimePackageTests.cs` are all
 hashed. Editing a workflow or a package test therefore requires regenerating the

@@ -13,6 +13,7 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$Configuration = 'Release',
     [switch]$SkipBuild,
+    [switch]$MesaWgl,
     [switch]$ListScenarios
 )
 
@@ -74,9 +75,9 @@ if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf))
     $dotnet = $hostCommand.Source
 }
 $sdk = & $dotnet --version
-if ($LASTEXITCODE -ne 0 -or $sdk.Trim() -ne '10.0.301')
+if ($LASTEXITCODE -ne 0 -or $sdk.Trim() -ne '10.0.401')
 {
-    throw 'Viewer workflows require the repository-pinned .NET SDK 10.0.301.'
+    throw 'Viewer workflows require the repository-pinned .NET SDK 10.0.401.'
 }
 
 function Get-FileRecords
@@ -97,7 +98,8 @@ function Get-WorkflowSourcePaths
     $paths = @(& git -C $repoRoot ls-files --cached --others --exclude-standard -- `
         'src' 'native\openusd_dotnet' 'native\openusd_storm_child' 'native\openusd_hydra' `
         'native\include' 'native\private' 'tests\OpenUsd.Viewer.Tests' `
-        'eng\run-viewer-workflow-tests.ps1' 'eng\run-managed-tests.ps1' 'eng\openusd.lock.json' `
+        'eng\run-viewer-workflow-tests.ps1' 'eng\managed-workflow-reports.ps1' `
+        'eng\run-managed-tests.ps1' 'eng\openusd.lock.json' `
         'Directory.Build.props' 'Directory.Build.targets' 'Directory.Packages.props' 'global.json')
     if ($LASTEXITCODE -ne 0 -or $paths.Count -eq 0)
     {
@@ -110,7 +112,18 @@ $sourcePaths = @(Get-WorkflowSourcePaths)
 $sourcesBefore = @(Get-FileRecords $sourcePaths)
 if (-not $SkipBuild)
 {
-    $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q 2>&1)
+    $fixtureBuildArguments = @()
+    if ($MesaWgl)
+    {
+        $manifest = Join-Path $repoRoot 'src\OpenUsd.Viewer.App\app.manifest'
+        if (-not (Test-Path -LiteralPath $manifest -PathType Leaf))
+        {
+            throw 'The existing supported Windows application-host manifest is unavailable.'
+        }
+        $fixtureBuildArguments = @('-t:Rebuild', "-p:ApplicationManifest=$manifest")
+    }
+    $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q `
+        @fixtureBuildArguments 2>&1)
     if ($LASTEXITCODE -ne 0 -and ($buildOutput -join "`n") -match '\bNETSDK1004\b')
     {
         & $dotnet restore $project -v:q
@@ -118,7 +131,8 @@ if (-not $SkipBuild)
         {
             throw 'Restoring the missing Viewer workflow assets failed.'
         }
-        $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q 2>&1)
+        $buildOutput = @(& $dotnet build $project --no-restore -c $Configuration -warnaserror -v:q `
+            @fixtureBuildArguments 2>&1)
     }
     $buildOutput | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0)
@@ -133,9 +147,15 @@ if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or -not (Test-Path -LiteralPath
     throw 'The built net10.0 Viewer test assembly could not be resolved.'
 }
 $assemblyDirectory = Split-Path -Parent $target[0]
+. (Join-Path $PSScriptRoot 'managed-workflow-reports.ps1')
+
 function Get-WorkflowBinaryPaths
 {
     @(
+        if ($MesaWgl)
+        {
+            Get-Item -LiteralPath ([IO.Path]::ChangeExtension($target[0], '.exe'))
+        }
         Get-ChildItem -LiteralPath $assemblyDirectory -File -Filter '*.dll'
         Get-ChildItem -LiteralPath (Join-Path $runtime 'bin') -File -Filter '*.dll'
         Get-ChildItem -LiteralPath (Join-Path $runtime 'lib') -File -Filter '*.dll'
@@ -157,11 +177,16 @@ if (Test-Path -LiteralPath $evidenceRoot)
     throw "Use a new evidence directory; existing output will not be overwritten: $evidenceRoot"
 }
 New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
-$workRoot = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$runId-").FullName
-$environmentNames = @('PATH', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
+$workDirectory = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$runId-")
+$workRoot = (Get-Item -LiteralPath $workDirectory.FullName).FullName
+$environmentNames = @('PATH', 'TEMP', 'TMP', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
-    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT') +
+    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'GALLIUM_DRIVER',
+    'MESA_GL_VERSION_OVERRIDE', 'MESA_GLSL_VERSION_OVERRIDE', 'LIBGL_ALWAYS_SOFTWARE',
+    'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
+    'OPENUSD_MESA_WGL_ARCHIVE_SHA256', 'OPENUSD_MESA_WGL_ARCHIVE_URL',
+    'OPENUSD_MESA_WGL_OPENGL32_PATH', 'OPENUSD_MESA_WGL_OPENGL32_SHA256') +
     @($scenarios | ForEach-Object { $_.Flag })
 $previous = @{}
 foreach ($name in $environmentNames)
@@ -169,13 +194,42 @@ foreach ($name in $environmentNames)
     $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $results = [Collections.Generic.List[object]]::new()
+$ownedMesaCopy = $null
 try
 {
+    if ($MesaWgl)
+    {
+        $mesa = & (Join-Path $PSScriptRoot 'prepare-mesa-wgl-test-runtime.ps1') `
+            -Root (Join-Path $evidenceRoot 'mesa-wgl-runtime') -Rid win-x64 -Activate -Preflight
+        $sourceOpenGl = Join-Path $mesa 'opengl32.dll'
+        $hostOpenGl = Join-Path $assemblyDirectory 'opengl32.dll'
+        $expectedOpenGl = (Get-FileHash -LiteralPath $sourceOpenGl -Algorithm SHA256).Hash
+        if (Test-Path -LiteralPath $hostOpenGl)
+        {
+            if ((Get-FileHash -LiteralPath $hostOpenGl -Algorithm SHA256).Hash -cne $expectedOpenGl)
+            {
+                throw 'The Viewer test host already contains an unrelated OpenGL library; do not replace it.'
+            }
+        }
+        else
+        {
+            Copy-Item -LiteralPath $sourceOpenGl -Destination $hostOpenGl
+            $ownedMesaCopy = $hostOpenGl
+        }
+        if ((Get-FileHash -LiteralPath $hostOpenGl -Algorithm SHA256).Hash -cne $expectedOpenGl)
+        {
+            throw 'The original Viewer test host Mesa library failed byte verification.'
+        }
+        Write-Host "[viewer-workflows] pinned-test-host-opengl32=$hostOpenGl sha256=$expectedOpenGl"
+        $binariesBefore = @(Get-FileRecords @(Get-WorkflowBinaryPaths))
+    }
     $env:PATH = "$(Join-Path $runtime 'bin');$(Join-Path $runtime 'lib');$env:PATH"
     $env:OPENUSD_VIEWER_TEST_NATIVE_ROOT = $runtime
     $env:OPENUSD_PLUGIN_PATH = Join-Path $runtime 'plugin\usd'
     $env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH
     $env:OPENUSD_TEST_WORK_ROOT = $workRoot
+    $env:TEMP = $workRoot
+    $env:TMP = $workRoot
     $env:OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT = $evidenceRoot
     $env:OPENUSD_VIEWER_CAPTURE_RENDERER = $CaptureRenderer
     $env:OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT = $evidenceRoot
@@ -185,35 +239,13 @@ try
     }
     foreach ($entry in $selected)
     {
-        $logPath = Join-Path $evidenceRoot "$($entry.Id).log"
         [Environment]::SetEnvironmentVariable($entry.Flag, '1', 'Process')
-        $watch = [Diagnostics.Stopwatch]::StartNew()
         try
         {
-            & $runner -Project $project -Framework net10.0 -Configuration $Configuration `
-                -MinimumExpectedTests 1 -TestArguments @('--treenode-filter', "/*/*/$($entry.Class)/*") `
-                *>&1 | Tee-Object -FilePath $logPath
-            if ($LASTEXITCODE -ne 0)
-            {
-                throw "Viewer workflow '$($entry.Id)' failed; see $logPath"
-            }
-            $log = [IO.File]::ReadAllText($logPath)
-            $passed = [regex]::Matches($log, '(?m)^\s*succeeded:\s*(\d+)\s*$')
-            $failed = [regex]::Matches($log, '(?m)^\s*failed:\s*(\d+)\s*$')
-            $skipped = [regex]::Matches($log, '(?m)^\s*skipped:\s*(\d+)\s*$')
-            if ($passed.Count -ne 1 -or $failed.Count -ne 1 -or $skipped.Count -ne 1 -or
-                [int]$passed[0].Groups[1].Value -lt 1 -or [int]$failed[0].Groups[1].Value -ne 0 -or
-                [int]$skipped[0].Groups[1].Value -ne 0)
-            {
-                throw "Workflow '$($entry.Id)' did not provide one complete no-skip execution summary."
-            }
-            $results.Add([ordered]@{
-                scenario = $entry.Id
-                testClass = $entry.Class
-                passed = [int]$passed[0].Groups[1].Value
-                elapsedMilliseconds = $watch.ElapsedMilliseconds
-                logSha256 = (Get-FileHash -LiteralPath $logPath -Algorithm SHA256).Hash.ToLowerInvariant()
-            })
+            $result = Invoke-ManagedWorkflowScenario -Runner $runner -Project $project `
+                -AssemblyDirectory $assemblyDirectory -EvidenceRoot $evidenceRoot -Entry $entry `
+                -Configuration $Configuration -MesaWgl:$MesaWgl
+            $results.Add($result)
         }
         finally
         {
@@ -227,6 +259,21 @@ try
         ($binariesBefore | ConvertTo-Json -Depth 4 -Compress) -cne
         ($binariesAfter | ConvertTo-Json -Depth 4 -Compress))
     {
+        $beforeRecords = @($sourcesBefore + $binariesBefore | ForEach-Object { [pscustomobject]$_ })
+        $afterRecords = @($sourcesAfter + $binariesAfter | ForEach-Object { [pscustomobject]$_ })
+        $drift = @(Compare-Object -ReferenceObject $beforeRecords `
+            -DifferenceObject $afterRecords -Property path, sha256)
+        [ordered]@{
+            sourceBefore = $sourcesBefore
+            sourceAfter = $sourcesAfter
+            binariesBefore = $binariesBefore
+            binariesAfter = $binariesAfter
+        } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $evidenceRoot 'identity-snapshots.json')
+        $drift | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidenceRoot 'identity-drift.json')
+        foreach ($entry in $drift)
+        {
+            Write-Host "[viewer-workflows] identity-drift=$($entry.path) sha256=$($entry.sha256)"
+        }
         throw 'Source or executed runtime/test binaries changed during the Viewer workflows; rerun on stable inputs.'
     }
     $summary = [ordered]@{
@@ -267,6 +314,14 @@ finally
         {
             [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
         }
+    }
+    if ($null -ne $ownedMesaCopy)
+    {
+        if ((Get-FileHash -LiteralPath $ownedMesaCopy -Algorithm SHA256).Hash -cne $expectedOpenGl)
+        {
+            throw 'The owned Mesa host copy changed unexpectedly; leave it in place for diagnosis.'
+        }
+        Remove-Item -LiteralPath $ownedMesaCopy
     }
     if ([IO.Directory]::Exists($workRoot))
     {

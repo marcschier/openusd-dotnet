@@ -142,6 +142,84 @@ struct FrameParameters
 // A raw buffer avoids structured-element stride limits: D3D12 caps an element
 // at 2048 bytes, while the bounded frame occupies 15296 bytes.
 ByteAddressBuffer frameParameters : register(t8);
+
+#if FRAGMENT_STAGE && OPENUSD_TARGET_METAL
+struct FrameVectorView
+{
+    uint byteOffset;
+
+    __subscript(uint index) -> float4
+    {
+        [ForceInline]
+        get() { return frameParameters.Load<float4>(byteOffset + index * 16); }
+    }
+};
+
+struct FragmentFrameParameters
+{
+    uint4 clipPlaneCount;
+    float4 clipPlanes[8];
+    float4 ambientLight;
+    FrameVectorView lightPositionType;
+    FrameVectorView lightDirectionRadius;
+    FrameVectorView lightColorIntensity;
+    FrameVectorView lightControls;
+    FrameVectorView lightTangentShapeX;
+    FrameVectorView lightBitangentShapeY;
+    float4x4 eyeToWorld;
+    float4x4 shadowWorldToLightClip[4];
+    float4 shadowTile[4];
+    float4 shadowControls[4];
+    FrameVectorView shadowSlots;
+    float4 environmentControls;
+    float4 domeControls;
+    float4 domeAmbient[8];
+    float4 domeEnvironment[8];
+};
+
+struct FragmentDomeParameters
+{
+    float4 ambient[8];
+    float4 environment[8];
+};
+
+[ForceInline]
+FragmentFrameParameters LoadFragmentFrameParameters()
+{
+    FragmentFrameParameters frame;
+    frame.clipPlaneCount = frameParameters.Load<uint4>(64);
+    [unroll]
+    for (uint index = 0; index < 8; index++)
+    {
+        frame.clipPlanes[index] = frameParameters.Load<float4>(80 + index * 16);
+    }
+    frame.ambientLight = frameParameters.Load<float4>(208);
+    // Light vectors stay in the admitted raw frame and are read only for the indexed light.
+    frame.lightPositionType.byteOffset = 224;
+    frame.lightDirectionRadius.byteOffset = 224 + 16 * MaximumDirectLights;
+    frame.lightColorIntensity.byteOffset = 224 + 2 * 16 * MaximumDirectLights;
+    frame.lightControls.byteOffset = 224 + 3 * 16 * MaximumDirectLights;
+    frame.lightTangentShapeX.byteOffset = 224 + 4 * 16 * MaximumDirectLights;
+    frame.lightBitangentShapeY.byteOffset = 224 + 5 * 16 * MaximumDirectLights;
+    frame.shadowSlots.byteOffset = 12960;
+    frame.eyeToWorld = frameParameters.Load<float4x4>(12512);
+    [unroll]
+    for (uint index = 0; index < 4; index++)
+    {
+        frame.shadowWorldToLightClip[index] = frameParameters.Load<float4x4>(12576 + index * 64);
+        frame.shadowTile[index] = frameParameters.Load<float4>(12832 + index * 16);
+        frame.shadowControls[index] = frameParameters.Load<float4>(12896 + index * 16);
+    }
+    frame.environmentControls = frameParameters.Load<float4>(15008);
+    frame.domeControls = frameParameters.Load<float4>(15024);
+    FragmentDomeParameters domes = frameParameters.Load<FragmentDomeParameters>(15040);
+    frame.domeAmbient = domes.ambient;
+    frame.domeEnvironment = domes.environment;
+    return frame;
+}
+#else
+typedef FrameParameters FragmentFrameParameters;
+#endif
 #endif
 
 #if VERTEX_STAGE
@@ -321,11 +399,26 @@ Texture2D<float4> environmentBrdf : register(t19);
 #endif
 
 #if VERTEX_STAGE
+#if OPENUSD_TARGET_METAL
+struct VertexFrameMatrices
+{
+    float4x4 clipToEye;
+    float4x4 eyeToWorld;
+};
+#endif
+
 [shader("vertex")]
 VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_InstanceID)
 {
     InstanceParameters instance = instanceParameters[instanceId];
+#if OPENUSD_TARGET_METAL
+    // Loading the whole frame expands unused lighting, shadow and dome arrays in MSL.
+    VertexFrameMatrices frame;
+    frame.clipToEye = frameParameters.Load<float4x4>(0);
+    frame.eyeToWorld = frameParameters.Load<float4x4>(224 + 6 * 16 * MaximumDirectLights);
+#else
     FrameParameters frame = frameParameters.Load<FrameParameters>(0);
+#endif
     VertexOutput output;
     float4 clipPosition = mul(instance.objectToClip, float4(input.position, 1.0));
     float4 eyePosition = mul(frame.clipToEye, clipPosition);
@@ -633,7 +726,7 @@ float3 GetEyeVector(float3 eyePosition)
 }
 
 [ForceInline]
-void DiscardClippedFragment(float3 eyePosition, FrameParameters frame)
+void DiscardClippedFragment(float3 eyePosition, FragmentFrameParameters frame)
 {
     uint count = min(frame.clipPlaneCount.x, 8u);
     for (uint index = 0; index < count; index++)
@@ -670,7 +763,7 @@ void DiscardClippedFragment(float3 eyePosition, FrameParameters frame)
 /// as occluded would darken exactly the geometry the map deliberately excludes.
 [ForceInline]
 float ResolveShadowVisibility(
-    FrameParameters frame,
+    FragmentFrameParameters frame,
     int slot,
     float3 worldPosition,
     float3 worldNormal,
@@ -938,7 +1031,11 @@ float4 FRAGMENT_ENTRY_POINT(
 {
 #if FRAGMENT_STAGE
     SurfaceParameters surface = surfaceParameters[0];
-    FrameParameters frame = frameParameters.Load<FrameParameters>(0);
+#if OPENUSD_TARGET_METAL
+    FragmentFrameParameters frame = LoadFragmentFrameParameters();
+#else
+    FragmentFrameParameters frame = frameParameters.Load<FrameParameters>(0);
+#endif
     DiscardClippedFragment(input.eyePosition, frame);
 
     // clearcoatShaded.z carries three states, not a flag. 0 is the shared default

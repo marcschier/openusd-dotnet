@@ -65,7 +65,7 @@ try
         # A real win-x64 install carries the locked Vulkan loader beside the
         # per-RID subtree, and the archive now transports it so the runtime
         # packages can be packed away from a Windows build host.
-        $sourceVulkanBin = Join-Path $sourceInstallRoot 'vulkan-sdk-1.4.321.0/bin'
+        $sourceVulkanBin = Join-Path $sourceInstallRoot 'vulkan-sdk-1.4.363.0/bin'
         New-Item -ItemType Directory -Force -Path $sourceVulkanBin | Out-Null
         Set-Content `
             -Path (Join-Path $sourceVulkanBin 'vulkan-1.dll') `

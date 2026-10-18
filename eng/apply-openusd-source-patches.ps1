@@ -79,12 +79,12 @@ foreach ($patch in $pin.patches)
     {
         throw "SDK source does not match complete preimages or postimages for $($patch.id)."
     }
-    Push-Location $repoRoot
+    Push-Location $SourceRoot
     try
     {
-        & git --no-pager apply --check "--directory=$relativeRoot" --whitespace=nowarn $patchPath
+        & git -c core.autocrlf=false --no-pager apply --check --whitespace=nowarn $patchPath
         if ($LASTEXITCODE -ne 0) { throw "SDK patch preflight failed: $($patch.id)" }
-        & git --no-pager apply "--directory=$relativeRoot" --whitespace=nowarn $patchPath
+        & git -c core.autocrlf=false --no-pager apply --whitespace=nowarn $patchPath
         if ($LASTEXITCODE -ne 0) { throw "SDK patch application failed: $($patch.id)" }
     }
     finally

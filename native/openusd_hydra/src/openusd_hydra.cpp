@@ -1,5 +1,9 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+#if defined(_WIN32) && !defined(NOMINMAX)
+#define NOMINMAX
+#endif
+
 #include "openusd_hydra.h"
 #include "context_support.h"
 #include "openusd_physics_override_scene_index.h"
@@ -621,7 +625,7 @@ openusd_status InitializeStormRenderer(
     {
         WriteError(
             error,
-            "OpenUSD v26.05 Glf/Garch supports GLX contexts only on Linux; "
+            "OpenUSD v26.08 Glf/Garch supports GLX contexts only on Linux; "
             "the current OpenGL context is non-GLX (typically Wayland EGL).");
         return OPENUSD_STATUS_NATIVE_ERROR;
     }

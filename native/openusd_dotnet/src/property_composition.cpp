@@ -6,7 +6,7 @@
 #include <memory>
 #include <type_traits>
 
-static_assert(PXR_VERSION == 2605,
+static_assert(PXR_VERSION == 2608,
     "Review the allocation-free Pcp error-owner access before changing the pinned OpenUSD SDK.");
 
 namespace OpenUsdProperties
@@ -27,7 +27,7 @@ struct LayerErrors
     friend bool HasErrors(const Owner& owner, LayerErrors) noexcept;
 };
 
-// SDK26.05 GetLocalErrors() copies its vector. Standard explicit instantiation
+// SDK26.08 GetLocalErrors() copies its vector. Standard explicit instantiation
 // obtains compiler-typed member pointers under its access-control exception.
 // Configure AND build verify exact SDK headers; the generated include selects
 // those verified files. No SDK definitions or byte offsets are substituted.

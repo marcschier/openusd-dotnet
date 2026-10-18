@@ -1,8 +1,54 @@
 {
   "schemaVersion": 1,
-  "sourceCommit": "2095fafafd033fa23386d7ec6d58c7cc33974518",
+  "sourceCommit": "ee47c679abde5b467a7b6a41f3b2285564a4222e",
   "accessorVersion": 1,
   "patches": [
+    {
+      "id": "scoped-sublayer-resolution",
+      "path": "eng\\patches\\openusd\\scoped-sublayer-resolution.patch",
+      "sha256": "175C42ED22E0E9200698DB5FB51EEA25B56E6831B541F18A2F9877487D6F86BF",
+      "files": [
+        {
+          "path": "pxr\\usd\\pcp\\changes.cpp",
+          "beforeSha256": "3ABF18D20F05CBB7337328D08F8073A2885360658A73996E865989D9DFE53769",
+          "afterSha256": "CC171EF5FF5575BE952E435C48843AB015121037B072651F4B2C7390FC90B04F"
+        }
+      ]
+    },
+    {
+      "id": "windows-resource-path-consistency",
+      "path": "eng\\patches\\openusd\\windows-resource-path-consistency.patch",
+      "sha256": "E7D6C46FE54A70934AB62B2F0A3500CDE558752AB6BF42AA159494ED253309B5",
+      "files": [
+        {
+          "path": "pxr\\base\\arch\\fileSystem.cpp",
+          "beforeSha256": "624C0F92F3C736DD99DF929E72DBB1E18F02C0798B4E859CB400A0F10500C4E5",
+          "afterSha256": "22890D1572965480D8FBF776CA4B8B4ED3EE36697ABC08D59C7EFE4EC8A26717"
+        },
+        {
+          "path": "pxr\\base\\arch\\fileSystem.h",
+          "beforeSha256": "C54EDA414C8F99AC4D62664C6A0222766ECE66824EF4F6A4E9AB3E9A2EC964D1",
+          "afterSha256": "03F961F4B0786156203DE0451320F317FC4813194DBDB5CD99A47BCE6D292BE0"
+        },
+        {
+          "path": "pxr\\base\\tf\\fileUtils.cpp",
+          "beforeSha256": "06D15BDEB098AC117FCE28B45E7112B19069C935E10AE412E7C8E09AB4768A2E",
+          "afterSha256": "3B8600A1BAE692D26314004566A43AEA785E3332078CB0B0C932389EE8B33F7F"
+        }
+      ]
+    },
+    {
+      "id": "list-edit-validation",
+      "path": "eng\\patches\\openusd\\list-edit-validation.patch",
+      "sha256": "75D2FB74BCEBA0E6C60A08139DF982BAC59828CB3FDEBBE1EA209686F8011711",
+      "files": [
+        {
+          "path": "pxr\\usd\\sdf\\listEditor.h",
+          "beforeSha256": "7EEF72360953BF81ABE3643765A6263539C2E755EFDE96B57E72B15306FCB93B",
+          "afterSha256": "10AC680F1E7A94F4EB86720564BD5FE865979E5ED88DDB3880E8B85FDCF53076"
+        }
+      ]
+    },
     {
       "id": "storm-aov-restoration",
       "path": "eng\\patches\\openusd\\storm-aov-restoration.patch",
@@ -10,8 +56,8 @@
       "files": [
         {
           "path": "pxr\\imaging\\hdx\\taskController.cpp",
-          "beforeSha256": "D445E46346E4D4BCAD08DF1AC9F1E2F530F4BAF9B70DE1DAC8310AB72F171478",
-          "afterSha256": "D5FFC14AC942AEA0293CF636AFF8D71A673CD688D4D1318067E8BD9C019C1BCE"
+          "beforeSha256": "C0D7F0C2355327969BC55B023CB941739143CB68759A392715AE07A0A866A43E",
+          "afterSha256": "C75CC06E9A1364BDE22FB1F9C066E158EF35A82918D6F6D6E4515B5FF4AD51A3"
         },
         {
           "path": "pxr\\imaging\\hdx\\taskControllerSceneIndex.cpp",
@@ -28,7 +74,7 @@
     {
       "id": "strict-compiler-portability",
       "path": "eng\\patches\\openusd\\strict-compiler-portability.patch",
-      "sha256": "7F12E927996275961948C0F5BBCDEC301F56B863B39AF1C371F0692CDA7D872F",
+      "sha256": "D527C116B3AFDC4AABEC3ED103E24F48DDD15125449DCF4FEC1027CCDBE39213",
       "files": [
         {
           "path": "pxr\\base\\arch\\timing.cpp",
@@ -37,8 +83,8 @@
         },
         {
           "path": "pxr\\base\\vt\\streamOut.cpp",
-          "beforeSha256": "38D8B2E9D817D7D5D0F42033C36FE9C0E6806402DFBA1F346411C7C00E22AF2B",
-          "afterSha256": "B7D4459829ADEECBD39E0D53F710F4AAE58A121EDE2A7F07D148FDA3E55130B1"
+          "beforeSha256": "D4F89FED6FDFF8BFC7285B19F7F2228FB295EE82690CD09E5F843FF794507E4B",
+          "afterSha256": "1BEA835C3F2B2C7217CE8FA6457FF4EB70FD94A47DD91F5123A03B0E495B0B4F"
         },
         {
           "path": "pxr\\base\\tf\\stringUtils.cpp",
@@ -47,18 +93,18 @@
         },
         {
           "path": "pxr\\usd\\sdf\\schema.cpp",
-          "beforeSha256": "D0665AF366DDD48EB63A2BCF269DEF279C025508F330357D574044A66D7DB391",
-          "afterSha256": "507B215B6E06A3D4A320B8FCBBD8D12D4C3EB181F89EAA7ABBC071FA71A0F8F3"
+          "beforeSha256": "F675E3B2B38E6600F6FD6971ABFF0E8FBEE0AFADF8864A2774DEB16381A41339",
+          "afterSha256": "B59E4D03E3DE0460A9F9B9953DA555FCDD3BDA1A99F8481CC878D5C678638C72"
         },
         {
           "path": "pxr\\usd\\usd\\clip.cpp",
-          "beforeSha256": "1AB5C2EED6F441D55F56B832BBAB0F1F90492AAE8407BE805509C8DE62C63631",
-          "afterSha256": "A75896B7FFBC0134A777817FCBB794CFA218CE4F9B7F7CED30CE9839959948B1"
+          "beforeSha256": "4A9EC01AC24CB4471756F1FAB932D69A3E14674708C13B6CA2B81AFCE19BB5E6",
+          "afterSha256": "2A383E11D64427F7729CBB667B4577236F6F75D53A9FF2C901649F3D4B4A0FAC"
         },
         {
           "path": "pxr\\base\\tf\\smallVector.h",
-          "beforeSha256": "9B60DFD85B61EE5783E671928E5498FEA557B6CF29D693CC60DEC337EAB080B9",
-          "afterSha256": "7E0EAD01A875BCC0833241E3578D284B5DBE34300281822901BB1F72B462FBCB"
+          "beforeSha256": "024AB85F6621BA5E94C438DE591504DDDD413EA8A9728CD08B0F654810CBAF4B",
+          "afterSha256": "A6214E660EAFA0E2BDD2E8C2E447B73E6C9854D656D22D535A6CBE8411B816E5"
         },
         {
           "path": "pxr\\imaging\\hgiVulkan\\conversions.cpp",
@@ -72,8 +118,8 @@
         },
         {
           "path": "pxr\\imaging\\hdx\\unitTestDelegate.h",
-          "beforeSha256": "79E10A9E5DE7AB621A668134969936D4AAF954A0075DA80ACABD536182E3825A",
-          "afterSha256": "2143984042E9410C5DE31A481174AFB0302641A6B55A31CFE1F9C0E3AAC04969",
+          "beforeSha256": "E41CC58691ED0DC5CAF2956EA04FFE5E3FEB41585790CCF415E16E3D3E53B369",
+          "afterSha256": "B0E89308AF1F69728E3C3C0B89C3A3424C55B8B436E485EC8456E9C213BA7E89",
           "installedHeader": false
         },
         {
@@ -93,8 +139,8 @@
         },
         {
           "path": "pxr\\imaging\\hd\\renderDelegateAdapterRenderer.cpp",
-          "beforeSha256": "DB9B464382DE9DF529C1BF8825EA7BC6202AB025FD90BCB133401012E585423E",
-          "afterSha256": "1A5BBA0CBB8686755602D392884EAFA1CDEBB32CEE07649E76274E968C09FD52"
+          "beforeSha256": "A286BE79079CA0FF101E943EAE109E11D58AA7E85AEFED7AB5FEBDBFF8C2E53A",
+          "afterSha256": "F4C37DC10B86D32BB686E7C2190413DEA990A28BFC448FEB7A72BF6A3EF17C69"
         },
         {
           "path": "pxr\\imaging\\hd\\sceneIndexPluginRegistry.cpp",
@@ -134,8 +180,8 @@
         },
         {
           "path": "pxr\\usd\\pcp\\primIndex.cpp",
-          "beforeSha256": "16C9CE3B23E2BF936B9BD031C1E8A296E0959ED0482140D6638D70BCACA041A4",
-          "afterSha256": "E09BA3FB74A18380B780A6428F2B218C1C80292FBAFB66F03A4844342A6B3A65"
+          "beforeSha256": "90D0B8A8C76EF70C6E18357D70EBA1E2658E639A43D46A9FDD3E1A140D53737B",
+          "afterSha256": "90638DA408B765C4A5560A894380470EB906D89724CC1398BCE41A33ECD01E57"
         },
         {
           "path": "pxr\\usd\\sdf\\fileFormat.cpp",
@@ -154,8 +200,8 @@
         },
         {
           "path": "pxr\\usd\\sdf\\variableExpressionImpl.cpp",
-          "beforeSha256": "69F9C57EC870DB8B060E09D6914C1EE9CC065BC5BE8A23B247EF05CAF1EA8B8A",
-          "afterSha256": "B0545952D1AD480CB92EAEA3DF9E8BB83EC0DE7194FF197FB121C31127221B90"
+          "beforeSha256": "23FA0BF78DE09DEDE45439B0F4A9E8D233D38E9CF4644BBD6D2000E6847A81D7",
+          "afterSha256": "30D9A28E8AF7A8D54D1243BC8A757FDE699457B1A84651CBF1F177D53F39C2C7"
         },
         {
           "path": "pxr\\usd\\sdf\\zipFile.cpp",
@@ -174,8 +220,8 @@
         },
         {
           "path": "pxr\\usdImaging\\usdImaging\\dataSourceMaterial.cpp",
-          "beforeSha256": "EE53BAF0A07EC6296B336F4B689D62D77DEA6359D7E76F8EA925A99B75F73BEA",
-          "afterSha256": "6F35DDEC707A2B9712037AA21B2B60B01B00C86B59C5F09927E55A2F9D065BFF"
+          "beforeSha256": "A4170ADE6F0421E3CA35360DBE3C86F962E7423C9F4E5EDCB06466D2D81B4BD9",
+          "afterSha256": "D82FE517F47BBDAF6709D02FAF932B5D9DF062BE3B19D2A375553DCA9AC9C7A1"
         },
         {
           "path": "pxr\\usdImaging\\usdImaging\\dataSourcePrim.h",
@@ -184,8 +230,8 @@
         },
         {
           "path": "pxr\\usdImaging\\usdImaging\\dataSourcePrim.cpp",
-          "beforeSha256": "A67DCD4620FD894D34A68B9DB7614DDB611620A68E145C87144E5F7B09E65DE0",
-          "afterSha256": "8AFFEFE299879BE79626A1B7DFB4CE8E6287A268C4F5AAEE660F9C1FCD4B4592"
+          "beforeSha256": "6E13B2E1C398513DBCDCCEBA40EA5E3D3FBF2188E56E7F13C877F2333D44374A",
+          "afterSha256": "9B0F42C6FE4B16295388526418A83D2B042674440EE533AC3E86926E54967343"
         },
         {
           "path": "pxr\\usdImaging\\usdImaging\\dataSourceRelationship.h",
@@ -199,8 +245,8 @@
         },
         {
           "path": "pxr\\usdImaging\\usdImaging\\dataSourceRenderPrims.cpp",
-          "beforeSha256": "CD473A6E9E438393D6A2F989F223DB2F795B7D4ED956958DDF1E5967DF9D5D21",
-          "afterSha256": "CC653A8F00626EE516B1AE9314A434891A2678C2977F5BC08366E2E4FC25A877"
+          "beforeSha256": "A7EAC5E8D6D521A0BFC64F57FEB5CD1FF629C44D1062A7D779A6DFA09AD832C1",
+          "afterSha256": "EBF26B39D5C6961FE1FDEDF88C9C908DB4EA8DF1AEC57DFECA2439DA30BAC305"
         },
         {
           "path": "pxr\\usdImaging\\usdImaging\\dataSourceVolume.h",
@@ -221,6 +267,51 @@
           "path": "pxr\\usdImaging\\usdImaging\\instanceAdapter.cpp",
           "beforeSha256": "5626BA4D430EFC3D6CCD222D7252AB7F6D6F66B3F096B9A617A9210D70CF4921",
           "afterSha256": "5D45931BD0733D9D8FCB2DF561DCF9AB1D8E9225B3E26FF03FCC24C3439A25B9"
+        },
+        {
+          "path": "pxr\\imaging\\plugin\\hioOiio\\CMakeLists.txt",
+          "beforeSha256": "D5217AF0833A98D1AD329566428865F1B8F7C7E38D1A16538914D0B241D1765F",
+          "afterSha256": "D0FA80BF1504E36A8E97680DC9F7431EBCC92702996BE69AE7EEF8FAB96B46EF"
+        },
+        {
+          "path": "pxr\\base\\ts\\spline.cpp",
+          "beforeSha256": "FDA7F1F3DFBC72E4CC58031D288D2325DA8B3DCED7DB0CF00E1042D0A166CFC8",
+          "afterSha256": "C1496A8BAA4C75BE0441104C2A91EDFF3E5F1A4F02F45C5C911214491DF81C92"
+        },
+        {
+          "path": "pxr\\usd\\usd\\namespaceEditor.cpp",
+          "beforeSha256": "449107F33E97CF92AD2230ECD5CECC7920C01AA105DAC39B550B8BD7F4C9B0CE",
+          "afterSha256": "008E4C3AF5C4D59B6E966180BB228006427E7DCF0B555E818C7FCFA5194ABB89"
+        },
+        {
+          "path": "pxr\\usd\\usdUtils\\dependencies.cpp",
+          "beforeSha256": "945E69645001A6BD5A2F25B88E759FD614C0E1ECF861AFDFA965962A88643FDE",
+          "afterSha256": "97BE6E87488FC2455A28E5C8C5052F34D00F5A7FF443FFCD934E64D1CCCBB9DB"
+        },
+        {
+          "path": "pxr\\imaging\\hd\\meshTopology.h",
+          "beforeSha256": "8BFE3377EEBDF818019EAFF790C65EA884C5EAB2F4548260AF4EA01BF2DA185D",
+          "afterSha256": "45694C28376CBD90909C48D061347002EB786206FC6EF7784D9C1C66B59201F3"
+        },
+        {
+          "path": "pxr\\usdImaging\\usdImaging\\backPlateAPIAdapter.h",
+          "beforeSha256": "521AD402C7CAECB9B0B2AB9089EFFA68F14CB1E2CAE7A6DBB9B6E4ACE7D255A7",
+          "afterSha256": "E2635BF0055E6DA38048B2819F5C6069F0A9FA4154E77EC36F2ABA92FD775C35"
+        }
+      ]
+    },
+    {
+      "id": "tf-refptr-last-release-acquire",
+      "upstreamCommit": "72ff9cee97bb1d5664f00d759e559cd8cd2e8400",
+      "upstreamUrl": "https://github.com/PixarAnimationStudios/OpenUSD/commit/72ff9cee97bb1d5664f00d759e559cd8cd2e8400",
+      "path": "eng\\patches\\openusd\\tf-refptr-last-release-acquire.patch",
+      "sha256": "672172E6C9D0DCD6F841F72C78AABDD1674C5E9643C0DA814CDA8C4861411804",
+      "files": [
+        {
+          "path": "pxr\\base\\tf\\refPtr.h",
+          "installedHeader": true,
+          "beforeSha256": "AD2553AEEAF0D8CCC789BF438BADA58F5ADF6F62EC1BAF242AC59BD98995D442",
+          "afterSha256": "4C06FAD359271AC6BC390194C1D204E110C68B2D4958968F423FEA68E1AD39F1"
         }
       ]
     }

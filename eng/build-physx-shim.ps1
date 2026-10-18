@@ -14,6 +14,10 @@
     The physics packages therefore read only their own named asset out of this prefix. Everything
     else it contains is either a duplicate of a payload another package already publishes, or an
     NVIDIA GPU module this project has no right to redistribute.
+
+    PackageConsumer retains the same configure but builds only openusd_physx and, on Linux, the
+    vehicle probe required by the package workflow. It installs only the PhysX subdirectory.
+    Native producers omit this switch and retain the complete build, install and native tests.
 #>
 [CmdletBinding()]
 param(
@@ -22,7 +26,8 @@ param(
     # build of the simulation SDK, so macOS is absent here rather than failing later inside cmake.
     [Parameter(Mandatory = $true)]
     [ValidateSet('win-x64', 'linux-x64')]
-    [string]$Rid
+    [string]$Rid,
+    [switch]$PackageConsumer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,6 +36,7 @@ $openUsdInstallRoot = Join-Path $repoRoot "native/install/$Rid"
 $physxInstallRoot = Join-Path $repoRoot "native/install/physx/$Rid"
 $shimInstallRoot = Join-Path $repoRoot "native/install/shim/$Rid-physx"
 $preset = "$Rid-physx"
+$extractHeader = Join-Path $repoRoot "native/install/shim/$Rid/include/openusd_physics_extract.h"
 
 if (-not (Test-Path $openUsdInstallRoot))
 {
@@ -41,6 +47,18 @@ if (-not (Test-Path $physxInstallRoot))
     throw (
         "The PhysX native install is missing at '$physxInstallRoot'. " +
         "Run ./eng/build-physx-native.ps1 -Rid $Rid first.")
+}
+if ($PackageConsumer)
+{
+    if (-not (Test-Path -LiteralPath $extractHeader -PathType Leaf))
+    {
+        throw "The verified Core shim extraction header is missing at '$extractHeader'."
+    }
+    $sourceHeader = Join-Path $repoRoot 'native/openusd_dotnet/include/openusd_physics_extract.h'
+    if ((Get-FileHash -LiteralPath $extractHeader).Hash -cne (Get-FileHash -LiteralPath $sourceHeader).Hash)
+    {
+        throw 'The installed Core extraction header does not match the current project source.'
+    }
 }
 
 $env:OPENUSD_ROOT = $openUsdInstallRoot
@@ -61,14 +79,32 @@ try
         exit $LASTEXITCODE
     }
 
-    & cmake --build --preset $preset
+    $buildArguments = @('--build', '--preset', $preset)
+    if ($PackageConsumer)
+    {
+        $buildArguments += @('--target', 'openusd_physx')
+        if ($Rid -eq 'linux-x64')
+        {
+            $buildArguments += 'openusd_physx_vehicle_probe'
+        }
+        Write-Host 'Building the PhysX package-consumer targets and their declared dependencies.'
+    }
+    & cmake @buildArguments
     if ($LASTEXITCODE -ne 0)
     {
         exit $LASTEXITCODE
     }
 
     $buildRoot = Join-Path 'build/shim' $preset
-    & cmake --install $buildRoot --prefix $shimInstallRoot
+    $installRoot = if ($PackageConsumer)
+    {
+        Join-Path $buildRoot 'openusd_physx'
+    }
+    else
+    {
+        $buildRoot
+    }
+    & cmake --install $installRoot --prefix $shimInstallRoot
     if ($LASTEXITCODE -ne 0)
     {
         exit $LASTEXITCODE
@@ -87,6 +123,20 @@ $library = switch ($Rid)
 if (-not (Test-Path $library))
 {
     throw "PhysX shim install did not produce '$library'."
+}
+if ($PackageConsumer)
+{
+    foreach ($header in @('openusd_physx.h', 'openusd_physx_world.h'))
+    {
+        $installed = Join-Path $shimInstallRoot "include/$header"
+        $source = Join-Path $repoRoot "native/openusd_physx/include/$header"
+        if ((Get-FileHash -LiteralPath $installed).Hash -cne (Get-FileHash -LiteralPath $source).Hash)
+        {
+            throw "The installed PhysX header does not match the current source: '$header'."
+        }
+    }
+    # Extraction is implemented by the verified Core shim, not by openusd_physx.
+    Copy-Item -LiteralPath $extractHeader -Destination (Join-Path $shimInstallRoot 'include/openusd_physics_extract.h')
 }
 
 # The GPU modules are reported rather than required, and are never packaged. They are packman

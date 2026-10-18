@@ -15,12 +15,18 @@ param(
     [ValidateRange(1, [int]::MaxValue)]
     [int]$MinimumExpectedTests = 1,
 
+    [switch]$UseWindowsAppHost,
+
     [Alias('TestArgs')]
     [string[]]$TestArguments = @()
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if ($UseWindowsAppHost -and -not $IsWindows)
+{
+    throw 'The Windows native-loader test fixture requires a Windows application host.'
+}
 . (Join-Path $PSScriptRoot 'vulkan-test-runtime-registry.ps1')
 
 # Resolve the repository-pinned host explicitly rather than trusting PATH.
@@ -283,7 +289,7 @@ foreach ($projectPath in $projectPaths)
         foreach ($targetFramework in $selectedFrameworks)
         {
             # Refuse to report a count for a framework the pinned host cannot
-            # launch. Skipping is fine -- CI installs 8.0.x, 9.0.x and 10.0.301
+            # launch. Skipping is fine -- CI installs 8.0.x, 9.0.x and 10.0.401
             # and runs all three -- but it must be stated, not inferred. A
             # silent skip that still prints a total is indistinguishable from a
             # passing run and has already produced test counts that were never
@@ -366,7 +372,20 @@ foreach ($run in $runs)
         'off'
     )
     $arguments += $TestArguments
+    $testHost = $script:DotnetHost
+    if ($UseWindowsAppHost)
+    {
+        $testHost = [IO.Path]::ChangeExtension($run.Dll, '.exe')
+        if (-not (Test-Path -LiteralPath $testHost -PathType Leaf))
+        {
+            throw "The original built Windows test application host is missing: $testHost"
+        }
+        $arguments = @($arguments | Select-Object -Skip 1)
+        Write-Host "[managed-tests] Windows native-loader AppDir=$([IO.Path]::GetDirectoryName($testHost))"
+    }
     $oldVulkanEnvironment = @{}
+    $oldDotnetRootX64 = [Environment]::GetEnvironmentVariable('DOTNET_ROOT_X64', 'Process')
+    $oldDotnetRoot = [Environment]::GetEnvironmentVariable('DOTNET_ROOT', 'Process')
     $driverRegistration = $null
     foreach ($name in $vulkanEnvironmentNames)
     {
@@ -376,6 +395,12 @@ foreach ($run in $runs)
     }
     try
     {
+        if ($UseWindowsAppHost)
+        {
+            $selectedRuntimeRoot = [IO.Path]::GetDirectoryName($script:DotnetHost)
+            [Environment]::SetEnvironmentVariable('DOTNET_ROOT_X64', $selectedRuntimeRoot, 'Process')
+            [Environment]::SetEnvironmentVariable('DOTNET_ROOT', $selectedRuntimeRoot, 'Process')
+        }
         try
         {
             $swiftShaderIcd = Prepare-PackagedSwiftShaderIcd `
@@ -398,11 +423,13 @@ foreach ($run in $runs)
             Write-Host "[managed-tests] Using packaged SwiftShader ICD: $swiftShaderIcd"
         }
 
-        & $script:DotnetHost @arguments
+        & $testHost @arguments
         $exitCode = $LASTEXITCODE
     }
     finally
     {
+        [Environment]::SetEnvironmentVariable('DOTNET_ROOT_X64', $oldDotnetRootX64, 'Process')
+        [Environment]::SetEnvironmentVariable('DOTNET_ROOT', $oldDotnetRoot, 'Process')
         try
         {
             Restore-VulkanTestRuntimeDriver -State $driverRegistration
@@ -447,7 +474,7 @@ if ($script:SkippedFrameworks.Count -gt 0)
         ($script:SkippedFrameworks -join ', '))
     Write-Host (
         '[managed-tests] Those target frameworks build but have no matching ' +
-        'runtime in the pinned host. CI installs 8.0.x, 9.0.x and 10.0.301 ' +
+        'runtime in the pinned host. CI installs 8.0.x, 9.0.x and 10.0.401 ' +
         'and runs them there. Do not report a count for them from this run.')
 }
 if ($failures.Count -gt 0)
@@ -456,5 +483,5 @@ if ($failures.Count -gt 0)
     {
         Write-Error "[managed-tests] $failure" -ErrorAction Continue
     }
-    exit 1
+    throw "[managed-tests] $($failures.Count) test run(s) failed; later commands must not replace this verdict."
 }

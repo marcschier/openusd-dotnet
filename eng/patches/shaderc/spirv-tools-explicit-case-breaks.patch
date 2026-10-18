@@ -1,0 +1,88 @@
+--- a/source/parsed_operand.cpp
++++ b/source/parsed_operand.cpp
+@@ -93,6 +93,7 @@
+                 *out << spvtools::utils::FloatProxy<float>(word);
+                 break;
+             }
++            break;
+           default:
+             break;
+         }
+--- a/source/val/validate_composites.cpp
++++ b/source/val/validate_composites.cpp
+@@ -1185,6 +1185,7 @@
+         default:
+           break;
+       }
++      break;
+     }
+ 
+     default:
+--- a/source/val/validate_interfaces.cpp
++++ b/source/val/validate_interfaces.cpp
+@@ -759,6 +759,7 @@
+                  << _.getIdName(interface_var->id()) << " must not be declared "
+                  << "with a Storage Class of Input or Output.";
+         }
++        break;
+       }
+       default:
+         break;
+--- a/source/val/validate_memory.cpp
++++ b/source/val/validate_memory.cpp
+@@ -193,6 +193,7 @@
+         auto member_type = _.FindDef(member_type_id);
+         if (ContainsInvalidBool(_, member_type, skip_builtin)) return true;
+       }
++      break;
+     default:
+       break;
+   }
+@@ -3907,6 +3908,7 @@
+         default:
+           break;
+       }
++      break;
+     }
+ 
+     default:
+--- a/source/val/validate_mode_setting.cpp
++++ b/source/val/validate_mode_setting.cpp
+@@ -911,6 +911,7 @@
+                     "execution model.";
+         }
+       }
++      break;
+     default:
+       break;
+   }
+--- a/source/val/validate_primitives.cpp
++++ b/source/val/validate_primitives.cpp
+@@ -60,6 +60,7 @@
+                << spvOpcodeString(opcode)
+                << ": expected Stream to be constant instruction";
+       }
++      break;
+     }
+ 
+     default:
+--- a/source/opt/convert_to_sampled_image_pass.cpp
++++ b/source/opt/convert_to_sampled_image_pass.cpp
+@@ -233,6 +233,7 @@
+       case spv::Op::OpImageQuerySamples:
+       case spv::Op::OpImageSparseFetch:
+         uses->push_back(user);
++        break;
+       default:
+         break;
+     }
+--- a/source/opt/upgrade_memory_model.cpp
++++ b/source/opt/upgrade_memory_model.cpp
+@@ -405,6 +405,7 @@
+ 
+         indices.push_back(constant_id);
+       }
++      break;
+     default:
+       break;
+   }

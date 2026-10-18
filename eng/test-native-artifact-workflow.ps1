@@ -54,7 +54,7 @@ foreach ($workflow in @($packageWorkflow, $renderWorkflow))
     Assert-Contains $workflow 'actions: read' 'Native archive consumer workflow'
     Assert-Contains `
         $workflow `
-        'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093' `
+        'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333' `
         'Native archive consumer workflow'
     Assert-Contains `
         $workflow `

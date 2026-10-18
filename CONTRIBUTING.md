@@ -5,7 +5,7 @@ useful test first, then run the applicable full gates before requesting review.
 
 ## Prerequisites
 
-Run commands from the repository root with PowerShell 7. The repository pins .NET SDK **10.0.301**
+Run commands from the repository root with PowerShell 7. The repository pins .NET SDK **10.0.401**
 in `global.json` and disables SDK roll-forward. If that SDK is not already installed, bootstrap the
 repository-local copy:
 
@@ -17,8 +17,8 @@ repository-local copy:
 bash ./eng/install-dotnet.sh
 ```
 
-Confirm that `dotnet --version` reports `10.0.301`. Production libraries must continue to build for
-`net8.0`, `net9.0`, and `net10.0`; SDK 10.0.301 is the build SDK, not permission to drop older target
+Confirm that `dotnet --version` reports `10.0.401`. Production libraries must continue to build for
+`net8.0`, `net9.0`, and `net10.0`; SDK 10.0.401 is the build SDK, not permission to drop older target
 frameworks.
 
 ## Make focused changes

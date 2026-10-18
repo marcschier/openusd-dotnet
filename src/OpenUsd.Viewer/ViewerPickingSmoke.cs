@@ -157,11 +157,6 @@ internal static class ViewerPickingSmokeHostObserver
 
 internal static class ViewerPickingSmokeWriter
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
     internal static async Task WriteAsync(
         string path,
         ViewerPickingSmokeEvidence evidence,
@@ -192,10 +187,11 @@ internal static class ViewerPickingSmokeWriter
                 await JsonSerializer.SerializeAsync(
                     stream,
                     evidence,
-                    JsonOptions,
+                    ViewerPickingSmokeJsonContext.Default.ViewerPickingSmokeEvidence,
                     cancellationToken);
                 await stream.FlushAsync(cancellationToken);
             }
+
             File.Move(temporaryPath, fullPath, overwrite: true);
         }
         finally
@@ -204,3 +200,7 @@ internal static class ViewerPickingSmokeWriter
         }
     }
 }
+
+[System.Text.Json.Serialization.JsonSourceGenerationOptions(WriteIndented = true)]
+[System.Text.Json.Serialization.JsonSerializable(typeof(ViewerPickingSmokeEvidence))]
+internal sealed partial class ViewerPickingSmokeJsonContext : System.Text.Json.Serialization.JsonSerializerContext;

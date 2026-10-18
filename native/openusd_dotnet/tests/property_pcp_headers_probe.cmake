@@ -58,7 +58,7 @@ foreach(header primIndex.h layerStack.h errors.h)
 endforeach()
 
 file(READ "${copy}/pxr/pxr.h" original_version)
-string(REPLACE "#define PXR_VERSION 2605" "#define PXR_VERSION 9999" wrong_version "${original_version}")
+string(REPLACE "#define PXR_VERSION 2608" "#define PXR_VERSION 9999" wrong_version "${original_version}")
 file(WRITE "${copy}/pxr/pxr.h" "${wrong_version}")
 execute_process(COMMAND "${CMAKE_COMMAND}" --build "${build}" --target openusd_verify_property_pcp_headers
     RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)

@@ -58,7 +58,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 .TryGetCapabilityRejectionReason(out tablesRejection);
         }
         Capabilities = new SilkGraphicsCapabilities(
-            device.Name.ToString() ?? "Metal Device",
+            MetalObjectOwnership.GetString(device.Name) ?? "Metal Device",
             "Metal",
             SupportsCompute: true,
             IsSoftware: false)
@@ -158,14 +158,20 @@ public sealed partial class MetalSilkGraphicsDevice
     public void WaitIdle()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        MTLCommandBuffer commandBuffer = _queue.CommandBuffer();
+        MTLCommandBuffer commandBuffer = MetalObjectOwnership.Retain(_queue.CommandBuffer());
         if (commandBuffer.NativePtr == 0)
         {
             throw new InvalidOperationException("Could not create a Metal command buffer.");
         }
-        commandBuffer.Commit();
-        commandBuffer.WaitUntilCompleted();
-        commandBuffer.Dispose();
+        try
+        {
+            commandBuffer.Commit();
+            commandBuffer.WaitUntilCompleted();
+        }
+        finally
+        {
+            commandBuffer.Dispose();
+        }
     }
 
     /// <inheritdoc/>
@@ -203,8 +209,8 @@ public sealed partial class MetalSilkGraphicsDevice
     internal void ReleaseDependentObject() => ReleaseDependentLifetime();
 
     private bool TryBeginDispose() => TryBeginLifetimeDispose(
-        "Cannot dispose the Metal device while buffers, textures, pipelines, " +
-        "pick readbacks, selection resources, submissions, or samplers are alive.");
+        "Cannot dispose the Metal device while buffers, textures, or submissions are alive; " +
+        "this also includes pipelines, pick readbacks, selection resources, and samplers.");
 }
 
 [SupportedOSPlatform("macos")]

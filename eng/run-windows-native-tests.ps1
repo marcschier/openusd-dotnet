@@ -105,7 +105,17 @@ finally
     {
         foreach ($name in $names)
         {
-            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+            if ($null -eq $previous[$name])
+            {
+                if (Test-Path -LiteralPath "Env:$name")
+                {
+                    Remove-Item -LiteralPath "Env:$name"
+                }
+            }
+            else
+            {
+                [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+            }
         }
     }
 }

@@ -3,24 +3,101 @@
   "$generator": "eng/generate-schema-coverage.py",
   "$comment": "Generated from the pinned OpenUSD schema registry. Do not hand edit; run python eng/generate-schema-coverage.py.",
   "openUsd": {
-    "version": "26.05",
-    "tag": "v26.05",
-    "commit": "2095fafafd033fa23386d7ec6d58c7cc33974518"
+    "version": "26.08",
+    "tag": "v26.08",
+    "commit": "ee47c679abde5b467a7b6a41f3b2285564a4222e"
   },
   "counts": {
     "libraries": 10,
-    "schemas": 113,
+    "schemas": 114,
     "concreteTyped": 59,
     "abstractTyped": 13,
-    "appliedApi": 38,
+    "appliedApi": 39,
     "nonAppliedApi": 3,
-    "ownProperties": 327,
+    "ownProperties": 341,
     "inheritedProperties": 471
   },
   "libraries": [
     {
       "name": "usdGeom",
       "schemas": [
+        {
+          "typeName": "UsdGeomBackPlateAPI",
+          "schemaIdentifier": "BackPlateAPI",
+          "schemaKind": "multipleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "backPlate:__INSTANCE_NAME__:alpha:image",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:depth:cameraSpaceOffset",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:depth:image",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:depth:minOffset",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:depth:normalizingFactor",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:image",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:luma:gain",
+              "type": "float3",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:luma:gamma",
+              "type": "float3",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:luma:lift",
+              "type": "float3",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:plateVisibility",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:rotateXYZ:tweak",
+              "type": "float3",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:scale:tweak",
+              "type": "float2",
+              "kind": "attribute"
+            },
+            {
+              "name": "backPlate:__INSTANCE_NAME__:translate:tweak",
+              "type": "float3",
+              "kind": "attribute"
+            }
+          ]
+        },
         {
           "typeName": "UsdGeomBasisCurves",
           "schemaIdentifier": "BasisCurves",
@@ -563,6 +640,12 @@
               "name": "model:cardTextureZPos",
               "type": "asset",
               "kind": "attribute"
+            },
+            {
+              "name": "model:cardVisibility",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
             },
             {
               "name": "model:drawMode",

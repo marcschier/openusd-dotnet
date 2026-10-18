@@ -162,8 +162,17 @@ public sealed class MetalPickingTests
         await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.Create(");
         await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.GetStagingByteSize(");
         await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.Stage(");
-        // The staged buffer, not the caller's packed bytes, is what reaches Metal.
-        await Assert.That(uploadEncoding).Contains("CreateTextureUpload(staged)");
+        await Assert.That(uploadEncoding).Contains("CreateTextureUpload(checked((ulong)byteCount))");
+        await Assert.That(uploadEncoding).Contains(
+            "new Span<byte>((void*)upload.Buffer.Contents, byteCount)");
+        await Assert.That(uploadEncoding).DoesNotContain("byte[] staged");
+        string uploadAllocation = Slice(
+            offscreen,
+            "private MetalStagingResource CreateTextureUpload(ulong byteCount)",
+            "private static MTLSamplerMinMagFilter GetFilter(");
+        await Assert.That(uploadAllocation).Contains("ReserveStagingAllocation(byteCount)");
+        await Assert.That(uploadAllocation).Contains(
+            "_device.NewBuffer(byteCount, MTLResourceOptions.ResourceStorageModeShared)");
         await Assert.That(uploadEncoding).Contains("foreach (MetalMipCopyPlan uploadPlan in uploadPlans)");
         await Assert.That(uploadEncoding).Contains("uploadPlan.DestinationLevel");
     }

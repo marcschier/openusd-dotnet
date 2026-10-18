@@ -421,9 +421,10 @@ Canonical evidence is generated with the build it describes:
 
 ## Release SBOM
 
-The checked release SBOM is `eng/sbom/openusd-release.cdx.json`. It is CycloneDX 1.6 and currently
-contains 118 components. `eng/generate-sbom.py` builds it from repository pins rather than from a
-restored machine state: `eng/openusd.install.lock.json`, `eng/cesium.lock.json`,
+The checked release SBOM is `eng/sbom/openusd-release.cdx.json`. It is CycloneDX 1.6; the checked
+artifact is the source of truth for its component inventory. `eng/generate-sbom.py` builds it from
+repository pins rather than from a restored machine state: `eng/openusd.install.lock.json`,
+`eng/cesium.lock.json`,
 `eng/physx.lock.json`, `eng/shaders/toolchain.lock.json`, `Directory.Packages.props`,
 `global.json`, the published package list, and the Viewer publish script
 are hashed into the metadata. Cesium's transitive vcpkg component resolution is committed in
@@ -433,6 +434,18 @@ from the network. Refreshing that committed vcpkg data is an explicit operation:
 ```powershell
 python eng/generate-sbom.py --refresh-vcpkg
 ```
+
+Managed production, analyzer, benchmark, and test dependencies share `Directory.Packages.props`.
+Update related package families together, retain the .NET 8, 9, and 10 library targets, and regenerate
+the SBOM after changing a pin. Use listed stable packages in the supported release channel rather than
+the numerically highest flat-container entry: DXC uses the official `1.9.2609.5` release; the higher
+`101.7.2207.25` package is unlisted and is not a newer production release.
+
+The next release is planned as `0.15.0-alpha`, retaining the exact `alpha` prerelease tag.
+This is a minor increment because the source includes public API and native ABI additions since
+the published `0.14.0-alpha` baseline, not just package patch updates. A version pin is not proof
+of publication: the published baseline remains current until every qualification and feed-promotion
+gate succeeds.
 
 `eng/check-sbom.ps1` regenerates to a temporary comparison, reports stale output when the pinned
 inputs move, then validates the checked file. CI runs it on Linux. Release packing also regenerates

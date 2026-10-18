@@ -1,6 +1,6 @@
 {
   "$schemaVersion": 1,
-  "runtimeVersion": "0.14.0-alpha",
+  "runtimeVersion": "0.15.0-alpha",
   "generatedDocPath": "docs/omniverse-profile.md",
   "supportManifestPath": "eng/support-manifest.json",
   "openUsdLockPath": "eng/openusd.lock.json",
@@ -10,7 +10,7 @@
       "id": "openusd",
       "kind": "runtime-pinned",
       "description": "Pinned OpenUSD core version this runtime builds against and this profile targets for interchange.",
-      "version": "26.05",
+      "version": "26.08",
       "versionSource": {
         "file": "eng/openusd.lock.json",
         "pointer": "openUsd.version"
@@ -20,7 +20,7 @@
       "id": "materialx",
       "kind": "runtime-pinned",
       "description": "Pinned MaterialX SDK version behind the bounded MaterialX projection; MaterialX 1.39 adds the OpenPBR node definitions this profile's accepted corpus targets.",
-      "version": "1.39.4",
+      "version": "1.39.5",
       "versionSource": {
         "file": "eng/openusd.lock.json",
         "pointer": "dependencies[name=MaterialX].version"

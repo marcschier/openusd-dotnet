@@ -17,7 +17,7 @@ as a supported package, not here.
 
 ## Prerequisites and native runtime
 
-- .NET SDK 10.0.301. `global.json` rejects other SDK versions.
+- .NET SDK 10.0.401. `global.json` rejects other SDK versions.
 - A native runtime that matches the host process RID and the managed package version.
 - A native toolchain when building the native runtime from source.
 - A platform NativeAOT toolchain when publishing. On Windows, use an x64 Visual Studio developer shell.
@@ -87,9 +87,11 @@ Use the equivalent native install and loader variable for `linux-x64` (`LD_LIBRA
 The repository projects use `ProjectReference` so changes to `src/OpenUsd` are tested immediately.
 To validate package consumption, first build the packages into a repository-local feed:
 
+The example targets the planned `0.15.0-alpha` source version, not an already-published release.
+
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.14.0-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.15.0-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
@@ -146,7 +148,7 @@ libraries on the loader path and register the USD plugin tree, or consume the ma
 
 ## Troubleshooting
 
-- SDK selection failure: install 10.0.301 with `.\eng\install-dotnet.ps1`.
+- SDK selection failure: install 10.0.401 with `.\eng\install-dotnet.ps1`.
 - `DllNotFoundException`: the matching Core runtime is absent from the app or native loader path.
 - `BadImageFormatException`: the native architecture or RID does not match the process.
 - File-format or plugin errors: stage `usd/plugInfo.json`, or set `PXR_PLUGINPATH_NAME` for a source run.

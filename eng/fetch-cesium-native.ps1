@@ -125,10 +125,27 @@ if ($manifestHash -ne $lock.cesiumNative.vcpkgManifestSha256)
     throw "cesium-native vcpkg.json hash mismatch. Expected $($lock.cesiumNative.vcpkgManifestSha256), got $manifestHash."
 }
 
-$configurationHash = (Get-FileHash (Join-Path $cesiumSource 'vcpkg-configuration.json') -Algorithm SHA256).Hash
-if ($configurationHash -ne $lock.cesiumNative.vcpkgConfigurationSha256)
+$configurationPath = Join-Path $cesiumSource 'vcpkg-configuration.json'
+$configurationHash = (Get-FileHash $configurationPath -Algorithm SHA256).Hash
+if ($configurationHash -ceq $lock.cesiumNative.vcpkgConfigurationSha256)
 {
-    throw "cesium-native vcpkg-configuration.json hash mismatch. Expected $($lock.cesiumNative.vcpkgConfigurationSha256), got $configurationHash."
+    $configurationText = [IO.File]::ReadAllText($configurationPath)
+    $configuration = $configurationText | ConvertFrom-Json
+    if ($configuration.'default-registry'.baseline -cne $lock.cesiumNative.upstreamVcpkgBaseline)
+    {
+        throw 'The verified Cesium registry does not contain the expected upstream baseline.'
+    }
+    $configurationText = $configurationText.Replace(
+        [string]$lock.cesiumNative.upstreamVcpkgBaseline,
+        [string]$lock.vcpkg.baseline)
+    [IO.File]::WriteAllText($configurationPath, $configurationText, [Text.UTF8Encoding]::new($false))
+    $configurationHash = (Get-FileHash $configurationPath -Algorithm SHA256).Hash
+}
+if ($configurationHash -cne $lock.cesiumNative.patchedVcpkgConfigurationSha256)
+{
+    throw (
+        "Cesium registry hash mismatch. Expected " +
+        "$($lock.cesiumNative.patchedVcpkgConfigurationSha256), got $configurationHash.")
 }
 
 $vcpkgCacheRoot = Join-Path $repoRoot 'native/.cache'

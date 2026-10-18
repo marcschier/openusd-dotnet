@@ -77,12 +77,12 @@ if (-not (Test-Path $vcpkgTripletRoot))
 }
 Copy-Item (Join-Path $vcpkgTripletRoot '*') $installRoot -Recurse -Force
 
-$noticePath = Join-Path $installRoot 'THIRD-PARTY-PHYSX.md'
 # The notice separates what is redistributed from what is not, on purpose. The SDK sources this
 # port compiles are BSD-3-Clause and are statically linked into openusd_physx, so they are
 # redistributed. The GPU and device modules are separate packman blobs the port downloads under
 # NVIDIA proprietary terms; nothing in this repository redistributes them, and a notice that
 # named only the BSD licence would imply otherwise to anyone reading a package.
+$noticePath = Join-Path $installRoot 'THIRD-PARTY-PHYSX.md'
 $noticeLines = @(
     '# PhysX third-party notices',
     '',
@@ -105,9 +105,11 @@ $noticeLines = @(
     'capability and skips every GPU-only object with a diagnostic.',
     ''
 )
-$copyrightPath = Join-Path $installRoot 'share/physx/copyright'
-if (Test-Path $copyrightPath)
-{
-    $noticeLines += Get-Content $copyrightPath -Raw
-}
 [System.IO.File]::WriteAllLines($noticePath, $noticeLines, [System.Text.UTF8Encoding]::new($false))
+& python (Join-Path $PSScriptRoot 'generate-native-notices.py') write `
+    --family physx --rid $Rid --install-root $installRoot `
+    --share-root (Join-Path $installRoot 'share') --preamble-file $noticePath
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Generating the complete source-built PhysX redistribution notices failed.'
+}

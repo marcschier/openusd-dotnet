@@ -175,8 +175,8 @@ Failed upload preparation returns every charge acquired before submission; an un
 D3D12 readback retained for later teardown retains its charge too.
 
 The staging pool does not charge public `CreateBuffer` payloads or GPU texture storage
-again. It also does not cover CPU command-data copies, decoded images, Metal's managed
-repacking array, native memory-allocation alignment or driver overhead. Vulkan's internal
+again. It also does not cover CPU command-data copies, decoded images, native
+memory-allocation alignment or driver overhead. Vulkan's internal
 host-visible picking uniform buffers belong to this pool. Metal shared textures can be
 read directly without allocating a staging buffer and therefore incur no fictitious
 readback charge. Unsupported devices and late/replacement configuration fail explicitly.
@@ -189,8 +189,9 @@ Configure `SilkCpuTextureBudget` on a built-in device before constructing scene 
 or recording texture copies. Alternatively pass it with `SilkTextureResidencyOptions`
 to the renderer or scene-resource constructor. The shared pool admits native-decoder
 output arrays before allocation, decoded-image/mip-chain overlap, UDIM tiles and their
-atlas, row-flip scratch, fallback pixels, raw volume arrays, RHI texture-command copies
-and Metal's managed aligned transfer array. Native decode validates that its output
+atlas, row-flip scratch, fallback pixels, raw volume arrays and RHI texture-command copies.
+Metal repacks aligned mip rows directly into its admitted shared native staging buffer,
+without another managed transfer array or duplicate CPU charge. Native decode validates that its output
 dimensions still match the admitted destination. Raw volume reads require the declared
 length before allocating and reject an inconsistent stream.
 
@@ -1881,8 +1882,10 @@ An element index never travels without a `SelectionElementKind` that says what i
 none: it reports `SelectionElementKind.Unspecified`, which preserves the index without claiming it
 is a face. `RenderPickResult.Hit` resolves an unspecified kind against the request's own target --
 the one place the answer is known -- and publishes the *normalized* item, so no consumer ever
-receives a bare index. A stated kind that disagrees with the target is still refused. A complete
-instancing chain is built with the named factories `SelectionItem.FromInstancerContext(primPath,
+receives a bare index. A stated kind that disagrees with the target is still refused.
+Element-kind validation uses explicit membership rather than reflection-backed enum metadata,
+so value-only hit and stale factories do not allocate when that runtime cache is reclaimed.
+A complete instancing chain is built with the named factories `SelectionItem.FromInstancerContext(primPath,
 instancerContext)` and `SelectionItem.FromInstancerContext(primPath, instancerContext, elementIndex,
 elementKind)`; they are factories rather than constructor overloads because a chain-shaped
 constructor and the four-parameter one are both applicable to a call passing `null` for the second
@@ -2834,7 +2837,7 @@ the runtime shader service, and D3D12 translates the generated SPIR-V with SPIRV
 with DXC. The page payload is still content-addressed and asynchronous on the managed side; the checked offline shader
 payload remains authoritative for built-in shaders and supplies the placeholder while generated programs compile.
 
-MaterialX 1.39.4 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
+MaterialX 1.39.5 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
 families for this design are GLSL, Vulkan GLSL, ESSL, WGSL, MSL, OSL, and MDL. Vulkan therefore goes
 through `VkShaderGenerator` and glslang; Metal goes through `MslShaderGenerator`; D3D12 has no direct
 MaterialX-to-HLSL path and uses SPIRV-Cross to HLSL followed by DXC. The MDL SDK is BSD-3-Clause and has HLSL and GLSL
@@ -3339,7 +3342,7 @@ device allocates no map and diagnoses every shadow-enabled light. Storm's own of
 remains unusable as a reference (see "hdSilk UsdLux lights"), so all of the above is gated
 analytically rather than against Storm.
 
-Storm ABI v8 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
+Storm ABI v8 implements nearest-hit primitive picking with the pinned OpenUSD v26.08
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical
 top-left pixel to the exact viewport, time, camera bytes, state/optional scene revision, and (for a
 child) context generation. The one-pixel projection uses the OpenUSD test bounds
@@ -3422,7 +3425,7 @@ must be rendered inside Storm or use separate native popup windows. The host can
 is active, but transparent Avalonia overlays over a visible Storm child are unsupported.
 
 The previous Avalonia `OpenGlControlBase` path remains as a compatibility and test path. `windows-wgl` and the
-shared-stage WGL soak force Avalonia to a WGL 4.6/4.5 compatibility profile because OpenUSD 26.05 HgiGL requires GL 4.5
+shared-stage WGL soak force Avalonia to a WGL 4.6/4.5 compatibility profile because OpenUSD 26.08 HgiGL requires GL 4.5
 and compatibility-only state such as `GL_POINT_SMOOTH` and `GL_MAX_CLIP_PLANES`. `openusd_hydra` creates
 `UsdImagingGLEngine` while that Avalonia context is current and presents through `HgiInterop` without CPU readback.
 
@@ -3458,7 +3461,7 @@ maximum packed RGBA values. Callers may explicitly request a bounded pixel copy 
 for screenshot artifacts. Capture fails before any completed frame and is never called by the
 interactive render loop.
 
-OpenUSD v26.05 does not provide a Linux EGL platform-context adapter. Its Linux Glf/Garch path is GLX, so the Viewer
+OpenUSD v26.08 does not provide a Linux EGL platform-context adapter. Its Linux Glf/Garch path is GLX, so the Viewer
 intentionally fixes its Linux shell to X11. This also lets one process hide/show the Storm GLX child while Vulkan
 opaque-FD composition is active.
 

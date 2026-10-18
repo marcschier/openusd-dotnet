@@ -24,9 +24,16 @@
     -->
     <IsApplicationProject>true</IsApplicationProject>
     <IsPackable>true</IsPackable>
+    <RepositoryUrl>https://github.com/marcschier/openusd-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <Description>Avalonia viewport and inspector shell for OpenUSD stages, embeddable on a caller-owned stage scheduler.</Description>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true' or '$(PublishSingleFile)' == 'true'">
+    <DefineConstants>$(DefineConstants);OPENUSD_VIEWER_SINGLE_FILE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

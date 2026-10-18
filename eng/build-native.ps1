@@ -6,10 +6,12 @@ param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
     [string]$NativeRoot = (Join-Path $PSScriptRoot '../native'),
+    [string]$SdkSourceRoot,
     [string]$SdkBuildRoot,
     [string]$PatchLockPath = (Join-Path $PSScriptRoot 'openusd-storage-admission.lock.json'),
     [switch]$SdkOnly,
     [switch]$ReuseExistingDependencies,
+    [switch]$ReuseVerifiedSdk,
     [switch]$DisableSdkPrecompiledHeaders,
     [int]$Jobs = [Environment]::ProcessorCount,
     [switch]$ForceFetch,
@@ -24,7 +26,8 @@ if (-not $SdkOnly -and $NativeRoot -cne [IO.Path]::GetFullPath((Join-Path $repoR
     throw 'A custom NativeRoot currently requires -SdkOnly; build project shims in their isolated CMake graph.'
 }
 $cacheRoot = Join-Path $NativeRoot 'downloads'
-$sourceRoot = Join-Path $NativeRoot 'src'
+$sourceRoot = if ([string]::IsNullOrWhiteSpace($SdkSourceRoot)) { Join-Path $NativeRoot 'src' }
+    else { [IO.Path]::GetFullPath($SdkSourceRoot) }
 $buildRoot = if ([string]::IsNullOrWhiteSpace($SdkBuildRoot)) { Join-Path $NativeRoot "build/$Rid" }
     else { [IO.Path]::GetFullPath($SdkBuildRoot) }
 $installRoot = Join-Path $NativeRoot "install/$Rid"
@@ -35,6 +38,23 @@ if ([string]::IsNullOrWhiteSpace($PatchLockPath))
 }
 $openUsdSource = Join-Path $sourceRoot $lock.openUsd.extractDirectory
 $buildScript = Join-Path $openUsdSource $lock.openUsd.buildScript
+$cmakeBuildArguments = '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
+if ($Rid -eq 'linux-x64')
+{
+    $linuxPolicy = Join-Path $PSScriptRoot 'cmake/LinuxRuntime.cmake'
+    $linuxFinalizer = Join-Path $PSScriptRoot 'normalize-linux-runtime.py'
+    foreach ($input in @(
+        @{ Path = $linuxPolicy; Hash = $lock.openUsd.linuxRuntimePolicy.cmakeSha256 },
+        @{ Path = $linuxFinalizer; Hash = $lock.openUsd.linuxRuntimePolicy.finalizerSha256 }))
+    {
+        if ((Get-FileHash -LiteralPath $input.Path).Hash -cne $input.Hash)
+        {
+            throw "The Linux runtime policy does not match the locked build inputs: $($input.Path)"
+        }
+    }
+    $cmakeBuildArguments += (
+        ' -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="' + $linuxPolicy.Replace('\', '/') + '"')
+}
 
 $arguments = @(
     $installRoot,
@@ -43,7 +63,7 @@ $arguments = @(
     '--inst', $installRoot,
     '--build-variant', 'release',
     '--generator', 'Ninja',
-    '--cmake-build-args=-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+    "--cmake-build-args=$cmakeBuildArguments",
     '--build-monolithic',
     '--no-tests',
     '--no-examples',
@@ -113,7 +133,7 @@ $layout = & (Join-Path $PSScriptRoot 'fetch-native.ps1') `
     -Rid $Rid `
     -CacheRoot $cacheRoot `
     -SourceRoot $sourceRoot `
-    -SourceOnly:$ReuseExistingDependencies `
+    -SourceOnly:($ReuseExistingDependencies -or $ReuseVerifiedSdk) `
     -PatchLockPath $PatchLockPath `
     -Force:$ForceFetch
 
@@ -131,7 +151,14 @@ if ($Rid -eq 'osx-arm64' -and -not $IsMacOS)
 }
 if (($Rid -eq 'win-x64' -or $Rid -eq 'linux-x64') -and -not $env:VULKAN_SDK)
 {
-    $localVulkanSdk = Join-Path $repoRoot "native/install/vulkan-sdk-$($lock.vulkanSdk.version)"
+    $localVulkanSdk = if ($ReuseVerifiedSdk)
+    {
+        Join-Path $NativeRoot "install/vulkan-sdk-$($lock.vulkanSdk.version)"
+    }
+    else
+    {
+        Join-Path $repoRoot "native/install/vulkan-sdk-$($lock.vulkanSdk.version)"
+    }
     $includeDirectory = if ($IsWindows) { 'Include' } else { 'include' }
     $requiredVulkanFiles = @(
         (Join-Path $localVulkanSdk "$includeDirectory/vulkan/vulkan.h"),
@@ -155,7 +182,7 @@ if (($Rid -eq 'win-x64' -or $Rid -eq 'linux-x64') -and -not $env:VULKAN_SDK)
     if ($requiredVulkanFiles.Where({ -not (Test-Path $_) }).Count -gt 0 -or
         -not $hasRequiredShaderc)
     {
-        if ($ReuseExistingDependencies)
+        if ($ReuseExistingDependencies -or $ReuseVerifiedSdk)
         {
             throw 'Set VULKAN_SDK to the already verified Vulkan dependency; reuse-only mode cannot download it.'
         }
@@ -242,34 +269,64 @@ foreach ($patch in @($runtimePin.patches) + @($storagePin.patches))
             (Get-FileHash -LiteralPath $path).Hash -ceq $header.afterSha256
     }
 }
+if ($ReuseVerifiedSdk -and (-not $runtimeCurrent -or -not $storageCurrent))
+{
+    throw 'Verified SDK reuse requires the exact current runtime/storage/header/library identities.'
+}
 if (-not $runtimeCurrent -or -not $storageCurrent)
 {
     Write-Host 'The required SDK runtime/storage patches are not verified; rebuilding USD instead of reusing the install.'
     $arguments += @('--force', 'USD')
 }
 
-Write-Host "Building OpenUSD $($lock.openUsd.tag) for $Rid"
 $env:CMAKE_POLICY_VERSION_MINIMUM = '3.5'
 Remove-Item Env:NoDefaultCurrentDirectoryInExePath -ErrorAction SilentlyContinue
-if ($ReuseExistingDependencies)
+if ($ReuseVerifiedSdk)
 {
-    $plan = & python $layout.BuildScript @arguments -n 2>&1
-    if ($LASTEXITCODE -ne 0 -or ($plan -join "`n") -notmatch '(?m)^\s*Dependencies\s+None\s*$')
+    if ($Rid -ne 'osx-arm64')
     {
-        throw "Reuse-only SDK build has missing prerequisites; no downloads started:`n$($plan -join "`n")"
+        $pairedCompiler = Join-Path $NativeRoot "install/vulkan-sdk-$($lock.vulkanSdk.version)"
+        if (-not $env:VULKAN_SDK -or
+            [IO.Path]::GetFullPath($env:VULKAN_SDK) -cne [IO.Path]::GetFullPath($pairedCompiler))
+        {
+            throw 'Verified SDK reuse requires its exact restored Vulkan compiler prefix.'
+        }
+    }
+    & (Join-Path $PSScriptRoot 'verify-sdk-build-input.ps1') -Rid $Rid -NativeRoot $NativeRoot
+    Write-Host "SDK_BUILD_VENDOR_REUSED: rid=$Rid; upstream vendor installer skipped; current C ABI build remains required."
+}
+else
+{
+    Write-Host "Building OpenUSD $($lock.openUsd.tag) for $Rid"
+    if ($ReuseExistingDependencies)
+    {
+        $plan = & python $layout.BuildScript @arguments -n 2>&1
+        if ($LASTEXITCODE -ne 0 -or ($plan -join "`n") -notmatch '(?m)^\s*Dependencies\s+None\s*$')
+        {
+            throw "Reuse-only SDK build has missing prerequisites; no downloads started:`n$($plan -join "`n")"
+        }
+    }
+    & python $layout.BuildScript @arguments
+    if ($LASTEXITCODE -ne 0)
+    {
+        $buildFailure = $LASTEXITCODE
+        $sdkBuildRoot = Join-Path $buildRoot $lock.openUsd.extractDirectory
+        if (Test-Path -LiteralPath (Join-Path $sdkBuildRoot 'build.ninja'))
+        {
+            Write-Host 'Collecting remaining SDK compiler diagnostics; the original build failure remains fatal.'
+            & cmake --build $sdkBuildRoot --config Release --parallel $Jobs -- -k 0
+        }
+        exit $buildFailure
     }
 }
-& python $layout.BuildScript @arguments
-if ($LASTEXITCODE -ne 0)
+
+if ($Rid -eq 'linux-x64')
 {
-    $buildFailure = $LASTEXITCODE
-    $sdkBuildRoot = Join-Path $buildRoot $lock.openUsd.extractDirectory
-    if (Test-Path -LiteralPath (Join-Path $sdkBuildRoot 'build.ninja'))
+    & python $linuxFinalizer --sdk-root $installRoot
+    if ($LASTEXITCODE -ne 0)
     {
-        Write-Host 'Collecting remaining SDK compiler diagnostics; the original build failure remains fatal.'
-        & cmake --build $sdkBuildRoot --config Release --parallel $Jobs -- -k 0
+        throw "Linux ELF runtime finalization failed with exit code $LASTEXITCODE."
     }
-    exit $buildFailure
 }
 
 & (Join-Path $PSScriptRoot 'sdk-runtime-patch-metadata.ps1') -Operation Write `
@@ -298,6 +355,20 @@ if (-not [string]::IsNullOrWhiteSpace($PatchLockPath))
         -SdkRoot $installRoot -Rid $Rid -SourceRoot $openUsdSource -PatchLockPath $PatchLockPath
 }
 $shimInstallRoot = Join-Path $NativeRoot "install/shim/$Rid"
+if ($Rid -eq 'osx-arm64' -and -not $ReuseVerifiedSdk)
+{
+    $shadercRoot = Join-Path $NativeRoot "install/shaderc/$Rid"
+    & (Join-Path $PSScriptRoot 'build-vulkan-sdk.ps1') `
+        -ShaderCompilerOnly `
+        -ReuseExistingDependencies:$ReuseExistingDependencies `
+        -BuildRoot (Join-Path $NativeRoot "build/shaderc/$Rid") `
+        -InstallRoot $shadercRoot `
+        -Jobs $Jobs | Out-Host
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw 'The private locked MaterialX SPIR-V compiler build failed.'
+    }
+}
 $env:OPENUSD_ROOT = $installRoot
 Push-Location (Join-Path $repoRoot 'native')
 try
@@ -337,6 +408,14 @@ try
 finally
 {
     Pop-Location
+}
+
+$noticeOperation = if ($ReuseVerifiedSdk) { 'verify' } else { 'write' }
+& python (Join-Path $PSScriptRoot 'generate-native-notices.py') $noticeOperation `
+    --rid $Rid --install-root $installRoot --native-root $NativeRoot --cache-root $cacheRoot
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Generating the complete locked native redistribution notices failed.'
 }
 
 & (Join-Path $PSScriptRoot 'native-install-metadata.ps1') `

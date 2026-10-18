@@ -27,16 +27,20 @@ jobs:
   performance:
     uses: ./.github/workflows/performance.yml
 
+  cesium:
+    uses: ./.github/workflows/cesium-native.yml
+
   # Both of these rebuilt OpenUSD from source on every job, because they guarded
   # their archive path on github.event_name == 'workflow_call'. A called workflow
   # sees the CALLER's event, which here is the tag push, so that guard never fired
   # and the verified openusd-native-<rid> artifacts this run already produced went
   # unused. Pass the run id explicitly instead.
   packages:
-    needs: [ ci, shaders, native ]
+    needs: [ ci, shaders, native, cesium ]
     uses: ./.github/workflows/package.yml
     with:
       native-pipeline-run-id: ${{ github.run_id }}
+      cesium-pipeline-run-id: ${{ github.run_id }}
 
   render:
     needs: packages
@@ -52,9 +56,9 @@ jobs:
     name: aggregate release evidence
     if: always()
     needs: [ ci, shaders, native, performance, packages, render ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Write release gate evidence
         shell: pwsh
         run: |
@@ -80,7 +84,7 @@ jobs:
           $path = Join-Path $root 'release-gate.json'
           $results | ConvertTo-Json -Depth 5 | Set-Content $path
       - name: Upload release gate evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-gate-${{ github.run_id }}
           path: artifacts/release-gate/release-gate.json
@@ -102,6 +106,8 @@ jobs:
 
   pack:
     name: pack ${{ matrix.rid }} packages
+    env:
+      DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
     # Packing is split by platform out of necessity rather than preference. The Metal
     # package embeds the macOS-only mesh.metallib, and the Linux and macOS Imaging
     # packages run ELF and Mach-O validation that only their own platform can perform and
@@ -125,20 +131,20 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
             9.0.x
-            10.0.301
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+            10.0.401
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
@@ -169,7 +175,7 @@ jobs:
       # The archives come from the native job in this same run, so the published bytes
       # are the bytes the release gates verified.
       - name: Download the verified native archive
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.run_id }}
@@ -183,38 +189,47 @@ jobs:
             -Source archive `
             -PipelineRoot artifacts/native-pipeline/${{ matrix.rid }}
           ./eng/native-install-metadata.ps1 -Operation Verify -Rid ${{ matrix.rid }}
+      - id: cesium-sdk
+        name: Import the same-release verified Cesium SDK
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CESIUM_SOURCE_HEAD: ${{ github.sha }}
+        run: >
+          python eng/cesium-sdk-artifact.py consume --rid ${{ matrix.rid }}
+          --source $env:CESIUM_SOURCE_HEAD --run-id ${{ github.run_id }}
       - id: cesium-vcpkg-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: steps.cesium-sdk.outputs.reused != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/.cache/vcpkg-*
             native/build/cesium/${{ matrix.rid }}/vcpkg_installed
           key: >-
-            cesium-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+            cesium-vcpkg-v2-${{ matrix.rid }}-${{ hashFiles(
               'eng/cesium.lock.json',
               'eng/fetch-cesium-native.ps1',
-              'eng/build-cesium-native.ps1',
-              'eng/build-cesium-shim.ps1'
+              'eng/build-cesium-native.ps1'
             ) }}
       - name: Build Cesium native install
+        if: steps.cesium-sdk.outputs.reused != 'true'
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
       - name: Build Cesium shim
         shell: pwsh
-        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
+        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }} -PackageConsumer
       - id: physx-vcpkg-cache
         if: matrix.rid != 'osx-arm64'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/.cache/vcpkg-*
             native/build/physx/${{ matrix.rid }}/vcpkg_installed
           key: >-
-            physx-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+            physx-vcpkg-v2-${{ matrix.rid }}-${{ hashFiles(
               'eng/physx.lock.json',
               'eng/fetch-physx-native.ps1',
-              'eng/build-physx-native.ps1',
-              'eng/build-physx-shim.ps1'
+              'eng/build-physx-native.ps1'
             ) }}
       # The physics runtime package is packed by the runtime scope below, so the solver has to
       # exist before it runs. Building it here and not in the managed scope is what keeps every
@@ -227,7 +242,7 @@ jobs:
       - name: Build PhysX shim
         if: matrix.rid != 'osx-arm64'
         shell: pwsh
-        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }}
+        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }} -PackageConsumer
       - name: Pack the runtime packages for this RID
         shell: pwsh
         env:
@@ -259,7 +274,7 @@ jobs:
             -OutputRoot eng/shaders/out/package-metal-library
           ./eng/pack-packages.ps1 -Scope metal -OutputPath artifacts/nupkg
       - name: Upload the packed packages
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openusd-nupkg-${{ matrix.rid }}
           path: artifacts/nupkg
@@ -282,16 +297,16 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - rid: osx-arm64
             runner: macos-15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.301
+          dotnet-version: 10.0.401
       - name: Install Linux viewer smoke prerequisites
         if: matrix.rid == 'linux-x64'
         shell: bash
@@ -314,7 +329,7 @@ jobs:
           }
           "VERSION=$version" | Out-File $env:GITHUB_ENV -Append
       - name: Download packed packages
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: openusd-nupkg-*
           merge-multiple: true
@@ -363,7 +378,7 @@ jobs:
             -Rid linux-x64 \
             -BundlePath "$bundle"
       - name: Upload Viewer distribution artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openusd-viewer-${{ matrix.rid }}
           path: artifacts/viewer-distribution/artifacts/${{ matrix.rid }}
@@ -371,7 +386,7 @@ jobs:
           retention-days: 90
       - name: Upload Viewer smoke diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openusd-viewer-smoke-${{ matrix.rid }}
           path: artifacts/viewer-distribution-smoke
@@ -381,7 +396,7 @@ jobs:
   publish:
     name: publish packages
     needs: [ pack, aggregate ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: release
     permissions:
@@ -393,12 +408,12 @@ jobs:
       # needs one now: the gate below reads the published set out of
       # eng/pack-packages.ps1 instead of restating a count, and that file has to
       # be on disk for it to do so.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.301
+          dotnet-version: 10.0.401
       - name: Download every packed set
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: openusd-nupkg-*
           merge-multiple: true
@@ -441,7 +456,7 @@ jobs:
             --output artifacts/sbom/openusd-release.cdx.json `
             --validate
       - name: Upload the release SBOM artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openusd-release-sbom
           path: artifacts/sbom/openusd-release.cdx.json
@@ -511,7 +526,7 @@ jobs:
       # nuget.yml pulls the exact packages from the GitHub feed, so it promotes
       # what was actually published rather than rebuilding.
       - name: Upload the published packages
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openusd-published-nupkgs
           path: artifacts/nupkg

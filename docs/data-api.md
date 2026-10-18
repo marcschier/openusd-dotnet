@@ -129,7 +129,7 @@ Stored composition errors on the selected prim or its ancestors, and errors in r
 layer stacks, also refuse the inventory before property enumeration. Missing internal/external
 references or sublayers therefore cannot produce a complete empty list or a falsely complete list
 of surviving local properties. An unrelated prim's errors do not globally poison a valid selection.
-The diagnostic is fixed and bounded; stored SDK errors are never formatted. SDK26.05's
+The diagnostic is fixed and bounded; stored SDK errors are never formatted. SDK26.08's
 `GetLocalErrors()` getters copy their vectors, so the shim instead uses a narrow SDK-version-pinned,
 compiler-checked read-only error-owner accessor. It neither changes SDK definitions nor guesses
 member offsets, copies error lists, or changes the native ABI.
@@ -1462,6 +1462,11 @@ stable-read leases**, USDA/text-USD source layers, and concrete filesystem asset
 document is platform-neutral; verified source opening/import on other platforms is explicitly
 unsupported rather than relying on unproved read stability.
 
+The package-only NativeAOT scheduler-retirement probe retains the verified-review retirement
+checks on Windows. On Linux and macOS it executes required native-capability checks, ordinary
+source opening, the explicit verified-open refusal, and source-byte preservation. This is an
+executed unsupported-platform contract, not a verified-origin lease or a silently skipped probe.
+
 Start provenance before authoring:
 
 ```csharp
@@ -1767,7 +1772,7 @@ contract requires.
 
 `OpenUsd.UsdPath.IsAbsolutePrimPath`/`ValidateAbsolutePrimPath` validate prim paths in managed code
 before crossing the native boundary. Their fixed Unicode `XID_Start`/`XID_Continue` tables match the
-pinned OpenUSD 26.05 runtime, including underscore as an identifier start. Native-independent unit
+pinned OpenUSD 26.08 runtime, including underscore as an identifier start. Native-independent unit
 tests exercise them alongside `UsdVec2f`, `UsdVec3f`, `UsdMatrix4d`, `UsdBounds3d`, `UsdPayloadArc`,
 and the internal packed-string encoding/decoding helpers.
 
@@ -1812,7 +1817,7 @@ UsdUINodeGraphNode nodeUi = UsdUINodeGraphNode.Apply(proc.Prim);
 Applied API schemas follow the existing standalone facade pattern used by `UsdSkelBinding`:
 `Apply(UsdPrim)`, `TryWrap(UsdPrim, out ...)`, and `Wrap(UsdPrim)` live on the API facade type.
 Relationship lists such as volume field bindings, render products, and ordered render vars cross the
-native boundary in bulk. `UsdMediaAssetPreviewsAPI` is present in the pinned OpenUSD 26.05 build and
+native boundary in bulk. `UsdMediaAssetPreviewsAPI` is present in the pinned OpenUSD 26.08 build and
 is exposed for default thumbnail asset metadata.
 
 The exposed UsdVol slice covers `Volume`, `VolumeFieldBase`, `VolumeFieldAsset`, `FieldBase`,

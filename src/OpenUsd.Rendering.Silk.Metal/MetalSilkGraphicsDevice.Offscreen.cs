@@ -34,11 +34,11 @@ public sealed partial class MetalSilkGraphicsDevice
         try
         {
             reservation = ReserveTextureAllocation(descriptor);
-            nativeDescriptor = MTLTextureDescriptor.Texture2DDescriptor(
+            nativeDescriptor = MetalObjectOwnership.Retain(MTLTextureDescriptor.Texture2DDescriptor(
                 GetNativeFormat(descriptor.Format),
                 descriptor.Width,
                 descriptor.Height,
-                descriptor.MipLevelCount > 1);
+                descriptor.MipLevelCount > 1));
             nativeDescriptor.MipmapLevelCount = descriptor.MipLevelCount;
             nativeDescriptor.SampleCount = 1;
             nativeDescriptor.StorageMode = MTLStorageMode.Shared;
@@ -234,7 +234,25 @@ public sealed partial class MetalSilkGraphicsDevice
     }
 
     /// <inheritdoc/>
-    public unsafe ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
+    public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) =>
+        SubmitCore(commandList, default, 0);
+
+    internal ISilkGraphicsSubmission SubmitPresentation(
+        ISilkGraphicsCommandList commandList,
+        MTLSharedEvent sharedEvent,
+        ulong signalValue)
+    {
+        if (sharedEvent.NativePtr == 0 || signalValue == 0)
+        {
+            throw new ArgumentException("A presentation submission requires a shared event and signal value.");
+        }
+        return SubmitCore(commandList, sharedEvent, signalValue);
+    }
+
+    private unsafe MetalSilkGraphicsSubmission SubmitCore(
+        ISilkGraphicsCommandList commandList,
+        MTLSharedEvent sharedEvent,
+        ulong signalValue)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commandList);
@@ -347,7 +365,7 @@ public sealed partial class MetalSilkGraphicsDevice
             dependentRegistered = true;
 
             nativeSubmissionAttempted = true;
-            commandBuffer = _queue.CommandBuffer();
+            commandBuffer = MetalObjectOwnership.Retain(_queue.CommandBuffer());
             if (commandBuffer.NativePtr == 0)
             {
                 throw new InvalidOperationException("Could not create a Metal command buffer.");
@@ -429,7 +447,7 @@ public sealed partial class MetalSilkGraphicsDevice
                                 command.PickCoordinate,
                                 pickReadback.RowPitch);
                             MTLBlitCommandEncoder pickBlitEncoder =
-                                commandBuffer.BlitCommandEncoder();
+                                MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
                             if (pickBlitEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -603,18 +621,22 @@ public sealed partial class MetalSilkGraphicsDevice
                         // to be 256-byte aligned, and a tightly packed chain
                         // satisfies neither past the base level.
                         uploadBuffers.EnsureCapacity(checked(uploadBuffers.Count + 1));
-                        MetalStagingResource upload;
                         int byteCount = checked((int)MetalMipCopyPlan.GetStagingByteSize(uploadPlans));
-                        using (IDisposable? reservation = GetCpuTextureBudgetForAllocation()?.Reserve((ulong)byteCount))
+                        MetalStagingResource upload = CreateTextureUpload(checked((ulong)byteCount));
+                        try
                         {
-                            byte[] staged = new byte[byteCount];
                             MetalMipCopyPlan.Stage(uploadPlans, uploadTexture.Width, uploadTexture.Height,
-                                uploadTexture.Format, command.Data!, staged);
-                            upload = CreateTextureUpload(staged);
+                                uploadTexture.Format, command.Data!,
+                                new Span<byte>((void*)upload.Buffer.Contents, byteCount));
+                        }
+                        catch
+                        {
+                            upload.Dispose();
+                            throw;
                         }
                         uploadBuffers.Add(upload);
                         MTLBlitCommandEncoder blitEncoder =
-                            commandBuffer.BlitCommandEncoder();
+                            MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
                         if (blitEncoder.NativePtr == 0)
                         {
                             throw new InvalidOperationException(
@@ -648,7 +670,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         MetalStagingResource volumeUpload = CreateTextureUpload(command.Data!);
                         uploadBuffers.Add(volumeUpload);
                         MTLBlitCommandEncoder volumeEncoder =
-                            commandBuffer.BlitCommandEncoder();
+                            MetalObjectOwnership.Retain(commandBuffer.BlitCommandEncoder());
                         if (volumeEncoder.NativePtr == 0)
                         {
                             throw new InvalidOperationException(
@@ -697,7 +719,7 @@ public sealed partial class MetalSilkGraphicsDevice
                                 alpha = command.Color.Alpha
                             };
                             MTLRenderCommandEncoder colorEncoder =
-                                commandBuffer.RenderCommandEncoder(colorDescriptor);
+                                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(colorDescriptor));
                             if (colorEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -724,7 +746,7 @@ public sealed partial class MetalSilkGraphicsDevice
                             attachment.StoreAction = MTLStoreAction.Store;
                             attachment.ClearDepth = command.Depth;
                             MTLRenderCommandEncoder depthEncoder =
-                                commandBuffer.RenderCommandEncoder(depthDescriptor);
+                                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(depthDescriptor));
                             if (depthEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -822,7 +844,7 @@ public sealed partial class MetalSilkGraphicsDevice
                             depth.StoreAction = MTLStoreAction.Store;
 
                             MTLRenderCommandEncoder encoder =
-                                commandBuffer.RenderCommandEncoder(renderDescriptor);
+                                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(renderDescriptor));
                             if (encoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -1013,7 +1035,7 @@ public sealed partial class MetalSilkGraphicsDevice
                         }
                         if (computeEncoder.NativePtr == 0)
                         {
-                            computeEncoder = commandBuffer.ComputeCommandEncoder();
+                            computeEncoder = MetalObjectOwnership.Retain(commandBuffer.ComputeCommandEncoder());
                             if (computeEncoder.NativePtr == 0)
                             {
                                 throw new InvalidOperationException(
@@ -1099,6 +1121,10 @@ public sealed partial class MetalSilkGraphicsDevice
                     computeEncoder.Dispose();
                     computeEncoder = default;
                 }
+            }
+            if (sharedEvent.NativePtr != 0)
+            {
+                commandBuffer.EncodeSignalEvent(sharedEvent, signalValue);
             }
             commandBuffer.Commit();
             var completion = new MetalSubmissionCompletion(
@@ -1293,7 +1319,7 @@ public sealed partial class MetalSilkGraphicsDevice
             color.StoreAction = MTLStoreAction.Store;
 
             MTLRenderCommandEncoder encoder =
-                commandBuffer.RenderCommandEncoder(renderDescriptor);
+                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(renderDescriptor));
             if (encoder.NativePtr == 0)
             {
                 throw new InvalidOperationException(
@@ -1357,7 +1383,7 @@ public sealed partial class MetalSilkGraphicsDevice
             color.StoreAction = MTLStoreAction.Store;
 
             MTLRenderCommandEncoder encoder =
-                commandBuffer.RenderCommandEncoder(renderDescriptor);
+                MetalObjectOwnership.Retain(commandBuffer.RenderCommandEncoder(renderDescriptor));
             if (encoder.NativePtr == 0)
             {
                 throw new InvalidOperationException(
@@ -1408,16 +1434,30 @@ public sealed partial class MetalSilkGraphicsDevice
 
     private unsafe MetalStagingResource CreateTextureUpload(ReadOnlySpan<byte> source)
     {
-        IDisposable? reservation = ReserveStagingAllocation(checked((ulong)source.Length));
+        MetalStagingResource upload = CreateTextureUpload(checked((ulong)source.Length));
+        try
+        {
+            source.CopyTo(new Span<byte>((void*)upload.Buffer.Contents, source.Length));
+            return upload;
+        }
+        catch
+        {
+            upload.Dispose();
+            throw;
+        }
+    }
+
+    private MetalStagingResource CreateTextureUpload(ulong byteCount)
+    {
+        IDisposable? reservation = ReserveStagingAllocation(byteCount);
         MTLBuffer upload = default;
         try
         {
-            upload = _device.NewBuffer(checked((ulong)source.Length), MTLResourceOptions.ResourceStorageModeShared);
+            upload = _device.NewBuffer(byteCount, MTLResourceOptions.ResourceStorageModeShared);
             if (upload.NativePtr == 0)
             {
                 throw new InvalidOperationException("Could not create a Metal upload buffer.");
             }
-            source.CopyTo(new Span<byte>((void*)upload.Contents, source.Length));
             return new MetalStagingResource(upload, reservation);
         }
         catch

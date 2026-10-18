@@ -4,7 +4,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
-    [string]$Rid
+    [string]$Rid,
+    [switch]$PackageConsumer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,14 +49,28 @@ try
         exit $LASTEXITCODE
     }
 
-    & cmake --build --preset $preset
+    $buildArguments = @('--build', '--preset', $preset)
+    if ($PackageConsumer)
+    {
+        $buildArguments += @('--target', 'openusd_cesium')
+        Write-Host 'Building the Cesium package-consumer target and its declared dependencies.'
+    }
+    & cmake @buildArguments
     if ($LASTEXITCODE -ne 0)
     {
         exit $LASTEXITCODE
     }
 
     $buildRoot = Join-Path 'build/shim' $preset
-    & cmake --install $buildRoot --prefix $shimInstallRoot
+    $installRoot = if ($PackageConsumer)
+    {
+        Join-Path $buildRoot 'openusd_cesium'
+    }
+    else
+    {
+        $buildRoot
+    }
+    & cmake --install $installRoot --prefix $shimInstallRoot
     if ($LASTEXITCODE -ne 0)
     {
         exit $LASTEXITCODE
@@ -75,6 +90,15 @@ $library = switch ($Rid)
 if (-not (Test-Path $library))
 {
     throw "Cesium shim install did not produce '$library'."
+}
+if ($PackageConsumer)
+{
+    $installed = Join-Path $shimInstallRoot 'include/openusd_cesium.h'
+    $source = Join-Path $repoRoot 'native/openusd_cesium/include/openusd_cesium.h'
+    if ((Get-FileHash -LiteralPath $installed).Hash -cne (Get-FileHash -LiteralPath $source).Hash)
+    {
+        throw 'The installed Cesium header does not match the current project source.'
+    }
 }
 
 Write-Host "Installed Cesium shim: $library"
