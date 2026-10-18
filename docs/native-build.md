@@ -103,6 +103,27 @@ This is build reuse, not conformance or a failed final archive. The five-path na
 its final-success post-save, and package/render consumers still require all three qualified native
 producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.
 
+An actual narrow restore hit selects `build-native.ps1 -ReuseVerifiedSdk`. This explicit path
+verifies the runtime/storage patch profiles, installed headers and library bytes, complete
+redistribution notices and required compiler pair before bypassing the upstream vendor installer.
+Missing, stale or mismatched inputs fail; they do not silently trigger a rebuild or become a pass.
+The current project C ABI still uses the same configure/build/install recipe and all original
+native, NativeAOT, package and rendering qualification remains required.
+
+Installed SDK files alone do not make the upstream installer skip USD: it always schedules USD
+after its dependency plan, so restoring only the install without its build tree could recompile it.
+The default/cold path retains those original vendor commands. Changing `build-native.ps1` for the
+explicit verified reuse path changes a real input in the existing eleven-input cache key; that
+normally requires a new cold cache before subsequent hits can use the corrected path.
+
+PR 22 has one bounded recipe-equivalence seed for this transition only: exact old/new builder
+hashes, every other SDK input, full RID keys, original cache object/ref and runner image must match
+the reviewed pins. Only an exact new-key miss may restore the single exact previous SDK pair.
+Current strict SDK/compiler/notice verification still precedes reuse, the current C ABI and all
+tests still run, and the verified pair is saved under its actual new key. This is reuse of original
+producer `39112660339` inputs, not a newly compiled SDK or a qualified native result. Drift disables
+the transition; there are no prefix restore keys and it does not make a PR cache visible on main.
+
 Linux producer and consumer workflows pin `ubuntu-24.04`, the qualified host baseline, rather than
 following an unannounced `ubuntu-latest` distribution migration. Actual runner-image and compiler
 identities remain part of Cesium artifact provenance; the label alone does not certify a toolchain.
@@ -442,6 +463,19 @@ Run both the native C ABI probe and the NativeAOT managed probe:
 ```
 
 ## Verified archives and consumers
+
+After the original Windows PhysX CTest step, a separate diagnostic-only replay artifact can
+retain the actual built property-admission probe, its PhysX-variant Core module, and the verified
+SDK runtime/plugin closure, even when that test step fails. It preserves per-file hashes,
+source/run/attempt and host identities, but is never a qualified native archive or package input.
+Generated authored scene fixtures, proprietary GPU modules and dumps are excluded.
+
+Those files establish built-byte identities, not which DLL the original failed process loaded.
+An owned replay must observe the allowlisted probe/Core/SDK modules at their exact staged paths
+and verify their backing-file hashes while alive; missing observations remain unverified.
+The original probe recreates a fresh scene with its unchanged one-MiB quota and CTest contract.
+Bounded main-thread diagnostics do not replace the original 120-second qualification or establish
+that an earlier timeout has been repaired.
 
 `native.yml` builds each RID once per locked source identity, verifies CTest and
 NativeAOT probes, then calls `eng/create-native-archive.ps1`. The archive contains

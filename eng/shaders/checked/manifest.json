@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "e5f7b6d7726684e15d227724ac164a0c6203b6b5f6050bd48056ff7901d46bea"
+      "sha256": "21f738d3fe281add59bd5ce13c359f4c60622c077a4a5835c81c1869019a99da"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -79,7 +79,7 @@
     },
     {
       "path": "eng/build-native.ps1",
-      "sha256": "978a5b64fac7a8bf6e306c5c0f2d3a6084996007d336724f2db5ba9a269edec0"
+      "sha256": "77983122e6983fc977407f81561abac899c11d7c68f26bc145bd1e2c5822eae0"
     },
     {
       "path": "eng/build-physx-shim.ps1",
@@ -158,6 +158,10 @@
       "sha256": "8d80ac6fb1b32b72d6f1e08664ef56f0141364a9ff7ee8189f6c2ff76ad185af"
     },
     {
+      "path": "eng/select-sdk-recipe-seed.py",
+      "sha256": "6f43b9b126bad0f81310376dfc2abfa1f2a3f7b8372612adf2cef653699c235e"
+    },
+    {
       "path": "eng/shaderc-source-patches.lock.json",
       "sha256": "77b4ea1b430a291218a1a3fe8df230eae7978dc395e6e7ad470006092d5e220f"
     },
@@ -211,7 +215,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "57df62890887c46c4663e2c12a8f13281bcd5d48185cc63b6041df2e76b5da86"
+      "sha256": "5fad810b81efa258e68c80a16d578694b91bc6ff73d082cbdc314666c3c7fb53"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -350,12 +354,20 @@
       "sha256": "482bda421a97ccdf0c795d20ee8b39dab201b4feb4fec7c0888e68dcf46fbf93"
     },
     {
+      "path": "eng/verify-sdk-build-input.ps1",
+      "sha256": "07547765be5b807a6103f17952bbe5de81dd9ab28cc63e2089aa5723ea70b3f2"
+    },
+    {
       "path": "eng/viewer-input-readiness.ps1",
       "sha256": "e29596d1f3d9430d45553ad5eccb15eaae3ebcf6c394191ada3d0c1db7453399"
     },
     {
       "path": "eng/wait-openusd-sdk-cache.py",
       "sha256": "16a1db13eb5c354324fdc68396c25146ce33e2b91b7266f7f65865b6ea91d9e0"
+    },
+    {
+      "path": "eng/windows-admission-replay.py",
+      "sha256": "1c22c4dffed6460c167f48a5b7d994fbf3fc1c700a64729320f2938b27b346df"
     },
     {
       "path": "native/CMakePresets.json",
