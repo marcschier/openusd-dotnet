@@ -299,6 +299,21 @@
           "afterSha256": "E2635BF0055E6DA38048B2819F5C6069F0A9FA4154E77EC36F2ABA92FD775C35"
         }
       ]
+    },
+    {
+      "id": "tf-refptr-last-release-acquire",
+      "upstreamCommit": "72ff9cee97bb1d5664f00d759e559cd8cd2e8400",
+      "upstreamUrl": "https://github.com/PixarAnimationStudios/OpenUSD/commit/72ff9cee97bb1d5664f00d759e559cd8cd2e8400",
+      "path": "eng\\patches\\openusd\\tf-refptr-last-release-acquire.patch",
+      "sha256": "672172E6C9D0DCD6F841F72C78AABDD1674C5E9643C0DA814CDA8C4861411804",
+      "files": [
+        {
+          "path": "pxr\\base\\tf\\refPtr.h",
+          "installedHeader": true,
+          "beforeSha256": "AD2553AEEAF0D8CCC789BF438BADA58F5ADF6F62EC1BAF242AC59BD98995D442",
+          "afterSha256": "4C06FAD359271AC6BC390194C1D204E110C68B2D4958968F423FEA68E1AD39F1"
+        }
+      ]
     }
   ]
 }

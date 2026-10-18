@@ -103,6 +103,17 @@ This is build reuse, not conformance or a failed final archive. The five-path na
 its final-success post-save, and package/render consumers still require all three qualified native
 producers. Linux's narrow key retains the exact eleven inputs and two paths shared with managed CI.
 
+## Last-reference acquire synchronization
+
+The pinned SDK includes the official OpenUSD `72ff9cee97bb1d5664f00d759e559cd8cd2e8400`
+backport: an acquire fence before last-reference tracking and destruction in `TfRefPtr`.
+It repairs a known upstream synchronization defect without changing refcount layout or
+the project C ABI. The runtime patch inventory now binds 13 installed public SDK headers,
+including `pxr/base/tf/refPtr.h`, and the same three noninstalled private headers.
+Source, installed-header, binary, notice, cache and SBOM provenance retain this distinction.
+This known correctness fix is not evidence that it caused or repairs the previously observed
+Windows timeouts or Linux allocator failure; fresh original qualification remains required.
+
 ## SDK list-edit validation
 
 The pinned SDK's list editor checks duplicates using `TfHash` membership rather than its upstream

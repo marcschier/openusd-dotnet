@@ -31,11 +31,11 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "97114667e524d9e62264239244cd33180cc4f40ff411a11529c57960b46936e6"
+      "sha256": "4f2397fb3d93b987149894f64276dca72de75610e59db9d4b62c1a0abcaa5c23"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "2666d1dac3a16fe3d0e26c89237e243069c4566827398ed5942f86313a35858b"
+      "sha256": "036a3c4a62c8d9e7ffc5a07d01c24334edaff897eb8f9a7083695b49aef3bf8d"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -87,7 +87,7 @@
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "b2a112ae6e3f7ec7d07c526dce287a9e4c3e3e477446b0cd808dbf6c504f34a5"
+      "sha256": "dab6c036d5f7f10d01f96548781b4d8e9ff8a7a6a454be348c5222fd37eb334a"
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
@@ -99,11 +99,15 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "e922869d0164211d6370d832f08dba6c5e3697cc7d12bbfe793b687a5a1dfb0a"
+      "sha256": "0e3a373f1c5c6861a807bef64855a19b50821a0b9f8b7fbc839d066eec648525"
     },
     {
       "path": "eng/pack-packages.ps1",
       "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
+    },
+    {
+      "path": "eng/patches/openusd/tf-refptr-last-release-acquire.patch",
+      "sha256": "672172e6c9d0dcd6f841f72c78aabdd1674c5e9643c0da814cda8c4861411804"
     },
     {
       "path": "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
@@ -191,7 +195,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "dc5cd555e51e010bc43169ccb922009c7032be2d746c55738722647ee41b55d4"
+      "sha256": "ca1875b039a022987afdecdc2f3e52b9c5be3b16a5e50bd88922666f4e48027f"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -332,6 +336,10 @@
     {
       "path": "eng/viewer-input-readiness.ps1",
       "sha256": "e29596d1f3d9430d45553ad5eccb15eaae3ebcf6c394191ada3d0c1db7453399"
+    },
+    {
+      "path": "eng/wait-openusd-sdk-cache.py",
+      "sha256": "2a29302e05287d14186d06865ba93757005df76febac4fa6ac5771180a5ece34"
     },
     {
       "path": "native/CMakePresets.json",

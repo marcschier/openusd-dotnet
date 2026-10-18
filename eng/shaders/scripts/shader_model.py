@@ -66,6 +66,8 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/build-vulkan-sdk.ps1",
     "eng/cmake/ShaderCompiler.cmake",
     "eng/openusd-runtime-patches.lock.json",
+    "eng/patches/openusd/tf-refptr-last-release-acquire.patch",
+    "eng/wait-openusd-sdk-cache.py",
     "eng/generate-native-notices.py",
     "eng/shaderc-source-patches.lock.json",
     "eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch",

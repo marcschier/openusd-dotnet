@@ -215,6 +215,9 @@ jobs:
 
   coverage:
     name: coverage gate
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -231,6 +234,40 @@ jobs:
           libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
           x11-utils xvfb zlib1g-dev
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: openusd-cache-lookup
+        with:
+          lookup-only: true
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.363.0
+          # Saved by the linux-x64 job of .github/workflows/native.yml. That key
+          # and path list must stay character-identical to this one: hashFiles
+          # over a different file list yields a different digest, so any drift
+          # makes this restore miss on every run and fail the gate permanently.
+          # eng/openusd.install.lock.json is the abi-free projection of
+          # eng/openusd.lock.json; ABI bumps do not change the locked install.
+          key: >-
+            openusd-install-linux-x64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - name: Wait for the verified SDK producer on a cold cache
+        if: steps.openusd-cache-lookup.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENUSD_CACHE_KEY: ${{ steps.openusd-cache-lookup.outputs.cache-primary-key }}
+          OPENUSD_CACHE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 eng/wait-openusd-sdk-cache.py
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: openusd-cache
         with:

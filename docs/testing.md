@@ -50,6 +50,14 @@ rendering/viewer/package tests consumed by render legs, rendering/viewer sources
 Every workflow result also feeds the aggregate job, which records one release decision without
 duplicating each workflow's detailed evidence contract.
 
+Coverage and the native producer run concurrently so managed builds and AOT checks are not
+serialized behind a native build. A warm exact SDK cache is restored immediately. On a cold
+cache, coverage waits up to 150 minutes for the same-source Linux producer's successful SDK
+metadata, redistribution-notice and complete SDK-pair checks and an exact-key cache visible
+in the current or default-branch scope. An absent producer, failed producer, API error or
+timeout fails closed. This readiness is not native-test qualification: the original cache
+gate, SDK verification, parity capture, coverage tests and floor still run unchanged.
+
 Managed tests use TUnit on Microsoft.Testing.Platform. The current pre-alpha baseline includes
 managed data, interop, package, rendering, and viewer suites; native ABI and OpenUSD compatibility
 CTest coverage; clean-package and NativeAOT consumers; and backend-neutral plus platform render
