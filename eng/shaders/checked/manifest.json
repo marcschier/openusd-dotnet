@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "84ed34228f26a8196695175e98773a133186903e17f235aa82eb884b5d495de8"
+      "sha256": "8efffe61a10746e1fabf3d87f96a41ba195bb8a014a73a9c07d03fe29e6f5caf"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "d094a93ad1ce7cfae8a927efe0c679e191c9855ced87f04f490cc6217fe45dbd"
+      "sha256": "21e56a5dc7328971fc6c3dc34c2bb62063df8fcef0f06ff26f5e1dfd14f7e720"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -112,10 +112,6 @@
     {
       "path": "eng/mesa-wgl-test-runtime.lock.json",
       "sha256": "3e28a3e7d0b9e4bc20133cb4af075c0f90187b20d8465245687c80f04bbac63c"
-    },
-    {
-      "path": "eng/observe_macos_admission.py",
-      "sha256": "905e876f451d1664f26726421fa9ac4a0b080405683d40c7f6c29b6410074672"
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
@@ -219,7 +215,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "ff34f900a0bb8aaacbe9122a701fa73f6e35b0d8351fa8d829284d3038e757c4"
+      "sha256": "5fad810b81efa258e68c80a16d578694b91bc6ff73d082cbdc314666c3c7fb53"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -411,7 +407,7 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
-      "sha256": "ddd77d792c3bfc1aa76e87130b6cda3e89e174ee804eafd218d2ffbb566d0014"
+      "sha256": "c74b122b1d8d37590b26a035a0b0044a50e5c3cfd7dab974f857dad9022b0e52"
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",

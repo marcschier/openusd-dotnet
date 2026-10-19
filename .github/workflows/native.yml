@@ -677,19 +677,7 @@ jobs:
           ctest --test-dir native/build/shim/linux-x64 --no-tests=error --output-on-failure
       - name: Run macOS native CTest
         if: runner.os == 'macOS'
-        env:
-          OPENUSD_OBSERVATION_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python eng/observe_macos_admission.py --output artifacts/macos-admission-observation --
-          ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
-      - name: Upload diagnostic-only macOS base property admission observation
-        if: always() && runner.os == 'macOS'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: openusd-macos-base-property-admission-${{ github.run_attempt }}
-          path: artifacts/macos-admission-observation/*.json
-          if-no-files-found: warn
-          retention-days: 7
+        run: ctest --test-dir native/build/shim/osx-arm64 --no-tests=error --output-on-failure
       - name: Execute staged NativeAOT probes
         shell: pwsh
         run: |

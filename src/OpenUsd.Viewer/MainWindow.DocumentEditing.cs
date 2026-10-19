@@ -307,13 +307,15 @@ public sealed partial class MainWindow
                 _documentObservation = state;
                 ScheduleReviewRecovery(editor, state);
                 UpdateDocumentCommands();
-                if (_selectionState.PrimPath is { } path && !_documentBusy)
+                if (_selectionState.PrimPath is { } path && !_documentBusy &&
+                    _selectionState.IsPublishedIn(coordinator.CurrentState.Selection))
                 {
                     double? inspectionTimeCode = _inspectorTimeCode;
                     ViewerPrimInspectorSnapshot inspector = await coordinator.Scheduler.InvokeAsync(
                         stage => ViewerStageSnapshotBuilder.BuildInspector(stage, path, inspectionTimeCode),
                         cancellation);
                     if (ReferenceEquals(editor, _documentEditor) && _selectionState.PrimPath == path &&
+                        _selectionState.IsPublishedIn(coordinator.CurrentState.Selection) &&
                         inspectionTimeCode == _inspectorTimeCode)
                     {
                         ShowInspector(inspector);

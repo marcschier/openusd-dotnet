@@ -466,6 +466,14 @@ internal sealed class ViewerSelectionState
             : ReturnUnchanged(out selection);
     }
 
+    internal bool IsPublishedIn(SelectionState published)
+    {
+        ArgumentNullException.ThrowIfNull(published);
+        return Item is { } item
+            ? published.Items.Count == 1 && published.Items[0].Equals(item)
+            : published.Items.Count == 0;
+    }
+
     internal void Restore(string? primPath) =>
         Item = primPath is null ? null : new SelectionItem(primPath);
 

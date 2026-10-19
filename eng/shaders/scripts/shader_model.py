@@ -67,7 +67,6 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/verify-sdk-build-input.ps1",
     "eng/select-sdk-recipe-seed.py",
     "eng/windows-admission-replay.py",
-    "eng/observe_macos_admission.py",
     "eng/build-cesium-shim.ps1",
     "eng/build-physx-shim.ps1",
     "eng/build-vulkan-sdk.ps1",

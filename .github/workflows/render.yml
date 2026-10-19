@@ -1313,13 +1313,41 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               "/*/*/VulkanDeviceTests/($($methods -join '|'))")
-          ./eng/run-managed-tests.ps1 `
-            -Project $project `
-            -Framework net10.0 `
-            -Configuration Release `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/VulkanDisplayTransformTests/*')
+          # The display-transform gate holds the packaged SwiftShader reference device
+          # and the OpenColorIO runtime inside libopenusd_dotnet. Lifting the lavapipe
+          # override lets run-managed-tests activate the packaged SwiftShader ICD, and
+          # the staged GLX parity runtime is exported exactly as the volume and alias
+          # steps do, before the test host starts, because the shim carries no RUNPATH.
+          $runtimeRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts/parity-capture/linux-x64/runtime'
+          $shim = Join-Path $runtimeRoot 'lib/libopenusd_dotnet.so'
+          if (-not (Test-Path -LiteralPath $shim -PathType Leaf))
+          {
+            throw "The staged Linux native runtime is missing its shim: $shim"
+          }
+          $lavapipe = @{
+            VK_DRIVER_FILES = $env:VK_DRIVER_FILES
+            VK_ICD_FILENAMES = $env:VK_ICD_FILENAMES
+            LD_LIBRARY_PATH = $env:LD_LIBRARY_PATH
+          }
+          Remove-Item Env:VK_DRIVER_FILES, Env:VK_ICD_FILENAMES
+          $env:LD_LIBRARY_PATH = "$runtimeRoot/lib:$runtimeRoot/bin"
+          try
+          {
+            ./eng/run-managed-tests.ps1 `
+              -Project $project `
+              -Framework net10.0 `
+              -Configuration Release `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VulkanDisplayTransformTests/*')
+          }
+          finally
+          {
+            foreach ($name in $lavapipe.Keys)
+            {
+              [Environment]::SetEnvironmentVariable($name, $lavapipe[$name])
+            }
+          }
           ./eng/run-managed-tests.ps1 `
             -Project $project `
             -Framework net10.0 `
