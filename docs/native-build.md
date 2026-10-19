@@ -463,6 +463,9 @@ their inclusion does not claim that every optional source is embedded in every p
 Cesium and PhysX retain their separate notice filenames; the PhysX overview distinguishes
 the source-built BSD SDK from proprietary GPU/device modules that are never redistributed.
 The aggregate and provenance travel with the cached SDK and immutable archive.
+The aggregate is UTF-8. A non-UTF-8 upstream document is accepted only when its exact SHA-256
+is pinned with its source encoding (currently oneTBB v2021.12.0 `third-party-programs.txt`,
+Latin-1); it is transcoded unchanged in content and its manifest records the source hash.
 Real producer/consumer workflows reject stale or missing provenance, and `eng/pack-packages.ps1`
 verifies the full notices before packing and compares the actual packed notice bytes afterwards.
 Bare `dotnet pack` fixture output is not publication qualification. `-SdkOnly` prepares the SDK,

@@ -36,12 +36,30 @@ EXCLUDED = {
 }
 
 
+# Exact pinned upstream documents that are not UTF-8: raw SHA-256 -> source encoding.
+# oneTBB v2021.12.0 third-party-programs.txt spells "Universit\xe9 Bordeaux" in Latin-1.
+LEGACY_ENCODED_DOCUMENTS = {
+    "b10997cc50652ba6ab365e3bc43e13057681cd4a56533b46171529bd249749f3": "latin-1",
+}
+
+
 class NoticeError(Exception):
     """A native distribution is missing verifiable licensing inputs."""
 
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def utf8_document(raw: bytes) -> tuple[bytes, str | None]:
+    try:
+        raw.decode("utf-8-sig")
+        return raw, None
+    except UnicodeDecodeError:
+        encoding = LEGACY_ENCODED_DOCUMENTS.get(digest(raw))
+        if encoding is None:
+            raise
+        return raw.decode(encoding).encode("utf-8"), encoding
 
 
 def read_json(path: pathlib.Path) -> dict[str, Any]:
@@ -387,11 +405,14 @@ def write(args: argparse.Namespace) -> None:
         for name, raw in record["documents"]:
             if not raw.strip() or len(raw) > 4 * 1024 * 1024:
                 raise NoticeError(f"Empty or oversized license text: {record['name']}/{name}")
-            raw.decode("utf-8-sig")
+            body, encoding = utf8_document(raw)
             output.extend(f"### {name}\n\n".encode("utf-8"))
-            output.extend(raw)
+            output.extend(body)
             output.extend(b"\n\n")
-            documents.append({"path": name, "sha256": digest(raw), "bytes": len(raw)})
+            document = {"path": name, "sha256": digest(body), "bytes": len(body)}
+            if encoding is not None:
+                document.update({"sourceEncoding": encoding, "sourceSha256": digest(raw)})
+            documents.append(document)
         metadata_components.append({
             "name": record["name"], "source": record["source"], "documents": documents,
         })
@@ -443,6 +464,10 @@ def verify(args: argparse.Namespace) -> dict[str, Any]:
             body = raw[cursor:cursor + length]
             if digest(body) != document["sha256"] or raw[cursor + length:cursor + length + 2] != b"\n\n":
                 raise NoticeError("A complete native source license was truncated or modified.")
+            body.decode("utf-8-sig")
+            if ("sourceSha256" in document or "sourceEncoding" in document) and LEGACY_ENCODED_DOCUMENTS.get(
+                    document.get("sourceSha256")) != document.get("sourceEncoding"):
+                raise NoticeError("A transcoded native license is not an exact pinned legacy document.")
             cursor += length + 2
     if cursor != len(raw):
         raise NoticeError("Unexpected native notice payload after the source documents.")

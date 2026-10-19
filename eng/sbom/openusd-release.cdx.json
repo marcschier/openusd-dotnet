@@ -31,7 +31,7 @@
       },
       {
         "name": "openusd:input:eng/generate-native-notices.py:sha256",
-        "value": "cd7b06054b07f346309836485733b7329c8a209c57430e0b4e4f05a4ad323e38"
+        "value": "aa942b8e0bfb15b25c5d2308efc3caaaab81c5113e30958647aa8cb70e0697a4"
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
