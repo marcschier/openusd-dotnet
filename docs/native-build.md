@@ -49,6 +49,14 @@ OpenVDB prefix so hioOpenVDB cannot resolve from a system or vcpkg tree. This ha
 3.13 process launching, hardened Windows command search, Visual Studio versions newer than Boost's
 discovery table, and the expanded asset-format profile; the patched script hash is locked.
 
+The runtime source patch `unresolved-layer-reader-lookup` changes only `SdfLayer::FindOrOpen`.
+Non-anonymous unresolved assets still search the registry, but a miss returns without the
+writer retry needed for opening a resolved asset. Found-layer initialization, expiring-layer
+cleanup, anonymous-layer policy and resolved-layer insertion retain their existing paths.
+This avoids a registry writer-upgrade convoy during missing-sublayer prefetch. The patch and
+complete source preimage/postimage hashes are pinned in `eng/openusd-runtime-patches.lock.json`;
+drift or a partial patch fails closed before compilation.
+
 The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm, MaterialX,
 OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings locked Blosc
 compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,

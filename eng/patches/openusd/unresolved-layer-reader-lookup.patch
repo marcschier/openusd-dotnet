@@ -1,0 +1,31 @@
+--- a/pxr/usd/sdf/layer.cpp
++++ b/pxr/usd/sdf/layer.cpp
+@@ -863,12 +863,15 @@
+         return TfNullPtr;
+     }
+ 
++    const bool unresolvedAsset =
++        !layerInfo.isAnonymous && layerInfo.resolvedLayerPath.empty();
++
+     // First see if this layer is already present.
+     tbb::queuing_rw_mutex::scoped_lock
+         lock(_GetLayerRegistryMutex(), /*write=*/false);
+     if (SdfLayerRefPtr layer =
+         _TryToFindLayer(layerInfo.identifier, layerInfo.resolvedLayerPath,
+-                        lock, /*retryAsWriter=*/true)) {
++                        lock, /*retryAsWriter=*/!unresolvedAsset)) {
+         // This could be written as a ternary, but we rely on return values 
+         // being implicitly moved to avoid making an unnecessary copy of 
+         // layer and the associated ref-count bump.
+@@ -877,6 +880,11 @@
+         }
+         return TfNullPtr;
+     }
++    // An unresolved asset cannot be opened, but the registry lookup above
++    // still permits an existing layer to be returned without resolving it.
++    if (unresolvedAsset) {
++        return TfNullPtr;
++    }
+     // At this point _TryToFindLayer has upgraded lock to a writer.
+ 
+     // Some layers, such as anonymous layers, have identifiers but don't have
