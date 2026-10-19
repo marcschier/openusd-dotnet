@@ -198,7 +198,6 @@ def verify_and_import(root, rid, archive_path, manifest, source, host, run_id, a
             "Cesium artifact source/RID/run/attempt provenance differs.")
     require(manifest.get("triplet") == triplet_for(root, rid)
             and manifest.get("sourceInputs") == source_inputs(root), "Cesium artifact locked source inputs differ.")
-    require(manifest.get("toolchain") == host, "Cesium artifact compiler/toolchain/runner identity differs.")
     require(manifest.get("archiveBytes") == archive_path.stat().st_size
             and manifest.get("archiveSha256") == digest(archive_path), "Cesium SDK archive integrity differs.")
     expected = manifest.get("files")
@@ -235,6 +234,7 @@ def verify_and_import(root, rid, archive_path, manifest, source, host, run_id, a
         for name, entry in expected.items():
             require(digest(staging.joinpath(*PurePosixPath(name).parts)) == entry["sha256"],
                     "Cesium SDK header/library/config payload hash differs.")
+        require(manifest.get("toolchain") == host, "Cesium artifact compiler/toolchain/runner identity differs.")
         for relative in destinations:
             target = system_path(confined_destination(root, relative))
             require(not target.exists(), "Cesium SDK import would overwrite an existing install.")
@@ -308,7 +308,7 @@ def download_artifact(repository, token, artifact, path):
     require("sha256:" + digest(path) == artifact["digest"], "Cesium artifact outer digest differs.")
 
 
-def consume_once(root, rid, source, host, explicit_run=None):
+def consume_once(root, rid, source, host, explicit_run=None, fallback_on_toolchain_mismatch=False):
     repository, token = os.environ["GITHUB_REPOSITORY"], os.environ["GH_TOKEN"]
     require(re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) is not None, "Invalid repository.")
     if explicit_run:
@@ -370,18 +370,43 @@ def consume_once(root, rid, source, host, explicit_run=None):
                         "Cesium inner archive length differs or exceeds its bound.")
                 with archive.open(archive_path.name) as source_stream, archive_path.open("xb") as stream:
                     shutil.copyfileobj(source_stream, stream, length=1048576)
-            verify_and_import(root, rid, archive_path, manifest, source, host, run["id"], run["run_attempt"])
+            try:
+                verify_and_import(root, rid, archive_path, manifest, source, host, run["id"], run["run_attempt"])
+            except ValueError as error:
+                if (fallback_on_toolchain_mismatch and
+                        str(error) == "Cesium artifact compiler/toolchain/runner identity differs."):
+                    decision = {
+                        "reasonCode": "artifact_identity_mismatch_nonreusable",
+                        "producerImageIdentity": {
+                            "imageOS": manifest.get("toolchain", {}).get("imageOS"),
+                            "imageVersion": manifest.get("toolchain", {}).get("imageVersion"),
+                        },
+                        "consumerImageIdentity": {
+                            "imageOS": host.get("imageOS"),
+                            "imageVersion": host.get("imageVersion"),
+                        },
+                        "selectedAction": "rebuilt_from_pinned_source",
+                    }
+                    text = "CESIUM_SDK_DECISION: " + json.dumps(
+                        decision, sort_keys=True, separators=(",", ":"))
+                    require(len(text.encode("utf-8")) <= 2048,
+                            "Cesium fallback decision log exceeds the bound.")
+                    print(text)
+                    continue
+                raise
         print(f"CESIUM_SDK_REUSED: verified source={source} producer={run['id']} rid={rid}; current shim/gates still required.")
         return True
     return None if pending else False
 
 
 def consume(root, rid, source, host, explicit_run=None, wait_seconds=5400,
+            fallback_on_toolchain_mismatch=False,
             clock=time.monotonic, sleep=time.sleep):
     started = clock()
     announced = False
     while True:
-        result = consume_once(root, rid, source, host, explicit_run)
+        result = consume_once(root, rid, source, host, explicit_run,
+                              fallback_on_toolchain_mismatch=fallback_on_toolchain_mismatch)
         if result is True:
             return True
         if result is False:
@@ -401,6 +426,8 @@ def main():
     parser.add_argument("--rid", required=True, choices=("win-x64", "linux-x64", "osx-arm64"))
     parser.add_argument("--source")
     parser.add_argument("--run-id")
+    parser.add_argument("--fallback-on-toolchain-mismatch", action="store_true",
+                        help="Treat a verified artifact with toolchain/runner identity mismatch as non-reusable.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     host = toolchain_identity()
@@ -414,7 +441,8 @@ def main():
             write_artifact(root, args.rid, destination, args.source, host)
             value = "created=true"
         else:
-            reused = consume(root, args.rid, args.source, host, args.run_id)
+            reused = consume(root, args.rid, args.source, host, args.run_id,
+                             fallback_on_toolchain_mismatch=args.fallback_on_toolchain_mismatch)
             value = "reused=" + str(reused).lower()
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         stream.write(value + "\n")

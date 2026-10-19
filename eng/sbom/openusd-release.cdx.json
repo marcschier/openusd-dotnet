@@ -31,11 +31,11 @@
       },
       {
         "name": "openusd:input:eng/generate-native-notices.py:sha256",
-        "value": "cd7b06054b07f346309836485733b7329c8a209c57430e0b4e4f05a4ad323e38"
+        "value": "aa942b8e0bfb15b25c5d2308efc3caaaab81c5113e30958647aa8cb70e0697a4"
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
-        "value": "dab6c036d5f7f10d01f96548781b4d8e9ff8a7a6a454be348c5222fd37eb334a"
+        "value": "75487cdf5fcd3b7d326d2ea3cebf886bc711d4e0036437126c16f4cf6641a8ce"
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
@@ -43,7 +43,7 @@
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",
-        "value": "0e3a373f1c5c6861a807bef64855a19b50821a0b9f8b7fbc839d066eec648525"
+        "value": "c94bc8769703aaa92a624d42e3e2311dc8ee0faa78a86c141ffa9d57a39bb616"
       },
       {
         "name": "openusd:input:eng/openusd-storage-admission.lock.json:sha256",
@@ -51,11 +51,11 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "c024697911799152594d6c457199fe63c5ff9bffc578bf6a1e35998f2935a961"
+        "value": "6b3593af5b2a49de684dcf8bbeafb97aa6369e376ecc04c519a450030a29df81"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
+        "value": "0f098c60c30e64815e1ff176423a3a409720a5f3e2686d6e6ed7e36d1721b831"
       },
       {
         "name": "openusd:input:eng/patches/openusd/render-product-hash-adl.patch:sha256",
@@ -76,6 +76,10 @@
       {
         "name": "openusd:input:eng/patches/openusd/tf-refptr-last-release-acquire.patch:sha256",
         "value": "672172e6c9d0dcd6f841f72c78aabdd1674c5e9643c0da814cda8c4861411804"
+      },
+      {
+        "name": "openusd:input:eng/patches/openusd/unresolved-layer-reader-lookup.patch:sha256",
+        "value": "70c235f2d19ecf3b254b1a12579613f8a52ab4e636e6f36b8cd8d9f11c124e9c"
       },
       {
         "name": "openusd:input:eng/patches/shaderc/shaderc-zero-padded-string-copy.patch:sha256",
@@ -1079,20 +1083,20 @@
     },
     {
       "type": "library",
-      "bom-ref": "native:oneTBB:2023.1.0:win-x64,linux-x64,osx-arm64",
+      "bom-ref": "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
       "name": "oneTBB",
-      "version": "2023.1.0",
-      "purl": "pkg:github/uxlfoundation/oneTBB@3046c8b0c29df995980003ea24f4d78c80ec0c8d",
+      "version": "2021.12.0",
+      "purl": "pkg:github/uxlfoundation/oneTBB@9afd759b72c0c233cd5ea3c3c06b0894c9da9c54",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "0712621D19D2FBC1DC0D4E964BF8D9592C78D79F62991D2173BAD741A7461C4A"
+          "content": "FE6CA052B5BDD2C6E0616B360C9B0DCBCC46E01BBD0AA8FD0517C17FC58931DB"
         }
       ],
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2023.1.0.zip"
+          "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.12.0.zip"
         }
       ],
       "properties": [
@@ -2983,7 +2987,7 @@
         "nuget-dependency:TUnit",
         "dotnet-runtime:Microsoft.NETCore.App",
         "native:OpenUSD",
-        "native:oneTBB:2023.1.0:win-x64,linux-x64,osx-arm64",
+        "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
         "native:zlib:1.3.2:win-x64",
         "native:Boost:1.92.0:win-x64",
         "native:Boost:1.92.0:linux-x64",
@@ -3311,7 +3315,7 @@
       "dependsOn": []
     },
     {
-      "ref": "native:oneTBB:2023.1.0:win-x64,linux-x64,osx-arm64",
+      "ref": "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
       "dependsOn": []
     },
     {

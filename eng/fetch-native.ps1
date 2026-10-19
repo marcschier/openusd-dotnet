@@ -312,6 +312,129 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
         $content = $content.Replace($alembicPolicyMarker, $alembicPolicyPatched)
     }
 
+    $bloscConfigureMarker = @'
+def InstallBLOSC(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(BLOSC_URL, context, force)):
+        # MacOS we can use the built in Zlib instead of the external one.
+        macArgs = ["-DPREFER_EXTERNAL_ZLIB=ON"]
+        if MacOS() and apple_utils.IsTargetArm(context):
+            # Need to disable SSE for macOS ARM targets.
+            macArgs += ["-DDEACTIVATE_SSE2=ON"]
+        RunCMake(context, force, buildArgs + macArgs)
+'@
+    $bloscConfigurePatched = @'
+def InstallBLOSC(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(BLOSC_URL, context, force)):
+        # MacOS we can use the built in Zlib instead of the external one.
+        macArgs = ["-DPREFER_EXTERNAL_ZLIB=ON"]
+        if MacOS() and apple_utils.IsTargetArm(context):
+            # Need to disable SSE for macOS ARM targets.
+            macArgs += ["-DDEACTIVATE_SSE2=ON"]
+        cmakeArgs = buildArgs + macArgs
+        if Linux():
+            zstdIncludeDir = os.path.join(context.instDir, "include")
+            zstdLibrary = os.path.join(context.instDir, "lib", "libzstd.so")
+            if (not os.path.isfile(os.path.join(zstdIncludeDir, "zstd.h"))
+                    or not os.path.isfile(zstdLibrary)):
+                raise RuntimeError(
+                    "The exact pinned SDK Zstd include/library pair is required by Linux Blosc.")
+            cmakeArgs += [
+                "-DPREFER_EXTERNAL_ZSTD=ON",
+                "-DZSTD_INCLUDE_DIR=" + zstdIncludeDir,
+                "-DZSTD_LIBRARY=" + zstdLibrary]
+        RunCMake(context, force, cmakeArgs)
+        if Linux():
+            import subprocess
+            import re
+            buildDir = os.path.join(context.buildDir, os.path.basename(os.getcwd()))
+            cachePath = os.path.join(buildDir, "CMakeCache.txt")
+            cacheValues = {}
+            with open(cachePath, "r", encoding="utf-8") as cache:
+                for line in cache:
+                    if not line.startswith("//") and ":" in line and "=" in line:
+                        key, value = line.split("=", 1)
+                        cacheValues[key.split(":", 1)[0]] = value.strip()
+            expectedCache = {
+                "PREFER_EXTERNAL_ZSTD": "ON",
+                "ZSTD_INCLUDE_DIR": zstdIncludeDir,
+                "ZSTD_LIBRARY": zstdLibrary}
+            for key, expected in expectedCache.items():
+                actual = cacheValues.get(key)
+                if actual is None:
+                    raise RuntimeError(
+                        "Linux Blosc did not cache required external Zstd setting {}.".format(key))
+                if key == "PREFER_EXTERNAL_ZSTD":
+                    matches = actual.upper() in ("ON", "TRUE", "1")
+                else:
+                    matches = os.path.realpath(actual) == os.path.realpath(expected)
+                if not matches:
+                    raise RuntimeError(
+                        "Linux Blosc resolved {} to {!r}, expected the locked SDK value {!r}."
+                        .format(key, actual, expected))
+
+            bloscLibrary = os.path.join(context.instDir, "lib", "libblosc.so")
+            if not os.path.isfile(bloscLibrary):
+                raise RuntimeError("The Linux Blosc shared library was not installed.")
+            dynamic = subprocess.check_output(
+                ["readelf", "-d", bloscLibrary], text=True, stderr=subprocess.STDOUT)
+            if not re.search(
+                    r"\(NEEDED\).*Shared library: \[libzstd\.so\.1\]", dynamic):
+                raise RuntimeError(
+                    "Linux Blosc does not link to the pinned Zstd shared-library ABI.")
+
+            runtimeEnv = os.environ.copy()
+            runtimeEnv["LD_LIBRARY_PATH"] = os.path.join(context.instDir, "lib")
+            loaded = subprocess.check_output(
+                ["ldd", bloscLibrary], text=True, stderr=subprocess.STDOUT,
+                env=runtimeEnv)
+            provider = re.search(
+                r"^\s*libzstd\.so\.1\s+=>\s+(\S+)", loaded, re.M)
+            if (not provider or
+                    os.path.realpath(provider.group(1)) != os.path.realpath(zstdLibrary)):
+                raise RuntimeError(
+                    "Linux Blosc runtime provider is not the exact pinned SDK Zstd library.")
+
+            symbols = GetElfDynamicSymbols(bloscLibrary)
+            publicHeader = os.path.join(os.getcwd(), "blosc", "blosc.h")
+            with open(publicHeader, "r", encoding="utf-8") as header:
+                expectedApi = set(re.findall(
+                    r"\bBLOSC_EXPORT\s+[^;]*?\b(blosc_[A-Za-z0-9_]+)\s*\(",
+                    header.read(), re.S))
+            missingApi = sorted(expectedApi.difference(symbols))
+            leakedZstd = sorted(
+                name for name in symbols
+                if name.startswith(("ZSTD_", "ZDICT_")))
+            if not expectedApi or missingApi or leakedZstd:
+                raise RuntimeError(
+                    "Linux Blosc ELF API verification failed; missing={}, "
+                    "leakedZstd={}".format(missingApi, leakedZstd))
+'@
+    $bloscConfigureMarker = $bloscConfigureMarker.Replace("`r`n", "`n").TrimEnd()
+    $bloscConfigurePatched = $bloscConfigurePatched.Replace("`r`n", "`n").TrimEnd()
+    $normalizedContent = $content.Replace("`r`n", "`n")
+    $preimageCount = [regex]::Matches(
+        $normalizedContent,
+        [regex]::Escape($bloscConfigureMarker)).Count
+    $postimageCount = [regex]::Matches(
+        $normalizedContent,
+        [regex]::Escape($bloscConfigurePatched)).Count
+    if ($preimageCount -eq 1 -and $postimageCount -eq 0)
+    {
+        $normalizedContent = $normalizedContent.Replace(
+            $bloscConfigureMarker, $bloscConfigurePatched)
+        $postimageCount = [regex]::Matches(
+            $normalizedContent,
+            [regex]::Escape($bloscConfigurePatched)).Count
+        $preimageCount = [regex]::Matches(
+            $normalizedContent,
+            [regex]::Escape($bloscConfigureMarker)).Count
+    }
+    if ($preimageCount -ne 0 -or $postimageCount -ne 1)
+    {
+        throw "Expected exactly one patched Blosc installer and no preimage; found preimage=$preimageCount, postimage=$postimageCount."
+    }
+    $content = $normalizedContent
+
     $codecDependencies = @'
 LIBDEFLATE_URL = "locked-libdeflate"
 IMATH_URL = "locked-imath"
@@ -333,24 +456,123 @@ def InstallImath(context, force, buildArgs):
 
 IMATH = Dependency("Imath", InstallImath, "include/Imath/ImathConfig.h")
 
+def GetElfDynamicSymbols(binaryPath):
+    import subprocess
+    output = subprocess.check_output(
+        ["readelf", "--dyn-syms", "--wide", binaryPath],
+        text=True, stderr=subprocess.STDOUT)
+    symbols = {}
+    for line in output.splitlines():
+        fields = line.split()
+        if (len(fields) >= 8 and fields[0].endswith(":")
+                and fields[6] != "UND" and fields[4] in ("GLOBAL", "WEAK")):
+            symbols[fields[7].split("@", 1)[0]] = fields[5]
+    if not symbols:
+        raise RuntimeError("ELF dynamic symbol table is empty: {}".format(binaryPath))
+    return symbols
+
+def VerifyLinuxZstdApi(context):
+    includeDir = os.path.join(context.instDir, "include")
+    library = os.path.join(context.instDir, "lib", "libzstd.so")
+    if not os.path.isfile(library):
+        raise RuntimeError("The pinned Linux Zstd shared library was not installed.")
+
+    publicApi = set()
+    apiPattern = re.compile(
+        r'\b(?:ZSTDLIB_API|ZDICTLIB_API|ZSTDERRORLIB_API)\s+'
+        r'[^;\n]*(?:\n[ \t]+[^#;\n]+)*?'
+        r'\b((?:ZSTD|ZDICT)_[A-Za-z0-9_]+)\s*\(', re.M)
+    for header in ("zstd.h", "zdict.h", "zstd_errors.h"):
+        path = os.path.join(includeDir, header)
+        if not os.path.isfile(path):
+            raise RuntimeError("The pinned Linux Zstd public header is missing: {}".format(header))
+        with open(path, "r", encoding="utf-8") as source:
+            publicApi.update(apiPattern.findall(source.read()))
+
+    symbols = GetElfDynamicSymbols(library)
+    missing = sorted(publicApi.difference(symbols))
+    wrongVisibility = sorted(
+        name for name in publicApi if symbols.get(name) != "PROTECTED")
+    unprotectedCodecSymbols = sorted(
+        name for name, visibility in symbols.items()
+        if name.startswith(("ZSTD_", "ZDICT_")) and visibility != "PROTECTED")
+    if (not publicApi or missing or wrongVisibility or unprotectedCodecSymbols):
+        raise RuntimeError(
+            "Linux Zstd ELF API verification failed; missing={}, "
+            "wrongVisibility={}, unprotectedCodecSymbols={}".format(
+                missing, wrongVisibility, unprotectedCodecSymbols))
+
 def InstallZstd(context, force, buildArgs):
     source = DownloadURL(ZSTD_URL, context, force)
     with CurrentWorkingDirectory(os.path.join(source, "build", "cmake")):
-        RunCMake(context, force, buildArgs + [
+        cmakeArgs = [
             '-DZSTD_BUILD_SHARED=ON', '-DZSTD_BUILD_STATIC=OFF',
-            '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF'])
+            '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF']
+        if Linux():
+            cmakeArgs += [
+                '-DCMAKE_C_VISIBILITY_PRESET=hidden',
+                '-DZSTDLIB_VISIBLE=protected',
+                '-DZSTDERRORLIB_VISIBLE=protected',
+                '-DZDICTLIB_VISIBLE=protected']
+        RunCMake(context, force, buildArgs + cmakeArgs)
+    if Linux():
+        VerifyLinuxZstdApi(context)
 
 ZSTD = Dependency("zstd", InstallZstd, "include/zstd.h")
 
 '@
     $openExrMarker = 'def InstallOpenEXR(context, force, buildArgs):'
-    if (-not $content.Contains($openExrMarker) -or -not $content.Contains('requiredDependencies = [TBB]'))
+    $codecInstallerMarker = 'def InstallZstd(context, force, buildArgs):'
+    $openExrMarkerCount = [regex]::Matches(
+        $content, [regex]::Escape($openExrMarker)).Count
+    $codecInstallerCount = [regex]::Matches(
+        $content, [regex]::Escape($codecInstallerMarker)).Count
+    if ($openExrMarkerCount -ne 1 -or $codecInstallerCount -ne 0)
     {
-        throw 'The upstream build script is missing the reviewed codec dependency insertion points.'
+        throw "Expected one OpenEXR insertion point and no existing codec installer; found openExr=$openExrMarkerCount codec=$codecInstallerCount."
     }
     $content = $content.Replace($openExrMarker, $codecDependencies.Replace("`r`n", "`n") + "`n" + $openExrMarker)
-    $content = $content.Replace('requiredDependencies = [TBB]', 'requiredDependencies = [TBB, LIBDEFLATE, IMATH, ZSTD]')
-    $content = $content.Replace('-DOPENEXR_FORCE_INTERNAL_IMATH=ON', '-DOPENEXR_FORCE_INTERNAL_IMATH=OFF')
+    $codecInstallerCount = [regex]::Matches(
+        $content, [regex]::Escape($codecInstallerMarker)).Count
+    if ($codecInstallerCount -ne 1)
+    {
+        throw "Expected one inserted Zstd installer, found $codecInstallerCount."
+    }
+
+    $requiredDependenciesMarker = 'requiredDependencies = [TBB]'
+    $requiredDependenciesPatched = 'requiredDependencies = [TBB, LIBDEFLATE, IMATH, ZSTD]'
+    $requiredDependenciesMarkerCount = [regex]::Matches(
+        $content, [regex]::Escape($requiredDependenciesMarker)).Count
+    $requiredDependenciesPatchedCount = [regex]::Matches(
+        $content, [regex]::Escape($requiredDependenciesPatched)).Count
+    if ($requiredDependenciesMarkerCount -ne 1 -or $requiredDependenciesPatchedCount -ne 0)
+    {
+        throw "Expected one OpenEXR codec dependency preimage and no postimage; found preimage=$requiredDependenciesMarkerCount postimage=$requiredDependenciesPatchedCount."
+    }
+    $content = $content.Replace(
+        $requiredDependenciesMarker, $requiredDependenciesPatched)
+    if ([regex]::Matches($content, [regex]::Escape($requiredDependenciesMarker)).Count -ne 0 -or
+        [regex]::Matches($content, [regex]::Escape($requiredDependenciesPatched)).Count -ne 1)
+    {
+        throw 'The OpenEXR codec dependency postimage is not unique.'
+    }
+
+    $internalImathMarker = '-DOPENEXR_FORCE_INTERNAL_IMATH=ON'
+    $externalImathPatched = '-DOPENEXR_FORCE_INTERNAL_IMATH=OFF'
+    $internalImathMarkerCount = [regex]::Matches(
+        $content, [regex]::Escape($internalImathMarker)).Count
+    $externalImathPatchedCount = [regex]::Matches(
+        $content, [regex]::Escape($externalImathPatched)).Count
+    if ($internalImathMarkerCount -ne 1 -or $externalImathPatchedCount -ne 0)
+    {
+        throw "Expected one internal-Imath preimage and no external-Imath postimage; found preimage=$internalImathMarkerCount postimage=$externalImathPatchedCount."
+    }
+    $content = $content.Replace($internalImathMarker, $externalImathPatched)
+    if ([regex]::Matches($content, [regex]::Escape($internalImathMarker)).Count -ne 0 -or
+        [regex]::Matches($content, [regex]::Escape($externalImathPatched)).Count -ne 1)
+    {
+        throw 'The OpenEXR Imath selection postimage is not unique.'
+    }
 
     $dependencyVariables = @{
         oneTBB = 'ONETBB_URL'

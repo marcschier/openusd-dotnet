@@ -558,6 +558,7 @@ jobs:
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/checked-payload/osx-arm64
       - name: Run Windows native CTest
+        id: original-base-ctest
         if: runner.os == 'Windows'
         shell: pwsh
         # This unfiltered run is the adapter-absent half of the MDL evidence:
@@ -568,6 +569,28 @@ jobs:
         # Hosted Windows has no WGL 4.5 driver. Stage the already-pinned Mesa
         # runtime beside the Storm probes so AOV coverage executes rather than skips.
         run: ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64
+      - name: Export exact Windows base render admission inputs (diagnostic only)
+        if: >-
+          always() && runner.os == 'Windows' &&
+          steps.original-base-ctest.outcome == 'failure'
+        shell: pwsh
+        env:
+          REPLAY_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >
+          python eng/windows-admission-replay.py --root .
+          --destination artifacts/windows-base-render-admission-replay
+          --source $env:REPLAY_SOURCE_HEAD --original-suite-outcome failure
+          --base-render-targets
+      - name: Upload diagnostic-only exact Windows base render admission replay
+        if: >-
+          always() && runner.os == 'Windows' &&
+          hashFiles('artifacts/windows-base-render-admission-replay/windows-admission-replay.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openusd-windows-base-render-admission-replay-${{ github.run_attempt }}
+          path: artifacts/windows-base-render-admission-replay/*
+          if-no-files-found: error
+          retention-days: 7
       - name: Build and test optional MDL adapter
         if: runner.os == 'Windows'
         shell: pwsh

@@ -39,11 +39,11 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "21f738d3fe281add59bd5ce13c359f4c60622c077a4a5835c81c1869019a99da"
+      "sha256": "8efffe61a10746e1fabf3d87f96a41ba195bb8a014a73a9c07d03fe29e6f5caf"
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "88985163858c7899700de2d95215452762f89ffc297155c8d00098250fa71ed4"
+      "sha256": "2abecd4431960b2df19b5061d4f890dcf149d8b055190c2f871d32e2c195e105"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "1e3b1efe8474fcea612bd4e7e399dea7690600f1cf3f7f5f03c34b8c3de17510"
+      "sha256": "21e56a5dc7328971fc6c3dc34c2bb62063df8fcef0f06ff26f5e1dfd14f7e720"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -91,7 +91,7 @@
     },
     {
       "path": "eng/cesium-sdk-artifact.py",
-      "sha256": "ef2575a9b902d905a1c90631cdbf09a23177aa65ab6a9eaa827b4abfc4342cbc"
+      "sha256": "ca530ed19478b95316ebe6b99dbe9ebc406eb16681a127ea35c7e696b1df2be2"
     },
     {
       "path": "eng/cmake/ShaderCompiler.cmake",
@@ -99,11 +99,11 @@
     },
     {
       "path": "eng/generate-native-notices.py",
-      "sha256": "cd7b06054b07f346309836485733b7329c8a209c57430e0b4e4f05a4ad323e38"
+      "sha256": "aa942b8e0bfb15b25c5d2308efc3caaaab81c5113e30958647aa8cb70e0697a4"
     },
     {
       "path": "eng/generate-sbom.py",
-      "sha256": "dab6c036d5f7f10d01f96548781b4d8e9ff8a7a6a454be348c5222fd37eb334a"
+      "sha256": "75487cdf5fcd3b7d326d2ea3cebf886bc711d4e0036437126c16f4cf6641a8ce"
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
@@ -115,15 +115,19 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "0e3a373f1c5c6861a807bef64855a19b50821a0b9f8b7fbc839d066eec648525"
+      "sha256": "c94bc8769703aaa92a624d42e3e2311dc8ee0faa78a86c141ffa9d57a39bb616"
     },
     {
       "path": "eng/pack-packages.ps1",
-      "sha256": "d8c9afbbe47b55250a520a369f8ce418e164a47e0479847da970c9a93c8f7ada"
+      "sha256": "0f098c60c30e64815e1ff176423a3a409720a5f3e2686d6e6ed7e36d1721b831"
     },
     {
       "path": "eng/patches/openusd/tf-refptr-last-release-acquire.patch",
       "sha256": "672172e6c9d0dcd6f841f72c78aabdd1674c5e9643c0da814cda8c4861411804"
+    },
+    {
+      "path": "eng/patches/openusd/unresolved-layer-reader-lookup.patch",
+      "sha256": "70c235f2d19ecf3b254b1a12579613f8a52ab4e636e6f36b8cd8d9f11c124e9c"
     },
     {
       "path": "eng/patches/shaderc/shaderc-zero-padded-string-copy.patch",
@@ -215,7 +219,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "5fad810b81efa258e68c80a16d578694b91bc6ff73d082cbdc314666c3c7fb53"
+      "sha256": "2613d13ffaa263b484b2488ad812d1b388e9659e0fcb3f182faad5cd47b84cc0"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -367,7 +371,7 @@
     },
     {
       "path": "eng/windows-admission-replay.py",
-      "sha256": "1c22c4dffed6460c167f48a5b7d994fbf3fc1c700a64729320f2938b27b346df"
+      "sha256": "1ee8012b193a765f7590d8f7ed2929af3b0ff8e570182f28de0ffc624ac9dcdb"
     },
     {
       "path": "native/CMakePresets.json",
@@ -407,7 +411,7 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
-      "sha256": "ddd77d792c3bfc1aa76e87130b6cda3e89e174ee804eafd218d2ffbb566d0014"
+      "sha256": "c74b122b1d8d37590b26a035a0b0044a50e5c3cfd7dab974f857dad9022b0e52"
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",

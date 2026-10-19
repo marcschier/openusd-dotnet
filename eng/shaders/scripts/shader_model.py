@@ -72,6 +72,7 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/build-vulkan-sdk.ps1",
     "eng/cmake/ShaderCompiler.cmake",
     "eng/openusd-runtime-patches.lock.json",
+    "eng/patches/openusd/unresolved-layer-reader-lookup.patch",
     "eng/patches/openusd/tf-refptr-last-release-acquire.patch",
     "eng/wait-openusd-sdk-cache.py",
     "eng/cesium-sdk-artifact.py",

@@ -4,6 +4,19 @@
   "accessorVersion": 1,
   "patches": [
     {
+      "id": "unresolved-layer-reader-lookup",
+      "description": "Avoid writer retry only for non-anonymous unresolved asset misses while retaining registry lookup and expiring-layer cleanup.",
+      "path": "eng\\patches\\openusd\\unresolved-layer-reader-lookup.patch",
+      "sha256": "70C235F2D19ECF3B254B1A12579613F8A52AB4E636E6F36B8CD8D9F11C124E9C",
+      "files": [
+        {
+          "path": "pxr\\usd\\sdf\\layer.cpp",
+          "beforeSha256": "D16D8F8D180AAE5353D232AB9FA9C70AE85C362CB1C6D73B0C1E1F8C84FD7440",
+          "afterSha256": "D2C15A0213C49443018A4989C03669788173772E811CC773568EF2CD6977F60B"
+        }
+      ]
+    },
+    {
       "id": "scoped-sublayer-resolution",
       "path": "eng\\patches\\openusd\\scoped-sublayer-resolution.patch",
       "sha256": "175C42ED22E0E9200698DB5FB51EEA25B56E6831B541F18A2F9877487D6F86BF",

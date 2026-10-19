@@ -346,6 +346,40 @@ foreach ($id in $published)
     {
         throw "Packing '$id' failed with exit code $LASTEXITCODE."
     }
+    if ($id -eq 'OpenUsd.Runtime.Core.linux-x64')
+    {
+        $codecVerifier = Join-Path $Root 'src/OpenUsd.Runtime.Packaging/Verify-LinuxCodecPackage.py'
+        $codecEvidence = Join-Path ([System.IO.Path]::GetTempPath()) `
+            ("openusd-linux-codec-" + [Guid]::NewGuid().ToString('N') + '.json')
+        try
+        {
+            & python $codecVerifier `
+                --sdk-root (Join-Path $Root 'native/install/linux-x64') `
+                --evidence $codecEvidence
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw 'The pinned Linux codec SDK failed release-package verification.'
+            }
+
+            $codecPackages = @(Get-ChildItem -LiteralPath $outputRoot -Filter "$id.*.nupkg" -File)
+            if ($codecPackages.Count -ne 1)
+            {
+                throw "Expected exactly one Linux Core package before codec verification; found $($codecPackages.Count)."
+            }
+            & python $codecVerifier `
+                --sdk-root (Join-Path $Root 'native/install/linux-x64') `
+                --evidence $codecEvidence `
+                --package $codecPackages[0].FullName
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw 'The packed Linux Core codec payload failed release-package verification.'
+            }
+        }
+        finally
+        {
+            Remove-Item -LiteralPath $codecEvidence -Force -ErrorAction SilentlyContinue
+        }
+    }
     if ($id -match '^OpenUsd\.Runtime\.(Core|Imaging|Cesium|Physics)\.(win-x64|linux-x64|osx-arm64)$')
     {
         $packed = @(Get-ChildItem -LiteralPath $outputRoot -Filter "$id.*.nupkg" -File)

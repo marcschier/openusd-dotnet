@@ -1313,13 +1313,41 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               "/*/*/VulkanDeviceTests/($($methods -join '|'))")
-          ./eng/run-managed-tests.ps1 `
-            -Project $project `
-            -Framework net10.0 `
-            -Configuration Release `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/VulkanDisplayTransformTests/*')
+          # The display-transform gate holds the packaged SwiftShader reference device
+          # and the OpenColorIO runtime inside libopenusd_dotnet. Lifting the lavapipe
+          # override lets run-managed-tests activate the packaged SwiftShader ICD, and
+          # the staged GLX parity runtime is exported exactly as the volume and alias
+          # steps do, before the test host starts, because the shim carries no RUNPATH.
+          $runtimeRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts/parity-capture/linux-x64/runtime'
+          $shim = Join-Path $runtimeRoot 'lib/libopenusd_dotnet.so'
+          if (-not (Test-Path -LiteralPath $shim -PathType Leaf))
+          {
+            throw "The staged Linux native runtime is missing its shim: $shim"
+          }
+          $lavapipe = @{
+            VK_DRIVER_FILES = $env:VK_DRIVER_FILES
+            VK_ICD_FILENAMES = $env:VK_ICD_FILENAMES
+            LD_LIBRARY_PATH = $env:LD_LIBRARY_PATH
+          }
+          Remove-Item Env:VK_DRIVER_FILES, Env:VK_ICD_FILENAMES
+          $env:LD_LIBRARY_PATH = "$runtimeRoot/lib:$runtimeRoot/bin"
+          try
+          {
+            ./eng/run-managed-tests.ps1 `
+              -Project $project `
+              -Framework net10.0 `
+              -Configuration Release `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VulkanDisplayTransformTests/*')
+          }
+          finally
+          {
+            foreach ($name in $lavapipe.Keys)
+            {
+              [Environment]::SetEnvironmentVariable($name, $lavapipe[$name])
+            }
+          }
           ./eng/run-managed-tests.ps1 `
             -Project $project `
             -Framework net10.0 `
@@ -1370,6 +1398,7 @@ jobs:
               '--treenode-filter',
               '/*/*/VolumeDepthSamplingConformanceTests/*')
       - name: Execute Linux OpenColorIO alias identity evidence
+        id: linux-ocio-alias-evidence
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         env:
@@ -1379,7 +1408,10 @@ jobs:
         # symbolic links, so the alias identity behaviour cannot be left unproven here.
         run: ./eng/test-ocio-alias-evidence.ps1 -Configuration Release
       - name: Upload OpenColorIO alias evidence
-        if: always() && steps.native-ready.outputs.ready == 'true'
+        if: >-
+          always() && steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-ocio-alias-evidence.outcome == 'success' ||
+           steps.linux-ocio-alias-evidence.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: render-ocio-alias-evidence-linux-x64-${{ github.run_id }}

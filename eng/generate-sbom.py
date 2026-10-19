@@ -31,6 +31,7 @@ PINNED_INPUTS = [
     "Directory.Packages.props",
     "eng/openusd.install.lock.json",
     "eng/openusd-runtime-patches.lock.json",
+    "eng/patches/openusd/unresolved-layer-reader-lookup.patch",
     "eng/patches/openusd/tf-refptr-last-release-acquire.patch",
     "eng/patches/openusd/storm-aov-restoration.patch",
     "eng/patches/openusd/strict-compiler-portability.patch",

@@ -4905,7 +4905,9 @@ public sealed partial class MainWindow : Window, IDisposable
         RenderLayers();
         ShowStageSummary();
         await RefreshValidationAsync(coordinator, cancellationToken);
-        if (_selectionState.PrimPath is { } selectedPrimPath)
+        // A pending selection change loads its inspector after the coordinator publishes it.
+        if (_selectionState.PrimPath is { } selectedPrimPath &&
+            _selectionState.IsPublishedIn(coordinator.CurrentState.Selection))
         {
             if (document.SelectedPrim is { } selectedPrim &&
                 string.Equals(selectedPrim.Path, selectedPrimPath, StringComparison.Ordinal))

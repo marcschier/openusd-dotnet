@@ -81,8 +81,9 @@ on:
   # workflow_run alone is not enough: native.yml is path-filtered to native
   # inputs, so it never fires for a change to the packaging targets or the
   # package tests -- which is exactly what broke three of these gates. These
-  # paths cover the managed side, and the native install is restored from the
-  # cache native.yml already saved rather than rebuilt.
+  # paths cover the managed side. Exact cache hits reuse native.yml's install;
+  # a pull-request cache miss builds from the checked-out source rather than
+  # treating a deferred package gate as qualification.
   push:
     branches: [ master, main ]
     paths: &package-paths
@@ -167,8 +168,10 @@ jobs:
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
       DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
+      # workflow_call and workflow_dispatch keep building from source; PR misses do too.
       DEFER_ON_NATIVE_CACHE_MISS: >-
         ${{ (github.event_name == 'push' || github.event_name == 'pull_request') &&
+            github.event_name == 'push' &&
             'true' || 'false' }}
       NATIVE_PIPELINE_RUN_ID: >-
         ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
@@ -362,11 +365,10 @@ jobs:
           (matrix.rid != 'osx-arm64' || env.MACOS_NATIVE_SOURCE == 'build')
         shell: pwsh
         run: ./eng/build-native.ps1 -Rid ${{ matrix.rid }}
-      # Deliberately defers only self-firing push and pull_request runs. A cache
-      # miss there means the native tree changed and native.yml has not
-      # published it yet; workflow_run re-runs these gates once the archive
-      # exists. workflow_call and workflow_dispatch keep building from source so
-      # release and manually requested package gates cannot silently skip.
+      # A main push can defer while native.yml produces the matching archive;
+      # workflow_run reruns these gates against that exact artifact. Pull requests
+      # build from source on a cache miss so their exact-head package gates never
+      # pass by skipping native work.
       - name: Report a deferred smoke when the native tree is not published yet
         if: >-
           steps.native-cache.outputs.cache-hit != 'true' &&
@@ -379,8 +381,8 @@ jobs:
           Write-Host (
             '::notice::PACKAGE_SMOKE_DEFERRED: no verified native install for ' +
             '${{ matrix.rid }} at this commit. The native artifact pipeline has ' +
-            'not published this native tree yet; this push or pull_request run ' +
-            'will be covered by workflow_run once it has.')
+            'not published this native tree yet; this main push will be covered ' +
+            'by workflow_run once it has.')
       - id: native-ready
         shell: pwsh
         run: |
@@ -467,6 +469,16 @@ jobs:
           python ./eng/generate-native-notices.py verify `
             --rid ${{ matrix.rid }} --install-root native/install/${{ matrix.rid }}
           if ($LASTEXITCODE -ne 0) { throw 'Native redistribution notices are incomplete or stale.' }
+      - name: Verify public-release Linux Core codec package
+        if: matrix.rid == 'linux-x64' && steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          dotnet pack `
+            src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj `
+            -c Release `
+            --nologo `
+            -p:PublicRelease=true `
+            -o artifacts/linux-core-codec-package
       # The current Cesium shim still compiles when the verified SDK is reused,
       # so archive consumers continue to require the platform build toolchain.
       # Kept as its own named step rather than folded into the common install:
@@ -492,6 +504,7 @@ jobs:
         run: |
           $arguments = @('consume', '--rid', '${{ matrix.rid }}', '--source', $env:CESIUM_SOURCE_HEAD)
           if ($env:CESIUM_PIPELINE_RUN_ID) { $arguments += @('--run-id', $env:CESIUM_PIPELINE_RUN_ID) }
+          if ('${{ matrix.rid }}' -eq 'linux-x64') { $arguments += @('--fallback-on-toolchain-mismatch') }
           python eng/cesium-sdk-artifact.py @arguments
       - id: cesium-vcpkg-cache
         if: steps.native-ready.outputs.ready == 'true' && steps.cesium-sdk.outputs.reused != 'true'

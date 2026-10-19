@@ -35,6 +35,7 @@ toolchain matrix.
 The verified upstream build script binds every native dependency URL and version to the lock,
 including separately built Imath, libdeflate and Zstandard required by current OpenEXR and Ptex.
 Those inputs stay in the OpenUSD prefix rather than resolving from the quarantined Cesium tree.
+oneTBB stays at v2021.12.0, the version the upstream OpenUSD v26.08 build script pairs with.
 The dependency archives and build-script transformation are hash-verified before compilation.
 
 The fetch step applies verified compatibility patches to the upstream build script: Windows Boost
@@ -48,10 +49,37 @@ OpenVDB prefix so hioOpenVDB cannot resolve from a system or vcpkg tree. This ha
 3.13 process launching, hardened Windows command search, Visual Studio versions newer than Boost's
 discovery table, and the expanded asset-format profile; the patched script hash is locked.
 
+The runtime source patch `unresolved-layer-reader-lookup` changes only `SdfLayer::FindOrOpen`.
+Non-anonymous unresolved assets still search the registry, but a miss returns without the
+writer retry needed for opening a resolved asset. Found-layer initialization, expiring-layer
+cleanup, anonymous-layer policy and resolved-layer insertion retain their existing paths.
+This avoids a registry writer-upgrade convoy during missing-sublayer prefetch. The patch and
+complete source preimage/postimage hashes are pinned in `eng/openusd-runtime-patches.lock.json`;
+drift or a partial patch fails closed before compilation.
+
 The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm, MaterialX,
 OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings locked Blosc
 compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,
 examples, tutorials, tools, documentation, Embree, and RenderMan are excluded.
+
+## Linux Zstandard and Blosc symbol isolation
+
+The locked Linux profile builds Zstandard with hidden private symbols and protected visibility
+for its declared public API. Blosc is configured to use the exact Zstandard headers and shared
+library from the SDK prefix. The build fails if those files are absent, CMake resolves different
+paths, Blosc exports Zstandard symbols, the linked SONAME is missing, or runtime
+resolution selects another provider. Post-build checks derive the supported public API from the
+pinned headers and verify all declared Zstandard and Blosc exports in the resulting ELF files.
+Windows and macOS build options remain unchanged.
+
+The public-release Linux Core pack is checked again: its Blosc and Zstandard files must match the
+verified SDK bytes, retain the required public exports, and resolve Blosc's `libzstd.so.1`
+dependency to the Zstandard library carried beside it. Synthetic package fixtures do not run this
+native ELF check. This removes Blosc's accidental re-export of its embedded `ZSTD_*` implementation
+while preserving the declared Blosc API and Zstandard API. The authenticated 15-control diagnostic
+reproduced the invalid-free with the original and default-rebuilt codec pair and passed the
+supported protected/external candidates; that minimized control is not a substitute for the
+original Viewer or nondeferred render qualification.
 
 ## Linux runtime paths
 
@@ -116,13 +144,11 @@ The default/cold path retains those original vendor commands. Changing `build-na
 explicit verified reuse path changes a real input in the existing eleven-input cache key; that
 normally requires a new cold cache before subsequent hits can use the corrected path.
 
-PR 22 has one bounded recipe-equivalence seed for this transition only: exact old/new builder
-hashes, every other SDK input, full RID keys, original cache object/ref and runner image must match
-the reviewed pins. Only an exact new-key miss may restore the single exact previous SDK pair.
-Current strict SDK/compiler/notice verification still precedes reuse, the current C ABI and all
-tests still run, and the verified pair is saved under its actual new key. This is reuse of original
-producer `39112660339` inputs, not a newly compiled SDK or a qualified native result. Drift disables
-the transition; there are no prefix restore keys and it does not make a PR cache visible on main.
+PR 22 used one bounded recipe-equivalence seed for its explicit SDK-reuse change. The seed is tied
+to exact builder/input hashes, RID keys, cache object/ref and runner image, and is not a general
+fallback. The Linux codec correction changes the verified upstream build-script digest and both
+native lock profiles, so the previous seed no longer matches and cannot reuse that SDK. A new
+Linux SDK must be built from the corrected recipe; no prefix restore keys can override that miss.
 
 Linux producer and consumer workflows pin `ubuntu-24.04`, the qualified host baseline, rather than
 following an unannounced `ubuntu-latest` distribution migration. Actual runner-image and compiler
@@ -445,6 +471,9 @@ their inclusion does not claim that every optional source is embedded in every p
 Cesium and PhysX retain their separate notice filenames; the PhysX overview distinguishes
 the source-built BSD SDK from proprietary GPU/device modules that are never redistributed.
 The aggregate and provenance travel with the cached SDK and immutable archive.
+The aggregate is UTF-8. A non-UTF-8 upstream document is accepted only when its exact SHA-256
+is pinned with its source encoding (currently oneTBB v2021.12.0 `third-party-programs.txt`,
+Latin-1); it is transcoded unchanged in content and its manifest records the source hash.
 Real producer/consumer workflows reject stale or missing provenance, and `eng/pack-packages.ps1`
 verifies the full notices before packing and compares the actual packed notice bytes afterwards.
 Bare `dotnet pack` fixture output is not publication qualification. `-SdkOnly` prepares the SDK,
@@ -469,6 +498,11 @@ retain the actual built property-admission probe, its PhysX-variant Core module,
 SDK runtime/plugin closure, even when that test step fails. It preserves per-file hashes,
 source/run/attempt and host identities, but is never a qualified native archive or package input.
 Generated authored scene fixtures, proprietary GPU modules and dumps are excluded.
+
+A failure in the base Windows CTest suite has its own, separately named export for the base
+render-admission `targets` probe and base Core module. Its envelope must not be substituted with
+the PhysX property-probe envelope. Both exports verify the original SDK and bind the selected
+probe, module, source, run, attempt and file hashes; they do not rerun a test or change its result.
 
 Those files establish built-byte identities, not which DLL the original failed process loaded.
 An owned replay must observe the allowlisted probe/Core/SDK modules at their exact staged paths
