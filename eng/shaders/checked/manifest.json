@@ -115,7 +115,7 @@
     },
     {
       "path": "eng/observe_macos_admission.py",
-      "sha256": "b1c20a3ae7644633e656bcdd3897569da9c9e82ef03c6ae329ff48143339a787"
+      "sha256": "1438b1ac3d457fa471ee5af57afcd2fbf723e1c5d820227cb534ffde823521ae"
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",

@@ -494,8 +494,9 @@ probe, module, source, run, attempt and file hashes; they do not rerun a test or
 
 On macOS, the original unfiltered CTest invocation keeps its 120-second case deadline. A
 diagnostic observer only selects the owned `layer-error-list` property-probe process, binds its
-probe/Core/USD files, and attempts one main-thread observation after 60 seconds. LLDB has a
-five-second outer bound; the retained stack has at most 32 frames and each receipt is limited to
+probe/Core/USD files, and attempts one main-thread observation after 60 seconds. LLDB runs without
+symbol preloading or external symbol lookup and has a 20-second outer bound; the retained stack
+has at most 32 frames and each receipt is limited to
 64 KiB. Arguments, locals, register values, raw stacks, other-thread stacks and dumps are not
 retained. An unavailable observation is reported explicitly and is not evidence of a cause or a
 repair; the wrapper returns the original CTest exit code.

@@ -171,7 +171,7 @@ def main():
         "ref": os.environ.get("GITHUB_REF"),
         "originalCommand": command, "originalCase": test["name"],
         "originalDeadlineSeconds": 120, "observationAfterSeconds": 60,
-        "observerDeadlineSeconds": 5, "maximumFrames": 32, "maximumReceiptBytes": 65536,
+        "observerDeadlineSeconds": 20, "maximumFrames": 32, "maximumReceiptBytes": 65536,
         "files": {str(path.resolve()): digest(path) for path in files},
     }
     write_receipt(output / "before.json", identity)
@@ -208,12 +208,14 @@ def main():
                         env = os.environ.copy()
                         env["OPENUSD_OWN_ADMISSION_CAPTURE"] = str(config_path)
                         subprocess.run([
-                            "/usr/bin/lldb", "--batch", "-o",
-                            'command script import "' + str(Path(__file__).resolve()) + '"',
+                            "/usr/bin/lldb", "--batch",
+                            "-O", "settings set target.preload-symbols false",
+                            "-O", "settings set symbols.enable-external-lookup false",
+                            "-o", 'command script import "' + str(Path(__file__).resolve()) + '"',
                             "-o", "command script add -f observe_macos_admission.capture openusd-capture",
                             "-o", "openusd-capture",
                         ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            timeout=5, check=True)
+                            timeout=20, check=True)
                         if not (output / "main-thread.json").is_file():
                             raise RuntimeError("LLDB did not produce a bounded main-thread receipt.")
                     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
