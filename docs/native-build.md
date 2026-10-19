@@ -35,6 +35,7 @@ toolchain matrix.
 The verified upstream build script binds every native dependency URL and version to the lock,
 including separately built Imath, libdeflate and Zstandard required by current OpenEXR and Ptex.
 Those inputs stay in the OpenUSD prefix rather than resolving from the quarantined Cesium tree.
+oneTBB stays at v2021.12.0, the version the upstream OpenUSD v26.08 build script pairs with.
 The dependency archives and build-script transformation are hash-verified before compilation.
 
 The fetch step applies verified compatibility patches to the upstream build script: Windows Boost

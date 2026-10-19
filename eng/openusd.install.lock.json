@@ -10,7 +10,7 @@
     "extractDirectory": "OpenUSD-ee47c679abde5b467a7b6a41f3b2285564a4222e",
     "buildScript": "build_scripts/build_usd.py",
     "buildScriptSha256": "E2F0C4858834D39F9D803B0B0FF1922EE74084287267CBE159D5B3AA99A515F1",
-    "patchedBuildScriptSha256": "9C1408A52FA15250F88CA3964B1FA42414B9740F17FBBA2ED0F052D2D4F55730",
+    "patchedBuildScriptSha256": "282ABDA93772F8CDA15ABB75109565E013B18217CC4B3912D40593AE41B4AB1F",
     "runtimePatchLockSha256": "0E3A373F1C5C6861A807BEF64855A19B50821A0B9F8B7FBC839D066EEC648525",
     "storageAdmissionPatchLockSha256": "1E6280DBC19E3C9DBAD1004D5F5B78474D564D54097448E0B6F3BF425DE1874D",
     "linuxRuntimePolicy": {
@@ -162,17 +162,17 @@
   "dependencies": [
     {
       "name": "oneTBB",
-      "version": "2023.1.0",
-      "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2023.1.0.zip",
-      "archiveName": "v2023.1.0.zip",
-      "sha256": "0712621D19D2FBC1DC0D4E964BF8D9592C78D79F62991D2173BAD741A7461C4A",
+      "version": "2021.12.0",
+      "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.12.0.zip",
+      "archiveName": "v2021.12.0.zip",
+      "sha256": "FE6CA052B5BDD2C6E0616B360C9B0DCBCC46E01BBD0AA8FD0517C17FC58931DB",
       "platforms": [
         "win-x64",
         "linux-x64",
         "osx-arm64"
       ],
-      "tag": "v2023.1.0",
-      "commit": "3046c8b0c29df995980003ea24f4d78c80ec0c8d"
+      "tag": "v2021.12.0",
+      "commit": "9afd759b72c0c233cd5ea3c3c06b0894c9da9c54"
     },
     {
       "name": "zlib",

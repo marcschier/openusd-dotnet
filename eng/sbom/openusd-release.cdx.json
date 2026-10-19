@@ -51,7 +51,7 @@
       },
       {
         "name": "openusd:input:eng/openusd.install.lock.json:sha256",
-        "value": "f1ce8ccf0f5a06b91bce90eaa22cc0b5196319bf614025a12ca36f7bd8a4acad"
+        "value": "a0739af77d20b0ee92de78de85633be365adfdf376bb0544a47e0da4139af3d1"
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
@@ -1079,20 +1079,20 @@
     },
     {
       "type": "library",
-      "bom-ref": "native:oneTBB:2023.1.0:win-x64,linux-x64,osx-arm64",
+      "bom-ref": "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
       "name": "oneTBB",
-      "version": "2023.1.0",
-      "purl": "pkg:github/uxlfoundation/oneTBB@3046c8b0c29df995980003ea24f4d78c80ec0c8d",
+      "version": "2021.12.0",
+      "purl": "pkg:github/uxlfoundation/oneTBB@9afd759b72c0c233cd5ea3c3c06b0894c9da9c54",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "0712621D19D2FBC1DC0D4E964BF8D9592C78D79F62991D2173BAD741A7461C4A"
+          "content": "FE6CA052B5BDD2C6E0616B360C9B0DCBCC46E01BBD0AA8FD0517C17FC58931DB"
         }
       ],
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2023.1.0.zip"
+          "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.12.0.zip"
         }
       ],
       "properties": [
@@ -2983,7 +2983,7 @@
         "nuget-dependency:TUnit",
         "dotnet-runtime:Microsoft.NETCore.App",
         "native:OpenUSD",
-        "native:oneTBB:2023.1.0:win-x64,linux-x64,osx-arm64",
+        "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
         "native:zlib:1.3.2:win-x64",
         "native:Boost:1.92.0:win-x64",
         "native:Boost:1.92.0:linux-x64",
@@ -3311,7 +3311,7 @@
       "dependsOn": []
     },
     {
-      "ref": "native:oneTBB:2023.1.0:win-x64,linux-x64,osx-arm64",
+      "ref": "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
       "dependsOn": []
     },
     {
