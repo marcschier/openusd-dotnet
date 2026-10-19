@@ -487,6 +487,19 @@ SDK runtime/plugin closure, even when that test step fails. It preserves per-fil
 source/run/attempt and host identities, but is never a qualified native archive or package input.
 Generated authored scene fixtures, proprietary GPU modules and dumps are excluded.
 
+A failure in the base Windows CTest suite has its own, separately named export for the base
+render-admission `targets` probe and base Core module. Its envelope must not be substituted with
+the PhysX property-probe envelope. Both exports verify the original SDK and bind the selected
+probe, module, source, run, attempt and file hashes; they do not rerun a test or change its result.
+
+On macOS, the original unfiltered CTest invocation keeps its 120-second case deadline. A
+diagnostic observer only selects the owned `layer-error-list` property-probe process, binds its
+probe/Core/USD files, and attempts one main-thread observation after 60 seconds. LLDB has a
+five-second outer bound; the retained stack has at most 32 frames and each receipt is limited to
+64 KiB. Arguments, locals, register values, raw stacks, other-thread stacks and dumps are not
+retained. An unavailable observation is reported explicitly and is not evidence of a cause or a
+repair; the wrapper returns the original CTest exit code.
+
 Those files establish built-byte identities, not which DLL the original failed process loaded.
 An owned replay must observe the allowlisted probe/Core/SDK modules at their exact staged paths
 and verify their backing-file hashes while alive; missing observations remain unverified.

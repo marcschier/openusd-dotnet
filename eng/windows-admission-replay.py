@@ -21,6 +21,9 @@ MODE = "targets"
 SCENE = VARIANT + "/tests/property-probe/targets.usda"
 PLUGINS = SDK + "/lib/usd"
 WORKING = VARIANT + "/tests"
+PRESET = "win-x64-physx"
+EXPORT_STEP = "Export exact Windows admission replay inputs (diagnostic only)"
+ARTIFACT_PREFIX = "openusd-windows-admission-replay-"
 INPUTS = (
     "eng/openusd.lock.json", "eng/openusd.install.lock.json", "eng/openusd-runtime-patches.lock.json",
     "eng/openusd-storage-admission.lock.json", "eng/native-install-metadata.ps1",
@@ -31,6 +34,23 @@ INPUTS = (
     "native/openusd_dotnet/tests/property_inspection_probe.cmake",
     "LICENSE", "NOTICE",
 )
+
+
+def select_base_render_profile():
+    global VARIANT, PROBE, CORE, CASE, SCENE, WORKING, PRESET, EXPORT_STEP, ARTIFACT_PREFIX, INPUTS
+    VARIANT = "native/build/shim/win-x64"
+    PROBE = VARIANT + "/tests/openusd_render_admission_probe.exe"
+    CORE = VARIANT + "/openusd_dotnet/openusd_dotnet.dll"
+    CASE = "openusd_render_admission_targets"
+    SCENE = VARIANT + "/tests/render-admission-targets.usda"
+    WORKING = VARIANT + "/tests"
+    PRESET = "win-x64"
+    EXPORT_STEP = "Export exact Windows base render admission inputs (diagnostic only)"
+    ARTIFACT_PREFIX = "openusd-windows-base-render-admission-replay-"
+    INPUTS = tuple(name for name in INPUTS if name not in (
+        "native/openusd_dotnet/tests/property_admission_probe.cpp",
+        "native/openusd_dotnet/tests/property_inspection_probe.cmake")) + (
+            "native/openusd_dotnet/tests/render_admission_probe.cpp", "native/tests/CMakeLists.txt")
 
 
 def require(value, message):
@@ -169,7 +189,7 @@ def collect(root, b):
                     add(path, sdk)
     for name in (PROBE, CORE):
         path = b.confined_destination(root, Path(name))
-        require(path.is_file(), "The exact original probe/PhysX-variant Core module is missing.")
+        require(path.is_file(), "The exact original probe/selected-variant Core module is missing.")
         add(path, variant)
         pdb = path.with_suffix(".pdb")
         if pdb.is_file():
@@ -193,11 +213,11 @@ def create(root, destination, source, host, original_suite_outcome="unobserved")
     original_log = b.confined_destination(root, Path(VARIANT) / "Testing/Temporary/LastTest.log")
     failed_log = b.confined_destination(root, Path(VARIANT) / "Testing/Temporary/LastTestsFailed.log")
     if original_log.is_file() and original_log.stat().st_size <= 8388608:
-        if b"Testing: openusd_property_admission_targets\n" in original_log.read_bytes().replace(b"\r\n", b"\n"):
+        if ("Testing: " + CASE + "\n").encode() in original_log.read_bytes().replace(b"\r\n", b"\n"):
             require(not failed_log.exists() or failed_log.stat().st_size <= 65536,
                     "Original CTest failure metadata exceeds its bound.")
             failed = failed_log.read_text().splitlines() if failed_log.is_file() else []
-            case_result = "failure" if any(line.partition(":")[2] == "openusd_property_admission_targets"
+            case_result = "failure" if any(line.partition(":")[2] == CASE
                                            for line in failed) else "not-listed-as-failed"
     destination.mkdir(parents=True)
     archive = destination / "windows-admission-replay.tar.gz"
@@ -210,11 +230,12 @@ def create(root, destination, source, host, original_suite_outcome="unobserved")
         "producerRef": os.environ.get("GITHUB_REF"),
         "originalSuiteOutcome": original_suite_outcome, "originalCaseRecordedOutcome": case_result,
         "actualProducerHost": host, "sourceInputs": inputs(root, b),
-        "probe": PROBE, "coreVariant": CORE, "preset": "win-x64-physx",
+        "probe": PROBE, "coreVariant": CORE, "preset": PRESET,
         "originalCase": CASE, "mode": MODE, "freshScene": SCENE, "pluginRoot": PLUGINS,
         "originalWorkingDirectory": WORKING, "originalQuotaBytes": 1048576, "originalCtestDeadlineSeconds": 120,
         "installedPatchedHeaders": headers, "exactOriginalFilesNotRebuilt": True,
-        "filesProveBuiltPhysxVariantNotHistoricalLoadedModuleIdentity": True,
+        "filesProveBuiltPhysxVariantNotHistoricalLoadedModuleIdentity": PRESET == "win-x64-physx",
+        "selectedBuiltVariant": PRESET,
         "originalHistoricalCtestLoadedModulesUnobserved": True,
         "files": {name: {"bytes": path.stat().st_size, "sha256": b.digest(path)}
                   for name, path in sorted(files.items())},
@@ -245,7 +266,7 @@ def import_replay(root, output, archive, manifest, source, run_id, attempt, enve
             "Replay manifest repository/ref differs from the authenticated producer envelope.")
     require(manifest.get("sourceInputs") == inputs(root, b), "Replay source recipe differs.")
     require(manifest.get("probe") == PROBE and manifest.get("coreVariant") == CORE
-            and manifest.get("preset") == "win-x64-physx" and manifest.get("mode") == MODE
+            and manifest.get("preset") == PRESET and manifest.get("mode") == MODE
             and manifest.get("originalCase") == CASE and manifest.get("freshScene") == SCENE
             and manifest.get("pluginRoot") == PLUGINS and manifest.get("originalWorkingDirectory") == WORKING
             and manifest.get("originalQuotaBytes") == 1048576 and manifest.get("originalCtestDeadlineSeconds") == 120
@@ -336,7 +357,7 @@ def verify_producer_metadata(run, job, artifact, source, repository_id, expected
             "Diagnostic replay original Windows producer job identity differs.")
     for name in ("Verify native install metadata", "Verify complete native redistribution notices",
                  "Verify complete SDK build-cache pair",
-                 "Export exact Windows admission replay inputs (diagnostic only)"):
+                 EXPORT_STEP):
         steps = [step for step in job.get("steps", []) if step.get("name") == name]
         require(len(steps) == 1 and steps[0].get("conclusion") == "success",
                 "Diagnostic replay lacks an actual successful original SDK/export verification step.")
@@ -345,7 +366,7 @@ def verify_producer_metadata(run, job, artifact, source, repository_id, expected
             and binding.get("repository_id") == repository_id
             and binding.get("head_repository_id") == repository_id
             and binding.get("head_branch") == run.get("head_branch")
-            and artifact.get("name") == f"openusd-windows-admission-replay-{run['run_attempt']}"
+            and artifact.get("name") == ARTIFACT_PREFIX + str(run["run_attempt"])
             and type(artifact.get("id")) is int and artifact["id"] > 0
             and artifact.get("expired") is False
             and type(artifact.get("size_in_bytes")) is int
@@ -394,7 +415,7 @@ def fetch_replay(root, output, source, run_id, repository, repository_id, expect
             "Replay producer metadata requires explicit pagination.")
     selected_jobs = [job for job in jobs["jobs"] if job.get("name", "").endswith("win-x64 verified native archive")]
     selected_artifacts = [item for item in artifacts["artifacts"] if item.get("name") ==
-                          f"openusd-windows-admission-replay-{run['run_attempt']}"]
+                          ARTIFACT_PREFIX + str(run["run_attempt"])]
     require(len(selected_jobs) == len(selected_artifacts) == 1, "Exact diagnostic producer/artifact is unavailable.")
     job, artifact = selected_jobs[0], selected_artifacts[0]
     envelope = verify_producer_metadata(run, job, artifact, source, repository_id, expected_ref)
@@ -415,7 +436,10 @@ def main():
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--source", required=True)
     parser.add_argument("--original-suite-outcome", choices=("success", "failure"), required=True)
+    parser.add_argument("--base-render-targets", action="store_true")
     args = parser.parse_args()
+    if args.base_render_targets:
+        select_base_render_profile()
     require(os.name == "nt", "The exact replay capture is Windows-only.")
     require(all(re.fullmatch("[0-9]+", os.environ.get(name, "")) for name in (
         "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_REPOSITORY_ID"))
