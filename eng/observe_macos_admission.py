@@ -3,10 +3,12 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -23,64 +25,79 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def capture(debugger, command, result, internal_dict):
-    import lldb
+def bounded_line(text, limit=240):
+    for line in (text or "").splitlines():
+        line = "".join(char for char in line.strip() if char.isprintable())
+        if line:
+            return line[:limit]
+    return ""
 
-    del command, result, internal_dict
-    config = json.loads(Path(os.environ["OPENUSD_OWN_ADMISSION_CAPTURE"]).read_text())
-    output = Path(config["output"])
-    process = None
+
+def main_thread_path(report):
+    lines = report.splitlines()
     try:
-        if os.getsid(config["pid"]) != config["ownerSession"]:
-            raise RuntimeError("The selected process no longer belongs to the original owned CTest session.")
-        started = subprocess.check_output(
-            ["/bin/ps", "-p", str(config["pid"]), "-o", "lstart="], text=True, timeout=2).strip()
-        if started != config["processStarted"]:
-            raise RuntimeError("The selected owned process identity changed before attachment.")
-        target = debugger.CreateTarget(config["executable"])
-        error = lldb.SBError()
-        process = target.AttachToProcessWithID(debugger.GetListener(), config["pid"], error)
-        if error.Fail() or not process.IsValid():
-            raise RuntimeError("The owned subject could not be attached.")
-        thread = process.GetThreadByIndexID(1)
-        if not thread.IsValid():
-            raise RuntimeError("The original main thread is unavailable.")
-        modules = {}
-        for module in target.modules:
-            path = Path(str(module.GetFileSpec())).resolve()
-            expected = config["files"].get(str(path))
-            if expected is not None:
-                if digest(path) != expected:
-                    raise RuntimeError("An actual loaded owned module differs from its bound file.")
-                modules[str(path)] = expected
-        if set(modules) != set(config["files"]):
-            raise RuntimeError("The exact probe/Core/USD loaded-module closure is incomplete.")
-        frames = []
-        for index in range(32):
-            frame = thread.GetFrameAtIndex(index)
-            if not frame.IsValid():
-                break
-            address = frame.GetPCAddress()
-            module = frame.GetModule()
-            frames.append({
-                "pc": hex(frame.GetPC()),
-                "module": module.GetFileSpec().GetFilename() if module.IsValid() else None,
-                "moduleOffset": address.GetFileAddress(),
-                "function": (frame.GetFunctionName() or "")[:768],
-            })
-        if not frames:
-            raise RuntimeError("The original main-thread stack is empty.")
-        captured = {
-            "diagnosticOnly": True, "pid": config["pid"], "mainThreadId": thread.GetThreadID(),
-            "frames": frames, "loadedOwnedFiles": modules,
-            "noArgumentsLocalsRegistersRawStackOtherThreadsOrDump": True,
-        }
-    finally:
-        if process is not None and process.IsValid():
-            error = process.Detach()
-            if error.Fail():
-                raise RuntimeError("The owned subject could not be detached.")
-    write_receipt(output, captured)
+        first = next(index for index, line in enumerate(lines)
+                     if "Thread_" in line and "com.apple.main-thread" in line)
+    except StopIteration as error:
+        raise RuntimeError("The sampler report has no identified main thread.") from error
+    frames = []
+    depth = -1
+    for line in lines[first + 1:]:
+        match = re.match(r"^([\s+!:|]*)(\d+)\s+(.*?)\s+\(in ([^)]+)\)", line)
+        if match is None:
+            break
+        current = len(match.group(1))
+        if current <= depth:
+            break
+        depth = current
+        frames.append({"module": match.group(4)[:256], "function": match.group(3)[:768]})
+        if len(frames) == 32:
+            break
+    if not frames:
+        raise RuntimeError("The original main-thread heaviest path is empty.")
+    return frames
+
+
+def sample(config, deadline):
+    if os.getsid(config["pid"]) != config["ownerSession"]:
+        raise RuntimeError("The selected process no longer belongs to the original owned CTest session.")
+    started = subprocess.check_output(
+        ["/bin/ps", "-p", str(config["pid"]), "-o", "lstart="], text=True, timeout=2).strip()
+    if started != config["processStarted"]:
+        raise RuntimeError("The selected owned process identity changed before sampling.")
+    with tempfile.TemporaryDirectory() as scratch:
+        report_path = Path(scratch) / "sample.txt"
+        command = ["/usr/bin/sample", str(config["pid"]), "1", "-mayDie", "-file", str(report_path)]
+        run = subprocess.run(command, capture_output=True, text=True,
+                             timeout=max(1, deadline - time.monotonic()))
+        refusal = None
+        if run.returncode != 0 or not report_path.is_file():
+            refusal = bounded_line(run.stderr) or bounded_line(run.stdout)
+            if not re.search(r"task_for_pid|permission|not permitted|privilege|denied|cannot examine", refusal, re.IGNORECASE):
+                raise RuntimeError("sample failed: " + refusal)
+            if os.getsid(config["pid"]) != config["ownerSession"]:
+                raise RuntimeError("The selected process left the owned session before elevated sampling.")
+            run = subprocess.run(["/usr/bin/sudo", "-n"] + command, capture_output=True, text=True,
+                                 timeout=max(1, deadline - time.monotonic()))
+            if run.returncode != 0 or not report_path.is_file():
+                raise RuntimeError("sample refused (" + refusal + "); sudo sample failed: "
+                                   + (bounded_line(run.stderr) or bounded_line(run.stdout)))
+        report = report_path.read_text(errors="replace")
+    frames = main_thread_path(report)
+    images = report[report.find("Binary Images:"):] if "Binary Images:" in report else ""
+    loaded = {}
+    for path, expected in config["files"].items():
+        if path in images:
+            if digest(Path(path)) != expected:
+                raise RuntimeError("An actual loaded owned module differs from its bound file.")
+            loaded[path] = expected
+    return {
+        "diagnosticOnly": True, "pid": config["pid"], "sampler": "/usr/bin/sample 1s",
+        "elevatedSampler": refusal is not None, "samplerRefusal": refusal,
+        "mainThreadHeaviestPath": frames, "loadedOwnedFiles": loaded,
+        "loadedClosureComplete": set(loaded) == set(config["files"]),
+        "noArgumentsLocalsRegistersAddressesOtherThreadsRawReportOrDump": True,
+    }
 
 
 def children(parent):
@@ -171,6 +188,7 @@ def main():
         "ref": os.environ.get("GITHUB_REF"),
         "originalCommand": command, "originalCase": test["name"],
         "originalDeadlineSeconds": 120, "observationAfterSeconds": 60,
+        "observer": "/usr/bin/sample 1s main-thread heaviest path",
         "observerDeadlineSeconds": 20, "maximumFrames": 32, "maximumReceiptBytes": 65536,
         "files": {str(path.resolve()): digest(path) for path in files},
     }
@@ -197,7 +215,7 @@ def main():
                     try:
                         config = {
                             "pid": subject, "executable": str(executable.resolve()),
-                            "output": str(output / "main-thread.json"), "files": identity["files"],
+                            "files": identity["files"],
                             "ownerSession": process.pid,
                             "processStarted": subprocess.check_output(
                                 ["/bin/ps", "-p", str(subject), "-o", "lstart="],
@@ -205,28 +223,17 @@ def main():
                         }
                         config_path = output / "capture-config.json"
                         write_receipt(config_path, config)
-                        env = os.environ.copy()
-                        env["OPENUSD_OWN_ADMISSION_CAPTURE"] = str(config_path)
-                        subprocess.run([
-                            "/usr/bin/lldb", "--batch",
-                            "-O", "settings set target.preload-symbols false",
-                            "-O", "settings set symbols.enable-external-lookup false",
-                            "-o", 'command script import "' + str(Path(__file__).resolve()) + '"',
-                            "-o", "command script add -f observe_macos_admission.capture openusd-capture",
-                            "-o", "openusd-capture",
-                        ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            timeout=20, check=True)
-                        if not (output / "main-thread.json").is_file():
-                            raise RuntimeError("LLDB did not produce a bounded main-thread receipt.")
-                    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-                        observation_error = type(error).__name__
+                        write_receipt(output / "main-thread.json",
+                                      sample(config, time.monotonic() + 20))
+                    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+                        observation_error = type(error).__name__ + ": " + bounded_line(str(error), 600)
                         print("MACOS_ADMISSION_OBSERVATION_UNAVAILABLE: " + observation_error, file=sys.stderr)
                     finally:
                         try:
                             if owned_subject(process.pid, executable.resolve(), test["command"]) == subject:
                                 os.kill(subject, signal.SIGCONT)
                         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-                            observation_error = type(error).__name__
+                            observation_error = (observation_error or "") + "; resume " + type(error).__name__
                             print("MACOS_ADMISSION_RESUME_UNVERIFIED: " + observation_error, file=sys.stderr)
             time.sleep(0.5)
         code = process.wait()
