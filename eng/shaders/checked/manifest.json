@@ -43,7 +43,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "e71a4fc7fcd2ab120704e15bf9ae5ca59851bc1cd48cbc88ab1a0facbaa34540"
+      "sha256": "2abecd4431960b2df19b5061d4f890dcf149d8b055190c2f871d32e2c195e105"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -91,7 +91,7 @@
     },
     {
       "path": "eng/cesium-sdk-artifact.py",
-      "sha256": "ef2575a9b902d905a1c90631cdbf09a23177aa65ab6a9eaa827b4abfc4342cbc"
+      "sha256": "ca530ed19478b95316ebe6b99dbe9ebc406eb16681a127ea35c7e696b1df2be2"
     },
     {
       "path": "eng/cmake/ShaderCompiler.cmake",
