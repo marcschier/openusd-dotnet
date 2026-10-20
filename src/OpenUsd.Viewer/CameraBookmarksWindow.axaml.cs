@@ -224,6 +224,10 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (_closed.Task.IsCompleted)
+        {
+            return;
+        }
         bool wasClosing = _closing;
         _closing = true;
         _lifetime.Cancel();
@@ -239,6 +243,9 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
         Cancel();
         UpdateContext();
         await _runTask;
-        Close();
+        if (!_closed.Task.IsCompleted)
+        {
+            Close();
+        }
     }
 }

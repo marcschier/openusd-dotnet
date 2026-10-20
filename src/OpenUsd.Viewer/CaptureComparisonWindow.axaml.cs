@@ -251,13 +251,20 @@ internal sealed partial class CaptureComparisonWindow : Window
 
     private async void OnComparisonClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (_closed.Task.IsCompleted)
+        {
+            return;
+        }
         _closing = true;
         _loadCancellation?.Cancel();
         if (_loadTask is { IsCompleted: false } pending)
         {
             e.Cancel = true;
             await pending;
-            Close();
+            if (!_closed.Task.IsCompleted)
+            {
+                Close();
+            }
         }
     }
 
