@@ -198,6 +198,7 @@ jobs:
         run: >
           python eng/cesium-sdk-artifact.py consume --rid ${{ matrix.rid }}
           --source $env:CESIUM_SOURCE_HEAD --run-id ${{ github.run_id }}
+          --fallback-on-toolchain-mismatch
       - id: cesium-vcpkg-cache
         if: steps.cesium-sdk.outputs.reused != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
