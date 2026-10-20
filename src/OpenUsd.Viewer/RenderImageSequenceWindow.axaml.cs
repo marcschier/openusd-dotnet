@@ -317,6 +317,10 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
 
     private async void OnSequenceClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (_closed.Task.IsCompleted)
+        {
+            return;
+        }
         bool wasClosing = _closing;
         _closing = true;
         _windowLifetime.Cancel();
@@ -333,6 +337,9 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         Cancel();
         SetRunningControls();
         await Task.WhenAll(_runTask, results);
-        Close();
+        if (!_closed.Task.IsCompleted)
+        {
+            Close();
+        }
     }
 }
