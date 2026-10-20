@@ -1,0 +1,25 @@
+--- a/pxr/base/work/utils.cpp
++++ b/pxr/base/work/utils.cpp
+@@ -6,6 +6,7 @@
+ //
+ 
+ #include "pxr/pxr.h"
++#include "pxr/base/arch/defines.h"
+ #include "pxr/base/work/utils.h"
+ #include "pxr/base/tf/envSetting.h"
+ 
+@@ -19,7 +20,14 @@
+ bool
+ Work_ShouldSynchronizeAsyncDestroyCalls()
+ {
++#if defined(ARCH_OS_WINDOWS)
++    // ExitProcess terminates workers before DLL static destructors run. A
++    // detached destructor can be killed holding an Sdf path-table lock that
++    // those destructors still need. Finish destruction while workers live.
++    return true;
++#else
+     return TfGetEnvSetting(WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS);
++#endif
+ }
+ 
+ PXR_NAMESPACE_CLOSE_SCOPE

@@ -314,6 +314,19 @@
       ]
     },
     {
+      "id": "windows-synchronous-destruction",
+      "description": "Finish asynchronous destruction on Windows before ExitProcess can terminate workers holding locks needed by DLL static destructors.",
+      "path": "eng\\patches\\openusd\\windows-synchronous-destruction.patch",
+      "sha256": "9D5903AF60BD6D72C95935C003510C0F7070DB13E3E6D89823097254140A5FCF",
+      "files": [
+        {
+          "path": "pxr\\base\\work\\utils.cpp",
+          "beforeSha256": "5CAF29D0059F9C881B9C351BB23C52196D78C24D509574C399157D08FEC7EE3D",
+          "afterSha256": "FE45A2DCCBA6D0EACFE8E54313E2AA1DA82D228C52F6D990C485C16CD068A619"
+        }
+      ]
+    },
+    {
       "id": "tf-refptr-last-release-acquire",
       "upstreamCommit": "72ff9cee97bb1d5664f00d759e559cd8cd2e8400",
       "upstreamUrl": "https://github.com/PixarAnimationStudios/OpenUSD/commit/72ff9cee97bb1d5664f00d759e559cd8cd2e8400",

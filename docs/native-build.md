@@ -72,14 +72,36 @@ resolution selects another provider. Post-build checks derive the supported publ
 pinned headers and verify all declared Zstandard and Blosc exports in the resulting ELF files.
 Windows and macOS build options remain unchanged.
 
-The public-release Linux Core pack is checked again: its Blosc and Zstandard files must match the
-verified SDK bytes, retain the required public exports, and resolve Blosc's `libzstd.so.1`
-dependency to the Zstandard library carried beside it. Synthetic package fixtures do not run this
-native ELF check. This removes Blosc's accidental re-export of its embedded `ZSTD_*` implementation
+The release Linux Core pack opts into `OpenUsdRequireLinuxCodecRuntime=true`: its Blosc and
+Zstandard files must match the verified SDK bytes, retain the required public exports, and resolve Blosc's `libzstd.so.1`
+dependency to the Zstandard library carried beside it. The property defaults to `false`, independently
+of `PublicRelease` (which versioning can enable implicitly on main). The package workflow and
+`eng/pack-packages.ps1` explicitly enable it, retaining the gate for releases and viewer distributions.
+Synthetic package fixtures do not run this native ELF check. This removes Blosc's accidental
+re-export of its embedded `ZSTD_*` implementation
 while preserving the declared Blosc API and Zstandard API. The authenticated 15-control diagnostic
 reproduced the invalid-free with the original and default-rebuilt codec pair and passed the
 supported protected/external candidates; that minimized control is not a substitute for the
 original Viewer or nondeferred render qualification.
+
+## Windows native destruction at process exit
+
+Windows terminates worker threads before running DLL static destructors. OpenUSD's detached
+destruction can leave an Sdf path-table spin mutex owned by a terminated worker, blocking the
+exit thread when a static path is destroyed. The pinned `windows-synchronous-destruction`
+runtime patch makes `WorkSwapDestroyAsync` and `WorkMoveDestroyAsync` finish before returning
+on Windows, including when `WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS` is unset or false.
+This trades deferred destruction latency for safe shutdown; Linux and macOS retain upstream
+asynchronous behavior and the existing environment setting.
+
+The failure-only replay from native run `39335016613`, head `37673f2`, reproduced the
+120-second targets-admission hang in four independently captured dumps. All showed the sole
+remaining thread in `ExitProcess` / `LdrShutdownProcess`, spinning in Sdf prim-path removal.
+The authenticated replay completed 1,000 consecutive runs with synchronous destruction.
+The original probe and PhysX shim also completed 1,000 runs against the source-built patched
+SDK with `WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS=0`, confirming the production change rather
+than an environment override. No probe, query quota, CTest timeout, retry policy, or TBB
+version was changed.
 
 ## Linux runtime paths
 

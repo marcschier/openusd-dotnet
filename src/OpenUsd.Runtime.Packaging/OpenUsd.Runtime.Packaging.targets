@@ -1,6 +1,7 @@
 <Project>
 
   <PropertyGroup>
+    <OpenUsdRequireLinuxCodecRuntime Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == ''">false</OpenUsdRequireLinuxCodecRuntime>
     <OpenUsdInstallRoot Condition="'$(OpenUsdInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/$(RuntimePackageRid)'))</OpenUsdInstallRoot>
     <OpenUsdShimInstallRoot Condition="'$(OpenUsdShimInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/shim/$(RuntimePackageRid)'))</OpenUsdShimInstallRoot>
     <OpenUsdCesiumShimInstallRoot Condition="'$(OpenUsdCesiumShimInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/shim/$(RuntimePackageRid)-cesium'))</OpenUsdCesiumShimInstallRoot>
@@ -200,8 +201,8 @@
     <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysicsLibrary)')" Text="The OpenUsd physics shim is missing: '$(_OpenUsdPhysicsLibrary)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) and eng/build-physx-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysXNotice)')" Text="The PhysX redistribution notice is missing: '$(_OpenUsdPhysXNotice)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdMonolithicLibrary)')" Text="The locked OpenUSD install is incomplete: '$(_OpenUsdMonolithicLibrary)' is missing." />
-    <Error Condition="'$(PublicRelease)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdBloscLibrary)')" Text="The pinned Linux Blosc runtime is missing: '$(_OpenUsdBloscLibrary)'." />
-    <Error Condition="'$(PublicRelease)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdZstdLibrary)')" Text="The pinned Linux Zstandard runtime is missing: '$(_OpenUsdZstdLibrary)'." />
+    <Error Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdBloscLibrary)')" Text="The pinned Linux Blosc runtime is missing: '$(_OpenUsdBloscLibrary)'." />
+    <Error Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdZstdLibrary)')" Text="The pinned Linux Zstandard runtime is missing: '$(_OpenUsdZstdLibrary)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdDotnetLibrary)')" Text="The OpenUsd data shim is missing: '$(_OpenUsdDotnetLibrary)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and '@(_OpenUsdOcioRuntimeLibrary->Count())' == '0'" Text="The locked OpenColorIO runtime for $(RuntimePackageRid) is missing from '$(OpenUsdInstallRoot)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and '@(_OpenUsdImathRuntimeLibrary->Count())' == '0'" Text="The locked Imath runtime required by OpenColorIO for $(RuntimePackageRid) is missing from '$(OpenUsdInstallRoot)'." />
@@ -219,7 +220,7 @@
 
   <Target
     Name="ValidateOpenUsdLinuxCodecRuntime"
-    Condition="'$(PublicRelease)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64'"
+    Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64'"
     BeforeTargets="GenerateNuspec"
     DependsOnTargets="ValidateOpenUsdRuntimePackageInputs">
     <Exec Command="python3 &quot;$(_OpenUsdLinuxCodecValidationScript)&quot; --sdk-root &quot;$(OpenUsdInstallRoot)&quot; --evidence &quot;$(_OpenUsdLinuxCodecValidationEvidence)&quot;" />
@@ -227,7 +228,7 @@
 
   <Target
     Name="VerifyOpenUsdLinuxCodecPackage"
-    Condition="'$(PublicRelease)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64'"
+    Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64'"
     AfterTargets="Pack">
     <PropertyGroup>
       <_OpenUsdPackedCoreArchive>$([System.IO.Path]::GetFullPath('$(PackageOutputPath)/$(PackageId).$(PackageVersion).nupkg'))</_OpenUsdPackedCoreArchive>
