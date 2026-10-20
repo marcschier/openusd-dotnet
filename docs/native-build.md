@@ -73,7 +73,8 @@ pinned headers and verify all declared Zstandard and Blosc exports in the result
 Windows and macOS build options remain unchanged.
 
 The release Linux Core pack opts into `OpenUsdRequireLinuxCodecRuntime=true`: its Blosc and
-Zstandard files must match the verified SDK bytes, retain the required public exports, and resolve Blosc's `libzstd.so.1`
+Zstandard files must match the verified SDK bytes, retain the required public exports,
+and resolve Blosc's `libzstd.so.1`
 dependency to the Zstandard library carried beside it. The property defaults to `false`, independently
 of `PublicRelease` (which versioning can enable implicitly on main). The package workflow and
 `eng/pack-packages.ps1` explicitly enable it, retaining the gate for releases and viewer distributions.
