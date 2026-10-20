@@ -478,6 +478,7 @@ jobs:
             -c Release `
             --nologo `
             -p:PublicRelease=true `
+            -p:OpenUsdRequireLinuxCodecRuntime=true `
             -o artifacts/linux-core-codec-package
       # The current Cesium shim still compiles when the verified SDK is reused,
       # so archive consumers continue to require the platform build toolchain.

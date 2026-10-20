@@ -43,7 +43,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "2abecd4431960b2df19b5061d4f890dcf149d8b055190c2f871d32e2c195e105"
+      "sha256": "e3300308677f77455b184bdd966189fa4a00179a8c44a719cc9d78d38bf97d7e"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -115,11 +115,11 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "c94bc8769703aaa92a624d42e3e2311dc8ee0faa78a86c141ffa9d57a39bb616"
+      "sha256": "10aafa7a638231920051dc97b26a61d196c4f3a1eac90285fc33636cffd31947"
     },
     {
       "path": "eng/pack-packages.ps1",
-      "sha256": "0f098c60c30e64815e1ff176423a3a409720a5f3e2686d6e6ed7e36d1721b831"
+      "sha256": "d94516dacdbe05d698704144f3ef2391d0dc424fe73b38ccbcd77a6308210951"
     },
     {
       "path": "eng/patches/openusd/tf-refptr-last-release-acquire.patch",

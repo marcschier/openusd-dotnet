@@ -341,6 +341,11 @@ foreach ($id in $published)
         $arguments += '-p:OpenUsdRequireMetalShaderLibrary=true'
     }
 
+    if ($id -eq 'OpenUsd.Runtime.Core.linux-x64')
+    {
+        $arguments += '-p:OpenUsdRequireLinuxCodecRuntime=true'
+    }
+
     dotnet @arguments
     if ($LASTEXITCODE -ne 0)
     {

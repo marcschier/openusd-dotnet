@@ -72,14 +72,64 @@ resolution selects another provider. Post-build checks derive the supported publ
 pinned headers and verify all declared Zstandard and Blosc exports in the resulting ELF files.
 Windows and macOS build options remain unchanged.
 
-The public-release Linux Core pack is checked again: its Blosc and Zstandard files must match the
-verified SDK bytes, retain the required public exports, and resolve Blosc's `libzstd.so.1`
-dependency to the Zstandard library carried beside it. Synthetic package fixtures do not run this
-native ELF check. This removes Blosc's accidental re-export of its embedded `ZSTD_*` implementation
+The release Linux Core pack opts into `OpenUsdRequireLinuxCodecRuntime=true`: its Blosc and
+Zstandard files must match the verified SDK bytes, retain the required public exports,
+and resolve Blosc's `libzstd.so.1`
+dependency to the Zstandard library carried beside it. The property defaults to `false`, independently
+of `PublicRelease` (which versioning can enable implicitly on main). The package workflow and
+`eng/pack-packages.ps1` explicitly enable it, retaining the gate for releases and viewer distributions.
+Synthetic package fixtures do not run this native ELF check. This removes Blosc's accidental
+re-export of its embedded `ZSTD_*` implementation
 while preserving the declared Blosc API and Zstandard API. The authenticated 15-control diagnostic
 reproduced the invalid-free with the original and default-rebuilt codec pair and passed the
 supported protected/external candidates; that minimized control is not a substitute for the
 original Viewer or nondeferred render qualification.
+
+## Windows native destruction at process exit
+
+Windows terminates worker threads before running DLL static destructors. OpenUSD's detached
+destruction can leave an Sdf path-table spin mutex owned by a terminated worker, blocking the
+exit thread when a static path is destroyed. The pinned `windows-synchronous-destruction`
+runtime patch makes `WorkSwapDestroyAsync` and `WorkMoveDestroyAsync` finish before returning
+on Windows, including when `WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS` is unset or false.
+This trades deferred destruction latency for safe shutdown; Linux and macOS retain upstream
+asynchronous behavior and the existing environment setting.
+
+**Release note:** Windows destroy-async is synchronous by design in both monolithic and
+non-monolithic builds. The environment variable is ignored on Windows; its upstream
+declaration remains on every platform. This is not a TBB or dispatcher fix. The runtime-patch
+lock binds the shared source patch and pre/postimage hashes to `ee47c679`; the install and
+profile locks bind that lock digest into SDK recipe keys and binary provenance.
+The unpatched `utils.cpp` and `utils.h` are byte-identical to the feature-owner reference
+`2095fafafd033fa23386d7ec6d58c7cc33974518` (SHA256 `5caf29d0...` and `de9ee67a...`,
+respectively).
+
+The pinned source's only production `WorkRunDetachedTask` call sites are the two destroy
+helpers in `work/utils.h`. The remaining direct call is the `testWorkDetachedTask.cpp`
+counter test, which takes neither an Sdf path-table nor a registry lock. Work backend
+implementations and examples define dispatch mechanisms, not additional production
+call sites. No direct production caller requiring those locks was found, and none was
+patched. This removes only the SdfData/Work*DestroyAsync exit race; it does not guarantee
+shutdown safety for external plugins or other asynchronous mechanisms.
+
+The in-tree destroy-helper review found no call holding a lock that its payload destructor
+re-takes. Sdf data/crate teardown and local path/token buffers hold no path-table lock;
+Pcp clears its work list after dispatcher completion and lock scopes; stage teardown waits
+for its dispatcher before clearing the prim map. Hydra scene-index mutation releases recent
+table accessors before evicting payloads, and the resolved-attribute cache and executor
+invalidation clears hold no payload-destructor lock. Plugin-defined data-source destructors
+remain an extension responsibility. The existing render and viewer gates retain their
+original budgets and must qualify the CI-produced SDK; a hand-built monolith is diagnostic
+evidence only and is never a shipping input.
+
+The failure-only replay from native run `39335016613`, head `37673f2`, reproduced the
+120-second targets-admission hang in four independently captured dumps. All showed the sole
+remaining thread in `ExitProcess` / `LdrShutdownProcess`, spinning in Sdf prim-path removal.
+The authenticated replay completed 1,000 consecutive runs with synchronous destruction.
+The original probe and PhysX shim also completed 1,000 runs against the source-built patched
+SDK with `WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS=0`, confirming the production change rather
+than an environment override. No probe, query quota, CTest timeout, retry policy, or TBB
+version was changed.
 
 ## Linux runtime paths
 
