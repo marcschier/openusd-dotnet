@@ -315,7 +315,7 @@
     },
     {
       "id": "windows-synchronous-destruction",
-      "description": "Finish asynchronous destruction on Windows before ExitProcess can terminate workers holding locks needed by DLL static destructors.",
+      "description": "Windows destroy-async is synchronous by design in monolithic and non-monolithic builds. WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS is ignored on Windows; other platforms retain upstream behavior. Removes the SdfData/Work*DestroyAsync exit race, not general detached-task shutdown.",
       "path": "eng\\patches\\openusd\\windows-synchronous-destruction.patch",
       "sha256": "9D5903AF60BD6D72C95935C003510C0F7070DB13E3E6D89823097254140A5FCF",
       "files": [

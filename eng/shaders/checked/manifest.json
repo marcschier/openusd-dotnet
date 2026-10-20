@@ -115,7 +115,7 @@
     },
     {
       "path": "eng/openusd-runtime-patches.lock.json",
-      "sha256": "c4cea5725644f8cf08d2434b068aef45e3811c651dadb93b6d517d4aaf2ac3f0"
+      "sha256": "10aafa7a638231920051dc97b26a61d196c4f3a1eac90285fc33636cffd31947"
     },
     {
       "path": "eng/pack-packages.ps1",

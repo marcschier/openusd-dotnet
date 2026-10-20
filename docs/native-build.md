@@ -94,6 +94,33 @@ on Windows, including when `WORK_SYNCHRONIZE_ASYNC_DESTROY_CALLS` is unset or fa
 This trades deferred destruction latency for safe shutdown; Linux and macOS retain upstream
 asynchronous behavior and the existing environment setting.
 
+**Release note:** Windows destroy-async is synchronous by design in both monolithic and
+non-monolithic builds. The environment variable is ignored on Windows; its upstream
+declaration remains on every platform. This is not a TBB or dispatcher fix. The runtime-patch
+lock binds the shared source patch and pre/postimage hashes to `ee47c679`; the install and
+profile locks bind that lock digest into SDK recipe keys and binary provenance.
+The unpatched `utils.cpp` and `utils.h` are byte-identical to the feature-owner reference
+`2095fafafd033fa23386d7ec6d58c7cc33974518` (SHA256 `5caf29d0...` and `de9ee67a...`,
+respectively).
+
+The pinned source's only production `WorkRunDetachedTask` call sites are the two destroy
+helpers in `work/utils.h`. The remaining direct call is the `testWorkDetachedTask.cpp`
+counter test, which takes neither an Sdf path-table nor a registry lock. Work backend
+implementations and examples define dispatch mechanisms, not additional production
+call sites. No direct production caller requiring those locks was found, and none was
+patched. This removes only the SdfData/Work*DestroyAsync exit race; it does not guarantee
+shutdown safety for external plugins or other asynchronous mechanisms.
+
+The in-tree destroy-helper review found no call holding a lock that its payload destructor
+re-takes. Sdf data/crate teardown and local path/token buffers hold no path-table lock;
+Pcp clears its work list after dispatcher completion and lock scopes; stage teardown waits
+for its dispatcher before clearing the prim map. Hydra scene-index mutation releases recent
+table accessors before evicting payloads, and the resolved-attribute cache and executor
+invalidation clears hold no payload-destructor lock. Plugin-defined data-source destructors
+remain an extension responsibility. The existing render and viewer gates retain their
+original budgets and must qualify the CI-produced SDK; a hand-built monolith is diagnostic
+evidence only and is never a shipping input.
+
 The failure-only replay from native run `39335016613`, head `37673f2`, reproduced the
 120-second targets-admission hang in four independently captured dumps. All showed the sole
 remaining thread in `ExitProcess` / `LdrShutdownProcess`, spinning in Sdf prim-path removal.
