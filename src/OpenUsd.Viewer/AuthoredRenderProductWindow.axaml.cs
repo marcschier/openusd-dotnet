@@ -500,6 +500,10 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
 
     private async void OnProductClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (_closed.Task.IsCompleted)
+        {
+            return;
+        }
         bool wasClosing = _closing;
         _closing = true;
         _windowLifetime.Cancel();
@@ -517,7 +521,10 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         Cancel();
         SetRunningControls();
         await Task.WhenAll(_runTask, _refreshTask, _pickTask, results);
-        Close();
+        if (!_closed.Task.IsCompleted)
+        {
+            Close();
+        }
     }
 
     private void OnProductKeyDown(object? sender, KeyEventArgs e)

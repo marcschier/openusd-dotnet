@@ -134,6 +134,10 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
 
     private async void OnResultsClosing(object? sender, WindowClosingEventArgs args)
     {
+        if (_closed.Task.IsCompleted)
+        {
+            return;
+        }
         bool wasClosing = _closing;
         _closing = true;
         _lifetime.Cancel();
@@ -149,7 +153,10 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         }
         ResultsStatus.Text = "Closing... cancelling and draining PNG loading.";
         await _loadTask;
-        Close();
+        if (!_closed.Task.IsCompleted)
+        {
+            Close();
+        }
     }
 
     private void DisposeTiles()
