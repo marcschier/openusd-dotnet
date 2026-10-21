@@ -1991,6 +1991,18 @@ On Linux the driver is not the problem. Lavapipe is present and used, and the sm
 compositor; the compositor is what reports `supported image handles: (none)`, so there is no handle
 type through which an external image could be imported.
 
+Displayed rendering does not depend on that import. When Avalonia returns no composition GPU
+interop, or interop with no image handle types, the viewer falls back to the `HostReadback`
+presentation path, which copies frames to host memory and draws them through a CPU bitmap. The
+same `VulkanCompositionPresentationTests` filter covers that path without external-object
+extensions: `HostReadbackSelectedWhenCompositorCannotImportExternalObjects` and
+`ExternalObjectsPreferredOverHostReadbackWhenBothAreOffered` pin the selection rule, and
+`HostReadbackPresentsChangedPixelsAcrossEditsAndResizeThenDrains` renders under SwiftShader. It
+verifies changed pixels after an edit, a resize, rejection of handle leases, and full ring drain.
+`HostReadbackCompositionSurfaceBridgeTests` in `OpenUsd.Viewer.Tests` verifies the bitmap bridge
+on a Skia-backed headless platform. Only zero-copy import still needs the GPU runner described
+below.
+
 Both are restored the same way: run these jobs on a GPU-equipped self-hosted runner. On Windows,
 once an ICD exists the `Resolve system Vulkan ICD` step reports `available=true` and every guarded
 step below it runs unchanged. On Linux, drop `OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY` from the two

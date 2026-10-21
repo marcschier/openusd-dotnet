@@ -373,6 +373,35 @@ public interface ICompositionPresentationFrame
 }
 
 /// <summary>
+/// Identifies host-memory readback presentation for compositors without GPU external-object import.
+/// </summary>
+/// <remarks>
+/// A UI host adds <see cref="ImageHandleType"/> to <see cref="CompositionPresentationTarget.ImageHandleTypes"/>
+/// only when it can display CPU pixels. Presenters that accept it render with their own device, wait for
+/// completion, and expose the finished pixels through <see cref="ICompositionReadbackFrame"/>. This path costs a
+/// full-frame GPU-to-host copy per presented frame and is intended for software or headless display stacks.
+/// </remarks>
+public static class CompositionHostReadback
+{
+    /// <summary>The image handle descriptor for host-memory readback presentation.</summary>
+    public const string ImageHandleType = "HostMemoryReadback";
+}
+
+/// <summary>
+/// Represents a presentation allocation whose completed pixels can be copied to host memory.
+/// </summary>
+public interface ICompositionReadbackFrame : ICompositionPresentationFrame
+{
+    /// <summary>
+    /// Copies the most recently presented frame as tightly packed rows in <see cref="CompositionExternalImage.Format"/>,
+    /// ordered as described by <see cref="CompositionExternalImage.TopLeftOrigin"/>.
+    /// </summary>
+    /// <param name="destination">A buffer of exactly width × height × 4 bytes.</param>
+    /// <exception cref="InvalidOperationException">No frame has been presented into this allocation.</exception>
+    void CopyPresentedPixels(Span<byte> destination);
+}
+
+/// <summary>
 /// Owns one same-sized generation of external presentation allocations.
 /// </summary>
 public interface ICompositionPresentationGeneration : IAsyncDisposable
