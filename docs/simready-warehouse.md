@@ -13,13 +13,24 @@ accepted.
 The following records the verified state as of 2026-10-13. Historical failures later in this
 document remain useful diagnostics, but do not supersede these narrower successful results.
 
-| Area | Verified result | Remaining boundary |
-| --- | --- | --- |
-| Geometry identity | All 27,389 original placements and world transforms reconcile; the renderer retains 6,838 shared GPU geometries. | No completed full-root image with the latest material implementation. |
-| Material storage | Actual 4K rubber, concrete and three lamp classes retain their maps and replay exactly; four referenced book owners qualify twelve UDIM material paths. | Storage and bounded-fixture pixels do not prove full-scene shading or lighting fidelity. |
-| Physics | Complete static/dynamic collider worlds, one removable moving box, 240 fixed steps, reset and unchanged source data. | Full-root rendered recording through each real host. |
-| Camera and workspace | Optional `/WarehouseDemoCamera` imports with the intended pose and optics; explicit MCP root settings preserve units, axis and timeline through rollback/export. | The camera-only population-mask check does not load or render warehouse geometry. |
-| Host and package integration | Current MCP and Viewer recording/cancellation/recovery/gallery fixtures pass; the Windows clean-feed Imaging NativeAOT consumer executes using public APIs. | These fixtures and package probes are not full-warehouse or additional-platform acceptance. |
+- **Geometry identity.** Verified: all 27,389 original placements and world transforms
+  reconcile; the renderer retains 6,838 shared GPU geometries. Remaining boundary: no
+  completed full-root image with the latest material implementation.
+- **Material storage.** Verified: actual 4K rubber, concrete and three lamp classes retain
+  their maps and replay exactly; four referenced book owners qualify twelve UDIM material
+  paths. Remaining boundary: storage and bounded-fixture pixels do not prove full-scene
+  shading or lighting fidelity.
+- **Physics.** Verified: complete static/dynamic collider worlds, one removable moving box,
+  240 fixed steps, reset and unchanged source data. Remaining boundary: full-root rendered
+  recording through each real host.
+- **Camera and workspace.** Verified: optional `/WarehouseDemoCamera` imports with the
+  intended pose and optics; explicit MCP root settings preserve units, axis and timeline
+  through rollback/export. Remaining boundary: the camera-only population-mask check does
+  not load or render warehouse geometry.
+- **Host and package integration.** Verified: current MCP and Viewer
+  recording/cancellation/recovery/gallery fixtures pass; the Windows clean-feed Imaging
+  NativeAOT consumer executes using public APIs. Remaining boundary: these fixtures and
+  package probes are not full-warehouse or additional-platform acceptance.
 
 The reconciled material inventory contains 2,941 material prims, including 472 physics-only
 materials, with no unexplained oversized actual storage class for the recorded source and
@@ -298,7 +309,7 @@ require the separate opt-in profile below.
 #### Optional OmniSurface dependency closure
 
 `eng\datasets\simready-mdl-omnisurface.json` pins four unmodified, NVIDIA BSD-noticed
-sources from the public [Slang MDL-SDK fork](https://github.com/shader-slang/MDL-SDK/tree/446562493bed1b175e7cf105425ca3596764652f/examples/mdl/nvidia/test-materials):
+sources from the public [Slang MDL-SDK fork][slang-mdl-test-materials]:
 `OmniSurface.mdl` and its `OmniSurface/OmniImage`, `OmniShared`, and `OmniSurfaceBase`
 dependencies. This is explicitly a fork-sourced profile, not a first-party NVIDIA
 distribution. Each file is pinned by commit, path, byte count and Git blob, and its full
@@ -338,7 +349,7 @@ cap, with a 1,037,246,464-byte measured peak; this is not a full-scene memory bo
 
 `eng\datasets\simready-mdl-legacy-pbr.json` pins the actual OmniPBR 2.1.0 source,
 `OmniPBR_ClearCoat_Opacity`, and its `nvidia/core_definitions` dependency from a
-[historical Gatling source revision](https://github.com/pablode/gatling/tree/4e2be6758a004876fb558ffee684f67c03197439/src/gi/mdl).
+[historical Gatling source revision][gatling-mdl].
 These are third-party redistributions with complete NVIDIA BSD notices, not shader stubs
 or first-party distribution claims. The snapshot is separate from both current profiles.
 
@@ -1185,3 +1196,7 @@ instance-expanded collider counts, unknown authored schema tokens, time samples,
 payloads, exact physics-material remapping, source-file preservation, no cache overwrite,
 dependency parse-error refusal and UDIM anchoring. These small tests do not download or
 render the warehouse.
+
+[slang-mdl-test-materials]:
+https://github.com/shader-slang/MDL-SDK/tree/446562493bed1b175e7cf105425ca3596764652f/examples/mdl/nvidia/test-materials
+[gatling-mdl]: https://github.com/pablode/gatling/tree/4e2be6758a004876fb558ffee684f67c03197439/src/gi/mdl

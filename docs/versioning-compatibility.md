@@ -96,7 +96,7 @@ constants, package validation, and tests must be updated together.
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
 | hdSilk command page | ABI 27 | Every managed page is validated before parsing. |
 | Optional `openusd_mdl` / `openusd_mdl_sdk` | ABI 7 | hdSilk checks the exact adapter version and result size. |
-| Retained physics `openusd_physx` | ABI 8 | Negotiated exactly, including every record size and required CPU mesh preparation exports. |
+| Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
 | Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |
 
 The data capability mask is part of compatibility. A native library with ABI 24 but an older capability

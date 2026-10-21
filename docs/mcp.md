@@ -435,7 +435,8 @@ separate Viewer root; it is not included in either the tool package or MCP RID b
   Previews, sequences and products receive the same graphics options. Child Viewers
   receive only the effective flag after any ambient value is removed, and cannot
   bypass the policy by selecting Storm, Vulkan or Metal. This changes memory placement,
-  not private-commit charges or logical quotas; see [GPU-local upload heaps](rendering.md#optional-d3d12-gpu-local-upload-heaps).
+  not private-commit charges or logical quotas; see
+  [GPU-local upload heaps](rendering.md#optional-d3d12-gpu-local-upload-heaps).
 
 - **`OPENUSD_SILK_STREAM_MATERIAL_TEXTURES`:** opt-in full-resolution material working-set
   streaming for previews, sequences and products. Accepts `true`/`false` (case-insensitive)

@@ -826,7 +826,7 @@ that are meaningful every time physics is running.
 | Speed | Physics menu | `0.25x` to `4x`. |
 | Apply Preview | Physics menu | Authors the simulated poses into the session overlay. |
 | Bake... | Physics menu | Opens the bake dialog. |
-| Record Sequence... | Physics menu / Search Commands | Records exact fixed steps from the paused world into an atomic image-sequence job. |
+| Record Sequence... | Physics menu / Search Commands | Records exact fixed steps from the paused world. |
 | Gizmo | Physics menu | Chooses what a viewport drag manipulates: nothing, move, rotate, scale, or drag a body. |
 | Snap | Physics menu | Quantizes gizmo drags to the configured translation, rotation, and scale increments. |
 | Undo / Redo | Physics menu | Reverses or replays the newest physics property edit. |

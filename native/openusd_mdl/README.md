@@ -180,9 +180,9 @@ This is visible surface radiance, not emissive geometry lighting other objects.
 The dependency-free and unproven-body profiles retain their prior unitless partial
 projection and intensity diagnostics; no arbitrary EDF or unknown unit is assumed.
 The normalization is grounded in the pinned SDK's
-[`diffuse_edf_evaluate`](https://github.com/NVIDIA/MDL-SDK/blob/1b9592c1b086b691b44d1a30eee4827d1ff55b8c/src/mdl/jit/libbsdf/libbsdf.cpp)
-and default
-[`material_emission` mode](https://github.com/NVIDIA/MDL-SDK/blob/1b9592c1b086b691b44d1a30eee4827d1ff55b8c/src/mdl/compiler/compilercore/compilercore_known_defs.h).
+[`diffuse_edf_evaluate`][mdl-libbsdf]
+and default `material_emission` mode in `compilercore_known_defs.h` under
+[`src/mdl/compiler/compilercore`][mdl-compilercore].
 
 For OmniPBR authored UV set zero, `texture_scale`, `texture_rotate` and
 `texture_translate` form the same clockwise-rotation-then-scale affine as the pinned
@@ -346,3 +346,8 @@ metadata follows parameter aliases and copy constructors. Explicit destination
 metadata still wins. It uses the existing default-expression subset, keeps
 unproven bodies diagnosed, and can load a preserved adapter by absolute path to
 demonstrate the pre-correction raw-versus-sRGB failure.
+
+[mdl-libbsdf]:
+  https://github.com/NVIDIA/MDL-SDK/blob/1b9592c1b086b691b44d1a30eee4827d1ff55b8c/src/mdl/jit/libbsdf/libbsdf.cpp
+[mdl-compilercore]:
+  https://github.com/NVIDIA/MDL-SDK/tree/1b9592c1b086b691b44d1a30eee4827d1ff55b8c/src/mdl/compiler/compilercore
