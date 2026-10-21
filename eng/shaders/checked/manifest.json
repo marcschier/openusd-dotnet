@@ -415,7 +415,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.IndexedNormals.cs",
-      "sha256": "dd86590ffcd5791c20fe2304d9371a491244e36cebd757cc90ff6a993bb0129c"
+      "sha256": "14f5eadd890b476ce9a104cc8cc5673d362642ecd50b6933f975ef8c8b88a552"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.SplitDiffuse.cs",
@@ -423,7 +423,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.TexturePreparation.cs",
-      "sha256": "e06aa79fafdc6692dff5ef42cb4b03c1821542a586d1caeb5a7fddbf0614490b"
+      "sha256": "acbcf27acc53d0e8c343211153b3a7120001f8b8c0be737f87e6a1f17d740153"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.Udim.cs",
