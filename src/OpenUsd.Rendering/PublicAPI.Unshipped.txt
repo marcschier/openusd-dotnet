@@ -1213,3 +1213,7 @@ static OpenUsd.Rendering.StageTime.operator ==(OpenUsd.Rendering.StageTime left,
 static OpenUsd.Rendering.ViewportDimensions.Empty.get -> OpenUsd.Rendering.ViewportDimensions
 static OpenUsd.Rendering.ViewportDimensions.operator !=(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
 static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
+const OpenUsd.Rendering.CompositionHostReadback.ImageHandleType = "HostMemoryReadback" -> string!
+OpenUsd.Rendering.CompositionHostReadback
+OpenUsd.Rendering.ICompositionReadbackFrame
+OpenUsd.Rendering.ICompositionReadbackFrame.CopyPresentedPixels(System.Span<byte> destination) -> void
