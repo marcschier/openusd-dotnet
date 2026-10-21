@@ -28,6 +28,12 @@ public sealed class PreviewSilkFrameSourceFactory(
     private readonly PreviewGraphicsDeviceOptions _graphicsOptions =
         graphicsOptions ?? throw new ArgumentNullException(nameof(graphicsOptions));
 
+    /// <summary>Gets shared texture-preparation pools applied before every preview or product device is used.</summary>
+    public SilkTexturePreparationBudgets? TexturePreparationBudgets { get; init; }
+
+    /// <summary>Gets whether captures stream full-resolution material working sets.</summary>
+    public bool StreamMaterialTextures { get; init; }
+
     public IPreviewFrameSource Create(
         PreviewCaptureRequest request,
         CancellationToken cancellationToken = default)
@@ -42,7 +48,9 @@ public sealed class PreviewSilkFrameSourceFactory(
                 ?? throw new InvalidOperationException("The stage source factory returned null."),
             CreateDevice,
             source => OpenUsdSilkRuntime.Create(_pluginPath, source, preparationLimits),
-            device => new SilkFrameCapturer(device),
+            device => new SilkFrameCapturer(device, new SilkTextureResidencyOptions(
+                SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes,
+                SilkTextureResidencyOptions.DefaultMaxGpuBytes, StreamMaterialTextures)),
             static (source, device, session, capturer) =>
                 new PreviewSilkFrameSource(source, device, session, capturer));
     }
@@ -54,6 +62,7 @@ public sealed class PreviewSilkFrameSourceFactory(
         try
         {
             gpuBufferBudget?.ConfigureDevice(device);
+            TexturePreparationBudgets?.ConfigureDevice(device);
             return device;
         }
         catch (Exception configurationFailure)
@@ -65,7 +74,7 @@ public sealed class PreviewSilkFrameSourceFactory(
             catch (Exception cleanupFailure)
             {
                 throw new AggregateException(
-                    "GPU buffer admission failed and the created device could not be released.",
+                    "Resource admission failed and the created device could not be released.",
                     configurationFailure, cleanupFailure);
             }
             throw;
@@ -136,7 +145,7 @@ public sealed class PreviewSilkFrameSourceFactory(
     }
 }
 
-internal sealed class PreviewSilkFrameSource
+internal sealed partial class PreviewSilkFrameSource
     : IPreviewFrameSource, IPreviewDiagnosticSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource,
         IPreviewProductFrameSource
 {
@@ -176,6 +185,9 @@ internal sealed class PreviewSilkFrameSource
             device,
             source)
     {
+        _recordingSource = source;
+        _recordingCapturer = capturer;
+        _recordingSession = session;
         _captureDepth = (view, width, height, maximumBytes, cancellationToken) =>
         {
             SilkFrameCaptureResult result = capturer.CaptureWithDepth(

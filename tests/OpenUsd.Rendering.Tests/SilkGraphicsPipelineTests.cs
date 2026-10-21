@@ -280,7 +280,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap
         ];
 
-        await Assert.That(fragmentFeatures.Length).IsEqualTo(2049);
+        await Assert.That(fragmentFeatures.Length).IsEqualTo(4097);
         foreach (SilkShaderFeatures features in fragmentFeatures)
         {
             var permutation = new SilkShaderPermutationId(features);
@@ -339,7 +339,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(() => new SilkShaderPermutationId(
             SilkShaderFeatures.BaseColorMap)).Throws<ArgumentException>();
         await Assert.That(() => new SilkShaderPermutationId(
-            (SilkShaderFeatures)4096)).Throws<ArgumentOutOfRangeException>();
+            (SilkShaderFeatures)8192)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => new SilkShaderPermutationId(
+            SilkShaderFeatures.DetailNormalMap)).Throws<ArgumentException>();
     }
 
     [Test]
@@ -400,6 +402,8 @@ public sealed class SilkGraphicsPipelineTests
                 (34u, SilkBindingKind.SampledTexture),
                 (35u, SilkBindingKind.Sampler),
                 (36u, SilkBindingKind.SampledTexture),
+                (39u, SilkBindingKind.SampledTexture),
+                (40u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -426,6 +430,8 @@ public sealed class SilkGraphicsPipelineTests
             (2u, SilkBindingKind.SampledTexture),
             (10u, SilkBindingKind.Sampler),
             (3u, SilkBindingKind.SampledTexture),
+            (13u, SilkBindingKind.Sampler),
+            (9u, SilkBindingKind.SampledTexture),
             (11u, SilkBindingKind.Sampler),
             (4u, SilkBindingKind.SampledTexture),
             (14u, SilkBindingKind.Sampler),
@@ -460,7 +466,12 @@ public sealed class SilkGraphicsPipelineTests
             (33u, SilkBindingKind.SampledTexture),
             (34u, SilkBindingKind.SampledTexture),
             (35u, SilkBindingKind.Sampler),
-            (36u, SilkBindingKind.SampledTexture)
+            (36u, SilkBindingKind.SampledTexture),
+            // Private normal value tables use integer loads and need no samplers.
+            (37u, SilkBindingKind.SampledTexture),
+            (38u, SilkBindingKind.SampledTexture),
+            (39u, SilkBindingKind.SampledTexture),
+            (40u, SilkBindingKind.SampledTexture)
         ]);
     }
 
@@ -518,7 +529,9 @@ public sealed class SilkGraphicsPipelineTests
             (33u, SilkBindingKind.SampledTexture),
             (34u, SilkBindingKind.SampledTexture),
             (35u, SilkBindingKind.Sampler),
-            (36u, SilkBindingKind.SampledTexture)
+            (36u, SilkBindingKind.SampledTexture),
+            (39u, SilkBindingKind.SampledTexture),
+            (40u, SilkBindingKind.SampledTexture)
         ]);
         layout.Validate();
     }
@@ -578,7 +591,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(32);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(34);
     }
 
     [Test]
@@ -1061,7 +1074,8 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.SpecularColorMap,
             SilkShaderFeatures.ClearcoatMap,
             SilkShaderFeatures.ClearcoatRoughnessMap,
-            SilkShaderFeatures.IorMap
+            SilkShaderFeatures.IorMap,
+            SilkShaderFeatures.DetailNormalMap
         ];
         var features = new List<SilkShaderFeatures>
         {
@@ -1113,7 +1127,7 @@ public sealed class SilkGraphicsPipelineTests
     private static string GetExpectedVertexEntryPoint(SilkShaderFeatures features)
     {
         var permutation = new SilkShaderPermutationId(
-            features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap));
+            features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap));
         if (permutation.Features == SilkShaderFeatures.None)
         {
             return "vertexMain";

@@ -87,6 +87,21 @@ if(WIN32)
 endif()
 
 # Exercises the retained world ABI end to end against the real simulation SDK.
+add_executable(openusd_physx_mesh_preparation_probe mesh_preparation_main.cpp)
+find_package(Threads REQUIRED)
+target_compile_features(openusd_physx_mesh_preparation_probe PRIVATE cxx_std_17)
+target_link_libraries(openusd_physx_mesh_preparation_probe PRIVATE openusd_physx Threads::Threads)
+if(MSVC)
+    target_compile_options(openusd_physx_mesh_preparation_probe PRIVATE ${openusd_physx_probe_msvc_options})
+else()
+    target_compile_options(openusd_physx_mesh_preparation_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME openusd_physx_mesh_preparation_probe COMMAND openusd_physx_mesh_preparation_probe)
+if(WIN32)
+    set_tests_properties(openusd_physx_mesh_preparation_probe PROPERTIES
+        ENVIRONMENT_MODIFICATION "${openusd_physx_probe_path}")
+endif()
+
 add_executable(openusd_physx_world_probe world_main.cpp page_builder.h)
 target_compile_features(openusd_physx_world_probe PRIVATE cxx_std_17)
 target_link_libraries(openusd_physx_world_probe PRIVATE openusd_physx)

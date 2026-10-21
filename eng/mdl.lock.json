@@ -53,7 +53,7 @@
   ],
   "adapter": {
     "name": "openusd_mdl",
-    "abi": 2,
+    "abi": 7,
     "cmakeOption": "OPENUSD_WITH_MDL",
     "default": "off",
     "shippedInBasePackages": false,

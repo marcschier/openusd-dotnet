@@ -22,7 +22,9 @@ internal sealed record OpenUsdMcpApplicationOptions(
     int MaximumJournalEntryCount = 1024,
     int MaximumAppliedProposalHistoryCount = 1024,
     SilkPreparationLimits? PreparationLimits = null,
-    SilkGpuBufferBudget? GpuBufferBudget = null);
+    SilkGpuBufferBudget? GpuBufferBudget = null,
+    SilkTexturePreparationBudgets? TexturePreparationBudgets = null,
+    bool StreamMaterialTextures = false);
 
 internal static class McpHostConfiguration
 {
@@ -62,7 +64,10 @@ internal static class McpHostConfiguration
                     "OPENUSD_MCP_MAX_ARTIFACT_READ_BYTES",
                     64L * 1024 * 1024)),
             Graphics: new PreviewGraphicsDeviceOptions(
-                UseWarpOnWindows: GetBoolean("OPENUSD_MCP_USE_WARP", defaultValue: true)),
+                UseWarpOnWindows: GetBoolean("OPENUSD_MCP_USE_WARP", defaultValue: true))
+            {
+                D3D12GpuUploadHeaps = GetBoolean("OPENUSD_D3D12_GPU_UPLOAD_HEAPS", defaultValue: false)
+            },
             MaximumCheckpointCount: GetNonNegativeInt(
                 "OPENUSD_MCP_MAX_CHECKPOINTS",
                 256),
@@ -74,9 +79,20 @@ internal static class McpHostConfiguration
                 1024),
             PreparationLimits: SilkPreparationLimits.FromConfiguration(
                 Environment.GetEnvironmentVariable("OPENUSD_SILK_MESH_RESERVATION_BYTES"),
-                Environment.GetEnvironmentVariable("OPENUSD_SILK_MAX_PAGE_BYTES")),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_MAX_PAGE_BYTES"),
+                SilkCommandStorageLimits.FromConfiguration(
+                    Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_LIVE_BYTES"),
+                    Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_UPDATE_BYTES"),
+                    Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_COMMAND_BYTES"),
+                    Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_TRANSFER_BYTES"))),
             GpuBufferBudget: SilkGpuBufferBudget.FromConfiguration(
-                Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_BUFFER_BYTES")));
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_BUFFER_BYTES")),
+            TexturePreparationBudgets: SilkTexturePreparationBudgets.FromConfiguration(
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_CPU_TEXTURE_BYTES"),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_TEXTURE_BYTES"),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_STAGING_BYTES")),
+            StreamMaterialTextures: SilkTextureResidencyOptions.FromConfiguration(
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_STREAM_MATERIAL_TEXTURES"))?.StreamMaterialTextures ?? false);
     }
 
     internal static IServiceCollection AddOpenUsdMcpServices(
@@ -85,6 +101,10 @@ internal static class McpHostConfiguration
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
+        if (options.StreamMaterialTextures && options.GpuBufferBudget is null)
+        {
+            throw new ArgumentException("Material streaming requires a configured GPU buffer budget.", nameof(options));
+        }
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumBatchOperationCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.CaptureQueueCapacity);
         ArgumentOutOfRangeException.ThrowIfNegative(options.MaximumCheckpointCount);
@@ -109,6 +129,13 @@ internal static class McpHostConfiguration
             options.CaptureLimits ?? new PreviewCaptureLimits();
         PreviewGraphicsDeviceOptions graphicsOptions =
             options.Graphics ?? new PreviewGraphicsDeviceOptions();
+        if (graphicsOptions.D3D12GpuUploadHeaps &&
+            (options.GpuBufferBudget is null || graphicsOptions.UseWarpOnWindows || !OperatingSystem.IsWindows()))
+        {
+            throw new ArgumentException(
+                "GPU-upload heaps require Windows hardware previews, OPENUSD_MCP_USE_WARP=false and a GPU buffer budget.",
+                nameof(options));
+        }
         OpenUsdMcpProtocolOptions protocolOptions =
             options.Protocol ?? new OpenUsdMcpProtocolOptions(
                 InlineImageMaximumBytes: artifactOptions.InlineThresholdBytes);
@@ -133,7 +160,11 @@ internal static class McpHostConfiguration
                 provider.GetRequiredService<IPreviewGraphicsDeviceFactory>(),
                 graphicsOptions,
                 options.PreparationLimits,
-                options.GpuBufferBudget));
+                options.GpuBufferBudget)
+            {
+                TexturePreparationBudgets = options.TexturePreparationBudgets,
+                StreamMaterialTextures = options.StreamMaterialTextures
+            });
         services.AddSingleton<IPreviewCaptureProcessor>(provider =>
             new PreviewCaptureProcessor(
                 provider.GetRequiredService<IPreviewFrameSourceFactory>(),
@@ -153,7 +184,12 @@ internal static class McpHostConfiguration
                     options.ViewerExecutableRoot,
                     options.ViewerExecutablePath,
                     options.PreparationLimits,
-                    options.GpuBufferBudget)));
+                    options.GpuBufferBudget)
+                {
+                    TexturePreparationBudgets = options.TexturePreparationBudgets,
+                    StreamMaterialTextures = options.StreamMaterialTextures,
+                    D3D12GpuUploadHeaps = graphicsOptions.D3D12GpuUploadHeaps
+                }));
         services.AddSingleton<IOpenUsdMcpService, OpenUsdMcpService>();
         return services;
     }

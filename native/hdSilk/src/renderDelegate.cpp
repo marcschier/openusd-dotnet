@@ -333,6 +333,7 @@ HdSilkRenderDelegate::DestroyInstancer(HdInstancer* instancer)
 void
 HdSilkRenderDelegate::CommitResources(HdChangeTracker* /*tracker*/)
 {
+    _sceneState->ClearMeshArraySharing();
 }
 
 TfTokenVector

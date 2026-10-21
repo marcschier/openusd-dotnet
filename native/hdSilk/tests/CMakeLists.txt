@@ -234,7 +234,31 @@ endif()
 
 add_test(NAME hdsilk_probe
     COMMAND hdsilk_probe ${HDSILK_PROBE_PLUGIN_DIR} ${HDSILK_PROBE_STAGE})
-set_tests_properties(hdsilk_probe hdsilk_vertex_layout
+add_test(NAME hdsilk_texture_metadata COMMAND hdsilk_probe --texture-metadata)
+add_test(NAME hdsilk_uv_fallback COMMAND hdsilk_probe --uv-fallback)
+add_test(NAME hdsilk_mdl_identifiers COMMAND hdsilk_probe --mdl-identifiers)
+add_test(NAME hdsilk_source_identity_ordinary COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/minimal.usda
+    /World/Cube)
+add_test(NAME hdsilk_source_identity_nested COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-nested-linking-probe.usda
+    /World/GroupA/TwigA/Leaf /World/GroupA/TwigB/Leaf
+    /World/GroupB/TwigA/Leaf /World/GroupB/TwigB/Leaf
+    "/World/ScatterProtos/Red|/World/Scatter:0"
+    "/World/ScatterProtos/Blue|/World/Scatter:1"
+    "/World/ScatterProtos/Blue|/World/Scatter:3")
+add_test(NAME hdsilk_source_identity_nested_masked COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-source-nested-masked.usda
+    "/World/Outer/Inner/Leaf|/World/Outer:0|/World/Outer/Inner:0"
+    "/World/Outer/Inner/Leaf|/World/Outer:0|/World/Outer/Inner:2"
+    "/World/Outer/Inner/Leaf|/World/Outer:2|/World/Outer/Inner:0"
+    "/World/Outer/Inner/Leaf|/World/Outer:2|/World/Outer/Inner:2")
+add_test(NAME hdsilk_source_identity_transform_stack COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-source-transform-stack.usda
+    /World/A/Mesh /World/B/Mesh)
+set_tests_properties(hdsilk_probe hdsilk_vertex_layout hdsilk_texture_metadata hdsilk_uv_fallback hdsilk_mdl_identifiers
+    hdsilk_source_identity_ordinary hdsilk_source_identity_nested hdsilk_source_identity_nested_masked
+    hdsilk_source_identity_transform_stack
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
 
 # The subdivision probe is a separate executable rather than another case inside

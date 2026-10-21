@@ -9,7 +9,7 @@ namespace OpenUsd.Mcp;
 internal sealed class ReadSequenceSheetRequest
 {
     [JsonPropertyName("jobId"), Required, MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description("Completed render_sequence or render_product job ID in this process.")]
+    [Description("Completed render_sequence, render_product or render_physics_sequence job ID in this process.")]
     public required string JobId { get; init; }
 
     [JsonPropertyName("frameIndices"), MaxLength(16)]

@@ -13,6 +13,77 @@ namespace OpenUsd.Rendering.Silk;
 /// </summary>
 internal static class SilkMipGenerator
 {
+    private static readonly float[] ByteComponents = CreateByteComponents();
+
+    private static float[] CreateByteComponents()
+    {
+        var values = new float[256];
+        for (int index = 0; index < values.Length; index++)
+        {
+            values[index] = index / 255f;
+        }
+        return values;
+    }
+
+    internal static void ValidateBaseLevel(SilkDecodedImage image)
+    {
+        if (image.Format is not (SilkTextureFormat.Rgba8Unorm or SilkTextureFormat.Rgba32Float or
+            SilkTextureFormat.R32Float or SilkTextureFormat.R8Unorm))
+        {
+            throw new ArgumentOutOfRangeException(nameof(image), "Unsupported material mip format.");
+        }
+        int size = SilkMipChainLayout.GetTotalByteSize(image.Width, image.Height, image.Format, 1);
+        if (image.Pixels.Length != size)
+        {
+            throw new ArgumentException("The base mip extent does not match its pixels.", nameof(image));
+        }
+        if (image.Format is SilkTextureFormat.Rgba32Float or SilkTextureFormat.R32Float)
+        {
+            ValidateFinite(MemoryMarshal.Cast<byte, float>(image.Pixels));
+        }
+    }
+
+    internal static SilkDecodedImage GenerateNextLevel(
+        SilkDecodedImage source, bool isNormalMap, SilkCpuTextureBudget? budget)
+    {
+        ValidateBaseLevel(source);
+        if (isNormalMap && source.Format is SilkTextureFormat.R32Float or SilkTextureFormat.R8Unorm)
+        {
+            throw new ArgumentException("A normal map must retain its vector components.", nameof(source));
+        }
+        if (source.Width == 1 && source.Height == 1)
+        {
+            throw new ArgumentException("A 1x1 mip has no next level.", nameof(source));
+        }
+        uint width = Math.Max(1u, source.Width / 2);
+        uint height = Math.Max(1u, source.Height / 2);
+        int bytes = SilkMipChainLayout.GetTotalByteSize(width, height, source.Format, 1);
+        IDisposable? reservation = budget?.Reserve(checked((ulong)bytes));
+        try
+        {
+            byte[] pixels = new byte[bytes];
+            if (source.Format is SilkTextureFormat.Rgba32Float or SilkTextureFormat.R32Float)
+            {
+                GenerateLevelFloat(MemoryMarshal.Cast<byte, float>(source.Pixels),
+                    source.Width, source.Height, MemoryMarshal.Cast<byte, float>(pixels.AsSpan()),
+                    width, height, isNormalMap, source.Format == SilkTextureFormat.R32Float ? 1 : 4);
+            }
+            else
+            {
+                GenerateLevelRgba8(source.Pixels, source.Width, source.Height,
+                    pixels, width, height, isNormalMap, source.Format == SilkTextureFormat.R8Unorm ? 1 : 4);
+            }
+            var image = new SilkDecodedImage(width, height, pixels, source.Format);
+            image.OwnReservation(reservation);
+            reservation = null;
+            return image;
+        }
+        finally
+        {
+            reservation?.Dispose();
+        }
+    }
+
     /// <summary>
     /// Builds the full packed mip chain for <paramref name="baseLevel"/>, returning the packed
     /// chain bytes (mip 0 first, ascending) and the level count actually generated.
@@ -25,12 +96,17 @@ internal static class SilkMipGenerator
         bool isNormalMap,
         out uint mipLevelCount)
     {
-        if (format is not (SilkTextureFormat.Rgba8Unorm or SilkTextureFormat.Rgba32Float))
+        if (format is not (SilkTextureFormat.Rgba8Unorm or SilkTextureFormat.Rgba32Float or
+            SilkTextureFormat.R32Float or SilkTextureFormat.R8Unorm))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(format),
                 format,
-                "Mip generation supports only Rgba8Unorm and Rgba32Float material images.");
+                "Mip generation supports only Rgba8Unorm, Rgba32Float, R8Unorm and R32Float material images.");
+        }
+        if (isNormalMap && format is SilkTextureFormat.R32Float or SilkTextureFormat.R8Unorm)
+        {
+            throw new ArgumentException("A normal map must retain its vector components.", nameof(format));
         }
         mipLevelCount = SilkMipChainLayout.GetMaxMipLevelCount(width, height);
         SilkMipLevelLayout[] levels =
@@ -45,7 +121,7 @@ internal static class SilkMipGenerator
         }
         byte[] chain = new byte[totalSize];
         baseLevel.CopyTo(chain.AsSpan(levels[0].Offset, levels[0].Size));
-        if (format == SilkTextureFormat.Rgba32Float)
+        if (format is SilkTextureFormat.Rgba32Float or SilkTextureFormat.R32Float)
         {
             ValidateFinite(MemoryMarshal.Cast<byte, float>(baseLevel.AsSpan()));
         }
@@ -63,7 +139,7 @@ internal static class SilkMipGenerator
         SilkTextureFormat format,
         bool isNormalMap)
     {
-        if (format == SilkTextureFormat.Rgba32Float)
+        if (format is SilkTextureFormat.Rgba32Float or SilkTextureFormat.R32Float)
         {
             Span<float> sourcePixels = MemoryMarshal.Cast<byte, float>(
                 chain.AsSpan(source.Offset, source.Size));
@@ -76,7 +152,8 @@ internal static class SilkMipGenerator
                 destinationPixels,
                 destination.Width,
                 destination.Height,
-                isNormalMap);
+                isNormalMap,
+                format == SilkTextureFormat.R32Float ? 1 : 4);
             return;
         }
         GenerateLevelRgba8(
@@ -86,7 +163,8 @@ internal static class SilkMipGenerator
             chain.AsSpan(destination.Offset, destination.Size),
             destination.Width,
             destination.Height,
-            isNormalMap);
+            isNormalMap,
+            format == SilkTextureFormat.R8Unorm ? 1 : 4);
     }
 
     private static void GenerateLevelFloat(
@@ -96,16 +174,17 @@ internal static class SilkMipGenerator
         Span<float> destination,
         uint destinationWidth,
         uint destinationHeight,
-        bool isNormalMap)
+        bool isNormalMap,
+        int components)
     {
         for (uint y = 0; y < destinationHeight; y++)
         {
             for (uint x = 0; x < destinationWidth; x++)
             {
                 Span<float> texel = destination.Slice(
-                    checked((int)(((y * destinationWidth) + x) * 4)),
-                    4);
-                Sample4(source, sourceWidth, sourceHeight, x, y, out ReadOnlySpan<float> s00,
+                    checked((int)(((y * destinationWidth) + x) * (uint)components)),
+                    components);
+                Sample4(source, sourceWidth, sourceHeight, x, y, (uint)components, out ReadOnlySpan<float> s00,
                     out ReadOnlySpan<float> s01, out ReadOnlySpan<float> s10, out ReadOnlySpan<float> s11);
                 if (isNormalMap)
                 {
@@ -127,8 +206,15 @@ internal static class SilkMipGenerator
         Span<byte> destination,
         uint destinationWidth,
         uint destinationHeight,
-        bool isNormalMap)
+        bool isNormalMap,
+        int components)
     {
+        if (!isNormalMap)
+        {
+            GenerateByteComponents(source, sourceWidth, sourceHeight,
+                destination, destinationWidth, destinationHeight, components);
+            return;
+        }
         Span<float> s00 = stackalloc float[4];
         Span<float> s01 = stackalloc float[4];
         Span<float> s10 = stackalloc float[4];
@@ -138,24 +224,50 @@ internal static class SilkMipGenerator
         {
             for (uint x = 0; x < destinationWidth; x++)
             {
-                SampleRgba8(source, sourceWidth, sourceHeight, 2 * x, 2 * y, s00);
-                SampleRgba8(source, sourceWidth, sourceHeight, (2 * x) + 1, 2 * y, s01);
-                SampleRgba8(source, sourceWidth, sourceHeight, 2 * x, (2 * y) + 1, s10);
-                SampleRgba8(source, sourceWidth, sourceHeight, (2 * x) + 1, (2 * y) + 1, s11);
+                SampleRgba8(source, sourceWidth, sourceHeight, 2 * x, 2 * y, s00[..components]);
+                SampleRgba8(source, sourceWidth, sourceHeight, (2 * x) + 1, 2 * y, s01[..components]);
+                SampleRgba8(source, sourceWidth, sourceHeight, 2 * x, (2 * y) + 1, s10[..components]);
+                SampleRgba8(source, sourceWidth, sourceHeight, (2 * x) + 1, (2 * y) + 1, s11[..components]);
                 if (isNormalMap)
                 {
                     AverageNormal(s00, s01, s10, s11, texel);
                 }
                 else
                 {
-                    AverageComponents(s00, s01, s10, s11, texel);
+                    AverageComponents(s00, s01, s10, s11, texel[..components]);
                 }
-                ValidateFinite(texel);
-                int destinationOffset = checked((int)(((y * destinationWidth) + x) * 4));
-                for (int component = 0; component < 4; component++)
+                ValidateFinite(texel[..components]);
+                int destinationOffset = checked((int)(((y * destinationWidth) + x) * (uint)components));
+                for (int component = 0; component < components; component++)
                 {
                     destination[destinationOffset + component] =
                         (byte)Math.Clamp(MathF.Round(texel[component] * 255f), 0, 255);
+                }
+            }
+        }
+    }
+
+    private static void GenerateByteComponents(
+        ReadOnlySpan<byte> source, uint sourceWidth, uint sourceHeight,
+        Span<byte> destination, uint width, uint height, int components)
+    {
+        for (uint y = 0; y < height; y++)
+        {
+            int row0 = checked((int)(2 * y * sourceWidth * (uint)components));
+            int row1 = checked((int)(Math.Min(2 * y + 1, sourceHeight - 1) * sourceWidth * (uint)components));
+            int output = checked((int)(y * width * (uint)components));
+            for (uint x = 0; x < width; x++)
+            {
+                int left = checked((int)(2 * x * (uint)components));
+                int right = checked((int)(Math.Min(2 * x + 1, sourceWidth - 1) * (uint)components));
+                for (int channel = 0; channel < components; channel++)
+                {
+                    // Retain the original floating-point addition order and midpoint rounding.
+                    float average = (ByteComponents[source[row0 + left + channel]] +
+                        ByteComponents[source[row0 + right + channel]] +
+                        ByteComponents[source[row1 + left + channel]] +
+                        ByteComponents[source[row1 + right + channel]]) / 4f;
+                    destination[output++] = (byte)Math.Clamp(MathF.Round(average * 255f), 0, 255);
                 }
             }
         }
@@ -167,6 +279,7 @@ internal static class SilkMipGenerator
         uint sourceHeight,
         uint x,
         uint y,
+        uint components,
         out ReadOnlySpan<float> s00,
         out ReadOnlySpan<float> s01,
         out ReadOnlySpan<float> s10,
@@ -176,10 +289,10 @@ internal static class SilkMipGenerator
         uint x1 = Math.Min((2 * x) + 1, sourceWidth - 1);
         uint y0 = Math.Min(2 * y, sourceHeight - 1);
         uint y1 = Math.Min((2 * y) + 1, sourceHeight - 1);
-        s00 = source.Slice(checked((int)(((y0 * sourceWidth) + x0) * 4)), 4);
-        s01 = source.Slice(checked((int)(((y0 * sourceWidth) + x1) * 4)), 4);
-        s10 = source.Slice(checked((int)(((y1 * sourceWidth) + x0) * 4)), 4);
-        s11 = source.Slice(checked((int)(((y1 * sourceWidth) + x1) * 4)), 4);
+        s00 = source.Slice(checked((int)(((y0 * sourceWidth) + x0) * components)), (int)components);
+        s01 = source.Slice(checked((int)(((y0 * sourceWidth) + x1) * components)), (int)components);
+        s10 = source.Slice(checked((int)(((y1 * sourceWidth) + x0) * components)), (int)components);
+        s11 = source.Slice(checked((int)(((y1 * sourceWidth) + x1) * components)), (int)components);
     }
 
     private static void SampleRgba8(
@@ -192,8 +305,8 @@ internal static class SilkMipGenerator
     {
         uint clampedX = Math.Min(x, sourceWidth - 1);
         uint clampedY = Math.Min(y, sourceHeight - 1);
-        int offset = checked((int)(((clampedY * sourceWidth) + clampedX) * 4));
-        for (int component = 0; component < 4; component++)
+        int offset = checked((int)(((clampedY * sourceWidth) + clampedX) * (uint)destination.Length));
+        for (int component = 0; component < destination.Length; component++)
         {
             destination[component] = source[offset + component] / 255f;
         }
@@ -206,7 +319,7 @@ internal static class SilkMipGenerator
         ReadOnlySpan<float> s11,
         Span<float> destination)
     {
-        for (int component = 0; component < 4; component++)
+        for (int component = 0; component < destination.Length; component++)
         {
             destination[component] =
                 (s00[component] + s01[component] + s10[component] + s11[component]) / 4f;

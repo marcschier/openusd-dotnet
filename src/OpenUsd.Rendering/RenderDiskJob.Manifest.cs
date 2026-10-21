@@ -7,6 +7,24 @@ namespace OpenUsd.Rendering;
 
 public static partial class RenderDiskJob
 {
+    private static void WriteSimulationIdentity(Utf8JsonWriter json, RenderSimulationFrameIdentity simulation)
+    {
+        json.WriteStartObject("simulation");
+        json.WriteString("epoch", simulation.Epoch);
+        json.WriteString("scenarioIdentity", simulation.ScenarioIdentity);
+        json.WriteString("reviewIdentity", simulation.ReviewIdentity);
+        json.WriteNumber("sourceRevision", simulation.SourceRevision);
+        json.WriteNumber("publicationRevision", simulation.PublicationRevision);
+        json.WriteNumber("stepIndex", simulation.StepIndex);
+        json.WriteNumber("simulationSeconds", simulation.SimulationSeconds);
+        json.WriteNumber("timeCode", simulation.TimeCode);
+        json.WriteNumber("fixedStepSeconds", simulation.FixedStepSeconds);
+        json.WriteNumber("bindingRevision", simulation.BindingRevision);
+        json.WriteNumber("bodyCount", simulation.BodyCount);
+        json.WriteNumber("deformationCount", simulation.DeformationCount);
+        json.WriteEndObject();
+    }
+
     private static void WriteRequestedState(Utf8JsonWriter json, StageRenderState state)
     {
         json.WriteStartObject("camera");

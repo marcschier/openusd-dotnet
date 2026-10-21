@@ -22,17 +22,20 @@ internal static class SilkSurfaceUniformWriter
     /// <remarks>
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
-    /// (clearcoat, clearcoatRoughness, shaded, 0),
+    /// (clearcoat, clearcoatRoughness, shaded, OmniPBR specular weight),
     /// lightDirection+intensity,
     /// lightColor+ambient, volume values,
-    /// (textureMask, udimMask, volumeVoxelDepth, 0),
+    /// (textureMask, udimMask, volumeVoxelDepth, OmniPBR custom-curve enabled),
     /// the
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
     /// (m10, m11, ty, 0), the two-image composite controls
     /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
-    /// (domeLinkMask, 0, 0, 0), followed by uint4 direct and shadow link masks.
+    /// (domeLinkMask, 0, 0, 0), followed by uint4 direct and shadow link masks
+    /// and two independent detail-normal UV affine rows. Their unused w components
+    /// select private indexed storage for the base and detail normal respectively.
+    /// The base UV row's unused w selects private compact RGB emission storage.
     /// </remarks>
-    internal const int ByteSize = 240;
+    internal const int ByteSize = 272;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -62,7 +65,11 @@ internal static class SilkSurfaceUniformWriter
         RenderHeadlight light,
         Span<byte> destination,
         bool supportsVolumeTextures = false,
-        SilkLightLinkMasks? linkMasks = null)
+        SilkLightLinkMasks? linkMasks = null,
+        bool compactDiffuse = false,
+        bool indexedNormal = false,
+        bool indexedDetailNormal = false,
+        bool compactEmissive = false)
     {
         if (destination.Length != ByteSize)
         {
@@ -106,6 +113,15 @@ internal static class SilkSurfaceUniformWriter
         float opacityThreshold = Scalar(shaded, SilkMaterialParameter.OpacityThreshold, 0);
         float specularWorkflow = Scalar(shaded, SilkMaterialParameter.UseSpecularWorkflow, 0);
         float clearcoat = Scalar(shaded, SilkMaterialParameter.Clearcoat, 0);
+        ReadOnlySpan<float> specularLevel = shaded is null
+            ? default : shaded.GetScalar(SilkMaterialParameter.OmniPbrSpecularLevel);
+        bool omniPbrSpecular = !specularLevel.IsEmpty;
+        if (omniPbrSpecular &&
+            (specularLevel.Length != 1 || !float.IsFinite(specularLevel[0]) ||
+                specularLevel[0] < 0 || specularLevel[0] > 1))
+        {
+            throw new InvalidDataException("OmniPBR specular level requires one finite value in [0,1].");
+        }
         float clearcoatRoughness = Scalar(
             shaded,
             SilkMaterialParameter.ClearcoatRoughness,
@@ -124,7 +140,7 @@ internal static class SilkSurfaceUniformWriter
             clearcoat,
             clearcoatRoughness,
             unlit ? 2 : shaded is null ? 0 : 1,
-            0);
+            omniPbrSpecular ? specularLevel[0] : 0);
 
         Vector3 direction = Normalize(light.Direction);
         WriteVector4(
@@ -163,7 +179,7 @@ internal static class SilkSurfaceUniformWriter
             volumeDensity ? 0 : (float)(uint)(shaded?.GetTextureFeatures() ?? SilkShaderFeatures.None),
             udimMask,
             volumeDepth,
-            0);
+            omniPbrSpecular ? 1 : 0);
 
         // hdSilk publishes one folded MaterialX place2d affine per material, so the
         // shader applies it once to the interpolated coordinate rather than
@@ -175,7 +191,7 @@ internal static class SilkSurfaceUniformWriter
             uv is null ? 1 : Finite(uv[0], "UV transform m00"),
             uv is null ? 0 : Finite(uv[1], "UV transform m01"),
             uv is null ? 0 : Finite(uv[4], "UV transform tx"),
-            0);
+            compactEmissive ? 1 : 0);
         WriteVector4(
             destination,
             160,
@@ -200,7 +216,8 @@ internal static class SilkSurfaceUniformWriter
             // reusing the primary slot's bit sampled a plain image through the
             // atlas path, which reads its first texel as tile metadata and returns
             // one flat colour for the whole surface.
-            composite is not null && IsUdim(composite) ? 1 : 0);
+            // Private diffuse storage: an indexed RGB scalar table or exact split blue plane.
+            compactDiffuse ? 2 : composite is not null && IsUdim(composite) ? 1 : 0);
 
         // The UsdLux dome link mask for the prim this block is drawn for. It is a
         // slot of its own rather than more bits of the light mask because the
@@ -218,6 +235,10 @@ internal static class SilkSurfaceUniformWriter
             0);
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(208, 16), masks.LightMask);
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(224, 16), masks.ShadowMask);
+        Vector3 detailRow0 = Vector(shaded, SilkMaterialParameter.DetailUvRow0, Vector3.UnitX);
+        Vector3 detailRow1 = Vector(shaded, SilkMaterialParameter.DetailUvRow1, Vector3.UnitY);
+        WriteVector4(destination, 240, detailRow0.X, detailRow0.Y, detailRow0.Z, indexedNormal ? 1 : 0);
+        WriteVector4(destination, 256, detailRow1.X, detailRow1.Y, detailRow1.Z, indexedDetailNormal ? 1 : 0);
     }
 
     private static bool IsUdim(SilkMaterialTexture texture) =>
@@ -252,6 +273,7 @@ internal static class SilkSurfaceUniformWriter
         int mask = 0;
         addUdimBit(SilkMaterialParameter.DiffuseColor, SilkShaderFeatures.BaseColorMap);
         addUdimBit(SilkMaterialParameter.Normal, SilkShaderFeatures.NormalMap);
+        addUdimBit(SilkMaterialParameter.DetailNormal, SilkShaderFeatures.DetailNormalMap);
         addUdimBit(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
         addUdimBit(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
         addUdimBit(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);

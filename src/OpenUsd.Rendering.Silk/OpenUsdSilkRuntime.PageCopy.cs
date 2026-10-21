@@ -87,14 +87,7 @@ public static unsafe partial class OpenUsdSilkRuntime
             if (maximum is { } limit)
             {
                 NativeMeshPreparationUsage actual = readPageUsage ? TCopy.ReadUsage(page) : usage;
-                if (actual.Version != 1 || actual.MaximumReservedBytes != limit ||
-                    actual.ReservedBytes > actual.PeakReservedBytes || actual.PeakReservedBytes > limit)
-                {
-                    throw new OpenUsdSilkException(
-                        OpenUsdNativeStatus.NativeError, "Native mesh preparation accounting is invalid.");
-                }
-                preparation = new SilkMeshPreparationUsage(
-                    actual.MaximumReservedBytes, actual.ReservedBytes, actual.PeakReservedBytes);
+                preparation = ValidatePreparationUsage(in actual, limit);
             }
             byte[] data = TCopy.Copy(in view);
             if ((nuint)data.Length != view.DataSize)
@@ -114,10 +107,22 @@ public static unsafe partial class OpenUsdSilkRuntime
                 result.Dispose();
                 throw;
             }
+
         }
         finally
         {
             TCopy.Release(page);
         }
+    }
+
+    private static SilkMeshPreparationUsage ValidatePreparationUsage(in NativeMeshPreparationUsage usage, ulong limit)
+    {
+        if (usage.Version != 1 || usage.MaximumReservedBytes != limit ||
+            usage.ReservedBytes > usage.PeakReservedBytes || usage.PeakReservedBytes > limit)
+        {
+            throw new OpenUsdSilkException(
+                OpenUsdNativeStatus.NativeError, "Native mesh preparation accounting is invalid.");
+        }
+        return new(usage.MaximumReservedBytes, usage.ReservedBytes, usage.PeakReservedBytes);
     }
 }

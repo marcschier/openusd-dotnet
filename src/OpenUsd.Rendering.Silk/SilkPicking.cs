@@ -428,6 +428,11 @@ public interface ISilkPickingGraphicsDevice
     ISilkPickReadbackBuffer CreatePickReadbackBuffer();
 }
 
+internal interface ISilkDiscardedPickReadback
+{
+    void ReleaseDiscardedFrameResources();
+}
+
 /// <summary>Optional pick commands exposed by a pick-capable graphics command list.</summary>
 public interface ISilkPickGraphicsCommandList
 {
@@ -633,6 +638,39 @@ public sealed class SilkPickReadbackRing : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         Entry entry = ValidateReservation(reservation);
         Reset(entry);
+    }
+
+    internal void CancelPrepared(SilkPickReadbackReservation reservation)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        Entry entry = ValidateReservation(reservation);
+        if (entry.Buffer is ISilkDiscardedPickReadback discarded)
+        {
+            discarded.ReleaseDiscardedFrameResources();
+        }
+        Reset(entry);
+    }
+
+    internal void DiscardSubmitted(SilkPickReadbackReservation reservation)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!ReferenceEquals(reservation.Owner, this) ||
+            (uint)reservation.SlotIndex >= (uint)_entries.Length)
+        {
+            throw new ArgumentException("The submitted reservation belongs to another ring.", nameof(reservation));
+        }
+        Entry entry = _entries[reservation.SlotIndex];
+        if (entry.State != EntryState.Submitted || entry.Reservation != reservation.Reservation)
+        {
+            throw new InvalidOperationException("The submitted pick reservation is no longer active.");
+        }
+        entry.Submission?.Dispose();
+        if (entry.Buffer is ISilkDiscardedPickReadback discarded)
+        {
+            discarded.ReleaseDiscardedFrameResources();
+        }
+        Reset(entry);
+        InFlightCount--;
     }
 
     /// <summary>Reads and releases the next completed slot without waiting.</summary>

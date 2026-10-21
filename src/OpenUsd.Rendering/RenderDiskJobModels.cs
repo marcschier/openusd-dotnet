@@ -247,6 +247,8 @@ public sealed class RenderJobImage
     public RenderJobDeviceDepth? DeviceDepth { get; init; }
     /// <summary>Gets or initializes actual pre-display HDR color from the same rendered frame.</summary>
     public RenderJobHdrColor? HdrColor { get; init; }
+    /// <summary>Gets or initializes the exact simulation publication represented by all captured planes.</summary>
+    public RenderSimulationFrameIdentity? Simulation { get; init; }
 }
 
 /// <summary>Top-down little-endian RGBA binary16 framebuffer color before exposure, display and selection.</summary>
@@ -309,7 +311,8 @@ public sealed class RenderDiskFrameResult
         int index, StageRenderState state, string fileName, long bytes, string sha256,
         string? depthFileName = null, long depthBytes = 0, string? depthSha256 = null,
         string? hdrColorFileName = null, long hdrColorBytes = 0, string? hdrColorSha256 = null,
-        RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float)
+        RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float,
+        RenderSimulationFrameIdentity? simulation = null)
     {
         Index = index;
         State = state;
@@ -323,6 +326,7 @@ public sealed class RenderDiskFrameResult
         HdrColorBytes = hdrColorBytes;
         HdrColorSha256 = hdrColorSha256;
         HdrColorFormat = hdrColorFileName is null ? null : hdrColorFormat;
+        Simulation = simulation;
     }
 
     /// <summary>Gets the zero-based frame index.</summary>
@@ -349,6 +353,8 @@ public sealed class RenderDiskFrameResult
     public string? HdrColorSha256 { get; }
     /// <summary>Gets the encoded HDR format, or null when no HDR plane was requested.</summary>
     public RenderHdrColorFormat? HdrColorFormat { get; }
+    /// <summary>Gets the exact simulation publication represented by this frame, when recorded.</summary>
+    public RenderSimulationFrameIdentity? Simulation { get; }
 }
 
 /// <summary>A completed, atomically published disk job.</summary>

@@ -1,4 +1,6 @@
 #nullable enable
+static OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.Create(bool useWarp, bool useGpuUploadHeaps) -> OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice!
+OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.UsesGpuUploadHeaps.get -> bool
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateDisplayTransformBinding(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformBinding!
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.CreateDisplayTransformGraphicsPipeline(OpenUsd.Rendering.Silk.SilkDisplayTransformPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkDisplayTransformGraphicsPipeline!
 OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.DisplayTransformDeviceGeneration.get -> ulong

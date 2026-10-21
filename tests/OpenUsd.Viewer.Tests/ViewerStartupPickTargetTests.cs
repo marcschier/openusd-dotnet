@@ -230,7 +230,7 @@ public sealed class ViewerStartupPickTargetTests
         // host that configures nothing keeps the documented fixed primitive request.
         string hostBody = startup[hostOverload..];
         int reset = hostBody.IndexOf(
-            "Initialize([], options.PreparationLimits, options.GpuBufferBudget);", StringComparison.Ordinal);
+            "Initialize([], options.PreparationLimits, options.GpuBufferBudget,", StringComparison.Ordinal);
         int follow = hostBody.IndexOf(
             "HostFollowsViewerPickTarget = options.FollowViewerPickTarget;",
             StringComparison.Ordinal);

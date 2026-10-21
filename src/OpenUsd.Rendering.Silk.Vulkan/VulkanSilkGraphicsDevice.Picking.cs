@@ -1263,7 +1263,7 @@ internal readonly record struct VulkanPickPassCacheEntry(
     int DrawCount);
 
 internal sealed unsafe class VulkanSilkPickReadbackBuffer :
-    ISilkPickReadbackBuffer
+    ISilkPickReadbackBuffer, ISilkDiscardedPickReadback
 {
     private readonly Vk _api;
     private readonly Device _device;
@@ -1694,6 +1694,19 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             _activeSerial = 0;
             _state = PickSlotState.Idle;
         }
+    }
+
+    public void ReleaseDiscardedFrameResources()
+    {
+        ThrowIfDisposed();
+        if (_state != PickSlotState.Idle)
+        {
+            throw new InvalidOperationException("A submitted Vulkan pick must finish before releasing its cache.");
+        }
+        DestroyDescriptorResources();
+        DestroyFramebuffer();
+        _secondaryDraws = null;
+        _secondaryPasses = null;
     }
 
     private static ulong AlignUp(ulong value, ulong alignment)

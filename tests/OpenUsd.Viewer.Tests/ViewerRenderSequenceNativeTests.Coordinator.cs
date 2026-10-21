@@ -41,6 +41,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
                     camera.Snapshot.WorldToView, camera.Snapshot.Optics, dimensions)).AdvanceRevision());
             _ = await coordinator.RenderAsync();
             await Assert.That(coordinator.CanCaptureFrame).IsTrue();
+            await ExercisePhysicsPoseAtCoordinatorAsync(coordinator, work);
             string? previous = null;
             (RenderOutputTransform Transform, float Exposure, RenderDisplayTransform? Display, bool Selected)[] cases =
             {
@@ -96,6 +97,57 @@ public sealed partial class ViewerRenderSequenceNativeTests
         {
             window.Close();
             await AssertSequenceOcioFixtureAsync(config);
+        }
+    }
+
+    private static async Task ExercisePhysicsPoseAtCoordinatorAsync(ViewerRenderCoordinator coordinator, string work)
+    {
+        IViewerPhysicsOverrideTarget target = coordinator.CapturePhysicsOverrideTarget(out _) ??
+            throw new InvalidOperationException("The native capture backend must expose its physics target.");
+        var range = new ViewerRenderSequenceRange(1, 1, 1);
+        var outputs = new ViewerRenderSequenceOutputOptions(true, true);
+        RenderDiskJobResult authored = await coordinator.RenderSequenceAsync(
+            range, work, outputs, "/World/Camera", _ => { }, CancellationToken.None);
+        byte[] before = await File.ReadAllBytesAsync(Path.Combine(authored.OutputDirectory, "frame-000000.hdr.rgba16f"));
+        int width = authored.Frames[0].State.Viewport.Width;
+        (int beforeCount, double beforeX, double beforeY, _) = MeasureEmission(before, null, width);
+        await Assert.That(beforeCount).IsGreaterThan(100);
+        var identity = new PhysicsRenderObjectId(83, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        await Assert.That(bindings.TryBind(identity, "/World/Animated")).IsTrue();
+        var poses = new PhysicsRenderOverrideView(
+            new PhysicsRenderTransformOverride[]
+            {
+                new(identity, new UsdVec3d(0.6, 0.6, 0), PhysicsRenderOrientation.Identity, Snapped: true)
+            }, revision: 83);
+        try
+        {
+            await Assert.That(target.ApplyPhysicsOverrides(poses, bindings)).IsEqualTo(1);
+            RenderDiskJobResult simulated = await coordinator.RenderSequenceAsync(
+                range, work, outputs, "/World/Camera", _ => { }, CancellationToken.None);
+            await Assert.That(target.TryTakeOverrideReport(out ViewerPhysicsOverrideReport report)).IsTrue();
+            await Assert.That(report.Revision).IsEqualTo(83ul);
+            await Assert.That(report.Applied).IsEqualTo(1);
+            await Assert.That(report.Unresolved).IsEqualTo(0);
+            byte[] moved = await File.ReadAllBytesAsync(Path.Combine(
+                simulated.OutputDirectory, "frame-000000.hdr.rgba16f"));
+            (int movedCount, double movedX, double movedY, _) = MeasureEmission(moved, null, width);
+            await Assert.That(movedCount).IsGreaterThan(100);
+            await Assert.That(movedX - beforeX).IsGreaterThan(20);
+            await Assert.That(Math.Abs(movedY - beforeY)).IsLessThan(0.001);
+        }
+        finally
+        {
+            target.ClearPhysicsOverrides();
+        }
+        RenderDiskJobResult restored = await coordinator.RenderSequenceAsync(
+            range, work, outputs, "/World/Camera", _ => { }, CancellationToken.None);
+        foreach (string suffix in new[] { "png", "hdr.rgba16f", "device-depth.f32" })
+        {
+            byte[] expected = await File.ReadAllBytesAsync(Path.Combine(authored.OutputDirectory, $"frame-000000.{suffix}"));
+            byte[] actual = await File.ReadAllBytesAsync(Path.Combine(restored.OutputDirectory, $"frame-000000.{suffix}"));
+            await Assert.That(actual.SequenceEqual(expected)).IsTrue()
+                .Because("clearing the presented physics batch must restore the original PNG, HDR and depth");
         }
     }
 

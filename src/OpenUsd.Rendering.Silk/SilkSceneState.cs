@@ -80,6 +80,8 @@ public sealed class SilkSceneState
     /// <summary>Gets the latest page revision.</summary>
     public ulong Revision { get; private set; }
 
+    internal ulong RollbackGeneration { get; private set; }
+
     /// <summary>Gets the retained frame state.</summary>
     public SilkFrameState Frame { get; } = new();
 
@@ -208,8 +210,8 @@ public sealed class SilkSceneState
     public SilkSceneDelta Apply(OpenUsdSilkPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
-        bool requiresJournal = Preflight(page.GetEnumerator());
-        return Apply(page.GetEnumerator(), page.Revision, requiresJournal);
+        bool requiresJournal = Preflight(page.GetTransientEnumerator());
+        return Apply(page.GetTransientEnumerator(), page.Revision, requiresJournal);
     }
 
     internal PreparedPage PreparePage(OpenUsdSilkPage page)
@@ -219,11 +221,11 @@ public sealed class SilkSceneState
         {
             throw new InvalidOperationException("A scene page is already being prepared.");
         }
-        _ = Preflight(page.GetEnumerator());
+        _ = Preflight(page.GetTransientEnumerator());
         BeginTransaction();
         try
         {
-            return new PreparedPage(this, ApplyCore(page.GetEnumerator(), page.Revision));
+            return new PreparedPage(this, ApplyCore(page.GetTransientEnumerator(), page.Revision));
         }
         catch
         {
@@ -327,9 +329,15 @@ public sealed class SilkSceneState
         // with a simulated one and make restoration a no-op that draws the last frame forever. A
         // page that re-authors the mesh drops the stash instead, so the next replacement captures
         // the newly authored geometry.
+        if (_journaling)
+        {
+            bool existed = _authoredMeshes.TryGetValue(mesh.Id, out SilkMeshData? previous);
+            _undo.Add(new SilkStateUndo(SilkStateUndoKind.AuthoredMesh, mesh.Id, null, 0, previous, existed));
+        }
         _ = _authoredMeshes.TryAdd(mesh.Id, mesh);
-        _meshes[replacement.Id] = replacement;
-        _meshesByPath[(path, instanceIndex)] = replacement;
+        SetMeshById(replacement.Id, replacement);
+        SetMeshByPath((path, instanceIndex), replacement);
+        JournalInstanceList(path);
         if (_instancesByPath.TryGetValue(path, out List<SilkMeshData>? instances))
         {
             for (int index = 0; index < instances.Count; index++)
@@ -370,10 +378,11 @@ public sealed class SilkSceneState
     /// </remarks>
     public bool RestoreAuthoredPoints(ulong meshId)
     {
-        if (!_authoredMeshes.Remove(meshId, out SilkMeshData? authored))
+        if (!_authoredMeshes.TryGetValue(meshId, out SilkMeshData? authored))
         {
             return false;
         }
+        RemoveAuthoredMesh(meshId);
 
         // A mesh the scene no longer retains has nothing to restore. Its stash is still dropped
         // above, because the mesh it described is gone.
@@ -382,8 +391,9 @@ public sealed class SilkSceneState
             return false;
         }
 
-        _meshes[authored.Id] = authored;
-        _meshesByPath[(authored.Path, authored.InstanceIndex)] = authored;
+        SetMeshById(authored.Id, authored);
+        SetMeshByPath((authored.Path, authored.InstanceIndex), authored);
+        JournalInstanceList(authored.Path);
         if (_instancesByPath.TryGetValue(authored.Path, out List<SilkMeshData>? instances))
         {
             for (int index = 0; index < instances.Count; index++)
@@ -685,6 +695,7 @@ public sealed class SilkSceneState
         ulong revision,
         bool requiresJournal)
     {
+        using SilkCommandEnumerator owner = commands;
         if (!requiresJournal)
         {
             // Nothing in this page can be rejected against retained state, so
@@ -713,6 +724,7 @@ public sealed class SilkSceneState
 
     private SilkSceneDelta ApplyCore(SilkCommandEnumerator commands, ulong revision)
     {
+        SilkMeshArrayPool? arrays = null;
         List<ulong>? upserts = null;
         List<ulong>? removals = null;
         List<string>? materialChanges = null;
@@ -728,7 +740,7 @@ public sealed class SilkSceneState
                         break;
                     case SilkCommandType.MeshUpsert:
                         SilkMeshUpsertCommand upsert = commands.Current.AsMeshUpsert();
-                        SilkMeshData mesh = CopyMeshFrom(upsert);
+                        SilkMeshData mesh = CopyMeshFrom(upsert, arrays ??= new SilkMeshArrayPool());
                         if (UpsertMesh(mesh) is { } replacedId)
                         {
                             (removals ??= []).Add(replacedId);
@@ -955,6 +967,7 @@ public sealed class SilkSceneState
             Shadows.RestoreFrom(_shadowsUndo!);
         }
         Revision = _undoRevision;
+        RollbackGeneration++;
         GeometryRevision = _undoGeometryRevision;
         MaterialRevision = _undoMaterialRevision;
         EnvironmentRevision = _undoEnvironmentRevision;
@@ -1222,11 +1235,11 @@ public sealed class SilkSceneState
         object? Value,
         bool Existed);
 
-    private SilkMeshData CopyMeshFrom(SilkMeshUpsertCommand command)
+    private SilkMeshData CopyMeshFrom(SilkMeshUpsertCommand command, SilkMeshArrayPool arrays)
     {
         if (!command.IsInstanceReference)
         {
-            return SilkMeshData.CopyFrom(command);
+            return SilkMeshData.CopyFrom(command, arrays);
         }
 
         if (!TryGetPrototype(command.Path, out SilkMeshData? prototype))
@@ -2332,12 +2345,14 @@ public sealed class SilkMeshData
     }
 
     /// <summary>
-    /// Gets every authored vertex attribute the delegate could resolve onto the
+    /// Gets every vertex attribute the delegate resolved onto the
     /// emitted vertices, in a stable order.
     /// </summary>
     /// <remarks>
     /// Includes normals, which are also exposed pre-expanded through
-    /// <see cref="AuthoredNormals"/> for the vertex builder's hot path. An
+    /// <see cref="AuthoredNormals"/> for the vertex builder's hot path, and constant
+    /// coordinates resolved from a bound material's primvar-reader fallback when
+    /// its named source attribute is absent. These do not author source primvars. An
     /// attribute absent here was either not authored or authored with an
     /// interpolation the delegate could not resolve; in neither case may a
     /// consumer invent one.
@@ -2436,8 +2451,7 @@ public sealed class SilkMeshData
     }
 
     /// <summary>
-    /// Sets the authored point-origin table without copying it, for a
-    /// lightweight instance record that shares its prototype's table.
+    /// Gets or initializes an internally owned point-origin table without copying it.
     /// </summary>
     internal int[] PointOriginArray
     {
@@ -2463,8 +2477,7 @@ public sealed class SilkMeshData
     }
 
     /// <summary>
-    /// Sets the authored corner-edge table without copying it, for a lightweight
-    /// instance record that shares its prototype's table.
+    /// Gets or initializes an internally owned corner-edge table without copying it.
     /// </summary>
     internal int[] CornerEdgeArray
     {
@@ -2648,8 +2661,8 @@ public sealed class SilkMeshData
             // every corner still spans the same authored edge.
             SubprimIdentity = SubprimIdentity,
             SubprimUnsupported = SubprimUnsupported,
-            PointOrigins = _pointOrigins,
-            CornerEdges = _cornerEdges,
+            PointOriginArray = _pointOrigins,
+            CornerEdgeArray = _cornerEdges,
             AuthoredEdgeCount = AuthoredEdgeCount,
             AuthoredPointCount = AuthoredPointCount,
             InstancerPath = InstancerPath,
@@ -2697,7 +2710,7 @@ public sealed class SilkMeshData
     /// <summary>Gets the retained instancing chain without copying it.</summary>
     internal SilkInstancerContextEntry[]? InstancerContextArray => _instancerContext;
 
-    internal static SilkMeshData CopyFrom(SilkMeshUpsertCommand command)
+    internal static SilkMeshData CopyFrom(SilkMeshUpsertCommand command, SilkMeshArrayPool? arrays = null)
     {
         if (command.IsInstanceReference)
         {
@@ -2713,6 +2726,7 @@ public sealed class SilkMeshData
                 points[(point * 3) + component] = command.GetPointComponent(point, component);
             }
         }
+        points = arrays?.Floats.Share(points) ?? points;
 
         var indices = new uint[command.IndexCount];
         var fingerprint = new SilkTopologyFingerprintBuilder(
@@ -2726,6 +2740,7 @@ public sealed class SilkMeshData
             indices[i] = index;
             fingerprint.AddIndex(index);
         }
+        indices = arrays?.Indices.Share(indices) ?? indices;
 
         var triangleSubprims = new int[command.TriangleCount];
         for (int triangle = 0; triangle < triangleSubprims.Length; triangle++)
@@ -2734,6 +2749,7 @@ public sealed class SilkMeshData
             triangleSubprims[triangle] = subprim;
             fingerprint.AddSubprim(subprim);
         }
+        triangleSubprims = arrays?.Integers.Share(triangleSubprims) ?? triangleSubprims;
 
         var color = new float[4];
         for (int i = 0; i < color.Length; i++)
@@ -2754,6 +2770,7 @@ public sealed class SilkMeshData
         {
             pointOrigins[index] = command.GetPointOrigin(index);
         }
+        pointOrigins = arrays?.Integers.Share(pointOrigins) ?? pointOrigins;
 
         int[] cornerEdges = command.CornerEdgeCount == 0
             ? []
@@ -2762,6 +2779,7 @@ public sealed class SilkMeshData
         {
             cornerEdges[index] = command.GetCornerEdge(index);
         }
+        cornerEdges = arrays?.Integers.Share(cornerEdges) ?? cornerEdges;
 
         float[] authoredNormals = [];
         SilkVertexAttributeData[] attributes = command.AttributeCount == 0
@@ -2779,6 +2797,7 @@ public sealed class SilkMeshData
                         attribute.GetComponent(element, component);
                 }
             }
+            data = arrays?.Floats.Share(data) ?? data;
             attributes[index] = new SilkVertexAttributeData(
                 attribute.Name,
                 attribute.Semantic,
@@ -2792,19 +2811,24 @@ public sealed class SilkMeshData
             {
                 continue;
             }
-            // A constant normal is expanded here so the vertex builder only ever
-            // sees one shape, and so the GPU layout stays identical either way.
-            authoredNormals = new float[command.PointCount * 3];
             bool constant = attribute.Interpolation == SilkAttributeInterpolation.Constant;
+            if (!constant)
+            {
+                authoredNormals = data;
+                continue;
+            }
+            // Expand only constants; per-vertex attributes already own the exact
+            // immutable array needed by the vertex builder.
+            authoredNormals = new float[command.PointCount * 3];
             for (int point = 0; point < command.PointCount; point++)
             {
-                int element = constant ? 0 : point;
                 for (int component = 0; component < 3; component++)
                 {
                     authoredNormals[(point * 3) + component] =
-                        attribute.GetComponent(element, component);
+                        attribute.GetComponent(0, component);
                 }
             }
+            authoredNormals = arrays?.Floats.Share(authoredNormals) ?? authoredNormals;
         }
 
         return new SilkMeshData(
@@ -2831,8 +2855,8 @@ public sealed class SilkMeshData
             DeformationUnsupportedFeatures = command.DeformationUnsupportedFeatures,
             SubprimIdentity = command.SubprimIdentity,
             SubprimUnsupported = command.SubprimUnsupported,
-            PointOrigins = pointOrigins,
-            CornerEdges = cornerEdges,
+            PointOriginArray = pointOrigins,
+            CornerEdgeArray = cornerEdges,
             AuthoredEdgeCount = command.AuthoredEdgeCount,
             AuthoredPointCount = command.AuthoredPointCount,
             InstancerPath = command.InstancerPath,
@@ -3045,8 +3069,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
     private readonly ISilkGraphicsDevice _device;
     private readonly Func<string, bool, SilkDecodedImage> _budgetedImageDecoder;
+    private readonly Func<ISilkGraphicsBuffer> _createUniformBuffer;
     private readonly SilkCpuTextureBudget? _cpuTextureBudget;
     private readonly Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? _ownedImageDecoder;
+    private readonly Func<string, bool, bool, SilkCpuTextureBudget?, SilkDecodedImage>? _precisionImageDecoder;
     private readonly Func<string, SilkImageDescription> _imageDescriber;
     private readonly Func<string, IReadOnlyList<SilkUdimTile>> _udimResolver;
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
@@ -3091,6 +3117,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private readonly Dictionary<string, RenderDiagnostic> _diagnostics =
         new(StringComparer.Ordinal);
     private ISilkGraphicsBuffer? _frameBuffer;
+    private ISilkGraphicsBuffer? _frameSpare;
     private bool _frameBufferInitialized;
     private readonly byte[] _frameBytes = new byte[SilkFrameUniformWriter.ByteSize];
     private ulong _frameRevision = ulong.MaxValue;
@@ -3217,11 +3244,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ulong gpuBytes,
         bool isUdim = false,
         TextureDependency[]? dependencies = null,
-        IDisposable? pixelReservation = null)
+        IDisposable? pixelReservation = null,
+        ISilkGraphicsTexture? auxiliaryTexture = null)
     {
         internal ISilkGraphicsTexture Texture { get; } = texture;
+        internal ISilkGraphicsTexture? AuxiliaryTexture { get; } = auxiliaryTexture;
 
-        internal byte[] Pixels { get; } = pixels;
+        internal byte[] Pixels { get; private set; } = pixels;
 
         internal ulong GpuBytes { get; } = gpuBytes;
 
@@ -3240,7 +3269,15 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         /// <summary>Gets the creation-order number used as a stable LRU tie-breaker.</summary>
         internal ulong SequenceId { get; set; }
 
-        internal IDisposable? PixelReservation { get; } = pixelReservation;
+        internal IDisposable? PixelReservation { get; private set; } = pixelReservation;
+
+        internal void ReleasePixels()
+        {
+            Pixels = [];
+            IDisposable? reservation = PixelReservation;
+            PixelReservation = null;
+            reservation?.Dispose();
+        }
     }
 
     private enum TextureCacheEntryKind
@@ -3274,7 +3311,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkColorSpace ColorSpace,
         SilkMaterialParameter Parameter,
         SilkTextureChannel Channel,
-        SilkCompositeOperator CompositeOperator);
+        SilkCompositeOperator CompositeOperator,
+        bool CompactRgb = false,
+        bool IndexedNormal = false);
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
@@ -3284,7 +3323,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             SilkNativeImageDecoder.ResolveUdimTiles,
             residencyOptions: null,
             imageDescriber: SilkNativeImageDecoder.Describe,
-            ownedImageDecoder: SilkNativeImageDecoder.Decode)
+            ownedImageDecoder: SilkNativeImageDecoder.Decode,
+            precisionImageDecoder: SilkNativeImageDecoder.Decode)
     {
     }
 
@@ -3304,7 +3344,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             SilkNativeImageDecoder.ResolveUdimTiles,
             RequireResidencyOptions(residencyOptions),
             imageDescriber: SilkNativeImageDecoder.Describe,
-            ownedImageDecoder: SilkNativeImageDecoder.Decode)
+            ownedImageDecoder: SilkNativeImageDecoder.Decode,
+            precisionImageDecoder: SilkNativeImageDecoder.Decode)
     {
     }
 
@@ -3316,7 +3357,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         : this(device, SilkNativeImageDecoder.Decode, SilkNativeImageDecoder.ResolveUdimTiles,
             RequireResidencyOptions(residencyOptions), imageDescriber: SilkNativeImageDecoder.Describe,
             cpuTextureBudget: cpuTextureBudget ?? throw new ArgumentNullException(nameof(cpuTextureBudget)),
-            ownedImageDecoder: SilkNativeImageDecoder.Decode)
+            ownedImageDecoder: SilkNativeImageDecoder.Decode,
+            precisionImageDecoder: SilkNativeImageDecoder.Decode)
     {
     }
 
@@ -3376,11 +3418,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkEnvironmentPrefilterOptions? environmentPrefilterOptions = null,
         Func<string, SilkEnvironmentAssetStamp>? environmentStampReader = null,
         SilkCpuTextureBudget? cpuTextureBudget = null,
-        Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null)
+        Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null,
+        Func<string, bool, bool, SilkCpuTextureBudget?, SilkDecodedImage>? precisionImageDecoder = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(imageDecoder);
         _device = device;
+        _createUniformBuffer = CreateUniformBuffer;
         cpuTextureBudget?.ConfigureDevice(device);
         cpuTextureBudget = (device as SilkGraphicsDeviceLifetimeBase)?.GetCpuTextureBudgetForAllocation()
             ?? cpuTextureBudget;
@@ -3390,6 +3434,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         _cpuTextureBudget = cpuTextureBudget;
         _ownedImageDecoder = ownedImageDecoder;
+        _precisionImageDecoder = precisionImageDecoder;
         _budgetedImageDecoder = cpuTextureBudget is null ? imageDecoder : DecodeOwnedImage;
         // A describer reads an image's declared shape without decoding it, which
         // is what lets the displacement budgets be enforced before an allocation.
@@ -3458,13 +3503,23 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private void EnsureAllocationBudgetDiagnostics()
     {
         const string cpuCode = "HDSILK_CPU_TEXTURE_ADMISSION";
+        const string streamingCode = "HDSILK_MATERIAL_TEXTURE_STREAMING";
+        if (StreamsMaterialTextures && !_diagnostics.ContainsKey(streamingCode + "\0"))
+        {
+            AddDiagnostic(streamingCode, string.Empty, RenderDiagnosticSeverity.Information,
+                "Full-resolution material working sets stream in existing draw order and release after GPU completion. " +
+                "Each working set must fit configured allocation pools; exact completed ordinary images may be reused " +
+                "within a bounded frame-local cache, and evicted images decode and upload again.");
+        }
         if (_cpuTextureBudget is { } cpu && !_diagnostics.ContainsKey(cpuCode + "\0"))
         {
             AddDiagnostic(cpuCode, string.Empty, RenderDiagnosticSeverity.Information,
                 string.Create(CultureInfo.InvariantCulture,
                     $"Shared owned managed pixel ceiling={cpu.MaximumBytes} bytes. ") +
-                "Includes decoded pixels, mips, atlases, prefilter workspace/output and command copies; excludes " +
-                "native codec scratch, displacement caches and source geometry. Not process RSS.");
+                "Includes decoded pixels, mips, atlases, prefilter/OCIO lattice workspace, " +
+                "shared environment/display " +
+                "pixels, displacement height texels and command copies; excludes native codec/OCIO scratch, " +
+                "per-point displacement amounts, detached captures and source geometry. Not process RSS.");
         }
         const string admissionCode = "HDSILK_GPU_BUFFER_ADMISSION";
         if (_device is ISilkBufferAdmissionDevice { GpuBufferBudget: { } budget } &&
@@ -3858,13 +3913,16 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(frame);
         int uploads = 0;
         bool hasOverrides = overrides is not null && overrides.HasOverrides;
+        Func<ISilkGraphicsBuffer>? createCandidate = SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device)
+            ? _createUniformBuffer : null;
         Span<byte> constants = stackalloc byte[SilkSceneUniformWriter.ByteSize];
         foreach (KeyValuePair<ulong, SilkMeshGpuResource> pair in _meshes)
         {
             ReadOnlySpan<double> transform = hasOverrides
                 ? overrides!.GetTransform(pair.Key)
                 : default;
-            if (pair.Value.UpdateUniform(frame, constants, _device.ClipSpaceYPointsDown, transform))
+            if (pair.Value.UpdateUniform(frame, constants, _device.ClipSpaceYPointsDown, transform, createCandidate,
+                _uniformPreparation?.BeforeMeshUpdate))
             {
                 uploads++;
                 _uniformUploads++;
@@ -3894,9 +3952,6 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkFrameState frame = scene.Frame;
         Vector3 environmentAmbient = RequireEnvironmentAmbient(scene);
         bool created = _frameBuffer is null || !_frameBufferInitialized;
-        _frameBuffer ??= CreateTrackedBuffer(
-            SilkFrameUniformWriter.ByteSize,
-            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         if (created || _frameRevision != frame.Revision ||
             _frameEnvironmentRevision != scene.EnvironmentRevision ||
             _frameEnvironmentAmbientRevision != _environmentAmbientRevision ||
@@ -3905,6 +3960,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             _frameOutputTransform != outputTransform ||
             _frameExposure != exposure)
         {
+            _uniformPreparation?.TrackFrame();
+            _frameBuffer ??= CreateTrackedBuffer(
+                SilkFrameUniformWriter.ByteSize, SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             Span<byte> constants = stackalloc byte[SilkFrameUniformWriter.ByteSize];
             SilkFrameUniformWriter.Write(
                 frame,
@@ -3918,8 +3976,32 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 _environmentDomeAmbient);
             if (created || !constants.SequenceEqual(_frameBytes))
             {
-                _frameBufferInitialized = false;
-                WriteTracked(_frameBuffer, constants);
+                if (!created && SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device))
+                {
+                    ISilkGraphicsBuffer? spare = _uniformPreparation?.ProtectsFrameBuffer(_frameSpare) == true
+                        ? null : _frameSpare;
+                    ISilkGraphicsBuffer candidate = spare ?? CreateTrackedBuffer(
+                        SilkFrameUniformWriter.ByteSize, SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+                    try
+                    {
+                        WriteTracked(candidate, constants);
+                    }
+                    catch
+                    {
+                        if (!ReferenceEquals(candidate, _frameSpare))
+                        {
+                            candidate.Dispose();
+                        }
+                        throw;
+                    }
+                    _frameSpare = _frameBuffer;
+                    _frameBuffer = candidate;
+                }
+                else
+                {
+                    _frameBufferInitialized = false;
+                    WriteTracked(_frameBuffer, constants);
+                }
                 constants.CopyTo(_frameBytes);
             }
             _frameBufferInitialized = true;
@@ -3932,7 +4014,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             _frameExposure = exposure;
         }
         DiagnoseShadows(scene);
-        return _frameBuffer;
+        return _frameBuffer!;
     }
 
     /// <summary>
@@ -5020,9 +5102,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return null;
         }
         catch (Exception exception) when (
-            exception is FileNotFoundException or DirectoryNotFoundException or
+            (_environmentPreparation is null || exception is not OutOfMemoryException) &&
+            exception is (FileNotFoundException or DirectoryNotFoundException or
                 IOException or InvalidDataException or OutOfMemoryException or
-                OverflowException or SilkEnvironmentBudgetExceededException)
+                OverflowException or SilkEnvironmentBudgetExceededException))
         {
             // The prefilter itself refused the composed set, so no one dome is
             // answerable for it and the whole environment falls back; the
@@ -5329,7 +5412,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 return null;
             }
             catch (Exception exception) when (
-                exception is OutOfMemoryException or OverflowException)
+                (owner._environmentPreparation is null || exception is not OutOfMemoryException) &&
+                exception is (OutOfMemoryException or OverflowException))
             {
                 // An image the process cannot hold, or one whose byte count does
                 // not fit the accumulator, is over every budget this renderer
@@ -5945,7 +6029,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             light,
             constants,
             _device is ISilkVolumeTextureGraphicsDevice,
-            masks);
+            masks,
+            UsesCompactRgb(material, SilkMaterialParameter.DiffuseColor),
+            UsesIndexedNormal(material, SilkMaterialParameter.Normal),
+            UsesIndexedNormal(material, SilkMaterialParameter.DetailNormal),
+            UsesCompactRgb(material, SilkMaterialParameter.EmissiveColor));
         WriteTracked(buffer, constants);
     }
 
@@ -5981,7 +6069,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 $"Material '{material.Path}' has no texture for {standInParameter}.");
         BindTextureEntry(
             commands,
-            material.Path,
+            material,
             texture,
             SilkBindingLayoutDescriptor.CompositeSamplerBinding,
             SilkBindingLayoutDescriptor.CompositeTextureBinding);
@@ -5999,7 +6087,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             return;
         }
-        UploadTextureEntry(commands, RequireTexture(material.Path, texture));
+        UploadTextureEntry(commands, RequireTexture(material, texture));
     }
 
     internal void BindMaterialTexture(
@@ -6016,29 +6104,43 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 $"Material '{material.Path}' has no texture for {parameter}.");
         (uint samplerBinding, uint textureBinding) =
             SilkBindingLayoutDescriptor.GetMaterialTextureBindings(bindingParameter);
-        BindTextureEntry(commands, material.Path, texture, samplerBinding, textureBinding);
+        BindTextureEntry(commands, material, texture, samplerBinding, textureBinding);
+        if (bindingParameter is SilkMaterialParameter.DiffuseColor or SilkMaterialParameter.EmissiveColor)
+        {
+            TextureCacheEntry rgb = RequireTexture(material, texture);
+            uint valuesBinding = bindingParameter == SilkMaterialParameter.DiffuseColor
+                ? SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding
+                : SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding;
+            commands.SetTexture(0, valuesBinding, rgb.AuxiliaryTexture ?? rgb.Texture);
+        }
+        if (bindingParameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal)
+        {
+            TextureCacheEntry normal = RequireTexture(material, texture);
+            uint valuesBinding = bindingParameter == SilkMaterialParameter.Normal
+                ? SilkBindingLayoutDescriptor.NormalValuesTextureBinding
+                : SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding;
+            // Non-indexed maps bind a stand-in; the storage flag prevents its use.
+            commands.SetTexture(0, valuesBinding, normal.AuxiliaryTexture ?? normal.Texture);
+        }
     }
 
     private void BindTextureEntry(
         ISilkGraphicsCommandList commands,
-        string materialPath,
+        SilkMaterialData material,
         SilkMaterialTexture texture,
         uint samplerBinding,
         uint textureBinding)
     {
-        TextureCacheEntry entry = RequireTexture(materialPath, texture);
-        if (!entry.Uploaded)
-        {
-            commands.UploadTexture(entry.Texture, entry.Pixels);
-            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
-            entry.Uploaded = true;
-        }
+        TextureCacheEntry entry = RequireTexture(material, texture);
+        UploadTextureEntry(commands, entry);
         commands.SetSampler(
             0,
             samplerBinding,
             RequireSampler(
                 texture,
-                entry.Texture.Format,
+                UsesIndexedNormal(material, texture.Parameter) ||
+                    UsesCompactRgb(material, texture.Parameter)
+                    ? SilkTextureFormat.Rgba32Float : entry.Texture.Format,
                 entry.IsUdim,
                 entry.Texture.MipLevelCount));
         commands.SetTexture(0, textureBinding, entry.Texture);
@@ -6054,18 +6156,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture = material.GetTexture(SilkMaterialParameter.VolumeDensity) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no sampled density volume.");
-        if (commands is not ISilkVolumeTextureCommandList volumeCommands ||
+        if (commands is not ISilkVolumeTextureCommandList ||
             _device is not ISilkVolumeTextureGraphicsDevice)
         {
             return;
         }
         TextureCacheEntry entry = RequireVolumeTexture(texture);
-        if (!entry.Uploaded)
-        {
-            volumeCommands.UploadTexture3D(entry.Texture, entry.Pixels);
-            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
-            entry.Uploaded = true;
-        }
+        UploadTextureEntry(commands, entry, volume: true);
         commands.SetSampler(
             0,
             SilkBindingLayoutDescriptor.VolumeSamplerBinding,
@@ -6085,18 +6182,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(material);
         SilkMaterialTexture? texture = material.GetTexture(SilkMaterialParameter.VolumeDensity);
         if (texture is null ||
-            commands is not ISilkVolumeTextureCommandList volumeCommands ||
+            commands is not ISilkVolumeTextureCommandList ||
             _device is not ISilkVolumeTextureGraphicsDevice)
         {
             return;
         }
         TextureCacheEntry entry = RequireVolumeTexture(texture);
-        if (!entry.Uploaded)
-        {
-            volumeCommands.UploadTexture3D(entry.Texture, entry.Pixels);
-            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
-            entry.Uploaded = true;
-        }
+        UploadTextureEntry(commands, entry, volume: true);
     }
 
     internal void UploadMaterialTexture(
@@ -6110,31 +6202,75 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture = material.GetTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
-        UploadTextureEntry(commands, RequireTexture(material.Path, texture));
+        UploadTextureEntry(commands, RequireTexture(material, texture));
     }
 
     private void UploadTextureEntry(
         ISilkGraphicsCommandList commands,
-        TextureCacheEntry entry)
+        TextureCacheEntry entry,
+        bool volume = false)
     {
         if (entry.Uploaded)
         {
             return;
         }
-        commands.UploadTexture(entry.Texture, entry.Pixels);
+        if (StreamsMaterialTextures)
+        {
+            UploadStreamedTexture(entry, volume);
+            return;
+        }
+        RecordTextureUpload(commands, entry, volume);
         _textureUploadBytes += checked((ulong)entry.Pixels.Length);
         entry.Uploaded = true;
     }
 
+    private static void RecordTextureUpload(
+        ISilkGraphicsCommandList commands, TextureCacheEntry entry, bool volume)
+    {
+        if (volume)
+        {
+            if (commands is not ISilkVolumeTextureCommandList volumeCommands)
+            {
+                throw new NotSupportedException("The command list cannot upload a volume texture.");
+            }
+            volumeCommands.UploadTexture3D(entry.Texture, entry.Pixels);
+        }
+        else
+        {
+            commands.UploadTexture(entry.Texture, entry.Pixels);
+        }
+    }
+
     private TextureCacheEntry RequireTexture(
-        string materialPath,
+        SilkMaterialData material,
         SilkMaterialTexture texture)
     {
+        try
+        {
+            return RequireTextureCore(material, texture);
+        }
+        catch (Exception error) when (error is SilkGpuTextureBudgetExceededException or
+            SilkCpuTextureBudgetExceededException or SilkGpuStagingBudgetExceededException)
+        {
+            error.Data["OpenUsd.MaterialPath"] = material.Path;
+            error.Data["OpenUsd.TextureAsset"] = texture.Asset;
+            error.Data["OpenUsd.TextureParameter"] = texture.Parameter.ToString();
+            error.Data["OpenUsd.TextureWorkingSet"] = string.Join("; ", _textures
+                .Where(pair => pair.Key.MaterialPath == material.Path)
+                .Select(pair => $"{pair.Key.Parameter}: {pair.Key.Asset} ({pair.Value.GpuBytes} bytes)"));
+            throw;
+        }
+    }
+
+    private TextureCacheEntry RequireTextureCore(
+        SilkMaterialData material,
+        SilkMaterialTexture texture)
+    {
+        string materialPath = material.Path;
+        _materialCaptureRequest?.ThrowIfCancellationRequested();
         SilkColorSpace effectiveColorSpace = GetEffectiveColorSpace(texture);
-        // The channel is part of the identity: one packed occlusion/roughness/
-        // metallic file feeds two inputs from two different channels, and each
-        // needs its own swizzled copy. Two entries for one asset is the honest
-        // cost of that, and it never silently merges two different channels.
+        // The channel is part of the identity: packed scalar inputs need their
+        // own channel-reduced values even when they share one source asset.
         // The composite operator is part of the identity as well as the channel:
         // a two-image input publishes two entries for one parameter, and the two
         // may name the same asset with the same channel while carrying different
@@ -6146,7 +6282,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             effectiveColorSpace,
             texture.Parameter,
             texture.Channel,
-            texture.CompositeOperator);
+            texture.CompositeOperator,
+            UsesCompactRgb(material, texture.Parameter),
+            UsesIndexedNormal(material, texture.Parameter));
         if (_textures.TryGetValue(key, out TextureCacheEntry? entry))
         {
             if (!DependenciesChanged(entry.Dependencies) ||
@@ -6156,6 +6294,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 return entry;
             }
             _textures.Remove(key);
+            _streamedTextureDefinitions.Remove(key);
             DisposeEntry(entry);
         }
         if (_failedTextures.TryGetValue(key, out entry))
@@ -6163,14 +6302,27 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             TouchEntry(entry);
             return entry;
         }
+        if (StreamsMaterialTextures && TryReuseStreamedTexture(key, texture, out TextureCacheEntry? reused))
+        {
+            return reused;
+        }
 
         SilkDecodedImage image;
         string[] dependencies = [texture.Asset];
         try
         {
+            if (StreamsMaterialTextures && texture.Asset.Contains("<UDIM>", StringComparison.Ordinal))
+            {
+                using ISilkGraphicsCommandList probe = _device.CreateCommandList();
+                if (probe is ISilkTextureRowUploadCommandList)
+                {
+                    return CreateStreamedUdimEntry(key, material, texture, effectiveColorSpace);
+                }
+            }
             image = texture.Asset.Contains("<UDIM>", StringComparison.Ordinal)
                 ? CreateUdimAtlas(texture, effectiveColorSpace, out dependencies)
-                : DecodeMaterialImage(texture.Asset, texture, effectiveColorSpace);
+                : DecodeMaterialImage(texture.Asset, texture, effectiveColorSpace,
+                    HasRepeatedDecodedSource(material, texture));
         }
         catch (FileNotFoundException exception)
         {
@@ -6205,7 +6357,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             _textures,
             texture.Asset.Contains("<UDIM>", StringComparison.Ordinal),
             dependencies,
-            texture.Parameter == SilkMaterialParameter.Normal);
+            texture.Parameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal);
     }
 
     private TextureCacheEntry CreateFailedTexture(
@@ -6231,7 +6383,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             _failedTextures,
             isUdim: false,
             dependencies: null,
-            isNormalMap: texture.Parameter == SilkMaterialParameter.Normal);
+            isNormalMap: texture.Parameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal);
     }
 
     private TextureCacheEntry CreateTextureEntry(
@@ -6247,6 +6399,22 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         try
         {
             cache.EnsureCapacity(checked(cache.Count + 1));
+            if (StreamsMaterialTextures && !isUdim)
+            {
+                using ISilkGraphicsCommandList probe = _device.CreateCommandList();
+                if (probe is ISilkTextureRowUploadCommandList)
+                {
+                    if (key.CompactRgb)
+                    {
+                        return CreateStreamedIndexedRgb(key, image, cache, dependencies, false);
+                    }
+                    if (key.IndexedNormal)
+                    {
+                        return CreateStreamedIndexedRgb(key, image, cache, dependencies, true);
+                    }
+                    return CreateStreamedMipEntry(key, image, cache, dependencies, isNormalMap);
+                }
+            }
             // UDIM atlases carry sparse per-tile metadata and gutter padding that a naive box
             // filter would corrupt across tile boundaries, so they always stay single-level in
             // this slice. Ordinary material images generate a full CPU mip chain instead.
@@ -6269,6 +6437,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             {
                 pixelsReservation = image.TransferReservation();
             }
+            TrimStreamedTextureReuse(checked((ulong)pixels.Length), key.MaterialPath);
             gpuTexture = _device.CreateTexture2D(
                 new SilkTextureDescriptor(
                     image.Width,
@@ -6305,15 +6474,62 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private SilkDecodedImage DecodeMaterialImage(
         string asset,
         SilkMaterialTexture texture,
-        SilkColorSpace effectiveColorSpace)
+        SilkColorSpace effectiveColorSpace,
+        bool reuseDecodedSource = false)
     {
-        SilkDecodedImage image = _budgetedImageDecoder(asset, effectiveColorSpace == SilkColorSpace.Srgb);
+        bool preferFloat = RequiresFloatTextureAffine(texture);
+        SilkDecodedImage image = ReadMaterialImage(asset, effectiveColorSpace, preferFloat, reuseDecodedSource);
+        try
+        {
+            if (texture.LuminanceMix.W != 0)
+            {
+                ApplyLuminanceMix(MemoryMarshal.Cast<byte, float>(image.Pixels.AsSpan()), texture.LuminanceMix);
+            }
+            ApplyScaleBias(image.Pixels, image.Format, texture);
+            ApplyOutputChannel(image.Pixels, image.Format, texture);
+            return image;
+        }
+        catch
+        {
+            image.Dispose();
+            throw;
+        }
+    }
+
+    private SilkDecodedImage ReadMaterialImage(
+        string asset, SilkColorSpace effectiveColorSpace, bool preferFloat, bool reuseDecodedSource)
+    {
+        var key = (asset, effectiveColorSpace, preferFloat);
+        if (reuseDecodedSource && _streamedDecodedSource is { } cached &&
+            _streamedDecodedSourceKey == key && CanReuseDecodedSource(cached) &&
+            !DependenciesChanged(_streamedDecodedDependencies))
+        {
+            return CopyDecodedSource(cached);
+        }
+        ReleaseDecodedSource();
+        bool linearize = effectiveColorSpace == SilkColorSpace.Srgb;
+        SilkDecodedImage image = _precisionImageDecoder is null
+            ? _budgetedImageDecoder(asset, linearize)
+            : _precisionImageDecoder(asset, linearize, preferFloat, _cpuTextureBudget);
         try
         {
             ValidateDecodedImage(image);
+            if (image.Format == SilkTextureFormat.Rgba8Unorm && preferFloat)
+            {
+                SilkDecodedImage promoted = PromoteTextureImage(image);
+                image.Dispose();
+                image = promoted;
+            }
             FlipRows(image.Pixels, image.Width, image.Height, image.Format, _cpuTextureBudget);
-            ApplyScaleBias(image.Pixels, image.Format, texture);
-            ApplyOutputChannel(image.Pixels, image.Format, texture);
+            if (reuseDecodedSource && CanReuseDecodedSource(image))
+            {
+                TextureDependency[] dependencies = CaptureDependencies([asset]);
+                SilkDecodedImage result = CopyDecodedSource(image);
+                _streamedDecodedSource = image;
+                _streamedDecodedSourceKey = key;
+                _streamedDecodedDependencies = dependencies;
+                return result;
+            }
             return image;
         }
         catch
@@ -6328,10 +6544,85 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             asset, linearize,
             _cpuTextureBudget ?? throw new InvalidOperationException("The CPU pixel budget is unavailable."));
 
+    private static bool RequiresFloatTextureAffine(SilkMaterialTexture texture)
+    {
+        if (texture.LuminanceMix.W != 0 || texture.Channel > SilkTextureChannel.Rgb)
+        {
+            return true;
+        }
+        for (int component = 0; component < 4; component++)
+        {
+            double low = Math.Min(texture.Bias[component], (double)texture.Scale[component] + texture.Bias[component]);
+            double high = Math.Max(texture.Bias[component], (double)texture.Scale[component] + texture.Bias[component]);
+            if (low < 0 || high > 1)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void ApplyLuminanceMix(Span<float> pixels, Vector4 mix)
+    {
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            float luminance = (pixels[offset] * mix.X) + (pixels[offset + 1] * mix.Y) +
+                (pixels[offset + 2] * mix.Z);
+            for (int component = 0; component < 3; component++)
+            {
+                pixels[offset + component] = (pixels[offset + component] * (1 - mix.W)) + (luminance * mix.W);
+            }
+        }
+    }
+
+    private SilkDecodedImage PromoteTextureImage(SilkDecodedImage image)
+    {
+        int bytes = checked(image.Pixels.Length * sizeof(float));
+        IDisposable? reservation = _cpuTextureBudget?.Reserve((ulong)bytes);
+        try
+        {
+            byte[] pixels = new byte[bytes];
+            Span<float> values = MemoryMarshal.Cast<byte, float>(pixels.AsSpan());
+            for (int index = 0; index < image.Pixels.Length; index++)
+            {
+                values[index] = image.Pixels[index] / 255f;
+            }
+            var promoted = new SilkDecodedImage(image.Width, image.Height, pixels, SilkTextureFormat.Rgba32Float);
+            promoted.OwnReservation(reservation);
+            reservation = null;
+            return promoted;
+        }
+        finally
+        {
+            reservation?.Dispose();
+        }
+    }
+
     private SilkDecodedImage CreateUdimAtlas(
         SilkMaterialTexture texture,
         SilkColorSpace effectiveColorSpace,
         out string[] dependencies)
+    {
+        using UdimAtlasSource source = DecodeUdimTiles(texture, effectiveColorSpace);
+        dependencies = source.Dependencies;
+        IDisposable? reservation = _cpuTextureBudget?.Reserve((ulong)source.ByteCount);
+        try
+        {
+            byte[] pixels = new byte[source.ByteCount];
+            WriteUdimAtlasBand(source, texture, pixels, 0);
+            var image = new SilkDecodedImage((uint)source.Width, (uint)source.Height, pixels, source.Format);
+            image.OwnReservation(reservation);
+            reservation = null;
+            return image;
+        }
+        finally
+        {
+            reservation?.Dispose();
+        }
+    }
+
+    private UdimAtlasSource DecodeUdimTiles(
+        SilkMaterialTexture texture, SilkColorSpace effectiveColorSpace, SilkMaterialData? material = null)
     {
         IReadOnlyList<SilkUdimTile> tiles = _udimResolver(texture.Asset);
         if (tiles.Count == 0)
@@ -6364,15 +6655,22 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 $"UDIM texture '{texture.Asset}' spans more than {MaximumUdimAtlasCells} atlas cells.");
         }
 
-        dependencies = tiles.Select(static tile => tile.Asset).ToArray();
+        string[] dependencies = tiles.Select(static tile => tile.Asset).ToArray();
+        bool canPack = material is not null && material.SurfaceKind != SilkSurfaceKind.MaterialXGenerated;
+        if (canPack)
+        {
+            tiles = SelectReachableUdimTiles(material!, texture, tiles);
+        }
+        bool scalar = canPack && IsScalarTextureParameter(texture.Parameter);
         SilkDecodedImage[] images = new SilkDecodedImage[tiles.Count];
-        IDisposable? reservation = null;
         try
         {
             for (int index = 0; index < tiles.Count; index++)
             {
+                _materialCaptureRequest?.ThrowIfCancellationRequested();
                 SilkUdimTile tile = tiles[index];
                 images[index] = DecodeMaterialImage(tile.Asset, texture, effectiveColorSpace);
+                SilkMipGenerator.ValidateBaseLevel(images[index]);
                 if (index != 0 &&
                     (images[index].Width != images[0].Width ||
                      images[index].Height != images[0].Height ||
@@ -6383,43 +6681,98 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 }
             }
 
-            SilkDecodedImage first = images[0];
-            int bytesPerPixel = checked((int)SilkTextureFormats.GetBytesPerPixel(first.Format));
-            int cellWidth = checked((int)first.Width + 2);
-            int cellHeight = checked((int)first.Height + 2);
-            int atlasWidth = checked(columns * cellWidth);
-            int atlasHeight = checked(1 + (rows * cellHeight));
-            int byteCount = checked(atlasWidth * atlasHeight * bytesPerPixel);
-            reservation = _cpuTextureBudget?.Reserve((ulong)byteCount);
-            Span<byte> fallback = stackalloc byte[16];
-            fallback = fallback[..bytesPerPixel];
-            WriteFallbackPixel(texture, first.Format, fallback);
-            byte[] pixels = new byte[byteCount];
-            for (int offset = 0; offset < pixels.Length; offset += bytesPerPixel)
+            bool packed = canPack && (scalar || tiles.Count != dependencies.Length ||
+                (_device.Capabilities.MaxTextureDimension2D is > 0 and var limit &&
+                 ((ulong)columns * (images[0].Width + 2) > limit ||
+                  1ul + (ulong)rows * (images[0].Height + 2) > limit)));
+            if (scalar)
             {
-                fallback.CopyTo(pixels.AsSpan(offset, bytesPerPixel));
+                for (int index = 0; index < images.Length; index++)
+                {
+                    SilkDecodedImage compact = CompactScalarImage(images[index]);
+                    images[index].Dispose();
+                    images[index] = compact;
+                }
+                CompactConstantUdimTiles(images);
             }
-            WriteUdimMetadata(pixels, first.Format, minU, minV, columns, rows);
-
-            for (int index = 0; index < tiles.Count; index++)
-            {
-                int tileOffset = checked((int)tiles[index].Number - 1001);
-                int cellX = (tileOffset % 10) - minU;
-                int cellY = (tileOffset / 10) - minV;
-                CopyUdimTile(images[index], pixels, atlasWidth, cellX * cellWidth, 1 + (cellY * cellHeight));
-            }
-            var image = new SilkDecodedImage((uint)atlasWidth, (uint)atlasHeight, pixels, first.Format);
-            image.OwnReservation(reservation);
-            reservation = null;
-            return image;
+            return new UdimAtlasSource(tiles, images, dependencies, minU, minV, columns, rows,
+                packed, _device.Capabilities.MaxTextureDimension2D);
         }
-        finally
+        catch
         {
-            reservation?.Dispose();
             foreach (SilkDecodedImage? image in images)
             {
                 image?.Dispose();
             }
+            throw;
+        }
+    }
+
+    private sealed class UdimAtlasSource(
+        IReadOnlyList<SilkUdimTile> tiles, SilkDecodedImage[] images, string[] dependencies,
+        int minU, int minV, int columns, int rows, bool packed, uint maximumDimension)
+        : IDisposable
+    {
+        internal IReadOnlyList<SilkUdimTile> Tiles { get; } = tiles;
+        internal SilkDecodedImage[] Images { get; } = images;
+        internal string[] Dependencies { get; } = dependencies;
+        internal bool Packed { get; } = packed;
+        internal int MinU { get; } = minU;
+        internal int MinV { get; } = minV;
+        internal int Columns { get; } = columns;
+        internal int Rows { get; } = rows;
+        internal int CellWidth { get; } = checked((int)images[0].Width + 2);
+        internal int CellHeight { get; } = checked((int)images[0].Height + 2);
+        internal SilkTextureFormat Format { get; } = images[0].Format;
+        internal int PhysicalColumns { get; } = packed
+            ? SelectUdimColumns(images[0], tiles.Count, columns * rows, maximumDimension) : columns;
+        internal int PhysicalRows => Packed ? (Images.Length + PhysicalColumns - 1) / PhysicalColumns : Rows;
+        internal int Width => checked(PhysicalColumns * CellWidth);
+        internal int MetadataRows => Packed ? (10 + Columns * Rows * 2 + Width - 1) / Width : 1;
+        internal int Height => checked(MetadataRows + (PhysicalRows * CellHeight));
+        internal int ByteCount => checked(Width * Height * (int)SilkTextureFormats.GetBytesPerPixel(Format));
+
+        public void Dispose()
+        {
+            foreach (SilkDecodedImage image in Images)
+            {
+                image.Dispose();
+            }
+        }
+    }
+
+    private static void WriteUdimAtlasBand(
+        UdimAtlasSource source, SilkMaterialTexture texture, byte[] pixels, int firstAtlasRow)
+    {
+        int bytesPerPixel = checked((int)SilkTextureFormats.GetBytesPerPixel(source.Format));
+        Span<byte> fallback = stackalloc byte[16];
+        SilkTextureFormat fallbackFormat = source.Format switch
+        {
+            SilkTextureFormat.R8Unorm => SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.R32Float => SilkTextureFormat.Rgba32Float,
+            _ => source.Format
+        };
+        WriteFallbackPixel(texture, fallbackFormat, fallback[..(int)SilkTextureFormats.GetBytesPerPixel(fallbackFormat)]);
+        fallback = fallback[..bytesPerPixel];
+        for (int offset = 0; offset < pixels.Length; offset += bytesPerPixel)
+        {
+            fallback.CopyTo(pixels.AsSpan(offset, bytesPerPixel));
+        }
+        if (source.Packed)
+        {
+            WritePackedUdimMetadata(source, pixels, firstAtlasRow);
+        }
+        else if (firstAtlasRow == 0)
+        {
+            WriteUdimMetadata(pixels, source.Format, source.MinU, source.MinV, source.Columns, source.Rows);
+        }
+        for (int index = 0; index < source.Tiles.Count; index++)
+        {
+            int tileOffset = checked((int)source.Tiles[index].Number - 1001);
+            int cellX = source.Packed ? index % source.PhysicalColumns : (tileOffset % 10) - source.MinU;
+            int cellY = source.Packed ? index / source.PhysicalColumns : (tileOffset / 10) - source.MinV;
+            CopyUdimTile(source.Images[index], pixels, source.Width,
+                cellX * source.CellWidth, source.MetadataRows + (cellY * source.CellHeight), firstAtlasRow);
         }
     }
 
@@ -6474,11 +6827,18 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             Span<float> values = MemoryMarshal.Cast<byte, float>(bytes);
             for (int component = 0; component < values.Length; component++)
             {
-                float source = component < texture.Fallback.Count
+                values[component] = component < texture.Fallback.Count
                     ? texture.Fallback[component]
                     : component == 3 ? 1 : 0;
+            }
+            if (texture.LuminanceMix.W != 0)
+            {
+                ApplyLuminanceMix(values, texture.LuminanceMix);
+            }
+            for (int component = 0; component < values.Length; component++)
+            {
                 values[component] =
-                    (source * texture.Scale[component]) + texture.Bias[component];
+                    (values[component] * texture.Scale[component]) + texture.Bias[component];
                 if (!float.IsFinite(values[component]))
                 {
                     throw new InvalidDataException(
@@ -6530,18 +6890,21 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         byte[] atlas,
         int atlasWidth,
         int cellX,
-        int cellY)
+        int cellY,
+        int firstAtlasRow)
     {
         int bytesPerPixel = checked((int)SilkTextureFormats.GetBytesPerPixel(image.Format));
         int tileWidth = checked((int)image.Width);
         int tileHeight = checked((int)image.Height);
         int atlasStride = checked(atlasWidth * bytesPerPixel);
         int tileStride = checked(tileWidth * bytesPerPixel);
-        for (int y = 0; y < tileHeight; y++)
+        int first = Math.Max(0, firstAtlasRow - cellY);
+        int end = Math.Min(tileHeight + 2, firstAtlasRow + (atlas.Length / atlasStride) - cellY);
+        for (int y = first; y < end; y++)
         {
-            int source = y * tileStride;
+            int source = Math.Clamp(y - 1, 0, tileHeight - 1) * tileStride;
             int destination = checked(
-                ((cellY + y + 1) * atlasStride) + ((cellX + 1) * bytesPerPixel));
+                ((cellY + y - firstAtlasRow) * atlasStride) + ((cellX + 1) * bytesPerPixel));
             Buffer.BlockCopy(image.Pixels, source, atlas, destination, tileStride);
             Buffer.BlockCopy(image.Pixels, source, atlas, destination - bytesPerPixel, bytesPerPixel);
             Buffer.BlockCopy(
@@ -6551,11 +6914,6 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 destination + tileStride,
                 bytesPerPixel);
         }
-        int paddedStride = checked((tileWidth + 2) * bytesPerPixel);
-        int firstRow = checked(cellY * atlasStride + cellX * bytesPerPixel);
-        int lastRow = checked((cellY + tileHeight + 1) * atlasStride + cellX * bytesPerPixel);
-        Buffer.BlockCopy(atlas, firstRow + atlasStride, atlas, firstRow, paddedStride);
-        Buffer.BlockCopy(atlas, lastRow - atlasStride, atlas, lastRow, paddedStride);
     }
 
     private TextureCacheEntry RequireVolumeTexture(SilkMaterialTexture texture)
@@ -6615,12 +6973,15 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
     private SilkDecodedImage CreateFallbackImage(SilkMaterialTexture texture)
     {
-        IDisposable? reservation = _cpuTextureBudget?.Reserve(4);
+        SilkTextureFormat format = RequiresFloatTextureAffine(texture)
+            ? SilkTextureFormat.Rgba32Float : SilkTextureFormat.Rgba8Unorm;
+        int bytes = checked((int)SilkTextureFormats.GetBytesPerPixel(format));
+        IDisposable? reservation = _cpuTextureBudget?.Reserve((ulong)bytes);
         try
         {
-            byte[] pixels = new byte[4];
-            WriteFallbackPixel(texture, SilkTextureFormat.Rgba8Unorm, pixels);
-            var image = new SilkDecodedImage(1, 1, pixels);
+            byte[] pixels = new byte[bytes];
+            WriteFallbackPixel(texture, format, pixels);
+            var image = new SilkDecodedImage(1, 1, pixels, format);
             image.OwnReservation(reservation);
             return image;
         }
@@ -6656,7 +7017,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
     }
 
-    private static void ApplyScaleBias(
+    internal static void ApplyScaleBias(
         byte[] pixels,
         SilkTextureFormat format,
         SilkMaterialTexture texture)
@@ -6685,15 +7046,22 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             throw new InvalidDataException(
                 $"Decoded material texture format {format} does not support scale and bias.");
         }
-        for (int offset = 0; offset < pixels.Length; offset += 4)
+        Span<byte> mapped = stackalloc byte[256 * 4];
+        for (int value = 0; value < 256; value++)
         {
             for (int component = 0; component < 4; component++)
             {
-                float value = pixels[offset + component] / 255f;
-                value = (value * texture.Scale[component]) + texture.Bias[component];
-                pixels[offset + component] =
-                    (byte)Math.Clamp(MathF.Round(value * 255), 0, 255);
+                float transformed = value / 255f;
+                transformed = (transformed * texture.Scale[component]) + texture.Bias[component];
+                mapped[component * 256 + value] = (byte)Math.Clamp(MathF.Round(transformed * 255), 0, 255);
             }
+        }
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            pixels[offset] = mapped[pixels[offset]];
+            pixels[offset + 1] = mapped[256 + pixels[offset + 1]];
+            pixels[offset + 2] = mapped[512 + pixels[offset + 2]];
+            pixels[offset + 3] = mapped[768 + pixels[offset + 3]];
         }
     }
 
@@ -6721,17 +7089,31 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return;
         }
         int source = (int)texture.Channel;
-        if (source is < 0 or > 3)
+        if (source is < 0 or > 7 ||
+            (source > 4 && texture.Parameter != SilkMaterialParameter.Opacity))
         {
             throw new InvalidDataException(
-                $"Material texture channel {texture.Channel} is not a known UsdUVTexture output.");
+                $"Material texture channel {texture.Channel} is not supported for {texture.Parameter}.");
         }
         if (format == SilkTextureFormat.Rgba32Float)
         {
             Span<float> values = MemoryMarshal.Cast<byte, float>(pixels);
             for (int offset = 0; offset < values.Length; offset += 4)
             {
-                float selected = values[offset + source];
+                float selected = texture.Channel switch
+                {
+                    SilkTextureChannel.AverageRgb =>
+                        (values[offset] + values[offset + 1] + values[offset + 2]) / 3f,
+                    SilkTextureChannel.LuminanceRgb => (values[offset] * 0.212671f) +
+                        (values[offset + 1] * 0.715160f) + (values[offset + 2] * 0.072169f),
+                    SilkTextureChannel.MaximumRgb =>
+                        MathF.Max(values[offset], MathF.Max(values[offset + 1], values[offset + 2])),
+                    _ => values[offset + source]
+                };
+                if (!float.IsFinite(selected))
+                {
+                    throw new InvalidDataException("Opacity texture channel reduction produced a non-finite value.");
+                }
                 values[offset] = selected;
                 values[offset + 1] = selected;
                 values[offset + 2] = selected;
@@ -6739,7 +7121,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             }
             return;
         }
-        if (format != SilkTextureFormat.Rgba8Unorm)
+        if (format != SilkTextureFormat.Rgba8Unorm || source > 3)
         {
             throw new InvalidDataException(
                 $"Decoded material texture format {format} does not support channel selection.");
@@ -6803,12 +7185,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkSamplerAddressMode addressV = isUdim
             ? SilkSamplerAddressMode.ClampToEdge
             : GetAddressMode(texture.WrapT);
-        SilkSamplerFilter filter = format == SilkTextureFormat.Rgba32Float
+        SilkSamplerFilter filter = format is SilkTextureFormat.Rgba32Float or SilkTextureFormat.Rg32Float ||
+            (format == SilkTextureFormat.R32Float && texture.Parameter != SilkMaterialParameter.VolumeDensity)
             ? SilkSamplerFilter.Nearest
             : SilkSamplerFilter.Linear;
         // Anisotropic filtering only helps a linearly filtered, actually mipmapped, ordinary
         // (non-UDIM) material texture; UDIM atlases, single-level volume density textures, and
-        // nearest-only Rgba32Float sampling all fall through to the 1x descriptor default. The
+        // nearest-only float material sampling all fall through to the 1x descriptor default. The
         // device capability is the hard ceiling: never request more than it advertises.
         float maxAnisotropy = 1f;
         if (!isUdim &&
@@ -6865,6 +7248,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
     private void ClearTextureCache()
     {
+        ReleaseDecodedSource();
+        _streamedTextureDefinitions.Clear();
         foreach (TextureCacheEntry entry in _textures.Values)
         {
             DisposeEntry(entry);
@@ -7006,10 +7391,45 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             preparing.Retire(entry);
             return;
         }
+        DisposeEntryNow(entry);
+    }
+
+    private void DisposeEntryNow(TextureCacheEntry entry)
+    {
         _decodedTextureResidentBytes = checked(_decodedTextureResidentBytes - entry.DecodedBytes);
         _gpuTextureResidentBytes = checked(_gpuTextureResidentBytes - entry.GpuBytes);
-        entry.Texture.Dispose();
-        entry.PixelReservation?.Dispose();
+        try
+        {
+            Exception? primaryFailure = null;
+            try
+            {
+                entry.Texture.Dispose();
+            }
+            catch (Exception error)
+            {
+                primaryFailure = error;
+            }
+            try
+            {
+                entry.AuxiliaryTexture?.Dispose();
+            }
+            catch (Exception error)
+            {
+                if (primaryFailure is not null)
+                {
+                    throw new AggregateException("Both material texture planes failed disposal.", primaryFailure, error);
+                }
+                throw;
+            }
+            if (primaryFailure is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primaryFailure).Throw();
+            }
+        }
+        finally
+        {
+            entry.ReleasePixels();
+        }
     }
 
     /// <summary>
@@ -7382,7 +7802,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         _environmentDescriptions.Clear();
         _environmentLitDomes.Clear();
         _frameBuffer?.Dispose();
+        _frameSpare?.Dispose();
         _frameBuffer = null;
+        _frameSpare = null;
         _disposed = true;
         SilkManagedDiagnostics.GpuSceneDestroyed();
     }
@@ -7401,10 +7823,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             // aliased it onto the uniform buffer; Metal's explicit [[buffer(6)]]
             // read nothing and collapsed every vertex, which is why hosted macOS
             // produced only clear-color pixels.
-            uniformBuffer = CreateTrackedBuffer(
-                SilkSceneUniformWriter.ByteSize,
-                SilkBufferUsage.Uniform | SilkBufferUsage.Storage |
-                    SilkBufferUsage.Upload);
+            uniformBuffer = CreateUniformBuffer();
             return new SilkMeshGpuResource(
                 mesh,
                 geometryResource,
@@ -7417,6 +7836,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             throw;
         }
     }
+
+    private ISilkGraphicsBuffer CreateUniformBuffer() => CreateTrackedBuffer(
+        SilkSceneUniformWriter.ByteSize, SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
 
     /// <summary>
     /// Resolves the material a prim binds for displacement, without the
@@ -7472,13 +7894,16 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkMaterialData? material = ResolveMaterial(scene, mesh);
         SilkMaterialData? displacementMaterial = ResolveDisplacementMaterial(scene, mesh);
         string uvPrimvar = material?.GetPrimaryUvPrimvar() ?? string.Empty;
-        bool normalMap = material?.GetTexture(SilkMaterialParameter.Normal) is not null;
+        bool normalMap = material?.GetTexture(SilkMaterialParameter.Normal) is not null ||
+            material?.GetTexture(SilkMaterialParameter.DetailNormal) is not null;
         SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
             ? null
             : mesh.FindTexCoord(uvPrimvar);
         // Exactly the rule SilkMeshGeometryBuilder.Build applies, evaluated here
         // so the key can be formed without building the geometry first.
-        bool hasTangents = uvAttribute is not null && normalMap;
+        bool requireTextureCoordinates = material?.GetTextureFeatures() is { } features &&
+            features != SilkShaderFeatures.None;
+        bool hasTangents = (uvAttribute is not null || requireTextureCoordinates) && normalMap;
         SilkDisplacementPlan plan = PlanDisplacement(mesh, displacementMaterial);
         string materialPath = displacementMaterial?.Path ?? material?.Path ?? string.Empty;
         ulong uvFingerprint = SilkMeshGpuGeometryKey.HashAttribute(uvAttribute);
@@ -7488,7 +7913,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             hasTangents,
             plan.Identity,
             materialPath,
-            uvFingerprint);
+            uvFingerprint,
+            requireTextureCoordinates);
 
         SilkMeshGpuGeometryResource resource = ResolveGeometryResource(
             scene,
@@ -7549,7 +7975,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 mesh,
                 uvPrimvar,
                 normalMap,
-                amounts);
+                amounts,
+                key.RequireTextureCoordinates);
             // A CPU build declares no payload, so its recoverable-failure guard
             // can never fire and the result is always present.
             _ = TryCreateGeometry(
@@ -7569,7 +7996,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         // A rig that reaches the kernel needs its emitted vertices either way:
         // they are the pose-independent inputs the payload is built from and the
         // authoritative bytes a recovered geometry uploads.
-        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh, uvPrimvar, normalMap);
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, uvPrimvar, normalMap, requireTextureCoordinates: key.RequireTextureCoordinates);
         uint strideFloats = StrideFloats(geometry, mesh);
         SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
             mesh.Deformation,
@@ -7588,7 +8016,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 geometry.HasTangents,
                 key.MaterialPath,
                 key.UvFingerprint,
-                key.DisplacementIdentity);
+                key.DisplacementIdentity,
+                key.RequireTextureCoordinates);
             if (TryReuseGeometry(gpuKey, mesh, deformationPayload, out var reused))
             {
                 _geometryCacheHits++;
@@ -9031,7 +9460,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             {
                 foreach (SilkMeshGpuGeometryResource geometry in matches)
                 {
-                    geometry.Deformation?.InvalidateDispatch();
+                    if (geometry.Deformation is { } deformation && deformation.DispatchedGeneration != deviceGeneration)
+                    {
+                        deformation.InvalidateDispatch();
+                    }
                 }
             }
         }
@@ -9083,7 +9515,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         foreach (SilkMeshGpuGeometryResource geometry in pending)
         {
-            geometry.Deformation!.MarkDispatched();
+            geometry.Deformation!.MarkDispatched(deviceGeneration);
         }
         _deformationDispatches += checked((ulong)pending.Count);
         return pending.Count;
@@ -9239,6 +9671,8 @@ public sealed class SilkMeshGpuResource : IDisposable
     private SilkMeshData? _uniformMesh;
     private ulong _uniformFrameRevision = ulong.MaxValue;
     private bool _uniformOverridden;
+    private bool _uniformInitialized;
+    private ISilkGraphicsBuffer? _uniformSpare;
     private bool _disposed;
 
     internal SilkMeshGpuResource(
@@ -9264,13 +9698,33 @@ public sealed class SilkMeshGpuResource : IDisposable
 
     internal SilkVertexLayoutDescriptor VertexLayout => _geometry.VertexLayout;
 
-    /// <summary>Gets the reusable 80-byte SceneParameters buffer.</summary>
-    public ISilkGraphicsBuffer UniformBuffer { get; }
+    /// <summary>Gets the currently published 80-byte SceneParameters buffer.</summary>
+    /// <remarks>Admitted updates may replace the buffer; reacquire it before recording a draw.</remarks>
+    public ISilkGraphicsBuffer UniformBuffer { get; private set; }
 
     /// <summary>Gets the indexed triangle-list element count.</summary>
     public uint IndexCount => _geometry.IndexCount;
 
     internal SilkMeshGpuGeometryResource Geometry => _geometry;
+    internal bool HasUniformSpare => _uniformSpare is not null;
+
+    internal void AdoptUniformSpare(ISilkGraphicsBuffer buffer)
+    {
+        if (_uniformSpare is not null)
+        {
+            throw new InvalidOperationException("The mesh already owns a uniform spare.");
+        }
+        _uniformSpare = buffer;
+    }
+
+    internal void UndoUniformSpareAdoption(ISilkGraphicsBuffer buffer)
+    {
+        if (!ReferenceEquals(_uniformSpare, buffer))
+        {
+            throw new InvalidOperationException("Frame writes must be rolled back before undoing page capacity.");
+        }
+        _uniformSpare = null;
+    }
 
     internal bool HasSameGeometry(SilkMeshData mesh) =>
         Mesh.TopologyKind == mesh.TopologyKind &&
@@ -9305,6 +9759,48 @@ public sealed class SilkMeshGpuResource : IDisposable
         Mesh = mesh;
     }
 
+    internal bool IsOutsideClipVolume()
+    {
+        if (!_uniformInitialized || Mesh.TopologyKind != SilkTopologyKind.TriangleList ||
+            !_geometry.TryGetClipBounds(out Vector3 minimum, out Vector3 maximum))
+        {
+            return false;
+        }
+        ReadOnlySpan<float> matrix = MemoryMarshal.Cast<byte, float>(_uniformBytes.AsSpan(0, 64));
+        int common = 63;
+        for (int corner = 0; corner < 8; corner++)
+        {
+            var point = new Vector4(
+                (corner & 1) == 0 ? minimum.X : maximum.X,
+                (corner & 2) == 0 ? minimum.Y : maximum.Y,
+                (corner & 4) == 0 ? minimum.Z : maximum.Z, 1);
+            var clip = new Vector4(
+                Vector4.Dot(point, new Vector4(matrix[0], matrix[1], matrix[2], matrix[3])),
+                Vector4.Dot(point, new Vector4(matrix[4], matrix[5], matrix[6], matrix[7])),
+                Vector4.Dot(point, new Vector4(matrix[8], matrix[9], matrix[10], matrix[11])),
+                Vector4.Dot(point, new Vector4(matrix[12], matrix[13], matrix[14], matrix[15])));
+            if (!float.IsFinite(clip.X) || !float.IsFinite(clip.Y) ||
+                !float.IsFinite(clip.Z) || !float.IsFinite(clip.W))
+            {
+                return false;
+            }
+            float margin = 0.00001f * MathF.Max(1, MathF.Max(MathF.Abs(clip.W),
+                MathF.Max(MathF.Abs(clip.X), MathF.Max(MathF.Abs(clip.Y), MathF.Abs(clip.Z)))));
+            int outside = (clip.X < -clip.W - margin ? 1 : 0) |
+                (clip.X > clip.W + margin ? 2 : 0) |
+                (clip.Y < -clip.W - margin ? 4 : 0) |
+                (clip.Y > clip.W + margin ? 8 : 0) |
+                (clip.Z < -margin ? 16 : 0) |
+                (clip.Z > clip.W + margin ? 32 : 0);
+            common &= outside;
+            if (common == 0)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     internal bool UpdateUniform(
         SilkFrameState frame,
         Span<byte> destination,
@@ -9315,7 +9811,9 @@ public sealed class SilkMeshGpuResource : IDisposable
         SilkFrameState frame,
         Span<byte> destination,
         bool flipClipSpaceY,
-        ReadOnlySpan<double> overrideTransform)
+        ReadOnlySpan<double> overrideTransform,
+        Func<ISilkGraphicsBuffer>? createCandidate = null,
+        Func<SilkMeshGpuResource, ISilkGraphicsBuffer>? beforeUpdate = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         bool overridden = !overrideTransform.IsEmpty;
@@ -9327,17 +9825,93 @@ public sealed class SilkMeshGpuResource : IDisposable
             return false;
         }
 
+        ISilkGraphicsBuffer? protectedBuffer = beforeUpdate?.Invoke(this);
         SilkSceneUniformWriter.Write(Mesh, frame, destination, flipClipSpaceY, overrideTransform);
+        bool changed = !_uniformInitialized || !destination.SequenceEqual(_uniformBytes);
+        if (changed)
+        {
+            if (_uniformInitialized && createCandidate is not null)
+            {
+                ISilkGraphicsBuffer candidate = ReferenceEquals(_uniformSpare, protectedBuffer)
+                    ? createCandidate() : _uniformSpare ?? createCandidate();
+                try
+                {
+                    candidate.Write(destination);
+                }
+                catch
+                {
+                    if (!ReferenceEquals(candidate, _uniformSpare))
+                    {
+                        candidate.Dispose();
+                    }
+                    throw;
+                }
+                _uniformSpare = UniformBuffer;
+                UniformBuffer = candidate;
+            }
+            else
+            {
+                UniformBuffer.Write(destination);
+            }
+            destination.CopyTo(_uniformBytes);
+            _uniformInitialized = true;
+        }
         _uniformMesh = Mesh;
         _uniformFrameRevision = frame.Revision;
         _uniformOverridden = overridden;
-        if (destination.SequenceEqual(_uniformBytes))
+        return changed;
+    }
+
+    internal sealed class UniformCheckpoint
+    {
+        private readonly SilkMeshGpuResource _owner;
+        private readonly ISilkGraphicsBuffer _buffer;
+        private readonly ISilkGraphicsBuffer? _spare;
+        private readonly byte[] _bytes;
+        private readonly SilkMeshData? _mesh;
+        private readonly ulong _frameRevision;
+        private readonly bool _overridden;
+        private readonly bool _initialized;
+
+        internal UniformCheckpoint(SilkMeshGpuResource owner)
         {
-            return false;
+            _owner = owner;
+            _buffer = owner.UniformBuffer;
+            _spare = owner._uniformSpare;
+            _bytes = [.. owner._uniformBytes];
+            _mesh = owner._uniformMesh;
+            _frameRevision = owner._uniformFrameRevision;
+            _overridden = owner._uniformOverridden;
+            _initialized = owner._uniformInitialized;
         }
-        UniformBuffer.Write(destination);
-        destination.CopyTo(_uniformBytes);
-        return true;
+
+        internal ISilkGraphicsBuffer PublishedBuffer => _buffer;
+
+        internal void ReleaseRetired(ref List<Exception>? errors)
+        {
+            SilkSceneGpuResources.ReleaseUnpublishedUniform(
+                _buffer, _owner.UniformBuffer, _owner._uniformSpare, ref errors);
+            SilkSceneGpuResources.ReleaseUnpublishedUniform(
+                _spare, _owner.UniformBuffer, _owner._uniformSpare, ref errors);
+        }
+
+        internal void Restore(ref List<Exception>? errors)
+        {
+            ISilkGraphicsBuffer current = _owner.UniformBuffer;
+            ISilkGraphicsBuffer? spare = _owner._uniformSpare;
+            _owner.UniformBuffer = _buffer;
+            _owner._uniformSpare = _spare;
+            _bytes.CopyTo(_owner._uniformBytes, 0);
+            _owner._uniformMesh = _mesh;
+            _owner._uniformFrameRevision = _frameRevision;
+            _owner._uniformOverridden = _overridden;
+            _owner._uniformInitialized = _initialized;
+            SilkSceneGpuResources.ReleaseUnpublishedUniform(current, _buffer, _spare, ref errors);
+            if (!ReferenceEquals(current, spare))
+            {
+                SilkSceneGpuResources.ReleaseUnpublishedUniform(spare, _buffer, _spare, ref errors);
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -9348,24 +9922,63 @@ public sealed class SilkMeshGpuResource : IDisposable
             return;
         }
         UniformBuffer.Dispose();
+        _uniformSpare?.Dispose();
         _disposed = true;
         SilkManagedDiagnostics.GpuMeshDestroyed();
     }
 }
 
-internal sealed class SilkMeshGpuGeometryResource : IDisposable
+internal sealed partial class SilkMeshGpuGeometryResource : IDisposable
 {
-    private readonly float[] _points;
-    private readonly uint[] _indices;
-    private readonly float[] _authoredNormals;
+    private bool _clipBoundsChecked;
+    private bool _hasClipBounds;
+    private Vector3 _clipMinimum;
+    private Vector3 _clipMaximum;
+
+    internal bool TryGetClipBounds(out Vector3 minimum, out Vector3 maximum)
+    {
+        if (!_clipBoundsChecked)
+        {
+            _clipBoundsChecked = true;
+            ReadOnlySpan<float> points = _points.Span;
+            if (!Key.IsGpuDeformed && !Displaced && points.Length >= 3)
+            {
+                _hasClipBounds = true;
+                _clipMinimum = new Vector3(float.PositiveInfinity);
+                _clipMaximum = new Vector3(float.NegativeInfinity);
+                for (int offset = 0; offset < points.Length; offset += 3)
+                {
+                    var point = new Vector3(points[offset], points[offset + 1], points[offset + 2]);
+                    if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z))
+                    {
+                        _hasClipBounds = false;
+                        break;
+                    }
+                    _clipMinimum = Vector3.Min(_clipMinimum, point);
+                    _clipMaximum = Vector3.Max(_clipMaximum, point);
+                }
+            }
+        }
+        minimum = _clipMinimum;
+        maximum = _clipMaximum;
+        return _hasClipBounds;
+    }
+
+    private readonly ReadOnlyMemory<float> _points;
+    private readonly ReadOnlyMemory<uint> _indices;
+    private readonly ReadOnlyMemory<float> _authoredNormals;
     private readonly string _uvPrimvar;
     private readonly bool _hasTangents;
     private byte[] _cpuVertices;
     private bool _deformationRetired;
+    private ISilkGraphicsBuffer? _deformationVertexSpare;
     private readonly List<InstanceSlot> _instanceSlots = [];
     private Func<Exception>? _publicationFailureForTesting;
     private byte[] _shadowInstanceBytes = [];
+    private byte[] _shadowInstanceStaging = [];
+    private ISilkGraphicsBuffer? _shadowInstanceSpare;
     private int _shadowInstanceCapacity;
+    private int _shadowInstanceUploadedCount;
     private int _referenceCount = 1;
     private bool _disposed;
 
@@ -9396,9 +10009,11 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         VertexBuffer = vertexBuffer;
         IndexBuffer = indexBuffer;
         _cpuVertices = cpuVertices ?? [];
-        _points = mesh.Points.ToArray();
-        _indices = mesh.Indices.ToArray();
-        _authoredNormals = mesh.AuthoredNormals.ToArray();
+        // Mesh constructors own immutable buffers; retain those owners for cache
+        // equality instead of a second scene-sized numeric snapshot.
+        _points = mesh.Points;
+        _indices = mesh.Indices;
+        _authoredNormals = mesh.AuthoredNormals;
         _uvPrimvar = uvPrimvar;
         _hasTangents = hasTangents;
     }
@@ -9480,6 +10095,8 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         Deformation?.Dispose();
         Deformation = null;
+        _deformationVertexSpare?.Dispose();
+        _deformationVertexSpare = null;
         ISilkGraphicsBuffer previous = VertexBuffer;
         VertexBuffer = cpuVertexBuffer;
         _deformationRetired = true;
@@ -9488,6 +10105,74 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
     }
 
     internal ISilkGraphicsBuffer IndexBuffer { get; }
+
+    internal sealed class PreparedDeformedVertices : IDisposable
+    {
+        private readonly SilkMeshGpuGeometryResource _owner;
+        private readonly ISilkGraphicsBuffer _previous;
+        private readonly ISilkGraphicsBuffer? _previousSpare;
+        private readonly ulong _identity;
+        private readonly ulong _generation;
+        private bool _activated;
+        private bool _committed;
+        private bool _disposed;
+
+        internal PreparedDeformedVertices(SilkMeshGpuGeometryResource owner, ISilkGraphicsDevice device)
+        {
+            _owner = owner;
+            _previous = owner.VertexBuffer;
+            _previousSpare = owner._deformationVertexSpare;
+            _identity = owner.Deformation!.DispatchedIdentity;
+            _generation = owner.Deformation.DispatchedGeneration;
+            Buffer = owner._deformationVertexSpare ??
+                device.CreateBuffer(owner.VertexBuffer.Size, SilkBufferUsage.Vertex | SilkBufferUsage.Storage);
+        }
+
+        internal ISilkGraphicsBuffer Buffer { get; }
+
+        internal void Activate(ulong generation)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_activated)
+            {
+                return;
+            }
+            _owner._deformationVertexSpare = _owner.VertexBuffer;
+            _owner.VertexBuffer = Buffer;
+            _owner.Deformation!.MarkDispatched(generation);
+            _activated = true;
+        }
+
+        internal void Commit(ulong generation)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_committed)
+            {
+                throw new InvalidOperationException("Deformed vertices were already committed.");
+            }
+            Activate(generation);
+            _committed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            if (!_committed && _activated)
+            {
+                _owner.VertexBuffer = _previous;
+                _owner._deformationVertexSpare = _previousSpare;
+                _owner.Deformation!.RestoreDispatch(_identity, _generation);
+            }
+            if (!_committed && !ReferenceEquals(Buffer, _owner._deformationVertexSpare))
+            {
+                Buffer.Dispose();
+            }
+            _disposed = true;
+        }
+    }
 
     internal SilkVertexLayoutDescriptor VertexLayout { get; }
 
@@ -9525,15 +10210,15 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
             // pose is already part of the key, so the indices are the only thing
             // left to check. A retired one carries CPU vertices again, so it is
             // compared as the CPU geometry it has become.
-            ? _indices.AsSpan().SequenceEqual(mesh.Indices.Span)
-            : _points.AsSpan().SequenceEqual(mesh.Points.Span) &&
-                _indices.AsSpan().SequenceEqual(mesh.Indices.Span) &&
-                _authoredNormals.AsSpan().SequenceEqual(mesh.AuthoredNormals.Span)) &&
+            ? _indices.Span.SequenceEqual(mesh.Indices.Span)
+            : _points.Span.SequenceEqual(mesh.Points.Span) &&
+                _indices.Span.SequenceEqual(mesh.Indices.Span) &&
+                _authoredNormals.Span.SequenceEqual(mesh.AuthoredNormals.Span)) &&
         HasSameMaterialGeometry(mesh);
 
     internal bool HasSameMaterialGeometry(SilkMeshData mesh) =>
-        (string.IsNullOrEmpty(_uvPrimvar) || mesh.FindTexCoord(_uvPrimvar) is not null) &&
-        _hasTangents == VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent) &&
+        (string.IsNullOrEmpty(_uvPrimvar) || Key.UvFingerprint == 0 || mesh.FindTexCoord(_uvPrimvar) is not null) &&
+        _hasTangents == VertexLayout.Matches(SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent) &&
         HasSameUvData(mesh);
 
     /// <summary>
@@ -9595,6 +10280,10 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
                 "A shadow caster batch must contain at least one draw.",
                 nameof(casters));
         }
+        if (UsesInstanceAdmission(device))
+        {
+            return UpdateAdmittedShadowInstances(device, casters);
+        }
 
         int required = checked(casters.Count * SilkSceneUniformWriter.ByteSize);
         if (casters.Count > _shadowInstanceCapacity)
@@ -9629,6 +10318,276 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
             throw new InvalidOperationException("The shadow instance buffer was not created.");
         buffer.Write(_shadowInstanceBytes.AsSpan(0, required));
         return buffer;
+    }
+
+    internal static bool UsesInstanceAdmission(ISilkGraphicsDevice device) =>
+        device is ISilkBufferAdmissionDevice { GpuBufferBudget: not null } ||
+        device is ISilkTextureAdmissionDevice { GpuTextureBudget: not null } ||
+        device is ISilkStagingAdmissionDevice { GpuStagingBudget: not null } ||
+        device is ISilkCpuTextureAdmissionDevice { CpuTextureBudget: not null };
+
+    private ISilkGraphicsBuffer UpdateAdmittedShadowInstances(
+        ISilkGraphicsDevice device, IReadOnlyList<SilkShadowCaster> casters)
+    {
+        int capacity = casters.Count > _shadowInstanceCapacity
+            ? Math.Max(casters.Count, checked(_shadowInstanceCapacity * 2))
+            : _shadowInstanceCapacity;
+        int bytes = checked(capacity * SilkSceneUniformWriter.ByteSize);
+        int required = checked(casters.Count * SilkSceneUniformWriter.ByteSize);
+        byte[] staging = _shadowInstanceStaging.Length == bytes ? _shadowInstanceStaging : new byte[bytes];
+        WriteShadowInstances(casters, staging);
+        if (ShadowInstanceBuffer is { } current && capacity == _shadowInstanceCapacity &&
+            casters.Count == _shadowInstanceUploadedCount &&
+            staging.AsSpan(0, required).SequenceEqual(_shadowInstanceBytes.AsSpan(0, required)))
+        {
+            return current;
+        }
+        ISilkGraphicsBuffer candidate = RequireInstanceCandidate(device, _shadowInstanceSpare, bytes);
+        try
+        {
+            candidate.Write(staging.AsSpan(0, required));
+        }
+        catch
+        {
+            if (!ReferenceEquals(candidate, _shadowInstanceSpare))
+            {
+                candidate.Dispose();
+            }
+            throw;
+        }
+        ISilkGraphicsBuffer? retired = _shadowInstanceSpare;
+        _shadowInstanceSpare = ShadowInstanceBuffer;
+        ShadowInstanceBuffer = candidate;
+        _shadowInstanceCapacity = capacity;
+        _shadowInstanceUploadedCount = casters.Count;
+        _shadowInstanceStaging = _shadowInstanceBytes;
+        _shadowInstanceBytes = staging;
+        if (!ReferenceEquals(retired, candidate))
+        {
+            retired?.Dispose();
+        }
+        return candidate;
+    }
+
+    private static ISilkGraphicsBuffer RequireInstanceCandidate(
+        ISilkGraphicsDevice device, ISilkGraphicsBuffer? spare, int bytes) =>
+        spare is not null && spare.Size == checked((nuint)bytes)
+            ? spare
+            : device.CreateBuffer(checked((nuint)bytes), SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+
+    internal sealed class PreparedInstanceCapacity : IDisposable
+    {
+        private readonly SilkMeshGpuGeometryResource _owner;
+        private readonly List<(int Index, InstanceSlot Slot)> _slots = [];
+        private readonly List<(int Index, InstanceSlot Slot)> _previousSlots = [];
+        private readonly int _previousCount;
+        private readonly ISilkGraphicsBuffer? _previousShadow;
+        private readonly ISilkGraphicsBuffer? _previousShadowSpare;
+        private readonly byte[] _previousShadowBytes;
+        private readonly byte[] _previousShadowStaging;
+        private readonly int _previousShadowCapacity;
+        private readonly int _previousShadowCount;
+        private readonly List<ISilkGraphicsBuffer> _created = [];
+        private readonly List<ISilkGraphicsBuffer> _retired = [];
+        private ISilkGraphicsBuffer? _shadow;
+        private ISilkGraphicsBuffer? _shadowSpare;
+        private byte[]? _shadowBytes;
+        private byte[]? _shadowStaging;
+        private int _shadowCapacity;
+        private bool _activated;
+        private bool _committed;
+        private bool _disposed;
+
+        internal PreparedInstanceCapacity(SilkMeshGpuGeometryResource owner)
+        {
+            _owner = owner;
+            _previousCount = owner._instanceSlots.Count;
+            _previousShadow = owner.ShadowInstanceBuffer;
+            _previousShadowSpare = owner._shadowInstanceSpare;
+            _previousShadowBytes = owner._shadowInstanceBytes;
+            _previousShadowStaging = owner._shadowInstanceStaging;
+            _previousShadowCapacity = owner._shadowInstanceCapacity;
+            _previousShadowCount = owner._shadowInstanceUploadedCount;
+        }
+
+        internal void Prepare(ISilkGraphicsDevice device, IReadOnlyList<int> counts, int shadowCount)
+        {
+            _owner._instanceSlots.EnsureCapacity(Math.Max(_owner._instanceSlots.Count, counts.Count));
+            _slots.EnsureCapacity(counts.Count);
+            _previousSlots.EnsureCapacity(counts.Count);
+            _created.EnsureCapacity(checked((counts.Count + 1) * 2));
+            _retired.EnsureCapacity(checked((counts.Count + 1) * 2));
+            for (int index = 0; index < counts.Count; index++)
+            {
+                InstanceSlot? old = index < _owner._instanceSlots.Count ? _owner._instanceSlots[index] : null;
+                int capacity = Capacity(old?.Capacity ?? 0, counts[index]);
+                int bytes = checked(capacity * SilkSceneUniformWriter.ByteSize);
+                if (old?.Capacity == capacity && Fits(old.Buffer, bytes) && Fits(old.SpareBuffer, bytes))
+                {
+                    continue;
+                }
+                ISilkGraphicsBuffer buffer = PrepareBuffer(device, old?.Buffer, bytes);
+                var prepared = new InstanceSlot
+                {
+                    Buffer = buffer,
+                    SpareBuffer = PrepareBuffer(device, old?.SpareBuffer, bytes),
+                    Capacity = capacity,
+                };
+                if (old is not null && ReferenceEquals(buffer, old.Buffer))
+                {
+                    prepared.Bytes = old.Bytes;
+                    prepared.Staging = old.Staging;
+                    prepared.Meshes = old.Meshes;
+                    prepared.MeshesStaging = old.MeshesStaging;
+                    prepared.UploadedCount = old.UploadedCount;
+                    prepared.FrameRevision = old.FrameRevision;
+                }
+                else
+                {
+                    prepared.Bytes = new byte[bytes];
+                    prepared.Staging = new byte[bytes];
+                }
+                _slots.Add((index, prepared));
+                if (old is not null)
+                {
+                    _previousSlots.Add((index, old));
+                }
+            }
+            if (shadowCount > 0)
+            {
+                int capacity = Capacity(_owner._shadowInstanceCapacity, shadowCount);
+                int bytes = checked(capacity * SilkSceneUniformWriter.ByteSize);
+                if (capacity != _owner._shadowInstanceCapacity ||
+                    !Fits(_owner.ShadowInstanceBuffer, bytes) || !Fits(_owner._shadowInstanceSpare, bytes))
+                {
+                    _shadow = PrepareBuffer(device, _owner.ShadowInstanceBuffer, bytes);
+                    _shadowSpare = PrepareBuffer(device, _owner._shadowInstanceSpare, bytes);
+                    _shadowCapacity = capacity;
+                    _shadowBytes = ReferenceEquals(_shadow, _owner.ShadowInstanceBuffer)
+                        ? _owner._shadowInstanceBytes : new byte[bytes];
+                    _shadowStaging = new byte[bytes];
+                }
+            }
+        }
+
+        private static int Capacity(int previous, int count) =>
+            count > previous ? Math.Max(count, checked(previous * 2)) : previous;
+
+        internal ISilkGraphicsBuffer WriteShadow(IReadOnlyList<SilkShadowCaster> casters)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ISilkGraphicsBuffer buffer = _shadowSpare ?? _owner._shadowInstanceSpare ??
+                throw new InvalidOperationException("Shadow rasterization requires admitted instance capacity.");
+            byte[] bytes = _shadowStaging ?? _owner._shadowInstanceStaging;
+            int required = checked(casters.Count * SilkSceneUniformWriter.ByteSize);
+            WriteShadowInstances(casters, bytes);
+            buffer.Write(bytes.AsSpan(0, required));
+            return buffer;
+        }
+
+        private static bool Fits(ISilkGraphicsBuffer? buffer, int bytes) =>
+            buffer?.Size == checked((nuint)bytes);
+
+        private ISilkGraphicsBuffer PrepareBuffer(ISilkGraphicsDevice device, ISilkGraphicsBuffer? old, int bytes)
+        {
+            if (Fits(old, bytes))
+            {
+                return old!;
+            }
+            ISilkGraphicsBuffer created = RequireInstanceCandidate(device, null, bytes);
+            _created.Add(created);
+            if (old is not null)
+            {
+                _retired.Add(old);
+            }
+            return created;
+        }
+
+        internal void Activate()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_activated)
+            {
+                return;
+            }
+            foreach ((int index, InstanceSlot slot) in _slots)
+            {
+                if (index < _owner._instanceSlots.Count)
+                {
+                    _owner._instanceSlots[index] = slot;
+                }
+                else
+                {
+                    _owner._instanceSlots.Add(slot);
+                }
+            }
+            if (_shadow is not null)
+            {
+                if (!ReferenceEquals(_shadow, _owner.ShadowInstanceBuffer))
+                {
+                    _owner._shadowInstanceUploadedCount = 0;
+                }
+                _owner.ShadowInstanceBuffer = _shadow;
+                _owner._shadowInstanceSpare = _shadowSpare;
+                _owner._shadowInstanceCapacity = _shadowCapacity;
+                _owner._shadowInstanceBytes = _shadowBytes!;
+                _owner._shadowInstanceStaging = _shadowStaging!;
+            }
+            _activated = true;
+        }
+
+        internal void Commit()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_committed)
+            {
+                throw new InvalidOperationException("Instance capacity was already committed.");
+            }
+            Activate();
+            _committed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            if (!_committed && _activated)
+            {
+                foreach ((int index, InstanceSlot slot) in _previousSlots)
+                {
+                    _owner._instanceSlots[index] = slot;
+                }
+                _owner._instanceSlots.RemoveRange(_previousCount, _owner._instanceSlots.Count - _previousCount);
+                if (_shadow is not null)
+                {
+                    _owner.ShadowInstanceBuffer = _previousShadow;
+                    _owner._shadowInstanceSpare = _previousShadowSpare;
+                    _owner._shadowInstanceBytes = _previousShadowBytes;
+                    _owner._shadowInstanceStaging = _previousShadowStaging;
+                    _owner._shadowInstanceCapacity = _previousShadowCapacity;
+                    _owner._shadowInstanceUploadedCount = _previousShadowCount;
+                }
+            }
+            List<Exception>? errors = null;
+            foreach (ISilkGraphicsBuffer buffer in _committed ? _retired : _created)
+            {
+                try
+                {
+                    buffer.Dispose();
+                }
+                catch (Exception error)
+                {
+                    (errors ??= []).Add(error);
+                }
+            }
+            if (errors is not null)
+            {
+                throw new AggregateException("Prepared instance buffers could not all be released.", errors);
+            }
+        }
     }
 
     private static void WriteShadowInstances(IReadOnlyList<SilkShadowCaster> casters, Span<byte> destination)
@@ -9701,6 +10660,12 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
             {
                 return;
             }
+        }
+        if (UsesInstanceAdmission(device))
+        {
+            _instancePreparation?.Track(slot);
+            UpdateAdmittedInstances(device, frame, instances, flipClipSpaceY, table, slot);
+            return;
         }
 
         int capacity = table?.Capacity ?? 0;
@@ -9796,16 +10761,7 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         InstanceSlot published;
         try
         {
-            if (_publicationFailureForTesting is { } injected)
-            {
-                _publicationFailureForTesting = null;
-                throw injected();
-            }
-            published = table ?? new InstanceSlot();
-            if (table is null)
-            {
-                _instanceSlots.EnsureCapacity(_instanceSlots.Count + 1);
-            }
+            published = PrepareInstancePublication(table);
         }
         catch
         {
@@ -9834,6 +10790,108 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         }
     }
 
+    private InstanceSlot PrepareInstancePublication(InstanceSlot? table)
+    {
+        if (_publicationFailureForTesting is { } injected)
+        {
+            _publicationFailureForTesting = null;
+            throw injected();
+        }
+        var published = table ?? new InstanceSlot();
+        if (table is null)
+        {
+            _instanceSlots.EnsureCapacity(checked(_instanceSlots.Count + 1));
+        }
+        return published;
+    }
+
+    private void UpdateAdmittedInstances(
+        ISilkGraphicsDevice device, SilkFrameState frame, IReadOnlyList<SilkMeshGpuResource> instances,
+        bool flipClipSpaceY, InstanceSlot? table, int slot)
+    {
+        int previousCapacity = table?.Capacity ?? 0;
+        int capacity = instances.Count > previousCapacity
+            ? Math.Max(instances.Count, checked(previousCapacity * 2))
+            : previousCapacity;
+        int bytes = checked(capacity * SilkSceneUniformWriter.ByteSize);
+        int required = checked(instances.Count * SilkSceneUniformWriter.ByteSize);
+        byte[] staging = table?.Staging.Length == bytes ? table.Staging : new byte[bytes];
+        SilkMeshData?[] meshes = table?.MeshesStaging.Length == instances.Count
+            ? table.MeshesStaging : new SilkMeshData?[instances.Count];
+        if (_instancePreparation?.ProtectsBytes(slot, staging) == true)
+        {
+            staging = new byte[bytes];
+        }
+        if (_instancePreparation?.ProtectsMeshes(slot, meshes) == true)
+        {
+            meshes = new SilkMeshData?[instances.Count];
+        }
+        for (int index = 0; index < instances.Count; index++)
+        {
+            SilkMeshData mesh = instances[index].Mesh;
+            meshes[index] = mesh;
+            SilkSceneUniformWriter.Write(mesh, frame,
+                staging.AsSpan(index * SilkSceneUniformWriter.ByteSize, SilkSceneUniformWriter.ByteSize),
+                flipClipSpaceY);
+        }
+        if (table is not null && table.UploadedCount == instances.Count &&
+            staging.AsSpan(0, required).SequenceEqual(table.Bytes.AsSpan(0, required)))
+        {
+            _ = PrepareInstancePublication(table);
+            table.MeshesStaging = table.Meshes;
+            table.Meshes = meshes;
+            table.FrameRevision = frame.Revision;
+            return;
+        }
+        _instancePreparation?.ReservePublication();
+        ISilkGraphicsBuffer? spare = table?.SpareBuffer;
+        ISilkGraphicsBuffer candidate = RequireInstanceCandidate(device,
+            _instancePreparation?.ProtectsBuffer(slot, spare) == true ? null : spare, bytes);
+        InstanceSlot published;
+        try
+        {
+            if (!ReferenceEquals(candidate, spare))
+            {
+                _instancePreparation?.Created(candidate);
+            }
+            candidate.Write(staging.AsSpan(0, required));
+            published = PrepareInstancePublication(table);
+        }
+        catch
+        {
+            if (!ReferenceEquals(candidate, table?.SpareBuffer))
+            {
+                candidate.Dispose();
+            }
+            throw;
+        }
+        if (table is null)
+        {
+            _instanceSlots.Add(published);
+        }
+        ISilkGraphicsBuffer? retired = published.SpareBuffer;
+        published.SpareBuffer = published.Buffer;
+        published.Buffer = candidate;
+        published.Capacity = capacity;
+        published.Staging = published.Bytes;
+        published.Bytes = staging;
+        published.MeshesStaging = published.Meshes;
+        published.Meshes = meshes;
+        published.UploadedCount = instances.Count;
+        published.FrameRevision = frame.Revision;
+        if (!ReferenceEquals(retired, candidate))
+        {
+            if (_instancePreparation is { } preparation)
+            {
+                preparation.Retire(retired);
+            }
+            else
+            {
+                retired?.Dispose();
+            }
+        }
+    }
+
     /// <summary>
     /// Makes the next instance-slot publication throw, after the buffer exists
     /// and before anything references it.
@@ -9850,6 +10908,7 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
     private sealed class InstanceSlot
     {
         internal ISilkGraphicsBuffer? Buffer { get; set; }
+        internal ISilkGraphicsBuffer? SpareBuffer { get; set; }
 
         /// <summary>The byte image the device is known to hold.</summary>
         internal byte[] Bytes { get; set; } = [];
@@ -9906,13 +10965,16 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
         foreach (InstanceSlot slot in _instanceSlots)
         {
             slot.Buffer?.Dispose();
+            slot.SpareBuffer?.Dispose();
         }
         _instanceSlots.Clear();
         ShadowInstanceBuffer?.Dispose();
+        _shadowInstanceSpare?.Dispose();
         // The deformation owns its pipeline and every input buffer, so a
         // geometry that is retired releases the whole GPU deformation with it
         // rather than leaving a pipeline alive behind a dropped reference.
         Deformation?.Dispose();
+        _deformationVertexSpare?.Dispose();
         IndexBuffer.Dispose();
         VertexBuffer.Dispose();
         _disposed = true;
@@ -9958,7 +11020,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
     // through. Comparing only the primvar's presence let an edit to its values
     // reuse vertices carrying the previous coordinates -- and, once displacement
     // sampled through them, the previous heights.
-    ulong UvFingerprint = 0)
+    ulong UvFingerprint = 0,
+    bool RequireTextureCoordinates = false)
 {
     internal static SilkMeshGpuGeometryKey Create(
         SilkMeshData mesh,
@@ -9966,7 +11029,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
         bool hasTangents,
         ulong displacementIdentity = 0,
         string materialPath = "",
-        ulong uvFingerprint = 0) =>
+        ulong uvFingerprint = 0,
+        bool requireTextureCoordinates = false) =>
         new(
             mesh.Path,
             mesh.TopologyKind,
@@ -9979,7 +11043,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
             hasTangents,
             displacementIdentity,
             materialPath,
-            uvFingerprint);
+            uvFingerprint,
+            requireTextureCoordinates);
 
     /// <summary>
     /// Fingerprints one bound vertex attribute, or zero when the mesh carries
@@ -10017,7 +11082,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
         bool hasTangents,
         string materialPath = "",
         ulong uvFingerprint = 0,
-        ulong displacementIdentity = 0) =>
+        ulong displacementIdentity = 0,
+        bool requireTextureCoordinates = false) =>
         new(
             mesh.Path,
             mesh.TopologyKind,
@@ -10035,7 +11101,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
             // change to the second.
             displacementIdentity,
             materialPath,
-            uvFingerprint);
+            uvFingerprint,
+            requireTextureCoordinates);
 
     /// <summary>Gets whether the deformation kernel produces this geometry.</summary>
     internal bool IsGpuDeformed => DeformationBindIdentity != 0;

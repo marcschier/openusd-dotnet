@@ -130,6 +130,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
         Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", statusFile);
         var opened = new TaskCompletionSource<ViewerStageSession>(TaskCreationOptions.RunContinuationsAsynchronously);
         var bufferBudget = new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000);
+        var textureBudgets = new OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets(
+            new(67_108_864), new(67_108_864), new(67_108_864));
         ViewerStartupOptions.Initialize(new ViewerHostOptions
         {
             StagePath = stagePath,
@@ -137,6 +139,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             Renderer = ViewerNativeCaptureBackend.Kind.ToString(),
             PreparationLimits = new OpenUsd.Rendering.Silk.SilkPreparationLimits(1_000_000, 1_000_000),
             GpuBufferBudget = bufferBudget,
+            TexturePreparationBudgets = textureBudgets,
             PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH"),
             StageReadyAsync = (session, _) =>
             {
@@ -170,6 +173,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await WaitUntilAsync(() => Required<MenuItem>(window, "RenderAuthoredProductMenuItem").IsEnabled);
             ViewerNativeCaptureBackend.Require(session);
             await Assert.That(bufferBudget.Usage.ReservedBytes).IsGreaterThan(0ul);
+            await Assert.That(textureBudgets.GpuTextureBudget!.Usage.ReservedBytes).IsGreaterThan(0ul);
+            await Assert.That(textureBudgets.GpuStagingBudget!.Usage.PeakReservedBytes).IsGreaterThan(0ul);
             StageRenderState before = session.CurrentRenderState;
             string editTarget = await session.Scheduler.InvokeAsync(static stage => stage.EditTargetLayerIdentifier);
             await Assert.That(before.Viewport.Width == 16 && before.Viewport.Height == 16).IsFalse();
@@ -275,6 +280,9 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             window.Close();
             await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
             await WaitUntilAsync(() => bufferBudget.Usage.ReservedBytes == 0);
+            await WaitUntilAsync(() => textureBudgets.CpuTextureBudget!.Usage.ReservedBytes == 0 &&
+                textureBudgets.GpuTextureBudget!.Usage.ReservedBytes == 0 &&
+                textureBudgets.GpuStagingBudget!.Usage.ReservedBytes == 0);
             Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", null);
         }
     }
@@ -311,6 +319,14 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
         await Assert.That(manifest.RootElement.GetProperty("diagnostics").EnumerateArray().Any(static entry =>
             entry.GetProperty("code").GetString() == "HDSILK_GPU_BUFFER_ADMISSION" &&
             entry.GetProperty("message").GetString()!.Contains("ceiling=1000000", StringComparison.Ordinal))).IsTrue();
+        foreach (string code in new[]
+            { "HDSILK_CPU_TEXTURE_ADMISSION", "HDSILK_GPU_TEXTURE_ADMISSION", "HDSILK_GPU_STAGING_ADMISSION" })
+        {
+            await Assert.That(manifest.RootElement.GetProperty("diagnostics").EnumerateArray().Any(entry =>
+                entry.GetProperty("code").GetString() == code &&
+                entry.GetProperty("message").GetString()!
+                    .Contains("ceiling=67108864", StringComparison.Ordinal))).IsTrue();
+        }
         for (int index = 0; index < 2; index++)
         {
             JsonElement frame = frames[index];

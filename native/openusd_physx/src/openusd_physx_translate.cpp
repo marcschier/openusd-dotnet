@@ -98,7 +98,7 @@ PxConvexMesh* CookConvexMesh(
     const PxVec3* points,
     size_t point_count)
 {
-    if (points == nullptr || point_count < 4)
+    if (points == nullptr || point_count < 3)
     {
         return nullptr;
     }
@@ -107,6 +107,21 @@ PxConvexMesh* CookConvexMesh(
     desc.points.stride = sizeof(PxVec3);
     desc.points.data = points;
     desc.flags = PxConvexFlag::eCOMPUTE_CONVEX;
+    PxVec3 triangle[4];
+    if (point_count == 3)
+    {
+        // The SDK accepts three points but rejects non-axis-aligned triangles before
+        // hull construction. An interior sample preserves their convex set.
+        triangle[0] = points[0];
+        triangle[1] = points[1];
+        triangle[2] = points[2];
+        triangle[3] = PxVec3(
+            static_cast<float>((static_cast<double>(points[0].x) + points[1].x + points[2].x) / 3.0),
+            static_cast<float>((static_cast<double>(points[0].y) + points[1].y + points[2].y) / 3.0),
+            static_cast<float>((static_cast<double>(points[0].z) + points[1].z + points[2].z) / 3.0));
+        desc.points.count = 4;
+        desc.points.data = triangle;
+    }
     // Cooking inserts the result through the shared physics insertion callback.
     const openusd_physx_runtime::FactoryLock factory_lock;
     return PxCreateConvexMesh(cooking_params, desc, physics.getPhysicsInsertionCallback());

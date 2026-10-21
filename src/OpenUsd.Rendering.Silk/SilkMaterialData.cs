@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
+
 namespace OpenUsd.Rendering.Silk;
 
 /// <summary>
@@ -39,7 +41,8 @@ public sealed class SilkMaterialTexture
         string asset,
         string uvPrimvar,
         SilkCompositeOperator compositeOperator,
-        float compositeFactor)
+        float compositeFactor,
+        Vector4 luminanceMix = default)
     {
         Parameter = parameter;
         WrapS = wrapS;
@@ -54,7 +57,10 @@ public sealed class SilkMaterialTexture
         UvPrimvar = uvPrimvar;
         CompositeOperator = compositeOperator;
         CompositeFactor = compositeFactor;
+        LuminanceMix = luminanceMix;
     }
+
+    internal Vector4 LuminanceMix { get; }
 
     /// <summary>Gets the parameter this texture drives.</summary>
     public SilkMaterialParameter Parameter { get; }
@@ -90,7 +96,7 @@ public sealed class SilkMaterialTexture
     public int ComponentCount { get; }
 
     /// <summary>
-    /// Gets the connected UsdUVTexture output port. Two inputs driven by the same
+    /// Gets the connected output port or explicit scalar opacity reduction. Two inputs driven by the same
     /// file are told apart by this alone -- a packed occlusion/roughness/metallic
     /// image is exactly one asset with two or three different output connections.
     /// </summary>
@@ -164,7 +170,7 @@ public sealed class SilkMaterialData
     public IReadOnlyList<SilkMaterialTexture> Textures { get; }
 
     /// <summary>
-    /// Gets the constant texture-coordinate transform every texture of this
+    /// Gets the constant texture-coordinate transform ordinary textures of this
     /// material samples through, as the row-major affine
     /// (m00, m01, m10, m11, tx, ty).
     /// </summary>
@@ -172,7 +178,9 @@ public sealed class SilkMaterialData
     /// The identity unless hdSilk folded a chain of constant MaterialX place2d
     /// or UsdPreviewSurface UsdTransform2d nodes. hdSilk publishes exactly one
     /// transform per material because the renderer builds one coordinate stream
-    /// per material; a texture asking for a different transform, or for a
+    /// per material. Detail normals may carry independent affine rows through
+    /// <see cref="SilkMaterialParameter.DetailUvRow0"/> and
+    /// <see cref="SilkMaterialParameter.DetailUvRow1"/>. Other textures asking for a different transform, or for a
     /// different <see cref="SilkMaterialTexture.UvPrimvar"/>, is rejected
     /// upstream with a diagnostic rather than sampled with coordinates it did
     /// not author.
@@ -228,9 +236,58 @@ public sealed class SilkMaterialData
         SilkMaterialTexture[] textures = command.TextureCount == 0
             ? []
             : new SilkMaterialTexture[command.TextureCount];
+        Vector4 luminanceMix = default;
+        bool hasLuminanceMix = false;
+        bool hasSpecularLevel = false;
+        int detailRows = 0;
+        foreach (SilkMaterialScalar scalar in scalars)
+        {
+            if (scalar.Parameter is SilkMaterialParameter.DetailUvRow0 or SilkMaterialParameter.DetailUvRow1)
+            {
+                int row = scalar.Parameter == SilkMaterialParameter.DetailUvRow0 ? 1 : 2;
+                if ((detailRows & row) != 0)
+                {
+                    throw new InvalidDataException("A material cannot carry duplicate detail UV rows.");
+                }
+                detailRows |= row;
+            }
+            if (scalar.Parameter == SilkMaterialParameter.OmniPbrSpecularLevel)
+            {
+                if (hasSpecularLevel)
+                {
+                    throw new InvalidDataException("A material cannot carry duplicate OmniPBR specular levels.");
+                }
+                hasSpecularLevel = true;
+            }
+            if (scalar.Parameter == SilkMaterialParameter.DiffuseTextureLuminanceMix)
+            {
+                if (hasLuminanceMix)
+                {
+                    throw new InvalidDataException("A material cannot carry duplicate diffuse luminance mixes.");
+                }
+                hasLuminanceMix = true;
+                luminanceMix = new Vector4(
+                    scalar.Values[0], scalar.Values[1], scalar.Values[2], scalar.Values[3]);
+            }
+        }
+        if (detailRows is 1 or 2)
+        {
+            throw new InvalidDataException("Detail UV transforms require both rows.");
+        }
+        bool hasDetailNormal = false;
         for (int index = 0; index < textures.Length; index++)
         {
             SilkMaterialTextureEntry entry = command.GetTexture(index);
+            if (entry.Parameter == SilkMaterialParameter.DetailNormal)
+            {
+                if (hasDetailNormal || entry.ComponentCount != 3 ||
+                    entry.Channel != SilkTextureChannel.Rgb || entry.CompositeOperator != SilkCompositeOperator.None ||
+                    command.SurfaceKind == SilkSurfaceKind.VolumeDensity)
+                {
+                    throw new InvalidDataException("Invalid or duplicate detail normal texture.");
+                }
+                hasDetailNormal = true;
+            }
             float[] scale = new float[4];
             float[] bias = new float[4];
             float[] fallback = new float[4];
@@ -253,7 +310,8 @@ public sealed class SilkMaterialData
                 entry.Asset,
                 entry.UvPrimvar,
                 entry.CompositeOperator,
-                entry.CompositeFactor);
+                entry.CompositeFactor,
+                entry.Parameter == SilkMaterialParameter.DiffuseColor ? luminanceMix : default);
         }
 
         byte[] generatedFragmentSpirV = command.GeneratedFragmentSpirV.ToArray();
@@ -341,6 +399,10 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.NormalMap;
         }
+        if (GetTexture(SilkMaterialParameter.DetailNormal) is not null)
+        {
+            features |= SilkShaderFeatures.DetailNormalMap;
+        }
 
         // Roughness and metallic are separate UsdPreviewSurface inputs with
         // separate connections, so each selects its own bit. A packed
@@ -394,7 +456,7 @@ public sealed class SilkMaterialData
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v5");
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v7");
         writer.Write(Path);
         writer.Write((uint)SurfaceKind);
         writer.Write(Scalars.Count);

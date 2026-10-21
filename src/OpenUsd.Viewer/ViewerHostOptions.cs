@@ -30,6 +30,10 @@ public sealed class ViewerHostOptions
     /// </summary>
     public string? Renderer { get; init; }
 
+    /// <summary>Opts in to up to 32768 physics actors and 65536 collision shapes instead of the default capacities.</summary>
+    /// <remarks>Render publication and mesh-override limits remain bounded separately. Moving mesh subtrees must be de-instanced.</remarks>
+    public bool FullScenePhysics { get; init; }
+
     /// <summary>Gets optional immutable hdSilk mesh-reservation and page ceilings for all Viewer sessions.</summary>
     /// <remarks>
     /// Null uses OPENUSD_SILK_MESH_RESERVATION_BYTES and OPENUSD_SILK_MAX_PAGE_BYTES when both are configured.
@@ -43,6 +47,22 @@ public sealed class ViewerHostOptions
     /// in this process. Textures, backend staging and driver overhead are not included; Storm cannot enforce it.
     /// </remarks>
     public SilkGpuBufferBudget? GpuBufferBudget { get; init; }
+
+    /// <summary>Gets shared CPU texture, owned GPU texture and backend staging budgets.</summary>
+    /// <remarks>
+    /// Null reads OPENUSD_SILK_CPU_TEXTURE_BYTES, OPENUSD_SILK_GPU_TEXTURE_BYTES and OPENUSD_SILK_GPU_STAGING_BYTES.
+    /// An explicit policy replaces that entire environment configuration. Reuse one object across hosts in this
+    /// process to aggregate ownership. Storm cannot enforce these pools; this is not total memory admission.
+    /// </remarks>
+    public SilkTexturePreparationBudgets? TexturePreparationBudgets { get; init; }
+
+    /// <summary>Gets an explicit material streaming choice, overriding OPENUSD_SILK_STREAM_MATERIAL_TEXTURES.</summary>
+    /// <remarks>Streaming requires a configured GPU buffer budget and is off when neither source opts in.</remarks>
+    public bool? StreamMaterialTextures { get; init; }
+
+    /// <summary>Gets an explicit D3D12 GPU-upload policy, overriding OPENUSD_D3D12_GPU_UPLOAD_HEAPS.</summary>
+    /// <remarks>Requires supported D3D12 hardware and an explicit GPU buffer budget; off when neither source opts in.</remarks>
+    public bool? D3D12GpuUploadHeaps { get; init; }
 
     /// <summary>
     /// Window title. When <c>null</c> the viewer's default title is kept.

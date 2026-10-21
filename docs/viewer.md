@@ -94,6 +94,20 @@ leave a window behind.
 
 ### Opt-in session preparation ceilings
 
+`OPENUSD_D3D12_GPU_UPLOAD_HEAPS=true` opts into supported GPU-local D3D12 upload heaps;
+`false` disables it and other values fail startup. The default is off.
+`ViewerHostOptions.D3D12GpuUploadHeaps` overrides the environment, including explicit
+`false`. An explicit GPU-buffer budget is required. The effective choice is captured
+by the host and used when D3D12 resources are created or recreated; other backends
+are unavailable rather than silently bypassing it. Hardware support is checked before
+resource creation. This reduces observed host-resident pressure on supported discrete
+GPUs but does not lower private commit, resource quotas or the protected host-memory reserve.
+The small authored-product GUI workflow has been exercised with this option and
+material streaming enabled: a visible D3D12 viewport imported/presented frames, and
+File/menu plus command-palette actions produced persistent PNG/HDR products while
+preserving the source. The directly launched test process passed under a 2-GiB
+process/tree cap. This is not complete-warehouse or all-workflow acceptance.
+
 `ViewerHostOptions.GpuBufferBudget` or `OPENUSD_SILK_GPU_BUFFER_BYTES` independently
 enables shared RHI buffer-payload admission. The same pool covers viewport and isolated
 product renderers, and embedding hosts can reuse an object across Viewer hosts in one
@@ -101,6 +115,26 @@ process. The limit must be a positive invariant decimal byte count. It excludes 
 backend staging, driver overhead and source/managed memory; it is not a VRAM measurement.
 Submission-held buffers retain their reservations until their final native release.
 See [shared GPU buffer admission](rendering.md#shared-gpu-buffer-payload-admission).
+
+`ViewerHostOptions.TexturePreparationBudgets` groups independently optional CPU texture,
+owned GPU texture and backend staging pools. Without an explicit object, startup reads
+`OPENUSD_SILK_CPU_TEXTURE_BYTES`, `OPENUSD_SILK_GPU_TEXTURE_BYTES` and
+`OPENUSD_SILK_GPU_STAGING_BYTES`. Each configured value must be a positive invariant
+decimal byte count. An explicit object replaces all three environment settings and can
+be shared by multiple embedding hosts; viewport and isolated product captures share
+its pools. Storm is unavailable rather than bypassing configured limits. Source geometry,
+native codec/OCIO scratch, detached captures, imported presentation images and driver
+overhead remain outside these metrics.
+See [shared texture-preparation policies](rendering.md#shared-texture-preparation-policies-in-viewer-and-mcp).
+
+Set `OPENUSD_SILK_STREAM_MATERIAL_TEXTURES=true` (or `1`) to stream full-resolution
+material working sets through ordered, completed submissions. `false`/`0` disables
+it; unset remains disabled. `ViewerHostOptions.StreamMaterialTextures` overrides this
+environment choice, including an explicit `false`. A GPU-buffer budget is required
+for transactional private-frame publication; texture/staging pools remain independent.
+The policy follows D3D12, Vulkan and Metal presenter creation and isolated product
+capturers. It reduces simultaneous material residency at the cost of repeated
+decode/upload work, not by reducing resolution; a single material still must fit.
 
 Managed hdSilk session creation requires the native page-acknowledgement extension as
 well as matching ABI versions. Older runtimes fail explicitly instead of leaving copy
@@ -123,6 +157,13 @@ These are logical numeric-buffer reservations and per-page serialized-byte ceili
 not total RAM/VRAM or source/material/cache limits. Concurrent viewport and product sessions
 each have their own ceiling, not a shared pool. Measure an appropriate policy and keep
 independent host safeguards. See [render preparation admission](rendering.md#opt-in-coarse-mesh-preparation-admission).
+
+For multi-gigabyte updates, optionally add all four `OPENUSD_SILK_STORAGE_*_BYTES`
+settings described in [file-backed command updates](rendering.md#file-backed-command-updates),
+or set `SilkPreparationLimits.CommandStorage` through its constructor. This applies to
+viewport and product sessions; each has its own live-file pool. Explicit embedding
+options override the entire environment policy. Stored transport is not a promise that
+the scene's retained geometry, materials or GPU resources fit the host.
 
 ### Reacting to the operator
 
@@ -785,6 +826,7 @@ that are meaningful every time physics is running.
 | Speed | Physics menu | `0.25x` to `4x`. |
 | Apply Preview | Physics menu | Authors the simulated poses into the session overlay. |
 | Bake... | Physics menu | Opens the bake dialog. |
+| Record Sequence... | Physics menu / Search Commands | Records exact fixed steps from the paused world into an atomic image-sequence job. |
 | Gizmo | Physics menu | Chooses what a viewport drag manipulates: nothing, move, rotate, scale, or drag a body. |
 | Snap | Physics menu | Quantizes gizmo drags to the configured translation, rotation, and scale increments. |
 | Undo / Redo | Physics menu | Reverses or replays the newest physics property edit. |
@@ -845,6 +887,13 @@ state, so the accepted count says nothing about how many poses were actually dra
 therefore reports back what it resolved and what it could not, as a revisioned, latest-wins report
 the render bridge drains around each apply. The applied and unresolved counts in the status line and
 the inspector come from those reports rather than from the count the Viewer handed over.
+
+hdSilk resolves staged rigid poses **after** applying the current authored scene page, preserving
+that page's scale and shear even on the first frame. It reports the consumed pose revision only
+after the render call succeeds; staging or a failed graphics submission is not acknowledgement.
+Capture must additionally finish readback before treating that revision as a recorded frame.
+An aborted transport-to-render copy returns its unpublished buffer claim and releases its physics
+frame lease, so a failed copy cannot consume the channel's reusable storage permanently.
 
 A failure while applying a batch never propagates into the render loop. Simulated poses stop being
 applied, the authored transforms are restored, the reason is shown in the status line and the
@@ -1598,9 +1647,52 @@ It also exercises GPU three-plane cancellation, mid-job source/non-finite failur
 cleanup and retry without stale HDR, actual rendered-view restoration, and pending Reload/Close.
 Running this scenario alone is not an all-Viewer-workflows result.
 
+### Recording a physics simulation
+
+**Physics > Record Sequence...**, also available through **Search Commands**, opens the
+image-sequence dialog with **Record physics fixed steps** selected. Set a frame count,
+**1-8 fixed steps per frame**, a bounded scenario identity, the output folder, and optional
+HDR/depth outputs. The current viewport and selected camera are used. Turn the option off to
+return to ordinary USD-time sampling; that mode still requires physics to be disabled.
+
+Build physics, pause playback, and turn **Loop** and **Apply Preview** off before recording.
+Large rigid scenes can explicitly select `--full-scene-physics`, or set
+`ViewerHostOptions.FullScenePhysics` when embedding. This admits up to 32,768 actors and
+65,536 collision shapes; it does not enlarge rendering, publication, texture or job budgets.
+Compound rigid bodies drive their noninstanced descendant meshes relative to the authored
+body pose, preserving child offsets, scale and shear. Moving instance subtrees must be
+de-instanced in the scenario; unrelated static instances remain unchanged.
+Recording refuses a build with errors or skipped composition inputs before advancing the world or
+creating output. The refusal remains attached to that build even after interactive stepping;
+correct the reported inputs and rebuild to clear it. `convexDecomposition` uses prepared multiple
+hulls; unsupported approximations such as `sdf` are not silently recorded as a different shape.
+The Viewer exclusively owns the transport while recording: live interpolation and interactive
+runtime-command submission cannot replace an exact captured pose. A fresh extraction fingerprint
+must match the built world before any recorded step. Each frame retains its exact physics
+publication through capture and records epoch, scenario, source revision, publication, step/time
+and binding metadata through `OpenUsd.Rendering.Physics`.
+
+Recording **advances the current world**; cancellation does not rewind it. Playback remains paused
+at the last completed step. The original camera/display state and authored render geometry are
+restored before atomic publication, and on capture failure. The ordinary live bridge can then show
+the paused world's latest pose again. No physics opinions are authored into the source or review
+layer. A completed publication wins a later cancellation request and remains visible in the result
+window rather than being mislabeled as a discarded job.
+
+This entry point currently requires an hdSilk capture backend and complete rigid-pose publications;
+deformable geometry is explicitly refused. It shares the existing frame, raster, encoding and
+4-GiB job limits, encoder choices and verified **View results** gallery. Windows D3D12 execution
+covers exact moving frames, live-pump exclusion, incomplete-build/stale-world/end-range/loop refusal, cancellation
+after capture and retry. Vulkan/Metal use the shared adapter but are not newly execution-qualified
+by that Windows evidence; macOS still has no supported physics runtime.
+
+The dedicated native workflow is `physics-recording`. It keeps simulation runtime prerequisites
+separate from the ordinary `render-sequence` workflow and checks the actual menu/palette, immutable
+simulation metadata, moving HDR pixels and completed gallery, including deeply nested output paths.
+
 ### Previewing completed render jobs
 
-After **Render Image Sequence** or **Render Authored Product** succeeds, its **View results**
+After **Render Image Sequence**, **Record Sequence** or **Render Authored Product** succeeds, its **View results**
 button opens an owned, themed **Contact sheet** window. The button stays disabled until success;
 starting another job closes and drains the previous preview before clearing its result. A failed
 or cancelled newer job cannot expose the previous job as its own result.

@@ -7,7 +7,17 @@ namespace OpenUsd.Rendering;
 /// </summary>
 /// <param name="PrimPath">The absolute authored prim path of the renderable entity.</param>
 /// <param name="InstanceIndex">The zero-based instance ordinal of the renderable entity.</param>
-public readonly record struct PhysicsRenderBinding(string PrimPath, int InstanceIndex);
+public readonly record struct PhysicsRenderBinding(string PrimPath, int InstanceIndex)
+{
+    /// <summary>Gets whether this binding drives the noninstanced meshes below its prim.</summary>
+    public bool IncludesDescendants { get; init; }
+
+    /// <summary>Gets the authored body's world position used to preserve descendant offsets.</summary>
+    public UsdVec3d ReferencePosition { get; init; }
+
+    /// <summary>Gets the authored body's world orientation used to preserve descendant transforms.</summary>
+    public PhysicsRenderOrientation ReferenceOrientation { get; init; }
+}
 
 /// <summary>
 /// Maps stable simulation identities onto the renderable entities they drive.
@@ -66,6 +76,43 @@ public sealed class PhysicsRenderBindingTable
     /// </exception>
     public bool TryBind(PhysicsRenderObjectId id, string primPath, int instanceIndex = 0)
     {
+        ValidateBinding(id, primPath, instanceIndex);
+        return Store(id, new PhysicsRenderBinding(primPath, instanceIndex));
+    }
+
+    /// <summary>Binds a body to its noninstanced mesh subtree while preserving authored child transforms.</summary>
+    /// <param name="id">The stable simulation identity.</param>
+    /// <param name="primPath">The absolute authored body prim path.</param>
+    /// <param name="referencePosition">The authored body's world position in stage units.</param>
+    /// <param name="referenceOrientation">The authored body's finite, nonzero world orientation.</param>
+    /// <returns>Whether the bounded table stored the binding.</returns>
+    public bool TryBindSubtree(
+        PhysicsRenderObjectId id, string primPath,
+        UsdVec3d referencePosition, PhysicsRenderOrientation referenceOrientation)
+    {
+        ValidateBinding(id, primPath, 0);
+        if (!double.IsFinite(referencePosition.X) || !double.IsFinite(referencePosition.Y) ||
+            !double.IsFinite(referencePosition.Z))
+        {
+            throw new ArgumentException("A subtree reference position must be finite.", nameof(referencePosition));
+        }
+        double length = referenceOrientation.X * referenceOrientation.X +
+            referenceOrientation.Y * referenceOrientation.Y + referenceOrientation.Z * referenceOrientation.Z +
+            referenceOrientation.W * referenceOrientation.W;
+        if (!referenceOrientation.IsFinite || !double.IsFinite(length) || length <= 0)
+        {
+            throw new ArgumentException("A subtree reference orientation must be finite and nonzero.", nameof(referenceOrientation));
+        }
+        return Store(id, new PhysicsRenderBinding(primPath, 0)
+        {
+            IncludesDescendants = true,
+            ReferencePosition = referencePosition,
+            ReferenceOrientation = referenceOrientation.Normalized(),
+        });
+    }
+
+    private static void ValidateBinding(PhysicsRenderObjectId id, string primPath, int instanceIndex)
+    {
         SelectionPathValidation.ValidateAbsolutePrimPath(primPath, nameof(primPath));
         ArgumentOutOfRangeException.ThrowIfNegative(instanceIndex);
         if (id.IsNone)
@@ -75,7 +122,10 @@ public sealed class PhysicsRenderBindingTable
                 nameof(id));
         }
 
-        var binding = new PhysicsRenderBinding(primPath, instanceIndex);
+    }
+
+    private bool Store(PhysicsRenderObjectId id, PhysicsRenderBinding binding)
+    {
         if (_bindings.TryGetValue(id, out PhysicsRenderBinding existing))
         {
             if (existing == binding)
@@ -84,7 +134,7 @@ public sealed class PhysicsRenderBindingTable
             }
 
             _bindings[id] = binding;
-            TrackIdentity(id.Value, binding);
+            RebuildIdentity(id.Value);
             Revision++;
             return true;
         }
@@ -111,8 +161,7 @@ public sealed class PhysicsRenderBindingTable
             return false;
         }
 
-        _ = _byIdentity.Remove(id.Value);
-        _ = _ambiguous.Remove(id.Value);
+        RebuildIdentity(id.Value);
         Revision++;
         return true;
     }
@@ -135,7 +184,8 @@ public sealed class PhysicsRenderBindingTable
             return true;
         }
 
-        return !_ambiguous.Contains(id.Value) && _byIdentity.TryGetValue(id.Value, out binding);
+        return !_ambiguous.Contains(id.Value) && _byIdentity.TryGetValue(id.Value, out binding) &&
+            binding.InstanceIndex == id.InstanceIndex;
     }
 
     /// <summary>Removes every binding.</summary>
@@ -165,6 +215,19 @@ public sealed class PhysicsRenderBindingTable
         }
 
         _byIdentity[value] = binding;
+    }
+
+    private void RebuildIdentity(ulong value)
+    {
+        _ = _byIdentity.Remove(value);
+        _ = _ambiguous.Remove(value);
+        foreach (var pair in _bindings)
+        {
+            if (pair.Key.Value == value)
+            {
+                TrackIdentity(value, pair.Value);
+            }
+        }
     }
 }
 

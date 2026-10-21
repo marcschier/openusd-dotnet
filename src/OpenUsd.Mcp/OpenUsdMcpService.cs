@@ -38,6 +38,9 @@ internal interface IOpenUsdMcpService
         RenderSequenceRequest request,
         CancellationToken cancellationToken);
 
+    ValueTask<McpRenderSequenceResultDto> RenderPhysicsSequenceAsync(
+        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken);
+
     ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
         RenderProductCaptureRequest request,
         CancellationToken cancellationToken);
@@ -87,6 +90,7 @@ internal sealed partial class OpenUsdMcpService(
         CancellationToken cancellationToken)
     {
         ValidateOpenRequest(request);
+        WorkspaceStageSettings? stageSettings = request.StageSettings?.ToSettings();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -100,7 +104,7 @@ internal sealed partial class OpenUsdMcpService(
             }
 
             WorkspaceSessionInfo info = await workspace
-                .StartAsync(request.SourcePath, cancellationToken)
+                .StartAsync(request.SourcePath, stageSettings, cancellationToken)
                 .ConfigureAwait(false);
             _sourcePath = request.SourcePath.Replace('\\', '/');
             ResetDerivedState();

@@ -50,6 +50,12 @@ internal sealed class FakePhysicsWorld : IUsdPhysicsWorld
     /// <summary>Invoked at the start of every step so a test can observe or interrupt a replay.</summary>
     internal Action<FakePhysicsWorld>? OnStep { get; set; }
 
+    internal Action<UsdPhysicsFrame>? OnFrameCopied { get; set; }
+
+    internal Exception? DiagnosticFailure { get; set; }
+    internal int DeformationCapacity { get; set; }
+    internal int DeformationVertexCapacity { get; set; }
+
     internal UsdPhysicsCapabilities Capabilities { get; set; } =
         new(UsdPhysicsCapability.RigidBodies);
 
@@ -103,7 +109,9 @@ internal sealed class FakePhysicsWorld : IUsdPhysicsWorld
             UsdPhysicsDiagnostics.Empty,
             _state.Length,
             ReplayEquivalentCheckpoints,
-            ResultsAreApproximate);
+            ResultsAreApproximate,
+            DeformationCapacity,
+            DeformationVertexCapacity);
     }
 
     public void ResetToStart()
@@ -191,7 +199,8 @@ internal sealed class FakePhysicsWorld : IUsdPhysicsWorld
         return true;
     }
 
-    public UsdPhysicsDiagnostics DrainDiagnostics() => UsdPhysicsDiagnostics.Empty;
+    public UsdPhysicsDiagnostics DrainDiagnostics() =>
+        DiagnosticFailure is { } failure ? throw failure : UsdPhysicsDiagnostics.Empty;
 
     public void Dispose() => IsDisposed = true;
 
@@ -201,6 +210,10 @@ internal sealed class FakePhysicsWorld : IUsdPhysicsWorld
         int count = Math.Min(bodies.Length, _state.Length);
         _state.AsSpan(0, count).CopyTo(bodies);
         destination.SetBodyCount(count);
+        destination.SetDeformationCounts(0, 0, false);
+        destination.HasOverflow = false;
+        destination.DroppedEventCount = 0;
+        OnFrameCopied?.Invoke(destination);
         return true;
     }
 

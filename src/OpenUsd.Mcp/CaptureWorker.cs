@@ -104,8 +104,24 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         CaptureAsync(request, TimeSpan.Zero, cancellationToken);
 
-    public async ValueTask<RenderDiskJobResult> CaptureDiskAsync(
+    public ValueTask<RenderDiskJobResult> CaptureDiskAsync(
         RenderDiskJobRequest request, CancellationToken cancellationToken = default)
+        => CaptureDiskCoreAsync(request, null, null, 1, cancellationToken);
+
+    public ValueTask<RenderDiskJobResult> CapturePhysicsDiskAsync(
+        RenderDiskJobRequest request, WorkspacePhysicsRecording recording,
+        OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext context, int stepsPerFrame,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recording);
+        ArgumentNullException.ThrowIfNull(context);
+        return CaptureDiskCoreAsync(request, recording, context, stepsPerFrame, cancellationToken);
+    }
+
+    private async ValueTask<RenderDiskJobResult> CaptureDiskCoreAsync(
+        RenderDiskJobRequest request, WorkspacePhysicsRecording? recording,
+        OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext? context, int stepsPerFrame,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -118,7 +134,7 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
             {
                 throw new CaptureQueueFullException(_capacity);
             }
-            var item = new DiskWorkItem(request, linked.Token);
+            var item = new DiskWorkItem(request, recording, context, stepsPerFrame, linked.Token);
             lock (_stateGate)
             {
                 if (_state != CaptureWorkerState.Running)
@@ -569,7 +585,9 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
     }
 
     private sealed class DiskWorkItem(
-        RenderDiskJobRequest request, CancellationToken cancellationToken) : IWorkItem
+        RenderDiskJobRequest request, WorkspacePhysicsRecording? recording,
+        OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext? context, int stepsPerFrame,
+        CancellationToken cancellationToken) : IWorkItem
     {
         internal TaskCompletionSource<RenderDiskJobResult> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -581,6 +599,16 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (recording is not null)
+                {
+                    if (processor is not IPhysicsDiskCaptureProcessor physics || context is null)
+                    {
+                        throw new NotSupportedException("The configured processor cannot execute physics disk jobs.");
+                    }
+                    Completion.TrySetResult(physics.ProcessPhysicsDiskJob(
+                        request, recording, context, stepsPerFrame, cancellationToken));
+                    return;
+                }
                 if (processor is not IRenderDiskCaptureProcessor disk)
                 {
                     throw new NotSupportedException("The configured capture processor cannot execute disk jobs.");

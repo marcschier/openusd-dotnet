@@ -10,7 +10,15 @@ public sealed record ViewerChildLauncherOptions(
     string ExecutableRoot,
     string ExecutablePath,
     SilkPreparationLimits? PreparationLimits = null,
-    SilkGpuBufferBudget? GpuBufferBudget = null);
+    SilkGpuBufferBudget? GpuBufferBudget = null)
+{
+    /// <summary>Gets effective limits forwarded as independent child-process pools, not shared parent credit.</summary>
+    public SilkTexturePreparationBudgets? TexturePreparationBudgets { get; init; }
+    /// <summary>Gets the explicit material streaming choice forwarded to the child.</summary>
+    public bool StreamMaterialTextures { get; init; }
+    /// <summary>Gets the explicit D3D12 GPU-upload policy forwarded to the child.</summary>
+    public bool D3D12GpuUploadHeaps { get; init; }
+}
 
 public sealed record ViewerLaunchRequest(
     string StagePath,
@@ -30,6 +38,9 @@ public sealed class ViewerChildLauncher
     private readonly string _executablePath;
     private readonly SilkPreparationLimits? _preparationLimits;
     private readonly SilkGpuBufferBudget? _gpuBufferBudget;
+    private readonly SilkTexturePreparationBudgets? _textureBudgets;
+    private readonly bool _streamMaterialTextures;
+    private readonly bool _gpuUploadHeaps;
 
     public ViewerChildLauncher(ViewerChildLauncherOptions options)
         : this(options, new ViewerProcessStarter())
@@ -46,12 +57,16 @@ public sealed class ViewerChildLauncher
         _executablePath = ValidateExecutable(options);
         _preparationLimits = options.PreparationLimits;
         _gpuBufferBudget = options.GpuBufferBudget;
+        _textureBudgets = options.TexturePreparationBudgets;
+        _streamMaterialTextures = options.StreamMaterialTextures;
+        _gpuUploadHeaps = options.D3D12GpuUploadHeaps;
     }
 
     public ViewerProcessMetadata Launch(ViewerLaunchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ProcessStartInfo startInfo = CreateStartInfo(_executablePath, request, _preparationLimits, _gpuBufferBudget);
+        ProcessStartInfo startInfo = CreateStartInfo(_executablePath, request, _preparationLimits, _gpuBufferBudget,
+            _textureBudgets, _streamMaterialTextures, _gpuUploadHeaps);
         return _processStarter.Start(startInfo);
     }
 
@@ -59,7 +74,10 @@ public sealed class ViewerChildLauncher
         string executablePath,
         ViewerLaunchRequest request,
         SilkPreparationLimits? preparationLimits = null,
-        SilkGpuBufferBudget? gpuBufferBudget = null)
+        SilkGpuBufferBudget? gpuBufferBudget = null,
+        SilkTexturePreparationBudgets? texturePreparationBudgets = null,
+        bool streamMaterialTextures = false,
+        bool gpuUploadHeaps = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentNullException.ThrowIfNull(request);
@@ -68,10 +86,22 @@ public sealed class ViewerChildLauncher
             request.PluginPath,
             nameof(request.PluginPath));
         ValidateArgumentValue(request.Renderer, nameof(request.Renderer));
-        if ((preparationLimits is not null || gpuBufferBudget is not null) &&
+        if (gpuUploadHeaps &&
+            (gpuBufferBudget is null ||
+             (!string.Equals(request.Renderer, "D3D12", StringComparison.OrdinalIgnoreCase) &&
+              !string.Equals(request.Renderer, "Auto", StringComparison.OrdinalIgnoreCase))))
+        {
+            throw new ArgumentException("GPU-upload heaps require a D3D12/Auto child and an explicit GPU buffer budget.");
+        }
+        if (streamMaterialTextures && gpuBufferBudget is null)
+        {
+            throw new ArgumentException("Material streaming requires a configured GPU buffer budget.",
+                nameof(gpuBufferBudget));
+        }
+        if ((preparationLimits is not null || gpuBufferBudget is not null || texturePreparationBudgets is not null) &&
             string.Equals(request.Renderer, "Storm", StringComparison.OrdinalIgnoreCase))
         {
-            throw new NotSupportedException("Storm cannot enforce the configured preparation or GPU buffer ceilings.");
+            throw new NotSupportedException("Storm cannot enforce the configured preparation or resource ceilings.");
         }
         if (request.CameraPath is not null)
         {
@@ -89,7 +119,24 @@ public sealed class ViewerChildLauncher
         };
         startInfo.Environment.Remove("OPENUSD_SILK_MESH_RESERVATION_BYTES");
         startInfo.Environment.Remove("OPENUSD_SILK_MAX_PAGE_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_STORAGE_LIVE_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_STORAGE_UPDATE_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_STORAGE_COMMAND_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_STORAGE_TRANSFER_BYTES");
         startInfo.Environment.Remove("OPENUSD_SILK_GPU_BUFFER_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_CPU_TEXTURE_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_GPU_TEXTURE_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_GPU_STAGING_BYTES");
+        startInfo.Environment.Remove("OPENUSD_SILK_STREAM_MATERIAL_TEXTURES");
+        startInfo.Environment.Remove("OPENUSD_D3D12_GPU_UPLOAD_HEAPS");
+        if (gpuUploadHeaps)
+        {
+            startInfo.Environment["OPENUSD_D3D12_GPU_UPLOAD_HEAPS"] = "true";
+        }
+        if (streamMaterialTextures)
+        {
+            startInfo.Environment["OPENUSD_SILK_STREAM_MATERIAL_TEXTURES"] = "true";
+        }
         if (preparationLimits is not null)
         {
             startInfo.Environment["OPENUSD_SILK_MESH_RESERVATION_BYTES"] =
@@ -101,6 +148,32 @@ public sealed class ViewerChildLauncher
         {
             startInfo.Environment["OPENUSD_SILK_GPU_BUFFER_BYTES"] =
                 gpuBufferBudget.MaximumBytes.ToString(CultureInfo.InvariantCulture);
+        }
+        if (preparationLimits?.CommandStorage is { } storage)
+        {
+            startInfo.Environment["OPENUSD_SILK_STORAGE_LIVE_BYTES"] =
+                storage.MaximumLiveBytes.ToString(CultureInfo.InvariantCulture);
+            startInfo.Environment["OPENUSD_SILK_STORAGE_UPDATE_BYTES"] =
+                storage.MaximumUpdateBytes.ToString(CultureInfo.InvariantCulture);
+            startInfo.Environment["OPENUSD_SILK_STORAGE_COMMAND_BYTES"] =
+                storage.MaximumCommandBytes.ToString(CultureInfo.InvariantCulture);
+            startInfo.Environment["OPENUSD_SILK_STORAGE_TRANSFER_BYTES"] =
+                storage.TransferBufferBytes.ToString(CultureInfo.InvariantCulture);
+        }
+        if (texturePreparationBudgets?.CpuTextureBudget is { } cpu)
+        {
+            startInfo.Environment["OPENUSD_SILK_CPU_TEXTURE_BYTES"] =
+                cpu.MaximumBytes.ToString(CultureInfo.InvariantCulture);
+        }
+        if (texturePreparationBudgets?.GpuTextureBudget is { } textures)
+        {
+            startInfo.Environment["OPENUSD_SILK_GPU_TEXTURE_BYTES"] =
+                textures.MaximumBytes.ToString(CultureInfo.InvariantCulture);
+        }
+        if (texturePreparationBudgets?.GpuStagingBudget is { } staging)
+        {
+            startInfo.Environment["OPENUSD_SILK_GPU_STAGING_BYTES"] =
+                staging.MaximumBytes.ToString(CultureInfo.InvariantCulture);
         }
         startInfo.ArgumentList.Add("--stage");
         startInfo.ArgumentList.Add(stagePath);

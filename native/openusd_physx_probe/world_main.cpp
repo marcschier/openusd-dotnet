@@ -81,6 +81,57 @@ const openusd_physx_body_state* FindState(const openusd_physx_result_page& page,
     }
     return nullptr;
 }
+
+void CheckShapeSnapshot(openusd_physx_world* world, openusd_physx_test::PageBuilder& builder)
+{
+    openusd_physx_shape_snapshot_info info{};
+    info.struct_size = sizeof(info);
+    info.version = OPENUSD_PHYSX_SHAPE_SNAPSHOT_VERSION;
+    CheckStatus(openusd_physx_world_copy_shape_identities(world, nullptr, 0, &info, nullptr),
+        OPENUSD_PHYSX_STATUS_BUFFER_TOO_SMALL, "shape snapshot reports the complete required capacity");
+    Check(info.actor_count == builder.Actors().size() && info.shape_count == builder.Shapes().size(),
+        "shape snapshot counts actual attached actors and shapes");
+    const openusd_physx_shape_identity sentinel{UINT64_MAX, UINT64_MAX};
+    std::vector<openusd_physx_shape_identity> identities(info.shape_count, sentinel);
+    if (identities.empty())
+    {
+        Check(false, "the reference world must contain shapes");
+        return;
+    }
+    CheckStatus(openusd_physx_world_copy_shape_identities(world, identities.data(),
+        info.shape_count - 1, &info, nullptr), OPENUSD_PHYSX_STATUS_BUFFER_TOO_SMALL,
+        "shape snapshot refuses a one-short buffer");
+    for (const auto& identity : identities)
+    {
+        Check(identity.actor_id == sentinel.actor_id && identity.shape_id == sentinel.shape_id,
+            "a refused snapshot leaves every output slot untouched");
+    }
+    info.version++;
+    CheckStatus(openusd_physx_world_copy_shape_identities(world, identities.data(),
+        info.shape_count, &info, nullptr), OPENUSD_PHYSX_STATUS_VERSION_MISMATCH,
+        "shape snapshot rejects a different interface version");
+    info.version = OPENUSD_PHYSX_SHAPE_SNAPSHOT_VERSION;
+    CheckStatus(openusd_physx_world_copy_shape_identities(world, nullptr, info.shape_count, &info, nullptr),
+        OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT, "shape snapshot rejects a missing declared buffer");
+    CheckStatus(openusd_physx_world_copy_shape_identities(world, identities.data(),
+        OPENUSD_PHYSX_MAX_RESULT_CAPACITY + 1, &info, nullptr), OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT,
+        "shape snapshot enforces its fixed result bound before output access");
+    CheckStatus(openusd_physx_world_copy_shape_identities(world, identities.data(),
+        static_cast<uint32_t>(identities.size()), &info, nullptr), OPENUSD_PHYSX_STATUS_OK,
+        "shape snapshot copies a complete exact-capacity result");
+    size_t index = 0;
+    for (const auto& actor : builder.Actors())
+    {
+        for (uint32_t shape = 0; shape < actor.shape_count; ++shape)
+        {
+            const auto& actual = identities.at(index++);
+            Check(actual.actor_id == actor.id &&
+                actual.shape_id == builder.Shapes().at(actor.shape_offset + shape).id,
+                "actual SDK shapes retain each source actor/shape identity pair");
+        }
+    }
+    Check(index == identities.size(), "shape snapshot contains no unexpected identities");
+}
 }
 
 int main()
@@ -166,6 +217,7 @@ int main()
     Check(status.state == OPENUSD_PHYSX_WORLD_STATE_READY, "a built world is ready");
     Check(status.actor_count == 4 && status.dynamic_actor_count == 2 && status.joint_count == 1, "status reports the world content");
     Check(status.revision == builder.Header().revision, "status reports the page revision");
+    CheckShapeSnapshot(world, builder);
 
     ResultStorage storage(status.capacities);
     openusd_physx_result_page results = storage.Page();

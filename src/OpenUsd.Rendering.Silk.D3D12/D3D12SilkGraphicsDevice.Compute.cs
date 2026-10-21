@@ -222,22 +222,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 null,
                 &commandListId,
                 (void**)&commands));
-            Transition(
-                commands,
-                buffer.Resource,
-                buffer.State,
-                ResourceStates.CopySource);
+            bool uploadHeap = buffer.Usage.HasFlag(SilkBufferUsage.Upload);
+            if (!uploadHeap)
+            {
+                Transition(commands, buffer.Resource, buffer.State, ResourceStates.CopySource);
+            }
             commands->CopyBufferRegion(
                 readback,
                 0,
                 buffer.Resource,
-                0,
+                buffer.ResourceOffset,
                 buffer.Size);
-            Transition(
-                commands,
-                buffer.Resource,
-                ResourceStates.CopySource,
-                buffer.State);
+            if (!uploadHeap)
+            {
+                Transition(commands, buffer.Resource, ResourceStates.CopySource, buffer.State);
+            }
             SilkMarshal.ThrowHResult(commands->Close());
 
             Guid fenceId = ID3D12Fence.Guid;

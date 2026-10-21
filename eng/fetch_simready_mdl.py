@@ -1,6 +1,6 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 
-"""Acquire only pinned standalone PBR/glass MDL sources, without installing Kit."""
+"""Acquire pinned, licence-noticed standalone MDL profiles without installing Kit."""
 
 import argparse
 import hashlib
@@ -29,7 +29,8 @@ def read_files(path):
     if len(data) > 1024 * 1024:
         raise acquisition.WarehouseError("The module profile exceeds its byte bound.")
     profile = json.loads(data)
-    if profile.get("schemaVersion") != 1 or profile.get("id") != "simready-mdl-core":
+    if profile.get("schemaVersion") != 1 or profile.get("id") not in (
+            "simready-mdl-core", "simready-mdl-omnisurface", "simready-mdl-legacy-pbr"):
         raise acquisition.WarehouseError("The module acquisition profile is not supported.")
     files = profile["files"]
     if not isinstance(files, list) or not 1 <= len(files) <= 32:
@@ -37,9 +38,14 @@ def read_files(path):
     entries = []
     urls = {}
     for item in files:
-        if (item["repository"] not in ("NVIDIA/simready-blender-add-on", "NVIDIA/MDL-SDK")
+        repositories = ("NVIDIA/simready-blender-add-on", "NVIDIA/MDL-SDK")
+        if profile["id"] == "simready-mdl-omnisurface":
+            repositories += ("shader-slang/MDL-SDK",)
+        elif profile["id"] == "simready-mdl-legacy-pbr":
+            repositories += ("pablode/gatling",)
+        if (item["repository"] not in repositories
                 or not re.fullmatch(r"[0-9a-f]{40}", item["revision"])):
-            raise acquisition.WarehouseError("Only pinned first-party module sources are admitted.")
+            raise acquisition.WarehouseError("Only pinned repositories admitted by this module profile are allowed.")
         acquisition.validate_relative_path(item["sourcePath"])
         entry = acquisition.FileEntry(item["path"], item["size"], item["gitBlobSha1"], None)
         if (not entry.path.endswith(".mdl") or not item["sourcePath"].endswith(".mdl")

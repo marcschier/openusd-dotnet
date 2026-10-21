@@ -72,6 +72,8 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     private readonly VulkanCompositionRenderCallback? _renderCallback;
     private readonly bool _required;
     private readonly SilkGpuBufferBudget? _gpuBufferBudget;
+    private readonly SilkTexturePreparationBudgets? _textureBudgets;
+    private readonly SilkTextureResidencyOptions _textureResidency;
     private SilkMeshRenderer? _renderer;
     private SilkMeshRenderResult? _lastMeshRenderResult;
     private int _generationCount;
@@ -86,12 +88,16 @@ public sealed unsafe class VulkanCompositionViewportPresenter
         VulkanCompositionContext context,
         VulkanCompositionRenderCallback? renderCallback,
         bool required,
-        SilkGpuBufferBudget? gpuBufferBudget = null)
+        SilkGpuBufferBudget? gpuBufferBudget = null,
+        SilkTexturePreparationBudgets? texturePreparationBudgets = null,
+        SilkTextureResidencyOptions? textureResidencyOptions = null)
     {
         _context = context;
         _renderCallback = renderCallback;
         _required = required;
         _gpuBufferBudget = gpuBufferBudget;
+        _textureBudgets = texturePreparationBudgets;
+        _textureResidency = textureResidencyOptions ?? SilkTextureResidencyOptions.Default;
     }
 
     /// <summary>Creates a headless Vulkan composition presenter.</summary>
@@ -112,14 +118,33 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     public static VulkanCompositionViewportPresenter Create(
         VulkanCompositionRenderCallback renderCallback,
         SilkGpuBufferBudget? gpuBufferBudget,
-        bool required = false)
+        bool required = false) => Create(renderCallback, gpuBufferBudget, null, required);
+
+    /// <summary>Creates a retained presenter sharing buffer, texture and staging pools with other devices.</summary>
+    public static VulkanCompositionViewportPresenter Create(
+        VulkanCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets,
+        bool required)
+        => Create(renderCallback, gpuBufferBudget, texturePreparationBudgets, SilkTextureResidencyOptions.Default, required);
+
+    /// <summary>Creates a retained presenter with shared allocation pools and a material residency policy.</summary>
+    public static VulkanCompositionViewportPresenter Create(
+        VulkanCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets,
+        SilkTextureResidencyOptions textureResidencyOptions,
+        bool required)
     {
         ArgumentNullException.ThrowIfNull(renderCallback);
+        ArgumentNullException.ThrowIfNull(textureResidencyOptions);
         return new VulkanCompositionViewportPresenter(
             VulkanCompositionContext.Create(),
             renderCallback,
             required,
-            gpuBufferBudget);
+            gpuBufferBudget,
+            texturePreparationBudgets,
+            textureResidencyOptions);
     }
 
     /// <summary>Captures current presenter resources and render evidence.</summary>
@@ -150,7 +175,8 @@ public sealed unsafe class VulkanCompositionViewportPresenter
         if (_compatible && _renderCallback is not null && _renderer is null)
         {
             _gpuBufferBudget?.ConfigureDevice(_context.GraphicsDevice);
-            _renderer = new SilkMeshRenderer(_context.GraphicsDevice);
+            _textureBudgets?.ConfigureDevice(_context.GraphicsDevice);
+            _renderer = new SilkMeshRenderer(_context.GraphicsDevice, _textureResidency);
         }
         return new ValueTask<CompositionPresenterProbeResult>(result);
     }

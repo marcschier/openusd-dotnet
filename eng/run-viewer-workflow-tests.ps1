@@ -3,10 +3,11 @@
 [CmdletBinding()]
 param(
     [string]$NativeRuntimeRoot,
+    [string]$PhysicsRuntimeRoot,
     [string]$OutputRoot,
     [ValidateSet('workspace', 'document', 'portable', 'transitions', 'retirement',
         'physics-history', 'property-pages', 'hierarchy-pages', 'asset-relink', 'render-sequence',
-        'camera-bookmarks', 'authored-product')]
+        'camera-bookmarks', 'authored-product', 'physics-recording')]
     [string[]]$Scenario,
     [ValidateSet('D3D12', 'Vulkan')]
     [string]$CaptureRenderer = 'D3D12',
@@ -31,7 +32,8 @@ $scenarios = @(
     @{ Id = 'asset-relink'; Class = 'ViewerAssetRelinkNativeTests'; Flag = 'OPENUSD_VIEWER_ASSET_RELINK_SMOKE' },
     @{ Id = 'render-sequence'; Class = 'ViewerRenderSequenceNativeTests'; Flag = 'OPENUSD_VIEWER_RENDER_SEQUENCE_SMOKE' },
     @{ Id = 'camera-bookmarks'; Class = 'ViewerCameraBookmarkNativeTests'; Flag = 'OPENUSD_VIEWER_CAMERA_BOOKMARKS_SMOKE' },
-    @{ Id = 'authored-product'; Class = 'ViewerAuthoredRenderProductNativeTests'; Flag = 'OPENUSD_VIEWER_AUTHORED_PRODUCT_SMOKE' }
+    @{ Id = 'authored-product'; Class = 'ViewerAuthoredRenderProductNativeTests'; Flag = 'OPENUSD_VIEWER_AUTHORED_PRODUCT_SMOKE' },
+    @{ Id = 'physics-recording'; Class = 'ViewerPhysicsRecordingNativeTests'; Flag = 'OPENUSD_VIEWER_PHYSICS_RECORDING_SMOKE' }
 )
 if ($ListScenarios)
 {
@@ -66,6 +68,23 @@ if ($selected.Count -eq 0)
 }
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$physicsBin = $null
+if (@($selected | Where-Object Id -eq 'physics-recording').Count -gt 0)
+{
+    if ([string]::IsNullOrWhiteSpace($PhysicsRuntimeRoot))
+    {
+        $PhysicsRuntimeRoot = Join-Path $repoRoot 'native\install\shim\win-x64-physx'
+    }
+    if (-not [IO.Path]::IsPathFullyQualified($PhysicsRuntimeRoot))
+    {
+        throw 'PhysicsRuntimeRoot must be an absolute matched physics shim prefix.'
+    }
+    $physicsBin = Join-Path ([IO.Path]::GetFullPath($PhysicsRuntimeRoot)) 'bin'
+    if (-not (Test-Path -LiteralPath (Join-Path $physicsBin 'openusd_physx.dll') -PathType Leaf))
+    {
+        throw 'The physics-recording workflow requires the matched openusd_physx.dll.'
+    }
+}
 $dotnet = Join-Path $repoRoot '.dotnet\dotnet.exe'
 $project = Join-Path $repoRoot 'tests\OpenUsd.Viewer.Tests\OpenUsd.Viewer.Tests.csproj'
 $runner = Join-Path $PSScriptRoot 'run-managed-tests.ps1'
@@ -97,9 +116,11 @@ function Get-WorkflowSourcePaths
 {
     $paths = @(& git -C $repoRoot ls-files --cached --others --exclude-standard -- `
         'src' 'native\openusd_dotnet' 'native\openusd_storm_child' 'native\openusd_hydra' `
-        'native\include' 'native\private' 'tests\OpenUsd.Viewer.Tests' `
+        'native\include' 'native\private' 'native\openusd_physx' 'tests\OpenUsd.Viewer.Tests' `
         'eng\run-viewer-workflow-tests.ps1' 'eng\managed-workflow-reports.ps1' `
         'eng\run-managed-tests.ps1' 'eng\openusd.lock.json' `
+        'eng\physx.lock.json' 'eng\build-physx-native.ps1' 'eng\build-physx-shim.ps1' 'eng\fetch-physx-native.ps1' `
+        'eng\vhacd.lock.json' 'eng\fetch-vhacd.ps1' `
         'Directory.Build.props' 'Directory.Build.targets' 'Directory.Packages.props' 'global.json')
     if ($LASTEXITCODE -ne 0 -or $paths.Count -eq 0)
     {
@@ -159,6 +180,10 @@ function Get-WorkflowBinaryPaths
         Get-ChildItem -LiteralPath $assemblyDirectory -File -Filter '*.dll'
         Get-ChildItem -LiteralPath (Join-Path $runtime 'bin') -File -Filter '*.dll'
         Get-ChildItem -LiteralPath (Join-Path $runtime 'lib') -File -Filter '*.dll'
+        if ($physicsBin)
+        {
+            Get-Item -LiteralPath (Join-Path $physicsBin 'openusd_physx.dll')
+        }
     ) | Select-Object -ExpandProperty FullName | Sort-Object -Unique
 }
 $binaryPaths = @(Get-WorkflowBinaryPaths)
@@ -182,7 +207,8 @@ $workRoot = (Get-Item -LiteralPath $workDirectory.FullName).FullName
 $environmentNames = @('PATH', 'TEMP', 'TMP', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',
-    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'GALLIUM_DRIVER',
+    'OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT', 'OPENUSD_VIEWER_PHYSICS_RECORDING_EVIDENCE_ROOT',
+    'OPENUSD_VIEWER_PHYSICS_RUNTIME_ROOT', 'GALLIUM_DRIVER',
     'MESA_GL_VERSION_OVERRIDE', 'MESA_GLSL_VERSION_OVERRIDE', 'LIBGL_ALWAYS_SOFTWARE',
     'LP_NUM_THREADS', 'MESA_SHADER_CACHE_DISABLE',
     'OPENUSD_MESA_WGL_ARCHIVE_SHA256', 'OPENUSD_MESA_WGL_ARCHIVE_URL',
@@ -224,6 +250,11 @@ try
         $binariesBefore = @(Get-FileRecords @(Get-WorkflowBinaryPaths))
     }
     $env:PATH = "$(Join-Path $runtime 'bin');$(Join-Path $runtime 'lib');$env:PATH"
+    if ($physicsBin)
+    {
+        $env:PATH = "$physicsBin;$env:PATH"
+        $env:OPENUSD_VIEWER_PHYSICS_RUNTIME_ROOT = [IO.Path]::GetFullPath($PhysicsRuntimeRoot)
+    }
     $env:OPENUSD_VIEWER_TEST_NATIVE_ROOT = $runtime
     $env:OPENUSD_PLUGIN_PATH = Join-Path $runtime 'plugin\usd'
     $env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH
@@ -233,6 +264,7 @@ try
     $env:OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT = $evidenceRoot
     $env:OPENUSD_VIEWER_CAPTURE_RENDERER = $CaptureRenderer
     $env:OPENUSD_VIEWER_CAPTURE_EVIDENCE_ROOT = $evidenceRoot
+    $env:OPENUSD_VIEWER_PHYSICS_RECORDING_EVIDENCE_ROOT = $evidenceRoot
     foreach ($entry in $scenarios)
     {
         [Environment]::SetEnvironmentVariable($entry.Flag, '0', 'Process')
@@ -284,10 +316,11 @@ try
         platform = 'win-x64'
         captureRenderer = $CaptureRenderer
         captureEvidence = @(Get-FileRecords @(
-            @('sequence-composition.json', 'product-composition.json') |
+            @('sequence-composition.json', 'product-composition.json', 'physics-recording-composition.json') |
                 ForEach-Object { Join-Path $evidenceRoot $_ } |
                 Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }))
         runtimeRoot = $runtime
+        physicsRuntimeRoot = if ($physicsBin) { [IO.Path]::GetFullPath($PhysicsRuntimeRoot) } else { $null }
         testAssembly = $target[0]
         allRegisteredScenarios = $selected.Count -eq $scenarios.Count
         scenarios = @($results.ToArray())

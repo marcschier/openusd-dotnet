@@ -511,6 +511,11 @@
                   AutomationProperties.Name="Bake physics simulation"
                   Header="_Bake..."
                   InputGesture="B" />
+              <MenuItem
+                  x:Name="PhysicsRecordSequenceMenuItem"
+                  AutomationProperties.Name="Record physics sequence"
+                  Header="_Record Sequence..."
+                  IsEnabled="False" />
               <Separator />
               <MenuItem Header="_Gizmo">
                 <MenuItem

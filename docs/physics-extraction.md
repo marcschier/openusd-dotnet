@@ -26,11 +26,138 @@ The traversal uses `UsdTraverseInstanceProxies` over active, defined, concrete p
 instances are visited through their proxies. Every object gets a stable identity hashed from the
 composed prim path and the object type, so two instances of one prototype produce two distinct
 identities that both name the same `PrototypeId`.
+That prototype identity is stage-local: the SDK can allocate different prototype ordinals
+after reload or restoration. Content fingerprints exclude those transient ordinals while
+retaining authored paths, instance traits, resolved properties, relationships and geometry.
+
+### Bounded whole-stage preparation
+
+`UsdPhysicsStageExtractor.PrepareAsync` collects geometry in object-index windows and returns
+one complete detached page. Each native extraction is still one traversal and one interop call;
+native cooking is batched separately. The default preparation profile includes invisible and
+guide-purpose colliders, because render visibility does not decide physical participation.
+
+```csharp
+UsdPhysicsExtractionPage prepared =
+    await UsdPhysicsStageExtractor.PrepareAsync(scheduler, cancellationToken);
+await transport.AttachExtractionAsync(prepared);
+await transport.BuildAsync(cancellationToken);
+```
+
+Preparation uses windows of at most 512 objects, with at most 4194304 raw points and 12582912
+indices per window. A window that exceeds its geometry bounds is split; a single object that
+cannot fit is refused. Final extraction bounds still apply, including the unchanged 512-MiB
+page ceiling. The overload taking extraction options applies their capacities to the final
+page as well as lowering the per-window limits.
+
+`GeometryObjectStart` and `GeometryObjectCount` expose individual windows for diagnostic tools.
+`FingerprintMeshData=true` with `IncludeMeshData=false` fingerprints geometry without retaining
+it. Both forms set `PartialGeometry`; they cannot directly build a world. Their fingerprints
+still cover all source geometry, including objects outside a retained window. Preparation
+compares those fingerprints and the stage change serial throughout, then checks again before
+publishing. It never returns a partial page after cancellation, source changes or capacity refusal.
+Fingerprint reuse is limited to the same composed prototype geometry within one traversal.
+
+Convex hulls and decompositions are compacted before the complete page is assembled. Explicit
+hull ranges survive `ToArray`/`Create`, so the result remains pointer-free rather than depending
+on an in-process cache. Analytic shapes and remaining raw geometry keep their existing semantics.
+
+Identical prepared geometry and raw topology share stored ranges without merging collider
+identities. The preparation cache includes source geometry, topology where applicable, units,
+approximation and world ABI; its lifetime fixes the SDK and cooking implementation. Native
+cooked resources are owned by one world and also distinguish the exact placement scale.
+
+Three-point convex inputs retain their original vertices and add one interior centroid sample
+for the pinned PhysX cooker's four-point construction requirement. This does not change the
+input convex set or replace the requested approximation. The SDK's normal finite-hull
+regularization still applies to planar inputs; no custom thickness, box substitution or
+collider removal is introduced by the preparation layer. Coincident inputs are refused.
+
+## Exact fixed-step results for capture
+
+World construction checks configured CPU-domain capacities before creating the candidate
+SDK actors and shapes. `MaxRigidBodies` includes static actors, articulation links and
+controller actors, and must also fit the complete published pose set. `MaxColliders`
+counts every prepared hull and a controller's implicit shape. Joint, articulation,
+controller and vehicle counts retain their separate limits. Zero is a real zero bound,
+not an unlimited sentinel. Over-capacity builds report
+`OPENUSD_PHYSICS_WORLD_CAPACITY_EXCEEDED` and preserve the previously built world.
+An event capacity of zero disables native event collection without disabling collisions.
+
+After attaching extraction and building a paused `UsdPhysicsTransport`,
+`StepAndAcquireFrameAsync` advances one bounded batch and returns a lease on that
+exact result. Unlike separate `StepAsync` and `TryAcquireLatestFrame` calls, a later
+queued step or reset cannot replace the frame before the capture caller receives it.
+
+```csharp
+await transport.AttachExtractionAsync(page);
+await transport.BuildAsync();
+using UsdPhysicsFrameLease frame = await transport.StepAndAcquireFrameAsync(1, cancellationToken);
+// Consume frame.Frame while the lease is alive.
+```
+
+The batch must fit `Options.MaxCatchUpSubSteps` and the remaining authored timeline.
+It does not round a fractional final step upward; the scheduler's existing
+fixed-step end tolerance handles floating-point endpoint noise.
+Playback must be paused and non-looping. Frame and lease capacity are reserved before
+advancing; capacity refusal leaves simulation time unchanged. A solver failure,
+truncated/overflowed result, or cancellation after stepping begins returns no frame
+and faults the transport, requiring reset before retry. Cancellation before stepping
+leaves the paused world usable. Existing latest-wins playback remains unchanged.
+This method is the capture building block used by the optional recording library below.
+
+### Exact simulation recording library
+
+`OpenUsd.Rendering.Physics` joins the fixed-step transport to the existing atomic `RenderDiskJob`
+writer. `PhysicsRenderRecording.Execute` runs on a caller-selected renderer/encoding thread, not
+the physics worker or a UI thread that the renderer needs. The host exclusively owns the paused,
+nonlooping transport, stage, binding table and capture source for the duration of the operation.
+
+The host supplies a bounded `RenderDiskJobRequest` whose frame times are exactly
+`transport.Timeline.ToTimeCode(stepIndex * transport.FixedStep.Seconds)`, a
+`PhysicsRenderCapacities` large enough for the transport's publication capacities, and an
+`IPhysicsRenderRecordingSource`. Projection storage and the initial complete frame/bindings are
+validated before the solver advances. Each requested frame then uses `StepAndAcquireFrameAsync`,
+projects every body and whole deformation window without interpolation, and holds the exact
+publication lease through the completed capture.
+
+The capture adapter must apply the requested state and all supplied overrides, drain rendering,
+then acknowledge the publication revision and counts actually consumed. Merely queuing overrides
+is not success. Missing/conflicting bindings, truncated frames, invalid deformation windows,
+non-finite or unnarrowable coordinates, stale acknowledgements, resets, binding changes and
+host-reported source/review changes refuse the job. The host's lightweight `Validate` callback
+checks source ownership around captures and before publication; its identities are attestations,
+not an independent verified-origin claim.
+
+The shared disk writer emits display/HDR/depth planes using its existing quotas and adds optional
+per-frame `simulation` metadata: epoch, scenario/review identity, authored source revision,
+publication revision, fixed-step index and seconds, exact time code, binding revision and complete
+body/deformation counts. Ordinary authored-time jobs keep their prior schema and omit this object.
+An image whose simulation time differs from its requested state is refused.
+
+`ClearOverrides` runs without cancellation after the final image has been encoded and before the
+directory is published. Failure and cancellation drain the capture and clear overrides as well;
+cleanup failures remain visible, including alongside the original operation error. No partial
+directory is published, no source layer is authored, and no physics rewind is implied by cleanup.
+
+The library has deterministic whole-pipeline tests and a package-only NativeAOT check using the
+real CPU solver. That package check uses diagnostic pixels, not a GPU-fidelity claim. The MCP
+`render_physics_sequence` adapter additionally has a real CPU-solver/hdSilk capture journey with
+moving images, depth/HDR, cancellation/retry and restored authored preview. Its bounded rigid-body
+profile is documented in [MCP simulation recording](mcp.md#render_physics_sequence).
+Viewer recording has its own native entry-point evidence. Complete warehouse collider and
+full-scene simulation acceptance remain separate work; authored-time image sequences do not step physics.
+
+Native transport publications convert solver metres/Y-up back to the committed extraction's
+authored stage units and basis for positions, orientations, velocities and deformation vertices.
+Angular velocity changes basis without length scaling. The mapping belongs to the successfully
+built world, not a newly attached page awaiting a rebuild. This matches the renderer-neutral frame
+contract and prevents centimetre or Z-up scenes from moving to the wrong camera space.
 
 ## What the page contains
 
-The page is a header plus ten byte-aligned sections: strings, objects, properties,
-relationships, targets, numbers, texts, points, indices, and diagnostics. Records reference each
+Extraction ABI 2 has a 216-byte header and eleven byte-aligned sections: strings, objects, properties,
+relationships, targets, numbers, texts, points, indices, diagnostics, and prepared hull ranges. Records reference each
 other only by index, never by pointer, so the page can be copied, cached, or checkpointed as
 bytes.
 
@@ -40,7 +167,9 @@ traits, and the content fingerprint.
 
 Each object records its identity, composed path, name, type name, object kind, domains, traits,
 collision geometry, the owning scene and parent body, its simulation-space transform, and the
-ranges of properties, relationships, mesh points, and triangle indices that belong to it.
+ranges of properties, relationships, mesh points, triangle indices and prepared hulls that belong
+to it. Object records are 216 bytes. A hull range contains two UInt32 values naming its first point
+and point count; its 4-255 points must be within the collider's contiguous point range.
 
 Every page is validated before a caller can read it. `UsdPhysicsExtractionPage.Create` rejects a
 buffer whose magic, ABI version, header size, declared size, alignment, section bounds, section
@@ -53,6 +182,10 @@ The page reports transforms in simulation space, which is metres with a Y up bas
 are rotated into the simulation basis and then scaled by `metersPerUnit`; orientations are
 composed with the same rotation. Collider extents are scaled but never rotated because they are
 local to the collider.
+
+Raw geometry points remain in local authored stage units. Prepared convex points carry
+`PreparedPointsMetres` and are already local metres; the world applies the collider's authored
+scale and pose without converting those points a second time.
 
 `UsdPhysicsExtractionSpace` reproduces that mapping exactly and inverts it, so a simulation
 result maps back onto the stage it came from without guessing:
@@ -242,7 +375,7 @@ direction whose own squared length would overflow still keeps its orientation in
 into a zero direction the runtime would refuse; only a direction that carries no orientation at all
 falls back to simulation down, and only an authored one is reported.
 
-Mesh topology is the one case that drops an object rather than reducing it. The mesh points of a
+Mesh topology and unsupported mesh approximations drop an object rather than reducing it. The mesh points of a
 page are one shared section that is validated as a whole, so a collider is checked against the
 same rules the page validator applies before any of its topology is staged: every point has to be
 finite, a convex hull needs at least four points, a triangle mesh needs at least three points and
@@ -250,6 +383,22 @@ whole triangles, and every index has to name one of its own points. A collider t
 them is left out of the page together with a note that names what was missing, no points of it are
 staged, and the rigid body that owned nothing else is then reported as a body without a usable
 collision shape. Every other actor of the stage keeps simulating.
+
+Native world construction prepares `convexHull` and `convexDecomposition` geometry in bounded CPU
+batches before composing the world page. Every output hull remains attached to its original
+collider's actor, pose, scale and material; a decomposition is not replaced with one enclosing hull.
+`none` keeps the authored triangle geometry. Metadata-only composition without native preparation
+still refuses decomposition. Invalid approximation metadata and unsupported tokens, including
+`boundingCube`, `boundingSphere` and `sdf`, produce path-specific skipped-input notes.
+Interactive physics can continue with a reported partial world; MCP and Viewer exact-step
+recordings refuse skipped composition inputs rather than presenting that world as complete.
+
+The preparation interface has fixed batch/input/output limits and cancellable one-shot ownership.
+See [the native profile](../native/openusd_physx/README.md#cpu-mesh-preparation) for its locked
+algorithm and defaults. Preparation compacts geometry already present in an extraction page; it
+can also be driven through `PrepareAsync` to collect bounded windows into a complete page.
+Unmapped physics opinions are marked even when their property records are hidden. Such a collider
+is not silently cooked with default settings; its unsupported inputs remain explicit.
 
 ### What an authored limit means
 
@@ -379,4 +528,3 @@ not. With `1` a test that cannot reach the runtime **fails** and names the
 runtime diagnostics that explain why; with `0` it is reported as skipped with the
 same reason. A run whose summary shows the CPU domain tests skipped therefore
 means the native library was not staged, never that the domains were verified.
-

@@ -24,6 +24,9 @@ internal sealed class AvaloniaViewerRenderBackendHost(
 {
     private readonly SilkPreparationLimits? _preparationLimits = ViewerStartupOptions.PreparationLimits;
     private readonly SilkGpuBufferBudget? _gpuBufferBudget = ViewerStartupOptions.GpuBufferBudget;
+    private readonly SilkTexturePreparationBudgets? _textureBudgets = ViewerStartupOptions.TexturePreparationBudgets;
+    private readonly SilkTextureResidencyOptions _textureResidency = ViewerStartupOptions.TextureResidencyOptions;
+    private readonly bool _gpuUploadHeaps = ViewerStartupOptions.D3D12GpuUploadHeaps;
     private readonly int[] _attachCounts =
         new int[Enum.GetValues<RenderBackendKind>().Max(kind => (int)kind) + 1];
     private readonly ViewerBackendRuntimeIdentity?[] _runtimeIdentities =
@@ -52,9 +55,13 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         ViewerBackendRuntimeIdentity.Unknown;
 
     internal static string? GetPreparationUnsupportedReason(
-        RenderBackendKind kind, SilkPreparationLimits? limits, SilkGpuBufferBudget? gpuBufferBudget = null) =>
-        kind == RenderBackendKind.Storm && (limits is not null || gpuBufferBudget is not null)
-            ? "Storm cannot enforce the configured hdSilk preparation or GPU buffer ceilings."
+        RenderBackendKind kind, SilkPreparationLimits? limits, SilkGpuBufferBudget? gpuBufferBudget = null,
+        SilkTexturePreparationBudgets? texturePreparationBudgets = null, bool gpuUploadHeaps = false) =>
+        gpuUploadHeaps && kind != RenderBackendKind.D3D12
+            ? "The configured GPU-upload heap policy requires the D3D12 backend."
+            : kind == RenderBackendKind.Storm &&
+            (limits is not null || gpuBufferBudget is not null || texturePreparationBudgets is not null)
+            ? "Storm cannot enforce the configured hdSilk preparation, buffer, texture or staging ceilings."
             : null;
 
     private OpenUsdSilkSession CreateSilkSession() => OpenUsdSilkRuntime.Create(pluginPath, source, _preparationLimits);
@@ -106,7 +113,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget) is { } preparationReason)
+        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget, _textureBudgets, _gpuUploadHeaps)
+            is { } preparationReason)
         {
             return ValueTask.FromResult(Unavailable(kind, RenderBackendProbeFailureKind.RuntimeUnavailable,
                 "VIEWER_PREPARATION_LIMITS_UNSUPPORTED", preparationReason));
@@ -278,7 +286,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(initialState);
-        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget) is { } preparationReason)
+        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget, _textureBudgets)
+            is { } preparationReason)
         {
             throw Failure(kind, RenderBackendInitializationFailureKind.UnsupportedConfiguration,
                 "VIEWER_PREPARATION_LIMITS_UNSUPPORTED", preparationReason);
@@ -573,6 +582,15 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 diagnosticMessage += string.Create(System.Globalization.CultureInfo.InvariantCulture,
                     $" Shared logical GPU buffer payload ceiling={bufferBudget.MaximumBytes} bytes; not total VRAM.");
             }
+            if (_textureBudgets is { } textureBudgets)
+            {
+                diagnosticMessage += string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $" Shared texture-preparation ceilings: " +
+                    $"CPU pixels={textureBudgets.CpuTextureBudget?.MaximumBytes}; " +
+                    $"GPU textures={textureBudgets.GpuTextureBudget?.MaximumBytes}; " +
+                    $"GPU staging={textureBudgets.GpuStagingBudget?.MaximumBytes} bytes. ") +
+                    "Unset domains remain unbounded; not total process memory or VRAM.";
+            }
             SetRuntimeIdentity(
                 kind,
                 kind switch
@@ -624,9 +642,10 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         try
         {
             session = CreateSilkSession();
-            device = D3D12SilkGraphicsDevice.Create(useWarp: false);
+            device = D3D12SilkGraphicsDevice.Create(useWarp: false, useGpuUploadHeaps: _gpuUploadHeaps);
             _gpuBufferBudget?.ConfigureDevice(device);
-            meshRenderer = new SilkMeshRenderer(device);
+            _textureBudgets?.ConfigureDevice(device);
+            meshRenderer = new SilkMeshRenderer(device, _textureResidency);
             var renderer = new D3D12StagePresentationRenderer(
                 new OpenUsdSilkSessionAdapter(session),
                 meshRenderer,
@@ -639,7 +658,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 device,
                 renderer,
                 device.Capabilities,
-                CreateSilkSession);
+                CreateSilkSession,
+                _textureResidency);
         }
         catch
         {
@@ -660,7 +680,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 new OpenUsdSilkSessionAdapter(session),
                 state);
             VulkanCompositionViewportPresenter presenter =
-                VulkanCompositionViewportPresenter.Create(renderer.Render, _gpuBufferBudget);
+                VulkanCompositionViewportPresenter.Create(
+                    renderer.Render, _gpuBufferBudget, _textureBudgets, _textureResidency, required: false);
             return new SilkCompositionResources(
                 presenter,
                 session,
@@ -672,7 +693,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     "Vulkan",
                     SupportsCompute: true,
                     IsSoftware: false),
-                CreateSilkSession);
+                CreateSilkSession,
+                _textureResidency);
         }
         catch
         {
@@ -695,6 +717,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             presenter = new MetalCompositionViewportPresenter(
                 renderer.Render,
                 _gpuBufferBudget,
+                _textureBudgets,
+                _textureResidency,
                 required: true);
             return new SilkCompositionResources(
                 presenter,
@@ -710,7 +734,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 {
                     SupportsDescriptorIndexedTextureTables = true
                 },
-                CreateSilkSession);
+                CreateSilkSession,
+                _textureResidency);
         }
         catch
         {
@@ -1773,7 +1798,7 @@ internal sealed class D3D12StagePresentationRenderer(
         renderer.UpdateSelection(
             state.Selection,
             ViewerSelectionOutlinePolicy.Current);
-        ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, renderer);
+        int? stagedPoses = ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, renderer);
         _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(_physicsStage, _physicsDeformations, renderer);
         SilkMeshRenderResult result = renderer.ApplyAndRender(
             page,
@@ -1781,6 +1806,7 @@ internal sealed class D3D12StagePresentationRenderer(
             depthTarget,
             SilkPickFrameBinding.FromState(state, sceneRevision: null),
             ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings));
+        ViewerSilkPhysicsOverrideApplier.Complete(_physicsStage, _physicsOverrides, stagedPoses);
         Volatile.Write(ref _lastCommandCount, page.CommandCount);
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
         Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
@@ -1881,7 +1907,7 @@ internal sealed class VulkanStagePresentationRenderer(
         context.Renderer.UpdateSelection(
             state.Selection,
             ViewerSelectionOutlinePolicy.Current);
-        ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
+        int? stagedPoses = ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
         _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(
             _physicsStage, _physicsDeformations, context.Renderer);
         SilkMeshRenderResult result = context.Renderer.ApplyAndRender(
@@ -1890,6 +1916,7 @@ internal sealed class VulkanStagePresentationRenderer(
             context.DepthTarget,
             SilkPickFrameBinding.FromState(state, sceneRevision: null),
             ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings));
+        ViewerSilkPhysicsOverrideApplier.Complete(_physicsStage, _physicsOverrides, stagedPoses);
         Volatile.Write(ref _lastCommandCount, page.CommandCount);
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
         Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
@@ -1992,7 +2019,7 @@ internal sealed class MetalStagePresentationRenderer(
         context.Renderer.UpdateSelection(
             state.Selection,
             ViewerSelectionOutlinePolicy.Current);
-        ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
+        int? stagedPoses = ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
         _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(
             _physicsStage, _physicsDeformations, context.Renderer);
         SilkMeshRenderResult result = context.Renderer.ApplyAndRender(
@@ -2001,6 +2028,7 @@ internal sealed class MetalStagePresentationRenderer(
             context.DepthTarget,
             SilkPickFrameBinding.FromState(state, sceneRevision: null),
             ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings));
+        ViewerSilkPhysicsOverrideApplier.Complete(_physicsStage, _physicsOverrides, stagedPoses);
         Volatile.Write(ref _lastCommandCount, page.CommandCount);
         int triangles = checked((int)context.Renderer.GpuResources.Meshes.Values.Sum(
             mesh => (long)mesh.IndexCount / 3));
@@ -2085,7 +2113,8 @@ internal sealed class SilkCompositionResources(
     IDisposable? device,
     ISilkStagePresentationRenderer renderer,
     SilkGraphicsCapabilities capabilities,
-    Func<OpenUsdSilkSession> productSessionFactory) : IDisposable
+    Func<OpenUsdSilkSession> productSessionFactory,
+    SilkTextureResidencyOptions? textureResidencyOptions = null) : IDisposable
 {
     private IDisposable? _device = device;
     private SilkMeshRenderer? _meshRenderer = meshRenderer;
@@ -2093,6 +2122,8 @@ internal sealed class SilkCompositionResources(
     private int _disposed;
 
     internal ICompositionViewportPresenter Presenter { get; } = presenter;
+    internal SilkTextureResidencyOptions TextureResidencyOptions { get; } =
+        textureResidencyOptions ?? SilkTextureResidencyOptions.Default;
 
     internal ISilkStagePresentationRenderer Renderer { get; } = renderer;
 

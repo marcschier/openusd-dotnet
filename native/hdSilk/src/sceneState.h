@@ -17,6 +17,7 @@
 // serialized into it, so naming the constants here keeps the two from drifting.
 #include "openusd_hdsilk.h"
 #include "meshPreparation.h"
+#include "arraySharing.h"
 
 #include <array>
 #include <cstddef>
@@ -28,6 +29,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+class HdSilkPageWriter;
+class HdSilkCommandSink;
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -201,6 +205,7 @@ struct HdSilkMeshRecord
     int32_t primId = -1;
     int32_t instanceId = 0;
     int32_t instanceIndex = 0;
+    int32_t sourcePickIndex = 0;
     uint32_t topologyKind = 1;
     uint64_t topologyRevision = 0;
     uint32_t doubleSided = 1;
@@ -364,6 +369,9 @@ struct HdSilkMaterialTexture
     float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     std::string asset;
     std::string uvPrimvar;
+    // A primvar-reader default, applied only when the named mesh coordinate is absent.
+    bool hasUvFallback = false;
+    float uvFallback[2] = {0.0f, 0.0f};
 };
 
 /// A single material Sprim's resolved shading data. An unsupported surface is
@@ -818,6 +826,10 @@ public:
     {
         return _meshPreparationBudget;
     }
+    /// Exact copy-on-write sharing within one sync; cleared after its workers finish, including failed renders.
+    void ShareMeshAttributes(HdSilkMeshAttributes* attributes);
+    void ShareMeshIndices(VtArray<uint32_t>* indices);
+    void ClearMeshArraySharing();
     /// Replaces every published instance of "path" with "records". Instance
     /// indices that existed before but are absent from "records" are queued
     /// for removal so a shrinking instancer cannot leave stale geometry
@@ -834,6 +846,8 @@ public:
     std::string GetMaterialBindingPurpose() const;
     bool HasMaterial(const std::string& path) const;
     bool HasMeshPath(const std::string& path) const;
+    bool TryGetMeshSourceIdentity(
+        const HdSilkMeshKey& key, int32_t* primId, int32_t* sourcePickIndex) const;
     void SetMeshMaterialPath(const std::string& path, const std::string& materialPath);
     void NoteMaterialBindingPurposeChanged();
     uint64_t GetMaterialBindingGeneration() const;
@@ -894,11 +908,22 @@ public:
         uint64_t* outRevision, uint32_t* outCommandCount, size_t maximumPageBytes = SIZE_MAX,
         bool awaitAcknowledgement = false);
 
+    /// Writes one logical update to a private store with independent total and
+    /// per-command ceilings. Flush succeeds before publication or output mutation.
+    /// The caller supplies an empty store, discards it on failure, and retains it for replay.
+    size_t BuildPageTo(
+        HdSilkCommandSink& sink, size_t maximumUpdateBytes, size_t maximumCommandBytes,
+        uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement = true);
+
     /// Resolves the one deferred publication. Rejecting leaves every change pending.
     /// No scene mutation is permitted until acknowledgement or rejection.
     bool CompletePage(uint64_t revision, bool acknowledge);
 
 private:
+    void _DirtyMaterialCoordinateMeshes(const std::string& materialPath);
+    void _BuildPage(
+        HdSilkPageWriter& buffer, uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement);
+
     struct _Entry
     {
         HdSilkMeshRecord record;
@@ -954,6 +979,9 @@ private:
         const HdSilkLinkTable& links) const;
 
     mutable std::mutex _mutex;
+    std::mutex _meshArraySharingMutex;
+    HdSilkArraySharing<HdSilkMeshAttributes> _sharedMeshAttributes;
+    HdSilkArraySharing<VtArray<uint32_t>> _sharedMeshIndices;
     std::shared_ptr<HdSilkMeshPreparationBudget> _meshPreparationBudget =
         std::make_shared<HdSilkMeshPreparationBudget>();
     uint64_t _materialBindingGeneration = 0;

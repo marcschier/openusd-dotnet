@@ -2,6 +2,7 @@
 
 using Avalonia.Threading;
 using OpenUsd.Rendering;
+using OpenUsd.Rendering.Physics;
 
 namespace OpenUsd.Viewer;
 
@@ -29,6 +30,14 @@ internal sealed partial class ViewerRenderCoordinator
     {
         ArgumentNullException.ThrowIfNull(range);
         ArgumentNullException.ThrowIfNull(progress);
+        return StartRenderSequence(
+            token => RenderSequenceCoreAsync(range.Times, outputParent, outputs, cameraPath, progress, token),
+            cancellationToken);
+    }
+
+    private Task<RenderDiskJobResult> StartRenderSequence(
+        Func<CancellationToken, Task<RenderDiskJobResult>> operation, CancellationToken cancellationToken)
+    {
         ThrowIfDisposed();
         lock (_sequenceGate)
         {
@@ -41,7 +50,27 @@ internal sealed partial class ViewerRenderCoordinator
             var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _sequenceCancellation = cancellation;
             _sequenceDrained = drained.Task;
-            return RenderSequenceCoreAsync(range, outputParent, outputs, cameraPath, progress, cancellation, drained);
+            return RunOwnedSequenceAsync(operation, cancellation, drained);
+        }
+    }
+
+    private async Task<RenderDiskJobResult> RunOwnedSequenceAsync(
+        Func<CancellationToken, Task<RenderDiskJobResult>> operation,
+        CancellationTokenSource cancellation, TaskCompletionSource drained)
+    {
+        await Task.Yield();
+        try
+        {
+            return await operation(cancellation.Token);
+        }
+        finally
+        {
+            lock (_sequenceGate)
+            {
+                _sequenceCancellation = null;
+            }
+            cancellation.Dispose();
+            drained.TrySetResult();
         }
     }
 
@@ -55,13 +84,12 @@ internal sealed partial class ViewerRenderCoordinator
     }
 
     private async Task<RenderDiskJobResult> RenderSequenceCoreAsync(
-        ViewerRenderSequenceRange range, string outputParent, ViewerRenderSequenceOutputOptions outputs,
+        IReadOnlyList<double> times, string outputParent, ViewerRenderSequenceOutputOptions outputs,
         string? cameraPath,
-        Action<ViewerRenderSequenceProgress> progress, CancellationTokenSource cancellation,
-        TaskCompletionSource drained)
+        Action<ViewerRenderSequenceProgress> progress, CancellationToken token,
+        ViewerPhysicsRecordingSession? physics = null, ViewerPhysicsSequenceRequest? physicsRequest = null)
     {
         await Task.Yield();
-        CancellationToken token = cancellation.Token;
         bool entered = false;
         try
         {
@@ -75,15 +103,24 @@ internal sealed partial class ViewerRenderCoordinator
             {
                 throw new NotSupportedException(unsupported);
             }
+            if (physics is not null &&
+                (backend.Identity.Kind == RenderBackendKind.Storm || !backend.SupportsPhysicsTransformOverrides))
+            {
+                throw new NotSupportedException("Physics recording requires an hdSilk rigid-pose capture backend.");
+            }
             string output = ViewerRenderSequenceRange.CreateOutputDirectory(outputParent);
             ulong serial = await Scheduler.InvokeAsync(static stage => stage.ChangeSerial, token);
-            var frames = new StageRenderState[range.Times.Count];
+            if (physics is not null && serial != physics.SourceRevision)
+            {
+                throw new InvalidOperationException("The scene changed while physics recording was being prepared.");
+            }
+            var frames = new StageRenderState[times.Count];
             var cameraSource = new ViewerSchedulerStageCameraSource(Scheduler);
             StageRenderState state = original;
             for (int index = 0; index < frames.Length; index++)
             {
                 token.ThrowIfCancellationRequested();
-                double time = range.Times[index];
+                double time = times[index];
                 state = state.WithTime(new StageTime(time));
                 if (cameraPath is not null)
                 {
@@ -109,6 +146,7 @@ internal sealed partial class ViewerRenderCoordinator
             StageRenderState restoredState = state
                 .WithTime(original.Time).WithCamera(original.Camera).AdvanceRevision();
             bool restored = false;
+            bool physicsClearAttempted = false;
             async ValueTask restore()
             {
                 if (restored)
@@ -129,6 +167,16 @@ internal sealed partial class ViewerRenderCoordinator
                 });
                 restored = true;
             }
+            async ValueTask clearPhysicsAndRestore()
+            {
+                if (physicsClearAttempted)
+                {
+                    return;
+                }
+                physicsClearAttempted = true;
+                await Dispatcher.UIThread.InvokeAsync(() => backend.ClearPhysicsOverrides());
+                await restore();
+            }
             async ValueTask<ViewerFrameCaptureResult> capture(StageRenderState frame, CancellationToken frameToken)
             {
                 await RequireSequenceRevisionAsync(serial, frameToken);
@@ -140,11 +188,37 @@ internal sealed partial class ViewerRenderCoordinator
             }
             try
             {
+                if (physics is not null)
+                {
+                    var source = new ViewerPhysicsSequenceFrameSource(
+                        backend, capture, clearPhysicsAndRestore,
+                        frameToken => RequireSequenceRevisionAsync(serial, frameToken),
+                        progress, frames.Length);
+                    return await physics.ExecuteAsync(request, source,
+                        new PhysicsRenderRecordingContext(physicsRequest!.ScenarioIdentity, serial),
+                        physicsRequest.StepsPerFrame, token);
+                }
                 return await ViewerRenderSequenceRunner.ExecuteAsync(request, capture, restore, progress, token);
             }
-            finally
+            catch (Exception operationFailure)
             {
-                await restore();
+                try
+                {
+                    if (physics is not null)
+                    {
+                        await clearPhysicsAndRestore();
+                    }
+                    else
+                    {
+                        await restore();
+                    }
+                }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException("The sequence failed and its view could not be restored.",
+                        operationFailure, cleanupFailure);
+                }
+                throw;
             }
         }
         finally
@@ -153,12 +227,6 @@ internal sealed partial class ViewerRenderCoordinator
             {
                 _stateGate.Release();
             }
-            lock (_sequenceGate)
-            {
-                _sequenceCancellation = null;
-            }
-            cancellation.Dispose();
-            drained.TrySetResult();
         }
     }
 

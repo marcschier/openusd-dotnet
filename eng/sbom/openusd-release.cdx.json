@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "37db0d6615a9a6e354151a72f651e04ebdab4402659d21f424fd75cd219d62fa"
+        "value": "b02a245610824d59e1b3f2e2eb3c7f7075f1e7dea906eaceb88c528fcaa9ba67"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -35,11 +35,11 @@
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
-        "value": "75487cdf5fcd3b7d326d2ea3cebf886bc711d4e0036437126c16f4cf6641a8ce"
+        "value": "0249e068e3307703c7c331e6c58e284c7c45e652e88365d1ce3df42c0fad1882"
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
-        "value": "cef8931283c495043bac1a503a8a341b832231ab58270614a4c545f60352e665"
+        "value": "59a5007ebfbf28e5ec4b881fab621d02e7b1fe45ef124e43319decf5b0eee791"
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",
@@ -55,7 +55,7 @@
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "d94516dacdbe05d698704144f3ef2391d0dc424fe73b38ccbcd77a6308210951"
+        "value": "cf296145664a5d5e12035975d10ea366f60178d157df3cbbe1e2aebcc6242ee8"
       },
       {
         "name": "openusd:input:eng/patches/openusd/render-product-hash-adl.patch:sha256",
@@ -108,6 +108,10 @@
       {
         "name": "openusd:input:eng/shaders/toolchain.lock.json:sha256",
         "value": "bf01cd837d2c9dbbc7d2713771dae3be24b882991eaaec8f6c88e53cd8ed7fd7"
+      },
+      {
+        "name": "openusd:input:eng/vhacd.lock.json:sha256",
+        "value": "6a3903d20d3b0cdce183ed3b0d842a20000417a34a64687a328aa52de4b70914"
       },
       {
         "name": "openusd:input:global.json:sha256",
@@ -801,6 +805,44 @@
         {
           "name": "openusd:repaired-sources",
           "value": "{\"source/opt/convert_to_sampled_image_pass.cpp\": \"2D9914C90974EE51782516B5D504CFD6E296E1365E18C666B472A3401F56A5A2\", \"source/opt/upgrade_memory_model.cpp\": \"AA2A5F824FA6BDB1B2B6ED84A7CE964F60E1D49C057CF50008AA5EE6BC625076\", \"source/parsed_operand.cpp\": \"2C175DB9801EF03FEC01F96E8313A992DB0B7B7591B81144F8949E1E1A068546\", \"source/val/validate_composites.cpp\": \"F25EB9902DF12A50BC15821149D4C921DC6848F964F4B8D84EA52A12D77BA2C6\", \"source/val/validate_interfaces.cpp\": \"B5CAB44B5033B2F03DA87A294C262E15F5DAE6E2038CA23FBB1052E816754A23\", \"source/val/validate_memory.cpp\": \"3E46F5051380EA42C6197010EF7CEA1A39D02C8B0491CCA297F4B32ECD1B68B3\", \"source/val/validate_mode_setting.cpp\": \"E3A5C409C80C50E0ADB62BD178C0F7904527F74994B94078EE205E27F947E96F\", \"source/val/validate_primitives.cpp\": \"6156FFA71E95BAACEFAABD27E4F437C43C280F26DA4979DFEAB7B2C06DF6F5D7\"}"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:V-HACD",
+      "name": "V-HACD",
+      "version": "4.1.0",
+      "purl": "pkg:github/kmammou/v-hacd@22ec20a7f8ea221ab600df869369b9c6a258cb10",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/kmammou/v-hacd"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/vhacd.lock.json"
+        },
+        {
+          "name": "openusd:release-scope",
+          "value": "CPU collider preparation, statically linked into openusd_physx; threading disabled"
+        },
+        {
+          "name": "openusd:release-rids",
+          "value": "win-x64,linux-x64"
+        },
+        {
+          "name": "openusd:header-sha256",
+          "value": "02314C575909D656DC67D6E3C38CEFC49C4403E8CA1DCB0AB4B05800CEE61E1C"
         }
       ]
     },
@@ -1620,6 +1662,19 @@
     },
     {
       "type": "library",
+      "bom-ref": "nuget-dependency:System.IO.Hashing",
+      "name": "System.IO.Hashing",
+      "version": "10.0.12",
+      "purl": "pkg:nuget/System.IO.Hashing@10.0.12",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "nuget-dependency:TUnit",
       "name": "TUnit",
       "version": "1.73.19",
@@ -1741,6 +1796,19 @@
       "name": "OpenUsd.Rendering",
       "version": "0.15.0-alpha",
       "purl": "pkg:nuget/OpenUsd.Rendering@0.15.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Physics",
+      "name": "OpenUsd.Rendering.Physics",
+      "version": "0.15.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Physics@0.15.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2937,6 +3005,7 @@
         "nuget:OpenUsd.Rendering.Storm",
         "nuget:OpenUsd.Cesium",
         "nuget:OpenUsd.Physics",
+        "nuget:OpenUsd.Rendering.Physics",
         "nuget:OpenUsd.Viewer",
         "nuget:OpenUsd.Viewer.Bridge.Grpc",
         "nuget:OpenUsd.Mcp.Tool",
@@ -2984,6 +3053,7 @@
         "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
         "nuget-dependency:SPIRV-Cross.NET",
         "nuget-dependency:Stride.Dependencies.SwiftShader",
+        "nuget-dependency:System.IO.Hashing",
         "nuget-dependency:TUnit",
         "dotnet-runtime:Microsoft.NETCore.App",
         "native:OpenUSD",
@@ -3055,6 +3125,7 @@
         "vcpkg:zlib-ng",
         "vcpkg:zstd",
         "native:PhysX",
+        "native:V-HACD",
         "native-input:PhysXGpu_64",
         "native-input:PhysXDevice64",
         "shader-toolchain:Slang",
@@ -3112,6 +3183,10 @@
     },
     {
       "ref": "nuget:OpenUsd.Physics",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Physics",
       "dependsOn": []
     },
     {
@@ -3300,6 +3375,10 @@
     },
     {
       "ref": "nuget-dependency:Stride.Dependencies.SwiftShader",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:System.IO.Hashing",
       "dependsOn": []
     },
     {
@@ -3584,6 +3663,10 @@
     },
     {
       "ref": "native:PhysX",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:V-HACD",
       "dependsOn": []
     },
     {

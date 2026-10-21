@@ -33,6 +33,30 @@ public sealed class SilkTextureResidencyOptions
     /// <summary>Gets the behavior-preserving default budgets (512 MiB CPU, 512 MiB GPU).</summary>
     public static SilkTextureResidencyOptions Default { get; } = new();
 
+    /// <summary>Parses an optional streaming flag using 0/1 or true/false, without reading process state.</summary>
+    public static SilkTextureResidencyOptions? FromConfiguration(string? streamMaterialTextures)
+    {
+        if (streamMaterialTextures is null)
+        {
+            return null;
+        }
+        bool enabled;
+        if (streamMaterialTextures == "1" || string.Equals(streamMaterialTextures, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            enabled = true;
+        }
+        else if (streamMaterialTextures == "0" || string.Equals(streamMaterialTextures, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            enabled = false;
+        }
+        else
+        {
+            throw new ArgumentException("Material texture streaming must be 0, 1, true, or false.",
+                nameof(streamMaterialTextures));
+        }
+        return new(DefaultMaxDecodedCpuBytes, DefaultMaxGpuBytes, enabled);
+    }
+
     /// <summary>Initializes validated texture cache residency budgets.</summary>
     /// <param name="maxDecodedCpuBytes">
     /// The maximum decoded CPU pixel bytes retained across every texture cache entry. Must be
@@ -45,6 +69,25 @@ public sealed class SilkTextureResidencyOptions
     public SilkTextureResidencyOptions(
         ulong maxDecodedCpuBytes = DefaultMaxDecodedCpuBytes,
         ulong maxGpuBytes = DefaultMaxGpuBytes)
+        : this(maxDecodedCpuBytes, maxGpuBytes, false)
+    {
+    }
+
+    /// <summary>Creates retention limits with optional full-resolution material working-set streaming.</summary>
+    /// <remarks>
+    /// Streaming submits ordered material batches and reuses completed ordinary images within the
+    /// configured GPU retention limit and available allocation credit. A bounded frame-local LRU index
+    /// permits nonadjacent reuse only when texture inputs match exactly. UDIM atlases and volumes are
+    /// not shared between batches, and frame cleanup releases all streamed maps.
+    /// Built-in backends upload ordinary images in bounded row bands and generate adjacent mip levels
+    /// progressively. Decoded pixels are released before preparing the next map.
+    /// It preserves texture resolution and draw order rather than reducing quality to fit the whole scene at once.
+    /// The renderer requires a configured <see cref="SilkGpuBufferBudget"/> so batches are drawn into private
+    /// targets and published transactionally. These retention limits are not allocation limits; configure
+    /// <see cref="SilkTexturePreparationBudgets"/> to admit CPU pixels, GPU textures, and staging independently.
+    /// </remarks>
+    public SilkTextureResidencyOptions(
+        ulong maxDecodedCpuBytes, ulong maxGpuBytes, bool streamMaterialTextures)
     {
         if (maxDecodedCpuBytes == 0)
         {
@@ -62,6 +105,7 @@ public sealed class SilkTextureResidencyOptions
         }
         MaxDecodedCpuBytes = maxDecodedCpuBytes;
         MaxGpuBytes = maxGpuBytes;
+        StreamMaterialTextures = streamMaterialTextures;
     }
 
     /// <summary>Gets the maximum decoded CPU pixel bytes retained across every texture cache entry.</summary>
@@ -72,4 +116,7 @@ public sealed class SilkTextureResidencyOptions
     /// texture cache entry.
     /// </summary>
     public ulong MaxGpuBytes { get; }
+
+    /// <summary>Gets whether rendering streams full-resolution material texture working sets.</summary>
+    public bool StreamMaterialTextures { get; }
 }

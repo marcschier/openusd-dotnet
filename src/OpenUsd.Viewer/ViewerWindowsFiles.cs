@@ -158,7 +158,15 @@ internal static class ViewerWindowsFiles
 
     private static SafeFileHandle Open(string path, uint access, uint share, uint creation, uint flags)
     {
-        SafeFileHandle handle = CreateFileW(path, access, share, 0, creation, flags, 0);
+        string nativePath = path;
+        if (path.Length >= 260 && !path.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            string fullPath = NormalizePath(path);
+            nativePath = fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+                ? @"\\?\UNC\" + fullPath[2..]
+                : @"\\?\" + fullPath;
+        }
+        SafeFileHandle handle = CreateFileW(nativePath, access, share, 0, creation, flags, 0);
         if (!handle.IsInvalid)
         {
             return handle;

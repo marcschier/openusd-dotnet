@@ -155,11 +155,14 @@ public sealed partial class NativeMcpIntegrationTests
                 "double3 xformOp:translate.timeSamples = { 0: (-1, 1, -4), 2: (1, 1, -4) }",
                 StringComparison.Ordinal);
         await File.WriteAllTextAsync(files.SourcePath, scene);
+        var textureBudgets = new OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets(
+            new(1_000_000), new(1_000_000), new(1_000_000));
         var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
             Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
             Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
             PreparationLimits: bounded ? new OpenUsd.Rendering.Silk.SilkPreparationLimits(1_000_000, 1_000_000) : null,
-            GpuBufferBudget: bounded ? new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000) : null);
+            GpuBufferBudget: bounded ? new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000) : null,
+            TexturePreparationBudgets: bounded ? textureBudgets : null);
         await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
             .BuildServiceProvider();
         IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
@@ -183,6 +186,15 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(job.Diagnostics.Any(static entry =>
             entry.Code == "HDSILK_GPU_BUFFER_ADMISSION" &&
             entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
+        foreach (string code in new[]
+            { "HDSILK_CPU_TEXTURE_ADMISSION", "HDSILK_GPU_TEXTURE_ADMISSION", "HDSILK_GPU_STAGING_ADMISSION" })
+        {
+            await Assert.That(job.Diagnostics.Any(entry =>
+                entry.Code == code && entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal)))
+                .IsEqualTo(bounded);
+        }
+        await Assert.That(textureBudgets.GpuTextureBudget!.Usage.ReservedBytes > 0).IsEqualTo(bounded);
+        await Assert.That(textureBudgets.GpuStagingBudget!.Usage.PeakReservedBytes > 0).IsEqualTo(bounded);
         for (int index = 0; index < 2; index++)
         {
             McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
@@ -231,6 +243,15 @@ public sealed partial class NativeMcpIntegrationTests
         }, default)).Throws<OpenUsdMcpFailureException>();
         await Assert.That(Directory.GetDirectories(renders)).Count().IsEqualTo(1);
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        await Assert.That(textureBudgets.CpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textureBudgets.GpuTextureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textureBudgets.GpuStagingBudget.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 
     [Test]

@@ -15,6 +15,8 @@ internal static class OpenUsdMcpDescriptions
         "Open a USD file beneath the configured read-only source root and create the single " +
         "isolated overlay session. " +
         "Preconditions: no session is active; sourcePath is a relative .usd, .usda, .usdc, or .usdz path. " +
+        "Optional stageSettings explicitly authors all seven root units/axis/timeline fields; " +
+        "omitting it preserves source-sublayer behavior without implicit metadata inheritance. " +
         "Effects: creates an overlay, manifest, journal, and output directory; never modifies the source. " +
         "Result bounds: one structured session object and one text summary of at most 2048 characters. " +
         "Errors: invalid_argument for malformed input or a second session; path_denied for " +
@@ -150,7 +152,7 @@ internal static class OpenUsdMcpDescriptions
 
     internal const string ReadSequenceFrame =
         "Expose one completed disk-sequence PNG through the bounded immutable artifact store. " +
-        "Preconditions: jobId came from render_sequence or render_product in this process and frameIndex is " +
+        "Preconditions: jobId came from render_sequence, render_product or render_physics_sequence in this process and frameIndex is " +
         "within that job. " +
         "A completed historical job remains readable after scene edits; returned revision is the captured revision. " +
         "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +
@@ -185,7 +187,7 @@ internal static class OpenUsdMcpDescriptions
         "\"frameCount\":3,\"startTimeCode\":0,\"timeStep\":1}}.";
 
     internal const string ReadSequenceSheet =
-        "Create a contact-sheet PNG from completed render_sequence or render_product files " +
+        "Create a contact-sheet PNG from completed render_sequence, render_product or render_physics_sequence files " +
         "without rendering the scene. " +
         "Preconditions: jobId belongs to this process; optional frameIndices contains 1-16 unique valid indices, " +
         "or omit it to sample at most 16 evenly spaced frames including endpoints. Width/height are 4-1024 pixels. " +
@@ -419,6 +421,35 @@ internal sealed class OpenUsdMcpTools(
         RenderSequenceRequest request,
         CancellationToken cancellationToken) =>
         InvokeAsync(token => service.RenderSequenceAsync(request, token), cancellationToken);
+
+    [McpServerTool(
+        Name = "render_physics_sequence",
+        Title = "Record OpenUSD Physics Sequence",
+        Destructive = false,
+        Idempotent = false,
+        OpenWorld = false,
+        ReadOnly = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpRenderSequenceResultDto))]
+    [Description(
+        "Build a fresh bounded CPU rigid-body/joint world, advance fixed steps and record complete captures. " +
+        "Preconditions: exact open-scene revision, explicitly checked workspace meters-per-unit and up axis, " +
+        "complete noninstanced extraction, resolvable mesh bindings and a physics-capable Silk source. " +
+        "Source-sublayer root metadata is not inherited by the workspace root; use open_scene stageSettings " +
+        "for explicit root units/axis/timeline. Source layers are not authored. " +
+        "Result bounds: 1-4096 PNG frames with optional HDR/depth, 1-8 steps per frame; existing 8-job/4-GiB " +
+        "process quota and 64-MiB per-frame policy. Extraction admits 4096 objects, 1048576 points and " +
+        "3145728 indices. Returns a job ID for read_sequence_frame/read_sequence_sheet and exact step metadata. " +
+        "Errors: invalid_argument, stale_revision, quota_exceeded, native_failure or render_failure; " +
+        "truncation, unsupported domains and partial captures never publish a partial job. " +
+        "Example arguments: {\"request\":{\"sessionId\":\"<open_scene sessionId>\",\"generation\":1," +
+        "\"stageRevision\":1,\"scenarioIdentity\":\"rigid-test\",\"expectedMetersPerUnit\":0.01," +
+        "\"expectedUpAxis\":\"Y\",\"frameCount\":3,\"stepsPerFrame\":4,\"width\":256,\"height\":256}}.")]
+    public ValueTask<CallToolResult> RenderPhysicsSequenceAsync(
+        [Description("Exact scene revision, scenario identity, fixed-step count and bounded output dimensions.")]
+        RenderPhysicsSequenceRequest request,
+        CancellationToken cancellationToken) =>
+        InvokeAsync(token => service.RenderPhysicsSequenceAsync(request, token), cancellationToken);
 
     [McpServerTool(
         Name = "render_product",

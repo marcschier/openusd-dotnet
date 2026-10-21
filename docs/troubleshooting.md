@@ -120,9 +120,9 @@ The current contracts are:
 - direct Storm ABI 9;
 - Storm child ABI 9;
 - hdSilk session ABI 6;
-- hdSilk command-page ABI 24;
-- retained physics world ABI 7; and
-- physics extraction page ABI 1.
+- hdSilk command-page ABI 27;
+- retained physics world ABI 8; and
+- physics extraction page ABI 2.
 
 These are the current source contracts. Published `0.14.0-alpha` packages retain data ABI 17
 and direct Storm ABI 9; keep their managed and native assets together.

@@ -312,7 +312,7 @@ public sealed partial class MainWindow
             }
 
             var controller = new ViewerPhysicsController(
-                new ViewerPhysicsTransportFactory(coordinator.Scheduler),
+                new ViewerPhysicsTransportFactory(coordinator.Scheduler, ViewerStartupOptions.FullScenePhysics),
                 ViewerPhysicsStopwatchClock.Instance,
                 ViewerPhysicsRenderCapacities.Default,
                 authoring: new ViewerPhysicsDocumentAuthoringStage(
@@ -789,7 +789,8 @@ public sealed partial class MainWindow
     /// </remarks>
     private void PumpPhysicsRenderFrame()
     {
-        if (_physicsRenderFaulted || _physics is not { } physics || _coordinator is not { } coordinator)
+        if (_sequenceJobRunning || _physicsRenderFaulted || _physics is not { } physics ||
+            _coordinator is not { } coordinator)
         {
             return;
         }
@@ -893,11 +894,11 @@ public sealed partial class MainWindow
                 snapshot,
                 ViewerPhysicsCommand.Bake,
                 "Write simulated poses into a file-backed layer (B)");
-            PhysicsLoopCheckBox.IsEnabled = snapshot.IsEnabled;
+            PhysicsLoopCheckBox.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
             PhysicsLoopCheckBox.IsChecked = snapshot.Loop;
-            PhysicsLoopMenuItem.IsEnabled = snapshot.IsEnabled;
+            PhysicsLoopMenuItem.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
             PhysicsLoopMenuItem.IsChecked = snapshot.Loop;
-            PhysicsSpeedSelector.IsEnabled = snapshot.IsEnabled;
+            PhysicsSpeedSelector.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
             SyncPhysicsSpeedMenu();
             PhysicsPreviewCheckBox.IsEnabled = snapshot.IsEnabled && !snapshot.IsBusy;
             PhysicsPreviewCheckBox.IsChecked = snapshot.PreviewEnabled;
@@ -924,6 +925,7 @@ public sealed partial class MainWindow
 
             RenderPhysicsInspector(snapshot);
             RenderPhysicsAuthoringState(in snapshot);
+            UpdateCaptureAvailability();
         }
         finally
         {

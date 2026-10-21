@@ -656,6 +656,69 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "physics-bounded-collider-preparation",
+          "description": "Retained physics ABI8 and extraction ABI2 prepare CPU convex hulls and V-HACD multi-hull decompositions behind project-owned C interfaces. Object-index windows and geometry-only fingerprinting retain full source identity without retaining all raw meshes. PrepareAsync checks fingerprints and stage serials, subdivides oversized windows, and assembles a complete pointer-free page containing validated hull ranges and explicit local-metre points. Cancellation, malformed ranges, unsupported cooking opinions and failed native preparation remain explicit; no partial geometry page can build a world. Default preparation includes invisible and guide-purpose colliders. Windows native geometry controls, real collision-gap/reset tests, serialized-page tests and bounded sample assets exercise the implementation.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "native/openusd_physx_probe/mesh_preparation_main.cpp",
+            "tests/OpenUsd.Physics.Tests/Extraction/UsdPhysicsBatchedExtractionTests.cs",
+            "tests/OpenUsd.Physics.Tests/Extraction/UsdPhysicsPreparedPageTests.cs",
+            "tests/OpenUsd.Physics.Tests/Runtime/UsdPhysicsNativeWorldTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Default bounded cooking profile, not equivalence to arbitrary vendor settings. Unmapped opinions are refused rather than silently ignored. Full-warehouse solver/presentation and Linux execution acceptance remain open; package structure alone is not platform execution evidence."
+        },
+        {
+          "id": "physics-exact-frame-publication",
+          "description": "UsdPhysicsTransport.StepAndAcquireFrameAsync reserves bounded publication and lease capacity before advancing a paused, non-looping fixed-step batch, then returns the exact complete frame pinned on the physics worker before later queued steps or resets can replace it. Capacity and timeline refusal do not advance simulation. Cancellation or incomplete/faulted solver output releases reservations and requires reset after an attempted advance; diagnostic failures preserve both errors and the fault state. Renderer-side channel claims cannot republish stale recycled frames or be consumed twice, and successful reuse remains allocation-free. Deterministic transport/publication tests and Windows package-only NativeAOT real-solver execution cover the new contract.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "tests/OpenUsd.Physics.Tests/Runtime/UsdPhysicsTransportTests.ExactFrames.cs",
+            "tests/OpenUsd.Rendering.Tests/PhysicsRenderChannelTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "An exact-frame capture building block, not the shared simulation-recording module, completed warehouse collider preparation, synchronized disk-job metadata or an integrated full-scene recording journey. No new native ABI or Linux/macOS execution claim."
+        },
+        {
+          "id": "physics-simulation-recording-library",
+          "description": "Optional OpenUsd.Rendering.Physics library joins exact fixed-step frame leases, complete noninterpolated body/deformation projection, renderer acknowledgements and existing atomic RenderDiskJob output. Preflight reserves projection capacities and validates initial bindings before solver advance. Per-frame metadata records source/scenario/review, epoch, publication, step/time and binding identities; reset, source/binding change, cancellation, partial acknowledgement and cleanup failure prevent publication. Package-only NativeAOT exercises the real CPU solver with a diagnostic pixel adapter.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "tests/OpenUsd.Physics.Tests/Runtime/UsdPhysicsTransportTests.Recording.cs",
+            "tests/OpenUsd.Rendering.Tests/RenderDiskJobTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "The library's package test uses diagnostic pixels, not GPU fidelity. MCP and Viewer rigid-pose entry points have separate native capture evidence; complete warehouse collider/recording journeys remain open."
+        },
+        {
+          "id": "mcp-fixed-step-physics-recording",
+          "description": "render_physics_sequence prepares a fresh bounded CPU rigid-body/joint world at an exact workspace revision, checks explicit workspace units/up axis, queues exact-step recording on the existing capture worker and publishes through the shared disk-job/gallery quota. Native pose/velocity/deformation publications use authored stage space. A native fixture verifies moving captured poses, HDR/depth, unit mismatch refusal, cancellation after GPU capture, retry, contact-sheet retrieval and restoration without source edits.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.PhysicsRecording.cs",
+            "tests/OpenUsd.Mcp.Tests/OpenUsdMcpToolsTests.cs",
+            "tests/OpenUsd.Physics.Tests/Runtime/UsdPhysicsNativeWorldTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Bounded noninstanced CPU rigid-body/joint profile only; advanced domains, unresolved compound bindings and incomplete extraction are refused. No full-warehouse, hardware Vulkan or macOS physics acceptance; Viewer recording has separate evidence."
+        },
+        {
+          "id": "viewer-fixed-step-physics-recording",
+          "description": "Physics Record Sequence and the command palette use the existing image-sequence dialog and verified gallery. Exclusive paused, nonlooping transport ownership disables live interpolation and interactive command submission, checks fresh extraction against the built world, and publishes exact rigid-pose frame metadata through OpenUsd.Rendering.Physics. The native desktop journey exercises moving captured poses, HDR/depth, cancellation after capture, retry, source preservation, view restoration and deep-path gallery access.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerPhysicsRecordingNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderSequenceNativeTests.Physics.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerCompletedJobPreviewTests.cs",
+            "tests/OpenUsd.Package.Tests/ViewerBridgePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Local Windows D3D12 rigid-pose profile only; hosted gates have not been executed for these uncommitted changes. Deformable recordings are refused. Recording advances the current world and cancellation does not rewind it. No full-warehouse, native Vulkan/Metal or macOS physics acceptance."
+        },
+        {
           "id": "usdvol",
           "description": "UsdVol: Volume, field assets, OpenVDBAsset schema, Field3DAsset; Vulkan and D3D12 single-density OpenVDB rendering gated",
           "status": "implemented",
@@ -921,7 +984,7 @@
         },
         {
           "id": "mdl-sdk-module-evaluation",
-          "description": "Optional openusd_mdl_sdk evaluation through an explicitly supplied MDL SDK runtime and absolute module search roots. The adapter resolves parameter defaults, supported constant constructors and aliases, and texture resources. Bounded SDK-proven OmniPBR/OmniGlass material variants also retain body constants and named arguments. Authored values win; texture aliases preserve source color-space metadata while explicit destination metadata retains precedence, and each result records its origin. Unknown calls, roots, resources and unprojected controls remain explicit; ordinary bodies without a proven variant relationship are not qualified as body evaluation. Win-x64 evidence includes synthetic public-C-ABI regressions, pinned first-party PBR/glass defaults, two unchanged warehouse wrappers, and literal PreviewSurface-equivalent HDR pixels through hdSilk on an observed RTX 5070. These are partial material projections, not general MDL, complete warehouse shading, or BSDF execution.",
+          "description": "Optional openusd_mdl_sdk evaluation through an explicitly supplied MDL SDK runtime and absolute module search roots. The adapter resolves parameter defaults, supported constant constructors and aliases, enum integer values, texture resources, and bounded SDK-proven OmniPBR/OmniGlass/OmniSurface variants. Authored values and explicit color-space metadata win. OmniPBR projects diffuse tint, texture brightness/addition, signed desaturation, regular normal strength/flips, explicit opacity mono modes and roughness/metallic texture influence with ORM priority. Optional adapter ABI 5 introduced explicit emission-mask multiplication; ABI 6 with page 26 adds the separately weighted OmniPBR dielectric specular curve and independent metallic mixture, preserving both Fresnel endpoints and the diffuse complement rather than approximating specular_level with IOR. SDK-proven OmniPBR diffuse emission maps radiant exitance to visible radiance with 1/pi; unproven units retain diagnostics. Earlier adapters are refused. Scalar opacity supports alpha/average/luminance/maximum selectors with owned float reduction; threshold survivors are fully opaque. Win-x64 evidence includes public-C-ABI regressions, pinned real modules and unchanged warehouse wrappers, exact HDR controls on WARP/SwiftShader, and tint/grading/constants on RTX 5070. Optional fork-sourced OmniSurface dependencies and unchanged-wrapper parameter tests are separate from pixel qualification; transmission and subsurface remain explicitly unsupported. Opt-in OPENUSD_MDL_LEGACY_PBR_ROOT resolves an exact missing signature against one isolated legacy source without rewriting signatures or authored inputs; successful current requests are unchanged and selection is diagnosed. A bounded single-process replay now projects all 877 eligible warehouse requests, preserving the preceding 871 successful records; this is not a rendered warehouse frame. Unknown calls, roots, resources and unprojected controls remain explicit. These are partial projections, not general MDL, emissive-light transport, opacity-aware shadows/picking, full warehouse shading or BSDF execution.",
           "status": "implemented-not-gated",
           "evidenceTests": [
             "native/openusd_mdl/tests/mdl_sdk_probe.cpp",
@@ -940,6 +1003,43 @@
           "description": "MDL-generated GPU shader code, and evaluation of layered BSDFs, mixers and other distribution-function graphs, to shade a material the way an MDL renderer does",
           "status": "not-supported",
           "exclusionReason": "The MDL SDK backend reads a compiled material's parameter defaults; it does not run the SDK's target-code backends and does not evaluate distribution functions. A distilled MDL material is shaded by the same PreviewSurface-compatible GPU pipeline as every other material, so a layered or mixed BSDF is an approximation by construction, and a default whose expression this adapter does not fold is reported by parameter name rather than evaluated. Both remain unimplemented and are not claimed by mdl-sdk-module-evaluation."
+        },
+        {
+          "id": "mdl-zero-weight-ambient-occlusion",
+          "description": "Authored or SDK-proven ao_to_diffuse=0 omits only the inactive ORM occlusion channel while preserving roughness/metallic channels, influence affines and source assets. The pinned current OmniPBR/ClearCoat modules default the weight to zero. All 877 warehouse requests still resolve: 764 requests covering 23,498 placements lose only the disabled occlusion contribution, 38 more change only its diagnostic, and 75 records remain identical. Nine SDK groups, the authored-only adapter and eight native-backed pixel cases pass. Hardware D3D12/Vulkan zero/default-zero HDR/PNG exactly match the neutral reference; active AO changes 143 foreground pixels.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "native/openusd_mdl/tests/mdl_wrapper_probe.cpp",
+            "native/openusd_mdl/tests/mdl_sdk_probe.cpp",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkWarehouseMdlWrapperTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Nonzero AO remains explicitly partial because MDL modifies diffuse color, not only ambient lighting. Missing authored-only weights retain historical behavior. No active map is removed for memory savings, and no complete warehouse material frame or general MDL BSDF fidelity is implied."
+        },
+        {
+          "id": "mdl-sdk-udim-and-neutral-detail",
+          "description": "The optional SDK adapter projects bounded filesystem UDIM defaults/inheritance by checking each resolved tile and reconstructing the authored mask, with 1001-1999 numbering and at most 256 tiles/atlas cells. The exact neutral-base detail-normal case reuses the regular normal slot while preserving signed strength, flips and compatible UV transforms. That initial change added normals to six warehouse requests covering 78 placements and preserved the preceding 871 projections. Real PNG tile and neutral-detail controls match on Windows D3D12/Vulkan hardware. The independent active-detail extension is tracked separately; packed normal formats, container/animated resources and complete warehouse BSDF fidelity remain unsupported or unqualified.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "native/openusd_mdl/tests/mdl_wrapper_probe.cpp",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Requires the explicitly supplied optional MDL SDK and pinned external module sources. This is partial material projection, not general MDL execution or a completed warehouse image; no new Linux/macOS execution claim."
+        },
+        {
+          "id": "mdl-independent-detail-normals",
+          "description": "Optional MDL ABI 7 and page ABI 27 carry a dedicated detail-normal texture and paired independent UV affine rows. Normal-map fragments orient and combine both sampled normals through RNM, while the emission composite remains independently available. Normal-only and density-volume permutations use disjoint layouts for the shared register numbers. All 877 frozen warehouse requests still resolve: 39 requests covering 2689 placements gain detail normals, and 838 records remain identical; all pre-existing material values and textures are preserved. Fourteen native-backed D3D12/Vulkan cases cover an independent Rodrigues reference, rotated detail with emission multiplication, streaming, varying UV samples, UDIM and the antipodal case. Package-only NativeAOT validates the new public material contract.",
+          "status": "implemented-not-gated",
+          "evidenceTests": [
+            "native/openusd_mdl/tests/mdl_wrapper_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsPipelineTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkWarehouseMdlWrapperTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Regular normal maps over the existing coordinate stream with independent affines, not packed normal/roughness decoding, additional independent vertex-coordinate streams, arbitrary layered BSDFs or complete warehouse fidelity. Requires matched ABI-7 adapter, page-27 runtime/parser and checked shaders. No new Linux/macOS execution claim."
         },
         {
           "id": "udim-textures",
@@ -1044,7 +1144,31 @@
             "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
           ],
           "evidencePlatforms": ["win-x64"],
-          "exclusionReason": "Logical managed payload ownership, not GC heap/process residency or native Hio/codec scratch. Environment, displacement and general source/SDK caches remain separate. Complete environment/shadow/frame resource publication must be coordinated before exposing a whole-host policy; no Viewer/MCP startup texture policy or complete warehouse image is claimed. Metal runtime and non-Windows execution remain unqualified locally."
+          "exclusionReason": "Logical managed payload ownership, not GC heap/process residency or native Hio/codec scratch. Viewer/MCP forward the individual configured pools and streaming choice, but complete live-host source/SDK/cache memory remains separate and unqualified. No complete warehouse material image, Metal runtime or new non-Windows execution is claimed."
+        },
+        {
+          "id": "source-identity-batches",
+          "description": "Optional source-identity extension v1 and OpenUsdSilkSession.ResolveSourceIdentities resolve up to 1024 retained Hydra keys to authored instance-proxy paths and ordered point-instancer contexts in an atomic 8-MiB result. The latest page revision and unchanged source-stage serial are required; stale stages/pages, unknown keys, bad packets and insufficient budgets fail explicitly. Stable wire instance indices remain separate from masked per-prototype USD pick ordinals, including nested composition. Source selections do not replace GPU cache keys. Windows native, all managed TFMs and package-only NativeAOT execution qualify the extension without changing session6/page26.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkSourceIdentityTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "An explicit optional call, not automatic Viewer/MCP forward/reverse selection integration. Older native libraries fail this operation explicitly; no new Linux/macOS execution or completed warehouse placement proof."
+        },
+        {
+          "id": "placement-source-oracle-reconciliation",
+          "description": "Metadata-only USD time-zero placement census supplies source identities and finite row-major world transforms without topology/vertex-array reads. The bounded create-only reconciliation CLI checks exact eligible identity sets, duplicate retained/source keys, completion/hash/extent binding and optional transform tolerances of 1e-6 stage units absolute and 1e-9 relative. Noncommuting/animated transform and 257-instance batch-boundary controls match independent source matrices exactly. The complete source oracle records 30363 warehouse placements and 27389 eligible identities at a 348643328-byte peak under a 1-GiB process/tree cap; its eligible set matches the prior frozen census.",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/tests/warehouse_audit_probe.cpp",
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "eng/tests/test_simready_placements.py"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "All 27389 emitted warehouse identities and world matrices now match the independent oracle, with maximum component difference1.4210854715202e-14; the capture itself was stopped by its physical-headroom guard. Point instancers need a separately expanded oracle. Reports always retain frameAccepted:false; placement agreement does not qualify topology, materials, rendered pixels, live hosts or simulation."
         },
         {
           "id": "storm-aov-presentation-restoration",
@@ -1073,7 +1197,24 @@
             "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
           ],
           "evidencePlatforms": ["win-x64"],
-          "exclusionReason": "Low-level RHI only, not whole-scene or physical VRAM admission. No Viewer/MCP texture/staging startup policy is exposed until CPU decode/mip/atlas ownership and complete texture-preparation publication/rollback are coordinated. Source/cache memory, CPU command copies, imported texture storage, native allocator alignment and driver overhead remain excluded. Metal is compile-checked locally but its runtime, hardware Vulkan and non-Windows execution remain unqualified. Existing WARP parallel shader-JIT failures remain a separate unresolved evidence gap; no complete warehouse frame is claimed."
+          "exclusionReason": "Not whole-scene or physical VRAM admission. Viewer/MCP forward individual configured pools; total live-host source/cache memory remains separate. Imported storage, native allocator alignment and driver overhead remain excluded. Windows hardware D3D12/Vulkan progressive-texture controls are qualified separately; Metal runtime and new non-Windows execution remain unqualified. Existing WARP parallel shader-JIT failures remain a separate unresolved evidence gap; no complete warehouse material frame is claimed."
+        },
+        {
+          "id": "d3d12-gpu-local-upload-heaps",
+          "description": "Explicit D3D12SilkGraphicsDevice.Create(useWarp:false,useGpuUploadHeaps:true) opt-in uses supported GPU_UPLOAD heaps for CPU-writable Upload buffers while preserving byte contents, draw bindings, logical buffer reservations and existing default behavior. Software/unsupported devices fail explicitly. GPU-only storage and texture staging retain their prior policies. RTX 5070 controls verify native heap placement, exact data/admission, pixel/depth equivalence and required package-only NativeAOT execution. An identical128MiB allocation shifts from nonlocal to local DXGI usage and reduces the observed working-set increase from about128MiB to about160KiB, while private commit still rises by about128MiB.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12GpuUploadTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DeviceTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
+            "tests/OpenUsd.Mcp.Tests/McpHostConfigurationTests.cs",
+            "tests/OpenUsd.Mcp.Tests/PreviewGraphicsDeviceFactoryTests.cs",
+            "tests/OpenUsd.Mcp.Tests/ViewerChildLauncherTests.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.GpuUploads.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPreparationLimitsTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Off by default. Viewer/MCP explicitly forward OPENUSD_D3D12_GPU_UPLOAD_HEAPS with hardware/buffer-budget requirements and no alternate-backend/legacy-factory bypass. A native MCP sequence and small visible Viewer authored-product GUI workflow are qualified, including persistent PNG/HDR products and direct2GiBprocessguard. Complete warehouse/all-host workflows remain unqualified. Requires Options16 GPU-upload support; no Vulkan/Metal equivalent or guaranteed physical VRAM capacity. No process-commit/quota reduction or completed warehouse material frame is claimed."
         },
         {
           "id": "shared-gpu-buffer-admission",
@@ -1095,6 +1236,21 @@
           ],
           "evidencePlatforms": ["win-x64"],
           "exclusionReason": "Logical public-RHI buffer payloads only, not physical VRAM or total memory. Textures, backend-internal staging/readback buffers, descriptor heaps, alignment/driver overhead and source/managed arrays are excluded. Existing texture retention trimming remains separate. A child process gets its own pool, not a shared cross-process quota. Failed native teardown retains unproven charges. Defaults are opt-in and no automatic device-memory budget is inferred. Concurrent buffer requests are exercised within isolated device fixtures; overlapping independent WARP render fixtures remain unqualified after a background pixel-shader JIT access violation. Metal code is compile-checked but runtime and hardware-Vulkan/Linux/Metal qualification plus a full warehouse image remain open."
+        },
+        {
+          "id": "d3d12-small-uniform-pages",
+          "description": "CPU-writable D3D12 uniform buffers up to4096bytes, including Uniform|Storage|Upload scene uniforms, share64KiBcommittedpages at256bytealigned offsets. Logical sizes and buffer-budget charges remain per buffer; graphics/compute/root bindings and readback use exact offsets. Ranges are zeroed before reuse, cannot be recycled while any submission lease lives, and release their native page when empty.1000x160byteuniforms require4committedpages instead of1000resources. Mixed sizes, rollover, concurrency, exact admission, hardwareGPU-upload heaps, material pixels,147D3D12regressions andNativeAOTpackage execution are verified.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12UniformPoolTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DisplayTransformTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12PickingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12SelectionOutlineTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "D3D12 only; larger uniforms, vertex/index-only and GPU-writable storage buffers retain dedicated resources. Native page capacity/alignment remains separate from logical payload accounting. No whole-warehouse process-memory acceptance or quota increase is implied."
         },
         {
           "id": "native-page-copy-acknowledgement",
@@ -1409,6 +1565,32 @@
             "tests/OpenUsd.Rendering.Tests/SilkTextureResidencyTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "progressive-material-texture-streaming",
+          "description": "Default-off full-resolution material streaming prepares consecutive material/feature groups and releases completed working sets. Built-in D3D12/Vulkan/Metal paths upload ordinary textures in full-width row bands capped at 8 MiB and available CPU credit, retaining only adjacent mip levels during generation. A 4K RGBA32F control preserves all 357913936 mip bytes with a 335544320-byte CPU-pixel peak under the unchanged 512-MiB pool; Windows hardware D3D12/Vulkan HDR and PNG match the reference exactly. The smaller bands reduce native transfer peak from64MiB to8MiB without changing source resolution or values. Capture cancellation drains/accounts for the completed band then stops further work, preserves the old frame/revision and permits replay without retaining the cancelled request. Viewer/MCP expose the opt-in consistently.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMipChainTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMaterialStreamingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkTextureRowUploadTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Requires explicit GPU-buffer/private-publication and texture preparation budgets. Each material must still fit its GPU pool. UDIM/volume/custom-device paths retain their separate admission rules. Metal compiles but new device execution is not claimed. No quality reduction, full live-host memory qualification or successful complete warehouse material frame is implied."
+        },
+        {
+          "id": "single-channel-scalar-material-storage",
+          "description": "Ordinary streamed scalar material maps preserve byte/float precision with sampled R8Unorm/R32Float after existing color-space, affine and channel processing. Roughness, metallic, opacity, occlusion, clearcoat, clearcoat roughness and IOR retain identical red-channel mip bytes, filtering and component-wise composite results with one quarter of the GPU payload. A six-map4Kquad reproduces the warehouse89478484-byte refusal before the change and fits the unchanged512MiBpool afterward, uploading268435452bytes at268460040peakGPU/134217728peakCPUpixelbytes. Hardware D3D12/Vulkan HDR/PNG match a mip-invariant reference; exact126/504-byte working sets and one-byte-short transactional replay pass.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMipChainTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkMaterialStreamingTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkTextureRowUploadTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "No downsampling or quantization beyond the original format. Color/vector/UDIM/volume/retained paths remain unchanged. R8Unorm is additive RHI enum5, not a native page ABI change. Metal compiles but actual device execution and the complete warehouse material frame remain unqualified."
         },
         {
           "id": "gpu-ocio-presentation",
@@ -1817,7 +1999,7 @@
         },
         {
           "id": "mdl-sdk-module-evaluation-interchange",
-          "description": "MDL SDK-backed material projection for Omniverse interchange: supplied modules provide supported parameter defaults and constant expressions, while bounded SDK-proven PBR/glass variants also provide body constants and aliases. Authored-value and texture color-space precedence remain intact. The rendering-side statement of this partial capability is rendering/mdl-sdk-module-evaluation; complete MDL graphs and warehouse shading are not claimed.",
+          "description": "MDL SDK-backed material projection for Omniverse interchange: supplied modules provide supported parameter defaults and constant expressions, while bounded SDK-proven PBR/glass/OmniSurface variants also provide body constants and aliases. Authored-value and texture color-space precedence remain intact. The rendering-side statement of this partial capability is rendering/mdl-sdk-module-evaluation; complete MDL graphs and warehouse shading are not claimed.",
           "status": "implemented-not-gated",
           "exclusionReason": "Real Omniverse modules such as OmniPBR.mdl are never vendored here, so this path reaches them only when the user supplies the modules on the configured search path; without them the module is reported as not found and the authored-value subset still distils. No workflow builds the SDK-backed configuration, and MDL-generated shader code and layered BSDF evaluation remain unimplemented; see rendering/mdl-generated-shader-code.",
           "evidenceTests": [

@@ -6555,6 +6555,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ReloadStageMenuItem.IsEnabled = false;
         CaptureFrameMenuItem.IsEnabled = false;
         RenderImageSequenceMenuItem.IsEnabled = false;
+        PhysicsRecordSequenceMenuItem.IsEnabled = false;
         RenderAuthoredProductMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         RenderStageCameraMenu();

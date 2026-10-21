@@ -7,6 +7,7 @@
 #include "renderDelegate.h"
 #include "mesh.h"
 #include "material.h"
+#include "commandFile.h"
 
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -273,9 +274,13 @@ struct SilkSessionState
     SilkSceneIngestionState ingestionState;
     uint64_t maximumSessionMeshPreparationBytes = 0;
     size_t maximumSessionCommandPageBytes = SIZE_MAX;
+    std::shared_ptr<HdSilkCommandStorageBudget> commandStorageBudget;
+    openusd_silk_command_storage_limits commandStorageLimits{};
     bool synchronizationStarted = false;
     bool pageAcknowledgementEnabled = false;
     uint64_t pendingPageRevision = 0;
+    uint64_t sourceIdentityRevision = 0;
+    uint64_t sourceIdentityStageSerial = 0;
     std::vector<std::string> volumeProxyPaths;
     std::vector<std::string> volumeMaterialPaths;
     mutable std::mutex mutex;
@@ -290,6 +295,10 @@ struct SilkSessionState
 struct openusd_silk_page
 {
     std::vector<uint8_t> data;
+    std::unique_ptr<HdSilkCommandFile> file;
+    std::mutex readMutex;
+    uint32_t maximumCommandBytes = 0;
+    uint32_t maximumTransferBytes = 0;
     uint64_t revision = 0;
     uint32_t command_count = 0;
     std::weak_ptr<SilkSessionState> acknowledgementState;
@@ -1328,12 +1337,18 @@ openusd_status SyncSessionWithSceneIngestionState(
     uint32_t draw_mode,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
-    openusd_error_buffer* error)
+    openusd_error_buffer* error,
+    bool stored = false)
 {
     SilkSessionState* state = owner.get();
     if (state->pendingPageRevision != 0)
     {
         WriteError(error, "The previous hdSilk page must be acknowledged or released before another sync.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (stored && !state->commandStorageBudget)
+    {
+        WriteError(error, "File-backed command storage must be configured before synchronization.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
     state->synchronizationStarted = true;
@@ -1367,6 +1382,7 @@ openusd_status SyncSessionWithSceneIngestionState(
         ingestionState.materialBindingPurpose.empty()
             ? UsdShadeTokens->allPurpose
             : TfToken(ingestionState.materialBindingPurpose);
+    state->sourceIdentityRevision = 0;
     try
     {
         if (ingestionState.maximumMeshPreparationBytes != 0)
@@ -1470,9 +1486,11 @@ openusd_status SyncSessionWithSceneIngestionState(
             }
             catch (...)
             {
+                state->sceneState->ClearMeshArraySharing();
                 HdSilkEndUsdSkelEvaluation(state->sceneState.get());
                 throw;
             }
+            state->sceneState->ClearMeshArraySharing();
             HdSilkEndUsdSkelEvaluation(state->sceneState.get());
             state->sceneState->MeshPreparationBudget()->ThrowIfRefused();
             if (!mark.IsClean())
@@ -1537,16 +1555,40 @@ openusd_status SyncSessionWithSceneIngestionState(
         }
         ThrowIfSceneSyncFailpoint("before-build-page");
 
+        uint64_t sourceSerial = 0;
+        const openusd_status serialStatus =
+            openusd_stage_get_change_serial(state->stage_core, &sourceSerial, error);
+        if (serialStatus != OPENUSD_STATUS_OK)
+        {
+            state->sceneSyncRecoveryPending = true;
+            return serialStatus;
+        }
         auto result = std::make_unique<openusd_silk_page>();
         if (state->pageAcknowledgementEnabled)
         {
             result->acknowledgementState = owner;
             result->requiresAcknowledgement = true;
         }
-        result->data =
-            state->sceneState->BuildPage(
+        if (stored)
+        {
+            const auto& limits = state->commandStorageLimits;
+            result->maximumCommandBytes = static_cast<uint32_t>(
+                std::min(static_cast<size_t>(limits.maximum_command_bytes), ingestionState.maximumCommandPageBytes));
+            result->maximumTransferBytes = limits.transfer_buffer_bytes;
+            result->file = std::make_unique<HdSilkCommandFile>(
+                static_cast<size_t>(limits.maximum_update_bytes), limits.transfer_buffer_bytes,
+                state->commandStorageBudget);
+            state->sceneState->BuildPageTo(
+                *result->file, static_cast<size_t>(limits.maximum_update_bytes),
+                result->maximumCommandBytes,
+                &result->revision, &result->command_count, state->pageAcknowledgementEnabled);
+        }
+        else
+        {
+            result->data = state->sceneState->BuildPage(
                 &result->revision, &result->command_count, ingestionState.maximumCommandPageBytes,
                 state->pageAcknowledgementEnabled);
+        }
         if (ingestionState.maximumMeshPreparationBytes != 0)
         {
             const auto& budget = state->sceneState->MeshPreparationBudget();
@@ -1559,10 +1601,12 @@ openusd_status SyncSessionWithSceneIngestionState(
         view->abi_version = OPENUSD_SILK_PAGE_ABI_VERSION;
         view->revision = result->revision;
         view->data = result->data.empty() ? nullptr : result->data.data();
-        view->data_size = result->data.size();
+        view->data_size = result->file ? result->file->size() : result->data.size();
         view->command_count = result->command_count;
 
         state->pendingPageRevision = state->pageAcknowledgementEnabled ? result->revision : 0;
+        state->sourceIdentityRevision = result->revision;
+        state->sourceIdentityStageSerial = sourceSerial;
         state->ingestionState = std::move(ingestionState);
         const size_t live =
             g_live_page_count.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -1945,6 +1989,91 @@ openusd_status openusd_silk_page_get_preparation_usage(
     return OPENUSD_STATUS_OK;
 }
 
+openusd_status openusd_silk_session_set_command_storage_limits(
+    openusd_silk_session* session,
+    const openusd_silk_command_storage_limits* limits,
+    openusd_error_buffer* error)
+{
+    if (limits == nullptr || limits->struct_size < sizeof(*limits) ||
+        limits->version != OPENUSD_SILK_COMMAND_STORAGE_VERSION ||
+        limits->maximum_live_bytes == 0 ||
+        limits->maximum_live_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
+        limits->maximum_live_bytes > SIZE_MAX ||
+        limits->maximum_update_bytes < limits->maximum_command_bytes ||
+        limits->maximum_update_bytes > limits->maximum_live_bytes ||
+        limits->maximum_command_bytes < 8 ||
+        limits->maximum_command_bytes > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+        limits->transfer_buffer_bytes == 0 || limits->transfer_buffer_bytes > limits->maximum_command_bytes)
+    {
+        WriteError(error, "Valid version-1 live/update/command/transfer storage ceilings are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->synchronizationStarted || state->commandStorageBudget ||
+            !state->pageAcknowledgementEnabled || state->maximumSessionMeshPreparationBytes == 0 ||
+            limits->maximum_command_bytes > state->maximumSessionCommandPageBytes)
+        {
+            WriteError(error, "Configure storage once before sync, after acknowledgement and preparation ceilings; "
+                "commands cannot exceed the session page ceiling.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        auto budget = std::make_shared<HdSilkCommandStorageBudget>(static_cast<size_t>(limits->maximum_live_bytes));
+        state->commandStorageLimits = *limits;
+        state->commandStorageBudget = std::move(budget);
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_session_get_command_storage_usage(
+    openusd_silk_session* session, openusd_silk_command_storage_usage* usage, openusd_error_buffer* error)
+{
+    if (usage == nullptr || usage->struct_size < sizeof(*usage) ||
+        usage->version != OPENUSD_SILK_COMMAND_STORAGE_VERSION)
+    {
+        WriteError(error, "A complete version-1 command storage usage output is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (!state->commandStorageBudget)
+        {
+            WriteError(error, "This session has no command storage policy.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const auto& budget = state->commandStorageBudget;
+        *usage = {sizeof(*usage), OPENUSD_SILK_COMMAND_STORAGE_VERSION,
+            budget->Maximum(), budget->Reserved(), budget->Peak()};
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_page_read_storage(
+    openusd_silk_page* page, uint64_t offset, uint8_t* destination, size_t count, openusd_error_buffer* error)
+{
+    if (page == nullptr || !page->file || offset > SIZE_MAX ||
+        offset > page->file->size() || count > page->file->size() - offset ||
+        count > page->maximumTransferBytes || (count != 0 && destination == nullptr))
+    {
+        WriteError(error, "An owned file-backed command page and valid offset are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        std::lock_guard<std::mutex> lock(page->readMutex);
+        page->file->Read(static_cast<size_t>(offset), destination, count);
+        return OPENUSD_STATUS_OK;
+    });
+}
+
 openusd_status openusd_silk_session_enable_page_acknowledgement(
     openusd_silk_session* session,
     openusd_error_buffer* error)
@@ -2126,13 +2255,14 @@ static openusd_status SyncWithSceneIngestion(
     openusd_silk_mesh_preparation_usage* usage,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
-    openusd_error_buffer* error)
+    openusd_error_buffer* error,
+    bool stored = false)
 {
     if (page != nullptr)
     {
         *page = nullptr;
     }
-    if (page == nullptr || view == nullptr || request == nullptr)
+    if (page == nullptr || view == nullptr || (request == nullptr && !stored))
     {
         WriteError(
             error,
@@ -2149,12 +2279,9 @@ static openusd_status SyncWithSceneIngestion(
     SilkSceneIngestionState ingestionState;
     uint32_t complexity = OPENUSD_SILK_COMPLEXITY_LOW;
     uint32_t draw_mode = OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED;
-    const openusd_status requestStatus = DecodeSceneIngestionRequest(
-        request,
-        &ingestionState,
-        &complexity,
-        &draw_mode,
-        error);
+    const openusd_status requestStatus = request != nullptr
+        ? DecodeSceneIngestionRequest(request, &ingestionState, &complexity, &draw_mode, error)
+        : OPENUSD_STATUS_OK;
     if (requestStatus != OPENUSD_STATUS_OK)
     {
         return requestStatus;
@@ -2207,7 +2334,8 @@ static openusd_status SyncWithSceneIngestion(
                 draw_mode,
                 page,
                 view,
-                error);
+                error,
+                stored);
         });
         if (status == OPENUSD_STATUS_OK && usage != nullptr)
         {
@@ -2242,6 +2370,32 @@ openusd_silk_session_sync_with_mesh_preparation(
     }
     return SyncWithSceneIngestion(session, width, height, time_code, camera, request, limits, usage,
         page, view, error);
+}
+
+openusd_status openusd_silk_session_sync_to_storage(
+    openusd_silk_session* session, int32_t width, int32_t height, double time_code,
+    const openusd_render_camera* camera, const openusd_silk_scene_ingestion_request* request,
+    const openusd_silk_mesh_preparation_limits* limits, openusd_silk_mesh_preparation_usage* usage,
+    openusd_silk_page** page, openusd_silk_command_storage_view* view, openusd_error_buffer* error)
+{
+    if (page != nullptr) { *page = nullptr; }
+    if (view == nullptr || view->struct_size < sizeof(*view) ||
+        view->version != OPENUSD_SILK_COMMAND_STORAGE_VERSION)
+    {
+        WriteError(error, "A complete version-1 command storage view is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    openusd_silk_page_view metadata{};
+    metadata.struct_size = sizeof(metadata);
+    const openusd_status status = SyncWithSceneIngestion(
+        session, width, height, time_code, camera, request, limits, usage, page, &metadata, error, true);
+    if (status != OPENUSD_STATUS_OK) { return status; }
+    // File and per-command limits are immutable. No session lookup or allocation
+    // may fail after the update has become its pending publication.
+    *view = {sizeof(*view), OPENUSD_SILK_COMMAND_STORAGE_VERSION, metadata.abi_version,
+        metadata.command_count, metadata.revision, metadata.data_size,
+        (*page)->maximumCommandBytes, (*page)->maximumTransferBytes};
+    return OPENUSD_STATUS_OK;
 }
 
 extern "C" OPENUSD_HDSILK_API openusd_status
@@ -2361,6 +2515,152 @@ openusd_silk_diagnostic_reset_peak_counts(void) noexcept
     g_peak_page_count.store(
         g_live_page_count.load(std::memory_order_relaxed),
         std::memory_order_relaxed);
+}
+
+openusd_status openusd_silk_session_resolve_source_identities(
+    const openusd_silk_session* session,
+    const openusd_silk_source_identity_request* request,
+    uint8_t* buffer, size_t capacity, size_t* required, openusd_error_buffer* error)
+{
+    if (required != nullptr)
+    {
+        *required = 0;
+    }
+    return Guard(error, [&]()
+    {
+        if (request == nullptr || required == nullptr ||
+            request->struct_size < sizeof(*request) ||
+            request->version != OPENUSD_SILK_SOURCE_IDENTITY_VERSION ||
+            request->page_revision == 0 ||
+            request->query_count > OPENUSD_SILK_MAX_SOURCE_IDENTITY_QUERIES ||
+            (request->query_count != 0 && request->queries == nullptr) ||
+            request->maximum_result_bytes < 8 ||
+            request->maximum_result_bytes > OPENUSD_SILK_MAX_SOURCE_IDENTITY_RESULT_BYTES ||
+            (capacity != 0 && buffer == nullptr))
+        {
+            WriteError(error, "A valid bounded source-identity request and output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state)
+        {
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (!state->engine || !state->sceneState || state->sceneSyncRecoveryPending ||
+            request->page_revision != state->sourceIdentityRevision)
+        {
+            WriteError(error, "Source identities require the latest successful native page revision.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return WithStageAccess(state->stage_core, error, [&](openusd_stage_access*)
+        {
+            uint64_t serial = 0;
+            const openusd_status serialStatus =
+                openusd_stage_get_change_serial(state->stage_core, &serial, error);
+            if (serialStatus != OPENUSD_STATUS_OK)
+            {
+                return serialStatus;
+            }
+            if (serial != state->sourceIdentityStageSerial)
+            {
+                WriteError(error, "The source stage changed after the requested native page.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            std::vector<uint8_t> bytes;
+            const auto append = [&](const uint8_t* data, size_t count)
+            {
+                if (count > request->maximum_result_bytes - bytes.size())
+                {
+                    throw std::length_error("The source-identity result exceeds its byte budget.");
+                }
+                bytes.insert(bytes.end(), data, data + count);
+            };
+            const auto integer = [&](uint32_t value)
+            {
+                const uint8_t data[4] = {
+                    static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8),
+                    static_cast<uint8_t>(value >> 16), static_cast<uint8_t>(value >> 24)};
+                append(data, sizeof(data));
+            };
+            const auto pathText = [&](const SdfPath& path)
+            {
+                const std::string text = path.GetString();
+                if (!path.IsAbsolutePath() || !path.IsPrimPath() ||
+                    text.empty() || text.size() > OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES)
+                {
+                    throw std::invalid_argument("The source identity has no bounded absolute prim path.");
+                }
+                return text;
+            };
+            integer(OPENUSD_SILK_SOURCE_IDENTITY_VERSION);
+            integer(request->query_count);
+            for (uint32_t item = 0; item < request->query_count; ++item)
+            {
+                const auto& query = request->queries[item];
+                if (query.path == nullptr || query.instance_index < 0 || query.reserved != 0)
+                {
+                    WriteError(error, "Source-identity queries require a path and non-negative instance index.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                size_t length = 0;
+                while (length <= OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES && query.path[length] != '\0')
+                {
+                    ++length;
+                }
+                if (length == 0 || length > OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES)
+                {
+                    WriteError(error, "A source-identity query path exceeds its byte limit or is empty.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                const std::string hydraPath(query.path, length);
+                int32_t primId = -1;
+                int32_t sourcePickIndex = -1;
+                if (!state->sceneState->TryGetMeshSourceIdentity(
+                        {hydraPath, query.instance_index}, &primId, &sourcePickIndex) ||
+                    primId < 0 || sourcePickIndex < 0)
+                {
+                    WriteError(error, "The source-identity query does not name a retained Hydra mesh instance.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                SdfPath path;
+                SdfPath instancer;
+                int index = -1;
+                HdInstancerContext context;
+                if (!state->engine->DecodeIntersection(
+                        primId, sourcePickIndex, &path, &instancer, &index, &context) ||
+                    context.size() > OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES ||
+                    !state->stage->GetPrimAtPath(path))
+                {
+                    WriteError(error, "USD could not resolve the retained identity to an authored source prim.");
+                    return OPENUSD_STATUS_NATIVE_ERROR;
+                }
+                const std::string text = pathText(path);
+                integer(static_cast<uint32_t>(text.size()));
+                integer(static_cast<uint32_t>(context.size()));
+                append(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+                for (const auto& entry : context)
+                {
+                    if (entry.second < 0 || !state->stage->GetPrimAtPath(entry.first))
+                    {
+                        throw std::invalid_argument("USD returned an unresolved source instancer context.");
+                    }
+                    const std::string contextPath = pathText(entry.first);
+                    integer(static_cast<uint32_t>(entry.second));
+                    integer(static_cast<uint32_t>(contextPath.size()));
+                    append(reinterpret_cast<const uint8_t*>(contextPath.data()), contextPath.size());
+                }
+            }
+            *required = bytes.size();
+            if (capacity < bytes.size())
+            {
+                return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+            }
+            std::memcpy(buffer, bytes.data(), bytes.size());
+            return OPENUSD_STATUS_OK;
+        });
+    });
 }
 
 #if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)

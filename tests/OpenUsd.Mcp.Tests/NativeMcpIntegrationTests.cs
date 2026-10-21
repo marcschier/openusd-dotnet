@@ -10,13 +10,19 @@ public sealed partial class NativeMcpIntegrationTests
 {
     [Test]
     [NotInParallel]
-    [Arguments(false, "raw", false)]
-    [Arguments(true, "raw", false)]
-    [Arguments(false, "exr", false)]
-    [Arguments(true, "exr", false)]
-    [Arguments(true, "raw", true)]
-    public async Task NativeSequenceRendersDistinctTimesAndExposesTheChosenImmutableFrame(
-        bool includeDepth, string hdrFormat, bool bounded)
+    [Arguments(false, "raw", false, false)]
+    [Arguments(true, "raw", false, false)]
+    [Arguments(false, "exr", false, false)]
+    [Arguments(true, "exr", false, false)]
+    [Arguments(true, "raw", true, false)]
+    [Arguments(true, "raw", true, true)]
+    [Arguments(true, "exr", true, true)]
+    public Task NativeSequenceRendersDistinctTimesAndExposesTheChosenImmutableFrame(
+        bool includeDepth, string hdrFormat, bool bounded, bool streaming) =>
+        RunNativeSequenceAsync(includeDepth, hdrFormat, bounded, streaming, gpuUploadHeaps: false);
+
+    private static async Task RunNativeSequenceAsync(
+        bool includeDepth, string hdrFormat, bool bounded, bool streaming, bool gpuUploadHeaps)
     {
         if (hdrFormat == "exr" && !OpenUsd.Rendering.ExrRgba16FloatWriter.IsSupported)
         {
@@ -60,13 +66,24 @@ public sealed partial class NativeMcpIntegrationTests
             """;
         await File.WriteAllTextAsync(files.SourcePath, scene);
         string plugins = Path.Combine(layout.ShimRoot, "plugin", "usd");
+        var textureBudgets = new SilkTexturePreparationBudgets(new(1_000_000), new(1_000_000), new(1_000_000));
         var options = new OpenUsdMcpApplicationOptions(
             files.SourceRoot, files.OutputRoot, plugins, files.OutputRoot,
             Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
+            Graphics: gpuUploadHeaps
+                ? new PreviewGraphicsDeviceOptions(UseWarpOnWindows: false) { D3D12GpuUploadHeaps = true }
+                : null,
             PreparationLimits: bounded ? new SilkPreparationLimits(1_000_000, 1_000_000) : null,
-            GpuBufferBudget: bounded ? new SilkGpuBufferBudget(1_000_000) : null);
-        await using ServiceProvider services = new ServiceCollection().AddOpenUsdMcpServices(options)
-            .BuildServiceProvider();
+            GpuBufferBudget: bounded ? new SilkGpuBufferBudget(1_000_000) : null,
+            TexturePreparationBudgets: bounded ? textureBudgets : null,
+            StreamMaterialTextures: streaming);
+        var collection = new ServiceCollection().AddOpenUsdMcpServices(options);
+        GpuUploadTrackingFactory? gpuFactory = gpuUploadHeaps ? new() : null;
+        if (gpuFactory is not null)
+        {
+            collection.AddSingleton<IPreviewGraphicsDeviceFactory>(gpuFactory);
+        }
+        await using ServiceProvider services = collection.BuildServiceProvider();
         IOpenUsdMcpService service = services.GetRequiredService<IOpenUsdMcpService>();
         McpSessionDto session = await service.OpenSceneAsync(
             new OpenSceneRequest { SourcePath = "scene.usda" }, default);
@@ -91,6 +108,17 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(job.Diagnostics.Any(static entry =>
             entry.Code == "HDSILK_GPU_BUFFER_ADMISSION" &&
             entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
+        await Assert.That(job.Diagnostics.Any(static entry => entry.Code == "HDSILK_MATERIAL_TEXTURE_STREAMING"))
+            .IsEqualTo(streaming);
+        foreach (string code in new[]
+            { "HDSILK_CPU_TEXTURE_ADMISSION", "HDSILK_GPU_TEXTURE_ADMISSION", "HDSILK_GPU_STAGING_ADMISSION" })
+        {
+            await Assert.That(job.Diagnostics.Any(entry =>
+                entry.Code == code && entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal)))
+                .IsEqualTo(bounded);
+        }
+        await Assert.That(textureBudgets.GpuTextureBudget!.Usage.ReservedBytes > 0).IsEqualTo(bounded);
+        await Assert.That(textureBudgets.GpuStagingBudget!.Usage.PeakReservedBytes > 0).IsEqualTo(bounded);
         IArtifactResourceStore resources = services.GetRequiredService<IArtifactResourceStore>();
         var centers = new double[3];
         for (int index = 0; index < 3; index++)
@@ -132,6 +160,10 @@ public sealed partial class NativeMcpIntegrationTests
         }
         await Assert.That(centers[1] - centers[0]).IsGreaterThan(12d);
         await Assert.That(centers[2] - centers[1]).IsGreaterThan(12d);
+        if (gpuFactory is not null)
+        {
+            await Assert.That(gpuFactory.HardwareGpuUploadCreates).IsGreaterThan(0);
+        }
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
         await service.CloseSceneAsync(new SceneRevisionRequest
         {
@@ -143,6 +175,9 @@ public sealed partial class NativeMcpIntegrationTests
         {
             await Assert.That(options.GpuBufferBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
         }
+        await Assert.That(textureBudgets.CpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textureBudgets.GpuTextureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textureBudgets.GpuStagingBudget.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 
     [Test]
@@ -150,6 +185,9 @@ public sealed partial class NativeMcpIntegrationTests
     [Arguments("mesh")]
     [Arguments("page")]
     [Arguments("gpu")]
+    [Arguments("cpu-texture")]
+    [Arguments("gpu-texture")]
+    [Arguments("gpu-staging")]
     public async Task ConfiguredSessionRefusalCannotPublishASequenceOrFallBackToUnboundedCapture(string limit)
     {
         NativeLayout layout = RequireNativeLayout(requireImaging: true);
@@ -158,12 +196,54 @@ public sealed partial class NativeMcpIntegrationTests
             #usda 1.0
             def Cube "Cube" {}
             """);
+        if (limit == "cpu-texture")
+        {
+            await File.WriteAllBytesAsync(Path.Combine(files.SourceRoot, "albedo.png"),
+                PngRgba8Encoder.Encode(new ImageRgba8(1, 1, [255, 0, 0, 255])));
+            await File.WriteAllTextAsync(files.SourcePath, """
+                #usda 1.0
+                def Mesh "Quad" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+                    uniform token subdivisionScheme = "none"
+                    point3f[] points = [(-1,-1,0), (1,-1,0), (1,1,0), (-1,1,0)]
+                    int[] faceVertexCounts = [4]
+                    int[] faceVertexIndices = [0,1,2,3]
+                    texCoord2f[] primvars:st = [(0,0), (1,0), (1,1), (0,1)] (interpolation = "vertex")
+                    rel material:binding = </Material>
+                }
+                def Material "Material" {
+                    token outputs:surface.connect = </Material/Surface.outputs:surface>
+                    def Shader "Surface" {
+                        uniform token info:id = "UsdPreviewSurface"
+                        color3f inputs:diffuseColor.connect = </Material/Texture.outputs:rgb>
+                        token outputs:surface
+                    }
+                    def Shader "Texture" {
+                        uniform token info:id = "UsdUVTexture"
+                        asset inputs:file = @albedo.png@
+                        float2 inputs:st.connect = </Material/St.outputs:result>
+                        float3 outputs:rgb
+                    }
+                    def Shader "St" {
+                        uniform token info:id = "UsdPrimvarReader_float2"
+                        token inputs:varname = "st"
+                        float2 outputs:result
+                    }
+                }
+                """);
+        }
         var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
             Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
             Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
             PreparationLimits: new SilkPreparationLimits(limit == "mesh" ? 1ul : 1_000_000ul,
                 limit == "page" ? 1 : 1_000_000),
-            GpuBufferBudget: limit == "gpu" ? new SilkGpuBufferBudget(1) : null);
+            GpuBufferBudget: limit == "gpu" ? new SilkGpuBufferBudget(1) : null,
+            TexturePreparationBudgets: limit switch
+            {
+                "cpu-texture" => new(new(1), null, null),
+                "gpu-texture" => new(null, new(1), null),
+                "gpu-staging" => new(null, null, new(1)),
+                _ => null
+            });
         await using ServiceProvider services = new ServiceCollection().AddOpenUsdMcpServices(options)
             .BuildServiceProvider();
         IOpenUsdMcpService service = services.GetRequiredService<IOpenUsdMcpService>();
@@ -185,6 +265,24 @@ public sealed partial class NativeMcpIntegrationTests
         {
             await Assert.That(failure.InnerException).IsTypeOf<SilkGpuBufferBudgetExceededException>();
             await Assert.That(options.GpuBufferBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        else if (options.TexturePreparationBudgets is { } textureBudgets)
+        {
+            switch (limit)
+            {
+                case "cpu-texture":
+                    await Assert.That(failure.InnerException).IsTypeOf<SilkCpuTextureBudgetExceededException>();
+                    break;
+                case "gpu-texture":
+                    await Assert.That(failure.InnerException).IsTypeOf<SilkGpuTextureBudgetExceededException>();
+                    break;
+                case "gpu-staging":
+                    await Assert.That(failure.InnerException).IsTypeOf<SilkGpuStagingBudgetExceededException>();
+                    break;
+            }
+            await Assert.That(textureBudgets.CpuTextureBudget?.Usage.ReservedBytes ?? 0).IsEqualTo(0ul);
+            await Assert.That(textureBudgets.GpuTextureBudget?.Usage.ReservedBytes ?? 0).IsEqualTo(0ul);
+            await Assert.That(textureBudgets.GpuStagingBudget?.Usage.ReservedBytes ?? 0).IsEqualTo(0ul);
         }
         else
         {

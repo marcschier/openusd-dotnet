@@ -16,6 +16,163 @@ public sealed class SilkDisplayTransformTests
         "display-transform-tests.ocio");
 
     [Test]
+    public async Task AdmittedCacheRefusesBeforeProviderAllocationAndRequiresExplicitOwnership()
+    {
+        var provider = new CountingProvider();
+        var budget = new SilkCpuTextureBudget(2048);
+        var cache = new SilkDisplayTransformLatticeCache(budget, provider,
+            identityProvider: new StubIdentityProvider("first"));
+        var transform = new RenderDisplayTransform(ConfigPath, "linear", latticeSize: 8);
+        using (budget.Reserve(1))
+        {
+            await Assert.That(() => cache.GetOwned(transform, out _)).Throws<SilkCpuTextureBudgetExceededException>();
+            await Assert.That(provider.Creations).IsEqualTo(0);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(1ul);
+        }
+        await Assert.That(() => cache.Get(transform)).Throws<InvalidOperationException>();
+        SilkDisplayTransformLattice lattice = cache.GetOwned(transform, out IDisposable? ownership);
+        using (ownership)
+        {
+            await Assert.That(lattice.ByteCount).IsEqualTo(2048L);
+            await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+            cache.Clear();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AdmittedCacheEvictionAndInvalidationKeepPublishedPixelsCharged(bool invalidate)
+    {
+        var identities = new StubIdentityProvider("first");
+        var budget = new SilkCpuTextureBudget(4096);
+        var cache = new SilkDisplayTransformLatticeCache(budget, new CountingProvider(), 1, identities);
+        var first = new RenderDisplayTransform(ConfigPath, "linear", latticeSize: 8);
+        _ = cache.GetOwned(first, out IDisposable? published);
+        using (published)
+        {
+            identities.Identity = invalidate ? "second" : "first";
+            var next = new RenderDisplayTransform(invalidate ? ConfigPath : ConfigPath + ".other",
+                "linear", latticeSize: 8);
+            SilkDisplayTransformLattice current = cache.GetOwned(next, out IDisposable? candidate);
+            using (candidate)
+            {
+                await Assert.That(cache.Count).IsEqualTo(1);
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(4096ul);
+                await Assert.That(cache.GetOwned(next, out IDisposable? duplicate)).IsSameReferenceAs(current);
+                duplicate?.Dispose();
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(4096ul);
+                published?.Dispose();
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+                cache.Clear();
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+            }
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task AdmittedFailedProviderReleasesPixelsWithoutMaskingItsFailure()
+    {
+        var provider = new FailingCountingProvider();
+        var budget = new SilkCpuTextureBudget(2048);
+        var cache = new SilkDisplayTransformLatticeCache(budget, provider,
+            identityProvider: new StubIdentityProvider("first"));
+        var transform = new RenderDisplayTransform(ConfigPath, "linear", latticeSize: 8);
+        await Assert.That(() => cache.GetOwned(transform, out _)).Throws<SilkDisplayTransformException>();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(cache.Count).IsEqualTo(0);
+        await Assert.That(() => cache.GetOwned(transform, out _)).Throws<SilkDisplayTransformException>();
+        await Assert.That(provider.Attempts).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task AdmittedUnexpectedLatticeShapeReleasesTheUnusedReservation()
+    {
+        var budget = new SilkCpuTextureBudget(16_384);
+        var cache = new SilkDisplayTransformLatticeCache(budget, new CountingProvider(),
+            identityProvider: new StubIdentityProvider("first"));
+        var transform = new RenderDisplayTransform(ConfigPath, "linear", latticeSize: 16);
+        await Assert.That(() => cache.GetOwned(transform, out _)).Throws<InvalidDataException>();
+        await Assert.That(cache.Count).IsEqualTo(0);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task IncompleteConfigIdentityCannotReleasePublishedLatticeOwnership()
+    {
+        var identities = new StubIdentityProvider("first");
+        var budget = new SilkCpuTextureBudget(2048);
+        var cache = new SilkDisplayTransformLatticeCache(budget, new CountingProvider(),
+            identityProvider: identities);
+        var transform = new RenderDisplayTransform(ConfigPath, "linear", latticeSize: 8);
+        _ = cache.GetOwned(transform, out IDisposable? published);
+        using (published)
+        {
+            identities.IsExhaustive = false;
+            await Assert.That(() => cache.GetOwned(transform, out _)).Throws<SilkDisplayTransformException>();
+            await Assert.That(cache.Count).IsEqualTo(0);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task ConcurrentAdmittedBakesReleaseTheUnpublishedDuplicate()
+    {
+        using var barrier = new Barrier(2);
+        var budget = new SilkCpuTextureBudget(4096);
+        var cache = new SilkDisplayTransformLatticeCache(budget, new RacingProvider(barrier),
+            identityProvider: new StubIdentityProvider("first"));
+        var transform = new RenderDisplayTransform(ConfigPath, "linear", latticeSize: 8);
+        (SilkDisplayTransformLattice Lattice, IDisposable? Owner) acquire()
+        {
+            SilkDisplayTransformLattice lattice = cache.GetOwned(transform, out IDisposable? owner);
+            return (lattice, owner);
+        }
+        Task<(SilkDisplayTransformLattice Lattice, IDisposable? Owner)> first = Task.Factory.StartNew(
+            acquire, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task<(SilkDisplayTransformLattice Lattice, IDisposable? Owner)> second = Task.Factory.StartNew(
+            acquire, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        var results = await Task.WhenAll(first, second);
+        try
+        {
+            await Assert.That(results[0].Lattice).IsSameReferenceAs(results[1].Lattice);
+            await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(4096ul);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+            await Assert.That(cache.Builds).IsEqualTo(1ul);
+            cache.Clear();
+            results[0].Owner?.Dispose();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+        }
+        finally
+        {
+            foreach (var result in results)
+            {
+                result.Owner?.Dispose();
+            }
+            cache.Clear();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    private sealed class RacingProvider(Barrier barrier) : ISilkDisplayTransformLatticeProvider
+    {
+        public SilkDisplayTransformLattice Create(RenderDisplayTransform transform)
+        {
+            if (!barrier.SignalAndWait(TimeSpan.FromSeconds(10)))
+            {
+                throw new TimeoutException("Both independent lattice bakes must reach the provider.");
+            }
+            return new SilkDisplayTransformLattice(8, transform.ShaperMinimumLog2, transform.ShaperRangeLog2,
+                new byte[2048]);
+        }
+    }
+
+    [Test]
     public async Task Transform_RejectsEveryRelativeConfigPath()
     {
         // Lexical containment was removed rather than patched: comparing normalized

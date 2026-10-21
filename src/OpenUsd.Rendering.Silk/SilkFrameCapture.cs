@@ -7,6 +7,7 @@ namespace OpenUsd.Rendering.Silk;
 /// </summary>
 public sealed class SilkFrameCaptureResult
 {
+    private readonly byte[] _rgba;
     internal SilkFrameCaptureResult(
         int width,
         int height,
@@ -20,6 +21,7 @@ public sealed class SilkFrameCaptureResult
     {
         Width = width;
         Height = height;
+        _rgba = rgba;
         Rgba = rgba;
         RenderResult = renderResult;
         PageRevision = pageRevision;
@@ -61,6 +63,10 @@ public sealed class SilkFrameCaptureResult
 
     /// <summary>Gets bounded material and texture degradation diagnostics for the frame.</summary>
     public RenderDiagnosticsState Diagnostics { get; }
+
+    internal SilkFrameCaptureResult WithCompletion(
+        SilkMeshRenderResult rendered, RenderDiagnosticsState diagnostics) =>
+        new(Width, Height, _rgba, rendered, PageRevision, CommandCount, diagnostics, Depth, HdrColor);
 }
 
 /// <summary>
@@ -279,6 +285,7 @@ public static partial class SilkFrameCapture
         {
             silkRenderer.ValidateCaptureDevice(device);
         }
+        silkRenderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
                 checked((uint)width),
@@ -286,43 +293,14 @@ public static partial class SilkFrameCapture
         if (renderSettings.DisplayTransform is not null)
         {
             using ISilkGraphicsTexture display = CreateDisplayTarget(device, width, height);
-            SilkMeshRenderResult transformedResult =
-                silkRenderer.RenderForDisplayCapture(
-                    display,
-                    depth,
-                    CreateDisplayTransformRenderOptions(renderSettings),
-                    depthRequest,
-                    out SilkHdrColorCaptureResult? hdrColor);
-            return ReadbackDisplayTransformedFrame(
-                silkRenderer,
-                display,
-                depth,
-                width,
-                height,
-                transformedResult,
-                pageRevision,
-                commandCount: 0,
-                depthRequest,
-                hdrColor);
+            return silkRenderer.CaptureRetained(display, depth, CreateDisplayTransformRenderOptions(renderSettings),
+                new Completion(width, height, renderSettings, pageRevision, 0, depthRequest));
         }
 
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         SilkMeshRenderOptions options = CreateRenderOptions(renderSettings);
-        SilkMeshRenderResult result =
-            silkRenderer.RenderForDisplayCapture(color, depth, options);
-        return ReadbackFrame(
-            device,
-            silkRenderer,
-            color,
-            depth,
-            width,
-            height,
-            renderSettings,
-            result,
-            pageRevision,
-            commandCount: 0,
-            silkRenderer.GpuResources.Diagnostics,
-            depthRequest);
+        return silkRenderer.CaptureRetained(color, depth, options,
+            new Completion(width, height, renderSettings, pageRevision, 0, depthRequest));
     }
 
     /// <summary>
@@ -373,28 +351,15 @@ public static partial class SilkFrameCapture
         {
             silkRenderer.ValidateCaptureDevice(device);
         }
+        silkRenderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
                 checked((uint)width),
                 checked((uint)height)));
         SilkMeshRenderOptions options = CreateRenderOptions(renderSettings);
-        SilkMeshRenderResult result =
-            silkRenderer.RenderForDisplayCapture(color, depth, options);
-        return ReadbackFrameOcio(
-            device,
-            silkRenderer,
-            color,
-            depth,
-            width,
-            height,
-            renderSettings,
-            ocioProcessor,
-            result,
-            pageRevision,
-            commandCount: 0,
-            silkRenderer.GpuResources.Diagnostics,
-            depthRequest);
+        return silkRenderer.CaptureRetained(color, depth, options,
+            new Completion(width, height, renderSettings, pageRevision, 0, depthRequest, processor: ocioProcessor));
     }
 
     internal static SilkFrameCaptureResult CaptureCore(
@@ -412,6 +377,7 @@ public static partial class SilkFrameCapture
         renderSettings.ValidateDisplayTransform();
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
         depthRequest?.ThrowIfCancellationRequested();
+        renderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
                 checked((uint)width),
@@ -422,51 +388,19 @@ public static partial class SilkFrameCapture
             depthRequest?.ThrowIfCancellationRequested();
             using OpenUsdSilkPage transformedPage = SyncCapture(
                 session, width, height, timeCode, camera, renderSettings.Complexity, ingestionOptions);
-            SilkMeshRenderResult transformedResult =
-                renderer.ApplyAndRenderForDisplayCapture(
-                    transformedPage,
-                    display,
-                    depth,
-                    CreateDisplayTransformRenderOptions(renderSettings),
-                    depthRequest,
-                    out SilkHdrColorCaptureResult? hdrColor);
-            return ReadbackDisplayTransformedFrame(
-                renderer,
-                display,
-                depth,
-                width,
-                height,
-                transformedResult,
-                transformedPage.Revision,
-                transformedPage.CommandCount,
-                depthRequest,
-                hdrColor,
-                transformedPage);
+            return renderer.ApplyAndCapture(transformedPage, display, depth,
+                CreateDisplayTransformRenderOptions(renderSettings),
+                new Completion(width, height, renderSettings, transformedPage.Revision, transformedPage.CommandCount,
+                    depthRequest, transformedPage.MeshPreparationUsage, transformedPage.MaximumCommandPageBytes));
         }
 
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         depthRequest?.ThrowIfCancellationRequested();
         using OpenUsdSilkPage page = SyncCapture(
             session, width, height, timeCode, camera, renderSettings.Complexity, ingestionOptions);
-        SilkMeshRenderResult result = renderer.ApplyAndRenderForDisplayCapture(
-            page,
-            color,
-            depth,
-            CreateRenderOptions(renderSettings));
-
-        return ReadbackFrame(
-            device,
-            renderer,
-            color,
-            depth,
-            width,
-            height,
-            renderSettings,
-            result,
-            page.Revision,
-            page.CommandCount,
-            page.WithPreparationDiagnostics(renderer.GpuResources.Diagnostics),
-            depthRequest);
+        return renderer.ApplyAndCapture(page, color, depth, CreateRenderOptions(renderSettings),
+            new Completion(width, height, renderSettings, page.Revision, page.CommandCount,
+                depthRequest, page.MeshPreparationUsage, page.MaximumCommandPageBytes));
     }
 
     internal static SilkFrameCaptureResult CaptureCoreOcio(
@@ -485,6 +419,7 @@ public static partial class SilkFrameCapture
         ValidateOcioSettings(renderSettings);
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
         depthRequest?.ThrowIfCancellationRequested();
+        renderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
@@ -493,26 +428,9 @@ public static partial class SilkFrameCapture
         depthRequest?.ThrowIfCancellationRequested();
         using OpenUsdSilkPage page = SyncCapture(
             session, width, height, timeCode, camera, renderSettings.Complexity, ingestionOptions);
-        SilkMeshRenderResult result = renderer.ApplyAndRenderForDisplayCapture(
-            page,
-            color,
-            depth,
-            CreateRenderOptions(renderSettings));
-
-        return ReadbackFrameOcio(
-            device,
-            renderer,
-            color,
-            depth,
-            width,
-            height,
-            renderSettings,
-            ocioProcessor,
-            result,
-            page.Revision,
-            page.CommandCount,
-            page.WithPreparationDiagnostics(renderer.GpuResources.Diagnostics),
-            depthRequest);
+        return renderer.ApplyAndCapture(page, color, depth, CreateRenderOptions(renderSettings),
+            new Completion(width, height, renderSettings, page.Revision, page.CommandCount,
+                depthRequest, page.MeshPreparationUsage, page.MaximumCommandPageBytes, ocioProcessor));
     }
 
     private static ISilkGraphicsTexture CreateColorTarget(

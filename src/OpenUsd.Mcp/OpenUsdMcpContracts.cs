@@ -44,6 +44,48 @@ internal sealed class OpenSceneRequest
         "Absolute paths, traversal outside the root, control characters, and paths longer " +
         "than 1024 characters are rejected.")]
     public required string SourcePath { get; init; }
+
+    [JsonPropertyName("stageSettings")]
+    [Description(
+        "Optional explicit units, Y/Z up axis and timeline authored only in the new workspace root. " +
+        "Supply all seven fields when present. No source metadata is copied implicitly and no coordinates " +
+        "are converted. Omit to retain the existing source-sublayer behavior.")]
+    public WorkspaceStageSettingsDto? StageSettings { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed class WorkspaceStageSettingsDto
+{
+    [JsonPropertyName("metersPerUnit"), Required]
+    [Description("Positive finite metres per existing coordinate unit.")]
+    public required double MetersPerUnit { get; init; }
+
+    [JsonPropertyName("kilogramsPerUnit"), Required]
+    [Description("Positive finite kilograms per existing mass unit.")]
+    public required double KilogramsPerUnit { get; init; }
+
+    [JsonPropertyName("upAxis"), Required, AllowedValues("Y", "Z")]
+    [Description("USD stage up axis, Y or Z.")]
+    public required string UpAxis { get; init; }
+
+    [JsonPropertyName("startTimeCode"), Required]
+    [Description("Finite inclusive start time code.")]
+    public required double StartTimeCode { get; init; }
+
+    [JsonPropertyName("endTimeCode"), Required]
+    [Description("Finite inclusive end, at or after the start, with a finite duration.")]
+    public required double EndTimeCode { get; init; }
+
+    [JsonPropertyName("timeCodesPerSecond"), Required]
+    [Description("Positive finite time codes per second; determines the fixed physics step.")]
+    public required double TimeCodesPerSecond { get; init; }
+
+    [JsonPropertyName("framesPerSecond"), Required]
+    [Description("Positive finite advisory playback rate.")]
+    public required double FramesPerSecond { get; init; }
+
+    internal WorkspaceStageSettings ToSettings() => new(
+        MetersPerUnit, KilogramsPerUnit, UpAxis, StartTimeCode, EndTimeCode, TimeCodesPerSecond, FramesPerSecond);
 }
 
 internal sealed class SceneRevisionRequest

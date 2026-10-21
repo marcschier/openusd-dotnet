@@ -5,6 +5,112 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class PhysicsRenderChannelTests
 {
     [Test]
+    public async Task ReclaimedSnapshotCannotRepublishItsPreviousCompleteFrame()
+    {
+        var capacities = new PhysicsRenderCapacities(2);
+        var channel = new PhysicsRenderChannel(capacities);
+        PhysicsRenderSnapshot first = channel.TryBeginWrite()!;
+        first.BeginWrite(10, 1, 1, 1, 0.1);
+        _ = first.TryAddBody(PhysicsRenderSnapshotTests.Body(1, 10, 0, 0));
+        first.EndWrite();
+        _ = channel.Publish(first);
+        _ = PublishStep(channel, 11, 1.1, 1);
+
+        PhysicsRenderSnapshot reclaimed = channel.TryBeginWrite()!;
+        await Assert.That(reclaimed).IsSameReferenceAs(first);
+        await Assert.That(() => channel.Publish(reclaimed)).Throws<ArgumentException>();
+        await Assert.That(reclaimed.IsComplete).IsFalse();
+        var latest = new PhysicsRenderSnapshot(capacities);
+        await Assert.That(channel.TryCopyLatest(latest)).IsTrue();
+        await Assert.That(latest.StepIndex).IsEqualTo(11ul);
+        await Assert.That(channel.Revision).IsEqualTo(2ul);
+
+        reclaimed.BeginWrite(12, 1, 1.2, 1.2, 0.1);
+        _ = reclaimed.TryAddBody(PhysicsRenderSnapshotTests.Body(1, 12, 0, 0));
+        reclaimed.EndWrite();
+        await Assert.That(channel.Publish(reclaimed)).IsEqualTo(3ul);
+        await Assert.That(channel.TryCopyLatest(latest)).IsTrue();
+        await Assert.That(latest.StepIndex).IsEqualTo(12ul);
+        await Assert.That(latest.Bodies[0].Position.X).IsEqualTo(12d);
+    }
+
+    [Test]
+    public async Task ValidPublicationReadAndAbandonStayAllocationFreeAfterWarmup()
+    {
+        var channel = new PhysicsRenderChannel(new PhysicsRenderCapacities(4));
+        var destination = new PhysicsRenderSnapshot(new PhysicsRenderCapacities(4));
+        for (int index = 0; index < 128; index++)
+        {
+            _ = PublishStep(channel, (ulong)index, index, 2);
+            _ = channel.TryCopyLatest(destination);
+            channel.Abandon(channel.TryBeginWrite()!);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int index = 0; index < 2_000; index++)
+        {
+            _ = PublishStep(channel, (ulong)index, index, 2);
+            _ = channel.TryCopyLatest(destination);
+            channel.Abandon(channel.TryBeginWrite()!);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        await Assert.That(allocated).IsEqualTo(0L);
+        await Assert.That(destination.StepIndex).IsEqualTo(1_999ul);
+        await Assert.That(destination.BodyCount).IsEqualTo(2);
+        await Assert.That(destination.Bodies[1].Position.X).IsEqualTo(2_000d);
+        await Assert.That(channel.DroppedPublications).IsEqualTo(0L);
+        await Assert.That(channel.RefusedWrites).IsEqualTo(0L);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CompletedWriteCannotBePublishedOrAbandonedAfterItsClaimEnds(bool published)
+    {
+        var capacities = new PhysicsRenderCapacities(1);
+        var channel = new PhysicsRenderChannel(capacities);
+        PhysicsRenderSnapshot snapshot = channel.TryBeginWrite()!;
+        snapshot.BeginWrite(7, 1, 0.7, 0.7, 0.1);
+        _ = snapshot.TryAddBody(PhysicsRenderSnapshotTests.Body(1, 7, 0, 0));
+        snapshot.EndWrite();
+        if (published)
+        {
+            _ = channel.Publish(snapshot);
+        }
+        else
+        {
+            channel.Abandon(snapshot);
+        }
+        ulong revision = channel.Revision;
+
+        await Assert.That(() => channel.Publish(snapshot)).Throws<ArgumentException>();
+        await Assert.That(() => channel.Abandon(snapshot)).Throws<ArgumentException>();
+        await Assert.That(channel.Revision).IsEqualTo(revision);
+        var destination = new PhysicsRenderSnapshot(capacities);
+        await Assert.That(channel.TryCopyLatest(destination)).IsEqualTo(published);
+        if (published)
+        {
+            await Assert.That(destination.StepIndex).IsEqualTo(7ul);
+            await Assert.That(destination.Bodies[0].Position.X).IsEqualTo(7d);
+        }
+
+        var claims = new List<PhysicsRenderSnapshot>();
+        int available = channel.BufferCount - (published ? 1 : 0);
+        for (int index = 0; index < available; index++)
+        {
+            PhysicsRenderSnapshot? claim = channel.TryBeginWrite();
+            await Assert.That(claim).IsNotNull();
+            claims.Add(claim!);
+        }
+        await Assert.That(channel.TryBeginWrite()).IsNull();
+        foreach (PhysicsRenderSnapshot claim in claims)
+        {
+            channel.Abandon(claim);
+        }
+    }
+
+    [Test]
     public async Task PublishedSnapshotIsCopiedToTheRenderer()
     {
         var channel = new PhysicsRenderChannel(new PhysicsRenderCapacities(4));

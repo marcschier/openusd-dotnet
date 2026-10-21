@@ -21,7 +21,10 @@
       <TextBlock Text="Viewport image sequence" FontWeight="SemiBold" />
       <TextBlock x:Name="SequenceRenderer" AutomationProperties.Name="Sequence renderer and dimensions"
                  TextWrapping="Wrap" Classes="viewer-secondary" />
-      <TextBlock Text="The selected camera is sampled at every requested time. Playback and view edits pause until the job drains."
+      <CheckBox x:Name="SequencePhysicsMode" Content="Record _physics fixed steps" IsVisible="False"
+                AutomationProperties.Name="Record physics fixed steps" />
+      <TextBlock x:Name="SequenceDescription"
+                 Text="The selected camera is sampled at every requested time. Playback and view edits pause until the job drains."
                  TextWrapping="Wrap" Classes="viewer-caption" />
     </StackPanel>
     <Grid x:Name="SequenceRangeControls" Grid.Row="1" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto"
@@ -37,6 +40,18 @@
                AutomationProperties.Name="Sequence time code step" MaxLength="64" />
       <TextBlock x:Name="SequenceFrameCount" Grid.Row="2" Grid.ColumnSpan="3"
                  AutomationProperties.Name="Sequence frame count" Classes="viewer-secondary" />
+    </Grid>
+    <Grid x:Name="SequencePhysicsControls" Grid.Row="1" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto"
+          ColumnSpacing="8" RowSpacing="4" IsVisible="False">
+      <TextBlock Grid.Column="0" Text="Frames (1–4096)" />
+      <TextBlock Grid.Column="1" Text="Fixed steps/frame (1–8)" />
+      <TextBlock Grid.Column="2" Text="Scenario identity" />
+      <TextBox x:Name="SequencePhysicsFrames" Grid.Row="1" Grid.Column="0" Text="24" MaxLength="4"
+               AutomationProperties.Name="Physics recording frame count" />
+      <TextBox x:Name="SequencePhysicsSteps" Grid.Row="1" Grid.Column="1" Text="1" MaxLength="1"
+               AutomationProperties.Name="Physics recording fixed steps per frame" />
+      <TextBox x:Name="SequencePhysicsScenario" Grid.Row="1" Grid.Column="2" Text="viewer-recording" MaxLength="256"
+               AutomationProperties.Name="Physics recording scenario identity" />
     </Grid>
     <StackPanel x:Name="SequenceOutputControls" Grid.Row="2" Spacing="4">
       <TextBlock Text="Outputs (PNG is always included)" />

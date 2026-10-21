@@ -20,6 +20,86 @@ public sealed class SilkPickInstanceIdentityCostTests
     private const int InstanceCount = 256;
     private const int PointCount = 4_096;
 
+    [Test]
+    [Arguments(SilkSubprimIdentity.Point)]
+    [Arguments(SilkSubprimIdentity.Edge)]
+    [Arguments(SilkSubprimIdentity.Point | SilkSubprimIdentity.Edge)]
+    public async Task PrototypeIdentityTablesAreCopiedOnceAndDetachedFromTheWire(SilkSubprimIdentity identity)
+    {
+        const int pointCount = 65_536;
+        byte[] baseline = Prototype(0, pointCount);
+        byte[] command = Prototype(0, pointCount, identity: identity);
+        int[] expectedPoints = identity.HasFlag(SilkSubprimIdentity.Point)
+            ? Enumerable.Range(0, pointCount)
+                .Select(index => index % 7 == 0 && index != pointCount - 1 ? -1 : index).ToArray()
+            : [];
+        int[] expectedEdges = identity.HasFlag(SilkSubprimIdentity.Edge)
+            ? Enumerable.Range(0, pointCount / 3 * 3)
+                .Select(index => index % 5 == 0 && index != (pointCount / 3 * 3) - 1 ? -1 : index).ToArray()
+            : [];
+        for (int warmup = 0; warmup < 4; warmup++)
+        {
+            _ = CopyMeasured(baseline, out _);
+            _ = CopyMeasured(command, out _);
+        }
+
+        long baselineBytes = long.MaxValue;
+        long withIdentityBytes = long.MaxValue;
+        SilkMeshData mesh = CopyMeasured(command, out _);
+        // Use warm minima so runtime bookkeeping cannot masquerade as a table copy.
+        for (int sample = 0; sample < 5; sample++)
+        {
+            _ = CopyMeasured(baseline, out long withoutTables);
+            mesh = CopyMeasured(command, out long withTables);
+            baselineBytes = Math.Min(baselineBytes, withoutTables);
+            withIdentityBytes = Math.Min(withIdentityBytes, withTables);
+        }
+        long tableBytes = (expectedPoints.LongLength + expectedEdges.LongLength) * sizeof(int);
+
+        await Assert.That(withIdentityBytes - baselineBytes).IsGreaterThanOrEqualTo(tableBytes);
+        await Assert.That(withIdentityBytes - baselineBytes).IsLessThanOrEqualTo(tableBytes + 128);
+        Array.Clear(command);
+        await Assert.That(mesh.PointOrigins.Span.SequenceEqual(expectedPoints)).IsTrue();
+        await Assert.That(mesh.CornerEdges.Span.SequenceEqual(expectedEdges)).IsTrue();
+        await Assert.That(mesh.AuthoredPointCount).IsEqualTo(expectedPoints.Length);
+        await Assert.That(mesh.AuthoredEdgeCount).IsEqualTo(expectedEdges.Length);
+        await Assert.That(mesh.Points.Span[(pointCount - 1) * 3]).IsEqualTo(pointCount - 1);
+        await Assert.That(mesh.Path).IsEqualTo(ProtoPath);
+        await Assert.That(mesh.InstancerContext[0].InstancerPath).IsEqualTo(InstancerPath);
+        await Assert.That(mesh.SubprimIdentity).IsEqualTo(identity);
+    }
+
+    [Test]
+    public async Task SimulatedPointsReuseOwnedIdentityTablesAndPreserveTheRestPose()
+    {
+        SilkMeshData original = CopyMeasured(
+            Prototype(0, 6, identity: SilkSubprimIdentity.Point | SilkSubprimIdentity.Edge), out _);
+        float[] simulatedPoints = original.Points.ToArray();
+        simulatedPoints[1] = 3;
+
+        SilkMeshData simulated = original.WithSimulatedPoints(simulatedPoints);
+
+        await Assert.That(SameArray(original.PointOrigins, simulated.PointOrigins)).IsTrue();
+        await Assert.That(SameArray(original.CornerEdges, simulated.CornerEdges)).IsTrue();
+        await Assert.That(SameArray(original.Points, simulated.Points)).IsFalse();
+        simulatedPoints[1] = 9;
+        await Assert.That(simulated.Points.Span[1]).IsEqualTo(3);
+        await Assert.That(original.Points.Span[1]).IsEqualTo(0);
+        await Assert.That(simulated.TopologyFingerprint).IsEqualTo(original.TopologyFingerprint);
+        await Assert.That(simulated.AuthoredPointCount).IsEqualTo(6);
+        await Assert.That(simulated.AuthoredEdgeCount).IsEqualTo(6);
+        await Assert.That(simulated.PointOrigins.Span[0]).IsEqualTo(-1);
+        await Assert.That(simulated.CornerEdges.Span[0]).IsEqualTo(-1);
+    }
+
+    private static SilkMeshData CopyMeasured(byte[] bytes, out long allocated)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        SilkMeshData mesh = SilkMeshData.CopyFrom(new SilkMeshUpsertCommand(bytes));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        return mesh;
+    }
+
     /// <summary>
     /// A lightweight instance record shares every prototype payload array
     /// instead of copying it.
@@ -37,7 +117,8 @@ public sealed class SilkPickInstanceIdentityCostTests
         var scene = new SilkSceneState();
         _ = scene.Apply(
             Page(
-                Prototype(instanceIndex: 0, pointCount: 64),
+                Prototype(instanceIndex: 0, pointCount: 64,
+                    identity: SilkSubprimIdentity.Point | SilkSubprimIdentity.Edge),
                 Reference(instanceIndex: 1),
                 Reference(instanceIndex: 2)),
             3,
@@ -48,6 +129,8 @@ public sealed class SilkPickInstanceIdentityCostTests
 
         await Assert.That(SameArray(prototype.Points, instance.Points)).IsTrue();
         await Assert.That(SameArray(prototype.Indices, instance.Indices)).IsTrue();
+        await Assert.That(SameArray(prototype.PointOrigins, instance.PointOrigins)).IsTrue();
+        await Assert.That(SameArray(prototype.CornerEdges, instance.CornerEdges)).IsTrue();
         await Assert.That(
                 SameArray(prototype.TriangleSubprims, instance.TriangleSubprims))
             .IsTrue();
@@ -392,8 +475,9 @@ public sealed class SilkPickInstanceIdentityCostTests
         int instanceIndex,
         int pointCount,
         string instancerPath = InstancerPath,
-        bool nested = false) =>
-        MeshUpsert(instanceIndex, pointCount, instancerPath, nested);
+        bool nested = false,
+        SilkSubprimIdentity identity = SilkSubprimIdentity.None) =>
+        MeshUpsert(instanceIndex, pointCount, instancerPath, nested, identity);
 
     private static byte[] Reference(int instanceIndex) =>
         MeshUpsert(instanceIndex, pointCount: 0, InstancerPath, nested: false);
@@ -402,7 +486,8 @@ public sealed class SilkPickInstanceIdentityCostTests
         int instanceIndex,
         int pointCount,
         string instancerPath,
-        bool nested)
+        bool nested,
+        SilkSubprimIdentity identity = SilkSubprimIdentity.None)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(ProtoPath);
         byte[] instancerPathBytes = Encoding.UTF8.GetBytes(instancerPath);
@@ -428,11 +513,14 @@ public sealed class SilkPickInstanceIdentityCostTests
         {
             contextBytes += 8 + outerPathBytes.Length;
         }
+        int pointOriginCount = identity.HasFlag(SilkSubprimIdentity.Point) ? pointCount : 0;
+        int cornerEdgeCount = identity.HasFlag(SilkSubprimIdentity.Edge) ? indices.Length : 0;
         int size = 268 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
             (subprims.Length * sizeof(uint)) +
+            ((pointOriginCount + cornerEdgeCount) * sizeof(int)) +
             instancerPathBytes.Length +
             contextBytes;
         var bytes = new byte[size];
@@ -468,6 +556,11 @@ public sealed class SilkPickInstanceIdentityCostTests
                 bytes.AsSpan(80 + (element * 8)),
                 element % 5 == 0 ? 1 : 0);
         }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(236), (uint)identity);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(244), (uint)pointOriginCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(248), (uint)cornerEdgeCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(252), (uint)cornerEdgeCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(256), (uint)pointOriginCount);
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(260),
             (uint)instancerPathBytes.Length);
@@ -490,6 +583,18 @@ public sealed class SilkPickInstanceIdentityCostTests
         {
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
             cursor += sizeof(uint);
+        }
+        for (int index = 0; index < pointOriginCount; index++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(cursor),
+                index % 7 == 0 && index != pointOriginCount - 1 ? -1 : index);
+            cursor += sizeof(int);
+        }
+        for (int index = 0; index < cornerEdgeCount; index++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(cursor),
+                index % 5 == 0 && index != cornerEdgeCount - 1 ? -1 : index);
+            cursor += sizeof(int);
         }
         instancerPathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += instancerPathBytes.Length;

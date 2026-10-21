@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenUsd.Rendering;
@@ -16,7 +17,14 @@ public sealed class OpenUsdWorkspaceSessionBackendFactory : IWorkspaceSessionBac
     {
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
-        UsdStageScheduler scheduler = UsdStageScheduler.Create(context.OverlayPath);
+        if (context.StageSettings is { } settings)
+        {
+            await WriteStageSettingsAsync(context.OverlayPath, settings, cancellationToken).ConfigureAwait(false);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        UsdStageScheduler scheduler = context.StageSettings is null
+            ? UsdStageScheduler.Create(context.OverlayPath)
+            : UsdStageScheduler.Open(context.OverlayPath);
         try
         {
             string sourceIdentifier = context.SourcePath.Replace('\\', '/');
@@ -47,6 +55,17 @@ public sealed class OpenUsdWorkspaceSessionBackendFactory : IWorkspaceSessionBac
 
     }
 
+    internal static async Task WriteStageSettingsAsync(
+        string overlayPath, WorkspaceStageSettings settings, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        byte[] content = Encoding.UTF8.GetBytes(settings.CreateLayerText());
+        await using FileStream stream = new(
+            overlayPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+            bufferSize: 4096, options: FileOptions.Asynchronous);
+        await stream.WriteAsync(content, cancellationToken).ConfigureAwait(false);
+    }
+
     private static bool LayerIdentifierEquals(string left, string right)
     {
         StringComparison comparison = OperatingSystem.IsWindows()
@@ -69,7 +88,8 @@ internal sealed class WorkspaceSourceCompositionException : Exception
     }
 }
 
-internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend, IWorkspaceRenderProductBackend
+internal sealed partial class OpenUsdWorkspaceSessionBackend :
+    IWorkspaceSessionBackend, IWorkspaceRenderProductBackend, IWorkspacePhysicsRecordingBackend
 {
     private readonly WorkspaceSessionBackendContext _context;
     private readonly object _lifetimeGate = new();
@@ -387,6 +407,7 @@ internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend,
             }
 
             _closing = true;
+            _physicsPreparationCache = null;
         }
 
         await _renderSourceGate.WaitAsync().ConfigureAwait(false);

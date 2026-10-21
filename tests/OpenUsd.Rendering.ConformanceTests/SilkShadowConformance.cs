@@ -74,6 +74,114 @@ internal static class SilkShadowConformance
     private const float TiltedLightTiltX = 0.6f;
     private const float TiltedLightTiltY = 0.2f;
 
+    internal static async Task FinalPublicationKeepsShadowActivation(SilkGraphicsBackend backend, bool remove)
+    {
+        using var device = new SilkGpuPublicationDevice(SilkDepthCaptureConformance.CreateDevice(backend));
+        var budget = new SilkGpuBufferBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var first = new OpenUsdSilkPage(27, 1,
+            [.. CreateShadowLightFrame(), .. CreateReceiver(), .. CreateCaster(0), .. CreateShadow()], 4);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        byte[] before = ReadPixels(color);
+        ulong rendered = renderer.ShadowMapRenderCount;
+        ulong reserved = budget.Usage.ReservedBytes;
+        byte[] command = remove ? CreateShadow(0) : CreateCaster(0.6);
+        using var changed = new OpenUsdSilkPage(27, 2, command, 1);
+        device.RefuseSubmissionAfter = 2;
+        await Assert.That(() => renderer.ApplyAndRender(changed, color, depth))
+            .Throws<SilkGpuStagingBudgetExceededException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+        await Assert.That(renderer.Scene.Shadows.Descriptors.Count).IsEqualTo(1);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        await Assert.That(ReadPixels(color).SequenceEqual(before)).IsTrue();
+        device.RefuseSubmissionAfter = null;
+        _ = renderer.Render(color, depth);
+        await Assert.That(ReadPixels(color).SequenceEqual(before)).IsTrue();
+        _ = renderer.ApplyAndRender(changed, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
+        await Assert.That(renderer.Scene.Shadows.Descriptors.Count).IsEqualTo(remove ? 0 : 1);
+        await Assert.That(ReadPixels(color).SequenceEqual(before)).IsFalse();
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    internal static async Task PageSubmissionRefusalKeepsPublishedShadows(SilkGraphicsBackend backend, string stage)
+    {
+        using var device = new SilkGpuPublicationDevice(SilkDepthCaptureConformance.CreateDevice(backend));
+        var budget = new SilkGpuBufferBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        byte[] frame = CreateShadowLightFrame();
+        byte[] shadows = CreateShadow(stage == "second-light" ? 2u : 1u);
+        if (stage == "second-light")
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(536), 2);
+            frame.AsSpan(552, 176).CopyTo(frame.AsSpan(728, 176));
+            BinaryPrimitives.WriteUInt32LittleEndian(shadows.AsSpan(12), 2);
+            BinaryPrimitives.WriteUInt32LittleEndian(shadows.AsSpan(312), 1);
+        }
+        using var first = new OpenUsdSilkPage(27, 1,
+            [.. frame, .. CreateReceiver(), .. CreateCaster(0), .. shadows], 4);
+        renderer.ApplyPage(first);
+        ulong revision = 1;
+        if (stage == "reused")
+        {
+            using var warm = new OpenUsdSilkPage(27, ++revision, CreateCaster(0.2), 1);
+            renderer.ApplyPage(warm);
+        }
+        _ = renderer.Render(color, depth);
+        byte[] before = ReadPixels(color);
+        await AssertShadowed(before, ShadowedX, "published page shadow");
+        SilkMeshGpuResource[] meshes = [.. renderer.GpuResources.MeshValues];
+        ulong reserved = budget.Usage.ReservedBytes;
+        ulong rendered = renderer.ShadowMapRenderCount;
+        using var changed = new OpenUsdSilkPage(27, revision + 1, CreateCaster(0.6), 1);
+        bool pipelineFailure = stage == "pipeline";
+        device.RefuseSubmissionAfter = pipelineFailure ? null : stage == "second-light" ? 1 : 0;
+        device.RefuseGraphicsPipeline = pipelineFailure;
+        void apply()
+        {
+            if (pipelineFailure)
+            {
+                renderer.ApplyPage(changed, SilkMeshRenderOptions.Default,
+                    SilkTextureDescriptor.HdrColorTarget(Size, Size));
+            }
+            else
+            {
+                renderer.ApplyPage(changed);
+            }
+        }
+        if (pipelineFailure)
+        {
+            await Assert.That(apply).Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(apply).Throws<SilkGpuStagingBudgetExceededException>();
+        }
+        device.RefuseSubmissionAfter = null;
+        device.RefuseGraphicsPipeline = false;
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+        await Assert.That(renderer.GpuResources.MeshValues.SequenceEqual(meshes)).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+        _ = renderer.Render(color, depth);
+        await Assert.That(ReadPixels(color).SequenceEqual(before)).IsTrue();
+        apply();
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered + 1);
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered + 1);
+        await AssertLit(ReadPixels(color), ShadowedX, "successfully published moved caster");
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
     internal static async Task AdmissionRefusalKeepsPriorPixelsUntilTheShadowCandidateCompletes(
         ISilkGraphicsDevice device, SilkGpuTextureBudget budget)
     {

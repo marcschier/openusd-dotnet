@@ -26,6 +26,8 @@ internal struct PhysicsExtractNativeOptions
     internal uint MaxDiagnostics;
     internal uint MaxStringBytes;
     internal uint Reserved0;
+    internal uint GeometryObjectStart;
+    internal uint GeometryObjectCount;
 }
 
 /// <summary>A borrowed view of one native extraction page.</summary>

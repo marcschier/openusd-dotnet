@@ -112,6 +112,17 @@ internal sealed class SilkDepthCaptureRequest
     private readonly bool _includeDeviceDepth;
     private readonly bool _includeHdrColor;
 
+    private SilkDepthCaptureRequest(SilkDepthCaptureRequest source)
+    {
+        _width = source._width;
+        _height = source._height;
+        _pixelCount = source._pixelCount;
+        _includeDeviceDepth = source._includeDeviceDepth;
+        _includeHdrColor = source._includeHdrColor;
+    }
+
+    internal SilkDepthCaptureRequest ForReplay() => new(this);
+
     internal SilkDepthCaptureRequest(
         int width,
         int height,

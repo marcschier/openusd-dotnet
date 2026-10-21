@@ -57,7 +57,7 @@ internal sealed class RenderSequenceRequest : SceneRevisionRequestBase
 internal sealed class ReadSequenceFrameRequest
 {
     [JsonPropertyName("jobId"), Required, MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description("Exact completed job identifier returned by render_sequence or render_product in this MCP process.")]
+    [Description("Exact completed job identifier returned by render_sequence, render_product or render_physics_sequence in this process.")]
     public required string JobId { get; init; }
 
     [JsonPropertyName("frameIndex"), Range(0, 4095)]
@@ -91,6 +91,8 @@ internal sealed record McpRenderSequenceResultDto(
 
     [Description("Optional authored-product selection and exact variable bindings; null for viewport sequences.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
+    [Description("Exact fixed-step simulation identity; null for authored-time rendering.")]
+    public McpSimulationRecordingDto? Simulation { get; init; }
 }
 
 internal sealed record McpSequenceFrameResultDto(
@@ -124,4 +126,6 @@ internal sealed record McpSequenceFrameResultDto(
 
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
+    [Description("Exact simulation publication captured by this frame; null for authored-time rendering.")]
+    public McpSimulationFrameDto? Simulation { get; init; }
 }

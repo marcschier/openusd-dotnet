@@ -15,6 +15,7 @@ public static partial class RenderDiskJob
     /// The caller owns the frame source and must select its renderer thread. No source is disposed,
     /// stage mutated, scene-authored filename honored or command executed by this engine.
     /// A failure/cancellation removes only owned staging output and never publishes a partial job.
+    /// If cleanup also fails, an aggregate preserves both errors. Already-absent staging is treated as cleaned up.
     /// The output parent is caller-approved; this is not a sandbox for arbitrary filesystem writers.
     /// </remarks>
     public static RenderDiskJobResult Execute(
@@ -24,6 +25,11 @@ public static partial class RenderDiskJob
     internal static RenderDiskJobResult Execute(
         RenderDiskJobRequest request, IRenderJobFrameSource source,
         TimeProvider timeProvider, CancellationToken cancellationToken)
+        => Execute(request, source, timeProvider, beforePublish: null, cancellationToken);
+
+    internal static RenderDiskJobResult Execute(
+        RenderDiskJobRequest request, IRenderJobFrameSource source,
+        TimeProvider timeProvider, Action? beforePublish, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(source);
@@ -71,6 +77,8 @@ public static partial class RenderDiskJob
                     request.IncludeHdrColor, request.HdrColorFormat, remaining, cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
             }
+            beforePublish?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             total += WriteManifest(
                 staging, frames, diagnostics, request.Limits.MaximumTotalBytes - total,
                 request.ProductPlan, cancellationToken);
@@ -81,13 +89,35 @@ public static partial class RenderDiskJob
             published = true;
             return new RenderDiskJobResult(destination, frames, total, diagnostics.ToArray());
         }
-        finally
+        catch (Exception operationFailure)
         {
             if (owned && !published)
             {
-                RetryDirectorySharing(
-                    () => Directory.Delete(staging, recursive: true), timeProvider, CancellationToken.None);
+                try
+                {
+                    RetryDirectorySharing(
+                        () => DeleteOwnedStaging(staging), timeProvider, CancellationToken.None);
+                }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException(
+                        "The render job failed and its owned staging output could not be removed.",
+                        operationFailure, cleanupFailure);
+                }
             }
+            throw;
+        }
+    }
+
+    private static void DeleteOwnedStaging(string staging)
+    {
+        try
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+        catch (DirectoryNotFoundException) when (!Directory.Exists(staging) && !File.Exists(staging))
+        {
+            // Another filesystem actor may already have removed this owned directory.
         }
     }
 
@@ -136,6 +166,10 @@ public static partial class RenderDiskJob
         if (image.Width != state.Viewport.Width || image.Height != state.Viewport.Height)
         {
             throw new InvalidDataException("The rendered frame does not match the requested dimensions.");
+        }
+        if (image.Simulation is { } simulation && simulation.TimeCode != state.Time.TimeCode)
+        {
+            throw new InvalidDataException("The simulation publication does not match the requested frame time.");
         }
         if (includeDeviceDepth != (image.DeviceDepth is not null))
         {
@@ -216,7 +250,7 @@ public static partial class RenderDiskJob
         }
         return new RenderDiskFrameResult(
             index, state, fileName, written, hash, depthName, depthBytes, depthHash,
-            hdrName, hdrBytes, hdrHash, hdrColorFormat);
+            hdrName, hdrBytes, hdrHash, hdrColorFormat, image.Simulation);
     }
 
     private static (long Bytes, string Sha256) WriteExrColor(
@@ -315,6 +349,10 @@ public static partial class RenderDiskJob
                 json.WriteNumber("timeCode", frame.State.Time.TimeCode);
                 json.WriteNumber("width", frame.State.Viewport.Width);
                 json.WriteNumber("height", frame.State.Viewport.Height);
+                if (frame.Simulation is { } simulation)
+                {
+                    WriteSimulationIdentity(json, simulation);
+                }
                 if (productPlan is not null)
                 {
                     WriteProductFrame(json, productPlan, frame);

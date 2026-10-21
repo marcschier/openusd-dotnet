@@ -62,6 +62,27 @@ if(TARGET openusd_mdl_sdk)
                 "${OPENUSD_MDL_REAL_MODULE_ROOT}"
                 "${CMAKE_CURRENT_BINARY_DIR}/wrapper-probe-work")
         list(APPEND _mdl_wrapper_tests mdl_sdk_wrapper_variants)
+        add_test(NAME mdl_sdk_specular_level
+            COMMAND mdl_wrapper_probe --specular "${OPENUSD_MDL_REAL_MODULE_ROOT}")
+        list(APPEND _mdl_wrapper_tests mdl_sdk_specular_level)
+        add_test(NAME mdl_sdk_udim
+            COMMAND mdl_wrapper_probe --udim "${OPENUSD_MDL_REAL_MODULE_ROOT}"
+                "${CMAKE_CURRENT_BINARY_DIR}/wrapper-probe-work")
+        list(APPEND _mdl_wrapper_tests mdl_sdk_udim)
+        set(OPENUSD_MDL_LEGACY_MODULE_ROOT "" CACHE PATH
+            "Opt-in verified external OmniPBR 2.1.0 modules for isolated signature qualification")
+        if(OPENUSD_MDL_LEGACY_MODULE_ROOT)
+            add_test(NAME mdl_sdk_legacy_pbr
+                COMMAND mdl_wrapper_probe --legacy-pbr
+                    "${OPENUSD_MDL_LEGACY_MODULE_ROOT}"
+                    "${OPENUSD_MDL_REAL_MODULE_ROOT}")
+            list(APPEND _mdl_wrapper_tests mdl_sdk_legacy_pbr)
+            add_test(NAME mdl_sdk_legacy_routing
+                COMMAND mdl_wrapper_probe --legacy-routing "${OPENUSD_MDL_REAL_MODULE_ROOT}")
+            add_test(NAME mdl_sdk_legacy_routing_invalid
+                COMMAND mdl_wrapper_probe --legacy-routing-invalid "${OPENUSD_MDL_REAL_MODULE_ROOT}")
+            list(APPEND _mdl_wrapper_tests mdl_sdk_legacy_routing mdl_sdk_legacy_routing_invalid)
+        endif()
         set(OPENUSD_MDL_WAREHOUSE_SOURCE_ROOT "" CACHE PATH
             "Opt-in original SimReady warehouse source root for read-only wrapper qualification")
         if(OPENUSD_MDL_WAREHOUSE_SOURCE_ROOT)
@@ -70,12 +91,27 @@ if(TARGET openusd_mdl_sdk)
                     "${OPENUSD_MDL_REAL_MODULE_ROOT}"
                     "${OPENUSD_MDL_WAREHOUSE_SOURCE_ROOT}")
             list(APPEND _mdl_wrapper_tests mdl_warehouse_wrapper_projection)
+            set(OPENUSD_MDL_OMNISURFACE_MODULE_ROOT "" CACHE PATH
+                "Opt-in verified external OmniSurface modules for read-only warehouse wrapper qualification")
+            if(OPENUSD_MDL_OMNISURFACE_MODULE_ROOT)
+                add_test(NAME mdl_warehouse_omnisurface_projection
+                    COMMAND mdl_wrapper_probe --omnisurface
+                        "${OPENUSD_MDL_OMNISURFACE_MODULE_ROOT}"
+                        "${OPENUSD_MDL_WAREHOUSE_SOURCE_ROOT}")
+                list(APPEND _mdl_wrapper_tests mdl_warehouse_omnisurface_projection)
+            endif()
         endif()
     endif()
     set_tests_properties(${_mdl_wrapper_tests} PROPERTIES
         TIMEOUT 120
         ENVIRONMENT_MODIFICATION
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:openusd_mdl_sdk>;OPENUSD_MDL_SDK_RUNTIME=set:${OPENUSD_MDL_SDK_RUNTIME_DIR}")
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:openusd_mdl_sdk>;OPENUSD_MDL_SDK_RUNTIME=set:${OPENUSD_MDL_SDK_RUNTIME_DIR};OPENUSD_MDL_LEGACY_PBR_ROOT=unset:")
+    if(TEST mdl_sdk_legacy_routing)
+        set_property(TEST mdl_sdk_legacy_routing APPEND PROPERTY ENVIRONMENT_MODIFICATION
+            "OPENUSD_MDL_LEGACY_PBR_ROOT=set:${OPENUSD_MDL_LEGACY_MODULE_ROOT}")
+        set_property(TEST mdl_sdk_legacy_routing_invalid APPEND PROPERTY ENVIRONMENT_MODIFICATION
+            "OPENUSD_MDL_LEGACY_PBR_ROOT=set:relative-not-admitted")
+    endif()
     add_executable(mdl_module_probe mdl_module_probe.cpp)
     target_compile_features(mdl_module_probe PRIVATE cxx_std_17)
     target_link_libraries(mdl_module_probe PRIVATE openusd_mdl_sdk)

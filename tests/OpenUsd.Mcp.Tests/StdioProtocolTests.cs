@@ -58,7 +58,8 @@ public sealed class StdioProtocolTests
                 },
                 cancellationToken: cancellation.Token);
 
-            await Assert.That(tools.Count).IsEqualTo(16);
+            await Assert.That(tools.Count).IsEqualTo(17);
+            await Assert.That(tools.Any(static tool => tool.Name == "render_physics_sequence")).IsTrue();
             await Assert.That(resources).IsEmpty();
             await Assert.That(templates).Count().IsEqualTo(1);
             await Assert.That(noSession.IsError).IsTrue();

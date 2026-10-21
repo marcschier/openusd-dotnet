@@ -26,6 +26,7 @@ public readonly struct UsdPhysicsExtractionObject : IEquatable<UsdPhysicsExtract
     public ulong ParentId => Page.FieldU64(Section, _index, 8);
 
     /// <summary>Gets the identity of the prototype object an instance came from, or zero.</summary>
+    /// <remarks>This is a stage-local SDK identity, not a durable cross-open identifier or part of the content fingerprint.</remarks>
     public ulong PrototypeId => Page.FieldU64(Section, _index, 16);
 
     /// <summary>Gets the absolute path of the source prim.</summary>
@@ -113,6 +114,12 @@ public readonly struct UsdPhysicsExtractionObject : IEquatable<UsdPhysicsExtract
 
     /// <summary>Gets the geometry axis, where zero is X, one is Y, and two is Z.</summary>
     public int GeometryAxis => (int)Page.FieldU32(Section, _index, 200);
+
+    /// <summary>Gets the first prepared hull range belonging to this collider.</summary>
+    public int HullStart => (int)Page.FieldU32(Section, _index, 208);
+
+    /// <summary>Gets the number of prepared hulls belonging to this collider.</summary>
+    public int HullCount => (int)Page.FieldU32(Section, _index, 212);
 
     /// <summary>Gets whether this object is still enabled after diagnostics were applied.</summary>
     public bool IsEnabled =>

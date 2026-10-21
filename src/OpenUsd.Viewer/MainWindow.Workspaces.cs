@@ -33,6 +33,7 @@ public sealed partial class MainWindow
         CommandPaletteMenuItem.Click += (_, _) => ShowCommandPalette();
         CompareCapturesMenuItem.Click += (_, _) => ShowCaptureComparison();
         RenderImageSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence();
+        PhysicsRecordSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence(recordPhysics: true);
         RenderAuthoredProductMenuItem.Click += (_, _) => ShowAuthoredRenderProduct();
         FindPrimMenuItem.Click += (_, _) =>
         {

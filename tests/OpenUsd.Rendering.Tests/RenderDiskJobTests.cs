@@ -9,6 +9,72 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class RenderDiskJobTests
 {
     [Test]
+    public async Task SimulationTimeMismatchCannotPublishAJob()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-simulation-time-").FullName;
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithTime(new StageTime(3)).WithViewport(new ViewportDimensions(1, 1));
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Simulation = new RenderSimulationFrameIdentity(
+                Guid.NewGuid(), "scenario", 1, 2, 1, 0.1, 2, 0.1, 1, 0, 0)
+        });
+        try
+        {
+            await Assert.That(() => RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source))
+                .Throws<InvalidDataException>();
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SimulationCapturePublishesExactProvenanceInTheSameAtomicJob()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-simulation-job-").FullName;
+        var epoch = new Guid("09d3d50d-7698-49f9-831c-1906e224503b");
+        var identity = new RenderSimulationFrameIdentity(
+            epoch, "drop-prop-v1", 7, 12, 3, 0.125, 3, 1.0 / 24, 5, 2, 1, "review-123");
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithTime(new StageTime(3)).WithViewport(new ViewportDimensions(1, 1));
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Simulation = identity
+        });
+        try
+        {
+            RenderDiskJobResult result = RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source);
+            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement simulation = manifest.RootElement.GetProperty("frames")[0].GetProperty("simulation");
+            await Assert.That(simulation.GetProperty("epoch").GetGuid()).IsEqualTo(epoch);
+            await Assert.That(simulation.GetProperty("scenarioIdentity").GetString()).IsEqualTo("drop-prop-v1");
+            await Assert.That(simulation.GetProperty("sourceRevision").GetUInt64()).IsEqualTo(7ul);
+            await Assert.That(simulation.GetProperty("publicationRevision").GetUInt64()).IsEqualTo(12ul);
+            await Assert.That(simulation.GetProperty("stepIndex").GetUInt64()).IsEqualTo(3ul);
+            await Assert.That(simulation.GetProperty("simulationSeconds").GetDouble()).IsEqualTo(0.125);
+            await Assert.That(simulation.GetProperty("timeCode").GetDouble()).IsEqualTo(3);
+            await Assert.That(simulation.GetProperty("fixedStepSeconds").GetDouble()).IsEqualTo(1.0 / 24);
+            await Assert.That(simulation.GetProperty("bindingRevision").GetUInt64()).IsEqualTo(5ul);
+            await Assert.That(simulation.GetProperty("bodyCount").GetInt32()).IsEqualTo(2);
+            await Assert.That(simulation.GetProperty("deformationCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(simulation.GetProperty("reviewIdentity").GetString()).IsEqualTo("review-123");
+            await Assert.That(Directory.GetDirectories(root).Length).IsEqualTo(1);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("missing")]
     [Arguments("unexpected")]
     [Arguments("dimensions")]

@@ -42,6 +42,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageVersion Include="Silk.NET.Core" Version="2.23.0" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.12" />
     <PackageVersion Include="Silk.NET.Direct3D11" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.Direct3D12" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.DXGI" Version="2.23.0" />

@@ -82,6 +82,7 @@ constexpr unsigned int kMaxPrototypeDepth = 8;
 constexpr unsigned int kMaxExpressionDepth = 16;
 constexpr unsigned int kMaxExpressionWork = 4096;
 constexpr size_t kMaxDiagnosticBytes = 32768;
+constexpr const char* kLegacyPbrRootVariable = "OPENUSD_MDL_LEGACY_PBR_ROOT";
 
 #if defined(_WIN32)
 using RuntimeHandle = HMODULE;
@@ -110,27 +111,43 @@ IsAbsolute(const std::string& path)
 }
 
 std::string
-ReadEnvironment(const char* name)
+ReadEnvironment(const char* name, bool* valid = nullptr)
 {
+    if (valid != nullptr) { *valid = true; }
 #if defined(_WIN32)
     // GetEnvironmentVariable, not _dupenv_s: the CRT keeps its own copy of the
     // environment, and a caller that set the variable through the Win32 API --
     // which is what OpenUSD's ArchSetEnv does -- updates the process block the
     // CRT copy does not see.
-    DWORD required = GetEnvironmentVariableA(name, nullptr, 0);
+    const std::wstring wideName(name, name + std::strlen(name));
+    DWORD required = GetEnvironmentVariableW(wideName.c_str(), nullptr, 0);
     if (required == 0)
     {
         return std::string();
     }
-    std::string value(static_cast<size_t>(required), '\0');
+    std::wstring value(static_cast<size_t>(required), L'\0');
     const DWORD written =
-        GetEnvironmentVariableA(name, value.data(), required);
+        GetEnvironmentVariableW(wideName.c_str(), value.data(), required);
     if (written == 0 || written >= required)
     {
+        if (valid != nullptr) { *valid = false; }
         return std::string();
     }
-    value.resize(written);
-    return value;
+    const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+        value.data(), static_cast<int>(written), nullptr, 0, nullptr, nullptr);
+    if (bytes == 0)
+    {
+        if (valid != nullptr) { *valid = false; }
+        return std::string();
+    }
+    std::string result(static_cast<size_t>(bytes), '\0');
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+            static_cast<int>(written), result.data(), bytes, nullptr, nullptr) != bytes)
+    {
+        if (valid != nullptr) { *valid = false; }
+        return std::string();
+    }
+    return result;
 #else
     const char* value = getenv(name);
     return value == nullptr ? std::string() : std::string(value);
@@ -626,6 +643,87 @@ struct ReductionContext
 };
 
 bool
+ResolveUdimTexture(
+    ReductionContext& context,
+    const mi::neuraylib::IMdl_resolved_resource* resource,
+    SdkParameterValue* out)
+{
+    constexpr mi::Size maximumTiles = 256;
+    std::string mask;
+    if (!context.Text(resource->get_mdl_file_path_mask(), &mask))
+    {
+        context.issue = "UDIM texture has no bounded MDL path mask";
+        return false;
+    }
+    const std::filesystem::path mdlMask = std::filesystem::u8path(mask);
+    const std::string leaf = mdlMask.filename().u8string();
+    const size_t leafMarker = leaf.find("<UDIM>");
+    if (leafMarker == std::string::npos || leaf.find("<UDIM>", leafMarker + 6) != std::string::npos ||
+        mdlMask.parent_path().u8string().find("<UDIM>") != std::string::npos)
+    {
+        context.issue = "UDIM texture requires exactly one <UDIM> marker: '" + mask + "'";
+        return false;
+    }
+    mi::base::Handle<const mi::neuraylib::IMdl_resolved_resource_element> element(resource->get_element(0));
+    if (!element || element->get_count() == 0 || element->get_count() > maximumTiles)
+    {
+        context.issue = "UDIM texture tile count exceeds the supported 1..256 range: '" + mask + "'";
+        return false;
+    }
+    std::string firstFile;
+    if (!context.Text(element->get_filename(0), &firstFile) || !IsAbsolute(firstFile))
+    {
+        context.issue = "UDIM texture has no absolute filesystem tile: '" + mask + "'";
+        return false;
+    }
+    // SDK filename masks may contain regular-expression syntax. Use its MDL
+    // marker and resolved tile directory, then verify every substitution.
+    mask = (std::filesystem::u8path(firstFile).parent_path() / mdlMask.filename()).u8string();
+    const size_t marker = mask.size() - leaf.size() + leafMarker;
+    if (mask.size() > kMaxSdkTextBytes || mask.find("<UDIM>") != marker)
+    {
+        context.issue = "resolved UDIM mask exceeds the path bound or contains an ambiguous marker";
+        return false;
+    }
+    std::set<std::pair<mi::Sint32, mi::Sint32>> coordinates;
+    mi::Sint32 minU = 9, maxU = 0, minV = 99, maxV = 0;
+    for (mi::Size index = 0; index < element->get_count(); ++index)
+    {
+        mi::Sint32 u = 0, v = 0;
+        std::string filename;
+        if (!element->get_uvtile_uv(index, u, v) || u < 0 || u > 9 || v < 0 || v > 99 ||
+            1001 + u + 10 * v > 1999 || !coordinates.emplace(u, v).second ||
+            !context.Text(element->get_filename(index), &filename))
+        {
+            context.issue = "UDIM texture has invalid, duplicate or out-of-range tiles: '" + mask + "'";
+            return false;
+        }
+        std::string expected = mask;
+        expected.replace(marker, 6, std::to_string(1001 + u + 10 * v));
+        std::error_code error;
+        if (!IsAbsolute(filename) ||
+            !std::filesystem::is_regular_file(std::filesystem::u8path(filename), error) || error ||
+            !std::filesystem::equivalent(
+                std::filesystem::u8path(filename), std::filesystem::u8path(expected), error) || error)
+        {
+            context.issue = "UDIM tile does not match a regular filesystem asset in its mask: '" + filename + "'";
+            return false;
+        }
+        minU = std::min(minU, u);
+        maxU = std::max(maxU, u);
+        minV = std::min(minV, v);
+        maxV = std::max(maxV, v);
+    }
+    if ((maxU - minU + 1) * (maxV - minV + 1) > static_cast<mi::Sint32>(maximumTiles))
+    {
+        context.issue = "UDIM texture spans more than 256 atlas cells: '" + mask + "'";
+        return false;
+    }
+    out->text = std::move(mask);
+    return true;
+}
+
+bool
 ResolveTexture(
     ReductionContext& context,
     const mi::neuraylib::IValue_texture* texture,
@@ -696,13 +794,18 @@ ResolveTexture(
                 owner.empty() ? module->get_mdl_name() : owner.c_str(),
                 0, 0, messages.get()));
         if (!resource || resource->has_sequence_marker() ||
-            resource->get_uvtile_mode() != mi::neuraylib::UVTILE_MODE_NONE ||
+            (resource->get_uvtile_mode() != mi::neuraylib::UVTILE_MODE_NONE &&
+                resource->get_uvtile_mode() != mi::neuraylib::UVTILE_MODE_UDIM) ||
             resource->get_count() != 1)
         {
-            context.issue = "unresolved or non-single-file texture '" + path +
+            context.issue = "unresolved, animated or unsupported tiled texture '" + path +
                 "' in '" + owner + "'";
             AppendDiagnostic(&context.issue, ContextMessages(messages.get()));
             return false;
+        }
+        if (resource->get_uvtile_mode() == mi::neuraylib::UVTILE_MODE_UDIM)
+        {
+            return ResolveUdimTexture(context, resource.get(), out);
         }
         mi::base::Handle<const mi::neuraylib::IMdl_resolved_resource_element> element(
             resource->get_element(0));
@@ -778,6 +881,15 @@ ReduceValue(
             out->kind = OPENUSD_MDL_VALUE_FLOAT;
             out->componentCount = 1;
             out->value[0] = typed->get_value();
+            return true;
+        }
+        case mi::neuraylib::IValue::VK_ENUM:
+        {
+            mi::base::Handle<const mi::neuraylib::IValue_enum> typed(
+                value->get_interface<mi::neuraylib::IValue_enum>());
+            out->kind = OPENUSD_MDL_VALUE_INT;
+            out->componentCount = 1;
+            out->integerValue = typed->get_value();
             return true;
         }
         case mi::neuraylib::IValue::VK_DOUBLE:
@@ -1128,6 +1240,10 @@ KnownRoot(const mi::neuraylib::IFunction_definition* definition)
         {
             return SdkMaterialKind::OmniGlass;
         }
+        if (std::strcmp(module, "::OmniSurface") == 0 && std::strcmp(name, "OmniSurface") == 0)
+        {
+            return SdkMaterialKind::OmniSurface;
+        }
     }
     return SdkMaterialKind::Unspecified;
 }
@@ -1159,7 +1275,7 @@ ResolveVariantRoot(
             }
             resolution->unresolved.push_back("body:" + name);
             resolution->diagnostic = "unsupported variant root '" + name +
-                "'; only SDK-proven OmniPBR/OmniGlass variant interfaces are admitted";
+                "'; only SDK-proven OmniPBR/OmniGlass/OmniSurface variant interfaces are admitted";
             return false;
         }
         mi::base::Handle<const mi::neuraylib::IFunction_definition> target(
@@ -1260,6 +1376,7 @@ ResolveInTransaction(
     const std::string requestedName = materialName.empty()
         ? std::filesystem::u8path(location.filename).stem().u8string() : materialName;
     std::string definitionName;
+    std::string unmatchedSignature;
     for (mi::Size index = 0; index < module->get_material_count(); ++index)
     {
         std::string candidate;
@@ -1272,8 +1389,41 @@ ResolveInTransaction(
         mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
             transaction->access<mi::neuraylib::IFunction_definition>(candidate.c_str()));
         std::string name;
-        if (!definition || !CopySdkText(definition->get_mdl_simple_name(), &name) ||
-            name != requestedName)
+        if (!definition || !CopySdkText(definition->get_mdl_simple_name(), &name))
+        {
+            continue;
+        }
+        bool matches = name == requestedName;
+        if (!matches && requestedName.compare(0, name.size() + 1, name + "(") == 0)
+        {
+            if (definition->get_parameter_count() > kMaxSdkParameters)
+            {
+                resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+                resolution.diagnostic = "material '" + name + "' exceeds the formal-parameter limit";
+                return resolution;
+            }
+            std::string signature = name + "(";
+            for (mi::Size parameter = 0; parameter < definition->get_parameter_count(); ++parameter)
+            {
+                std::string type;
+                if (!CopySdkText(definition->get_mdl_parameter_type_name(parameter), &type) ||
+                    signature.size() + type.size() + 2 > kMaxSdkTextBytes)
+                {
+                    resolution.status = OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED;
+                    resolution.diagnostic = "an SDK material signature exceeds the text limit";
+                    return resolution;
+                }
+                if (parameter != 0) { signature += ','; }
+                signature += type;
+            }
+            signature += ')';
+            matches = signature == requestedName;
+            if (!matches && unmatchedSignature.empty())
+            {
+                unmatchedSignature = std::move(signature);
+            }
+        }
+        if (!matches)
         {
             continue;
         }
@@ -1290,6 +1440,10 @@ ResolveInTransaction(
         resolution.status = OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL;
         resolution.diagnostic = "MDL module '" + location.filename +
             "' declares no material named '" + requestedName + "'";
+        if (!unmatchedSignature.empty())
+        {
+            resolution.diagnostic += "; the SDK declares '" + unmatchedSignature + "'";
+        }
         return resolution;
     }
     mi::base::Handle<const mi::neuraylib::IFunction_definition> definition(
@@ -1464,17 +1618,19 @@ SdkBackend::Configure(
     return ConfigureLocked(State(), searchPaths, generation, &message);
 }
 
+namespace
+{
 SdkMaterialResolution
-SdkBackend::ResolveMaterial(
+ResolveConfiguredMaterialLocked(
+    RuntimeState& state,
     const std::string& moduleUri,
     const std::string& materialName,
     const std::vector<std::string>& searchPaths,
     uint64_t generation,
-    const std::map<std::string, SdkParameterValue>& authored)
+    const std::map<std::string, SdkParameterValue>& authored,
+    ModuleLocation* resolvedLocation = nullptr)
 {
     SdkMaterialResolution resolution;
-    std::lock_guard<std::mutex> guard(BackendLock());
-    RuntimeState& state = State();
     resolution.status = ConfigureLocked(state, searchPaths, generation, &resolution.diagnostic);
     if (resolution.status != OPENUSD_MDL_STATUS_OK)
     {
@@ -1495,6 +1651,10 @@ SdkBackend::ResolveMaterial(
     {
         resolution.status = OPENUSD_MDL_STATUS_MODULE_NOT_FOUND;
         return resolution;
+    }
+    if (resolvedLocation != nullptr)
+    {
+        *resolvedLocation = location;
     }
     const auto key = std::make_pair(location.filename, materialName);
     auto cached = state.moduleScopes.find(key);
@@ -1546,6 +1706,90 @@ SdkBackend::ResolveMaterial(
         transaction->abort();
     }
     return resolution;
+}
+
+}
+
+SdkMaterialResolution
+SdkBackend::ResolveMaterial(
+    const std::string& moduleUri,
+    const std::string& materialName,
+    const std::vector<std::string>& searchPaths,
+    uint64_t generation,
+    const std::map<std::string, SdkParameterValue>& authored)
+{
+    std::lock_guard<std::mutex> guard(BackendLock());
+    RuntimeState& state = State();
+    ModuleLocation location;
+    SdkMaterialResolution primary = ResolveConfiguredMaterialLocked(
+        state, moduleUri, materialName, searchPaths, generation, authored, &location);
+    if (primary.status != OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL ||
+        materialName.compare(0, 8, "OmniPBR(") != 0 || materialName.back() != ')' ||
+        std::filesystem::u8path(location.filename).filename() != "OmniPBR.mdl")
+    {
+        return primary;
+    }
+
+    bool validConfiguration = false;
+    const std::string configured = ReadEnvironment(kLegacyPbrRootVariable, &validConfiguration);
+    if (!validConfiguration)
+    {
+        AppendDiagnostic(&primary.diagnostic,
+            "OPENUSD_MDL_LEGACY_PBR_ROOT could not be read as a stable UTF-8 path");
+        return primary;
+    }
+    if (configured.empty())
+    {
+        return primary;
+    }
+    std::error_code error;
+    if (configured.size() > OPENUSD_MDL_MAX_PATH_BYTES || !IsAbsolute(configured) ||
+        !std::filesystem::is_directory(std::filesystem::u8path(configured), error) || error)
+    {
+        AppendDiagnostic(&primary.diagnostic,
+            "OPENUSD_MDL_LEGACY_PBR_ROOT must name one bounded, absolute, existing directory");
+        return primary;
+    }
+    const std::string candidate = JoinPath(configured, "OmniPBR.mdl");
+    if (candidate.size() > OPENUSD_MDL_MAX_PATH_BYTES)
+    {
+        AppendDiagnostic(&primary.diagnostic,
+            "OPENUSD_MDL_LEGACY_PBR_ROOT produces a module path exceeding the byte limit");
+        return primary;
+    }
+    std::vector<std::string> compatibilityPaths{configured};
+    for (const std::string& path : searchPaths)
+    {
+        if (path != configured) { compatibilityPaths.push_back(path); }
+    }
+    if (compatibilityPaths.size() > OPENUSD_MDL_MAX_SEARCH_PATHS)
+    {
+        AppendDiagnostic(&primary.diagnostic,
+            "OPENUSD_MDL_LEGACY_PBR_ROOT would exceed the configured search-root limit");
+        return primary;
+    }
+
+    // Only plain values leave each transaction. The existing configuration and
+    // sibling-scope rules isolate equal MDL names across these two root sets.
+    SdkMaterialResolution compatibility = ResolveConfiguredMaterialLocked(
+        state, candidate, materialName, compatibilityPaths, generation, authored);
+    if (compatibility.status != OPENUSD_MDL_STATUS_OK)
+    {
+        AppendDiagnostic(&primary.diagnostic,
+            "exact-signature compatibility candidate '" + candidate + "' refused (status " +
+            std::to_string(compatibility.status) + ")");
+        AppendDiagnostic(&primary.diagnostic, compatibility.diagnostic);
+        return primary;
+    }
+    std::string diagnostic = "exact-signature compatibility selected '" + candidate +
+        "' because the requested signature is absent from '" + location.filename +
+        "'; the requested signature and authored parameters are unchanged";
+    if (!compatibility.diagnostic.empty())
+    {
+        AppendDiagnostic(&diagnostic, compatibility.diagnostic);
+    }
+    compatibility.diagnostic = std::move(diagnostic);
+    return compatibility;
 }
 
 std::string

@@ -352,7 +352,8 @@ HdSilkBasisCurves::_BuildInstanceRecords(
     {
         const HdSilkInstanceSample& sample = samples[position];
         if (sample.index > static_cast<int64_t>(
-                std::numeric_limits<int32_t>::max()))
+                std::numeric_limits<int32_t>::max()) ||
+            sample.sourcePickIndex > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
         {
             throw std::overflow_error(
                 "The hdSilk basisCurves instance index exceeds the 32-bit instance index.");
@@ -362,6 +363,7 @@ HdSilkBasisCurves::_BuildInstanceRecords(
         instanceRecord.instanceId = instanceId;
         instanceRecord.instancerPath = instancerId.GetString();
         instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
+        instanceRecord.sourcePickIndex = static_cast<int32_t>(sample.sourcePickIndex);
         instanceRecord.instancerContext = sample.context;
         HdSilkFlattenMatrix(
             _transform * sample.transform,

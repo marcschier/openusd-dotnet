@@ -42,7 +42,13 @@ extern "C" {
 /// MDL SDK can be told which directories it may search for modules. Everything
 /// v1 declared keeps its meaning and its layout; only openusd_mdl_adapter_create
 /// changed shape, and it is versioned by this constant rather than overloaded.
-#define OPENUSD_MDL_ABI_VERSION 2u
+/// ABI v3 appends a material-wide constant UV affine and its provenance to the
+/// distilled result. That layout is retained by v4.
+/// ABI v4 adds the diffuse texture luminance-mix scalar. Earlier loaders cannot map it.
+/// ABI v5 adds an explicit multiply operand to distilled texture records.
+/// ABI v6 adds the separately weighted OmniPBR dielectric custom-curve scalar.
+/// ABI v7 adds a separate detail normal and its independently transformed UV coordinates.
+#define OPENUSD_MDL_ABI_VERSION 7u
 
 /// Bounds on the configuration a caller may hand an adapter. They exist so a
 /// hostile or careless configuration cannot make the adapter walk an unbounded
@@ -110,6 +116,15 @@ extern "C" {
 #define OPENUSD_MDL_SURFACE_IOR 10u
 #define OPENUSD_MDL_SURFACE_NORMAL 11u
 #define OPENUSD_MDL_SURFACE_OCCLUSION 13u
+/// Four components: normalized RGB luminance weights, then finite mix amount, before texture scale/bias.
+#define OPENUSD_MDL_SURFACE_DIFFUSE_TEXTURE_LUMINANCE_MIX 16u
+/// OmniPBR dielectric curve weight, one finite scalar in [0,1].
+#define OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL 17u
+/// Tangent-space detail normal, combined with the base using reoriented normal mapping.
+#define OPENUSD_MDL_SURFACE_DETAIL_NORMAL 18u
+/// Three finite components each: (m00, m01, tx) and (m10, m11, ty).
+#define OPENUSD_MDL_SURFACE_DETAIL_UV_ROW0 19u
+#define OPENUSD_MDL_SURFACE_DETAIL_UV_ROW1 20u
 
 /// Texture wrap modes. The values match the hdSilk wire enumeration so a
 /// distilled texture needs no remapping table beyond the explicit mapping
@@ -125,6 +140,13 @@ extern "C" {
 #define OPENUSD_MDL_CHANNEL_B 2u
 #define OPENUSD_MDL_CHANNEL_A 3u
 #define OPENUSD_MDL_CHANNEL_RGB 4u
+/// Explicit scalar opacity reductions, not UsdUVTexture output ports.
+#define OPENUSD_MDL_CHANNEL_AVERAGE_RGB 5u
+#define OPENUSD_MDL_CHANNEL_LUMINANCE_RGB 6u
+#define OPENUSD_MDL_CHANNEL_MAXIMUM_RGB 7u
+
+#define OPENUSD_MDL_COMPOSITE_NONE 0u
+#define OPENUSD_MDL_COMPOSITE_MULTIPLY 1u
 
 /// Colour space a distilled texture must be decoded in.
 #define OPENUSD_MDL_COLOR_SPACE_AUTO 0u
@@ -189,6 +211,8 @@ typedef struct openusd_mdl_distilled_texture
     openusd_mdl_string asset;
     /// OPENUSD_MDL_ORIGIN_*: where this texture reference came from.
     uint32_t origin;
+    /// A multiply operand follows the primary texture of the same surface input.
+    uint32_t composite_operator;
 } openusd_mdl_distilled_texture;
 
 /// The distilled form of one material. Every pointer stays valid until the
@@ -209,6 +233,11 @@ typedef struct openusd_mdl_distilled_material
     uint32_t texture_count;
     const openusd_mdl_string* unsupported_parameters;
     uint32_t unsupported_parameter_count;
+    /// One common authored-UV transform, not color scale/bias or a projected coordinate generator.
+    uint32_t has_uv_transform;
+    uint32_t uv_transform_origin;
+    /// Row-major affine (m00, m01, m10, m11, tx, ty), applied to authored UV set zero.
+    float uv_transform[6];
 } openusd_mdl_distilled_material;
 
 /// Opaque adapter instance.

@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Silk.NET.Core" />
+    <PackageReference Include="System.IO.Hashing" />
     <PackageReference Include="SPIRV-Cross.NET" GeneratePathProperty="true" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Direct3D.DXC" GeneratePathProperty="true" />
   </ItemGroup>

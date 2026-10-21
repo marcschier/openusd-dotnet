@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
@@ -15,6 +16,9 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
     private readonly Func<ViewerRenderSequenceRange, string, ViewerRenderSequenceOutputOptions,
         Action<ViewerRenderSequenceProgress>, CancellationToken, Task<RenderDiskJobResult>> _render;
     private readonly Func<ViewerRenderSequenceOutputOptions, string?> _getUnsupportedReason;
+    private readonly Func<ViewerPhysicsSequenceRequest, Action<ViewerRenderSequenceProgress>,
+        CancellationToken, Task<RenderDiskJobResult>>? _renderPhysics;
+    private readonly Func<ViewerRenderSequenceOutputOptions, string?>? _getPhysicsUnsupportedReason;
     private readonly ViewerCompletedJobResults _results;
     private string? _unsupportedReason;
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -29,12 +33,18 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         double start, double end, string renderer,
         Func<ViewerRenderSequenceOutputOptions, string?> getUnsupportedReason,
         Func<ViewerRenderSequenceRange, string, ViewerRenderSequenceOutputOptions,
-            Action<ViewerRenderSequenceProgress>, CancellationToken, Task<RenderDiskJobResult>> render)
+            Action<ViewerRenderSequenceProgress>, CancellationToken, Task<RenderDiskJobResult>> render,
+        Func<ViewerPhysicsSequenceRequest, Action<ViewerRenderSequenceProgress>,
+            CancellationToken, Task<RenderDiskJobResult>>? renderPhysics = null,
+        Func<ViewerRenderSequenceOutputOptions, string?>? getPhysicsUnsupportedReason = null,
+        bool physicsMode = false)
     {
         ArgumentNullException.ThrowIfNull(render);
         ArgumentNullException.ThrowIfNull(getUnsupportedReason);
         _render = render;
         _getUnsupportedReason = getUnsupportedReason;
+        _renderPhysics = renderPhysics;
+        _getPhysicsUnsupportedReason = getPhysicsUnsupportedReason;
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
         _results = new ViewerCompletedJobResults(this, SequenceViewResultsButton);
@@ -46,6 +56,12 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         SequenceEndTime.TextChanged += (_, _) => ValidateRequest();
         SequenceStep.TextChanged += (_, _) => ValidateRequest();
         SequenceOutputFolder.TextChanged += (_, _) => ValidateRequest();
+        SequencePhysicsFrames.TextChanged += (_, _) => ValidateRequest();
+        SequencePhysicsSteps.TextChanged += (_, _) => ValidateRequest();
+        SequencePhysicsScenario.TextChanged += (_, _) => ValidateRequest();
+        SequencePhysicsMode.IsCheckedChanged += (_, _) => ValidateRequest();
+        SequencePhysicsMode.IsVisible = renderPhysics is not null;
+        SequencePhysicsMode.IsChecked = physicsMode && renderPhysics is not null;
         SequenceHdrColorData.IsCheckedChanged += (_, _) => ValidateRequest();
         SequenceDepthData.IsCheckedChanged += (_, _) => ValidateRequest();
         SequenceHdrFormat.SelectionChanged += (_, _) => ValidateRequest();
@@ -69,7 +85,17 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         };
         SequenceCancelButton.Click += (_, _) => Cancel();
         SequenceCloseButton.Click += (_, _) => Close();
-        Opened += (_, _) => SequenceStartTime.Focus();
+        Opened += (_, _) =>
+        {
+            if (IsPhysicsMode)
+            {
+                SequencePhysicsFrames.Focus();
+            }
+            else
+            {
+                SequenceStartTime.Focus();
+            }
+        };
         KeyDown += OnSequenceKeyDown;
         Closing += OnSequenceClosing;
         Closed += (_, _) =>
@@ -83,9 +109,24 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
 
     internal bool IsRunning => _cancellation is not null;
 
+    private bool IsPhysicsMode => SequencePhysicsMode.IsChecked == true && _renderPhysics is not null;
+
+    internal void SelectPhysicsMode(bool physicsMode)
+    {
+        if (!IsRunning && !_closing)
+        {
+            SequencePhysicsMode.IsChecked = physicsMode && _renderPhysics is not null;
+        }
+    }
+
+    private string? GetUnsupportedReason(ViewerRenderSequenceOutputOptions outputs) =>
+        IsPhysicsMode
+            ? _getPhysicsUnsupportedReason?.Invoke(outputs)
+            : _getUnsupportedReason(outputs);
+
     internal void UpdateContext(string description)
     {
-        if (SequenceRenderer.Text == description && _unsupportedReason == _getUnsupportedReason(ReadOutputs()))
+        if (SequenceRenderer.Text == description && _unsupportedReason == GetUnsupportedReason(ReadOutputs()))
         {
             return;
         }
@@ -137,19 +178,38 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         return new ViewerRenderSequenceOutputOptions(SequenceDepthData.IsChecked == true, hdr, format);
     }
 
+    private ViewerPhysicsSequenceRequest ReadPhysicsRequest()
+    {
+        if (!int.TryParse(SequencePhysicsFrames.Text, NumberStyles.None, CultureInfo.InvariantCulture, out int frames) ||
+            !int.TryParse(SequencePhysicsSteps.Text, NumberStyles.None, CultureInfo.InvariantCulture, out int steps))
+        {
+            throw new ArgumentException("Enter whole frame and fixed-step counts.");
+        }
+        var request = new ViewerPhysicsSequenceRequest(frames, steps, SequencePhysicsScenario.Text ?? string.Empty,
+            SequenceOutputFolder.Text ?? string.Empty, ReadOutputs());
+        request.Validate();
+        return request;
+    }
+
     private void ValidateRequest(bool preserveStatus = false)
     {
         if (IsRunning || _closing)
         {
             return;
         }
+        SequenceRangeControls.IsVisible = !IsPhysicsMode;
+        SequencePhysicsControls.IsVisible = IsPhysicsMode;
+        SequenceDescription.Text = IsPhysicsMode
+            ? "Records every rigid pose from the current paused world. Loop and Apply Preview must be off. " +
+                "Recording advances physics; cancellation does not rewind it. The view is restored before publication."
+            : "The selected camera is sampled at every requested time. Playback and view edits pause until the job drains.";
         bool valid = false;
         string status;
         try
         {
             ViewerRenderSequenceOutputOptions outputs = ReadOutputs();
             SequenceHdrFormat.IsEnabled = outputs.IncludeHdrColor;
-            _unsupportedReason = _getUnsupportedReason(outputs);
+            _unsupportedReason = GetUnsupportedReason(outputs);
             SequenceOutputScope.Text = "PNG" +
                 (outputs.IncludeHdrColor
                     ? outputs.HdrColorFormat == RenderHdrColorFormat.Exr
@@ -161,8 +221,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
                 "4 GiB including manifest. No partial job is published." +
                 (outputs.HdrColorFormat == RenderHdrColorFormat.Exr
                     ? " Native EXR codec working memory is outside these quotas." : string.Empty);
-            ViewerRenderSequenceRange range = ReadRange();
-            SequenceFrameCount.Text = $"{range.Times.Count} frame(s)";
+            int count = IsPhysicsMode ? ReadPhysicsRequest().FrameCount : ReadRange().Times.Count;
+            SequenceFrameCount.Text = $"{count} frame(s)";
             if (_unsupportedReason is { } unsupportedReason)
             {
                 status = unsupportedReason;
@@ -194,6 +254,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
     private async Task RunAsync()
     {
         ViewerRenderSequenceOutputOptions outputs = ReadOutputs();
+        bool physicsMode = IsPhysicsMode;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_windowLifetime.Token);
         _cancellation = cancellation;
         SequenceOutputLocation.Text = string.Empty;
@@ -203,12 +264,17 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         {
             await _results.ClearAsync();
             cancellation.Token.ThrowIfCancellationRequested();
-            ViewerRenderSequenceRange range = ReadRange();
-            SequenceProgress.Maximum = range.Times.Count;
+            ViewerPhysicsSequenceRequest? physics = physicsMode ? ReadPhysicsRequest() : null;
+            ViewerRenderSequenceRange? range = physicsMode ? null : ReadRange();
+            SequenceProgress.Maximum = physics?.FrameCount ?? range!.Times.Count;
             SequenceProgress.Value = 0;
-            RenderDiskJobResult result = await _render(
-                range, SequenceOutputFolder.Text ?? string.Empty, outputs, ReportProgress, cancellation.Token);
-            cancellation.Token.ThrowIfCancellationRequested();
+            RenderDiskJobResult result = physics is not null
+                ? await _renderPhysics!(physics, ReportProgress, cancellation.Token)
+                : await _render(range!, SequenceOutputFolder.Text ?? string.Empty, outputs, ReportProgress, cancellation.Token);
+            if (!physicsMode)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+            }
             SequenceOutputLocation.Text = result.OutputDirectory;
             SequenceProgress.Value = result.Frames.Count;
             string diagnostics = result.Diagnostics.Count == 0
@@ -222,22 +288,24 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
                     : string.Empty) +
                 (depthFiles > 0 ? $", {depthFiles} depth" : string.Empty);
             SequenceStatus.Text = $"Completed {result.Frames.Count} frames: {files} + manifest.json." +
-                $"{diagnostics} The pre-job view has been restored.";
+                $"{diagnostics} The pre-job view has been restored." +
+                (physicsMode ? " Physics remains paused at its last completed step." : string.Empty);
             SequenceStatus.Classes.Set("viewer-warning", result.Diagnostics.Any(static diagnostic =>
                 diagnostic.Severity is RenderDiagnosticSeverity.Warning or RenderDiagnosticSeverity.Error));
             if (!_closing)
             {
-                _results.Publish(result, "Viewport image sequence");
+                _results.Publish(result, physicsMode ? "Physics simulation sequence" : "Viewport image sequence");
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            SequenceStatus.Text = "Cancelled. No sequence was published; the pre-job view has been restored.";
+            SequenceStatus.Text = "Cancelled. No sequence was published; the pre-job view has been restored." +
+                (physicsMode ? " Physics was not rewound." : string.Empty);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
             InvalidOperationException or InvalidDataException or NotSupportedException or ArgumentException or
             OpenUsdNativeException or OpenUsdSilkException or OpenUsdStormException or
-            TimeoutException or OverflowException)
+            TimeoutException or OverflowException or ViewerPhysicsException or AggregateException)
         {
             SequenceStatus.Text = $"Sequence failed: {ViewerPackageErrorFormatter.Format(exception)}";
             ViewerStartupOptions.WriteStatus(SequenceStatus.Text);
@@ -261,6 +329,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
     {
         bool ready = !IsRunning && !_closing && !_picking;
         SequenceRangeControls.IsEnabled = ready;
+        SequencePhysicsControls.IsEnabled = ready;
+        SequencePhysicsMode.IsEnabled = ready;
         SequenceOutputControls.IsEnabled = ready;
         SequenceOutputFolder.IsEnabled = ready;
         SequenceBrowseButton.IsEnabled = ready;

@@ -26,6 +26,7 @@ internal static class UsdPhysicsExtractionPageValidator
         ValidateSections(bytes, offsets, counts);
         ValidateStrings(bytes, offsets, counts);
         ValidateObjects(bytes, offsets, counts);
+        ValidatePreparedHulls(bytes, offsets, counts);
         ValidateProperties(bytes, offsets, counts);
         ValidateRelationships(bytes, offsets, counts);
         ValidateTargetsAndDiagnostics(bytes, offsets, counts);
@@ -264,6 +265,65 @@ internal static class UsdPhysicsExtractionPageValidator
                     throw Invalid(
                         $"A collider triangle index names point {value} of {pointCount}.");
                 }
+            }
+        }
+    }
+
+    private static void ValidatePreparedHulls(
+        ReadOnlySpan<byte> bytes, ReadOnlySpan<long> offsets, ReadOnlySpan<long> counts)
+    {
+        long pointCount = counts[PhysicsExtractAbi.SectionPoints];
+        long hullCount = counts[PhysicsExtractAbi.SectionHulls];
+        for (long index = 0; index < hullCount; index++)
+        {
+            int at = (int)(offsets[PhysicsExtractAbi.SectionHulls] + index * PhysicsExtractAbi.HullRecordBytes);
+            ValidateRange(bytes, at, pointCount, "prepared hull points");
+            uint count = ReadU32(bytes, at + 4);
+            if (count < 4 || count > 255)
+            {
+                throw Invalid("A prepared convex hull must have between four and 255 points.");
+            }
+        }
+        for (long index = 0; index < counts[PhysicsExtractAbi.SectionObjects]; index++)
+        {
+            int at = (int)(offsets[PhysicsExtractAbi.SectionObjects] + index * PhysicsExtractAbi.ObjectRecordBytes);
+            ValidateRange(bytes, at + 208, hullCount, "object hulls");
+            uint start = ReadU32(bytes, at + 208);
+            uint count = ReadU32(bytes, at + 212);
+            bool prepared = (ReadU32(bytes, at + 44) &
+                (uint)UsdPhysicsExtractionObjectTraits.PreparedPointsMetres) != 0;
+            if ((count != 0) != prepared)
+            {
+                throw Invalid("Prepared points and hull ranges must be declared together.");
+            }
+            if (!prepared)
+            {
+                continue;
+            }
+            if (ReadU32(bytes, at + 36) != (uint)UsdPhysicsExtractionObjectKind.Collider ||
+                ReadU32(bytes, at + 48) != (uint)UsdPhysicsExtractionGeometryKind.ConvexMesh ||
+                ReadU32(bytes, at + 88) != 0)
+            {
+                throw Invalid("Prepared hulls belong only to convex colliders without triangle indices.");
+            }
+            long nextPoint = ReadU32(bytes, at + 76);
+            long endPoint = nextPoint + ReadU32(bytes, at + 80);
+            for (long hull = start; hull < start + (long)count; hull++)
+            {
+                int position = (int)(offsets[PhysicsExtractAbi.SectionHulls] + hull * PhysicsExtractAbi.HullRecordBytes);
+                if (ReadU32(bytes, position) != nextPoint)
+                {
+                    throw Invalid("Prepared hull ranges must cover their collider points contiguously.");
+                }
+                nextPoint += ReadU32(bytes, position + 4);
+                if (nextPoint > endPoint)
+                {
+                    throw Invalid("A prepared hull extends beyond its collider points.");
+                }
+            }
+            if (nextPoint != endPoint)
+            {
+                throw Invalid("Prepared hull ranges do not cover all their collider points.");
             }
         }
     }

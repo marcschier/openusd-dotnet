@@ -395,10 +395,44 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "detailUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 240,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "detailUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 256,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 240,
+        "elementStride": 272,
         "size": null
       },
       "vulkanLayout": {
@@ -663,10 +697,44 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "detailUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 240,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "detailUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 256,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 240,
+        "elementStride": 272,
         "size": null
       }
     },

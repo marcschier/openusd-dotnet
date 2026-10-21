@@ -26,6 +26,37 @@ public sealed class SilkDisplayTransformNativeTests
     private static string DisplayConfigPath => ResolveAsset("ocio-test-config.ocio");
 
     [Test]
+    public async Task AdmittedNativeLatticeAccountsForWorkspaceAndOutputBeforeAllocation()
+    {
+        RequireNativeOcio();
+        var transform = new RenderDisplayTransform(DisplayConfigPath, "linear", "TestDisplay", "TestView",
+            latticeSize: 8);
+        var budget = new SilkCpuTextureBudget(10_240);
+        var cache = new SilkDisplayTransformLatticeCache(budget, provider: null);
+        using (budget.Reserve(1))
+        {
+            SilkCpuTextureBudgetExceededException? refusal =
+                await Assert.That(() => cache.GetOwned(transform, out _))
+                    .Throws<SilkCpuTextureBudgetExceededException>();
+            await Assert.That(refusal!.RequestedBytes).IsEqualTo(8192ul);
+            await Assert.That(refusal.ReservedBytes).IsEqualTo(2049ul);
+            await Assert.That(cache.Count).IsEqualTo(0);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(1ul);
+        }
+        SilkDisplayTransformLattice actual = cache.GetOwned(transform, out IDisposable? ownership);
+        using (ownership)
+        {
+            SilkDisplayTransformLattice expected = SilkOpenColorIoLatticeProvider.Shared.Create(transform);
+            await Assert.That(actual.Rgba8.Span.SequenceEqual(expected.Rgba8.Span)).IsTrue();
+            await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(10_240ul);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+            cache.Clear();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(2048ul);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
     public async Task LookOverride_AppliesInTheLookProcessSpace()
     {
         RequireNativeOcio();

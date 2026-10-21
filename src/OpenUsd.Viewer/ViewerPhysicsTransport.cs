@@ -170,7 +170,7 @@ internal interface IViewerPhysicsTransportFactory
 }
 
 /// <summary>Creates transports bound to one stage scheduler.</summary>
-internal sealed class ViewerPhysicsTransportFactory(UsdStageScheduler scheduler)
+internal sealed class ViewerPhysicsTransportFactory(UsdStageScheduler scheduler, bool fullScenePhysics = false)
     : IViewerPhysicsTransportFactory
 {
     /// <inheritdoc/>
@@ -182,7 +182,10 @@ internal sealed class ViewerPhysicsTransportFactory(UsdStageScheduler scheduler)
         try
         {
             transport = await UsdPhysicsTransport
-                .CreateAsync(scheduler, options: null, cancellationToken)
+                .CreateAsync(scheduler, fullScenePhysics
+                    ? new UsdPhysicsTransportOptions(new UsdPhysicsSessionOptions(
+                        maxRigidBodies: 32768, maxColliders: 65536))
+                    : null, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -202,7 +205,7 @@ internal sealed class ViewerPhysicsTransportFactory(UsdStageScheduler scheduler)
 /// copies every published frame into a renderer-neutral snapshot and detaches every bake batch, so
 /// no frame lease, stage handle, or solver handle ever crosses into the render loop or the UI.
 /// </remarks>
-internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
+internal sealed partial class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
 {
     private readonly UsdStageScheduler _scheduler;
     private readonly UsdPhysicsTransport _transport;
@@ -273,18 +276,29 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A build composes the stage as it is right now, so the stage is extracted and attached in the
-    /// same operation. Extracting once here and reusing the page for the binding table and the
-    /// inspector keeps one build to one stage traversal, and guarantees the world, the bindings,
-    /// and the inspector all describe the same revision of the scene.
+    /// A build prepares geometry in bounded batches and attaches one complete detached page.
+    /// Reusing that page for the binding table and inspector keeps every consumer on the same
+    /// source fingerprint instead of observing edits between separate preparations.
     /// </remarks>
     public async Task BuildAsync(CancellationToken cancellationToken)
     {
-        UsdPhysicsExtractionPage page = await ExtractAsync(cancellationToken).ConfigureAwait(false);
+        UsdPhysicsExtractionPage page = await ExtractAsync(cancellationToken, prepare: true).ConfigureAwait(false);
         _extraction = page;
         await RunAsync(() => _transport.AttachExtractionAsync(page, cancellationToken))
             .ConfigureAwait(false);
         await RunAsync(() => _transport.BuildAsync(cancellationToken)).ConfigureAwait(false);
+        if (_transport.Status.State == UsdPhysicsTransportState.Paused)
+        {
+            _builtFingerprintLow = page.FingerprintLow;
+            _builtFingerprintHigh = page.FingerprintHigh;
+            _hasBuiltFingerprint = true;
+            UsdPhysicsDiagnostic? refusal = _transport.Diagnostics.Entries.FirstOrDefault(static entry =>
+                entry.Severity == UsdPhysicsDiagnosticSeverity.Error ||
+                entry.Code == "OPENUSD_PHYSICS_COMPOSITION_SKIPPED");
+            _builtRecordingRefusal = refusal is null
+                ? null
+                : "Recording requires a complete physics build: " + refusal.Message;
+        }
     }
 
     /// <inheritdoc/>
@@ -375,13 +389,23 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
 
     /// <summary>Extracts the stage, translating every failure into a viewer diagnostic.</summary>
     private async ValueTask<UsdPhysicsExtractionPage> ExtractAsync(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool prepare = false)
     {
         try
         {
-            return await UsdPhysicsStageExtractor
-                .ExtractAsync(_scheduler, cancellationToken)
-                .ConfigureAwait(false);
+            var options = new UsdPhysicsExtractionOptions
+            {
+                IncludeUnmapped = true,
+                SkipGuide = false,
+                SkipInvisible = false,
+            };
+            return prepare
+                ? await UsdPhysicsStageExtractor.PrepareAsync(_scheduler, options, null, cancellationToken).ConfigureAwait(false)
+                : await UsdPhysicsStageExtractor.ExtractAsync(_scheduler, options with
+                {
+                    IncludeMeshData = false,
+                    FingerprintMeshData = true,
+                }, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -412,6 +436,7 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
         var viewerBindings = new List<ViewerPhysicsBinding>(page.ObjectCount);
         var bakeBindings = new List<UsdPhysicsBakeBinding>(page.ObjectCount);
         var bound = new HashSet<ulong>();
+        var sourceSpace = UsdPhysicsExtractionSpace.FromPage(page);
         int skipped = 0;
         for (int index = 0; index < page.ObjectCount; index++)
         {
@@ -462,7 +487,7 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
             }
 
             bool simulated = item.IsEnabled;
-            viewerBindings.Add(new ViewerPhysicsBinding(
+            var binding = new ViewerPhysicsBinding(
                 id.Value,
                 MapKind(kind),
                 path,
@@ -470,7 +495,19 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
                 simulated,
                 simulated
                     ? $"{kind} extracted from {path}."
-                    : $"{kind} at {path} is disabled and is not simulated."));
+                    : $"{kind} at {path} is disabled and is not simulated.");
+            if (kind == UsdPhysicsObjectKind.RigidBody)
+            {
+                var position = sourceSpace.ToStage(item.Position);
+                var orientation = sourceSpace.ToStage(item.Rotation);
+                binding = binding with
+                {
+                    ReferencePosition = new UsdVec3d(position.X, position.Y, position.Z),
+                    ReferenceOrientation = new PhysicsRenderOrientation(
+                        orientation.X, orientation.Y, orientation.Z, orientation.W)
+                };
+            }
+            viewerBindings.Add(binding);
             bakeBindings.Add(new UsdPhysicsBakeBinding(id, path));
         }
 
@@ -498,6 +535,7 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
             return false;
         }
 
+        PhysicsRenderSnapshot? writing = null;
         try
         {
             UsdPhysicsFrame frame = lease.Frame;
@@ -511,6 +549,7 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
             {
                 return false;
             }
+            writing = snapshot;
 
             // The identity revision names the simulated object set and its topology, which changes
             // only when the bindings are rebuilt. Publishing the per frame revision here instead
@@ -563,12 +602,23 @@ internal sealed class ViewerPhysicsTransportAdapter : IViewerPhysicsTransport
 
             snapshot.EndWrite();
             _ = channel.Publish(snapshot);
+            writing = null;
             _publishedRevision = frame.Revision;
             return true;
         }
         finally
         {
-            lease.Dispose();
+            try
+            {
+                if (writing is not null)
+                {
+                    channel.Abandon(writing);
+                }
+            }
+            finally
+            {
+                lease.Dispose();
+            }
         }
     }
 

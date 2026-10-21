@@ -25,7 +25,7 @@ namespace OpenUsd.Physics;
 /// the real path the extracted page will flow through unchanged.
 /// </para>
 /// </remarks>
-internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
+internal sealed unsafe partial class UsdPhysicsNativeWorld : IUsdPhysicsWorld
 {
     /// <summary>Reported when the retained page carries no extracted simulation content.</summary>
     internal const string ExtractionUnavailableCode = "OPENUSD_PHYSICS_EXTRACTION_UNAVAILABLE";
@@ -94,6 +94,8 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
     private PhysxVec3f* _deformationPointPointer;
     private bool _faulted;
     private bool _disposed;
+    private UsdPhysicsExtractionSpace _resultSpace =
+        UsdPhysicsExtractionSpace.Create(1, UsdPhysicsExtractionUpAxis.Y);
 
     /// <summary>Gets a value indicating whether the world rejected an operation and needs a rebuild.</summary>
     internal bool IsFaulted => _faulted;
@@ -141,6 +143,15 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
 
         pending.AddRange(runtime.Diagnostics.Entries);
         cancellationToken.ThrowIfCancellationRequested();
+        if (ExtractionPage is { } partial &&
+            (partial.Flags & UsdPhysicsExtractionPageTraits.PartialGeometry) != 0)
+        {
+            return Reject(pending,
+            [
+                new UsdPhysicsDiagnostic(UsdPhysicsDiagnosticSeverity.Error, UsdPhysicsDiagnosticCategory.Build,
+                    BuildFailedCode, "A page with partial geometry requires complete bounded stage preparation before building."),
+            ]);
+        }
 
         byte* errorStorage = stackalloc byte[PhysxErrorScope.DefaultCapacity];
         var error = new PhysxErrorBuffer(errorStorage, PhysxErrorScope.DefaultCapacity);
@@ -150,7 +161,8 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
             StructSize = (uint)Unsafe.SizeOf<PhysxWorldDesc>(),
             AbiVersion = PhysxAbi.Version,
             WorkerThreadCount = 0,
-            Flags = (uint)(PhysxWorldFlags.EnableEvents | PhysxWorldFlags.Deterministic),
+            Flags = (uint)(PhysxWorldFlags.Deterministic |
+                (options.MaxEventsPerStep > 0 ? PhysxWorldFlags.EnableEvents : 0)),
             Reserved0 = 0,
             Reserved1 = 0
         };
@@ -163,15 +175,23 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         }
 
         UsdPhysicsCompositionReport? composition = null;
+        UsdPhysicsExtractionSpace resultSpace = ExtractionPage is { } extracted
+            ? UsdPhysicsExtractionSpace.FromPage(extracted)
+            : UsdPhysicsExtractionSpace.Create(1, UsdPhysicsExtractionUpAxis.Y);
         ResultBuffers buffers = default;
         bool committed = false;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            using (PhysxBuildPage page = CreateBuildPage(timeline, step, options, out composition))
+            using (PhysxBuildPage page = CreateBuildPage(timeline, step, options, cancellationToken, out composition))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                List<UsdPhysicsDiagnostic> capacityErrors = GetCapacityErrors(page, options);
+                if (capacityErrors.Count != 0)
+                {
+                    return Reject(pending, capacityErrors);
+                }
                 var validation = new PhysxPageValidation { StructSize = (uint)Unsafe.SizeOf<PhysxPageValidation>() };
                 using PhysxPageLease lease = page.Lease();
                 status = PhysxNativeMethods.WorldBuild(
@@ -197,6 +217,15 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
             buffers = AllocateResultBuffers(in info.Capacities, options);
             committed = true;
         }
+        catch (PhysxMeshPreparationException exception)
+        {
+            return Reject(pending,
+            [
+                new UsdPhysicsDiagnostic(
+                    UsdPhysicsDiagnosticSeverity.Error, UsdPhysicsDiagnosticCategory.Build,
+                    BuildFailedCode, exception.Message),
+            ]);
+        }
         finally
         {
             if (!committed)
@@ -221,6 +250,7 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         _deformationPoints = buffers.DeformationPoints;
         _deformationPointer = buffers.DeformationPointer;
         _deformationPointPointer = buffers.DeformationPointPointer;
+        _resultSpace = resultSpace;
         _faulted = false;
         _stagedCommandCount = 0;
         LastComposition = composition;
@@ -557,6 +587,7 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         UsdPhysicsTimeline timeline,
         UsdPhysicsFixedStep step,
         UsdPhysicsSessionOptions options,
+        CancellationToken cancellationToken,
         out UsdPhysicsCompositionReport? composition)
     {
         using var builder = new PhysxPageBuilder
@@ -572,7 +603,9 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
             MaxSubsteps = (uint)Math.Clamp(
                 options.MaxSubStepsPerTick,
                 1,
-                UsdPhysicsTransportOptions.MaxCatchUpSubStepLimit)
+                UsdPhysicsTransportOptions.MaxCatchUpSubStepLimit),
+            EventCapacity = (uint)Math.Min(options.MaxEventsPerStep, PhysxAbi.MaxResultCapacity),
+            QueryHitCapacity = (uint)Math.Min(options.MaxQueryHitsPerRequest, PhysxAbi.MaxResultCapacity)
         };
 
         // Composition runs after the timeline defaults so an extracted stage decides the units and
@@ -580,9 +613,36 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         UsdPhysicsExtractionPage? extraction = ExtractionPage;
         composition = extraction is null
             ? null
-            : UsdPhysicsExtractionComposer.Compose(extraction, builder);
+            : UsdPhysicsExtractionComposer.ComposePrepared(extraction, builder, cancellationToken);
 
         return builder.Build();
+    }
+
+    private static List<UsdPhysicsDiagnostic> GetCapacityErrors(
+        PhysxBuildPage page, UsdPhysicsSessionOptions options)
+    {
+        var errors = new List<UsdPhysicsDiagnostic>();
+        PhysxPageReader reader = page.CreateReader();
+        PhysxBuildPageHeader header = reader.Header;
+        ulong actors = (ulong)header.Actors.Count + header.ArticulationLinks.Count + header.Controllers.Count;
+        Check(nameof(options.MaxRigidBodies), Math.Max(actors, header.Capacities.MaxBodyStates), options.MaxRigidBodies);
+        Check(nameof(options.MaxColliders), (ulong)header.Shapes.Count + header.Controllers.Count, options.MaxColliders);
+        Check(nameof(options.MaxJoints), header.Joints.Count, options.MaxJoints);
+        Check(nameof(options.MaxArticulations), header.Articulations.Count, options.MaxArticulations);
+        Check(nameof(options.MaxControllers), header.Controllers.Count, options.MaxControllers);
+        Check(nameof(options.MaxVehicles), header.Vehicles.Count, options.MaxVehicles);
+        return errors;
+
+        void Check(string name, ulong required, int capacity)
+        {
+            if (required > (ulong)capacity)
+            {
+                errors.Add(new UsdPhysicsDiagnostic(
+                    UsdPhysicsDiagnosticSeverity.Error, UsdPhysicsDiagnosticCategory.Build,
+                    "OPENUSD_PHYSICS_WORLD_CAPACITY_EXCEEDED",
+                    $"The composed world requires {required} entries for {name}, exceeding its configured capacity {capacity}."));
+            }
+        }
     }
 
     /// <summary>Carries one candidate build's result buffers until the build commits.</summary>
@@ -660,7 +720,7 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
     private static int ClampCapacity(uint declared, int requested)
     {
         int value = declared > int.MaxValue ? int.MaxValue : (int)declared;
-        return requested <= 0 ? value : Math.Min(value, requested);
+        return Math.Min(value, requested);
     }
 
     private static T[] AllocatePinned<T>(int count, out T* pointer)
@@ -705,16 +765,20 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         for (int index = 0; index < count; index++)
         {
             ref readonly PhysxBodyState state = ref _bodyStatePointer[index];
+            var position = _resultSpace.ToStage(
+                ((double)state.Pose.Position.X, state.Pose.Position.Y, state.Pose.Position.Z));
+            var orientation = _resultSpace.ToStage(
+                ((double)state.Pose.Rotation.W, state.Pose.Rotation.X, state.Pose.Rotation.Y, state.Pose.Rotation.Z));
+            var linear = _resultSpace.ToStage(
+                ((double)state.LinearVelocity.X, state.LinearVelocity.Y, state.LinearVelocity.Z));
+            var angular = _resultSpace.ToStageDirection(
+                ((double)state.AngularVelocity.X, state.AngularVelocity.Y, state.AngularVelocity.Z));
             bodies[index] = new UsdPhysicsBodyPose(
                 new UsdPhysicsObjectId(state.Id, UsdPhysicsObjectKind.RigidBody),
-                new UsdVec3d(state.Pose.Position.X, state.Pose.Position.Y, state.Pose.Position.Z),
-                new UsdPhysicsOrientation(
-                    state.Pose.Rotation.X,
-                    state.Pose.Rotation.Y,
-                    state.Pose.Rotation.Z,
-                    state.Pose.Rotation.W),
-                new UsdVec3d(state.LinearVelocity.X, state.LinearVelocity.Y, state.LinearVelocity.Z),
-                new UsdVec3d(state.AngularVelocity.X, state.AngularVelocity.Y, state.AngularVelocity.Z),
+                new UsdVec3d(position.X, position.Y, position.Z),
+                new UsdPhysicsOrientation(orientation.X, orientation.Y, orientation.Z, orientation.W),
+                new UsdVec3d(linear.X, linear.Y, linear.Z),
+                new UsdVec3d(angular.X, angular.Y, angular.Z),
                 (state.Flags & (uint)PhysxBodyStateFlags.Sleeping) != 0,
                 (state.Flags & (uint)PhysxBodyStateFlags.Kinematic) != 0);
         }
@@ -800,7 +864,8 @@ internal sealed unsafe class UsdPhysicsNativeWorld : IUsdPhysicsWorld
             for (uint point = 0; point < state.PointCount; point++)
             {
                 ref readonly PhysxVec3f source = ref _deformationPointPointer[state.PointOffset + point];
-                vertices[writtenVertices + (int)point] = new UsdVec3d(source.X, source.Y, source.Z);
+                var position = _resultSpace.ToStage(((double)source.X, source.Y, source.Z));
+                vertices[writtenVertices + (int)point] = new UsdVec3d(position.X, position.Y, position.Z);
             }
 
             bodies[writtenBodies] = new UsdPhysicsDeformation(

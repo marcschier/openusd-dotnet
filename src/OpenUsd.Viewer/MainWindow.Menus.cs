@@ -167,6 +167,7 @@ public sealed partial class MainWindow
             PhysicsSpeedQuadrupleMenuItem, ViewerCommandIds.PhysicsSpeedQuadruple);
         setAccessibleName(PhysicsPreviewMenuItem, ViewerCommandIds.PhysicsPreviewApply);
         setAccessibleName(PhysicsBakeButton, ViewerCommandIds.PhysicsBake);
+        setAccessibleName(PhysicsRecordSequenceMenuItem, ViewerCommandIds.PhysicsRecordSequence);
         setAccessibleName(PhysicsGizmoNoneMenuItem, ViewerCommandIds.PhysicsGizmoNone);
         setAccessibleName(PhysicsGizmoMoveMenuItem, ViewerCommandIds.PhysicsGizmoMove);
         setAccessibleName(PhysicsGizmoRotateMenuItem, ViewerCommandIds.PhysicsGizmoRotate);

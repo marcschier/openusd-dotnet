@@ -7,6 +7,7 @@ using ::OmniGlass import OmniGlass;
 import ::tex::*;
 import ::math::*;
 import ::state::*;
+import ::base::*;
 
 export material constants(*) = OmniPBR(
     diffuse_color_constant: color(0.12, 0.34, 0.56),
@@ -15,15 +16,58 @@ export material constants(*) = OmniPBR(
 
 export material textured(*) = OmniPBR(
     diffuse_texture: texture_2d("./textures/albedo.ppm", ::tex::gamma_linear),
+    reflection_roughness_texture_influence: 1.0,
+    metallic_texture_influence: 1.0,
     enable_ORM_texture: true,
     ORM_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear),
     normalmap_texture: texture_2d("./textures/normal.ppm", ::tex::gamma_linear));
+
+export material detail_only(*) = OmniPBR(
+    detail_normalmap_texture: texture_2d("./textures/normal.ppm", ::tex::gamma_linear),
+    detail_bump_factor: 0.3);
+
+export material detail_on_zero_base(*) = detail_only(
+    normalmap_texture: texture_2d("./textures/normal.ppm", ::tex::gamma_linear),
+    bump_factor: 0.0);
+
+export material detail_on_active_base(*) = detail_only(
+    normalmap_texture: texture_2d("./textures/normal.ppm", ::tex::gamma_linear),
+    bump_factor: 0.6);
+
+export material detail_on_unresolved_base(*) = detail_only(
+    normalmap_texture: texture_2d("./textures/absent-normal.png", ::tex::gamma_linear));
+
+export material detail_with_diffuse(*) = detail_only(
+    diffuse_texture: texture_2d("./textures/albedo.ppm", ::tex::gamma_linear));
 
 export material influenced(*) = OmniPBR(
     reflection_roughness_texture_influence: 1.0,
     reflectionroughness_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear),
     metallic_texture_influence: 1.0,
     metallic_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear));
+
+export material graded(*) = textured(
+    albedo_brightness: 2.0,
+    albedo_add: -0.25,
+    diffuse_tint: color(0.5, 0.25, 1.5));
+
+export material opacity_modes(*) = OmniPBR(
+    enable_opacity: true,
+    enable_opacity_texture: true,
+    opacity_constant: 0.44,
+    opacity_texture: texture_2d("./textures/albedo.ppm", ::tex::gamma_linear),
+    opacity_mode: ::base::mono_average);
+
+export material emission(*) = OmniPBR(
+    enable_emission: true,
+    emissive_color: color(0.25, 0.5, 1.0),
+    emissive_intensity: 4.0);
+export material emission_texture(*) = emission(
+    emissive_color_texture: texture_2d("./textures/albedo.ppm", ::tex::gamma_linear));
+export material emission_mask(*) = emission(
+    emissive_mask_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear));
+export material emission_both(*) = emission_texture(
+    emissive_mask_texture: texture_2d("./textures/orm.ppm", ::tex::gamma_linear));
 
 export material glass(*) = OmniGlass(
     glass_color: color(0.32, 0.57, 0.81),
