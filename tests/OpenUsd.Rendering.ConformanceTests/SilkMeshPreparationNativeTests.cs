@@ -432,7 +432,7 @@ public sealed class SilkMeshPreparationNativeTests
             32, 32, new SilkHdrColorCaptureOptions(includeDeviceDepth: true), CancellationToken.None);
         using SilkOpenColorIoProcessor? processor = mode == "cpu-ocio"
             ? SilkHdrColorCaptureFixture.CreateProcessor("TestView") : null;
-        SilkFrameCaptureResult Capture(SilkOpenColorIoProcessor? current = null) => mode == "cpu-ocio"
+        SilkFrameCaptureResult capture(SilkOpenColorIoProcessor? current = null) => mode == "cpu-ocio"
             ? SilkFrameCapture.CaptureCoreOcio(
                 session, device, renderer, 32, 32, settings, current ?? processor!, 0, camera, request)
             : SilkFrameCapture.CaptureCore(session, device, renderer, 32, 32, settings, 0, camera, request);
@@ -440,7 +440,7 @@ public sealed class SilkMeshPreparationNativeTests
         {
             renderer.UpdateSelection(new SelectionState(["/Mesh"]));
         }
-        SilkFrameCaptureResult before = Capture();
+        SilkFrameCaptureResult before = capture();
         ulong revision = renderer.Scene.Revision;
         SilkMeshGpuResource original = renderer.GpuResources.MeshValues.Single();
         await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points",
@@ -448,7 +448,7 @@ public sealed class SilkMeshPreparationNativeTests
         await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
         using (staging.Reserve(staging.MaximumBytes))
         {
-            await Assert.That(() => Capture()).Throws<SilkGpuStagingBudgetExceededException>();
+            await Assert.That(() => capture()).Throws<SilkGpuStagingBudgetExceededException>();
             await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
             await Assert.That(renderer.GpuResources.MeshValues.Single()).IsSameReferenceAs(original);
             processor?.Dispose();
@@ -459,7 +459,7 @@ public sealed class SilkMeshPreparationNativeTests
         }
         using SilkOpenColorIoProcessor? retryProcessor = mode == "cpu-ocio"
             ? SilkHdrColorCaptureFixture.CreateProcessor("TestView") : null;
-        SilkFrameCaptureResult after = Capture(retryProcessor);
+        SilkFrameCaptureResult after = capture(retryProcessor);
         await Assert.That(after.Rgba.Span.SequenceEqual(before.Rgba.Span)).IsFalse();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(revision + 2);
         await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);

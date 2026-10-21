@@ -360,10 +360,10 @@ public sealed partial class SilkSceneGpuResources
         {
             return;
         }
-        while (Exceeds(_gpuTextureResidentBytes, incomingBytes, _residencyOptions.MaxGpuBytes) ||
+        while (exceeds(_gpuTextureResidentBytes, incomingBytes, _residencyOptions.MaxGpuBytes) ||
             _streamedTextureDefinitions.Count > MaximumStreamedReuseEntries ||
             (_device is ISilkTextureAdmissionDevice { GpuTextureBudget: { } budget } &&
-                Exceeds(budget.Usage.ReservedBytes, incomingBytes, budget.MaximumBytes)))
+                exceeds(budget.Usage.ReservedBytes, incomingBytes, budget.MaximumBytes)))
         {
             // Only completed batches are indexed; the material being recorded stays pinned.
             TextureCacheKey candidateKey = default;
@@ -387,7 +387,7 @@ public sealed partial class SilkSceneGpuResources
             _textureEvictionCount++;
         }
 
-        static bool Exceeds(ulong resident, ulong incoming, ulong maximum) =>
+        static bool exceeds(ulong resident, ulong incoming, ulong maximum) =>
             incoming > maximum || resident > maximum - incoming;
     }
 
@@ -465,10 +465,10 @@ public sealed partial class SilkSceneGpuResources
         {
             return false;
         }
-        return SameValues(left.Scale, right.Scale) && SameValues(left.Bias, right.Bias) &&
-            SameValues(left.Fallback, right.Fallback);
+        return sameValues(left.Scale, right.Scale) && sameValues(left.Bias, right.Bias) &&
+            sameValues(left.Fallback, right.Fallback);
 
-        static bool SameValues(IReadOnlyList<float> left, IReadOnlyList<float> right)
+        static bool sameValues(IReadOnlyList<float> left, IReadOnlyList<float> right)
         {
             if (left.Count != right.Count)
             {

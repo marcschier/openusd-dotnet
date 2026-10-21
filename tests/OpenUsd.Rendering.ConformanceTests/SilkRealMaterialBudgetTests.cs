@@ -79,7 +79,7 @@ public sealed partial class SilkRealMaterialBudgetTests
         var staging = new SilkGpuStagingBudget(poolBytes);
         var buffers = new SilkGpuBufferBudget(16 * 1024 * 1024);
         using Process process = Process.GetCurrentProcess();
-        void Phase(string name)
+        void phase(string name)
         {
             process.Refresh();
             phases.WriteLine(JsonSerializer.Serialize(new
@@ -95,7 +95,7 @@ public sealed partial class SilkRealMaterialBudgetTests
                 buffers = buffers.Usage
             }));
         }
-        Phase("native-material-open");
+        phase("native-material-open");
         _ = OpenUsdNativeRuntime.RegisterPlugins(plugins);
         string materialPrim;
         using (UsdStage source = UsdStage.Open(sourcePath))
@@ -117,7 +117,7 @@ public sealed partial class SilkRealMaterialBudgetTests
         await Assert.That(File.Exists(modulePath)).IsTrue();
         string stagePath = Path.Combine(work, "single-material.usda");
         File.WriteAllText(stagePath, SingleMaterialStage(sourcePath, materialPrim, moduleOverride));
-        Phase("native-single-quad-sync");
+        phase("native-single-quad-sync");
         OpenUsdSilkPage page;
         var camera = new CameraState(Matrix4x4.Identity, new Matrix4x4(
             0.5f, 0, 0, 0, 0, 0.5f, 0, 0, 0, 0, -0.2f, 0, 0, 0, -1.2f, 1));
@@ -162,7 +162,7 @@ public sealed partial class SilkRealMaterialBudgetTests
                     };
                 })
             }));
-            Phase("native-material-projection-recorded");
+            phase("native-material-projection-recorded");
             await Assert.That(material.IsSupported).IsTrue();
             await Assert.That(material.SurfaceKind).IsEqualTo(SilkSurfaceKind.MdlDistilled);
             await Assert.That(material.Textures.Count).IsEqualTo(concrete || lamp is not null ? 5 : 4);
@@ -221,7 +221,7 @@ public sealed partial class SilkRealMaterialBudgetTests
                 }),
                 files = sourceEvidence
             }));
-            Phase("hardware-device-create");
+            phase("hardware-device-create");
             using var device = new SilkGpuPublicationDevice(D3D12SilkGraphicsDevice.Create(useWarp: false));
             await Assert.That(device.Capabilities.IsSoftware).IsFalse();
             device.ConfigureCpuTextureBudget(cpu);
@@ -237,13 +237,13 @@ public sealed partial class SilkRealMaterialBudgetTests
             ulong? retainedTextures = null;
             for (int pass = 0; pass < 2; pass++)
             {
-                Phase(pass == 0 ? "full-resolution-render" : "full-resolution-replay");
+                phase(pass == 0 ? "full-resolution-render" : "full-resolution-replay");
                 device.CreatedTextures.Clear();
                 ulong uploaded = renderer.GpuResources.Statistics.TextureUploadBytes;
                 SilkMeshRenderResult result = pass == 0
                     ? renderer.ApplyAndRender(page, color, depth)
                     : renderer.Render(color, depth);
-                Phase(pass == 0 ? "render-completed" : "replay-completed");
+                phase(pass == 0 ? "render-completed" : "replay-completed");
                 await Assert.That(result.DrawCount).IsEqualTo(1);
                 await Assert.That(renderer.GpuResources.Statistics.PeakTextureResidentGpuBytes).IsEqualTo(materialBytes);
                 await Assert.That(renderer.GpuResources.Statistics.TextureUploadBytes - uploaded).IsEqualTo(materialBytes);
@@ -318,7 +318,7 @@ public sealed partial class SilkRealMaterialBudgetTests
             await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
             await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
             await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
-            Phase("all-owned-resources-released");
+            phase("all-owned-resources-released");
         }
     }
 

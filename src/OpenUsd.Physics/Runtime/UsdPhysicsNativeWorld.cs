@@ -625,15 +625,15 @@ internal sealed unsafe partial class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         PhysxPageReader reader = page.CreateReader();
         PhysxBuildPageHeader header = reader.Header;
         ulong actors = (ulong)header.Actors.Count + header.ArticulationLinks.Count + header.Controllers.Count;
-        Check(nameof(options.MaxRigidBodies), Math.Max(actors, header.Capacities.MaxBodyStates), options.MaxRigidBodies);
-        Check(nameof(options.MaxColliders), (ulong)header.Shapes.Count + header.Controllers.Count, options.MaxColliders);
-        Check(nameof(options.MaxJoints), header.Joints.Count, options.MaxJoints);
-        Check(nameof(options.MaxArticulations), header.Articulations.Count, options.MaxArticulations);
-        Check(nameof(options.MaxControllers), header.Controllers.Count, options.MaxControllers);
-        Check(nameof(options.MaxVehicles), header.Vehicles.Count, options.MaxVehicles);
+        check(nameof(options.MaxRigidBodies), Math.Max(actors, header.Capacities.MaxBodyStates), options.MaxRigidBodies);
+        check(nameof(options.MaxColliders), (ulong)header.Shapes.Count + header.Controllers.Count, options.MaxColliders);
+        check(nameof(options.MaxJoints), header.Joints.Count, options.MaxJoints);
+        check(nameof(options.MaxArticulations), header.Articulations.Count, options.MaxArticulations);
+        check(nameof(options.MaxControllers), header.Controllers.Count, options.MaxControllers);
+        check(nameof(options.MaxVehicles), header.Vehicles.Count, options.MaxVehicles);
         return errors;
 
-        void Check(string name, ulong required, int capacity)
+        void check(string name, ulong required, int capacity)
         {
             if (required > (ulong)capacity)
             {

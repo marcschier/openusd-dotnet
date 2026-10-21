@@ -75,7 +75,7 @@ internal static partial class UsdPhysicsExtractionComposer
                 points.Count + item.PointCount > PhysxMeshPreparation.MaxPoints ||
                 indices.Count + triangleCount > PhysxMeshPreparation.MaxIndices)
             {
-                Flush();
+                flush();
             }
             if (!TryReadMeshData(page, item, decomposition ? PhysxShapeType.TriangleMesh : PhysxShapeType.ConvexMesh,
                     out PhysxVec3f[] sourcePoints, out uint[]? sourceIndices, out string failure, minimumPoints: 3))
@@ -107,10 +107,10 @@ internal static partial class UsdPhysicsExtractionComposer
             }
 
         }
-        Flush();
+        flush();
         return prepared;
 
-        void Flush()
+        void flush()
         {
             if (inputs.Count == 0)
             {

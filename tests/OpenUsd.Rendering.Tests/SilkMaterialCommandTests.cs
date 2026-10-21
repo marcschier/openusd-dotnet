@@ -58,19 +58,19 @@ public sealed class SilkMaterialCommandTests
             : floatingPoint ? SilkTextureFormat.Rgba32Float : SilkTextureFormat.Rgba8Unorm);
         byte[] pixels = device.RowUploads.SelectMany(static row => row.Pixels).ToArray();
         int components = scalar ? 1 : 4;
-        float Read(int index, int component = 0) => floatingPoint
+        float read(int index, int component = 0) => floatingPoint
             ? BitConverter.ToSingle(pixels, (index * components + component) * 4)
             : pixels[index * components + component] / 255f;
-        int Metadata(int index) => (int)MathF.Round(Read(index) * 255);
-        await Assert.That(Metadata(0)).IsEqualTo(255);
-        await Assert.That(Metadata(4)).IsEqualTo(3);
-        await Assert.That(Metadata(5)).IsEqualTo(1);
-        await Assert.That(Metadata(8)).IsEqualTo(2);
-        await Assert.That(Metadata(10)).IsEqualTo(1);
-        await Assert.That(Metadata(12)).IsEqualTo(0);
-        await Assert.That(Metadata(14)).IsEqualTo(2);
-        await Assert.That(Read(1)).IsEqualTo(gain);
-        int columns = Metadata(6);
+        int metadata(int index) => (int)MathF.Round(read(index) * 255);
+        await Assert.That(metadata(0)).IsEqualTo(255);
+        await Assert.That(metadata(4)).IsEqualTo(3);
+        await Assert.That(metadata(5)).IsEqualTo(1);
+        await Assert.That(metadata(8)).IsEqualTo(2);
+        await Assert.That(metadata(10)).IsEqualTo(1);
+        await Assert.That(metadata(12)).IsEqualTo(0);
+        await Assert.That(metadata(14)).IsEqualTo(2);
+        await Assert.That(read(1)).IsEqualTo(gain);
+        int columns = metadata(6);
         int rows = (2 + columns - 1) / columns;
         int width = (int)descriptor.Width;
         int metadataRows = (16 + width - 1) / width;
@@ -89,13 +89,13 @@ public sealed class SilkMaterialCommandTests
                     float expected = ((tile == 0 ? 64 : 128) + sourceY * 4 + sourceX) / 255f * gain;
                     int pixel = (metadataRows + tile / columns * cellHeight + y) * width +
                         tile % columns * cellWidth + x;
-                    await Assert.That(Read(pixel)).IsEqualTo(expected);
+                    await Assert.That(read(pixel)).IsEqualTo(expected);
                     if (!scalar)
                     {
-                        await Assert.That(Read(pixel, 1)).IsEqualTo((sourceY * 4 + sourceX) * 7 / 255f * gain);
-                        await Assert.That(Read(pixel, 2)).IsEqualTo(
+                        await Assert.That(read(pixel, 1)).IsEqualTo((sourceY * 4 + sourceX) * 7 / 255f * gain);
+                        await Assert.That(read(pixel, 2)).IsEqualTo(
                             (255 - (tile == 0 ? 64 : 128) - sourceY * 4 - sourceX) / 255f * gain);
-                        await Assert.That(Read(pixel, 3)).IsEqualTo(1f);
+                        await Assert.That(read(pixel, 3)).IsEqualTo(1f);
                     }
                 }
             }

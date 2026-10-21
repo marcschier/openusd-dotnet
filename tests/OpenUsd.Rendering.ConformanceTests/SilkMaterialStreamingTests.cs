@@ -743,7 +743,7 @@ public sealed class SilkMaterialStreamingTests
         ulong allowance = oneByteShort ? 83ul : 84ul;
         uint pressure = checked((uint)(fixture.Textures.MaximumBytes - retained - allowance));
         var settings = new RenderSettings(1, true, false, new System.Numerics.Vector4(0, 0, 0, 1));
-        SilkFrameCaptureResult Capture() => SilkFrameCapture.CaptureRetainedWithHdrColor(
+        SilkFrameCaptureResult capture() => SilkFrameCapture.CaptureRetainedWithHdrColor(
             fixture.Renderer, fixture.Device, 32, 32, settings,
             new SilkHdrColorCaptureOptions(includeDeviceDepth: true), pageRevision: 2);
         using (fixture.Textures.Reserve(new(pressure, 1, SilkTextureFormat.R8Unorm,
@@ -752,14 +752,14 @@ public sealed class SilkMaterialStreamingTests
             if (oneByteShort)
             {
                 SilkGpuTextureBudgetExceededException? error =
-                    await Assert.That(Capture).Throws<SilkGpuTextureBudgetExceededException>();
+                    await Assert.That(capture).Throws<SilkGpuTextureBudgetExceededException>();
                 await Assert.That(error!.RequestedBytes).IsEqualTo(84ul);
                 await Assert.That(error.ReservedBytes + error.RequestedBytes)
                     .IsEqualTo(fixture.Textures.MaximumBytes + 1);
             }
             else
             {
-                SilkFrameCaptureResult result = Capture();
+                SilkFrameCaptureResult result = capture();
                 await Assert.That(result.HdrColor).IsNotNull();
                 await Assert.That(result.Depth).IsNotNull();
                 await Assert.That(result.HdrColor!.Rgba16Float.Span.SequenceEqual(originalColor)).IsTrue();
@@ -771,7 +771,7 @@ public sealed class SilkMaterialStreamingTests
             await Assert.That(fixture.Cpu.Usage.ReservedBytes).IsEqualTo(fixture.InitialCpuBytes);
         }
         await Assert.That(fixture.Textures.Usage.ReservedBytes).IsEqualTo(retained - 32ul * 32 * 12);
-        SilkFrameCaptureResult replay = Capture();
+        SilkFrameCaptureResult replay = capture();
         await Assert.That(replay.HdrColor!.Rgba16Float.Span.SequenceEqual(originalColor)).IsTrue();
         await Assert.That(replay.Depth!.Values.Span.SequenceEqual(originalDepth)).IsTrue();
     }

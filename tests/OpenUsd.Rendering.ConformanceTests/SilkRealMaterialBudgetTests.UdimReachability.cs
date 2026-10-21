@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using OpenUsd.Interop;
-using OpenUsd.Shade;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
+using OpenUsd.Shade;
 
 namespace OpenUsd.Rendering.ConformanceTests;
 
@@ -83,7 +83,7 @@ public sealed partial class SilkRealMaterialBudgetTests
         device.ConfigureBufferBudget(buffers);
         var decoded = new List<UdimDecodedTile>();
         SilkMaterialTexture? active = null;
-        SilkDecodedImage Decode(string asset, bool linear, bool floating, SilkCpuTextureBudget? budget)
+        SilkDecodedImage decode(string asset, bool linear, bool floating, SilkCpuTextureBudget? budget)
         {
             SilkDecodedImage image = SilkNativeImageDecoder.Decode(asset, linear, floating, budget);
             if (active is not null)
@@ -114,11 +114,11 @@ public sealed partial class SilkRealMaterialBudgetTests
             return image;
         }
         using var resources = new SilkSceneGpuResources(device,
-            (asset, linear) => Decode(asset, linear, false, cpu),
+            (asset, linear) => decode(asset, linear, false, cpu),
             residencyOptions: new(limit, limit, true), cpuTextureBudget: cpu,
             imageDescriber: SilkNativeImageDecoder.Describe,
-            ownedImageDecoder: (asset, linear, budget) => Decode(asset, linear, false, budget),
-            precisionImageDecoder: Decode);
+            ownedImageDecoder: (asset, linear, budget) => decode(asset, linear, false, budget),
+            precisionImageDecoder: decode);
         resources.Apply(scene, delta);
         await Assert.That(resources.Meshes.Count).IsEqualTo(scene.Meshes.Count);
         using var log = new StreamWriter(new FileStream(Path.Combine(work, "udim-reachability.jsonl"),

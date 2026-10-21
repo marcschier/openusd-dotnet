@@ -70,7 +70,7 @@ public sealed class SilkWarehouseMdlWrapperTests
                     primaryPixels[(pixel * 4) + 3] = 1;
                 }
             }
-            string MaterialText(string baseAsset, int detailStrength) => Scene(Material($$"""
+            string materialText(string baseAsset, int detailStrength) => Scene(Material($$"""
                 uniform token info:implementationSource = "sourceAsset"
                 uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
                 uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
@@ -95,9 +95,9 @@ public sealed class SilkWarehouseMdlWrapperTests
             string projected = Path.Combine(root, "projected.usda");
             string reference = Path.Combine(root, "reference.usda");
             string control = Path.Combine(root, "base-only.usda");
-            await File.WriteAllTextAsync(projected, MaterialText(normal, 1));
-            await File.WriteAllTextAsync(reference, MaterialText(referenceNormal, 0));
-            await File.WriteAllTextAsync(control, MaterialText(normal, 0));
+            await File.WriteAllTextAsync(projected, materialText(normal, 1));
+            await File.WriteAllTextAsync(reference, materialText(referenceNormal, 0));
+            await File.WriteAllTextAsync(control, materialText(normal, 0));
             SilkMaterialData data = ReadMaterial(plugins, projected);
             await Assert.That(data.Textures.Count).IsEqualTo(rotatedWithEmission ? 4 : 2);
             await Assert.That(data.GetTexture(SilkMaterialParameter.DetailNormal)!.Asset).IsEqualTo(detail);

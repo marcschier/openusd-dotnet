@@ -98,7 +98,7 @@ public sealed partial class SilkSceneGpuResources
             byte[] markerBand = new byte[markerBandBytes];
             int pending = 0;
             uint valueFirstRow = 0;
-            AppendValues(palette);
+            appendValues(palette);
             uint tailIndex = 256;
             for (uint level = 0; level < levels; level++)
             {
@@ -131,7 +131,7 @@ public sealed partial class SilkSceneGpuResources
                     {
                         for (int pixel = 0; pixel < count; pixel++)
                         {
-                            AppendValues(MemoryMarshal.AsBytes(source.Slice(pixel * 4, 3)));
+                            appendValues(MemoryMarshal.AsBytes(source.Slice(pixel * 4, 3)));
                         }
                     }
                     first += rows;
@@ -163,7 +163,7 @@ public sealed partial class SilkSceneGpuResources
             valuesTexture = null;
             return entry;
 
-            void AppendValues(ReadOnlySpan<byte> source)
+            void appendValues(ReadOnlySpan<byte> source)
             {
                 while (!source.IsEmpty)
                 {

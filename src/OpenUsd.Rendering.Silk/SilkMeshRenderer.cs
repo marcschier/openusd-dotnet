@@ -2126,7 +2126,7 @@ public sealed partial class SilkMeshRenderer :
             {
                 continue;
             }
-            GetPlan(key.Geometry).Color.Add(batches[key]);
+            getPlan(key.Geometry).Color.Add(batches[key]);
         }
         if (_device.Capabilities.SupportsRasterShadows)
         {
@@ -2146,7 +2146,7 @@ public sealed partial class SilkMeshRenderer :
                 }
                 foreach ((SilkMeshGpuGeometryResource geometry, int count) in counts)
                 {
-                    InstanceCounts plan = GetPlan(geometry);
+                    InstanceCounts plan = getPlan(geometry);
                     plan.Shadow = Math.Max(plan.Shadow, count);
                 }
             }
@@ -2174,7 +2174,7 @@ public sealed partial class SilkMeshRenderer :
             throw;
         }
 
-        InstanceCounts GetPlan(SilkMeshGpuGeometryResource geometry)
+        InstanceCounts getPlan(SilkMeshGpuGeometryResource geometry)
         {
             if (!plans.TryGetValue(geometry, out InstanceCounts? plan))
             {
