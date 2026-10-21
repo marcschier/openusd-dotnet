@@ -441,7 +441,7 @@ the SBOM after changing a pin. Use listed stable packages in the supported relea
 the numerically highest flat-container entry: DXC uses the official `1.9.2609.5` release; the higher
 `101.7.2207.25` package is unlisted and is not a newer production release.
 
-The next release is planned as `0.16.0-alpha`, retaining the exact `alpha` prerelease tag.
+The next release is planned as `0.16.1-alpha`, retaining the exact `alpha` prerelease tag.
 This is a minor increment because host-readback presentation adds public managed API since
 the published `0.15.0-alpha` baseline. The native ABI and dependency pins are unchanged.
 The complete managed and native package family ships at the same version, including Metal and

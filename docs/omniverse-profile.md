@@ -2,7 +2,7 @@
 
 # Omniverse interoperability profile
 
-Version-pinned Omniverse interoperability profile for `0.15.0-alpha`. Generated from `eng/omniverse-profile.json`; do
+Version-pinned Omniverse interoperability profile for `0.16.1-alpha`. Generated from `eng/omniverse-profile.json`; do
 not edit by hand. Feature and exclusion status is always resolved live from `eng/support-manifest.json` -- this document
 never fabricates a status independently of that manifest. See [`docs/support-matrix.md`](support-matrix.md) for
 narrative detail and [`docs/support-manifest.md`](support-manifest.md) for the full executable summary.
