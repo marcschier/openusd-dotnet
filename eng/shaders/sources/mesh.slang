@@ -233,11 +233,13 @@ static const uint FrameLightArraysOffset = 224u;
 static const uint FrameShadowSlotsOffset =
     FrameLightArraysOffset + 6u * FrameLightArrayBytes + 64u + 4u * (64u + 16u + 16u);
 
+[ForceInline]
 float4 ReadFrameLight(uint field, uint index)
 {
     return frameParameters.Load<float4>(FrameLightArraysOffset + field * FrameLightArrayBytes + index * 16u);
 }
 
+[ForceInline]
 float4 ReadFrameShadowSlot(uint index)
 {
     return frameParameters.Load<float4>(FrameShadowSlotsOffset + index * 16u);
@@ -545,6 +547,7 @@ struct SurfaceParameters
 // reconstructed texture coordinates can disagree with the reference sampler.
 // RGB bytes index exact CPU float32 channel values at level zero; lower levels
 // point at unchanged CPU mip values. R32F triples omit only unused alpha.
+[ForceInline]
 float3 DecodeIndexedRgb(float4 sampled, Texture2D<float4> values)
 {
     if (sampled.a > 1.0)
@@ -662,6 +665,7 @@ float2 TransformTextureCoordinate(SurfaceParameters surface, float2 textureCoord
 }
 
 #if MAP_NORMAL
+[ForceInline]
 float3 OrientMappedNormal(float3 mapped, float2 row0, float2 row1)
 {
     if (any(row1 != float2(0.0, 0.0)))
@@ -678,6 +682,7 @@ float3 OrientMappedNormal(float3 mapped, float2 row0, float2 row1)
     return mapped;
 }
 
+[ForceInline]
 float3 CombineDetailNormal(float3 primary, float3 detail)
 {
     float3 t = normalize(primary) + float3(0.0, 0.0, 1.0);
