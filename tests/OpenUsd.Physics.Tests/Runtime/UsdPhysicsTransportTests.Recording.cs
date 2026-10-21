@@ -76,7 +76,7 @@ public sealed partial class UsdPhysicsTransportTests
                 request, transport, bindings,
                 new PhysicsRenderCapacities(mode == "capacity" ? 0 : 1, deforming ? 1 : 0, deforming ? 2 : 0),
                 source, new PhysicsRenderRecordingContext("invalid", 8)));
-            PumpRecording(transport, job);
+            await PumpRecordingAsync(transport, job);
             await Assert.That(await CaptureAsync(transport, job)).IsNotNull();
             await Assert.That(world.Counter).IsEqualTo(0ul);
             await Assert.That(source.Positions.Count).IsEqualTo(0);
@@ -149,7 +149,7 @@ public sealed partial class UsdPhysicsTransportTests
             Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings, new PhysicsRenderCapacities(1), source,
                 new PhysicsRenderRecordingContext("interrupted", 8), cancellationToken: cancellation.Token));
-            PumpRecording(transport, job);
+            await PumpRecordingAsync(transport, job);
             Exception? failure = await CaptureAsync(transport, job);
             await Assert.That(failure).IsNotNull();
             await Assert.That(source.Clears).IsEqualTo(1);
@@ -176,7 +176,7 @@ public sealed partial class UsdPhysicsTransportTests
             Task<RenderDiskJobResult> retryJob = StartRecording(() => PhysicsRenderRecording.Execute(
                 retry, transport, recoveredBindings, new PhysicsRenderCapacities(1), recovered,
                 new PhysicsRenderRecordingContext("recovered", 8)));
-            PumpRecording(transport, retryJob);
+            await PumpRecordingAsync(transport, retryJob);
             await Assert.That((await retryJob).Frames.Count).IsEqualTo(1);
             await Assert.That(recovered.Clears).IsEqualTo(1);
         }
@@ -200,7 +200,7 @@ public sealed partial class UsdPhysicsTransportTests
             Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, new PhysicsRenderBindingTable(1), new PhysicsRenderCapacities(1),
                 source, new PhysicsRenderRecordingContext("unbound", 8)));
-            PumpRecording(transport, job);
+            await PumpRecordingAsync(transport, job);
             await Assert.That(async () => await job).Throws<InvalidDataException>();
             await Assert.That(world.Counter).IsEqualTo(0ul);
             await Assert.That(source.Positions.Count).IsEqualTo(0);
@@ -241,7 +241,7 @@ public sealed partial class UsdPhysicsTransportTests
             Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings, new PhysicsRenderCapacities(1, 1, 2), source,
                 new PhysicsRenderRecordingContext("cloth", 8)));
-            PumpRecording(transport, job);
+            await PumpRecordingAsync(transport, job);
             RenderDiskJobResult result = await job;
             float[] first = [0, 1, 0, 1, 1, 0];
             float[] second = [0, 2, 0, 1, 2, 0];
@@ -278,7 +278,7 @@ public sealed partial class UsdPhysicsTransportTests
             Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings, new PhysicsRenderCapacities(2), source,
                 new PhysicsRenderRecordingContext("falling-prop", 8, "review-v1")));
-            PumpRecording(transport, job);
+            await PumpRecordingAsync(transport, job);
             RenderDiskJobResult result = await job;
             await Assert.That(world.Counter).IsEqualTo(3ul);
             double[] expectedPositions = [1, 2, 3];
@@ -348,12 +348,12 @@ public sealed partial class UsdPhysicsTransportTests
         return new RenderDiskJobRequest(Path.Combine(root, "recording"), states);
     }
 
-    // The test thread busy-pumps the transport, so the recording must not depend on thread-pool injection.
+    // The recording blocks while the test pumps; neither may monopolize the thread pool its continuations need.
     private static Task<RenderDiskJobResult> StartRecording(Func<RenderDiskJobResult> execute) =>
         Task.Factory.StartNew(
             execute, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-    private static void PumpRecording(UsdPhysicsTransport transport, Task job)
+    private static async Task PumpRecordingAsync(UsdPhysicsTransport transport, Task job)
     {
         long deadline = Environment.TickCount64 + 10_000;
         while (!job.IsCompleted)
@@ -363,7 +363,7 @@ public sealed partial class UsdPhysicsTransportTests
             {
                 throw new TimeoutException("The deterministic recording did not complete.");
             }
-            Thread.Yield();
+            await Task.Yield();
         }
     }
 
