@@ -393,7 +393,8 @@ public static class CompositionHostReadback
 public interface ICompositionReadbackFrame : ICompositionPresentationFrame
 {
     /// <summary>
-    /// Copies the most recently presented frame as tightly packed rows in <see cref="CompositionExternalImage.Format"/>,
+    /// Copies the most recently presented frame as tightly packed rows in
+    /// <see cref="CompositionExternalImage.Format"/>,
     /// ordered as described by <see cref="CompositionExternalImage.TopLeftOrigin"/>.
     /// </summary>
     /// <param name="destination">A buffer of exactly width × height × 4 bytes.</param>
