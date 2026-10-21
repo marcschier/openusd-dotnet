@@ -470,7 +470,7 @@ internal sealed class RendererSwitchingViewport : Grid
         EventHandler<PointerWheelEventArgs>? windowPointerWheel = null;
         EventHandler<KeyEventArgs>? windowKeyDown = null;
         EventHandler<KeyEventArgs>? windowKeyUp = null;
-        if (OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
         {
             windowPointerMoved = (_, _) => Interlocked.Increment(ref _pointerMoves);
             windowPointerPressed = (_, _) => Interlocked.Increment(ref _pointerButtons);
@@ -656,6 +656,7 @@ internal sealed class RendererSwitchingViewport : Grid
                 window.Width = original.Width;
                 window.Height = original.Height;
                 await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken);
+                await FocusForEvidenceAsync(window, cancellationToken);
                 xTestInjections.Add(InjectXTestEvidence(
                     NativeXTestApi.Instance,
                     parent.Handle,
@@ -663,6 +664,7 @@ internal sealed class RendererSwitchingViewport : Grid
                     8,
                     "ViewerTopLevel",
                     Environment.GetEnvironmentVariable("DISPLAY")));
+                await DrainUiDispatcherAsync(cancellationToken);
                 if (storm is not null)
                 {
                     xTestInjections.Add(InjectXTestEvidence(

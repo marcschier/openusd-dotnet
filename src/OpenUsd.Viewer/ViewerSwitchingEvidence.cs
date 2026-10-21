@@ -381,9 +381,15 @@ internal sealed record ViewerSwitchingEvidenceArtifact(
             }
         }
 
-        string? previousHash = null;
+        ViewerPixelEvidence? previousPixel = null;
         foreach (ViewerPixelEvidence pixel in Pixels)
         {
+            // The shell independently captures the same displayed native frame.
+            bool pairedShellCapture = previousPixel is not null &&
+                previousPixel.CaptureApi == StormCaptureApi &&
+                pixel.CaptureApi != StormCaptureApi &&
+                pixel.Backend == previousPixel.Backend &&
+                pixel.Phase == previousPixel.Phase + "-shell";
             long minimumScenePixels = Math.Max(100, pixel.Width * (long)pixel.Height / 1000);
             if (string.IsNullOrWhiteSpace(pixel.Backend) ||
                 string.IsNullOrWhiteSpace(pixel.Phase) ||
@@ -396,11 +402,12 @@ internal sealed record ViewerSwitchingEvidenceArtifact(
                 pixel.Samples.Length < 4 ||
                 pixel.NonBackgroundPixels < minimumScenePixels ||
                 string.IsNullOrWhiteSpace(pixel.Artifact) ||
-                string.Equals(previousHash, pixel.Sha256, StringComparison.OrdinalIgnoreCase))
+                (!pairedShellCapture &&
+                 string.Equals(previousPixel?.Sha256, pixel.Sha256, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException("Viewer pixel evidence is invalid or stale.");
             }
-            previousHash = pixel.Sha256;
+            previousPixel = pixel;
         }
         ValidateCameraTransitions();
         ValidateStageCameraEvidence(stageCameraScenario);

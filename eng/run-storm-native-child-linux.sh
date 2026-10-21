@@ -14,10 +14,11 @@ vulkan_publish="$repo_root/artifacts/avalonia-vulkan-smoke/linux-x64"
 loader="$(openusd_linux_vulkan_loader)"
 icd="$(openusd_linux_vulkan_icd)"
 server_pid=""
+display_server_pid=""
 required="${OPENUSD_REQUIRE_VULKAN_PRESENTATION:-0}"
-# A hosted Linux compositor accepts no external Vulkan images, so requiring Vulkan
-# presentation here would demand evidence the host cannot produce. The allowance is
-# opt-in from the workflow; see docs/testing.md, "Render gate capability limits".
+# Vulkan presentation may use external images or host readback. Only a typed
+# unavailable result permits the workflow's opt-in capability allowance; crashes,
+# timeouts, and malformed evidence still fail.
 if [[ "${OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY:-0}" == "1" ]]; then
   required=0
 fi
@@ -38,6 +39,10 @@ cleanup() {
   if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$display_server_pid" ]] && kill -0 "$display_server_pid" 2>/dev/null; then
+    kill "$display_server_pid" 2>/dev/null || true
+    wait "$display_server_pid" 2>/dev/null || true
   fi
   if [[ -n "${runtime_dir:-}" ]]; then
     rm -rf "$runtime_dir"
@@ -81,14 +86,22 @@ if [[ "$platform" == "x11" ]]; then
   wait_for_x11
 else
   command -v weston >/dev/null || { echo "Weston is required." >&2; exit 3; }
+  command -v Xvfb >/dev/null || { echo "Xvfb is required." >&2; exit 3; }
+  export DISPLAY=:96
+  Xvfb "$DISPLAY" -screen 0 1280x720x24 -ac -nolisten tcp \
+    >"$output_root/xvfb.log" 2>&1 &
+  display_server_pid=$!
+  wait_for_x11
   export WAYLAND_DISPLAY=openusd-storm-child
   export XDG_SESSION_TYPE=wayland
   export OPENUSD_VIEWER_PLATFORM=linux-wayland
-  unset DISPLAY
-  weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" \
+  # Headless Weston has no keyboard seat. Nest the compositor on Xvfb so its managed
+  # XWayland server receives real keyboard devices as well as server-generated XTest input.
+  weston --backend=x11-backend.so --use-pixman --socket="$WAYLAND_DISPLAY" \
     --idle-time=0 --width=1280 --height=720 --no-config --xwayland \
     >"$output_root/weston.log" 2>&1 &
   server_pid=$!
+  unset DISPLAY
   for _ in $(seq 1 200); do
     [[ -S "$runtime_dir/$WAYLAND_DISPLAY" ]] && break
     kill -0 "$server_pid" 2>/dev/null ||
@@ -226,6 +239,7 @@ fi
 if [[ "$vulkan_available" -eq 1 ]]; then
   viewer_evidence_path="$output_root/switching-evidence.json"
   pwsh -NoProfile -File "$repo_root/eng/run-viewer.ps1" \
+    -StagePath "$repo_root/test-assets/viewer-switching-lit.usda" \
     -Rid linux-x64 -RendererSwitchSoak -SwitchCount "$switch_count" \
     -SwitchSoakSeconds "$survival_seconds" -SimulateStormContextLoss \
     -EvidencePath "$output_root/switching-evidence.json" \
@@ -332,6 +346,7 @@ fi
 for process_index in $(seq 1 "$fresh_process_count"); do
   if [[ "$vulkan_available" -eq 1 ]]; then
     pwsh -NoProfile -File "$repo_root/eng/run-viewer.ps1" \
+      -StagePath "$repo_root/test-assets/viewer-switching-lit.usda" \
       -Rid linux-x64 -RendererSwitchSoak -SwitchCount 2 \
       -SwitchSoakSeconds 1 |
       tee "$output_root/fresh-$process_index.log"
