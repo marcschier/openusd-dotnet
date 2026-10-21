@@ -10,7 +10,8 @@ public interface IWorkspacePhysicsRecordingBackend
 {
     /// <summary>Extracts and builds a supported world without changing the authored stage.</summary>
     ValueTask<WorkspacePhysicsRecording> PreparePhysicsRecordingAsync(
-        ulong expectedStageRevision, double expectedMetersPerUnit, string expectedUpAxis, CancellationToken cancellationToken);
+        ulong expectedStageRevision, double expectedMetersPerUnit, string expectedUpAxis,
+            CancellationToken cancellationToken);
 
     /// <summary>Optionally admits a complete rigid scene without weakening the default bounded profile.</summary>
     ValueTask<WorkspacePhysicsRecording> PreparePhysicsRecordingAsync(
@@ -18,7 +19,8 @@ public interface IWorkspacePhysicsRecordingBackend
         bool fullScenePhysics, CancellationToken cancellationToken) =>
         fullScenePhysics
             ? throw new NotSupportedException("This workspace backend does not expose the full-scene physics profile.")
-            : PreparePhysicsRecordingAsync(expectedStageRevision, expectedMetersPerUnit, expectedUpAxis, cancellationToken);
+            : PreparePhysicsRecordingAsync(expectedStageRevision, expectedMetersPerUnit, expectedUpAxis,
+                cancellationToken);
 }
 
 /// <summary>Owns one prepared recording world; the caller must dispose it after capture drains.</summary>

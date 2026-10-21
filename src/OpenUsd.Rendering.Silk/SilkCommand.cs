@@ -2210,7 +2210,8 @@ public readonly ref struct SilkMaterialUpsertCommand
             }
             for (int component = 0; component < 3; component++)
             {
-                if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8 + (component * 4), 4))))
+                if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8 + (
+                    component * 4), 4))))
                 {
                     throw new InvalidDataException("A detail UV row requires three finite components.");
                 }
@@ -2274,7 +2275,8 @@ public readonly ref struct SilkMaterialUpsertCommand
                 "A material texture entry requires a resolved asset path.");
         }
         if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) is
-            (uint)SilkMaterialParameter.DiffuseTextureLuminanceMix or (uint)SilkMaterialParameter.OmniPbrSpecularLevel or
+            (uint)SilkMaterialParameter.DiffuseTextureLuminanceMix or (
+                uint)SilkMaterialParameter.OmniPbrSpecularLevel or
             (uint)SilkMaterialParameter.DetailUvRow0 or (uint)SilkMaterialParameter.DetailUvRow1)
         {
             throw new InvalidDataException("The material operation requires a constant scalar, not a texture.");

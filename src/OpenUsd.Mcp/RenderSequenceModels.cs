@@ -57,7 +57,9 @@ internal sealed class RenderSequenceRequest : SceneRevisionRequestBase
 internal sealed class ReadSequenceFrameRequest
 {
     [JsonPropertyName("jobId"), Required, MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description("Exact completed job identifier returned by render_sequence, render_product or render_physics_sequence in this process.")]
+    [Description(
+        "Exact completed job identifier returned by render_sequence, render_product or render_physics_sequence " +
+            "in this process.")]
     public required string JobId { get; init; }
 
     [JsonPropertyName("frameIndex"), Range(0, 4095)]

@@ -113,7 +113,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget, _textureBudgets, _gpuUploadHeaps)
+        if (GetPreparationUnsupportedReason(kind, _preparationLimits, _gpuBufferBudget, _textureBudgets,
+            _gpuUploadHeaps)
             is { } preparationReason)
         {
             return ValueTask.FromResult(Unavailable(kind, RenderBackendProbeFailureKind.RuntimeUnavailable,

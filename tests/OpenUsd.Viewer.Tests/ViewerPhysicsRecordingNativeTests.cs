@@ -16,7 +16,9 @@ public sealed class ViewerPhysicsRecordingNativeTests
         if (!OperatingSystem.IsWindows() ||
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_PHYSICS_RECORDING_SMOKE") != "1")
         {
-            Skip.Test("Run this class alone with OPENUSD_VIEWER_PHYSICS_RECORDING_SMOKE=1 and matched physics/render runtimes.");
+            Skip.Test(
+                "Run this class alone with OPENUSD_VIEWER_PHYSICS_RECORDING_SMOKE=1 and matched physics/render " +
+                    "runtimes.");
         }
         string? evidence = Environment.GetEnvironmentVariable("OPENUSD_VIEWER_PHYSICS_RECORDING_EVIDENCE_ROOT") ??
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_SEQUENCE_EVIDENCE_ROOT");
@@ -85,7 +87,8 @@ public sealed class ViewerPhysicsRecordingNativeTests
     private static async Task VerifyPhysicsRuntimeAsync(string root)
     {
         string expectedRoot = Environment.GetEnvironmentVariable("OPENUSD_VIEWER_PHYSICS_RUNTIME_ROOT") ??
-            throw new InvalidOperationException("Set OPENUSD_VIEWER_PHYSICS_RUNTIME_ROOT to the matched physics shim prefix.");
+            throw new InvalidOperationException(
+                "Set OPENUSD_VIEWER_PHYSICS_RUNTIME_ROOT to the matched physics shim prefix.");
         string expectedPath = Path.Combine(expectedRoot, "bin", "openusd_physx.dll");
         using Process process = Process.GetCurrentProcess();
         ProcessModule module = process.Modules.Cast<ProcessModule>().Single(item =>

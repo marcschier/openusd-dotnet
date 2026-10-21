@@ -30,7 +30,8 @@ public static unsafe partial class OpenUsdSilkRuntime
             }
             catch (EntryPointNotFoundException exception)
             {
-                throw new NotSupportedException("File-backed updates require the version-1 native command-storage exports.", exception);
+                throw new NotSupportedException(
+                    "File-backed updates require the version-1 native command-storage exports.", exception);
             }
         }
     }
@@ -89,7 +90,8 @@ public static unsafe partial class OpenUsdSilkRuntime
                 }
                 SilkCommandParser.ValidatePageAbi(view.PageAbiVersion);
                 SilkMeshPreparationUsage preparationUsage = ValidatePreparationUsage(in usage, meshLimit);
-                storage = new SilkNativeCommandStorage(handle, view.DataSize, commandLimit, storageLimits.TransferBufferBytes);
+                storage = new SilkNativeCommandStorage(handle, view.DataSize, commandLimit,
+                    storageLimits.TransferBufferBytes);
                 handle = 0;
                 var page = new OpenUsdSilkPage(view.PageAbiVersion, view.Revision, storage,
                     view.CommandCount, preparationUsage, commandLimit);

@@ -328,7 +328,8 @@ public sealed partial class UsdPhysicsTransportTests
             }
             for (int index = 0; index < lease.Frame.DeformationCount; index++)
             {
-                _ = bindings.TryBind(new PhysicsRenderObjectId(lease.Frame.Deformations[index].Id.Value), $"/Deform{index}");
+                _ = bindings.TryBind(new PhysicsRenderObjectId(lease.Frame.Deformations[index].Id.Value),
+                    $"/Deform{index}");
             }
             return bindings;
         }

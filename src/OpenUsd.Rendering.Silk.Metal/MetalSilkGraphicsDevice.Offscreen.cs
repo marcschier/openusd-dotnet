@@ -646,7 +646,8 @@ public sealed partial class MetalSilkGraphicsDevice
                         else
                         {
                             uploadPlans = MetalMipCopyPlan.Create(
-                                uploadTexture.Width, uploadTexture.Height, uploadTexture.Format, uploadTexture.MipLevelCount);
+                                uploadTexture.Width, uploadTexture.Height, uploadTexture.Format,
+                                    uploadTexture.MipLevelCount);
                         }
                         // Staged rather than uploaded directly: Metal requires the
                         // source offset and row pitch of a buffer-to-texture blit
@@ -657,7 +658,8 @@ public sealed partial class MetalSilkGraphicsDevice
                         MetalStagingResource upload;
                         if (command.TextureRows is { } region)
                         {
-                            upload = CreateTextureRowUpload(command.Data!, region.GetLayout(uploadTexture), uploadPlans[0]);
+                            upload = CreateTextureRowUpload(command.Data!, region.GetLayout(uploadTexture),
+                                uploadPlans[0]);
                         }
                         else
                         {

@@ -5,7 +5,8 @@ using OpenUsd.Physics;
 namespace OpenUsd.Rendering.Physics;
 
 /// <summary>Pins the host's authored source and scenario identities for one simulation recording.</summary>
-/// <remarks>The host retains exclusive stage, transport, binding-table and renderer ownership during recording.</remarks>
+/// <remarks>The host retains exclusive stage, transport, binding-table and renderer ownership during
+/// recording.</remarks>
 public sealed class PhysicsRenderRecordingContext
 {
     /// <summary>Creates bounded host-provided recording identities.</summary>
@@ -33,7 +34,8 @@ public sealed class PhysicsRenderRecordingContext
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameter);
         if (value.Length > 256 || value.Any(char.IsControl))
         {
-            throw new ArgumentException("A recording identity must be bounded text without control characters.", parameter);
+            throw new ArgumentException(
+                "A recording identity must be bounded text without control characters.", parameter);
         }
     }
 }
@@ -91,8 +93,10 @@ public sealed class PhysicsRenderCaptureResult
 public interface IPhysicsRenderRecordingSource
 {
     /// <summary>Requires unchanged source/review ownership and support for the complete request, or throws.</summary>
-    /// <remarks>Called before stepping, around capture and before publication. Keep checks lightweight and nonmutating.</remarks>
-    void Validate(RenderDiskJobRequest request, PhysicsRenderRecordingContext context, CancellationToken cancellationToken);
+    /// <remarks>Called before stepping, around capture and before publication. Keep checks lightweight and
+    /// nonmutating.</remarks>
+    void Validate(RenderDiskJobRequest request, PhysicsRenderRecordingContext context,
+        CancellationToken cancellationToken);
 
     /// <summary>Applies all overrides, drains rendering and captures matching planes, or throws.</summary>
     /// <remarks>
@@ -102,7 +106,8 @@ public interface IPhysicsRenderRecordingSource
     PhysicsRenderCaptureResult Capture(
         StageRenderState state, PhysicsRenderRecordingFrame frame, CancellationToken cancellationToken);
 
-    /// <summary>Drains in-flight work and restores authored render state, without advancing or resetting physics.</summary>
+    /// <summary>Drains in-flight work and restores authored render state, without advancing or resetting
+    /// physics.</summary>
     /// <remarks>Cleanup is not cancelled. A failure prevents publication and remains visible to the caller.</remarks>
     void ClearOverrides();
 }
@@ -133,7 +138,8 @@ public static class PhysicsRenderRecording
         if (status.State != UsdPhysicsTransportState.Paused || transport.Loop || status.BacklogSeconds != 0 ||
             status.QueueDepth != 0)
         {
-            throw new InvalidOperationException("Recording requires an exclusively owned paused, nonlooping transport.");
+            throw new InvalidOperationException(
+                "Recording requires an exclusively owned paused, nonlooping transport.");
         }
         if (bindings.RefusedBindings != 0)
         {
@@ -147,13 +153,15 @@ public static class PhysicsRenderRecording
             double seconds = step * transport.FixedStep.Seconds;
             if (state.Stage != stage || state.Time.TimeCode != transport.Timeline.ToTimeCode(seconds))
             {
-                throw new ArgumentException("All recording states must identify the same stage and exact fixed-step times.",
+                throw new ArgumentException(
+                    "All recording states must identify the same stage and exact fixed-step times.",
                     nameof(request));
             }
             if (transport.Timeline.HasAuthoredRange &&
                 seconds > transport.Timeline.DurationSeconds + transport.FixedStep.Seconds * 1e-6)
             {
-                throw new ArgumentOutOfRangeException(nameof(request), "Recording would advance beyond the authored end.");
+                throw new ArgumentOutOfRangeException(nameof(request),
+                    "Recording would advance beyond the authored end.");
             }
         }
         if (!transport.TryAcquireLatestFrame(out UsdPhysicsFrameLease initial))
@@ -168,7 +176,8 @@ public static class PhysicsRenderRecording
                 !capacities.Contains(new PhysicsRenderCapacities(initial.Frame.BodyCapacity,
                     initial.Frame.DeformationCapacity, initial.Frame.DeformationVertexCapacity)))
             {
-                throw new InvalidOperationException("Recording projection cannot reserve the complete publication capacity.");
+                throw new InvalidOperationException(
+                    "Recording projection cannot reserve the complete publication capacity.");
             }
             source.Validate(request, context, cancellationToken);
             adapter = new RecordingAdapter(request, transport, bindings, capacities, source, context,
@@ -177,7 +186,8 @@ public static class PhysicsRenderRecording
         }
         try
         {
-            return RenderDiskJob.Execute(request, adapter, TimeProvider.System, adapter.BeforePublish, cancellationToken);
+            return RenderDiskJob.Execute(request, adapter, TimeProvider.System, adapter.BeforePublish,
+                cancellationToken);
         }
         catch (Exception operationFailure)
         {
@@ -241,7 +251,8 @@ public static class PhysicsRenderRecording
             _transforms = new PhysicsRenderTransformOverride[capacities.BodyCapacity];
             _deformations = new PhysicsRenderDeformableRegion[capacities.DeformableCapacity];
             _vertices = new float[checked(capacities.DeformableVertexCapacity * 3)];
-            _targets = new HashSet<PhysicsRenderBinding>(Math.Max(capacities.BodyCapacity, capacities.DeformableCapacity));
+            _targets = new HashSet<PhysicsRenderBinding>(Math.Max(capacities.BodyCapacity,
+                capacities.DeformableCapacity));
             _cancellationToken = cancellationToken;
         }
 
@@ -290,7 +301,8 @@ public static class PhysicsRenderRecording
             if (capture.PublicationRevision != frame.Revision || capture.AppliedBodies != frame.BodyCount ||
                 capture.AppliedDeformations != frame.DeformationCount)
             {
-                throw new InvalidDataException("The renderer did not acknowledge the complete exact physics publication.");
+                throw new InvalidDataException(
+                    "The renderer did not acknowledge the complete exact physics publication.");
             }
             if (capture.Image.Simulation is { } supplied && supplied != identity)
             {
@@ -357,7 +369,8 @@ public static class PhysicsRenderRecording
                 }
                 PhysicsRenderDomain domain = region.Kind switch
                 {
-                    UsdPhysicsDeformationKind.Particles or UsdPhysicsDeformationKind.Fluid => PhysicsRenderDomain.Particles,
+                    UsdPhysicsDeformationKind.Particles or UsdPhysicsDeformationKind.Fluid =>
+                        PhysicsRenderDomain.Particles,
                     UsdPhysicsDeformationKind.Surface => PhysicsRenderDomain.Cloth,
                     UsdPhysicsDeformationKind.Volume => PhysicsRenderDomain.Deformable,
                     _ => throw new InvalidDataException("A recording deformation has an unknown domain.")
@@ -382,7 +395,8 @@ public static class PhysicsRenderRecording
                 float z = (float)vertex.Z;
                 if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z))
                 {
-                    throw new InvalidDataException("A recording deformation cannot be represented as finite render vertices.");
+                    throw new InvalidDataException(
+                        "A recording deformation cannot be represented as finite render vertices.");
                 }
                 _vertices[index * 3] = x;
                 _vertices[index * 3 + 1] = y;

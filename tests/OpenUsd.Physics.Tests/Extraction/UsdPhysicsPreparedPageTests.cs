@@ -31,7 +31,8 @@ public sealed class UsdPhysicsPreparedPageTests
         await Assert.That(page.HullCount).IsEqualTo(1);
         await Assert.That(page.GetHull(0)).IsEqualTo((0, 4));
         await Assert.That(page.GetObject(0).HullCount).IsEqualTo(1);
-        await Assert.That(page.GetObject(0).Flags.HasFlag(UsdPhysicsExtractionObjectTraits.PreparedPointsMetres)).IsTrue();
+        await Assert.That(page.GetObject(0).Flags.HasFlag(
+            UsdPhysicsExtractionObjectTraits.PreparedPointsMetres)).IsTrue();
     }
 
     [Test]

@@ -3507,8 +3507,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         if (StreamsMaterialTextures && !_diagnostics.ContainsKey(streamingCode + "\0"))
         {
             AddDiagnostic(streamingCode, string.Empty, RenderDiagnosticSeverity.Information,
-                "Full-resolution material working sets stream in existing draw order and release after GPU completion. " +
-                "Each working set must fit configured allocation pools; exact completed ordinary images may be reused " +
+                "Full-resolution material working sets stream in existing draw order and release after GPU " +
+                    "completion. " +
+                "Each working set must fit configured allocation pools; exact completed ordinary images may be " +
+                    "reused " +
                 "within a bounded frame-local cache, and evicted images decode and upload again.");
         }
         if (_cpuTextureBudget is { } cpu && !_diagnostics.ContainsKey(cpuCode + "\0"))
@@ -6752,7 +6754,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             SilkTextureFormat.R32Float => SilkTextureFormat.Rgba32Float,
             _ => source.Format
         };
-        WriteFallbackPixel(texture, fallbackFormat, fallback[..(int)SilkTextureFormats.GetBytesPerPixel(fallbackFormat)]);
+        WriteFallbackPixel(texture, fallbackFormat, fallback[..(int)SilkTextureFormats.GetBytesPerPixel(
+            fallbackFormat)]);
         fallback = fallback[..bytesPerPixel];
         for (int offset = 0; offset < pixels.Length; offset += bytesPerPixel)
         {
@@ -7417,7 +7420,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             {
                 if (primaryFailure is not null)
                 {
-                    throw new AggregateException("Both material texture planes failed disposal.", primaryFailure, error);
+                    throw new AggregateException("Both material texture planes failed disposal.",
+                        primaryFailure, error);
                 }
                 throw;
             }

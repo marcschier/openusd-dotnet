@@ -14,8 +14,10 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
     private PhysicsPreparationCache? _physicsPreparationCache;
 
     public ValueTask<WorkspacePhysicsRecording> PreparePhysicsRecordingAsync(
-        ulong expectedStageRevision, double expectedMetersPerUnit, string expectedUpAxis, CancellationToken cancellationToken) =>
-        PreparePhysicsRecordingAsync(expectedStageRevision, expectedMetersPerUnit, expectedUpAxis, false, cancellationToken);
+        ulong expectedStageRevision, double expectedMetersPerUnit, string expectedUpAxis,
+            CancellationToken cancellationToken) =>
+        PreparePhysicsRecordingAsync(expectedStageRevision, expectedMetersPerUnit, expectedUpAxis, false,
+            cancellationToken);
 
     public async ValueTask<WorkspacePhysicsRecording> PreparePhysicsRecordingAsync(
         ulong expectedStageRevision, double expectedMetersPerUnit, string expectedUpAxis,
@@ -81,7 +83,8 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
             else
             {
                 UsdPhysicsExtractionPage metadata = await UsdPhysicsStageExtractor.ExtractAsync(
-                    _scheduler, extractionOptions with { IncludeMeshData = false }, cancellationToken).ConfigureAwait(false);
+                    _scheduler, extractionOptions with { IncludeMeshData = false },
+                        cancellationToken).ConfigureAwait(false);
                 RequirePhysicsUnits(metadata, expectedMetersPerUnit, expectedUpAxis);
                 page = await UsdPhysicsStageExtractor.PrepareAsync(
                     _scheduler, extractionOptions, null, cancellationToken).ConfigureAwait(false);
@@ -108,7 +111,8 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
                     (item.Flags & UsdPhysicsExtractionObjectTraits.InstanceProxy) != 0)
                 {
                     throw new NotSupportedException(
-                        "Moving instance subtrees must be de-instanced in the scenario; static instances remain supported by the full-scene profile.");
+                        "Moving instance subtrees must be de-instanced in the scenario; static instances remain " +
+                            "supported by the full-scene profile.");
                 }
                 if (item.IsEnabled && item.Kind is
                     UsdPhysicsExtractionObjectKind.ArticulationRoot or
@@ -119,7 +123,8 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
                     UsdPhysicsExtractionObjectKind.SurfaceDeformable or
                     UsdPhysicsExtractionObjectKind.VolumeDeformable)
                 {
-                    throw new NotSupportedException("This MCP recording profile currently accepts CPU rigid bodies and joints.");
+                    throw new NotSupportedException(
+                        "This MCP recording profile currently accepts CPU rigid bodies and joints.");
                 }
             }
             await RequirePhysicsRevisionAsync(expectedStageRevision, cancellationToken).ConfigureAwait(false);
@@ -129,7 +134,8 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
                 diagnostic.Severity == UsdPhysicsDiagnosticSeverity.Error ||
                 diagnostic.Code == "OPENUSD_PHYSICS_COMPOSITION_SKIPPED"))
             {
-                throw new NotSupportedException("The native world did not accept the complete requested physics content.");
+                throw new NotSupportedException(
+                    "The native world did not accept the complete requested physics content.");
             }
             if (!transport.TryAcquireLatestFrame(out UsdPhysicsFrameLease initial))
             {
@@ -143,7 +149,8 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
                 if (frame.BodyCount == 0 || frame.HasOverflow || frame.BodiesTruncated || frame.DeformationsTruncated ||
                     frame.DeformationCount != 0 || frame.DroppedEventCount != 0)
                 {
-                    throw new NotSupportedException("The CPU recording world has no complete supported body publication.");
+                    throw new NotSupportedException(
+                        "The CPU recording world has no complete supported body publication.");
                 }
                 capacities = new PhysicsRenderCapacities(frame.BodyCapacity);
                 bindings = CreateRecordingBindings(page, frame);
@@ -179,7 +186,9 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
             !string.Equals(page.UpAxis.ToString(), expectedUpAxis, StringComparison.Ordinal))
         {
             throw new NotSupportedException(FormattableString.Invariant(
-                $"Workspace physics uses metersPerUnit={page.MetersPerUnit:R}, upAxis={page.UpAxis}; source-sublayer root metadata is not inherited. Use open_scene stageSettings to author explicit root settings; recording expectations must match."));
+                $"Workspace physics uses metersPerUnit={page.MetersPerUnit:R}, upAxis={page.UpAxis}; ") +
+                "source-sublayer root metadata is not inherited. Use open_scene stageSettings to author " +
+                "explicit root settings; recording expectations must match.");
         }
     }
 
@@ -218,7 +227,8 @@ internal sealed partial class OpenUsdWorkspaceSessionBackend
         {
             if (!paths.TryGetValue(body.Id.Value, out string? path) ||
                 !bindings.TryBindSubtree(new PhysicsRenderObjectId(body.Id.Value), path, body.Position,
-                    new PhysicsRenderOrientation(body.Orientation.X, body.Orientation.Y, body.Orientation.Z, body.Orientation.W)))
+                    new PhysicsRenderOrientation(body.Orientation.X, body.Orientation.Y, body.Orientation.Z,
+                        body.Orientation.W)))
             {
                 throw new InvalidDataException("A simulated body cannot be bound to its extracted source.");
             }

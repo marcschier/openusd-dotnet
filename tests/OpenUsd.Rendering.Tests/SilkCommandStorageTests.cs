@@ -18,7 +18,8 @@ public sealed class SilkCommandStorageTests
     [Arguments(4096)]
     public async Task StoredPagesApplyIdenticallyAcrossTransferBoundaries(int transfer)
     {
-        byte[] bytes = [.. SilkTransactionalApplyTests.Mesh("/First", 1), .. SilkTransactionalApplyTests.Mesh("/Second", 2)];
+        byte[] bytes = [.. SilkTransactionalApplyTests.Mesh("/First", 1), .. SilkTransactionalApplyTests.Mesh(
+            "/Second", 2)];
         using OpenUsdSilkPage page = Stored(bytes, 2, transfer, out MemoryStorage storage);
         var expected = new SilkSceneState();
         var actual = new SilkSceneState();
@@ -62,7 +63,8 @@ public sealed class SilkCommandStorageTests
     [Test]
     public async Task ReplayOwnsStorageAfterTheOriginalPageIsDisposed()
     {
-        using OpenUsdSilkPage page = Stored(SilkTransactionalApplyTests.Mesh("/Retained", 1), 1, 29, out MemoryStorage storage);
+        using OpenUsdSilkPage page = Stored(SilkTransactionalApplyTests.Mesh("/Retained", 1), 1, 29,
+            out MemoryStorage storage);
         OpenUsdSilkPage.ReplaySnapshot snapshot = page.CaptureReplay();
         page.Dispose();
         await Assert.That(storage.Disposals).IsEqualTo(0);
@@ -115,7 +117,8 @@ public sealed class SilkCommandStorageTests
     [Arguments(1u, 9u, 8)]
     [Arguments(1u, 8u, 9)]
     [Arguments(2u, 8u, 8)]
-    public async Task MalformedExtentOrCountIsRefusedWithoutLeakingTheReader(uint commands, uint encodedSize, int length)
+    public async Task MalformedExtentOrCountIsRefusedWithoutLeakingTheReader(uint commands, uint encodedSize,
+        int length)
     {
         var bytes = new byte[length];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), encodedSize);

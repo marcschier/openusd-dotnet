@@ -124,7 +124,8 @@ internal static class PreparedWorldProbe
             page.KilogramsPerUnit != 1 || page.TimeCodesPerSecond != 60 ||
             page.StartTimeCode != 0 || page.EndTimeCode < 240)
         {
-            throw new InvalidDataException("The warehouse trajectory profile requires explicit metre/kg/Z-up, 60-Hz, 0..240 metadata.");
+            throw new InvalidDataException(
+                "The warehouse trajectory profile requires explicit metre/kg/Z-up, 60-Hz, 0..240 metadata.");
         }
         if (!world.TryFetch(frame))
         {
@@ -159,7 +160,8 @@ internal static class PreparedWorldProbe
             frame.HasOverflow || frame.BodiesTruncated || frame.DeformationsTruncated ||
             frame.DeformationCount != 0 || frame.DroppedEventCount != 0)
         {
-            throw new InvalidDataException("The trajectory must publish exactly the selected dynamic body without overflow.");
+            throw new InvalidDataException(
+                "The trajectory must publish exactly the selected dynamic body without overflow.");
         }
         PhysxWorldStatusInfo status = world.InspectStatus();
         if (status.StepIndex != (ulong)step || Math.Abs(status.SimulationTime - step * secondsPerStep) > 1e-9)
@@ -178,8 +180,10 @@ internal sealed class PreparedWorldReport
 {
     public string Phase { get; } = "after-physics-world";
     public string Scope => DynamicPrim is null
-        ? "Actual rigid collider construction, identity reconciliation and reset; not dynamic-scene or rendering acceptance."
-        : "Complete collider world with one real dynamic prop, actual fixed-step trajectory and reset; not rendering or scenario-removal acceptance.";
+        ? "Actual rigid collider construction, identity reconciliation and reset; not dynamic-scene or rendering " +
+            "acceptance."
+        : "Complete collider world with one real dynamic prop, actual fixed-step trajectory and reset; not " +
+            "rendering or scenario-removal acceptance.";
     public int MaxRigidBodies { get; } = 32768;
     public int MaxColliders { get; } = 65536;
     public string SourcePage { get; init; } = string.Empty;
@@ -219,7 +223,8 @@ internal readonly record struct WorldBodySample(
         Math.Sqrt((X - other.X) * (X - other.X) + (Y - other.Y) * (Y - other.Y) + (Z - other.Z) * (Z - other.Z));
 
     public double VelocityDistance(WorldBodySample other) =>
-        Math.Sqrt((Vx - other.Vx) * (Vx - other.Vx) + (Vy - other.Vy) * (Vy - other.Vy) + (Vz - other.Vz) * (Vz - other.Vz));
+        Math.Sqrt((Vx - other.Vx) * (Vx - other.Vx) + (Vy - other.Vy) * (Vy - other.Vy) + (Vz - other.Vz) * (
+            Vz - other.Vz));
 }
 
 [JsonSerializable(typeof(PreparedWorldReport))]

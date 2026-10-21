@@ -152,7 +152,8 @@ internal static class OpenUsdMcpDescriptions
 
     internal const string ReadSequenceFrame =
         "Expose one completed disk-sequence PNG through the bounded immutable artifact store. " +
-        "Preconditions: jobId came from render_sequence, render_product or render_physics_sequence in this process and frameIndex is " +
+        "Preconditions: jobId came from render_sequence, render_product or render_physics_sequence in this " +
+            "process and frameIndex is " +
         "within that job. " +
         "A completed historical job remains readable after scene edits; returned revision is the captured revision. " +
         "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +

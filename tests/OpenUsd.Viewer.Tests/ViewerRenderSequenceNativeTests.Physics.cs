@@ -20,7 +20,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
         string stagePath = Path.Combine(work, "physics.usda");
         int bodyStart = PhysicsRecordingStage.IndexOf("def Mesh \"Body\"", StringComparison.Ordinal);
         int materialStart = PhysicsRecordingStage.IndexOf("def Material \"Material\"", StringComparison.Ordinal);
-        string source = PhysicsRecordingStage[..bodyStart] + CompoundRecordingBody + PhysicsRecordingStage[materialStart..];
+        string source = PhysicsRecordingStage[..bodyStart] + CompoundRecordingBody +
+            PhysicsRecordingStage[materialStart..];
         await File.WriteAllTextAsync(stagePath, source);
         var ready = new TaskCompletionSource<ViewerStageSession>(TaskCreationOptions.RunContinuationsAsynchronously);
         ViewerStartupOptions.Initialize(new ViewerHostOptions
@@ -72,7 +73,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
             ViewerNativeCaptureBackend.RecordComposition(
                 window, session, Path.Combine(work, "physics-recording-composition.json"));
             string output = Required<TextBox>(sequence, "SequenceOutputLocation").Text!;
-            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(output, "manifest.json")));
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(output,
+                "manifest.json")));
             JsonElement frames = manifest.RootElement.GetProperty("frames");
             await Assert.That(frames.GetArrayLength()).IsEqualTo(3);
             for (int index = 0; index < 3; index++)
@@ -135,7 +137,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
         await WaitUntilAsync(() => !sequence.IsRunning);
         await Assert.That(status.Text).StartsWith("Completed");
         string output = Required<TextBox>(sequence, "SequenceOutputLocation").Text!;
-        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(output, "manifest.json")));
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(output,
+            "manifest.json")));
         JsonElement frames = manifest.RootElement.GetProperty("frames");
         await Assert.That(frames.GetArrayLength()).IsEqualTo(2);
         await Assert.That(frames[0].GetProperty("simulation").GetProperty("stepIndex").GetUInt64()).IsEqualTo(30ul);
@@ -211,7 +214,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 await Assert.That(frame.Simulation!.StepIndex).IsEqualTo((ulong)(index + 1) * 6);
                 await Assert.That(frame.Simulation.BodyCount).IsEqualTo(1);
                 await Assert.That(frame.Simulation.SourceRevision).IsEqualTo(serial);
-                byte[] hdr = await File.ReadAllBytesAsync(Path.Combine(result.OutputDirectory, frame.HdrColorFileName!));
+                byte[] hdr = await File.ReadAllBytesAsync(Path.Combine(result.OutputDirectory,
+                    frame.HdrColorFileName!));
                 (int count, double x) = MeasurePhysicsEmission(hdr, dimensions.Width);
                 await Assert.That(count).IsGreaterThan(100);
                 if (index > 0)
@@ -225,7 +229,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
             await Assert.That(physics.IsBusy).IsFalse();
             await Assert.That(coordinator.CurrentState.Camera).IsEqualTo(before.Camera);
             await Assert.That(coordinator.CurrentState.Time).IsEqualTo(before.Time);
-            await Assert.That(await coordinator.Scheduler.InvokeAsync(static stage => stage.ChangeSerial)).IsEqualTo(serial);
+            await Assert.That(await coordinator.Scheduler.InvokeAsync(static stage =>
+                stage.ChangeSerial)).IsEqualTo(serial);
             await Assert.That(await File.ReadAllTextAsync(stagePath)).IsEqualTo(PhysicsRecordingStage);
             await ExercisePublishedJobCancellationAsync(window, work, result);
             string rejected = Path.Combine(work, "rejected");
@@ -238,7 +243,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
             await Assert.That(async () => await coordinator.RenderPhysicsSequenceAsync(
                 physics, request with { OutputParent = rejected, FrameCount = 4096 }, "/Camera", _ => { },
                 CancellationToken.None)).Throws<ArgumentOutOfRangeException>();
-            await coordinator.Scheduler.InvokeAsync(stage => stage.GetPrim("/Body").SetBool("physics:rigidBodyEnabled", false));
+            await coordinator.Scheduler.InvokeAsync(stage => stage.GetPrim("/Body").SetBool(
+                "physics:rigidBodyEnabled", false));
             await Assert.That(async () => await coordinator.RenderPhysicsSequenceAsync(
                 physics, request with { OutputParent = rejected }, "/Camera", _ => { }, CancellationToken.None))
                 .Throws<InvalidOperationException>();
@@ -256,7 +262,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
                 body.SetInt32Array("faceVertexIndices", [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3]);
             });
             await physics.RebuildAsync();
-            await Assert.That(physics.Diagnostics.Any(entry => entry.Code == "OPENUSD_PHYSICS_COMPOSITION_SKIPPED")).IsTrue();
+            await Assert.That(physics.Diagnostics.Any(entry =>
+                entry.Code == "OPENUSD_PHYSICS_COMPOSITION_SKIPPED")).IsTrue();
             await Assert.That(physics.RecordingUnsupportedReason).Contains("sdf");
             await Assert.That(async () => await coordinator.RenderPhysicsSequenceAsync(
                 physics, request with { OutputParent = rejected, FrameCount = 1 }, "/Camera", _ => { },
@@ -290,7 +297,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
         }
     }
 
-    private static async Task ExercisePublishedJobCancellationAsync(Window owner, string work, RenderDiskJobResult result)
+    private static async Task ExercisePublishedJobCancellationAsync(Window owner, string work,
+        RenderDiskJobResult result)
     {
         RenderImageSequenceWindow? sequence = null;
         sequence = new RenderImageSequenceWindow(0, 0, "Completed job", _ => null,
@@ -307,7 +315,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
             Required<Button>(sequence, "SequenceRenderButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => !sequence.IsRunning);
             await Assert.That(Required<TextBlock>(sequence, "SequenceStatus").Text).StartsWith("Completed");
-            await Assert.That(Required<TextBox>(sequence, "SequenceOutputLocation").Text).IsEqualTo(result.OutputDirectory);
+            await Assert.That(Required<TextBox>(sequence, "SequenceOutputLocation").Text).IsEqualTo(
+                result.OutputDirectory);
             await Assert.That(Required<Button>(sequence, "SequenceViewResultsButton").IsEnabled).IsTrue();
         }
         finally
@@ -368,7 +377,7 @@ public sealed partial class ViewerRenderSequenceNativeTests
 
         """;
 
-    private const string PhysicsRecordingStage = """
+    private const string PhysicsRecordingStage = $$"""
         #usda 1.0
         (
             metersPerUnit = 0.01
@@ -386,7 +395,9 @@ public sealed partial class ViewerRenderSequenceNativeTests
             float verticalAperture = 800
             float2 clippingRange = (1, 10)
         }
-        def Mesh "Body" (prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysicsMassAPI", "MaterialBindingAPI"]) {
+        {{"def Mesh \"Body\" (prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsCol" +
+            "lisionAPI\", \"PhysicsMeshCollisionAPI\", \"PhysicsMassAPI\", \"MaterialBindin" +
+            "gAPI\"]) {"}}
             uniform token subdivisionScheme = "none"
             token physics:approximation = "convexHull"
             point3f[] points = [(-2,-2,-2),(2,-2,-2),(2,2,-2),(-2,2,-2),(-2,-2,2),(2,-2,2),(2,2,2),(-2,2,2)]

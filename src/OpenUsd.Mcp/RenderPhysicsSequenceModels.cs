@@ -14,7 +14,9 @@ internal sealed class RenderPhysicsSequenceRequest : SceneRevisionRequestBase
     public required string ScenarioIdentity { get; init; }
 
     [JsonPropertyName("expectedMetersPerUnit"), Required]
-    [Description("Positive finite meters per workspace coordinate unit. Must match the composed workspace; source-sublayer root metadata is not inherited.")]
+    [Description(
+        "Positive finite meters per workspace coordinate unit. Must match the composed workspace; " +
+            "source-sublayer root metadata is not inherited.")]
     public required double ExpectedMetersPerUnit { get; init; }
 
     [JsonPropertyName("expectedUpAxis"), Required, MaxLength(1)]
@@ -22,7 +24,10 @@ internal sealed class RenderPhysicsSequenceRequest : SceneRevisionRequestBase
     public required string ExpectedUpAxis { get; init; }
 
     [JsonPropertyName("fullScenePhysics"), DefaultValue(false)]
-    [Description("Opt in to complete-scene CPU rigid physics: up to 32768 actors and 65536 collision shapes, with static instances retained. Moving subtrees must be de-instanced; at most 4096 rendered mesh targets can receive poses. Existing extraction byte/geometry ceilings still apply.")]
+    [Description(
+        "Opt in to complete-scene CPU rigid physics: up to 32768 actors and 65536 collision shapes, with static " +
+            "instances retained. Moving subtrees must be de-instanced; at most 4096 rendered mesh targets can " +
+                "receive poses. Existing extraction byte/geometry ceilings still apply.")]
     public bool FullScenePhysics { get; init; }
 
     [JsonPropertyName("width"), Range(1, 4096), DefaultValue(1024)]
@@ -38,7 +43,8 @@ internal sealed class RenderPhysicsSequenceRequest : SceneRevisionRequestBase
     public int FrameCount { get; init; } = 24;
 
     [JsonPropertyName("stepsPerFrame"), Range(1, 8), DefaultValue(1)]
-    [Description("Whole fixed simulation steps per capture, 1-8. A fresh nonlooping world starts at the authored start.")]
+    [Description(
+        "Whole fixed simulation steps per capture, 1-8. A fresh nonlooping world starts at the authored start.")]
     public int StepsPerFrame { get; init; } = 1;
 
     [JsonPropertyName("cameraPath"), MaxLength(OpenUsdMcpLimits.MaximumPathLength)]
@@ -46,11 +52,13 @@ internal sealed class RenderPhysicsSequenceRequest : SceneRevisionRequestBase
     public string? CameraPath { get; init; }
 
     [JsonPropertyName("includeDeviceDepth"), DefaultValue(false)]
-    [Description("Include normalized device-depth float32 planes; this is not metric depth or an independent coverage mask.")]
+    [Description(
+        "Include normalized device-depth float32 planes; this is not metric depth or an independent coverage mask.")]
     public bool IncludeDeviceDepth { get; init; }
 
     [JsonPropertyName("includeHdrColor"), DefaultValue(false)]
-    [Description("Include pre-display RGBA binary16 framebuffer color with stored alpha and unspecified working primaries.")]
+    [Description(
+        "Include pre-display RGBA binary16 framebuffer color with stored alpha and unspecified working primaries.")]
     public bool IncludeHdrColor { get; init; }
 }
 

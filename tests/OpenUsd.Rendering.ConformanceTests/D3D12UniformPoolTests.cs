@@ -119,7 +119,8 @@ public sealed class D3D12UniformPoolTests
         {
             for (int index = 0; index < 17; index++)
             {
-                ISilkGraphicsBuffer buffer = device.CreateBuffer(4096, SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+                ISilkGraphicsBuffer buffer = device.CreateBuffer(4096,
+                    SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
                 buffers.Add(buffer);
                 buffer.Write([(byte)(index + 1)], 4095);
             }

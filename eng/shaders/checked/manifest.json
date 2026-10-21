@@ -415,7 +415,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.IndexedNormals.cs",
-      "sha256": "14f5eadd890b476ce9a104cc8cc5673d362642ecd50b6933f975ef8c8b88a552"
+      "sha256": "d7b428f694599ef1073f3bfbd105add2205945a0486d1d9bbb2e31c41a69e6d8"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.SplitDiffuse.cs",
@@ -423,7 +423,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.TexturePreparation.cs",
-      "sha256": "acbcf27acc53d0e8c343211153b3a7120001f8b8c0be737f87e6a1f17d740153"
+      "sha256": "9d840838e07c28c6871cbc219355e1cf5e6d7dc0e525d2d592197a964aba9d93"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.Udim.cs",
@@ -431,7 +431,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "8e29bad9fb9c7aa072638de6235b6991d9bd460864388e56ca3ccc883549539f"
+      "sha256": "5a8241789d3c4bd3462999618f2b4790d24dcae7c0aea0a4ae639eb3cd0a6f71"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
@@ -455,7 +455,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "22438ea8009deb7a9f594bf44f45d5a13123267779baf6c84316d0245a756232"
+      "sha256": "d04cc4dccc4d2500ecb5652670f185a4bb347c01e35b31006ab0d2edecef4b73"
     }
   ],
   "programs": [

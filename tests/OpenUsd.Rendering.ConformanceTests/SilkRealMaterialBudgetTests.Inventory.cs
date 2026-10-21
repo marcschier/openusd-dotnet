@@ -82,18 +82,27 @@ public sealed partial class SilkRealMaterialBudgetTests
         {
             stagePath,
             stageSha256 = Convert.ToHexString(SHA256.HashData(sourceStream)),
-            scope = "Composed root Material prims; only a referenced material plus one synthetic quad is synchronized. No warehouse geometry synchronization or GPU rendering.",
+            scope =
+                "Composed root Material prims; only a referenced material plus one synthetic quad is " +
+                    "synchronized. No warehouse geometry synchronization or GPU rendering.",
             materialCount = paths.Length,
             uniqueSourceAssets = descriptions.Count,
             maximumMaterialBytes = summary.Max(material => material.Bytes ?? 0),
             measuredFrameOverheadBytes = frameBytes,
             poolBytes = 536870912ul,
             physicsOnlyCount = summary.Count(material => material.PhysicsOnly),
-            unsupported = summary.Where(material => !material.Supported && !material.PhysicsOnly).Select(material => material.Path),
+            unsupported = summary.Where(material => !material.Supported
+                && !material.PhysicsOnly).Select(material => material.Path),
             unresolved = summary.Where(material => material.Bytes is null).Select(material => material.Path),
             overBudget = summary.Where(material => material.Bytes + frameBytes > 536870912ul),
-            classes = summary.GroupBy(material => string.Join(";", material.Textures.Select(texture => texture.Storage)))
-                .Select(group => new { storage = group.Key, count = group.Count(), maximumBytes = group.Max(item => item.Bytes) }),
+            classes = summary.GroupBy(material => string.Join(";", material.Textures.Select(texture =>
+                texture.Storage)))
+                .Select(group => new
+                {
+                    storage = group.Key,
+                    count = group.Count(),
+                    maximumBytes = group.Max(item => item.Bytes)
+                }),
             materials = summary.OrderByDescending(material => material.Bytes)
         }));
     }
@@ -109,7 +118,8 @@ public sealed partial class SilkRealMaterialBudgetTests
         foreach (SilkUdimTile tile in tiles)
         {
             SilkImageDescription description = SilkNativeImageDecoder.Describe(tile.Asset);
-            if (description.Width != first.Width || description.Height != first.Height || description.Format != first.Format)
+            if (description.Width != first.Width
+                || description.Height != first.Height || description.Format != first.Format)
             {
                 throw new InvalidDataException("UDIM tile extents or precision differ.");
             }
@@ -143,7 +153,8 @@ public sealed partial class SilkRealMaterialBudgetTests
         }
         return new(texture.Parameter.ToString(), texture.Asset, (uint)width, (uint)height,
             "UDIM-" + ordinary.Storage, width * height * bpp, false,
-            $"Conservative all-{tiles.Count}-tile atlas bound, including gutters/metadata; no geometry reachability or constant-tile reduction assumed.");
+            $"Conservative all-{tiles.Count}-tile atlas bound, including gutters/metadata; no geometry " +
+                $"reachability or constant-tile reduction assumed.");
     }
 
     private static InventoryTexture ClassifyInventoryTexture(
@@ -161,7 +172,8 @@ public sealed partial class SilkRealMaterialBudgetTests
         bool scalar = texture.Parameter is SilkMaterialParameter.Roughness or SilkMaterialParameter.Metallic or
             SilkMaterialParameter.Opacity or SilkMaterialParameter.Occlusion or SilkMaterialParameter.Clearcoat or
             SilkMaterialParameter.ClearcoatRoughness or SilkMaterialParameter.Ior;
-        bool compactColor = texture.Parameter is SilkMaterialParameter.DiffuseColor or SilkMaterialParameter.EmissiveColor &&
+        bool compactColor = texture.Parameter is SilkMaterialParameter.DiffuseColor or
+            SilkMaterialParameter.EmissiveColor &&
             material.GetCompositeTexture() is null;
         bool eligible = promoted && !material.UsesRuntimeMaterialShader &&
             material.SurfaceKind is SilkSurfaceKind.PreviewSurface or SilkSurfaceKind.MdlDistilled &&
@@ -198,7 +210,8 @@ public sealed partial class SilkRealMaterialBudgetTests
         }
         return new(texture.Parameter.ToString(), texture.Asset, source.Width, source.Height,
             storage, bytes, guaranteed, eligible && !guaranteed
-                ? "Conservative fallback bound; source palette needs decoding to establish a smaller exact representation." : null);
+                ? "Conservative fallback bound; source palette needs decoding to establish a smaller exact " +
+                    "representation." : null);
     }
 
     private static bool IsEightBitPng(string path)
@@ -216,5 +229,6 @@ public sealed partial class SilkRealMaterialBudgetTests
         ulong? Bytes, bool EightBitIndependentPalette, string? Limitation);
 
     private sealed record InventoryMaterial(
-        string Path, bool Supported, bool PhysicsOnly, string SurfaceKind, ulong? Bytes, IReadOnlyList<InventoryTexture> Textures);
+        string Path, bool Supported, bool PhysicsOnly, string SurfaceKind, ulong? Bytes,
+            IReadOnlyList<InventoryTexture> Textures);
 }

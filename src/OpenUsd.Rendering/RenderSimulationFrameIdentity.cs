@@ -80,7 +80,8 @@ public sealed record RenderSimulationFrameIdentity
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameter);
         if (value.Length > 256 || value.Any(char.IsControl))
         {
-            throw new ArgumentException("A simulation identity must be bounded text without control characters.", parameter);
+            throw new ArgumentException(
+                "A simulation identity must be bounded text without control characters.", parameter);
         }
     }
 }

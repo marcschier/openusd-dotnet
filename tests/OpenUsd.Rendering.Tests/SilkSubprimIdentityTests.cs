@@ -37,7 +37,8 @@ public sealed class SilkSubprimIdentityTests
         bool identityEdges = SilkSubprimPickGeometry.TryResolveEdges(mesh, out int[] edgeIds, out uint[] unusedLines,
             includeDrawIndices: false);
         bool fullPoints = SilkSubprimPickGeometry.TryResolvePoints(mesh, out int[] points, out uint[] vertices);
-        bool identityPoints = SilkSubprimPickGeometry.TryResolvePoints(mesh, out int[] pointIds, out uint[] unusedVertices,
+        bool identityPoints = SilkSubprimPickGeometry.TryResolvePoints(mesh, out int[] pointIds,
+            out uint[] unusedVertices,
             includeDrawIndices: false);
         await Assert.That(identityEdges).IsEqualTo(fullEdges);
         await Assert.That(identityPoints).IsEqualTo(fullPoints);

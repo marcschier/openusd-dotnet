@@ -41,11 +41,13 @@ public sealed class SilkTextureResidencyOptions
             return null;
         }
         bool enabled;
-        if (streamMaterialTextures == "1" || string.Equals(streamMaterialTextures, "true", StringComparison.OrdinalIgnoreCase))
+        if (streamMaterialTextures == "1"
+            || string.Equals(streamMaterialTextures, "true", StringComparison.OrdinalIgnoreCase))
         {
             enabled = true;
         }
-        else if (streamMaterialTextures == "0" || string.Equals(streamMaterialTextures, "false", StringComparison.OrdinalIgnoreCase))
+        else if (streamMaterialTextures == "0"
+            || string.Equals(streamMaterialTextures, "false", StringComparison.OrdinalIgnoreCase))
         {
             enabled = false;
         }

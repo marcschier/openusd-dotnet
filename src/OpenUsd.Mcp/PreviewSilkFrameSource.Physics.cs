@@ -29,7 +29,8 @@ internal sealed partial class PreviewSilkFrameSource : IPhysicsRenderRecordingSo
         }
         if (request.ProductPlan is not null || context.ReviewIdentity is not null)
         {
-            throw new NotSupportedException("This MCP physics source admits viewport captures without a review-origin claim.");
+            throw new NotSupportedException(
+                "This MCP physics source admits viewport captures without a review-origin claim.");
         }
         if (!ReferenceEquals(request, _recordingRequest))
         {

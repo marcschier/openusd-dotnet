@@ -91,7 +91,8 @@ public sealed class ViewerChildLauncher
              (!string.Equals(request.Renderer, "D3D12", StringComparison.OrdinalIgnoreCase) &&
               !string.Equals(request.Renderer, "Auto", StringComparison.OrdinalIgnoreCase))))
         {
-            throw new ArgumentException("GPU-upload heaps require a D3D12/Auto child and an explicit GPU buffer budget.");
+            throw new ArgumentException(
+                "GPU-upload heaps require a D3D12/Auto child and an explicit GPU buffer budget.");
         }
         if (streamMaterialTextures && gpuBufferBudget is null)
         {

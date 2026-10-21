@@ -32,7 +32,8 @@ public sealed class SilkPreparationLimits
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumCommandPageBytes);
         if (commandStorage is not null && commandStorage.MaximumCommandBytes > maximumCommandPageBytes)
         {
-            throw new ArgumentException("Stored commands cannot exceed the preparation page ceiling.", nameof(commandStorage));
+            throw new ArgumentException("Stored commands cannot exceed the preparation page ceiling.", nameof(
+                commandStorage));
         }
         MaximumMeshPreparationReservationBytes = maximumMeshPreparationReservationBytes;
         MaximumCommandPageBytes = maximumCommandPageBytes;
@@ -63,7 +64,8 @@ public sealed class SilkPreparationLimits
         {
             if (commandStorage is not null)
             {
-                throw new ArgumentException("Command storage requires explicit mesh and command-page preparation ceilings.");
+                throw new ArgumentException(
+                    "Command storage requires explicit mesh and command-page preparation ceilings.");
             }
             return null;
         }

@@ -48,7 +48,8 @@ public sealed class SilkTextureRowUploadTests
                 {
                     using ISilkGraphicsCommandList commands = device.CreateCommandList();
                     var upload = (ISilkTextureRowUploadCommandList)commands;
-                    byte[] data = expected.AsSpan(checked(mip.Offset + (int)row * mip.RowPitch), mip.RowPitch).ToArray();
+                    byte[] data = expected.AsSpan(checked(mip.Offset + (int)row * mip.RowPitch),
+                        mip.RowPitch).ToArray();
                     upload.UploadTextureRows(texture, new(mip.Level, row, 1), data);
                     Array.Fill(data, (byte)0xEE);
                     using ISilkGraphicsSubmission submission = device.Submit(commands);

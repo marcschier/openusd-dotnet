@@ -62,7 +62,8 @@ public sealed partial class SilkRealMaterialBudgetTests
                 $"opaque__emissive__{lamp}_warehouse_a.usd");
         }
         string plugins = RequiredEnvironment("OPENUSD_TEST_PLUGIN_PATH");
-        string work = Path.Combine(RequiredEnvironment("OPENUSD_TEST_WORK_ROOT"), lamp ?? (concrete ? "concrete" : "rubber"));
+        string work = Path.Combine(RequiredEnvironment("OPENUSD_TEST_WORK_ROOT"), lamp ?? (
+            concrete ? "concrete" : "rubber"));
         Directory.CreateDirectory(work);
         using var phases = new StreamWriter(new FileStream(
             Path.Combine(work, "phases.jsonl"), FileMode.CreateNew, FileAccess.Write, FileShare.Read))
@@ -229,8 +230,10 @@ public sealed partial class SilkRealMaterialBudgetTests
             device.ConfigureStagingBudget(staging);
             device.ConfigureBufferBudget(buffers);
             using var renderer = new SilkMeshRenderer(device, new(poolBytes, poolBytes, true), cpu);
-            using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(extent, extent));
-            using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(extent, extent));
+            using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(
+                extent, extent));
+            using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                SilkTextureDescriptor.SampledDepthTarget(extent, extent));
             byte[]? firstColor = null;
             float[]? firstDepth = null;
             ulong? retainedCpu = null;
@@ -245,8 +248,10 @@ public sealed partial class SilkRealMaterialBudgetTests
                     : renderer.Render(color, depth);
                 phase(pass == 0 ? "render-completed" : "replay-completed");
                 await Assert.That(result.DrawCount).IsEqualTo(1);
-                await Assert.That(renderer.GpuResources.Statistics.PeakTextureResidentGpuBytes).IsEqualTo(materialBytes);
-                await Assert.That(renderer.GpuResources.Statistics.TextureUploadBytes - uploaded).IsEqualTo(materialBytes);
+                await Assert.That(renderer.GpuResources.Statistics.PeakTextureResidentGpuBytes).IsEqualTo(
+                    materialBytes);
+                await Assert.That(renderer.GpuResources.Statistics.TextureUploadBytes - uploaded).IsEqualTo(
+                    materialBytes);
                 await Assert.That(renderer.GpuResources.Statistics.TextureResidentGpuBytes).IsEqualTo(0ul);
                 await Assert.That(renderer.GpuResources.Statistics.TextureResidentDecodedBytes).IsEqualTo(0ul);
                 await Assert.That(device.CreatedTextures.Count(texture =>
@@ -331,7 +336,8 @@ public sealed partial class SilkRealMaterialBudgetTests
         (defaultPrim = "World")
         def Xform "World" {
             def Material "Material" (prepend references = @{{file.Replace('\\', '/')}}@<{{prim}}>) {
-                {{(module is null ? "" : "over \"Shader\" {\nuniform asset info:mdl:sourceAsset = @" + module.Replace('\\', '/') + "@\n}")}}
+                {{(module is null ? "" : "over \"Shader\" {\nuniform asset info:mdl:sourceAsset = @" +
+                    module.Replace('\\', '/') + "@\n}")}}
             }
             def Mesh "Quad" (prepend apiSchemas = ["MaterialBindingAPI"]) {
                 point3f[] points = [(-1, -1, -4), (1, -1, -4), (1, 1, -4), (-1, 1, -4)]

@@ -26,7 +26,8 @@ public readonly struct UsdPhysicsExtractionObject : IEquatable<UsdPhysicsExtract
     public ulong ParentId => Page.FieldU64(Section, _index, 8);
 
     /// <summary>Gets the identity of the prototype object an instance came from, or zero.</summary>
-    /// <remarks>This is a stage-local SDK identity, not a durable cross-open identifier or part of the content fingerprint.</remarks>
+    /// <remarks>This is a stage-local SDK identity, not a durable cross-open identifier or part of the content
+    /// fingerprint.</remarks>
     public ulong PrototypeId => Page.FieldU64(Section, _index, 16);
 
     /// <summary>Gets the absolute path of the source prim.</summary>

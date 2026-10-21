@@ -25,7 +25,7 @@ public sealed partial class NativeMcpIntegrationTests
         }
         NativeLayout layout = RequireNativeLayout(requireImaging: true);
         using var files = new WorkspaceTestFiles();
-        string scene = """
+        string scene = $$"""
             #usda 1.0
             (
                 metersPerUnit = 0.01
@@ -44,7 +44,8 @@ public sealed partial class NativeMcpIntegrationTests
                 float verticalAperture = 400
                 float2 clippingRange = (1, 10)
             }
-            def Cube "Body" (prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMassAPI", "MaterialBindingAPI"]) {
+            {{"def Cube \"Body\" (prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"Physic" +
+                "sCollisionAPI\", \"PhysicsMassAPI\", \"MaterialBindingAPI\"]) {"}}
                 double size = 4
                 double3 xformOp:translate = (0,0,-4)
                 uniform token[] xformOpOrder = ["xformOp:translate"]
@@ -81,7 +82,8 @@ public sealed partial class NativeMcpIntegrationTests
         collection.AddOpenUsdMcpServices(options);
         if (cancelFirst)
         {
-            ServiceDescriptor descriptor = collection.Single(item => item.ServiceType == typeof(IPreviewFrameSourceFactory));
+            ServiceDescriptor descriptor = collection.Single(item => item.ServiceType == typeof(
+                IPreviewFrameSourceFactory));
             collection.Remove(descriptor);
             collection.AddSingleton<IPreviewFrameSourceFactory>(provider =>
                 new CancelingPhysicsFactory(
@@ -148,14 +150,16 @@ public sealed partial class NativeMcpIntegrationTests
             await Assert.That(async () =>
                 await service.RenderPhysicsSequenceAsync(physicsRequest, cancellation.Token))
                 .Throws<OperationCanceledException>();
-            await Assert.That(Directory.GetFiles(files.OutputRoot, "frame-*.png", SearchOption.AllDirectories)).IsEmpty();
+            await Assert.That(Directory.GetFiles(files.OutputRoot, "frame-*.png",
+                SearchOption.AllDirectories)).IsEmpty();
             preparedBeforeRetry = UsdPhysicsStageExtractor.GetTraversalCount();
         }
         McpRenderSequenceResultDto job = await service.RenderPhysicsSequenceAsync(physicsRequest, default);
         if (preparedBeforeRetry is { } traversals)
         {
             await Assert.That(UsdPhysicsStageExtractor.GetTraversalCount()).IsEqualTo(traversals)
-                .Because("A render retry reuses the complete source-revision-matched page, not its old simulation state.");
+                .Because(
+                    "A render retry reuses the complete source-revision-matched page, not its old simulation state.");
         }
         await Assert.That(job.Simulation).IsNotNull();
         await Assert.That(job.Simulation!.FirstStep).IsEqualTo(6ul);
@@ -306,7 +310,8 @@ public sealed partial class NativeMcpIntegrationTests
     private sealed class CancelingPhysicsFactory(
         IPreviewFrameSourceFactory inner, CancellationTokenSource cancellation) : IPreviewFrameSourceFactory
     {
-        public IPreviewFrameSource Create(PreviewCaptureRequest request, CancellationToken cancellationToken = default) =>
+        public IPreviewFrameSource Create(PreviewCaptureRequest request,
+            CancellationToken cancellationToken = default) =>
             new CancelingPhysicsSource(inner.Create(request, cancellationToken), cancellation);
     }
 
@@ -322,7 +327,8 @@ public sealed partial class NativeMcpIntegrationTests
         public PhysicsRenderCaptureResult Capture(StageRenderState state, PhysicsRenderRecordingFrame frame,
             CancellationToken cancellationToken)
         {
-            PhysicsRenderCaptureResult result = ((IPhysicsRenderRecordingSource)inner).Capture(state, frame, cancellationToken);
+            PhysicsRenderCaptureResult result = ((IPhysicsRenderRecordingSource)inner).Capture(state, frame,
+                cancellationToken);
             cancellation.Cancel();
             return result;
         }

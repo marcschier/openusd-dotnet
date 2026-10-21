@@ -7,7 +7,8 @@ namespace OpenUsd.Rendering.Silk;
 /// <summary>
 /// Enumerates command views backed by managed-owned bytes.
 /// </summary>
-/// <remarks>Contiguous pages allocate nothing; file-backed pages copy individual commands to preserve view lifetimes.</remarks>
+/// <remarks>Contiguous pages allocate nothing; file-backed pages copy individual commands to preserve view
+/// lifetimes.</remarks>
 public ref struct SilkCommandEnumerator
 {
     private ReadOnlySpan<byte> _remaining;

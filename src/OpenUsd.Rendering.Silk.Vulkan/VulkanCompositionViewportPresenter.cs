@@ -126,7 +126,8 @@ public sealed unsafe class VulkanCompositionViewportPresenter
         SilkGpuBufferBudget? gpuBufferBudget,
         SilkTexturePreparationBudgets? texturePreparationBudgets,
         bool required)
-        => Create(renderCallback, gpuBufferBudget, texturePreparationBudgets, SilkTextureResidencyOptions.Default, required);
+        => Create(renderCallback, gpuBufferBudget, texturePreparationBudgets,
+            SilkTextureResidencyOptions.Default, required);
 
     /// <summary>Creates a retained presenter with shared allocation pools and a material residency policy.</summary>
     public static VulkanCompositionViewportPresenter Create(

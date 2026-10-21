@@ -63,7 +63,8 @@ internal static unsafe class PhysxMeshPreparation
         }
         byte* storage = stackalloc byte[PhysxErrorScope.DefaultCapacity];
         var error = new PhysxErrorBuffer(storage, PhysxErrorScope.DefaultCapacity);
-        PhysxStatus status = PhysxNativeMethods.MeshPreparationCreate(1, out PhysxMeshPreparationHandle handle, ref error);
+        PhysxStatus status = PhysxNativeMethods.MeshPreparationCreate(1,
+            out PhysxMeshPreparationHandle handle, ref error);
         using (handle)
         {
             Check(status, in error, cancellationToken);

@@ -356,7 +356,8 @@ public sealed class UsdPhysicsTransport : IAsyncDisposable, IUsdPhysicsWorkerHos
     /// Dispose the returned lease after capture; later steps or resets cannot alter it.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The batch exceeds a step or timeline bound.</exception>
-    /// <exception cref="InvalidOperationException">Looping is enabled or bounded frame/lease capacity is unavailable.</exception>
+    /// <exception cref="InvalidOperationException">Looping is enabled or bounded frame/lease capacity is
+    /// unavailable.</exception>
     public async Task<UsdPhysicsFrameLease> StepAndAcquireFrameAsync(
         int steps, CancellationToken cancellationToken = default)
     {

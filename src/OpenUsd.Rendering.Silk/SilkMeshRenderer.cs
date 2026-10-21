@@ -312,7 +312,8 @@ public sealed partial class SilkMeshRenderer :
             !SilkMeshGpuGeometryResource.UsesInstanceAdmission(device))
         {
             throw new InvalidOperationException(
-                "Material texture streaming requires a configured GPU buffer budget for transactional frame publication.");
+                "Material texture streaming requires a configured GPU buffer budget for transactional frame " +
+                    "publication.");
         }
         _device = device;
         _replayRejectedPage = ReplayRejectedPage;
@@ -1978,7 +1979,8 @@ public sealed partial class SilkMeshRenderer :
         }
         if ((features & SilkShaderFeatures.DetailNormalMap) != 0)
         {
-            GpuResources.UploadMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!, SilkMaterialParameter.DetailNormal);
+            GpuResources.UploadMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.DetailNormal);
         }
         if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
         {

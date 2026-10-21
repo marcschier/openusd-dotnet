@@ -110,7 +110,8 @@ public sealed class OpenUsdSilkPage : IDisposable
             OpenUsdSilkPage page = Data is not null
                 ? new(Abi, Revision, Data, Commands, Usage, PageLimit)
                 : new(Abi, Revision, Storage ?? throw new ObjectDisposedException(nameof(ReplaySnapshot)),
-                    Commands, Usage, PageLimit ?? throw new InvalidOperationException("Stored pages require a command limit."));
+                    Commands, Usage, PageLimit ?? throw new InvalidOperationException(
+                        "Stored pages require a command limit."));
             page._recoverySource = Source;
             return page;
         }

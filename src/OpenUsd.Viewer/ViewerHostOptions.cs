@@ -30,8 +30,10 @@ public sealed class ViewerHostOptions
     /// </summary>
     public string? Renderer { get; init; }
 
-    /// <summary>Opts in to up to 32768 physics actors and 65536 collision shapes instead of the default capacities.</summary>
-    /// <remarks>Render publication and mesh-override limits remain bounded separately. Moving mesh subtrees must be de-instanced.</remarks>
+    /// <summary>Opts in to up to 32768 physics actors and 65536 collision shapes instead of the default
+    /// capacities.</summary>
+    /// <remarks>Render publication and mesh-override limits remain bounded separately. Moving mesh subtrees must be
+    /// de-instanced.</remarks>
     public bool FullScenePhysics { get; init; }
 
     /// <summary>Gets optional immutable hdSilk mesh-reservation and page ceilings for all Viewer sessions.</summary>
@@ -61,7 +63,8 @@ public sealed class ViewerHostOptions
     public bool? StreamMaterialTextures { get; init; }
 
     /// <summary>Gets an explicit D3D12 GPU-upload policy, overriding OPENUSD_D3D12_GPU_UPLOAD_HEAPS.</summary>
-    /// <remarks>Requires supported D3D12 hardware and an explicit GPU buffer budget; off when neither source opts in.</remarks>
+    /// <remarks>Requires supported D3D12 hardware and an explicit GPU buffer budget; off when neither source opts
+    /// in.</remarks>
     public bool? D3D12GpuUploadHeaps { get; init; }
 
     /// <summary>

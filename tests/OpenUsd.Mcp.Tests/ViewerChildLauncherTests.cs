@@ -68,7 +68,8 @@ public sealed class ViewerChildLauncherTests
             _ = launcher.Launch(request);
             await Assert.That(starter.StartInfo!.Environment[variable]).IsEqualTo("true");
             await Assert.That(starter.StartInfo.Environment["OPENUSD_SILK_GPU_BUFFER_BYTES"]).IsEqualTo("4096");
-            await Assert.That(() => launcher.Launch(request with { Renderer = "Storm" })).Throws<NotSupportedException>();
+            await Assert.That(() => launcher.Launch(
+                request with { Renderer = "Storm" })).Throws<NotSupportedException>();
             await Assert.That(starter.StartCount).IsEqualTo(1);
             await Assert.That(Environment.GetEnvironmentVariable(variable)).IsEqualTo("invalid");
         }

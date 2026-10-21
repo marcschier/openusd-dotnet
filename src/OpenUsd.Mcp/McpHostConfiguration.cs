@@ -92,7 +92,8 @@ internal static class McpHostConfiguration
                 Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_TEXTURE_BYTES"),
                 Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_STAGING_BYTES")),
             StreamMaterialTextures: SilkTextureResidencyOptions.FromConfiguration(
-                Environment.GetEnvironmentVariable("OPENUSD_SILK_STREAM_MATERIAL_TEXTURES"))?.StreamMaterialTextures ?? false);
+                Environment.GetEnvironmentVariable(
+                    "OPENUSD_SILK_STREAM_MATERIAL_TEXTURES"))?.StreamMaterialTextures ?? false);
     }
 
     internal static IServiceCollection AddOpenUsdMcpServices(
@@ -133,7 +134,8 @@ internal static class McpHostConfiguration
             (options.GpuBufferBudget is null || graphicsOptions.UseWarpOnWindows || !OperatingSystem.IsWindows()))
         {
             throw new ArgumentException(
-                "GPU-upload heaps require Windows hardware previews, OPENUSD_MCP_USE_WARP=false and a GPU buffer budget.",
+                "GPU-upload heaps require Windows hardware previews, OPENUSD_MCP_USE_WARP=false and a GPU buffer " +
+                    "budget.",
                 nameof(options));
         }
         OpenUsdMcpProtocolOptions protocolOptions =

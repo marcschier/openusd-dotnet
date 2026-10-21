@@ -66,7 +66,8 @@ public sealed class UsdPhysicsExtractionPage : IUsdDetachedResult
     public UsdPhysicsExtractionPageTraits Flags =>
         (UsdPhysicsExtractionPageTraits)ReadUInt32(_bytes, PhysicsExtractAbi.OffsetFlags);
 
-    /// <summary>Gets the per-section truncation mask; intentional geometry windows instead set <see cref="UsdPhysicsExtractionPageTraits.PartialGeometry"/>.</summary>
+    /// <summary>Gets the per-section truncation mask; intentional geometry windows instead set <see
+    /// cref="UsdPhysicsExtractionPageTraits.PartialGeometry"/>.</summary>
     public uint TruncationFlags => ReadUInt32(_bytes, PhysicsExtractAbi.OffsetTruncationFlags);
 
     /// <summary>Gets the object index of the default simulation scene, or <c>-1</c>.</summary>
@@ -173,7 +174,8 @@ public sealed class UsdPhysicsExtractionPage : IUsdDetachedResult
     public string GetText(int index) =>
         ReadString(ReadUInt32(_bytes, RecordOffset(PhysicsExtractAbi.SectionTexts, index)));
 
-    /// <summary>Reads one local collider point, in metres for prepared convex geometry and stage units otherwise.</summary>
+    /// <summary>Reads one local collider point, in metres for prepared convex geometry and stage units
+    /// otherwise.</summary>
     /// <param name="index">The zero based point index.</param>
     /// <returns>The decoded point components.</returns>
     public (float X, float Y, float Z) GetPoint(int index)

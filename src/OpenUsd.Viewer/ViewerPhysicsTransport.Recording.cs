@@ -29,7 +29,8 @@ internal sealed partial class ViewerPhysicsTransportAdapter
         if (before != after || !_hasBuiltFingerprint ||
             page.FingerprintLow != _builtFingerprintLow || page.FingerprintHigh != _builtFingerprintHigh)
         {
-            throw new InvalidOperationException("Physics inputs changed since the world was built. Rebuild before recording.");
+            throw new InvalidOperationException(
+                "Physics inputs changed since the world was built. Rebuild before recording.");
         }
         return new ViewerPhysicsRecordingSession(_transport, bindings, capacities, after);
     }
@@ -60,7 +61,8 @@ internal sealed class ViewerPhysicsRecordingSession(
         {
             if (initial.Frame.DeformationCount != 0)
             {
-                throw new NotSupportedException("Viewer recording currently supports rigid-pose publications, not deformable geometry.");
+                throw new NotSupportedException(
+                    "Viewer recording currently supports rigid-pose publications, not deformable geometry.");
             }
         }
         var times = new double[count];
@@ -71,7 +73,8 @@ internal sealed class ViewerPhysicsRecordingSession(
             if (!double.IsFinite(seconds) || (transport.Timeline.HasAuthoredRange &&
                 seconds > transport.Timeline.DurationSeconds + transport.FixedStep.Seconds * 1e-6))
             {
-                throw new ArgumentOutOfRangeException(nameof(count), "Recording would advance beyond the authored end.");
+                throw new ArgumentOutOfRangeException(nameof(count),
+                    "Recording would advance beyond the authored end.");
             }
             times[index] = transport.Timeline.ToTimeCode(seconds);
         }

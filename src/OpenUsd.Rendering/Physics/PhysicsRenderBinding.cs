@@ -101,7 +101,8 @@ public sealed class PhysicsRenderBindingTable
             referenceOrientation.W * referenceOrientation.W;
         if (!referenceOrientation.IsFinite || !double.IsFinite(length) || length <= 0)
         {
-            throw new ArgumentException("A subtree reference orientation must be finite and nonzero.", nameof(referenceOrientation));
+            throw new ArgumentException("A subtree reference orientation must be finite and nonzero.", nameof(
+                referenceOrientation));
         }
         return Store(id, new PhysicsRenderBinding(primPath, 0)
         {

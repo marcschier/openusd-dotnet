@@ -16,13 +16,15 @@ internal sealed partial class OpenUsdMcpService
         if (!double.IsFinite(request.ExpectedMetersPerUnit) || request.ExpectedMetersPerUnit <= 0 ||
             request.ExpectedUpAxis is not ("X" or "Y" or "Z"))
         {
-            throw new ArgumentException("Explicit positive workspace units and an X/Y/Z up axis are required.", nameof(request));
+            throw new ArgumentException(
+                "Explicit positive workspace units and an X/Y/Z up axis are required.", nameof(request));
         }
         ValidateSequenceRaster(request.Width, request.Height, request.FrameCount,
             request.IncludeDeviceDepth, request.IncludeHdrColor);
         if (request.StepsPerFrame is < 1 or > 8)
         {
-            throw new ArgumentOutOfRangeException(nameof(request), "Physics captures require 1-8 fixed steps per frame.");
+            throw new ArgumentOutOfRangeException(nameof(request),
+                "Physics captures require 1-8 fixed steps per frame.");
         }
         if (request.CameraPath is { } cameraPath)
         {
@@ -37,7 +39,8 @@ internal sealed partial class OpenUsdMcpService
             RequireDiskJobCapacity();
             var revision = new WorkspaceSessionRevision(request.SessionId, request.Generation, request.StageRevision);
             WorkspacePhysicsRecording recording = await workspace.PreparePhysicsRecordingAsync(
-                revision, request.ExpectedMetersPerUnit, request.ExpectedUpAxis, request.FullScenePhysics, cancellationToken)
+                revision, request.ExpectedMetersPerUnit, request.ExpectedUpAxis, request.FullScenePhysics,
+                    cancellationToken)
                 .ConfigureAwait(false);
             McpRenderSequenceResultDto completed;
             try
@@ -58,7 +61,8 @@ internal sealed partial class OpenUsdMcpService
                             seconds > recording.Transport.Timeline.DurationSeconds +
                                 recording.Transport.FixedStep.Seconds * 1e-6)
                         {
-                            throw new ArgumentOutOfRangeException(nameof(request), "Recording would pass the authored end.");
+                            throw new ArgumentOutOfRangeException(nameof(request),
+                                "Recording would pass the authored end.");
                         }
                         times[index] = recording.Transport.Timeline.ToTimeCode(seconds);
                     }
@@ -71,7 +75,8 @@ internal sealed partial class OpenUsdMcpService
                     }
                     for (int index = 0; index < count; index++)
                     {
-                        frames[offset + index] = initial.WithCamera(cameras[index]).WithTime(new StageTime(times[index]));
+                        frames[offset + index] = initial.WithCamera(cameras[index]).WithTime(new StageTime(
+                            times[index]));
                     }
                 }
                 string parent = WorkspacePathContainment.CreateContainedDirectory(

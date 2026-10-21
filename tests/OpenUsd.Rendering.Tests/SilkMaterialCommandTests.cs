@@ -29,7 +29,8 @@ public sealed class SilkMaterialCommandTests
         SilkMaterialData material = CopyMaterial(CreateMaterialUpsert("/Atlas", SilkSurfaceKind.PreviewSurface, [],
         [
             new TextureSpec(parameter, SilkTextureWrap.Repeat, SilkTextureWrap.Repeat,
-                SilkColorSpace.Raw, scalar ? 1 : 3, [gain, gain, gain, 1], [0, 0, 0, 0], [1, 1, 1, 1], "<UDIM>.png", "st")
+                SilkColorSpace.Raw, scalar ? 1 : 3, [gain, gain, gain, 1], [0, 0, 0, 0], [1, 1, 1, 1],
+                    "<UDIM>.png", "st")
         ]));
         using var resources = new SilkSceneGpuResources(device,
             (_, _) => throw new InvalidOperationException("Unowned decoding is forbidden."),
@@ -208,7 +209,8 @@ public sealed class SilkMaterialCommandTests
             [DetailTexture()], uvTransform: [4, 0, 0, 5, 0.1f, 0.2f]));
         byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
-        await Assert.That(material.GetTextureFeatures()).IsEqualTo(SilkShaderFeatures.Uv | SilkShaderFeatures.DetailNormalMap);
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv | SilkShaderFeatures.DetailNormalMap);
         await Assert.That(material.GetCompositeTexture()).IsNull();
         await Assert.That(material.GetTexture(SilkMaterialParameter.Normal)).IsNull();
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(144))).IsEqualTo(4f);
@@ -3906,7 +3908,8 @@ public sealed class SilkMaterialCommandTests
     {
         private readonly List<IDisposable> _reservations = [];
 
-        public void UploadTextureRows(ISilkGraphicsTexture texture, SilkTextureRowUpload region, ReadOnlySpan<byte> source)
+        public void UploadTextureRows(ISilkGraphicsTexture texture, SilkTextureRowUpload region,
+            ReadOnlySpan<byte> source)
         {
             IDisposable? reservation = device.CpuTextureBudget?.Reserve((ulong)source.Length);
             try

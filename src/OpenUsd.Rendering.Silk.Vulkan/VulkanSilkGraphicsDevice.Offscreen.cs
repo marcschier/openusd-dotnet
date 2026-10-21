@@ -603,7 +603,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             uploadTexture.MipLevelCount);
                         SilkMipLevelLayout[] uploadLevels = command.TextureRows is { } rows
                             ? [rows.GetLayout(uploadTexture)] : SilkMipChainLayout.Create(
-                                uploadTexture.Width, uploadTexture.Height, uploadTexture.Format, uploadTexture.MipLevelCount);
+                                uploadTexture.Width, uploadTexture.Height, uploadTexture.Format,
+                                    uploadTexture.MipLevelCount);
                         var copyRegions = new BufferImageCopy[uploadLevels.Length];
                         for (int level = 0; level < uploadLevels.Length; level++)
                         {

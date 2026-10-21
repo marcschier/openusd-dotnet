@@ -180,7 +180,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
 
     private ViewerPhysicsSequenceRequest ReadPhysicsRequest()
     {
-        if (!int.TryParse(SequencePhysicsFrames.Text, NumberStyles.None, CultureInfo.InvariantCulture, out int frames) ||
+        if (!int.TryParse(SequencePhysicsFrames.Text, NumberStyles.None, CultureInfo.InvariantCulture,
+            out int frames) ||
             !int.TryParse(SequencePhysicsSteps.Text, NumberStyles.None, CultureInfo.InvariantCulture, out int steps))
         {
             throw new ArgumentException("Enter whole frame and fixed-step counts.");
@@ -202,7 +203,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         SequenceDescription.Text = IsPhysicsMode
             ? "Records every rigid pose from the current paused world. Loop and Apply Preview must be off. " +
                 "Recording advances physics; cancellation does not rewind it. The view is restored before publication."
-            : "The selected camera is sampled at every requested time. Playback and view edits pause until the job drains.";
+            : "The selected camera is sampled at every requested time. Playback and view edits pause until the " +
+                "job drains.";
         bool valid = false;
         string status;
         try
@@ -270,7 +272,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
             SequenceProgress.Value = 0;
             RenderDiskJobResult result = physics is not null
                 ? await _renderPhysics!(physics, ReportProgress, cancellation.Token)
-                : await _render(range!, SequenceOutputFolder.Text ?? string.Empty, outputs, ReportProgress, cancellation.Token);
+                : await _render(range!, SequenceOutputFolder.Text ?? string.Empty, outputs, ReportProgress,
+                    cancellation.Token);
             if (!physicsMode)
             {
                 cancellation.Token.ThrowIfCancellationRequested();

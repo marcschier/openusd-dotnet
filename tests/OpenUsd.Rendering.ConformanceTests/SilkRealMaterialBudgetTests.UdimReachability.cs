@@ -146,7 +146,8 @@ public sealed partial class SilkRealMaterialBudgetTests
                     using ISilkGraphicsCommandList commands = device.CreateCommandList();
                     resources.UploadMaterialTexture(commands, material, texture.Parameter);
                     uint[] selected = tiles.Where(tile => decoded.Any(item =>
-                        string.Equals(item.Asset, tile.Asset, StringComparison.Ordinal))).Select(tile => tile.Number).ToArray();
+                        string.Equals(item.Asset, tile.Asset, StringComparison.Ordinal))).Select(tile =>
+                            tile.Number).ToArray();
                     await Assert.That(required.Count).IsGreaterThan(0);
                     await Assert.That(required.IsSubsetOf(selected)).IsTrue();
                     await Assert.That(selected.Order().SequenceEqual(required.Order())).IsTrue();
@@ -209,7 +210,10 @@ public sealed partial class SilkRealMaterialBudgetTests
             textures = textures.Usage,
             staging = staging.Usage,
             buffers = buffers.Usage,
-            qualification = "Actual referenced subtree geometry and native UVs; production reachability and compaction. Independent double-precision triangle/tile clipping proves selected tiles cover triangle interiors and vertices. No warehouse geometry sync."
+            qualification =
+                "Actual referenced subtree geometry and native UVs; production reachability and compaction. " +
+                    "Independent double-precision triangle/tile clipping proves selected tiles cover triangle " +
+                        "interiors and vertices. No warehouse geometry sync."
         }));
     }
 
@@ -234,7 +238,8 @@ public sealed partial class SilkRealMaterialBudgetTests
             float[] b = material.GetScalar(SilkMaterialParameter.DetailUvRow1).ToArray();
             transform = [a[0], a[1], b[0], b[1], a[2], b[2]];
         }
-        foreach (SilkMeshGpuResource resource in resources.Meshes.Values.Where(item => item.Mesh.MaterialPath == material.Path))
+        foreach (SilkMeshGpuResource resource in resources.Meshes.Values.Where(item =>
+            item.Mesh.MaterialPath == material.Path))
         {
             SilkMeshData mesh = resource.Mesh;
             if (mesh.TopologyKind != SilkTopologyKind.TriangleList)
@@ -297,7 +302,8 @@ public sealed partial class SilkRealMaterialBudgetTests
             if (insideA != insideB)
             {
                 double ratio = (bound - a) / (b - a);
-                output.Add((previous.X + ratio * (current.X - previous.X), previous.Y + ratio * (current.Y - previous.Y)));
+                output.Add((previous.X + ratio * (current.X - previous.X), previous.Y + ratio * (
+                    current.Y - previous.Y)));
             }
             if (insideB)
             { output.Add(current); }

@@ -108,7 +108,8 @@ public sealed partial class ViewerRenderSequenceNativeTests
         var outputs = new ViewerRenderSequenceOutputOptions(true, true);
         RenderDiskJobResult authored = await coordinator.RenderSequenceAsync(
             range, work, outputs, "/World/Camera", _ => { }, CancellationToken.None);
-        byte[] before = await File.ReadAllBytesAsync(Path.Combine(authored.OutputDirectory, "frame-000000.hdr.rgba16f"));
+        byte[] before = await File.ReadAllBytesAsync(Path.Combine(authored.OutputDirectory,
+            "frame-000000.hdr.rgba16f"));
         int width = authored.Frames[0].State.Viewport.Width;
         (int beforeCount, double beforeX, double beforeY, _) = MeasureEmission(before, null, width);
         await Assert.That(beforeCount).IsGreaterThan(100);
@@ -144,8 +145,10 @@ public sealed partial class ViewerRenderSequenceNativeTests
             range, work, outputs, "/World/Camera", _ => { }, CancellationToken.None);
         foreach (string suffix in new[] { "png", "hdr.rgba16f", "device-depth.f32" })
         {
-            byte[] expected = await File.ReadAllBytesAsync(Path.Combine(authored.OutputDirectory, $"frame-000000.{suffix}"));
-            byte[] actual = await File.ReadAllBytesAsync(Path.Combine(restored.OutputDirectory, $"frame-000000.{suffix}"));
+            byte[] expected = await File.ReadAllBytesAsync(Path.Combine(authored.OutputDirectory,
+                $"frame-000000.{suffix}"));
+            byte[] actual = await File.ReadAllBytesAsync(Path.Combine(restored.OutputDirectory,
+                $"frame-000000.{suffix}"));
             await Assert.That(actual.SequenceEqual(expected)).IsTrue()
                 .Because("clearing the presented physics batch must restore the original PNG, HDR and depth");
         }

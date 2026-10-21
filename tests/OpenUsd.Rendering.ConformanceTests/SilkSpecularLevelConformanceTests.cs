@@ -26,7 +26,8 @@ public sealed class SilkSpecularLevelConformanceTests
             1, "/Mesh", [-0.9f, -0.9f, z, 0.9f, -0.9f, z, 0.9f, 0.9f, z, -0.9f, 0.9f, z],
             [0, 1, 2, 0, 2, 3]), "/Material");
         using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
-            [.. SilkMeshRendererConformance.CreateFrameCommand(32, 32, SilkMeshRendererConformance.Identity()), .. mesh], 2);
+            [.. SilkMeshRendererConformance.CreateFrameCommand(32, 32, SilkMeshRendererConformance.Identity(
+                )), .. mesh], 2);
         renderer.ApplyPage(initial);
         ulong revision = 1;
         float[] render(float? level, float metallic, float ior = 1.5f)

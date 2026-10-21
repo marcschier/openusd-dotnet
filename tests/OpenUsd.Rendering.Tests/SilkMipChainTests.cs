@@ -63,8 +63,10 @@ public sealed class SilkMipChainTests
                 for (uint x = 0; x < current.Width; x++)
                 {
                     int a = checked((int)((2 * y * previous.Width + 2 * x) * (uint)components));
-                    int b = checked((int)((2 * y * previous.Width + Math.Min(2 * x + 1, previous.Width - 1)) * (uint)components));
-                    int c = checked((int)((Math.Min(2 * y + 1, previous.Height - 1) * previous.Width + 2 * x) * (uint)components));
+                    int b = checked((int)((2 * y * previous.Width + Math.Min(2 * x + 1,
+                        previous.Width - 1)) * (uint)components));
+                    int c = checked((int)((Math.Min(2 * y + 1, previous.Height - 1) * previous.Width +
+                        2 * x) * (uint)components));
                     int d = checked((int)((Math.Min(2 * y + 1, previous.Height - 1) * previous.Width +
                         Math.Min(2 * x + 1, previous.Width - 1)) * (uint)components));
                     for (int channel = 0; channel < components; channel++)
@@ -117,9 +119,11 @@ public sealed class SilkMipChainTests
         current.OwnReservation(budget.Reserve(checked((ulong)current.Pixels.Length)));
         try
         {
-            foreach (SilkMipLevelLayout level in SilkMipChainLayout.Create(width, height, SilkTextureFormat.R32Float, count))
+            foreach (SilkMipLevelLayout level in SilkMipChainLayout.Create(width, height,
+                SilkTextureFormat.R32Float, count))
             {
-                await Assert.That(current.Pixels.AsSpan().SequenceEqual(packed.AsSpan(level.Offset, level.Size))).IsTrue();
+                await Assert.That(current.Pixels.AsSpan().SequenceEqual(packed.AsSpan(level.Offset,
+                    level.Size))).IsTrue();
                 if (level.Level + 1 < count)
                 {
                     SilkDecodedImage next = SilkMipGenerator.GenerateNextLevel(current, false, budget);
@@ -170,9 +174,11 @@ public sealed class SilkMipChainTests
         var current = new SilkDecodedImage(width, height, scalar, SilkTextureFormat.R8Unorm);
         try
         {
-            foreach (SilkMipLevelLayout level in SilkMipChainLayout.Create(width, height, SilkTextureFormat.R8Unorm, count))
+            foreach (SilkMipLevelLayout level in SilkMipChainLayout.Create(width, height,
+                SilkTextureFormat.R8Unorm, count))
             {
-                await Assert.That(current.Pixels.AsSpan().SequenceEqual(packed.AsSpan(level.Offset, level.Size))).IsTrue();
+                await Assert.That(current.Pixels.AsSpan().SequenceEqual(packed.AsSpan(level.Offset,
+                    level.Size))).IsTrue();
                 if (level.Level + 1 < count)
                 {
                     SilkDecodedImage next = SilkMipGenerator.GenerateNextLevel(current, false, null);

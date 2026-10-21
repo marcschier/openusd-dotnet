@@ -116,8 +116,10 @@ public sealed class SilkWarehouseMdlWrapperTests
             float maximumError = 0;
             for (int offset = 0; offset < actual.Length; offset += 2)
             {
-                float a = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(actual.AsSpan(offset)));
-                float e = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(expected.AsSpan(offset)));
+                float a = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(
+                    actual.AsSpan(offset)));
+                float e = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(
+                    expected.AsSpan(offset)));
                 await Assert.That(float.IsFinite(a) && float.IsFinite(e)).IsTrue();
                 maximumError = MathF.Max(maximumError, MathF.Abs(a - e));
             }
@@ -147,7 +149,8 @@ public sealed class SilkWarehouseMdlWrapperTests
             string normal = Path.Combine(root, "normal.png");
             string detail = Path.Combine(root, udim ? "detail.<UDIM>.png" : "detail.png");
             WriteSolid(normal, [192, 128, 224, 255]);
-            using (FileStream image = File.Create(udim ? detail.Replace("<UDIM>", "1001", StringComparison.Ordinal) : detail))
+            using (FileStream image = File.Create(udim ? detail.Replace("<UDIM>", "1001",
+                StringComparison.Ordinal) : detail))
             {
                 _ = PngRgba8Writer.Write(image, 2, 2,
                     [220, 128, 240, 255, 80, 128, 250, 255, 128, 200, 244, 255, 128, 72, 246, 255], 1024);
@@ -172,7 +175,8 @@ public sealed class SilkWarehouseMdlWrapperTests
                 token outputs:out
                 """, "mdl:surface", "out"));
             string transform = udim
-                ? "float2 inputs:detail_texture_scale = (1.5, 0.75)\nfloat2 inputs:detail_texture_translate = (0.25, 0.125)"
+                ? "float2 inputs:detail_texture_scale = (1.5, 0.75)\nfloat2 inputs:detail_texture_translate = " +
+                    "(0.25, 0.125)"
                 : "float2 inputs:detail_texture_scale = (2, 3)\nfloat2 inputs:detail_texture_translate = (0.2, -0.4)";
             string coordinates = udim
                 ? "[(0.25, 0.125), (1.75, 0.125), (1.75, 0.875), (0.25, 0.875)]"
@@ -181,7 +185,8 @@ public sealed class SilkWarehouseMdlWrapperTests
             string reference = Path.Combine(root, "authored-uv.usda");
             string control = Path.Combine(root, "identity-uv.usda");
             string identity = body.Replace("__DETAIL_COORDINATES__", "", StringComparison.Ordinal);
-            await File.WriteAllTextAsync(projected, body.Replace("__DETAIL_COORDINATES__", transform, StringComparison.Ordinal));
+            await File.WriteAllTextAsync(projected, body.Replace("__DETAIL_COORDINATES__", transform,
+                StringComparison.Ordinal));
             await File.WriteAllTextAsync(reference, identity.Replace(
                 "[(0, 0), (1, 0), (1, 1), (0, 1)]", coordinates, StringComparison.Ordinal));
             await File.WriteAllTextAsync(control, identity);
@@ -195,8 +200,10 @@ public sealed class SilkWarehouseMdlWrapperTests
             float maximumError = 0;
             for (int offset = 0; offset < actual.Length; offset += 2)
             {
-                float a = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(actual.AsSpan(offset)));
-                float e = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(expected.AsSpan(offset)));
+                float a = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(
+                    actual.AsSpan(offset)));
+                float e = (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(
+                    expected.AsSpan(offset)));
                 await Assert.That(float.IsFinite(a) && float.IsFinite(e)).IsTrue();
                 maximumError = MathF.Max(maximumError, MathF.Abs(a - e));
             }
@@ -228,7 +235,9 @@ public sealed class SilkWarehouseMdlWrapperTests
             device.Dispose();
             throw new InvalidOperationException($"Required hardware, but {backend} selected '{name}'.");
         }
-        Console.WriteLine($"DETAIL_NORMAL_DEVICE backend={backend} name={device.Capabilities.DeviceName} software={device.Capabilities.IsSoftware}");
+        Console.WriteLine(
+            $"DETAIL_NORMAL_DEVICE backend={backend} name={device.Capabilities.DeviceName} " +
+                $"software={device.Capabilities.IsSoftware}");
         return device;
     }
 
@@ -275,13 +284,16 @@ public sealed class SilkWarehouseMdlWrapperTests
                 {{zeroWeight}}
                 token outputs:out
                 """, "mdl:surface", "out")));
-            await File.WriteAllTextAsync(reference, Scene(ScalarMapPreview(asset, true, false, includeOcclusion: false)));
+            await File.WriteAllTextAsync(reference, Scene(ScalarMapPreview(asset, true, false,
+                includeOcclusion: false)));
             await File.WriteAllTextAsync(active, Scene(ScalarMapPreview(asset, true, false)));
             SilkMaterialData material = ReadMaterial(plugins, projected);
             await Assert.That(material.Textures.Count).IsEqualTo(2);
             await Assert.That(material.GetTexture(SilkMaterialParameter.Occlusion)).IsNull();
-            await Assert.That(material.GetTexture(SilkMaterialParameter.Roughness)!.Channel).IsEqualTo(SilkTextureChannel.G);
-            await Assert.That(material.GetTexture(SilkMaterialParameter.Metallic)!.Channel).IsEqualTo(SilkTextureChannel.B);
+            await Assert.That(material.GetTexture(SilkMaterialParameter.Roughness)!.Channel).IsEqualTo(
+                SilkTextureChannel.G);
+            await Assert.That(material.GetTexture(SilkMaterialParameter.Metallic)!.Channel).IsEqualTo(
+                SilkTextureChannel.B);
             using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
             byte[] pixels = Capture(device, plugins, projected);
             await Assert.That(pixels.SequenceEqual(Capture(device, plugins, reference))).IsTrue();
@@ -310,7 +322,8 @@ public sealed class SilkWarehouseMdlWrapperTests
         {
             if (environment)
             {
-                byte[] header = System.Text.Encoding.ASCII.GetBytes("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 4\n");
+                byte[] header = System.Text.Encoding.ASCII.GetBytes(
+                    "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 4\n");
                 byte[] sky = new byte[header.Length + 32];
                 header.CopyTo(sky, 0);
                 for (int index = header.Length; index < sky.Length; index += 4)
@@ -1000,7 +1013,8 @@ public sealed class SilkWarehouseMdlWrapperTests
             string control = Path.Combine(root, "full-strength.usda");
             string asset = image.Replace('\\', '/');
             string orm = packed
-                ? $"bool inputs:enable_ORM_texture = true\nasset inputs:ORM_texture = @{asset}@\nfloat inputs:ao_to_diffuse = 1"
+                ? $"bool inputs:enable_ORM_texture = true\nasset inputs:ORM_texture = @{asset}@\nfloat " +
+                    $"inputs:ao_to_diffuse = 1"
                 : "";
             await File.WriteAllTextAsync(projected, Scene(Material(
                 $$"""
@@ -1251,14 +1265,16 @@ public sealed class SilkWarehouseMdlWrapperTests
     private static OpenUsdSilkPage WithReferenceDielectricCurve(OpenUsdSilkPage page)
     {
         using OpenUsdSilkPage.ReplaySnapshot snapshot = page.CaptureReplay();
-        byte[] source = snapshot.Data ?? throw new InvalidOperationException("The small control page must be contiguous.");
+        byte[] source = snapshot.Data ?? throw new InvalidOperationException(
+            "The small control page must be contiguous.");
         using var output = new MemoryStream();
         for (int offset = 0; offset < source.Length;)
         {
             int size = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(source.AsSpan(offset + 4)));
             ReadOnlySpan<byte> command = source.AsSpan(offset, size);
             if (BinaryPrimitives.ReadUInt32LittleEndian(command) == (uint)SilkCommandType.MaterialUpsert &&
-                new SilkMaterialUpsertCommand(command).SurfaceKind is SilkSurfaceKind.PreviewSurface or SilkSurfaceKind.MaterialXProjected)
+                new SilkMaterialUpsertCommand(command).SurfaceKind is SilkSurfaceKind.PreviewSurface or
+                    SilkSurfaceKind.MaterialXProjected)
             {
                 // The texture/UV/emission controls remain independent; only the new, separately
                 // gated default dielectric curve is shared with the pinned OmniPBR profile.

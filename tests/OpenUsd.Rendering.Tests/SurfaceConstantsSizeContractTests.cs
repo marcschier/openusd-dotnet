@@ -87,7 +87,8 @@ public sealed class SurfaceConstantsSizeContractTests
             string[] values = literal.Groups["values"].Value
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             int written = values.Length;
-            if (written != expectedPrefixFloats || written * sizeof(float) + wideMaskBytes + detailUvBytes != shaderSize)
+            if (written != expectedPrefixFloats
+                || written * sizeof(float) + wideMaskBytes + detailUvBytes != shaderSize)
             {
                 mismatches.Add(
                     $"{relative} writes {written} prefix floats plus two UInt128 masks and two detail UV rows, " +

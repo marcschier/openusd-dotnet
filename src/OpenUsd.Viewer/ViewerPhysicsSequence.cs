@@ -43,7 +43,8 @@ internal sealed class ViewerPhysicsSequenceFrameSource(
         }
         if (request.ProductPlan is not null || context.ReviewIdentity is not null)
         {
-            throw new NotSupportedException("Viewer physics recording captures the viewport without a review-origin claim.");
+            throw new NotSupportedException(
+                "Viewer physics recording captures the viewport without a review-origin claim.");
         }
         validate(cancellationToken).AsTask().GetAwaiter().GetResult();
     }
@@ -53,7 +54,8 @@ internal sealed class ViewerPhysicsSequenceFrameSource(
     {
         if (frame.Deformations.Count != 0)
         {
-            throw new NotSupportedException("Viewer recording currently supports rigid-pose publications, not deformable geometry.");
+            throw new NotSupportedException(
+                "Viewer recording currently supports rigid-pose publications, not deformable geometry.");
         }
         Task<PhysicsRenderCaptureResult> result = Dispatcher.UIThread.InvokeAsync(async () =>
         {

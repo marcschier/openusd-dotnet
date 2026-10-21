@@ -121,7 +121,8 @@ internal sealed class SilkCommandStorageReader : IDisposable
         }
         header.CopyTo(bytes);
         Read(offset + 8, bytes.AsSpan(8, size - 8));
-        command = new SilkCommand((SilkCommandType)BinaryPrimitives.ReadUInt32LittleEndian(header), bytes.AsSpan(0, size));
+        command = new SilkCommand((SilkCommandType)BinaryPrimitives.ReadUInt32LittleEndian(header),
+            bytes.AsSpan(0, size));
         offset += encodedSize;
         remaining--;
         return true;

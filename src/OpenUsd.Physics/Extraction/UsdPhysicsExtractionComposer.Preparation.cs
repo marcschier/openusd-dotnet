@@ -36,8 +36,10 @@ internal static partial class UsdPhysicsExtractionComposer
                 continue;
             }
             if (item.Kind != UsdPhysicsExtractionObjectKind.Collider || !item.IsEnabled ||
-                item.Geometry is not (UsdPhysicsExtractionGeometryKind.Mesh or UsdPhysicsExtractionGeometryKind.ConvexMesh) ||
-                !TryFind(page, item, UsdPhysicsExtractionKey.CollisionApproximation, out UsdPhysicsExtractionProperty property) ||
+                item.Geometry is not (UsdPhysicsExtractionGeometryKind.Mesh or
+                    UsdPhysicsExtractionGeometryKind.ConvexMesh) ||
+                !TryFind(page, item, UsdPhysicsExtractionKey.CollisionApproximation,
+                    out UsdPhysicsExtractionProperty property) ||
                 !property.IsText || property.ValueCount != 1 || !IsUsableProperty(property))
             {
                 continue;
@@ -161,7 +163,8 @@ internal static partial class UsdPhysicsExtractionComposer
         }
     }
 
-    internal static string GeometryKey(UsdPhysicsExtractionPage page, UsdPhysicsExtractionObject item, bool decomposition)
+    internal static string GeometryKey(UsdPhysicsExtractionPage page, UsdPhysicsExtractionObject item,
+        bool decomposition)
     {
         // Cache scope fixes the SDK and cooking implementation; the key carries every varying input.
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -173,11 +176,13 @@ internal static partial class UsdPhysicsExtractionComposer
         BinaryPrimitives.WriteUInt32LittleEndian(header[20..], PhysxAbi.Version);
         hash.AppendData(header);
         hash.AppendData(page.SectionBytes(PhysicsExtractAbi.SectionPoints)
-            .Slice(item.PointStart * PhysicsExtractAbi.PointRecordBytes, item.PointCount * PhysicsExtractAbi.PointRecordBytes));
+            .Slice(item.PointStart * PhysicsExtractAbi.PointRecordBytes,
+                item.PointCount * PhysicsExtractAbi.PointRecordBytes));
         if (decomposition)
         {
             hash.AppendData(page.SectionBytes(PhysicsExtractAbi.SectionIndices)
-                .Slice(item.IndexStart * PhysicsExtractAbi.IndexRecordBytes, item.IndexCount * PhysicsExtractAbi.IndexRecordBytes));
+                .Slice(item.IndexStart * PhysicsExtractAbi.IndexRecordBytes,
+                    item.IndexCount * PhysicsExtractAbi.IndexRecordBytes));
         }
         Span<byte> digest = stackalloc byte[32];
         hash.GetHashAndReset(digest);

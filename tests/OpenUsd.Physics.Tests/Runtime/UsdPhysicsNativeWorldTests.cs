@@ -132,8 +132,9 @@ public sealed class UsdPhysicsNativeWorldTests
     public async Task ZeroEventCapacityDisablesCollectionWithoutBreakingContactSimulation()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(ZeroEventCapacityDisablesCollectionWithoutBreakingContactSimulation));
-        fixture.WriteStage("""
+        using var fixture = CpuDomainFixture.Create(nameof(
+            ZeroEventCapacityDisablesCollectionWithoutBreakingContactSimulation));
+        fixture.WriteStage($$"""
             #usda 1.0
             (metersPerUnit = 1)
             def Cube "Ground" (prepend apiSchemas = ["PhysicsCollisionAPI"]) {
@@ -141,7 +142,8 @@ public sealed class UsdPhysicsNativeWorldTests
                 double3 xformOp:translate = (0,-1,0)
                 uniform token[] xformOpOrder = ["xformOp:translate"]
             }
-            def Sphere "Falling" (prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMassAPI"]) {
+            {{"def Sphere \"Falling\" (prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"P" +
+                "hysicsCollisionAPI\", \"PhysicsMassAPI\"]) {"}}
                 double radius = 0.25
                 float physics:mass = 1
                 double3 xformOp:translate = (0,2,0)
@@ -167,7 +169,8 @@ public sealed class UsdPhysicsNativeWorldTests
     public async Task FailedMeshPreparationReportsTheBuildFailureAndPreservesTheLiveWorld()
     {
         CpuDomainFixture.RequireRuntime();
-        using var original = CpuDomainFixture.Create(nameof(FailedMeshPreparationReportsTheBuildFailureAndPreservesTheLiveWorld));
+        using var original = CpuDomainFixture.Create(nameof(
+            FailedMeshPreparationReportsTheBuildFailureAndPreservesTheLiveWorld));
         original.WriteStage("""
             #usda 1.0
             (metersPerUnit = 1)

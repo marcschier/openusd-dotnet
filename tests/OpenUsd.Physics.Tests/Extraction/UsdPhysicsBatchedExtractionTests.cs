@@ -10,7 +10,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
     public async Task RegeneratedPrototypeOrdinalsDoNotChangeThePhysicsContentFingerprint()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(RegeneratedPrototypeOrdinalsDoNotChangeThePhysicsContentFingerprint));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            RegeneratedPrototypeOrdinalsDoNotChangeThePhysicsContentFingerprint));
         fixture.WriteStage("""
             #usda 1.0
             (metersPerUnit = 1)
@@ -38,11 +39,15 @@ public sealed class UsdPhysicsBatchedExtractionTests
     [Test]
     [Arguments("(0,0,0), (1,0,0), (0,0,1)")]
     [Arguments("(0,0,0), (1,1,0), (0,1,1)")]
-    [Arguments("(19.743440628051758,-1.0493708848953247,13.306976318359375), (19.62540626525879,-0.9385002851486206,13.532938957214355), (19.73555564880371,-0.885985255241394,13.524455070495605)")]
+    [Arguments(
+        "(19.743440628051758,-1.0493708848953247,13.306976318359375), " +
+            "(19.62540626525879,-0.9385002851486206,13.532938957214355), " +
+                "(19.73555564880371,-0.885985255241394,13.524455070495605)")]
     public async Task ThreePointConvexCollidersUseTheSdkCookerWithoutDroppingTheirIdentities(string points)
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(ThreePointConvexCollidersUseTheSdkCookerWithoutDroppingTheirIdentities));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            ThreePointConvexCollidersUseTheSdkCookerWithoutDroppingTheirIdentities));
         fixture.WriteStage($$"""
             #usda 1.0
             (metersPerUnit = 1)
@@ -75,7 +80,7 @@ public sealed class UsdPhysicsBatchedExtractionTests
     {
         CpuDomainFixture.RequireRuntime();
         using var fixture = CpuDomainFixture.Create(nameof(ThinDecomposedSurfaceRetainsItsFiniteCollisionFootprint));
-        fixture.WriteStage("""
+        fixture.WriteStage($$"""
             #usda 1.0
             (metersPerUnit = 1)
             def PhysicsScene "Scene" {
@@ -94,7 +99,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
                 double3 xformOp:translate = (1,2,1)
                 uniform token[] xformOpOrder = ["xformOp:translate"]
             }
-            def Sphere "Outside" (prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsMassAPI"]) {
+            {{"def Sphere \"Outside\" (prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"P" +
+                "hysicsCollisionAPI\", \"PhysicsMassAPI\"]) {"}}
                 double radius = 0.1
                 float physics:mass = 1
                 double3 xformOp:translate = (5,2,1)
@@ -116,7 +122,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
     public async Task RepeatedTriangleCollidersShareExactTopologyWithinTheOriginalIndexBound()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(RepeatedTriangleCollidersShareExactTopologyWithinTheOriginalIndexBound));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            RepeatedTriangleCollidersShareExactTopologyWithinTheOriginalIndexBound));
         fixture.WriteStage("""
             #usda 1.0
             (metersPerUnit = 1)
@@ -151,7 +158,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
     public async Task SharedPreparedGeometryPreservesPlacementSpecificCookingScale()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(SharedPreparedGeometryPreservesPlacementSpecificCookingScale));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            SharedPreparedGeometryPreservesPlacementSpecificCookingScale));
         fixture.WriteStage("""
             #usda 1.0
             (metersPerUnit = 1)
@@ -255,7 +263,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
     public async Task PreparationUsesMultipleBoundedBatchesInsteadOfPerColliderInterop()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(PreparationUsesMultipleBoundedBatchesInsteadOfPerColliderInterop));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            PreparationUsesMultipleBoundedBatchesInsteadOfPerColliderInterop));
         fixture.WriteStage("#usda 1.0\n(metersPerUnit = 1)\n" +
             string.Join("\n", Enumerable.Range(0, 520).Select(index => $$"""
                 def Mesh "Mesh{{index}}" (prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI"]) {
@@ -276,7 +285,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
         await Assert.That(page.HullCount).IsEqualTo(1);
         await Assert.That(page.PointCount).IsEqualTo(4);
         await Assert.That(page.IndexCount).IsEqualTo(0);
-        await Assert.That(Enumerable.Range(0, page.ObjectCount).Select(index => page.GetObject(index).Path).Distinct().Count())
+        await Assert.That(Enumerable.Range(0, page.ObjectCount).Select(index => page.GetObject(
+            index).Path).Distinct().Count())
             .IsEqualTo(520);
         using UsdPhysicsSimulation simulation = UsdPhysicsSimulation.Create(page);
         await Assert.That(simulation.Build.Succeeded).IsTrue();
@@ -294,11 +304,13 @@ public sealed class UsdPhysicsBatchedExtractionTests
     public async Task GeometryWindowsRetainWholeSourceIdentityWithoutRetainingOtherMeshes()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(GeometryWindowsRetainWholeSourceIdentityWithoutRetainingOtherMeshes));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            GeometryWindowsRetainWholeSourceIdentityWithoutRetainingOtherMeshes));
         fixture.WriteStage(Scene);
         UsdPhysicsExtractionPage full = fixture.Extract();
         int firstIndex = Enumerable.Range(0, full.ObjectCount).Single(index => full.GetObject(index).Path == "/First");
-        int secondIndex = Enumerable.Range(0, full.ObjectCount).Single(index => full.GetObject(index).Path == "/Second");
+        int secondIndex = Enumerable.Range(0, full.ObjectCount).Single(index => full.GetObject(
+            index).Path == "/Second");
         var options = new UsdPhysicsExtractionOptions
         {
             GeometryObjectStart = firstIndex,
@@ -363,7 +375,8 @@ public sealed class UsdPhysicsBatchedExtractionTests
     public async Task HiddenUnmappedCookingOpinionsRemainVisibleAsAnUnsupportedInput()
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(HiddenUnmappedCookingOpinionsRemainVisibleAsAnUnsupportedInput));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            HiddenUnmappedCookingOpinionsRemainVisibleAsAnUnsupportedInput));
         fixture.WriteStage(Scene.Replace(
             "uniform token physics:approximation = \"convexHull\"",
             "uniform token physics:approximation = \"convexDecomposition\"\n" +

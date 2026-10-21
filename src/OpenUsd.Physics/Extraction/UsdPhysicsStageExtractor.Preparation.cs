@@ -25,7 +25,8 @@ public static partial class UsdPhysicsStageExtractor
 
     /// <summary>Prepares a complete page while preserving the requested source sampling and output bounds.</summary>
     /// <param name="scheduler">The stage owner.</param>
-    /// <param name="options">Whole-stage extraction policy and final page bounds; geometry windows are not accepted.</param>
+    /// <param name="options">Whole-stage extraction policy and final page bounds; geometry windows are not
+    /// accepted.</param>
     /// <param name="progress">Receives completed object fractions between zero and one.</param>
     /// <param name="cancellationToken">Cancels preparation.</param>
     /// <returns>A complete prepared page; no partial page is published on failure or cancellation.</returns>
@@ -38,11 +39,18 @@ public static partial class UsdPhysicsStageExtractor
         _ = options.ToNative();
         if (!options.IncludeMeshData || options.GeometryObjectStart != 0 || options.GeometryObjectCount != 0)
         {
-            throw new ArgumentException("Complete preparation requires mesh data and cannot select a geometry window.", nameof(options));
+            throw new ArgumentException(
+                "Complete preparation requires mesh data and cannot select a geometry window.", nameof(options));
         }
-        ulong revision = await scheduler.InvokeAsync(static stage => stage.ChangeSerial, cancellationToken).ConfigureAwait(false);
-        UsdPhysicsExtractionOptions identityOptions = options with { IncludeMeshData = false, FingerprintMeshData = true };
-        UsdPhysicsExtractionPage metadata = await ExtractAsync(scheduler, identityOptions, cancellationToken).ConfigureAwait(false);
+        ulong revision = await scheduler.InvokeAsync(static stage => stage.ChangeSerial,
+            cancellationToken).ConfigureAwait(false);
+        UsdPhysicsExtractionOptions identityOptions = options with
+        {
+            IncludeMeshData = false,
+            FingerprintMeshData = true
+        };
+        UsdPhysicsExtractionPage metadata = await ExtractAsync(scheduler, identityOptions,
+            cancellationToken).ConfigureAwait(false);
         RequireUntruncated(metadata);
         var builder = new PreparedPageBuilder(metadata, options);
         var cache = new Dictionary<string, UsdPhysicsExtractionComposer.PreparedCollider>(StringComparer.Ordinal);
@@ -58,11 +66,14 @@ public static partial class UsdPhysicsStageExtractor
                 {
                     GeometryObjectStart = first,
                     GeometryObjectCount = count,
-                    MaxPoints = Math.Min(Effective(options.MaxPoints, PhysicsExtractAbi.MaxPoints), PhysxMeshPreparation.MaxPoints),
-                    MaxIndices = Math.Min(Effective(options.MaxIndices, PhysicsExtractAbi.MaxIndices), PhysxMeshPreparation.MaxIndices),
+                    MaxPoints = Math.Min(Effective(options.MaxPoints, PhysicsExtractAbi.MaxPoints),
+                        PhysxMeshPreparation.MaxPoints),
+                    MaxIndices = Math.Min(Effective(options.MaxIndices, PhysicsExtractAbi.MaxIndices),
+                        PhysxMeshPreparation.MaxIndices),
                 }, cancellationToken).ConfigureAwait(false);
                 RequireSameSource(metadata, batch);
-                ulong current = await scheduler.InvokeAsync(static stage => stage.ChangeSerial, cancellationToken).ConfigureAwait(false);
+                ulong current = await scheduler.InvokeAsync(static stage => stage.ChangeSerial,
+                    cancellationToken).ConfigureAwait(false);
                 if (current != revision)
                 {
                     throw new UsdPhysicsExtractionException("The stage changed during bounded physics preparation.");
@@ -74,7 +85,8 @@ public static partial class UsdPhysicsStageExtractor
                 if ((batch.TruncationFlags & ~((1u << 7) | (1u << 8))) != 0 || count == 1)
                 {
                     throw new UsdPhysicsExtractionException(
-                        $"Complete physics geometry cannot fit a bounded batch starting at '{metadata.GetObject(first).Path}'.");
+                        $"Complete physics geometry cannot fit a bounded batch starting at " +
+                            $"'{metadata.GetObject(first).Path}'.");
                 }
                 count = Math.Max(1, count / 2);
             }
@@ -84,7 +96,8 @@ public static partial class UsdPhysicsStageExtractor
             {
                 await Task.Run(() =>
                 {
-                    var prepared = UsdPhysicsExtractionComposer.PrepareMeshes(batch, cancellationToken, batchFirst, batchCount, cache);
+                    var prepared = UsdPhysicsExtractionComposer.PrepareMeshes(batch, cancellationToken,
+                        batchFirst, batchCount, cache);
                     builder.AddBatch(batch, batchFirst, batchCount, prepared);
                 }, cancellationToken).ConfigureAwait(false);
             }
@@ -95,12 +108,15 @@ public static partial class UsdPhysicsStageExtractor
             first += count;
             progress?.Report((double)first / metadata.ObjectCount);
         }
-        UsdPhysicsExtractionPage finalIdentity = await ExtractAsync(scheduler, identityOptions, cancellationToken).ConfigureAwait(false);
+        UsdPhysicsExtractionPage finalIdentity = await ExtractAsync(scheduler, identityOptions,
+            cancellationToken).ConfigureAwait(false);
         RequireUntruncated(finalIdentity);
         RequireSameSource(metadata, finalIdentity);
-        if (await scheduler.InvokeAsync(static stage => stage.ChangeSerial, cancellationToken).ConfigureAwait(false) != revision)
+        if (await scheduler.InvokeAsync(static stage => stage.ChangeSerial, cancellationToken).ConfigureAwait(
+            false) != revision)
         {
-            throw new UsdPhysicsExtractionException("The stage changed before prepared physics geometry could be published.");
+            throw new UsdPhysicsExtractionException(
+                "The stage changed before prepared physics geometry could be published.");
         }
         cancellationToken.ThrowIfCancellationRequested();
         return builder.Build();
@@ -137,8 +153,10 @@ public static partial class UsdPhysicsStageExtractor
         private readonly List<uint> _indices = [];
         private readonly List<(int First, int Count)> _hulls = [];
         private readonly Dictionary<UsdPhysicsExtractionComposer.PreparedCollider,
-            (int PointStart, int PointCount, int HullStart, int HullCount)> _shared = new(ReferenceEqualityComparer.Instance);
-        private readonly Dictionary<string, (int PointStart, int PointCount, int IndexStart, int IndexCount)> _rawShared =
+            (int PointStart, int PointCount, int HullStart, int HullCount)> _shared = new(
+                ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<string, (int PointStart, int PointCount, int IndexStart,
+            int IndexCount)> _rawShared =
             new(StringComparer.Ordinal);
         private int _nextObject;
 
@@ -160,7 +178,8 @@ public static partial class UsdPhysicsStageExtractor
         {
             if (first != _nextObject)
             {
-                throw new UsdPhysicsExtractionException("Geometry batches must cover each object exactly once in order.");
+                throw new UsdPhysicsExtractionException(
+                    "Geometry batches must cover each object exactly once in order.");
             }
             for (int index = first; index < first + count; index++)
             {
@@ -196,7 +215,8 @@ public static partial class UsdPhysicsStageExtractor
                     }
                     flags |= UsdPhysicsExtractionObjectTraits.PreparedPointsMetres;
                     Put(at + 48, (int)UsdPhysicsExtractionGeometryKind.ConvexMesh);
-                    _shared.Add(geometry, (pointStart, _points.Count - pointStart, hullStart, _hulls.Count - hullStart));
+                    _shared.Add(geometry, (pointStart, _points.Count - pointStart, hullStart,
+                        _hulls.Count - hullStart));
                 }
                 else
                 {
@@ -245,14 +265,17 @@ public static partial class UsdPhysicsStageExtractor
                     continue;
                 }
                 byte[] message = Encoding.UTF8.GetBytes(diagnostic.Message);
-                if (_strings.Count + message.Length + 1 > Effective(_options.MaxStringBytes, PhysicsExtractAbi.MaxStringBytes) ||
+                if (_strings.Count + message.Length + 1 > Effective(_options.MaxStringBytes,
+                    PhysicsExtractAbi.MaxStringBytes) ||
                     _diagnostics.Count / PhysicsExtractAbi.DiagnosticRecordBytes >=
                         Effective(_options.MaxDiagnostics, PhysicsExtractAbi.MaxDiagnostics))
                 {
-                    throw new UsdPhysicsExtractionException("Prepared physics diagnostics exceed the complete-page bounds.");
+                    throw new UsdPhysicsExtractionException(
+                        "Prepared physics diagnostics exceed the complete-page bounds.");
                 }
                 byte[] record = page.SectionBytes(PhysicsExtractAbi.SectionDiagnostics)
-                    .Slice(index * PhysicsExtractAbi.DiagnosticRecordBytes, PhysicsExtractAbi.DiagnosticRecordBytes).ToArray();
+                    .Slice(index * PhysicsExtractAbi.DiagnosticRecordBytes,
+                        PhysicsExtractAbi.DiagnosticRecordBytes).ToArray();
                 BinaryPrimitives.WriteUInt32LittleEndian(record.AsSpan(16), (uint)_strings.Count);
                 _strings.AddRange(message);
                 _strings.Add(0);
@@ -276,12 +299,14 @@ public static partial class UsdPhysicsStageExtractor
                 (long)_indices.Count + indices > Effective(_options.MaxIndices, PhysicsExtractAbi.MaxIndices) ||
                 (long)_hulls.Count + hulls > PhysicsExtractAbi.Capacity(PhysicsExtractAbi.SectionHulls) ||
                 (long)_metadata.ByteSize + ((long)_points.Count + points) * 12 +
-                    ((long)_indices.Count + indices) * 4 + ((long)_hulls.Count + hulls) * 8 > (long)PhysicsExtractAbi.PageMaxBytes)
+                    ((long)_indices.Count + indices) * 4 + ((long)_hulls.Count + hulls) * 8 >
+                        (long)PhysicsExtractAbi.PageMaxBytes)
             {
                 throw new UsdPhysicsExtractionException(string.Create(System.Globalization.CultureInfo.InvariantCulture,
                     $"Complete prepared physics geometry exceeds the page bounds at '{path}': " +
                     $"points {_points.Count}+{points}/{Effective(_options.MaxPoints, PhysicsExtractAbi.MaxPoints)}, " +
-                    $"indices {_indices.Count}+{indices}/{Effective(_options.MaxIndices, PhysicsExtractAbi.MaxIndices)}, " +
+                    $"indices {_indices.Count}+{indices}/{Effective(
+                        _options.MaxIndices, PhysicsExtractAbi.MaxIndices)}, " +
                     $"hulls {_hulls.Count}+{hulls}/{PhysicsExtractAbi.Capacity(PhysicsExtractAbi.SectionHulls)}."));
             }
         }
@@ -306,7 +331,8 @@ public static partial class UsdPhysicsStageExtractor
                     PhysicsExtractAbi.SectionPoints => _points.Count,
                     PhysicsExtractAbi.SectionIndices => _indices.Count,
                     PhysicsExtractAbi.SectionHulls => _hulls.Count,
-                    PhysicsExtractAbi.SectionDiagnostics => _diagnostics.Count / PhysicsExtractAbi.DiagnosticRecordBytes,
+                    PhysicsExtractAbi.SectionDiagnostics =>
+                        _diagnostics.Count / PhysicsExtractAbi.DiagnosticRecordBytes,
                     _ => _metadata.SectionCount(section),
                 };
                 if (counts[section] == 0)
@@ -334,7 +360,8 @@ public static partial class UsdPhysicsStageExtractor
                 {
                     continue;
                 }
-                Span<byte> destination = bytes.AsSpan(offsets[section], counts[section] * PhysicsExtractAbi.RecordBytes(section));
+                Span<byte> destination = bytes.AsSpan(offsets[section],
+                    counts[section] * PhysicsExtractAbi.RecordBytes(section));
                 switch (section)
                 {
                     case PhysicsExtractAbi.SectionStrings:
@@ -364,8 +391,10 @@ public static partial class UsdPhysicsStageExtractor
                     case PhysicsExtractAbi.SectionHulls:
                         for (int index = 0; index < _hulls.Count; index++)
                         {
-                            BinaryPrimitives.WriteUInt32LittleEndian(destination[(index * 8)..], (uint)_hulls[index].First);
-                            BinaryPrimitives.WriteUInt32LittleEndian(destination[(index * 8 + 4)..], (uint)_hulls[index].Count);
+                            BinaryPrimitives.WriteUInt32LittleEndian(destination[(index * 8)..], (
+                                uint)_hulls[index].First);
+                            BinaryPrimitives.WriteUInt32LittleEndian(destination[(index * 8 + 4)..], (
+                                uint)_hulls[index].Count);
                         }
                         break;
                     default:

@@ -400,7 +400,8 @@ internal sealed partial class ViewerPhysicsTransportAdapter : IViewerPhysicsTran
                 SkipInvisible = false,
             };
             return prepare
-                ? await UsdPhysicsStageExtractor.PrepareAsync(_scheduler, options, null, cancellationToken).ConfigureAwait(false)
+                ? await UsdPhysicsStageExtractor.PrepareAsync(_scheduler, options, null,
+                    cancellationToken).ConfigureAwait(false)
                 : await UsdPhysicsStageExtractor.ExtractAsync(_scheduler, options with
                 {
                     IncludeMeshData = false,

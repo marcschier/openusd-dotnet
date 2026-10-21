@@ -1318,7 +1318,8 @@ public sealed partial class RuntimePackageTests
             CommandResult result = await RunDotnetAsync(repositoryRoot,
             [
                 "pack",
-                Path.Combine(repositoryRoot, "src", "OpenUsd.Runtime.Physics.win-x64", "OpenUsd.Runtime.Physics.win-x64.csproj"),
+                Path.Combine(repositoryRoot, "src", "OpenUsd.Runtime.Physics.win-x64",
+                    "OpenUsd.Runtime.Physics.win-x64.csproj"),
                 "-c", "Release", "--nologo",
                 $"-p:OpenUsdInstallRoot={installRoot}",
                 $"-p:OpenUsdShimInstallRoot={shimRoot}",
@@ -5883,7 +5884,7 @@ public sealed partial class RuntimePackageTests
             """);
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "Program.cs"),
-            """
+            $$"""
             using System;
             using System.IO;
             using System.Threading.Tasks;
@@ -5946,7 +5947,8 @@ public sealed partial class RuntimePackageTests
                             lease.Frame.BodyCount != bodies || bodies == 0 ||
                             lease.Frame.Bodies[0].Position.Y != firstY || transport.Status.StepIndex != 0)
                         {
-                            throw new InvalidOperationException("The exact physics frame changed after stepping/reset.");
+                            {{"throw new InvalidOperationException(\"The exact physics fr" +
+                                "ame changed after stepping/reset.\");"}}
                         }
                     }
                     Console.WriteLine("PACKAGE_PHYSICS_EXACT_FRAME=true");
@@ -5971,7 +5973,8 @@ public sealed partial class RuntimePackageTests
                                 !bindings.TryResolve(identity, out PhysicsRenderBinding binding) ||
                                 !binding.IncludesDescendants || binding.ReferencePosition != body.Position)
                             {
-                                throw new InvalidOperationException("The recording binding table lost its subtree reference pose.");
+                                {{"throw new InvalidOperationException(\"The recording bi" +
+                                    "nding table lost its subtree reference pose.\");"}}
                             }
                         }
                     }
@@ -5993,7 +5996,8 @@ public sealed partial class RuntimePackageTests
                         recording.Frames[1].Simulation?.StepIndex != 2 || recordingSource.Clears != 1 ||
                         !File.Exists(Path.Combine(recordingDirectory, "manifest.json")))
                     {
-                        throw new InvalidOperationException("The packaged recording did not preserve exact publication.");
+                        {{"throw new InvalidOperationException(\"The packaged recording d" +
+                            "id not preserve exact publication.\");"}}
                     }
                     Console.WriteLine("PACKAGE_PHYSICS_RECORDING=true");
 
@@ -6094,7 +6098,7 @@ public sealed partial class RuntimePackageTests
     private static async Task WritePhysicsConsumerStageAsync(string publishRoot) =>
         await File.WriteAllTextAsync(
             Path.Combine(publishRoot, "physics-package.usda"),
-            """
+            $$"""
             #usda 1.0
             (
                 metersPerUnit = 1
@@ -6176,7 +6180,8 @@ public sealed partial class RuntimePackageTests
                     int[] faceVertexCounts = [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]
                     int[] faceVertexIndices = [
                         0,2,1,1,2,3,4,5,6,5,7,6,0,1,4,1,5,4,2,6,3,3,6,7,0,4,2,2,4,6,1,3,5,3,7,5,
-                        8,10,9,9,10,11,12,13,14,13,15,14,8,9,12,9,13,12,10,14,11,11,14,15,8,12,10,10,12,14,9,11,13,11,15,13]
+                        {{"8,10,9,9,10,11,12,13,14,13,15,14,8,9,12,9,13,12,10,14,11,11,14" +
+                            ",15,8,12,10,10,12,14,9,11,13,11,15,13]"}}
                 }
             }
             """);
@@ -7428,7 +7433,7 @@ public sealed partial class RuntimePackageTests
     private static string CreateImagingConsumerProgram(
         ExecutionPlatform platform,
         int stormChildAbiVersion) =>
-        """
+        $$"""
         using System;
         using System.IO;
         using System.Runtime.InteropServices;
@@ -7586,7 +7591,8 @@ public sealed partial class RuntimePackageTests
                         storedScene.Apply(storedQuiet);
                         if (storedQuiet.CommandCount != 1 || storedScene.Meshes.Count == 0)
                         {
-                            throw new InvalidOperationException("The package lost stored geometry or leaked live-file credit.");
+                            {{"throw new InvalidOperationException(\"The package lost sto" +
+                                "red geometry or leaked live-file credit.\");"}}
                         }
                         Console.WriteLine("COMMAND_STORAGE_ADMISSION=true");
                     }
@@ -7613,7 +7619,8 @@ public sealed partial class RuntimePackageTests
                         "int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0,1,2]\n" +
                         "rel material:binding = </M>\n}\n");
                     using (OpenUsdSilkSession fallbackSession = OpenUsdSilkRuntime.Create(pluginPath, fallbackScene,
-                        new SilkPreparationLimits(1_000_000, 65536, new SilkCommandStorageLimits(65536, 65536, 65536, 31))))
+                        {{"new SilkPreparationLimits(1_000_000, 65536, new SilkCommandSto" +
+                            "rageLimits(65536, 65536, 65536, 31))))"}}
                     using (OpenUsdSilkPage fallbackPage = fallbackSession.Sync(16, 16))
                     {
                         var fallbackState = new SilkSceneState();
@@ -7641,7 +7648,8 @@ public sealed partial class RuntimePackageTests
                     {
                         specularHash = unchecked((specularHash ^ part) * 1099511628211ul);
                     }
-                    System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(specularCommand.AsSpan(8), specularHash);
+                    {{"System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(spe" +
+                        "cularCommand.AsSpan(8), specularHash);"}}
                     System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(16), 2);
                     System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(20),
                         (uint)SilkSurfaceKind.MdlDistilled);
@@ -7734,7 +7742,8 @@ public sealed partial class RuntimePackageTests
                             SilkShaderFeatures.Uv | SilkShaderFeatures.DetailNormalMap);
                         var detailShaderFormat = OperatingSystem.IsWindows()
                             ? SilkShaderBinaryFormat.Dxil
-                            : OperatingSystem.IsMacOS() ? SilkShaderBinaryFormat.MetalLibrary : SilkShaderBinaryFormat.SpirV;
+                            {{": OperatingSystem.IsMacOS() ? SilkShaderBinaryFormat.Metal" +
+                                "Library : SilkShaderBinaryFormat.SpirV;"}}
                         SilkMaterialShaderKey detailShaderKey = SilkMaterialShaderKey.Create(
                             "packaged-detail-normal"u8, detailShaderFormat, "packaged-bindings-v1");
                         var detailShaderGenerator = new SilkProjectedMaterialShaderGenerator();
@@ -7751,7 +7760,8 @@ public sealed partial class RuntimePackageTests
                                 if (slot.Set != 0 || slot.Kind != SilkBindingKind.SampledTexture ||
                                     slot.Visibility != SilkShaderStageVisibility.Fragment)
                                 {
-                                    throw new InvalidOperationException("The packaged normal value-table slot changed.");
+                                    {{"throw new InvalidOperationException(\"The packaged" +
+                                        " normal value-table slot changed.\");"}}
                                 }
                                 normalValueTables++;
                             }
@@ -7769,8 +7779,10 @@ public sealed partial class RuntimePackageTests
                         if (texture is null || texture.Asset != "detail.png" || texture.ComponentCount != 3 ||
                             normalValueTables != 2 || !diffuseValueTable || !emissiveValueTable ||
                             material.GetCompositeTexture() is not null ||
-                            !material.GetScalar(SilkMaterialParameter.DetailUvRow0).SequenceEqual(new float[] { 2, 0, 0.25f }) ||
-                            !material.GetScalar(SilkMaterialParameter.DetailUvRow1).SequenceEqual(new float[] { 0, 3, -0.5f }) ||
+                            {{"!material.GetScalar(SilkMaterialParameter.DetailUvRow0).Se" +
+                                "quenceEqual(new float[] { 2, 0, 0.25f }) ||"}}
+                            {{"!material.GetScalar(SilkMaterialParameter.DetailUvRow1).Se" +
+                                "quenceEqual(new float[] { 0, 3, -0.5f }) ||"}}
                             permutation.MeshFragmentArtifactName != "mesh.fragment.uv+material+normal" ||
                             commands.MoveNext())
                         {
@@ -8068,7 +8080,8 @@ public sealed partial class RuntimePackageTests
                         }
                         byte[] scalarReadback = new byte[16];
                         scalar.ReadbackForTesting(scalarReadback);
-                        if (scalar.MipLevelCount != 3 || !scalarReadback.AsSpan().SequenceEqual(scalarPixels.AsSpan(0, 16)))
+                        {{"if (scalar.MipLevelCount != 3 || !scalarReadback.AsSpan().Sequ" +
+                            "enceEqual(scalarPixels.AsSpan(0, 16)))"}}
                         {
                             throw new InvalidOperationException("The packaged R8 mip texture changed scalar bytes.");
                         }
@@ -8111,7 +8124,8 @@ public sealed partial class RuntimePackageTests
                     if (sourceIdentities.Count != 1 || sourceIdentities[0].PrimPath != "/World/Cube" ||
                         sourceIdentities[0].InstancerContext.Count != 0)
                     {
-                        throw new InvalidOperationException("The packaged source identity batch changed the authored prim.");
+                        {{"throw new InvalidOperationException(\"The packaged source iden" +
+                            "tity batch changed the authored prim.\");"}}
                     }
                     Console.WriteLine("SOURCE_IDENTITY_BATCH=true");
 
@@ -8146,7 +8160,8 @@ public sealed partial class RuntimePackageTests
                         if (!ReferenceEquals(depthCapturer.PhysicsOverrides, stagedPhysics) ||
                             depthCapturer.PhysicsDeformations is not null || stagedPhysics.SourceRevision != 17)
                         {
-                            throw new InvalidOperationException("The packaged capturer did not resolve the staged physics publication.");
+                            {{"throw new InvalidOperationException(\"The packaged capture" +
+                                "r did not resolve the staged physics publication.\");"}}
                         }
                         stagedPhysics.Clear();
                         depthCapturer.PhysicsOverrides = null;
@@ -9660,7 +9675,8 @@ public sealed partial class RuntimePackageTests
             "install",
             "shim",
             platform.Rid + "-cesium");
-        string physicsShimRoot = Environment.GetEnvironmentVariable("OPENUSD_PACKAGE_EXECUTION_PHYSICS_SHIM_ROOT") ?? Path.Combine(
+        string physicsShimRoot = Environment.GetEnvironmentVariable(
+            "OPENUSD_PACKAGE_EXECUTION_PHYSICS_SHIM_ROOT") ?? Path.Combine(
             repositoryRoot,
             "native",
             "install",

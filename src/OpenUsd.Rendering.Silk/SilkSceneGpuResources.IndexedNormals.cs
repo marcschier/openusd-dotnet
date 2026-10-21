@@ -93,7 +93,8 @@ public sealed partial class SilkSceneGpuResources
             int valueBandBytes = checked((int)(Math.Min(valueHeight, bandLimit / valueRowBytes) * valueRowBytes));
             uint markerBandRows = checked((uint)Math.Min(image.Height, bandLimit / markerRowBytes));
             int markerBandBytes = checked((int)(markerBandRows * markerRowBytes));
-            using IDisposable? reservation = _cpuTextureBudget?.Reserve(checked((ulong)valueBandBytes + (ulong)markerBandBytes));
+            using IDisposable? reservation = _cpuTextureBudget?.Reserve(checked((ulong)valueBandBytes + (
+                ulong)markerBandBytes));
             byte[] valueBand = new byte[valueBandBytes];
             byte[] markerBand = new byte[markerBandBytes];
             int pending = 0;

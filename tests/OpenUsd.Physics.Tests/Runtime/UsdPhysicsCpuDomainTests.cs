@@ -31,11 +31,13 @@ public sealed class UsdPhysicsCpuDomainTests
     public async Task DomainCapacityRefusalsPreserveAnExistingArticulationOrVehicle(bool vehicle)
     {
         CpuDomainFixture.RequireRuntime();
-        using var fixture = CpuDomainFixture.Create(nameof(DomainCapacityRefusalsPreserveAnExistingArticulationOrVehicle));
+        using var fixture = CpuDomainFixture.Create(nameof(
+            DomainCapacityRefusalsPreserveAnExistingArticulationOrVehicle));
         fixture.WriteStage(vehicle ? VehicleStage : ArticulationStage);
         using UsdPhysicsSimulation simulation = fixture.BuildSimulation();
         await Assert.That(simulation.Build.Succeeded).IsTrue();
-        await Assert.That(vehicle ? simulation.Composition!.Vehicles : simulation.Composition!.Articulations).IsEqualTo(1);
+        await Assert.That(
+            vehicle ? simulation.Composition!.Vehicles : simulation.Composition!.Articulations).IsEqualTo(1);
         UsdPhysicsFixedStep step = UsdPhysicsFixedStep.Resolve(UsdPhysicsTimeline.Default, 60);
         var refusedOptions = new UsdPhysicsSessionOptions(
             maxArticulations: vehicle ? 256 : 0, maxVehicles: vehicle ? 0 : 64);

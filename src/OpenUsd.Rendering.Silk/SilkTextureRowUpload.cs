@@ -21,7 +21,8 @@ internal readonly record struct SilkTextureRowUpload(uint MipLevel, uint FirstRo
         if (texture.Format is not (SilkTextureFormat.Rgba8Unorm or SilkTextureFormat.Rgba32Float or
             SilkTextureFormat.R32Float or SilkTextureFormat.Rg32Float or SilkTextureFormat.R8Unorm))
         {
-            throw new InvalidOperationException("Material mip readback requires an RGBA8, RGBA32F, RG32F, R8 or R32F texture.");
+            throw new InvalidOperationException(
+                "Material mip readback requires an RGBA8, RGBA32F, RG32F, R8 or R32F texture.");
         }
         (uint width, uint height) = SilkMipChainLayout.GetLevelExtent(texture.Width, texture.Height, mipLevel);
         if (!texture.Usage.HasFlag(SilkTextureUsage.CopySource) ||
@@ -39,7 +40,8 @@ internal readonly record struct SilkTextureRowUpload(uint MipLevel, uint FirstRo
             SilkTextureFormat.R32Float or SilkTextureFormat.Rg32Float or SilkTextureFormat.R8Unorm) ||
             !texture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
         {
-            throw new InvalidOperationException("Row uploads require a writable RGBA8, RGBA32F, RG32F, R8 or R32F material texture.");
+            throw new InvalidOperationException(
+                "Row uploads require a writable RGBA8, RGBA32F, RG32F, R8 or R32F material texture.");
         }
         (uint width, uint height) = SilkMipChainLayout.GetLevelExtent(texture.Width, texture.Height, MipLevel);
         if (FirstRow >= height || RowCount > height - FirstRow)

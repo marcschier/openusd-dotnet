@@ -144,7 +144,8 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
         SilkGpuBufferBudget? gpuBufferBudget,
         SilkTexturePreparationBudgets? texturePreparationBudgets,
         bool required)
-        : this(renderCallback, gpuBufferBudget, texturePreparationBudgets, SilkTextureResidencyOptions.Default, required)
+        : this(renderCallback, gpuBufferBudget, texturePreparationBudgets,
+            SilkTextureResidencyOptions.Default, required)
     {
     }
 

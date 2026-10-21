@@ -20,9 +20,14 @@ if (args.Length == 3 && args[0] == "--step-page")
     return PreparedWorldProbe.Run(args[1], args[2]);
 }
 
-if (args.Length is not (2 or 3) || (args.Length == 3 && args[2] is not ("--mesh-data" or "--prepare-physics" or "--build-physics" or "--fingerprint-physics")))
+if (args.Length is not (2 or 3)
+    || (args.Length == 3
+        && args[2] is not ("--mesh-data" or "--prepare-physics" or "--build-physics" or "--fingerprint-physics")))
 {
-    throw new ArgumentException("Usage: probe <plugin-directory> <root-usd> [--mesh-data|--prepare-physics|--build-physics|--fingerprint-physics], --build-page <page>, or --step-page <page> <dynamic-prim>.");
+    throw new ArgumentException(
+        "Usage: probe <plugin-directory> <root-usd> " +
+            "[--mesh-data|--prepare-physics|--build-physics|--fingerprint-physics], --build-page <page>, or " +
+                "--step-page <page> <dynamic-prim>.");
 }
 OpenUsdNativeRuntime.RegisterPlugins(args[0]);
 bool fingerprintOnly = args.Length == 3 && args[2] == "--fingerprint-physics";
@@ -88,7 +93,8 @@ try
         for (int index = 0; index < metadata.PropertyCount; index++)
         {
             UsdPhysicsExtractionProperty property = metadata.GetProperty(index);
-            if (property.Key == UsdPhysicsExtractionKey.CollisionApproximation && property.IsText && property.ValueCount == 1)
+            if (property.Key == UsdPhysicsExtractionKey.CollisionApproximation
+                && property.IsText && property.ValueCount == 1)
             {
                 add(report.SourceApproximations, metadata.GetText(property.ValueStart));
             }
@@ -158,9 +164,11 @@ try
         }
     }
     report.PhysicsDiagnosticTotal = page.DiagnosticCount;
-    if (prepare && Environment.GetEnvironmentVariable("OPENUSD_PHYSICS_PREPARED_PAGE_OUTPUT") is { Length: > 0 } destination)
+    if (prepare
+        && Environment.GetEnvironmentVariable("OPENUSD_PHYSICS_PREPARED_PAGE_OUTPUT") is { Length: > 0 } destination)
     {
-        if (!Path.IsPathFullyQualified(destination) || File.Exists(destination) || File.Exists(destination + ".writing"))
+        if (!Path.IsPathFullyQualified(destination)
+            || File.Exists(destination) || File.Exists(destination + ".writing"))
         {
             throw new InvalidOperationException("Use a new absolute path for the prepared physics page.");
         }

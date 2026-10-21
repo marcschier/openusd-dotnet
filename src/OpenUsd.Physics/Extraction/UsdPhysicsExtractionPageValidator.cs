@@ -310,7 +310,8 @@ internal static class UsdPhysicsExtractionPageValidator
             long endPoint = nextPoint + ReadU32(bytes, at + 80);
             for (long hull = start; hull < start + (long)count; hull++)
             {
-                int position = (int)(offsets[PhysicsExtractAbi.SectionHulls] + hull * PhysicsExtractAbi.HullRecordBytes);
+                int position = (int)(offsets[PhysicsExtractAbi.SectionHulls] +
+                    hull * PhysicsExtractAbi.HullRecordBytes);
                 if (ReadU32(bytes, position) != nextPoint)
                 {
                     throw Invalid("Prepared hull ranges must cover their collider points contiguously.");

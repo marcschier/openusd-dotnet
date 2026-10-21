@@ -250,10 +250,12 @@ internal sealed partial class OpenUsdMcpService
         {
             throw new ArgumentOutOfRangeException(nameof(width), "Sequence dimensions or frame count are invalid.");
         }
-        long charge = (long)width * height * (depth || hdr ? RenderDiskJobRequest.ExpandedCaptureManagedBytesPerPixel : 4);
+        long charge = (long)width * height * (depth
+            || hdr ? RenderDiskJobRequest.ExpandedCaptureManagedBytesPerPixel : 4);
         if (charge > RenderDiskJobLimits.Default.MaximumFrameBytes)
         {
-            throw new ArgumentOutOfRangeException(nameof(width), "The requested raster exceeds the managed frame budget.");
+            throw new ArgumentOutOfRangeException(nameof(width),
+                "The requested raster exceeds the managed frame budget.");
         }
     }
 

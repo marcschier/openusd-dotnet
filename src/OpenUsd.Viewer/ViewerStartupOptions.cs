@@ -294,7 +294,8 @@ internal static class ViewerStartupOptions
         }
         if (TextureResidencyOptions.StreamMaterialTextures && GpuBufferBudget is null)
         {
-            throw new ArgumentException("Material streaming requires OPENUSD_SILK_GPU_BUFFER_BYTES or an embedding GPU buffer budget.");
+            throw new ArgumentException(
+                "Material streaming requires OPENUSD_SILK_GPU_BUFFER_BYTES or an embedding GPU buffer budget.");
         }
         PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
         StagePath = Environment.GetEnvironmentVariable("OPENUSD_STAGE_PATH");

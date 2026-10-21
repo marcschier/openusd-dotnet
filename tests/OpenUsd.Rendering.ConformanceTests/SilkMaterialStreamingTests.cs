@@ -28,7 +28,8 @@ public sealed class SilkMaterialStreamingTests
         await Assert.That(actual.DepthValues().SequenceEqual(expected.DepthValues())).IsTrue();
         await Assert.That(actual.Device.CreatedTextures.Count(texture =>
             texture is { Width: 64, Height: 64, Format: SilkTextureFormat.Rgba32Float })).IsEqualTo(1);
-        await Assert.That(actual.Device.CreatedTextures.Any(texture => texture.Format == SilkTextureFormat.R32Float)).IsFalse();
+        await Assert.That(actual.Device.CreatedTextures.Any(texture =>
+            texture.Format == SilkTextureFormat.R32Float)).IsFalse();
         actual.ReleaseResources();
         await actual.AssertReleased();
     }
@@ -107,7 +108,8 @@ public sealed class SilkMaterialStreamingTests
             _ = expected.Render(maps);
             await Assert.That(actual.ColorBytes().SequenceEqual(expected.ColorBytes())).IsTrue();
             await Assert.That(actual.DepthValues().SequenceEqual(expected.DepthValues())).IsTrue();
-            await Assert.That(actual.Device.CreatedTextures.Count(texture => texture.Format == SilkTextureFormat.Rg32Float))
+            await Assert.That(actual.Device.CreatedTextures.Count(texture =>
+                texture.Format == SilkTextureFormat.Rg32Float))
                 .IsEqualTo(kind == "indexed" ? 0 : 1);
             await Assert.That(actual.Device.CreatedTextures.Count(texture =>
                 texture is { Width: 768, Height: 7, Format: SilkTextureFormat.R32Float }))
@@ -148,7 +150,8 @@ public sealed class SilkMaterialStreamingTests
         float[] beforeDepth = actual.DepthValues();
         ulong retained = actual.Textures.Usage.ReservedBytes;
         using var maps = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
-            Material('A', false, extended: true, vectorNormals: true, promotedNormals: true, emissiveOnly: emissive), 1);
+            Material('A', false, extended: true, vectorNormals: true, promotedNormals: true,
+                emissiveOnly: emissive), 1);
         int[] points = failure == "cancel" ? [0, 7, 8, 15, 16, 23] : [0, 7, 8, 15, 16, 23, 24];
         foreach (int after in points)
         {
@@ -212,7 +215,8 @@ public sealed class SilkMaterialStreamingTests
             await Assert.That(actual.Renderer.GpuResources.Statistics.PeakTextureResidentGpuBytes).IsEqualTo(130044ul);
             await Assert.That(actual.Device.CreatedTextures.Count(texture =>
                 texture is { Width: 768, Height: 7, Format: SilkTextureFormat.R32Float })).IsEqualTo(3);
-            await Assert.That(actual.Device.CreatedTextures.Any(texture => texture.Format == SilkTextureFormat.Rg32Float)).IsFalse();
+            await Assert.That(actual.Device.CreatedTextures.Any(texture =>
+                texture.Format == SilkTextureFormat.Rg32Float)).IsFalse();
         }
         await Assert.That(actual.Textures.Usage.ReservedBytes).IsEqualTo(retained);
         _ = actual.Renderer.Render(actual.Color, actual.Depth);
@@ -247,7 +251,8 @@ public sealed class SilkMaterialStreamingTests
             Skip.Test("Set OPENUSD_INDEXED_NORMAL_FIXTURE to read-only 64x64 RGBA8 B.rgba/C.rgba source crops.");
             return;
         }
-        byte[][] normals = [File.ReadAllBytes(Path.Combine(root, "B.rgba")), File.ReadAllBytes(Path.Combine(root, "C.rgba"))];
+        byte[][] normals = [File.ReadAllBytes(Path.Combine(root, "B.rgba")), File.ReadAllBytes(Path.Combine(
+            root, "C.rgba"))];
         await Assert.That(normals.All(static pixels => pixels.Length == 64 * 64 * 4)).IsTrue();
         await VerifyPromotedNormals(backend, uvScale, normals);
     }
@@ -255,8 +260,10 @@ public sealed class SilkMaterialStreamingTests
     private static async Task VerifyPromotedNormals(
         SilkGraphicsBackend backend, float uvScale, byte[][]? normalTexels = null)
     {
-        using var actual = new Fixture(backend, streaming: true, imageSize: 64, mixedColors: true, normalTexels: normalTexels);
-        using var expected = new Fixture(backend, streaming: false, imageSize: 64, mixedColors: true, normalTexels: normalTexels);
+        using var actual = new Fixture(backend, streaming: true, imageSize: 64, mixedColors: true,
+            normalTexels: normalTexels);
+        using var expected = new Fixture(backend, streaming: false, imageSize: 64, mixedColors: true,
+            normalTexels: normalTexels);
         using OpenUsdSilkPage first = Page(2, 1, uvScale: uvScale, uvScaleY: uvScale);
         _ = actual.Render(first);
         _ = expected.Render(first);
@@ -424,7 +431,8 @@ public sealed class SilkMaterialStreamingTests
         using var actual = new Fixture(backend, true, imageSize: 64, mixedColors: true, floatNormals: floatNormals);
         using var expected = new Fixture(backend, false, imageSize: 64, mixedColors: true, floatNormals: floatNormals);
         ulong revision = 1;
-        foreach (SilkTextureWrap wrap in new[] { SilkTextureWrap.Repeat, SilkTextureWrap.Mirror, SilkTextureWrap.Clamp })
+        foreach (SilkTextureWrap wrap in new[] { SilkTextureWrap.Repeat, SilkTextureWrap.Mirror,
+            SilkTextureWrap.Clamp })
         {
             // Both sides of the detail-normal and base-normal first mip ties,
             // magnification, every lower mip and clamping beyond the last mip.
@@ -1278,7 +1286,8 @@ public sealed class SilkMaterialStreamingTests
             SilkGpuTextureBudgetExceededException? refusal =
                 await Assert.That(() => fixture.Render(maps)).Throws<SilkGpuTextureBudgetExceededException>();
             await Assert.That(refusal!.RequestedBytes).IsEqualTo(floatingPoint ? 84ul : 21ul);
-            await Assert.That(refusal.ReservedBytes + refusal.RequestedBytes).IsEqualTo(fixture.Textures.MaximumBytes + 1);
+            await Assert.That(refusal.ReservedBytes + refusal.RequestedBytes).IsEqualTo(
+                fixture.Textures.MaximumBytes + 1);
             await Assert.That(fixture.ColorBytes().SequenceEqual(before)).IsTrue();
             await Assert.That(fixture.DepthValues().SequenceEqual(depthBefore)).IsTrue();
             await Assert.That(fixture.Renderer.Scene.Revision).IsEqualTo(2ul);
@@ -1296,7 +1305,8 @@ public sealed class SilkMaterialStreamingTests
     [Arguments(SilkGraphicsBackend.Vulkan, false)]
     [Arguments(SilkGraphicsBackend.D3D12, true)]
     [Arguments(SilkGraphicsBackend.Vulkan, true)]
-    public async Task EveryScalarSlotAndCompositePreservesRetainedPixels(SilkGraphicsBackend backend, bool floatingPoint)
+    public async Task EveryScalarSlotAndCompositePreservesRetainedPixels(SilkGraphicsBackend backend,
+        bool floatingPoint)
     {
         using var actual = new Fixture(backend, streaming: true);
         using var expected = new Fixture(backend, streaming: false);
@@ -1849,7 +1859,8 @@ public sealed class SilkMaterialStreamingTests
             SilkGraphicsBackend backend, bool streaming, bool volumeSupport = false,
             int imageSize = 4, ulong stagingBytes = 4_194_304,
             IReadOnlyList<SilkUdimTile>? udimTiles = null, bool constantTiles = false,
-            ulong residencyBytes = 512, bool mixedColors = false, bool floatNormals = false, byte[][]? normalTexels = null,
+            ulong residencyBytes = 512, bool mixedColors = false, bool floatNormals = false,
+                byte[][]? normalTexels = null,
             int? imageHeight = null, bool floatDiffuse = false)
         {
             _imageSize = imageSize;
@@ -1898,7 +1909,8 @@ public sealed class SilkMaterialStreamingTests
                 ((ISilkVolumeTextureGraphicsDevice)Inner).CreateTexture3D(width, height, depth, format);
         }
 
-        private sealed class TestLattice : ISilkDisplayTransformLatticeProvider, ISilkDisplayTransformConfigIdentityProvider
+        private sealed class TestLattice : ISilkDisplayTransformLatticeProvider,
+            ISilkDisplayTransformConfigIdentityProvider
         {
             public SilkDisplayTransformConfigIdentity GetIdentity(string configPath) => new("streaming-control", true);
             public SilkDisplayTransformLattice Create(RenderDisplayTransform transform)

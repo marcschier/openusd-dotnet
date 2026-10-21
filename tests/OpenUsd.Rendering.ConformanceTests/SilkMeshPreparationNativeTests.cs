@@ -63,12 +63,15 @@ public sealed class SilkMeshPreparationNativeTests
         var limits = new SilkPreparationLimits(1_000_000, 65536, new(131072, 65536, 65536, 31));
         foreach (Fixture fixture in new[] { actualFixture, expectedFixture })
         {
-            using FileStream file = File.Create(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(fixture.Path)!, "colors.png"));
+            using FileStream file = File.Create(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(
+                fixture.Path)!, "colors.png"));
             _ = PngRgba8Writer.Write(file, 2, 1, [255, 0, 0, 255, 0, 0, 255, 255], 1024);
         }
         string source = await File.ReadAllTextAsync(actualFixture.Path);
-        using OpenUsdSilkSession actualSession = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualFixture.Path, limits);
-        using OpenUsdSilkSession expectedSession = OpenUsdSilkRuntime.Create(expectedFixture.Plugins, expectedFixture.Path, limits);
+        using OpenUsdSilkSession actualSession = OpenUsdSilkRuntime.Create(actualFixture.Plugins,
+            actualFixture.Path, limits);
+        using OpenUsdSilkSession expectedSession = OpenUsdSilkRuntime.Create(expectedFixture.Plugins,
+            expectedFixture.Path, limits);
         using var actual = new SilkMeshRenderer(device, policy);
         using var expected = new SilkMeshRenderer(device, policy);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
@@ -150,11 +153,13 @@ public sealed class SilkMeshPreparationNativeTests
             new((ulong)bytes, (ulong)bytes, bytes, 31));
         using OpenUsdSilkSession stored = OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.Path, limits);
         using OpenUsdSilkSession reference = fixture.Open();
-        using ISilkGraphicsDevice device = hardware && backend == SilkGraphicsBackend.D3D12 && OperatingSystem.IsWindows()
+        using ISilkGraphicsDevice device = hardware
+            && backend == SilkGraphicsBackend.D3D12 && OperatingSystem.IsWindows()
             ? OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.Create(useWarp: false)
             : SilkDepthCaptureConformance.CreateDevice(backend);
         await Assert.That(device.Capabilities.IsSoftware).IsEqualTo(!hardware);
-        Console.WriteLine($"STORED_CAPTURE_DEVICE={device.Capabilities.DeviceName}; software={device.Capabilities.IsSoftware}");
+        Console.WriteLine(
+            $"STORED_CAPTURE_DEVICE={device.Capabilities.DeviceName}; software={device.Capabilities.IsSoftware}");
         using var expectedCapturer = new SilkFrameCapturer(device);
         using var actualCapturer = new SilkFrameCapturer(device);
         SilkFrameCaptureResult expected = expectedCapturer.CaptureWithDepth(

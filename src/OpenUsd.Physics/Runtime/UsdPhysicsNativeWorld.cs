@@ -149,7 +149,8 @@ internal sealed unsafe partial class UsdPhysicsNativeWorld : IUsdPhysicsWorld
             return Reject(pending,
             [
                 new UsdPhysicsDiagnostic(UsdPhysicsDiagnosticSeverity.Error, UsdPhysicsDiagnosticCategory.Build,
-                    BuildFailedCode, "A page with partial geometry requires complete bounded stage preparation before building."),
+                    BuildFailedCode,
+                        "A page with partial geometry requires complete bounded stage preparation before building."),
             ]);
         }
 
@@ -625,8 +626,10 @@ internal sealed unsafe partial class UsdPhysicsNativeWorld : IUsdPhysicsWorld
         PhysxPageReader reader = page.CreateReader();
         PhysxBuildPageHeader header = reader.Header;
         ulong actors = (ulong)header.Actors.Count + header.ArticulationLinks.Count + header.Controllers.Count;
-        check(nameof(options.MaxRigidBodies), Math.Max(actors, header.Capacities.MaxBodyStates), options.MaxRigidBodies);
-        check(nameof(options.MaxColliders), (ulong)header.Shapes.Count + header.Controllers.Count, options.MaxColliders);
+        check(nameof(options.MaxRigidBodies), Math.Max(actors, header.Capacities.MaxBodyStates),
+            options.MaxRigidBodies);
+        check(nameof(options.MaxColliders), (ulong)header.Shapes.Count + header.Controllers.Count,
+            options.MaxColliders);
         check(nameof(options.MaxJoints), header.Joints.Count, options.MaxJoints);
         check(nameof(options.MaxArticulations), header.Articulations.Count, options.MaxArticulations);
         check(nameof(options.MaxControllers), header.Controllers.Count, options.MaxControllers);
@@ -640,7 +643,8 @@ internal sealed unsafe partial class UsdPhysicsNativeWorld : IUsdPhysicsWorld
                 errors.Add(new UsdPhysicsDiagnostic(
                     UsdPhysicsDiagnosticSeverity.Error, UsdPhysicsDiagnosticCategory.Build,
                     "OPENUSD_PHYSICS_WORLD_CAPACITY_EXCEEDED",
-                    $"The composed world requires {required} entries for {name}, exceeding its configured capacity {capacity}."));
+                    $"The composed world requires {required} entries for {name}, exceeding its configured " +
+                        $"capacity {capacity}."));
             }
         }
     }

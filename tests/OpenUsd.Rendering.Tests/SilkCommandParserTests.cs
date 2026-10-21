@@ -146,7 +146,8 @@ public sealed class SilkCommandParserTests
 
         await Assert.That(authoredMesh.AuthoredNormals.Length).IsEqualTo(9);
         await Assert.That(authoredMesh.AuthoredNormals.Equals(
-            authoredMesh.Attributes.Single(static attribute => attribute.Semantic == SilkAttributeSemantic.Normal).Data))
+            authoredMesh.Attributes.Single(static attribute =>
+                attribute.Semantic == SilkAttributeSemantic.Normal).Data))
             .IsTrue();
         await Assert.That(computedMesh.AuthoredNormals.Length).IsEqualTo(0);
 

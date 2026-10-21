@@ -319,7 +319,8 @@ public sealed partial class SilkSceneGpuResources
         }
         if (failures is not null)
         {
-            throw new AggregateException("The streamed material working set could not be completely released.", failures);
+            throw new AggregateException(
+                "The streamed material working set could not be completely released.", failures);
         }
         if (next is not null)
         {
@@ -444,7 +445,8 @@ public sealed partial class SilkSceneGpuResources
         int count = 0;
         foreach (SilkMaterialTexture candidate in material.Textures)
         {
-            if (candidate.Parameter is not (SilkMaterialParameter.Displacement or SilkMaterialParameter.VolumeDensity) &&
+            if (candidate.Parameter is not (SilkMaterialParameter.Displacement or
+                SilkMaterialParameter.VolumeDensity) &&
                 candidate.Asset == texture.Asset &&
                 GetEffectiveColorSpace(candidate) == GetEffectiveColorSpace(texture) &&
                 RequiresFloatTextureAffine(candidate) == RequiresFloatTextureAffine(texture) && ++count > 1)

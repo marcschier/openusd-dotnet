@@ -73,7 +73,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                 try
                 {
                     OpenUsdSilkSession productSession = owner.Own(resources.CreateProductSession());
-                    SilkFrameCapturer capturer = owner.Own(new SilkFrameCapturer(device, resources.TextureResidencyOptions));
+                    SilkFrameCapturer capturer = owner.Own(new SilkFrameCapturer(device,
+                        resources.TextureResidencyOptions));
                     return new ProductCaptureLease(productSession, capturer, owner, plan, hdrColorFormat);
                 }
                 catch (Exception createFailure)
