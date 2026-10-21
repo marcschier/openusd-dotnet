@@ -1214,7 +1214,9 @@ public sealed class SilkMaterialStreamingTests
     [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task LargeFloatUploadBandsFitEightMiBOfTransferHeadroom(SilkGraphicsBackend backend)
     {
-        using var fixture = new Fixture(backend, streaming: true, imageSize: 1024, stagingBytes: 8_389_376);
+        // Arbitrary float texels exceed the exact indexed palette, so the material takes the split-band path.
+        using var fixture = new Fixture(backend, streaming: true, imageSize: 1024, stagingBytes: 8_389_376,
+            floatDiffuse: true);
         using OpenUsdSilkPage initial = Page(2, 1);
         _ = fixture.Render(initial);
         ulong before = fixture.Renderer.GpuResources.Statistics.TextureUploadBytes;
