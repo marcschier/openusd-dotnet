@@ -72,7 +72,7 @@ public sealed partial class UsdPhysicsTransportTests
         };
         try
         {
-            Task<RenderDiskJobResult> job = Task.Run(() => PhysicsRenderRecording.Execute(
+            Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings,
                 new PhysicsRenderCapacities(mode == "capacity" ? 0 : 1, deforming ? 1 : 0, deforming ? 2 : 0),
                 source, new PhysicsRenderRecordingContext("invalid", 8)));
@@ -146,7 +146,7 @@ public sealed partial class UsdPhysicsTransportTests
         };
         try
         {
-            Task<RenderDiskJobResult> job = Task.Run(() => PhysicsRenderRecording.Execute(
+            Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings, new PhysicsRenderCapacities(1), source,
                 new PhysicsRenderRecordingContext("interrupted", 8), cancellationToken: cancellation.Token));
             PumpRecording(transport, job);
@@ -173,7 +173,7 @@ public sealed partial class UsdPhysicsTransportTests
             var recovered = new RecordingSource(request.OutputDirectory);
             RenderDiskJobRequest retry = RecordingRequest(root, 1, transport);
             PhysicsRenderBindingTable recoveredBindings = RecordingBindings(transport);
-            Task<RenderDiskJobResult> retryJob = Task.Run(() => PhysicsRenderRecording.Execute(
+            Task<RenderDiskJobResult> retryJob = StartRecording(() => PhysicsRenderRecording.Execute(
                 retry, transport, recoveredBindings, new PhysicsRenderCapacities(1), recovered,
                 new PhysicsRenderRecordingContext("recovered", 8)));
             PumpRecording(transport, retryJob);
@@ -197,7 +197,7 @@ public sealed partial class UsdPhysicsTransportTests
         var source = new RecordingSource(request.OutputDirectory);
         try
         {
-            Task<RenderDiskJobResult> job = Task.Run(() => PhysicsRenderRecording.Execute(
+            Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, new PhysicsRenderBindingTable(1), new PhysicsRenderCapacities(1),
                 source, new PhysicsRenderRecordingContext("unbound", 8)));
             PumpRecording(transport, job);
@@ -238,7 +238,7 @@ public sealed partial class UsdPhysicsTransportTests
         var source = new RecordingSource(request.OutputDirectory);
         try
         {
-            Task<RenderDiskJobResult> job = Task.Run(() => PhysicsRenderRecording.Execute(
+            Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings, new PhysicsRenderCapacities(1, 1, 2), source,
                 new PhysicsRenderRecordingContext("cloth", 8)));
             PumpRecording(transport, job);
@@ -275,7 +275,7 @@ public sealed partial class UsdPhysicsTransportTests
         var source = new RecordingSource(request.OutputDirectory);
         try
         {
-            Task<RenderDiskJobResult> job = Task.Run(() => PhysicsRenderRecording.Execute(
+            Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
                 request, transport, bindings, new PhysicsRenderCapacities(2), source,
                 new PhysicsRenderRecordingContext("falling-prop", 8, "review-v1")));
             PumpRecording(transport, job);
@@ -347,6 +347,11 @@ public sealed partial class UsdPhysicsTransportTests
         }
         return new RenderDiskJobRequest(Path.Combine(root, "recording"), states);
     }
+
+    // The test thread busy-pumps the transport, so the recording must not depend on thread-pool injection.
+    private static Task<RenderDiskJobResult> StartRecording(Func<RenderDiskJobResult> execute) =>
+        Task.Factory.StartNew(
+            execute, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     private static void PumpRecording(UsdPhysicsTransport transport, Task job)
     {
