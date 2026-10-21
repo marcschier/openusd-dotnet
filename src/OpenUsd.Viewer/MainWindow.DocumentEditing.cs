@@ -363,6 +363,13 @@ public sealed partial class MainWindow
             transition, () => observed.State,
             async (_, action, token) =>
             {
+                if (action == ViewerDocumentTransition.Close && IsAutomatedViewerRun())
+                {
+                    // Diagnostics mutate disposable fixtures; still revalidate and retire through the lifecycle.
+                    token.ThrowIfCancellationRequested();
+                    ViewerStartupOptions.WriteStatus("Viewer diagnostic close: discarding unsaved fixture edits.");
+                    return ViewerDocumentUnsavedChoice.Discard;
+                }
                 var prompt = new DocumentChangesWindow(
                     original, action, editor.CanSaveReview && action != ViewerDocumentTransition.RevertReview,
                     action == ViewerDocumentTransition.RevertReview

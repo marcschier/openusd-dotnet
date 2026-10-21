@@ -1626,10 +1626,21 @@ bash ./eng/test-storm-native-child-linux.sh
 
 The X11 gate uses Xvfb. The Wayland gate uses Weston's compositor-managed XWayland/XWM and runs the
 entire mapped Avalonia shell through it so Storm and Vulkan can switch without restarting the
-process. The native probe serializes process-global X error traps, injects a GLX 4.6 X error and
+process. Weston uses its X11 backend nested on Xvfb: the headless backend supplies no keyboard seat,
+so XTest keyboard requests alone cannot prove real keyboard delivery there. Top-level Avalonia
+handlers and native child counters independently observe the generated input. Diagnostic Close
+discards edits to its disposable fixture through the ordinary guarded document-retirement lifecycle;
+interactive users still receive the unsaved-changes prompt.
+The switching fixture includes a daylight-intensity key light for the viewer's
+daylight-oriented -6-stop presentation exposure. An unlit cube at that exposure is
+nearly black; the scene-pixel, camera-change, input, and resource-drain assertions
+remain unchanged.
+Native and mapped-shell captures of the same phase may be byte-identical; that paired
+measurement is not a stale frame. Repeated frames outside that pair still fail.
+The native probe serializes process-global X error traps, injects a GLX 4.6 X error and
 proves clean 4.5 fallback, rejects destroyed parent XIDs, and proves capture still returns the exact
 pre-swap frame after the post-swap backbuffer is corrupted. Viewer evidence requires native
-focus/pointer/wheel/key counter deltas and mapped-shell `XGetImage` pixels. Vulkan opaque-FD support
+focus/pointer/wheel/key counter deltas and mapped-shell `XGetImage` pixels. Vulkan presentation support
 produces 100 Storm/Vulkan switches; only a schema-valid typed unavailable diagnostic permits the
 Storm-only proof. Runner crashes, timeouts, missing/malformed artifacts, and zero native counters
 fail.
