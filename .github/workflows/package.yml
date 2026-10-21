@@ -505,7 +505,7 @@ jobs:
         run: |
           $arguments = @('consume', '--rid', '${{ matrix.rid }}', '--source', $env:CESIUM_SOURCE_HEAD)
           if ($env:CESIUM_PIPELINE_RUN_ID) { $arguments += @('--run-id', $env:CESIUM_PIPELINE_RUN_ID) }
-          if ('${{ matrix.rid }}' -eq 'linux-x64') { $arguments += @('--fallback-on-toolchain-mismatch') }
+          $arguments += @('--fallback-on-toolchain-mismatch')
           python eng/cesium-sdk-artifact.py @arguments
       - id: cesium-vcpkg-cache
         if: steps.native-ready.outputs.ready == 'true' && steps.cesium-sdk.outputs.reused != 'true'
