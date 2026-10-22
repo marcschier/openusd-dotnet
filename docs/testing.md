@@ -1628,7 +1628,8 @@ The X11 gate uses Xvfb. The Wayland gate uses Weston's compositor-managed XWayla
 entire mapped Avalonia shell through it so Storm and Vulkan can switch without restarting the
 process. Weston uses its X11 backend nested on Xvfb: the headless backend supplies no keyboard seat,
 so XTest keyboard requests alone cannot prove real keyboard delivery there. Top-level Avalonia
-handlers and native child counters independently observe the generated input. Diagnostic Close
+handlers and native child counters independently observe the generated input. Resize diagnostics
+wait for measured Linux resize and restoration before recording physical dimensions. Diagnostic Close
 discards edits to its disposable fixture through the ordinary guarded document-retirement lifecycle;
 interactive users still receive the unsaved-changes prompt.
 The switching fixture includes a daylight-intensity key light for the viewer's
