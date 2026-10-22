@@ -280,7 +280,7 @@ value = json.load(open(path, encoding="utf-8"))
 if get(value, "schemaVersion") != 8:
     raise SystemExit("Viewer evidence schemaVersion must be 8.")
 if get(value, "stormChildAbiVersion") != 9:
-    raise SystemExit("Viewer evidence Storm child ABI must be 8.")
+    raise SystemExit("Viewer evidence Storm child ABI must be 9.")
 if get(value, "nativeNavigation"):
     raise SystemExit("Linux evidence must not contain Win32 native navigation proof.")
 states = get(value, "states") or []
@@ -333,13 +333,21 @@ for transition in transitions:
                 or get(transition, "latestRequestedCameraSignature") != expected \
                 or get(transition, "latestRenderedCameraSignature") != expected:
             raise SystemExit("Storm latest camera diagnostics are invalid.")
-if any(
-    get(pixel, "backend") == "Storm"
-    and get(pixel, "captureApi") !=
-        "openusd_storm_child_capture_framebuffer(ABI9,preserved-texture)"
-    for pixel in pixels
-):
-    raise SystemExit("Storm Viewer pixels did not use the ABI 9 capture label.")
+native_capture_api = "openusd_storm_child_capture_framebuffer(ABI9,preserved-texture)"
+for index, pixel in enumerate(pixels):
+    if get(pixel, "backend") != "Storm":
+        continue
+    if get(pixel, "captureApi") == native_capture_api:
+        continue
+    previous = pixels[index - 1] if index else None
+    if (
+        get(pixel, "captureApi") != "XGetImage(ZPixmap,viewer-shell)"
+        or get(previous, "backend") != "Storm"
+        or get(previous, "captureApi") != native_capture_api
+        or not isinstance(get(previous, "phase"), str)
+        or get(pixel, "phase") != get(previous, "phase") + "-shell"
+    ):
+        raise SystemExit("Storm Viewer pixels did not use the ABI 9 capture label or its paired shell capture.")
 ' "$viewer_evidence_path"
 fi
 
@@ -363,6 +371,8 @@ done
 
 python3 -c '
 import json,sys
+capability = json.load(open(sys.argv[6], encoding="utf-8"))
+presentation_path = capability.get("presentationPath")
 print(json.dumps({
   "schemaVersion": 1,
   "platform": sys.argv[1],
@@ -371,12 +381,13 @@ print(json.dumps({
   "switches": int(sys.argv[2]) if sys.argv[3] == "passed" else 0,
   "freshProcesses": int(sys.argv[4]),
   "switchingOutcome": sys.argv[3],
-  "vulkanCapability": "opaque-FD available" if sys.argv[3] == "passed" else "typed unavailable",
+  "vulkanCapability": "Vulkan composition available" if sys.argv[3] == "passed" else "typed unavailable",
+  "vulkanPresentationPath": presentation_path,
   "blocker": sys.argv[5] or None,
   "stormCapture": "preserved pre-swap texture",
   "shellCapture": "XGetImage mapped Viewer viewport",
   "xwaylandOwner": "Weston XWM" if sys.argv[1] == "xwayland" else None,
-  "cpuReadback": "diagnostics only"
+  "cpuReadback": "presentation and diagnostics" if presentation_path == "HostReadback" else "diagnostics only"
 }, indent=2))
-' "$platform" "$switch_count" "$switching_outcome" "$fresh_process_count" "$blocker" |
+' "$platform" "$switch_count" "$switching_outcome" "$fresh_process_count" "$blocker" "$capability_artifact" |
   tee "$output_root/evidence.json"
