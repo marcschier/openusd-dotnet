@@ -20,14 +20,14 @@ paths.
 > physics IDs were introduced in `0.12.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
-The source targets the planned `0.16.3-alpha` release. Until that release is qualified and published,
+The source targets the planned `0.16.4-alpha` release. Until that release is qualified and published,
 build its packages and configure a local feed using [Pack](docs/packaging.md#pack) before running
 these commands. The public `0.15.0-alpha` baseline remains available; this version pin does not
-claim that `0.16.3-alpha` is already on a public feed.
+claim that `0.16.4-alpha` is already on a public feed.
 
 ```shell
-dotnet add package OpenUsd --version 0.16.3-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.16.3-alpha
+dotnet add package OpenUsd --version 0.16.4-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.16.4-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and

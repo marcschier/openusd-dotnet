@@ -1,6 +1,6 @@
 {
   "$schemaVersion": 1,
-  "version": "0.16.3-alpha",
+  "version": "0.16.4-alpha",
   "generatedDocPath": "docs/support-manifest.md",
   "statusTerms": {
     "implemented": "Production source and focused tests exist",
