@@ -1638,6 +1638,9 @@ nearly black; the scene-pixel, camera-change, input, and resource-drain assertio
 remain unchanged.
 Native and mapped-shell captures of the same phase may be byte-identical; that paired
 measurement is not a stale frame. Repeated frames outside that pair still fail.
+The runner requires an ABI 9 native capture immediately before each matching shell
+measurement; a shell capture cannot replace native evidence. Its summary reports the
+observed Vulkan presentation path, including CPU readback when used for display.
 The native probe serializes process-global X error traps, injects a GLX 4.6 X error and
 proves clean 4.5 fallback, rejects destroyed parent XIDs, and proves capture still returns the exact
 pre-swap frame after the post-swap backbuffer is corrupted. Viewer evidence requires native

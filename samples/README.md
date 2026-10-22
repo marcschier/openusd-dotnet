@@ -87,11 +87,11 @@ Use the equivalent native install and loader variable for `linux-x64` (`LD_LIBRA
 The repository projects use `ProjectReference` so changes to `src/OpenUsd` are tested immediately.
 To validate package consumption, first build the packages into a repository-local feed:
 
-The example targets the planned `0.16.4-alpha` source version, not an already-published release.
+The example targets the planned `0.16.5-alpha` source version, not an already-published release.
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.16.4-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.16.5-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
