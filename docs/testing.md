@@ -2316,8 +2316,11 @@ extensions: `HostReadbackSelectedWhenCompositorCannotImportExternalObjects` and
 `HostReadbackPresentsChangedPixelsAcrossEditsAndResizeThenDrains` renders under SwiftShader. It
 verifies changed pixels after an edit, a resize, rejection of handle leases, and full ring drain.
 `HostReadbackCompositionSurfaceBridgeTests` in `OpenUsd.Viewer.Tests` verifies the bitmap bridge
-on a Skia-backed headless platform. Only zero-copy import still needs the GPU runner described
-below.
+on a Skia-backed headless platform. `PresentCompletesOnlyAfterChangedPixelsReachTheCompositor`
+requires changed and restored pixels in the last rendered frame when presentation completes,
+without forcing another render. Presentation waits for the rendered composition batch, not an
+animation callback that precedes drawing; a pacing timeout fails instead of reporting success.
+Only zero-copy import still needs the GPU runner described below.
 
 Both are restored the same way: run these jobs on a GPU-equipped self-hosted runner. On Windows,
 once an ICD exists the `Resolve system Vulkan ICD` step reports `available=true` and every guarded

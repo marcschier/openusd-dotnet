@@ -437,7 +437,7 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
         }
     }
 
-    private void PublishReadbackBitmap(WriteableBitmap? bitmap)
+    internal void PublishReadbackBitmap(WriteableBitmap? bitmap)
     {
         if (!_dispatcher.CheckAccess())
         {
@@ -448,17 +448,18 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
         InvalidateVisual();
     }
 
-    private Task WaitForCompositorFrameAsync()
+    internal Task WaitForCompositorFrameAsync()
     {
         TopLevel? topLevel = TopLevel.GetTopLevel(this);
         if (topLevel is null || !IsVisible)
         {
             return Task.CompletedTask;
         }
-        var frame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        topLevel.RequestAnimationFrame(_ => frame.TrySetResult());
-        // Bound the wait so a hidden or detaching host cannot stall teardown behind pacing.
-        return Task.WhenAny(frame.Task, Task.Delay(TimeSpan.FromMilliseconds(250)));
+        Compositor compositor = ElementComposition.GetElementVisual(this)?.Compositor ??
+            throw new InvalidOperationException("Avalonia did not create an element visual.");
+        // Animation callbacks precede drawing; only the rendered batch acknowledges these pixels.
+        return compositor.RequestCompositionBatchCommitAsync().Rendered
+            .WaitAsync(TimeSpan.FromMilliseconds(250));
     }
 
     private async ValueTask<CompositionPresentOutcome> PumpIterationAsync(

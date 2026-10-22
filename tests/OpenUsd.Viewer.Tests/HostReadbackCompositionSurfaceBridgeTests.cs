@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -90,6 +91,43 @@ public sealed class HostReadbackCompositionSurfaceBridgeTests
             await Assert.That(published[^1]).IsNull();
             await Assert.That(async () => await bridge.ImportAsync(frame, CancellationToken.None))
                 .Throws<ObjectDisposedException>();
+        });
+    }
+
+    [Test]
+    public async Task PresentCompletesOnlyAfterChangedPixelsReachTheCompositor()
+    {
+        await RunUiAsync(async () =>
+        {
+            await using var control = new CompositionViewportControl();
+            var window = new Window { Width = 32, Height = 32, Content = control };
+            window.Show();
+            try
+            {
+                using (window.CaptureRenderedFrame())
+                {
+                }
+                await using var bridge = new HostReadbackCompositionSurfaceBridge(
+                    control.PublishReadbackBitmap,
+                    control.WaitForCompositorFrameAsync);
+                var frame = new ReadbackFrame(
+                    CompositionHostReadback.ImageHandleType,
+                    new ViewportDimensions(32, 32));
+                await using IImportedCompositionFrame imported =
+                    await bridge.ImportAsync(frame, CancellationToken.None);
+                foreach (byte red in new byte[] { 10, 200, 10 })
+                {
+                    frame.Fill(red, 20, 30);
+                    await bridge.PresentAsync(imported, CompositionFrameSynchronization.Automatic);
+                    using WriteableBitmap? displayed = window.GetLastRenderedFrame();
+                    await Assert.That(displayed).IsNotNull();
+                    await Assert.That(ReadPixels(displayed!).SequenceEqual(frame.Expected(red, 20, 30))).IsTrue();
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
