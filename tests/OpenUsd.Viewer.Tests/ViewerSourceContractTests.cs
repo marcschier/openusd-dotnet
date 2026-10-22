@@ -675,7 +675,7 @@ public sealed class ViewerSourceContractTests
     }
 
     [Test]
-    public async Task MandatoryStormChildRunnersRequireAbiEightProvenance()
+    public async Task MandatoryStormChildRunnersRequireAbiNineProvenance()
     {
         string root = FindRepositoryRoot();
         string windowsRunner = await File.ReadAllTextAsync(Path.Combine(
@@ -710,10 +710,10 @@ public sealed class ViewerSourceContractTests
         await Assert.That(linuxRunner).Contains(
             "if get(value, \"stormChildAbiVersion\") != 9:");
         await Assert.That(linuxRunner).Contains(
-            "Viewer evidence Storm child ABI must be 8.");
+            "Viewer evidence Storm child ABI must be 9.");
         await Assert.That(linuxRunner).Contains(captureApi);
         await Assert.That(linuxRunner).Contains(
-            "Storm Viewer pixels did not use the ABI 9 capture label.");
+            "Storm Viewer pixels did not use the ABI 9 capture label or its paired shell capture.");
         await Assert.That(linuxRunner).DoesNotContain("ABI7");
         await Assert.That(linuxRunner).DoesNotContain("ABI 7");
         await Assert.That(linuxRunner).DoesNotContain(
