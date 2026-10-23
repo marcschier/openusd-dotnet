@@ -689,6 +689,7 @@ jobs:
           OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
         run: |
           $testProject = Join-Path $PWD 'tests\OpenUsd.Mcp.Tests\OpenUsd.Mcp.Tests.csproj'
+          dotnet build $testProject --configuration Release --framework net10.0
           $runner = (Get-Command pwsh -CommandType Application).Source
           $runnerArguments = @(
             '-NoLogo',

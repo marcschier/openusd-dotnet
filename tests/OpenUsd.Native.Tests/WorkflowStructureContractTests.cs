@@ -975,6 +975,7 @@ public sealed class WorkflowStructureContractTests
             "OPENUSD_PHYSICS_RECORDING_REQUIRED: '1'",
             "OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'",
             "tests\\OpenUsd.Mcp.Tests\\OpenUsd.Mcp.Tests.csproj",
+            "dotnet build $testProject --configuration Release --framework net10.0",
             "eng\\run-native-managed-tests.ps1",
             "-MinimumExpectedTests",
             "'284'",
