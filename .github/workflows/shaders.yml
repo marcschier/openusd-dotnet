@@ -130,6 +130,7 @@ jobs:
             eng/shaders/out/ci-windows/artifact-manifest.json
             eng/shaders/out/ci-windows/executed-commands.json
             eng/shaders/out/ci-windows/host-toolchain.json
+            eng/shaders/out/ci-windows/*.dxil
             eng/shaders/out/logs/windows
           if-no-files-found: warn
 
