@@ -25,7 +25,14 @@ function Assert-RejectedPath
     Write-Output "PASS $Name"
 }
 
-$parent = (Get-Item -LiteralPath ([IO.Path]::GetTempPath())).FullName
+$parent = if ([string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE))
+{
+    (Get-Item -LiteralPath ([IO.Path]::GetTempPath())).FullName
+}
+else
+{
+    (Get-Item -LiteralPath $env:GITHUB_WORKSPACE -ErrorAction Stop).FullName
+}
 $root = Join-Path $parent ("openusd-workflow-paths-" + [Guid]::NewGuid().ToString('N'))
 $nested = Join-Path $root 'MixedCaseParent\MixedCaseChild\leaf'
 $junction = Join-Path $root 'alias'
