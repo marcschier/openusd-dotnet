@@ -695,15 +695,21 @@
         },
         {
           "id": "mcp-fixed-step-physics-recording",
-          "description": "render_physics_sequence prepares a fresh bounded CPU rigid-body/joint world at an exact workspace revision, checks explicit workspace units/up axis, queues exact-step recording on the existing capture worker and publishes through the shared disk-job/gallery quota. Native pose/velocity/deformation publications use authored stage space. A native fixture verifies moving captured poses, HDR/depth, unit mismatch refusal, cancellation after GPU capture, retry, contact-sheet retrieval and restoration without source edits.",
-          "status": "implemented-not-gated",
+          "description": "render_physics_sequence prepares a fresh bounded CPU rigid-body/joint world at an exact workspace revision, checks explicit workspace units/up axis, queues exact-step recording on the existing capture worker and publishes through the shared disk-job/gallery quota. Native pose/velocity/deformation publications use authored stage space. A native fixture verifies moving captured poses, HDR/depth, unit mismatch refusal, cancellation after GPU capture, retry, contact-sheet retrieval and restoration without source edits. The required Windows native workflow executes physics-recording and authored render-product cases inside its bounded process gate.",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["native.yml"],
+          "evidenceWorkflowJobs": {
+            "native.yml": ["build"]
+          },
           "evidenceTests": [
             "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.PhysicsRecording.cs",
+            "tests/OpenUsd.Mcp.Tests/NativeMcpIntegrationTests.Products.cs",
             "tests/OpenUsd.Mcp.Tests/OpenUsdMcpToolsTests.cs",
-            "tests/OpenUsd.Physics.Tests/Runtime/UsdPhysicsNativeWorldTests.cs"
+            "tests/OpenUsd.Physics.Tests/Runtime/UsdPhysicsNativeWorldTests.cs",
+            "tests/OpenUsd.Native.Tests/WorkflowStructureContractTests.cs"
           ],
           "evidencePlatforms": ["win-x64"],
-          "exclusionReason": "Bounded noninstanced CPU rigid-body/joint profile only; advanced domains, unresolved compound bindings and incomplete extraction are refused. No full-warehouse, hardware Vulkan or macOS physics acceptance; Viewer recording has separate evidence."
+          "exclusionReason": "Bounded noninstanced CPU rigid-body/joint profile only; advanced domains, unresolved compound bindings and incomplete extraction are refused. No full-warehouse, hardware Vulkan or macOS physics acceptance; Viewer recording has no equivalent hosted native integration gate."
         },
         {
           "id": "viewer-fixed-step-physics-recording",
@@ -716,7 +722,7 @@
             "tests/OpenUsd.Package.Tests/ViewerBridgePackageTests.cs"
           ],
           "evidencePlatforms": ["win-x64"],
-          "exclusionReason": "Local Windows D3D12 rigid-pose profile only; hosted gates have not been executed for these uncommitted changes. Deformable recordings are refused. Recording advances the current world and cancellation does not rewind it. No full-warehouse, native Vulkan/Metal or macOS physics acceptance."
+          "exclusionReason": "Local Windows D3D12 rigid-pose profile only; hosted native Viewer recording acceptance is not established. Deformable recordings are refused. Recording advances the current world and cancellation does not rewind it. No full-warehouse, native Vulkan/Metal or macOS physics acceptance."
         },
         {
           "id": "usdvol",

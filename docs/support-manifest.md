@@ -382,7 +382,7 @@ Managed projections over the enabled OpenUSD schema families and supporting libr
 | `physics-bounded-collider-preparation` | Implemented, not gated | `win-x64` |
 | `physics-exact-frame-publication` | Implemented, not gated | `win-x64` |
 | `physics-simulation-recording-library` | Implemented, not gated | `win-x64` |
-| `mcp-fixed-step-physics-recording` | Implemented, not gated | `win-x64` |
+| `mcp-fixed-step-physics-recording` | Workflow-gated | `win-x64` |
 | `viewer-fixed-step-physics-recording` | Implemented, not gated | `win-x64` |
 | `usdvol` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `pcp-inspection` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
@@ -457,11 +457,12 @@ render_physics_sequence prepares a fresh bounded CPU rigid-body/joint world at a
 explicit workspace units/up axis, queues exact-step recording on the existing capture worker and publishes through the
 shared disk-job/gallery quota. Native pose/velocity/deformation publications use authored stage space. A native fixture
 verifies moving captured poses, HDR/depth, unit mismatch refusal, cancellation after GPU capture, retry, contact-sheet
-retrieval and restoration without source edits.
+retrieval and restoration without source edits. The required Windows native workflow executes physics-recording and
+authored render-product cases inside its bounded process gate.
 
 **Limits:** Bounded noninstanced CPU rigid-body/joint profile only; advanced domains, unresolved compound bindings and
 incomplete extraction are refused. No full-warehouse, hardware Vulkan or macOS physics acceptance; Viewer recording has
-separate evidence.
+no equivalent hosted native integration gate.
 
 ### `viewer-fixed-step-physics-recording`
 
@@ -471,8 +472,8 @@ extraction against the built world, and publishes exact rigid-pose frame metadat
 native desktop journey exercises moving captured poses, HDR/depth, cancellation after capture, retry, source
 preservation, view restoration and deep-path gallery access.
 
-**Limits:** Local Windows D3D12 rigid-pose profile only; hosted gates have not been executed for these uncommitted
-changes. Deformable recordings are refused. Recording advances the current world and cancellation does not rewind it. No
+**Limits:** Local Windows D3D12 rigid-pose profile only; hosted native Viewer recording acceptance is not established.
+Deformable recordings are refused. Recording advances the current world and cancellation does not rewind it. No
 full-warehouse, native Vulkan/Metal or macOS physics acceptance.
 
 ### `usdvol`
