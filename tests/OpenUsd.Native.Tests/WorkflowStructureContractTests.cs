@@ -891,6 +891,13 @@ public sealed class WorkflowStructureContractTests
             "'eng/fetch-physx-native.ps1'",
             "'eng/build-physx-native.ps1'",
             "'eng/build-physx-shim.ps1'",
+            "'eng/run-native-managed-tests.ps1'",
+            "'eng/run-managed-tests.ps1'",
+            "'eng/run-bounded-process.ps1'",
+            "'eng/BoundedWindowsProcess.cs'",
+            "'Directory.Packages.props'",
+            "'src/OpenUsd.Mcp/**'",
+            "'tests/OpenUsd.Mcp.Tests/**'",
             "'eng/mdl.lock.json'",
             "'eng/fetch-mdl-sdk.ps1'",
             "'eng/build-mdl-shim.ps1'",
@@ -940,6 +947,51 @@ public sealed class WorkflowStructureContractTests
                     "push CI must execute it before release-only workflows do");
         }
     }
+
+    [Test]
+    public async Task WindowsNativePipelineRunsBoundedPhysicsEnabledMcpIntegration()
+    {
+        string root = FindRepositoryRoot();
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+
+        int physxStep = native.IndexOf(
+            "- name: Build and test optional PhysX shim",
+            StringComparison.Ordinal);
+        int mcpStep = native.IndexOf(
+            "- name: Run Windows native MCP integration",
+            StringComparison.Ordinal);
+        await Assert.That(physxStep)
+            .IsGreaterThan(0)
+            .Because("the native MCP recording suite requires the optional PhysX runtime");
+        await Assert.That(mcpStep)
+            .IsGreaterThan(physxStep)
+            .Because("the MCP suite must run only after the current-source PhysX shim is built");
+
+        int nextStep = native.IndexOf("\n      - name:", mcpStep + 1, StringComparison.Ordinal);
+        string mcpStepBody = native[mcpStep..(nextStep < 0 ? native.Length : nextStep)];
+        foreach (string requirement in new[]
+        {
+            "OPENUSD_PHYSICS_RECORDING_REQUIRED: '1'",
+            "OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'",
+            "tests\\OpenUsd.Mcp.Tests\\OpenUsd.Mcp.Tests.csproj",
+            "eng\\run-native-managed-tests.ps1",
+            "-MinimumExpectedTests",
+            "'284'",
+            "-MaximumCommitBytes 3221225472",
+            "-MaximumWorkingSetBytes 3221225472",
+            "-TimeoutSeconds 900",
+        })
+        {
+            await Assert.That(mcpStepBody)
+                .Contains(requirement, StringComparison.Ordinal)
+                .Because($"native MCP acceptance must retain {requirement}");
+        }
+        await Assert.That(native)
+            .Contains("- name: Upload native MCP integration evidence", StringComparison.Ordinal)
+            .Because("the native MCP run must retain its bounded-process and test-report evidence");
+    }
+
 
     [Test]
     public async Task NativeWorkflowFiresWhenTheMdlOnlyProbeFixtureChanges()
