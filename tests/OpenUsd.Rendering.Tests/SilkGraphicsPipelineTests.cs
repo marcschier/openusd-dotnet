@@ -228,7 +228,7 @@ public sealed class SilkGraphicsPipelineTests
         return names;
     }
 
-    private static JsonElement ManifestArtifact(string program, string artifact)
+    private static int ManifestArtifactSize(string program, string artifact)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null &&
@@ -254,7 +254,10 @@ public sealed class SilkGraphicsPipelineTests
             {
                 continue;
             }
-            return entry.GetProperty("artifacts").GetProperty(artifact).Clone();
+            return entry.GetProperty("artifacts")
+                .GetProperty(artifact)
+                .GetProperty("size")
+                .GetInt32();
         }
 
         // Fail loudly rather than returning a default that would make every
@@ -262,14 +265,6 @@ public sealed class SilkGraphicsPipelineTests
         throw new InvalidOperationException(
             $"The checked shader manifest has no '{artifact}' artifact for '{program}'.");
     }
-
-    private static int ManifestArtifactSize(string program, string artifact) =>
-        ManifestArtifact(program, artifact).GetProperty("size").GetInt32();
-
-    private static string ManifestArtifactSha256(string program, string artifact) =>
-        ManifestArtifact(program, artifact).GetProperty("sha256").GetString() ??
-        throw new InvalidOperationException(
-            $"The checked shader manifest has no SHA-256 for '{artifact}' in '{program}'.");
 
     [Test]
     public async Task MeshPermutationIdsMatchCheckedArtifactNames()
@@ -740,9 +735,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(descriptor.DepthCompare)
             .IsEqualTo(SilkPickDepthCompare.LessEqual);
         await Assert.That(GetSha256(dxilVertex.Code.Span)).IsEqualTo(
-            ManifestArtifactSha256("pick.vertex", "dxil"));
+            "804aff7fd6f4b8464127b73c079e968cb81d22d0ec439afa1439b9309aa56e79");
         await Assert.That(GetSha256(dxilFragment.Code.Span)).IsEqualTo(
-            ManifestArtifactSha256("pick.fragment", "dxil"));
+            "1d6fce34ab218e9fbc0b8daef4cb024c75298640914683d1c41062baeed06d67");
         await Assert.That(GetSha256(spirvVertex.Code.Span)).IsEqualTo(
             "54e401ddf27cb2cc3107814c90c2b587eeca5e7dac19f545c644953f86b4211e");
         await Assert.That(GetSha256(spirvFragment.Code.Span)).IsEqualTo(
@@ -818,9 +813,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(spirvOutlineVertex.Code.Length).IsEqualTo(960);
         await Assert.That(spirvOutlineFragment.Code.Length).IsEqualTo(3800);
         await Assert.That(GetSha256(dxilMaskVertex.Code.Span)).IsEqualTo(
-            ManifestArtifactSha256("selection.mask.vertex", "dxil"));
+            "51ebc76ddcd7790673b23bc3af0ce74523a15e32bb0a85b46e4465f69d38faa2");
         await Assert.That(GetSha256(dxilMaskFragment.Code.Span)).IsEqualTo(
-            ManifestArtifactSha256("selection.mask.fragment", "dxil"));
+            "e954faf831f98f7958551755fdfaaf01ac9ea3e4c1b70f1790c83476496d1852");
         await Assert.That(GetSha256(spirvOutlineVertex.Code.Span)).IsEqualTo(
             "8f5f6854662fa8d097ddcb6d339f0a89b217fb62115f02af30c4e90284fc51cf");
         await Assert.That(GetSha256(spirvOutlineFragment.Code.Span)).IsEqualTo(
