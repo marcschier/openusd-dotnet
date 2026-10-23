@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "564d1b699b1f1ce5d491bc0f6c40e28b5b6f13021176c63ca7371b0c9d606c86"
+      "sha256": "65209bfecb61c5f87c855a8ee8dd64507d33b5f81c2d7c5a0b1f343ff3a58907"
     },
     {
       "path": ".github/workflows/native.yml",
@@ -63,7 +63,7 @@
     },
     {
       "path": ".github/workflows/viewer-distribution.yml",
-      "sha256": "a376280a49a479481f393c2ea50427a74b3c141a021b560bbd0c50544d86ab07"
+      "sha256": "9cdaaf4d90aff379c8fdb94ecdc48cfac6dd9e8ae9dc7b1f50b292612b647552"
     },
     {
       "path": "LICENSE",
@@ -107,7 +107,7 @@
     },
     {
       "path": "eng/managed-workflow-reports.ps1",
-      "sha256": "5f4772bfa2118f414bdb4d35adde182e67f0805b79c9f966e9a25197bd5e4551"
+      "sha256": "378e2504383bfa82705b9226dc30c807e6332f665e55e142934a46d63e09f718"
     },
     {
       "path": "eng/mesa-wgl-test-runtime.lock.json",
@@ -151,7 +151,7 @@
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
-      "sha256": "a1c6dd846e652a9d557f4161e0e935553edc6c84ded84d96e8c5a45bf3397ce8"
+      "sha256": "12c57e278416a8741f0eb9dfdc4cee62d39b99aee10a1a669ee3b7243518880e"
     },
     {
       "path": "eng/run-viewer.ps1",
@@ -363,7 +363,7 @@
     },
     {
       "path": "eng/viewer-input-readiness.ps1",
-      "sha256": "e29596d1f3d9430d45553ad5eccb15eaae3ebcf6c394191ada3d0c1db7453399"
+      "sha256": "1fac3fbbdd30edca1ae94ba87bcf52bcd0c5b96a3c644cb050fd0c89378e0e64"
     },
     {
       "path": "eng/wait-openusd-sdk-cache.py",
@@ -447,7 +447,7 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
-      "sha256": "176d65d3c1bea663f07f389a7bd0c8698d5ce0a6f016cfa6c8a9287548d5f263"
+      "sha256": "5db35c879c7f5d9dcfaebd6717ea07cd1d736382c5630323ac6a27e7d4624b65"
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",
