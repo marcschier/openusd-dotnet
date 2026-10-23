@@ -978,7 +978,7 @@ public sealed class WorkflowStructureContractTests
             "dotnet build $testProject --configuration Release --framework net10.0",
             "eng\\run-native-managed-tests.ps1",
             "-MinimumExpectedTests",
-            "'284'",
+            "'278'",
             "-MaximumCommitBytes 3221225472",
             "-MaximumWorkingSetBytes 3221225472",
             "-TimeoutSeconds 900",

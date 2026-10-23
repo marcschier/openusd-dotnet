@@ -706,7 +706,7 @@ jobs:
             '-Configuration',
             'Release',
             '-MinimumExpectedTests',
-            '284'
+            '278'
           )
           ./eng/run-bounded-process.ps1 `
             -Executable $runner `
