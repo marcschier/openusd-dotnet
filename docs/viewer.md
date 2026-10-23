@@ -305,6 +305,25 @@ offer payload add/remove authoring.
 
 ### Searchable property pages
 
+The snapshot-state selector intersects the text search with authored, unauthored, blocked or
+time-sampled **attributes**, relationships, or attributes with unknown authored state. These
+categories use detached composed metadata, not opinions in a particular layer. A missing authored
+flag is unknown, never an unauthored default; a missing sample count is not evidence of animation.
+Changing the category resets the page without fetching new native values or changing selection.
+Choose **All properties** to restore the complete list. Review edits still capture the exact
+selected property through the shared document history; filtering does not grant write authority.
+
+The property-group selector intersects that state filter and search before paging. Transform groups
+contain the existing `xformOp:*` attributes and `xformOpOrder`, without reordering or decomposing the
+operation stack. Camera optics, shutter, and stereo properties are grouped only when the detached
+snapshot identifies a validated camera schema. Inputs and outputs group attribute namespaces
+(`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
+group only `material:binding` relationships and its nested namespace, not similarly named attributes.
+**Other properties** retains everything outside those groups; **All property groups** restores
+the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
+Group changes reset the page and details without a native read, authoring an opinion, or changing
+the selected prim. Existing exact-property review edits and undo remain the only edit path.
+
 The Properties, Value, and Metadata tabs share a **Find properties by name or type** filter and
 **Previous / Next** navigation. Search is case-insensitive; `relationship` finds relationship rows.
 Each page contains at most 32 attributes and relationships combined, in their snapshot order, with
@@ -324,6 +343,28 @@ the cached snapshot, without another native read. Only one property's details ar
 time, and collapsing releases its detail controls. The chosen disclosure survives same-prim
 refreshes and undo but resets on a different prim. Missing assets remain visible as text warnings
 even when their details are collapsed.
+
+### Read-only shader registry inspection
+
+On a `Shader` prim, **Inspect shader registry** explicitly reads the implementation source and
+`info:id` through the stage scheduler. Only the `id` implementation source (including its schema
+default) with a nonempty identifier enumerates the bounded native Sdr registry. The action is
+unavailable during document-state refreshes. An exact,
+valid, unique identifier adds input/output direction, type, array state, and connectability to the
+current property page. Registry metadata is **not edit permission**: the existing review-layer
+capture, conflict checks, and undo remain authoritative.
+
+An empty or unknown identifier, invalid or ambiguous definition, or truncated registry produces an
+explicit unavailable result instead of guessed metadata. Source-asset-only shader definitions are
+not resolved by this action, even if an `info:id` is also authored. Source-code and unknown
+implementation modes likewise never fall back to that identifier. Custom properties and connections remain visible
+and unchanged; missing or duplicate registry properties are labeled rather than coerced or removed.
+Unset, blocked, and deferred identifier values remain distinct and never authorize a registry lookup
+from coincidental preview text. The explicit token reads use the inspector's selected snapshot time.
+
+Search, page changes, and property disclosures reuse the detached result without querying Sdr again.
+Selection changes, property refreshes, and explicit time snapshots invalidate it and require another
+click. An in-flight result for an older snapshot or retired document is discarded.
 
 ### Bounded values, provenance, and inspection time
 
@@ -770,7 +811,9 @@ reported without changing the camera.
 Native Storm child-window camera input is polled from the child ABI-9 navigation v2 snapshot at a bounded
 UI cadence. The snapshot carries physical pointer position, buttons, modifiers, cumulative wheel,
 focus/inside state, cumulative F/Home/P command counters, and four repeat-aware arrow counters, so
-the child may retain native focus
+the child may retain native focus. Input polling reads the native child's independently synchronized
+input state without waiting for the managed render-command gate; a stage edit blocking a render must
+not also block the UI timer that releases or cancels that edit. The Viewer can operate
 without losing orbit, pan, dolly, zoom, or shortcuts. Polling baselines reset on attach, focus
 transitions, and backend switches. Avalonia-routed camera events suppress the overlapping native
 sample to avoid duplicate handling. Composition backends continue to use Avalonia routing, and the
@@ -867,6 +910,11 @@ it to the frame's render time, and applies exactly one bounded override batch to
 backend through the renderer-neutral physics channel. Storm and Silk receive the batch on the
 thread that owns their retained state. If no new frame is ready the previous pose is redrawn, so a
 slow simulation degrades to a repeated pose instead of stalling the camera.
+
+The native Storm child stages transform and deformation batches on the UI thread and submits
+them from the background frame task. It never waits for a native override command on the UI
+thread: the child can be waiting for a stage edit that itself needs the UI to continue.
+Override reports are published only after the corresponding native frame completes successfully.
 
 Building the world also builds the binding table: every extracted simulated identity is bound to the
 prim path it drives, and rebuilding or a new stage revision rebuilds it. An identity that cannot be
@@ -1028,8 +1076,38 @@ owned, themed window. It supports existing local declarations of `bool`, `int`, 
 row-major `matrix4d`, and three-component float/double vectors and their point, normal,
 vector and colour roles. Supported aliases include `texCoord2f` and `color4f`.
 This includes camera clipping ranges, ordinary translate/scale/Euler/matrix attributes and supported
-light/material parameters, not a material graph editor. Unsupported, referenced-only and
-schema-only declarations remain read-only instead of guessing their declaration metadata.
+light/material parameters, not a material graph editor.
+
+Five native camera optics fields can also be edited without an authored local declaration:
+`projection`, `focalLength`, `horizontalAperture`, `verticalAperture`, and `clippingRange`.
+The controller validates the camera schema and exact supported type, then reads noncustom
+declaration metadata from a fresh bounded native query. It never derives creation metadata from a
+display string or Sdr hint. The query does not supply undo state: the review layer is separately
+captured, so undo removes a newly authored opinion and reveals the original schema fallback.
+Declared variability is preserved rather than guessed; uniform declarations cannot be authored
+as time samples. Other unsupported, referenced-only, and schema-only properties remain read-only
+instead of guessing their declaration metadata.
+
+Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
+cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
+`inputs:specular`, `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`,
+and `inputs:color`. Admission checks exact native types and noncustom declaration metadata,
+not an `inputs:` name or registry hint. These fields reuse the focused typed review editor and
+shared history; they do not recreate lights, flatten shader graphs, or author shape/shaping fields.
+No values are silently clamped or normalized. Unauthored light dimensions and custom schema fields
+remain outside this admission path.
+
+Existing direct material bindings have an **Edit Direct Binding...** action in the Value tab,
+including the Material bindings property group. The action supports `material:binding` and the
+`preview` and `full` purpose variants. It requires an already applied native `MaterialBindingAPI`
+and a noncustom relationship; it does not apply APIs or create missing bindings.
+**Set** takes one absolute path to an existing native Material prim. An empty Set authors an
+explicitly empty target list to unbind; **Clear** removes only the review target opinion and
+reveals weaker bindings. Exact six-bucket list operations are shown separately from the composed
+display snapshot and retained by shared Undo/Redo. Material schema validation is repeated at
+mutation time, and conflicting target edits require a refresh rather than overwriting them.
+Collection bindings, binding strength, shader connections and material graphs are not edited.
+Normal USD ancestor and collection-binding precedence still applies to the effective material.
 
 Vector, quaternion and matrix input requires the exact number of finite components; float fields
 reject values outside the float range. Commas, whitespace, parentheses and matrix brackets/separators

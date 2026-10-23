@@ -61,7 +61,11 @@ function Get-ViewerInputReadiness
             $job[0].conclusion -cne 'success' -or
             @($job[0].steps | Where-Object conclusion -CEQ 'failure').Count -ne 0)
         {
-            throw "The actual $rid Viewer pack job failed, was cancelled or has mismatched evidence."
+            $observed = @($job | Select-Object id, run_id, head_sha, status, conclusion) |
+                ConvertTo-Json -Depth 3 -Compress
+            throw ("The actual $rid Viewer pack job failed, was cancelled or has mismatched evidence. " +
+                "Expected run=$($WorkflowRun.id), source=$($WorkflowRun.head_sha), completed/success; " +
+                "observed=$observed. Inspect the retained readiness metadata for step conclusions.")
         }
         $members = @($inputs | Where-Object name -CEQ "$prefix$rid")
         if ($members.Count -gt 1) { throw "Viewer inputs contain duplicate artifacts for $rid." }

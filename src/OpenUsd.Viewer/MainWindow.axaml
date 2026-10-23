@@ -1190,14 +1190,61 @@
 
       <Border x:Name="InspectorPanel" Grid.Column="4" Classes="viewer-panel">
         <Grid RowDefinitions="Auto,Auto,Auto,*">
-          <TextBox
+          <StackPanel x:Name="InspectorPropertyFilters" Spacing="6" Margin="0,0,0,6">
+            <ComboBox
+                x:Name="InspectorPropertyGroup"
+                SelectedIndex="0"
+                IsEnabled="False"
+                HorizontalAlignment="Stretch"
+                AutomationProperties.Name="Group existing properties"
+                AutomationProperties.AutomationId="inspector.propertyGroup"
+                ToolTip.Tip="Group cached properties by namespace and validated camera schema. Does not add or authorize edits.">
+              <ComboBoxItem Content="All property groups" />
+              <ComboBoxItem Content="Transform properties" />
+              <ComboBoxItem Content="Camera properties" />
+              <ComboBoxItem Content="Inputs (inputs:)" />
+              <ComboBoxItem Content="Outputs (outputs:)" />
+              <ComboBoxItem Content="Material bindings" />
+              <ComboBoxItem Content="Other properties" />
+            </ComboBox>
+            <ComboBox
+                x:Name="InspectorPropertyFilter"
+                SelectedIndex="0"
+                IsEnabled="False"
+                HorizontalAlignment="Stretch"
+                AutomationProperties.Name="Filter property snapshot state"
+                AutomationProperties.AutomationId="inspector.propertyFilter"
+                ToolTip.Tip="Filter cached composed metadata, not opinions in one layer. Unknown is not unauthored.">
+              <ComboBoxItem Content="All properties" />
+              <ComboBoxItem Content="Authored attributes" />
+              <ComboBoxItem Content="Unauthored attributes" />
+              <ComboBoxItem Content="Blocked attributes" />
+              <ComboBoxItem Content="Time-sampled attributes" />
+              <ComboBoxItem Content="Relationships" />
+              <ComboBoxItem Content="Unknown authored state" />
+            </ComboBox>
+            <TextBox
               x:Name="InspectorPropertyQuery"
               IsEnabled="False"
               MaxLength="256"
-              Margin="0,0,0,6"
               AutomationProperties.Name="Find properties by name or type"
               PlaceholderText="Find properties by name or type"
               ToolTip.Tip="Filter attribute and relationship lists. Prim metadata and selection are unchanged." />
+            <Button
+                x:Name="InspectorShaderRegistryRead"
+                Content="Inspect shader registry"
+                IsVisible="False"
+                IsEnabled="False"
+                AutomationProperties.Name="Read shader definition from the Sdr registry"
+                AutomationProperties.AutomationId="inspector.shaderRegistryRead"
+                ToolTip.Tip="Explicit bounded registry lookup by info:id. Does not resolve source assets or edit connections." />
+            <TextBlock
+                x:Name="InspectorShaderRegistryState"
+                IsVisible="False"
+                Classes="viewer-caption"
+                TextWrapping="Wrap"
+                AutomationProperties.Name="Shader registry inspection state" />
+          </StackPanel>
           <Grid x:Name="InspectorPropertyNavigation" Grid.Row="1"
                 ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,0,0,8">
             <Button

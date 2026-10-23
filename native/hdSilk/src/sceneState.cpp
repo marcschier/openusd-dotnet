@@ -18,6 +18,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE

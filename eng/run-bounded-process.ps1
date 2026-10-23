@@ -6,6 +6,8 @@ param(
     [string[]]$Arguments = @(),
     [Parameter(Mandatory)][ulong]$MaximumCommitBytes,
     [Nullable[ulong]]$MaximumWorkingSetBytes,
+    [Nullable[ulong]]$PhysicalReserveBytes,
+    [Nullable[ulong]]$CommitReserveBytes,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$WorkingDirectory = (Get-Location).Path,
     [ValidateRange(1, 86400)][int]$TimeoutSeconds = 90
@@ -23,6 +25,30 @@ $child = $null
 $watch = [Diagnostics.Stopwatch]::StartNew()
 try
 {
+    $admission = $null
+    if ($null -ne $PhysicalReserveBytes -or $null -ne $CommitReserveBytes)
+    {
+        $memory = [OpenUsd.Tooling.BoundedWindowsProcess]::ReadHostMemory()
+        $admission = [ordered]@{
+            measuredAt = [DateTimeOffset]::UtcNow.ToString('o')
+            availablePhysicalBytes = $memory.AvailablePhysicalBytes
+            availableCommitBytes = $memory.AvailableCommitBytes
+            maximumCommitBytes = $MaximumCommitBytes
+            physicalReserveBytes = $PhysicalReserveBytes
+            commitReserveBytes = $CommitReserveBytes
+            admitted = $memory.Admits($MaximumCommitBytes, $PhysicalReserveBytes, $CommitReserveBytes)
+            scope = 'Pre-start snapshot, not a reservation or a continuous physical-memory guarantee.'
+        }
+        $admission | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $output 'host-admission.json') -Encoding utf8
+        if (-not $admission.admitted)
+        {
+            throw [InvalidOperationException]::new(
+                "Host memory admission refused before child creation: physical=$($memory.AvailablePhysicalBytes), " +
+                "commit=$($memory.AvailableCommitBytes), child ceiling=$MaximumCommitBytes, " +
+                "physical reserve=$PhysicalReserveBytes, commit reserve=$CommitReserveBytes.")
+        }
+    }
     $child = [OpenUsd.Tooling.BoundedWindowsProcess]::Start(
         [IO.Path]::GetFullPath($Executable), $Arguments, [IO.Path]::GetFullPath($WorkingDirectory),
         (Join-Path $output 'stdout.log'), (Join-Path $output 'stderr.log'),
@@ -44,6 +70,7 @@ try
         exclusions = 'Not total host RAM: system cache, shared mappings and GPU/driver memory remain separate.'
         accounting = 'Raw Windows peak-memory counters are not asserted to be a strict historical commit bound.'
         executableSha256 = (Get-FileHash -LiteralPath $Executable).Hash
+        hostAdmission = $admission
     }
     $result | ConvertTo-Json -Depth 4 |
         Set-Content -LiteralPath (Join-Path $output 'receipt.json') -Encoding utf8

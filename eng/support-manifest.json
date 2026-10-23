@@ -1905,6 +1905,67 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "viewer-grouped-property-inspector",
+          "description": "Bounded cached property pages intersect text, value-state and schema groups before paging. Authored, unauthored, blocked, time-sampled, relationship and unknown states remain distinct. Deferred values and large collections are not expanded implicitly. The Windows native UI edits the exact selected attribute through review-layer CAS and shared Undo without modifying original source bytes.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerPropertyPageTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPropertyPagingNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "viewer-sdr-inspection",
+          "description": "Read-only native Sdr definition inspection validates exact identifiers, implementation-source authority, ambiguity and truncation. Bounded input/output hints preserve arbitrary shader connections; source assets without authoritative identifier lookup are not relabeled as known definitions. Selection, time and queued-result changes invalidate stale display state. This is not shader-network authoring or general MDL evaluation.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerShaderInspectionTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPropertyPagingNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "viewer-camera-light-review-controls",
+          "description": "Native schema-validated declaration admission supports camera projection, focalLength, horizontalAperture, verticalAperture and clippingRange, plus common light intensity, exposure, color, diffuse, specular, normalize, enableColorTemperature and colorTemperature. Light admission is limited to native Rect, Sphere, Disk, Cylinder, Distant and Dome schemas. Display snapshots supply declaration metadata, never edit authority; review capture, conflict-safe CAS and shared Undo remain separate. Native getters and the grouped intensity-edit/Undo UI journey execute on Windows.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerCameraPropertyNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerLightPropertyNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPropertyPagingNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "No automatic shaping API application, arbitrary schema-field creation, full optics/light editor or numeric clamping. Required-runtime tests now complete plugin registration and resolver first use before concurrent fixtures; local evidence is not hosted qualification."
+        },
+        {
+          "id": "viewer-direct-material-binding-review",
+          "description": "Existing native noncustom all/preview/full direct material-binding relationships with applied MaterialBindingAPI can replace one Material target, explicitly unbind with an empty target list, or Clear the review target opinion to reveal weaker bindings. Target schema is revalidated inside the serialized mutation. Shared conflict-safe Undo restores exact six-bucket list operations and original absence. The Windows grouped UI changes the resolved material and restores it through shared Undo while preserving source bytes.",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerMaterialBindingNativeTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPropertyPagingNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Does not apply APIs, create missing bindings, edit collections or binding strength, or rebuild shader graphs. Ancestor/collection precedence still applies. Native startup prerequisites are enforced separately from material editing; newer local source is not hosted-qualified."
+        },
+        {
+          "id": "viewer-variant-payload-review-authoring",
+          "description": "Exact review-history authoring of variant selections and payload arcs through Viewer controls.",
+          "status": "not-supported",
+          "exclusionReason": "Composition inspection and session payload load state are not authored prim-field capture/CAS/restore. Variant selectors remain read-only until an exact mutation/replay seam is available; absent, authored-empty and blocked opinions must not be conflated."
+        },
+        {
+          "id": "viewer-annotations-measurement",
+          "description": "Persistent units-aware measurements and scene annotations in the Viewer.",
+          "status": "not-supported",
+          "exclusionReason": "Saved cameras, selection and result thumbnails do not establish annotation anchors, measurement units or persistence. These remain required roadmap partitions, not delivered Viewer features."
+        },
+        {
+          "id": "viewer-cross-document-presentations",
+          "description": "Reopenable cross-document review presentations with verified historical artifacts and effective-state comparisons.",
+          "status": "not-supported",
+          "exclusionReason": "The current completed-job gallery is document-scoped. It does not provide persistent cross-document presentation browsing or rerender-free reopening after process restart."
+        },
+        {
           "id": "viewer-dcc",
           "description": "Full DCC authoring toolset in the Viewer",
           "status": "not-supported",

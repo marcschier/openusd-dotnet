@@ -22,6 +22,55 @@ public sealed class BoundedWindowsProcess : IDisposable
     {
     }
 
+    public static HostMemorySnapshot ReadHostMemory()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Host memory admission requires Windows.");
+        }
+        var information = new PerformanceInformation
+        {
+            Size = (uint)Marshal.SizeOf<PerformanceInformation>()
+        };
+        Require(GetPerformanceInfo(ref information, information.Size), "Read host memory admission counters");
+        ulong pageBytes = information.PageSize.ToUInt64();
+        ulong commitTotal = information.CommitTotal.ToUInt64();
+        ulong commitLimit = information.CommitLimit.ToUInt64();
+        ulong physicalAvailable = information.PhysicalAvailable.ToUInt64();
+        if (pageBytes == 0 || commitTotal > commitLimit ||
+            physicalAvailable > information.PhysicalTotal.ToUInt64())
+        {
+            throw new InvalidOperationException("Windows returned inconsistent host memory counters.");
+        }
+        return new HostMemorySnapshot(
+            checked(physicalAvailable * pageBytes), checked((commitLimit - commitTotal) * pageBytes));
+    }
+
+    public readonly struct HostMemorySnapshot
+    {
+        public HostMemorySnapshot(ulong availablePhysicalBytes, ulong availableCommitBytes)
+        {
+            AvailablePhysicalBytes = availablePhysicalBytes;
+            AvailableCommitBytes = availableCommitBytes;
+        }
+
+        public ulong AvailablePhysicalBytes { get; }
+        public ulong AvailableCommitBytes { get; }
+
+        public bool Admits(ulong maximumCommitBytes, ulong? physicalReserveBytes, ulong? commitReserveBytes)
+        {
+            if (maximumCommitBytes == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumCommitBytes));
+            }
+            return Fits(AvailablePhysicalBytes, maximumCommitBytes, physicalReserveBytes) &&
+                Fits(AvailableCommitBytes, maximumCommitBytes, commitReserveBytes);
+        }
+
+        private static bool Fits(ulong available, ulong maximumCommitBytes, ulong? reserve) =>
+            reserve is null || (available >= reserve.Value && available - reserve.Value >= maximumCommitBytes);
+    }
+
     public static BoundedWindowsProcess Start(string executable, string[] arguments, string workingDirectory,
         string stdoutPath, string stderrPath, ulong maximumCommitBytes, ulong? maximumWorkingSetBytes)
     {
@@ -117,6 +166,18 @@ public sealed class BoundedWindowsProcess : IDisposable
             owner._process = process.Process;
             owner.ProcessId = process.ProcessId;
             thread = process.Thread;
+            uint packageNameLength = 0;
+            int packageStatus = GetPackageFullName(owner._process, ref packageNameLength, IntPtr.Zero);
+            if (packageStatus is 0 or 122)
+            {
+                throw new NotSupportedException(
+                    "Packaged executables cannot guarantee private-job containment of unpackaged descendants. " +
+                    "Use an unpackaged executable; the suspended child has not been resumed.");
+            }
+            if (packageStatus != 15700)
+            {
+                throw new Win32Exception(packageStatus, "Read suspended child package identity");
+            }
             Require(AssignProcessToJobObject(owner._job, owner._process), "Assign suspended child to job");
             owner._assignedToJob = true;
             if (ResumeThread(thread) == uint.MaxValue)
@@ -354,6 +415,19 @@ public sealed class BoundedWindowsProcess : IDisposable
         public uint ProcessId, ThreadId;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PerformanceInformation
+    {
+        public uint Size;
+        public UIntPtr CommitTotal, CommitLimit, CommitPeak, PhysicalTotal, PhysicalAvailable;
+        public UIntPtr SystemCache, KernelTotal, KernelPaged, KernelNonpaged, PageSize;
+        public uint HandleCount, ProcessCount, ThreadCount;
+    }
+
+    [DllImport("psapi.dll", ExactSpelling = true, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetPerformanceInfo(ref PerformanceInformation information, uint size);
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateJobObjectW(IntPtr attributes, string? name);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -370,6 +444,8 @@ public sealed class BoundedWindowsProcess : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern int GetPackageFullName(IntPtr process, ref uint length, IntPtr name);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateFileW(string path, uint access, uint sharing,
         ref SecurityAttributes security, uint creation, uint flags, IntPtr template);

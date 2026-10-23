@@ -27,6 +27,20 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         ViewerAuthoredEditController editor, string primPath,
         IReadOnlyList<ViewerAttributeSnapshot> attributes, double timeCode, string? selectedName = null,
         IViewerAssetFilePicker? assetFilePicker = null)
+        : this(editor, primPath, attributes, timeCode, selectedName, assetFilePicker, null)
+    {
+    }
+
+    internal PropertyEditWindow(
+        ViewerAuthoredEditController editor, string primPath, ViewerRelationshipSnapshot binding)
+        : this(editor, primPath, [], 0, null, null, binding)
+    {
+    }
+
+    private PropertyEditWindow(
+        ViewerAuthoredEditController editor, string primPath,
+        IReadOnlyList<ViewerAttributeSnapshot> attributes, double timeCode, string? selectedName,
+        IViewerAssetFilePicker? assetFilePicker, ViewerRelationshipSnapshot? binding)
     {
         ArgumentNullException.ThrowIfNull(editor);
         ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
@@ -40,10 +54,11 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         _assetFilePicker = assetFilePicker ?? ViewerAssetFilePicker.Default;
         _primPath = primPath;
         _timeCode = timeCode;
+        _binding = binding;
         _attributes = [.. attributes
             .Where(static attribute => ViewerPropertyEditParser.Supports(attribute.TypeName))
             .OrderByDescending(static attribute => attribute.HasAuthoredValue)];
-        if (_attributes.Length == 0)
+        if (_attributes.Length == 0 && binding is null)
         {
             throw new NotSupportedException(
                 "This prim has no supported scalar, vector, quaternion, matrix or asset review properties.");
@@ -60,6 +75,10 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             "Default opinion", $"Sample at {timeCode.ToString("R", CultureInfo.InvariantCulture)}"
         };
         PropertyFieldSelector.SelectedIndex = 0;
+        if (binding is not null)
+        {
+            ConfigureMaterialBinding();
+        }
         PropertySelector.SelectionChanged += (_, _) => Start(CaptureAsync);
         PropertyFieldSelector.SelectionChanged += (_, _) => Start(CaptureAsync);
         RefreshPropertyButton.Click += (_, _) => Start(CaptureAsync);
@@ -74,7 +93,7 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             await _operation;
             if (!_closing && IsActive)
             {
-                if (_capture is not null)
+                if (_capture is not null || _bindingCapture is not null)
                 {
                     PropertyValue.Focus();
                 }
@@ -137,6 +156,7 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             NotSupportedException or ArgumentException or InvalidOperationException)
         {
             _capture = null;
+            _bindingCapture = null;
             PropertyEditStatus.Text = $"Review edit unavailable: {exception.Message} Refresh to retry.";
         }
         finally
@@ -149,6 +169,12 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
     private async Task CaptureAsync()
     {
         _capture = null;
+        _bindingCapture = null;
+        if (_binding is not null)
+        {
+            await CaptureMaterialBindingAsync();
+            return;
+        }
         if (PropertySelector.SelectedIndex < 0 || PropertySelector.SelectedIndex >= _attributes.Length ||
             PropertyFieldSelector.SelectedIndex is not (0 or 1))
         {
@@ -171,6 +197,11 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
 
     private async Task ApplyAsync(UsdLayerEditOperation operation)
     {
+        if (_binding is not null)
+        {
+            await ApplyMaterialBindingAsync(operation);
+            return;
+        }
         ViewerPropertyEditCapture property = _capture ??
             throw new InvalidOperationException("Refresh the target opinion before editing.");
         UsdLayerEditAddress address = property.Capture.Snapshot.Addresses[0];
@@ -267,8 +298,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertyFieldSelector.IsEnabled = ready;
         PropertyValue.IsEnabled = ready;
         RefreshPropertyButton.IsEnabled = ready;
-        SetPropertyButton.IsEnabled = ready && _capture is not null;
-        ClearPropertyButton.IsEnabled = ready && _capture is not null;
+        SetPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null);
+        ClearPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null);
         BlockPropertyButton.IsEnabled = ready && _capture is not null;
         ChoosePropertyAssetButton.IsVisible = _capture is { TypeName: "asset" };
         ChoosePropertyAssetButton.IsEnabled = ready && _capture is { TypeName: "asset" };

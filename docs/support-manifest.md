@@ -1396,6 +1396,13 @@ Interactive desktop inspection, playback, selection, and focused editing capabil
 | `viewer-picking` | Implemented | `win-x64`, `linux-x64` |
 | `viewer-physics` | Implemented | `win-x64`, `linux-x64` |
 | `composition-tab` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
+| `viewer-grouped-property-inspector` | Implemented | `win-x64` |
+| `viewer-sdr-inspection` | Implemented | `win-x64` |
+| `viewer-camera-light-review-controls` | Implemented | `win-x64` |
+| `viewer-direct-material-binding-review` | Implemented | `win-x64` |
+| `viewer-variant-payload-review-authoring` | Not supported | None |
+| `viewer-annotations-measurement` | Not supported | None |
+| `viewer-cross-document-presentations` | Not supported | None |
 | `viewer-dcc` | Not supported | None |
 
 ### `file-open`
@@ -1473,6 +1480,66 @@ Physics authoring, bake, and deformation rendering in the Viewer
 ### `composition-tab`
 
 Composition tab data (PcpPrimIndex) display in the Viewer UI
+
+### `viewer-grouped-property-inspector`
+
+Bounded cached property pages intersect text, value-state and schema groups before paging. Authored, unauthored,
+blocked, time-sampled, relationship and unknown states remain distinct. Deferred values and large collections are not
+expanded implicitly. The Windows native UI edits the exact selected attribute through review-layer CAS and shared Undo
+without modifying original source bytes.
+
+### `viewer-sdr-inspection`
+
+Read-only native Sdr definition inspection validates exact identifiers, implementation-source authority, ambiguity and
+truncation. Bounded input/output hints preserve arbitrary shader connections; source assets without authoritative
+identifier lookup are not relabeled as known definitions. Selection, time and queued-result changes invalidate stale
+display state. This is not shader-network authoring or general MDL evaluation.
+
+### `viewer-camera-light-review-controls`
+
+Native schema-validated declaration admission supports camera projection, focalLength, horizontalAperture,
+verticalAperture and clippingRange, plus common light intensity, exposure, color, diffuse, specular, normalize,
+enableColorTemperature and colorTemperature. Light admission is limited to native Rect, Sphere, Disk, Cylinder, Distant
+and Dome schemas. Display snapshots supply declaration metadata, never edit authority; review capture, conflict-safe CAS
+and shared Undo remain separate. Native getters and the grouped intensity-edit/Undo UI journey execute on Windows.
+
+**Limits:** No automatic shaping API application, arbitrary schema-field creation, full optics/light editor or numeric
+clamping. Required-runtime tests now complete plugin registration and resolver first use before concurrent fixtures;
+local evidence is not hosted qualification.
+
+### `viewer-direct-material-binding-review`
+
+Existing native noncustom all/preview/full direct material-binding relationships with applied MaterialBindingAPI can
+replace one Material target, explicitly unbind with an empty target list, or Clear the review target opinion to reveal
+weaker bindings. Target schema is revalidated inside the serialized mutation. Shared conflict-safe Undo restores exact
+six-bucket list operations and original absence. The Windows grouped UI changes the resolved material and restores it
+through shared Undo while preserving source bytes.
+
+**Limits:** Does not apply APIs, create missing bindings, edit collections or binding strength, or rebuild shader
+graphs. Ancestor/collection precedence still applies. Native startup prerequisites are enforced separately from material
+editing; newer local source is not hosted-qualified.
+
+### `viewer-variant-payload-review-authoring`
+
+Exact review-history authoring of variant selections and payload arcs through Viewer controls.
+
+**Limits:** Composition inspection and session payload load state are not authored prim-field capture/CAS/restore.
+Variant selectors remain read-only until an exact mutation/replay seam is available; absent, authored-empty and blocked
+opinions must not be conflated.
+
+### `viewer-annotations-measurement`
+
+Persistent units-aware measurements and scene annotations in the Viewer.
+
+**Limits:** Saved cameras, selection and result thumbnails do not establish annotation anchors, measurement units or
+persistence. These remain required roadmap partitions, not delivered Viewer features.
+
+### `viewer-cross-document-presentations`
+
+Reopenable cross-document review presentations with verified historical artifacts and effective-state comparisons.
+
+**Limits:** The current completed-job gallery is document-scoped. It does not provide persistent cross-document
+presentation browsing or rerender-free reopening after process restart.
 
 ### `viewer-dcc`
 

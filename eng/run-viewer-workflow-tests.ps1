@@ -202,8 +202,8 @@ if (Test-Path -LiteralPath $evidenceRoot)
     throw "Use a new evidence directory; existing output will not be overwritten: $evidenceRoot"
 }
 New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
-$workDirectory = [IO.Directory]::CreateTempSubdirectory("openusd-viewer-workflows-$runId-")
-$workRoot = (Get-Item -LiteralPath $workDirectory.FullName).FullName
+$workDirectory = [IO.Directory]::CreateDirectory((Join-Path $evidenceRoot 'work'))
+$workRoot = Resolve-ManagedWorkflowPhysicalDirectory -Path $workDirectory.FullName
 $environmentNames = @('PATH', 'TEMP', 'TMP', 'OPENUSD_VIEWER_TEST_NATIVE_ROOT', 'OPENUSD_PLUGIN_PATH',
     'OPENUSD_TEST_PLUGIN_PATH', 'OPENUSD_TEST_WORK_ROOT',
     'OPENUSD_VIEWER_AUTHORED_PRODUCT_EVIDENCE_ROOT', 'OPENUSD_VIEWER_CAPTURE_RENDERER',

@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using OpenUsd.Editing;
+using OpenUsd.Geom;
+using OpenUsd.Lux;
 
 namespace OpenUsd.Viewer;
 
@@ -51,19 +53,36 @@ internal sealed partial class ViewerAuthoredEditController
                         break;
                     }
                 }
-                if (declaration is null || declaration.TypeName != composedType)
+                UsdLayerEditVariability variability;
+                bool custom;
+                if (declaration is null)
+                {
+                    UsdAttributePropertySnapshot schemaProperty = ReadSupportedSchemaProperty(
+                        stage, primPath, attributeName, composedType);
+                    variability = schemaProperty.Variability switch
+                    {
+                        UsdPropertyVariability.Varying => UsdLayerEditVariability.Varying,
+                        UsdPropertyVariability.Uniform => UsdLayerEditVariability.Uniform,
+                        _ => throw new NotSupportedException("The native declaration variability is unknown.")
+                    };
+                    custom = schemaProperty.IsCustom;
+                }
+                else if (declaration.TypeName != composedType)
                 {
                     throw new NotSupportedException(
-                        "An exact local attribute declaration is required. Referenced/schema-only attributes are " +
-                        "read-only here; no declaration will be guessed.");
+                        "The local and composed attribute types differ; refresh before editing.");
                 }
-                UsdLayerEditVariability variability = declaration.Variability ?? UsdLayerEditVariability.Varying;
+                else
+                {
+                    variability = declaration.Variability ?? UsdLayerEditVariability.Varying;
+                    custom = declaration.Custom ?? false;
+                }
                 if (field == UsdLayerEditField.TimeSample && variability == UsdLayerEditVariability.Uniform)
                 {
                     throw new NotSupportedException("Uniform attributes cannot be edited as time samples.");
                 }
                 ViewerAuthoredEditCapture capture = CaptureReview(stage, [address]);
-                return new ViewerPropertyEditCapture(capture, composedType, variability, declaration.Custom ?? false);
+                return new ViewerPropertyEditCapture(capture, composedType, variability, custom);
             }, linked.Token).ConfigureAwait(false);
         }
         finally
@@ -71,4 +90,49 @@ internal sealed partial class ViewerAuthoredEditController
             _gate.Release();
         }
     }
+
+    private static UsdAttributePropertySnapshot ReadSupportedSchemaProperty(
+        UsdStage stage, string primPath, string attributeName, string composedType)
+    {
+        string? expectedType = attributeName switch
+        {
+            "focalLength" or "horizontalAperture" or "verticalAperture" => "float",
+            "clippingRange" => "float2",
+            "projection" => "token",
+            "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
+                "inputs:specular" or "inputs:colorTemperature" => "float",
+            "inputs:enableColorTemperature" or "inputs:normalize" => "bool",
+            "inputs:color" => "color3f",
+            _ => null
+        };
+        UsdPrim prim = stage.GetPrim(primPath);
+        bool supportedSchema = expectedType is not null &&
+            (attributeName.StartsWith("inputs:", StringComparison.Ordinal)
+                ? IsSupportedLight(prim)
+                : UsdGeomCamera.TryWrap(prim, out _));
+        if (!supportedSchema || composedType != expectedType)
+        {
+            throw new NotSupportedException(
+                "An exact local declaration or a supported native camera/light declaration is required. " +
+                "Other referenced/schema-only attributes remain read-only; no declaration will be guessed.");
+        }
+        UsdAttributePropertySnapshot? property = stage.GetPrimPropertySnapshot(
+                primPath, limits: UsdPropertyInspectionLimits.Viewer)
+            .Properties.OfType<UsdAttributePropertySnapshot>()
+            .FirstOrDefault(value => value.Name == attributeName);
+        if (property is null || property.TypeName != expectedType || property.IsCustom)
+        {
+            throw new NotSupportedException(
+                "The native schema property declaration is unavailable or incompatible; no edit was captured.");
+        }
+        return property;
+    }
+
+    private static bool IsSupportedLight(UsdPrim prim) =>
+        UsdLuxRectLight.TryWrap(prim, out _) ||
+        UsdLuxSphereLight.TryWrap(prim, out _) ||
+        UsdLuxDiskLight.TryWrap(prim, out _) ||
+        UsdLuxCylinderLight.TryWrap(prim, out _) ||
+        UsdLuxDistantLight.TryWrap(prim, out _) ||
+        UsdLuxDomeLight.TryWrap(prim, out _);
 }

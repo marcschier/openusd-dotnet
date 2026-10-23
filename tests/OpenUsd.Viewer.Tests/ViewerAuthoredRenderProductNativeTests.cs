@@ -186,6 +186,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await WaitUntilAsync(() =>
                 Required<ListBox>(palette, "CommandResults").SelectedItem is
                     ListBoxItem { Tag: ViewerCommandIds.FileRenderAuthoredProduct });
+            Required<TextBox>(palette, "CommandSearch").Focus();
+            await WaitUntilAsync(() => Required<TextBox>(palette, "CommandSearch").IsKeyboardFocusWithin);
             palette.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
             await WaitUntilAsync(
                 () => window.OwnedWindows.Any(child => child.Title == "Render authored RenderProduct"));

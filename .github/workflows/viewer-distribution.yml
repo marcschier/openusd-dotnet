@@ -392,8 +392,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           . ./eng/viewer-input-readiness.ps1
+          $directory = 'artifacts/viewer-input-readiness'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $api = "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $run = gh api $api | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the Viewer workflow-run identity.' }
+          $run | ConvertTo-Json -Depth 20 | Set-Content "$directory/workflow-run.json"
           if ($LASTEXITCODE -ne 0 -or $run.id -ne [long]$env:GITHUB_RUN_ID -or
               $run.head_sha -cne $env:WORKFLOW_HEAD_SHA)
           {
@@ -401,11 +405,11 @@ jobs:
           }
           $jobs = gh api "$api/jobs?per_page=100" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
+          $jobs | ConvertTo-Json -Depth 20 | Set-Content "$directory/jobs.json"
           $artifacts = gh api "$api/artifacts?per_page=100" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer input-artifact evidence.' }
+          $artifacts | ConvertTo-Json -Depth 20 | Set-Content "$directory/artifacts.json"
           $result = Get-ViewerInputReadiness -WorkflowRun $run -JobsResponse $jobs -ArtifactsResponse $artifacts
-          $directory = 'artifacts/viewer-input-readiness'
-          New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $result | ConvertTo-Json -Depth 6 | Set-Content "$directory/readiness.json"
           "ready=$($result.ready.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
           if (-not $result.ready)

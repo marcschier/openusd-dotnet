@@ -3,7 +3,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [Parameter(Mandatory)][string]$NativeMemoryProbe
+    [Parameter(Mandatory)][string]$NativeMemoryProbe,
+    [string]$PowerShellExecutable = (Get-Process -Id $PID).Path,
+    [string]$PackagedPowerShellExecutable
 )
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'These kernel guard checks require Windows.' }
@@ -17,7 +19,7 @@ if (Test-Path -LiteralPath $root) { throw 'Use a new test evidence directory.' }
 New-Item -ItemType Directory -Path $root | Out-Null
 $runner = Join-Path $PSScriptRoot 'run-bounded-process.ps1'
 $childScript = Join-Path $PSScriptRoot 'test-bounded-process-child.ps1'
-$pwsh = (Get-Process -Id $PID).Path
+$pwsh = [IO.Path]::GetFullPath($PowerShellExecutable)
 $common = @{ Executable = $pwsh; MaximumCommitBytes = 134217728; TimeoutSeconds = 20 }
 function Arguments([string]$Mode, [string[]]$Values = @())
 {
@@ -33,6 +35,29 @@ function RequireGone([int]$ProcessId)
     catch [ArgumentException] { return }
     try { Require ($process.WaitForExit(5000)) "Owned process $ProcessId remained alive." }
     finally { $process.Dispose() }
+}
+
+$packagedHostStatus = 'not-requested'
+if ($PackagedPowerShellExecutable)
+{
+    $packagedOutput = Join-Path $root 'packaged-host'
+    $refused = $false
+    try
+    {
+        & $runner -Executable $PackagedPowerShellExecutable -MaximumCommitBytes 536870912 -TimeoutSeconds 20 `
+            -OutputDirectory $packagedOutput -Arguments (Arguments 'arguments' @('must-not-run')) | Out-Null
+    }
+    catch
+    {
+        if ($_.Exception.GetBaseException() -isnot [NotSupportedException]) { throw }
+        $refused = $true
+    }
+    Require $refused 'A packaged host was allowed to run despite unbounded unpackaged descendants.'
+    Require ((Get-Item -LiteralPath (Join-Path $packagedOutput 'stdout.log')).Length -eq 0) `
+        'The packaged child executed before refusal.'
+    Require ((Get-Item -LiteralPath (Join-Path $packagedOutput 'stderr.log')).Length -eq 0) `
+        'The packaged child produced stderr before refusal.'
+    $packagedHostStatus = 'refused-before-resume'
 }
 
 $values = @('with spaces', 'with"quote', 'trailing\', '', 'quoted\"tail\')
@@ -138,13 +163,16 @@ catch
         'A child was started after privileged limit setup failed.'
     $workingSetStatus = 'privilege-refused-before-start'
 }
+$cases = @('argument-roundtrip', 'native-commit-refusal', 'timeout-cleanup', 'nonzero-exit',
+    'descendant-cleanup', 'native-invocation-commit-limit', 'idempotent-stop', 'explicit-working-set-limit',
+    'explicit-stop-after-parent-exit')
+if ($PackagedPowerShellExecutable) { $cases += 'packaged-host-refusal' }
 [ordered]@{
     status = 'passed'
-    cases = @('argument-roundtrip', 'native-commit-refusal', 'timeout-cleanup', 'nonzero-exit',
-        'descendant-cleanup', 'native-invocation-commit-limit', 'idempotent-stop', 'explicit-working-set-limit',
-        'explicit-stop-after-parent-exit')
+    cases = $cases
     workingSetStatus = $workingSetStatus
+    packagedHostStatus = $packagedHostStatus
     maximumCommitBytes = $common.MaximumCommitBytes
     sourceSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'BoundedWindowsProcess.cs')).Hash
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $root 'summary.json') -Encoding utf8
-Write-Output 'Passed: 9 bounded-process checks; no warehouse or topology data was loaded.'
+Write-Output "Passed: $($cases.Count) bounded-process checks; packaged host: $packagedHostStatus."

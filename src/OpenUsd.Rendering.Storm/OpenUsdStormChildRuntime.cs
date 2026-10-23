@@ -232,11 +232,9 @@ public sealed partial class OpenUsdStormChildSession : IDisposable
     /// <summary>Gets the latest detached native navigation input snapshot.</summary>
     public OpenUsdStormNavigationInput GetNavigationInput()
     {
-        nint handle;
-        lock (_gate)
-        {
-            handle = GetHandleLocked();
-        }
+        // Native lookup retains the child and reads its independent input state, not a render command.
+        nint handle = Volatile.Read(ref _handle);
+        ObjectDisposedException.ThrowIf(handle == 0, this);
         return OpenUsdStormChildRuntime.GetNavigationInput(handle);
     }
 
@@ -455,7 +453,7 @@ public sealed partial class OpenUsdStormChildSession : IDisposable
                     "The Storm native child must be disposed on its creator UI thread.");
             }
             OpenUsdStormChildRuntime.Destroy(_handle);
-            _handle = 0;
+            Volatile.Write(ref _handle, 0);
             _lease?.Dispose();
             _lease = null;
         }

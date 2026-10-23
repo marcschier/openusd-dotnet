@@ -11,6 +11,31 @@ pack leg with explicit unavailable-native-input deferral evidence may defer the 
 failed/cancelled producers and duplicate, expired or mismatched artifacts fail visibly. Original
 bundle/smoke commands and strict local OpenUsd package-source mapping are unchanged. Viewer
 distribution remains outside the six publication gates, but its applicable PR check must pass.
+The barrier retains the observed run, job and artifact API responses in
+`openusd-viewer-input-readiness`, including when validation fails. Rejected pack-job errors
+include the expected run/source and observed job identity, status and conclusion; inspect
+the retained step conclusions rather than inferring readiness from the final PR check rollup.
+Run `pwsh -File eng/test-viewer-input-readiness.ps1` for the focused provenance and diagnostic checks.
+
+Windows Viewer workflow fixtures live in an owned `work` directory below the fresh evidence
+root, not the global `TMP` directory, whose ancestors can deny the directory leases required
+for review recovery. The runner uses the filesystem's spelling of every scratch-directory
+component; reparse-point ancestors are rejected, not redirected. This keeps verified-source
+alias and filesystem-lease checks unchanged. A differently cased ancestor must not turn a
+document-opening test into a stage-ready timeout.
+Run `pwsh -File eng/test-managed-workflow-paths.ps1` on Windows for the focused regression.
+
+When `OPENUSD_VIEWER_TEST_NATIVE_ROOT` requires a native Viewer test runtime, the
+test assembly registers its configured plugin tree and constructs the primary
+resolver in its module initializer, after configuring native library lookup and
+before any test starts. This follows the documented single-threaded resolver
+first-use contract. Individual parallel fixtures must not race first stage
+opening against plugin registration. Invalid required plugin configuration fails
+startup rather than becoming a native-test skip.
+Without that prerequisite, parallel fixtures reproduced a fatal
+`PlugRegistry::DemandPluginForType` call during resolver construction from
+`UsdStage.Open`, before any test report was written. Serializing the tests or
+retrying a failed host is not a substitute for initialization before dispatch.
 
 **On this page:** [Workflow graph](#workflow-and-evidence-graph) ·
 [Managed runner](#managed-test-runner) · [Performance](#performance-safety-gates) ·
@@ -748,10 +773,38 @@ working directory, explicit `-MaximumCommitBytes`, and a new `-OutputDirectory`.
 Timeouts and nonzero exits fail explicitly; the receipt retains the original exit
 code, observed job-process count and raw Windows peak-memory counters.
 
+Packaged executables, including Microsoft Store PowerShell, are refused while
+the child is still suspended. An observed Store PowerShell launcher retained its
+own job membership but launched an unpackaged .NET child outside the private job;
+that child survived job termination. A process-count or parent-membership check
+alone is not a tree-containment guarantee. Use an unpackaged launcher or pass the
+actual unpackaged `.dotnet\dotnet.exe` directly, without a packaged shell between
+the guard and the workload. The caller running the guard may itself be packaged;
+the executable being resumed must not be.
+
 `-MaximumWorkingSetBytes` is optional and may require additional Windows privilege.
 A requested limit that cannot be installed fails before child creation; it is never
 silently ignored. Private commit limits are not a total physical-RAM bound: mapped
 files, system cache and GPU/driver allocations remain separate domains.
+
+Use `-PhysicalReserveBytes` and `-CommitReserveBytes` for pre-start host
+admission. Each requested counter must cover the complete child commit ceiling
+**plus** its reserve. Omitting a reserve preserves the existing opt-in behavior;
+explicit zero still requires headroom for the full ceiling. Windows
+`GetPerformanceInfo` supplies available physical pages and system commit
+headroom (`CommitLimit - CommitTotal`), not free virtual-address space.
+The runner writes `host-admission.json` before child creation, including refused
+requests, and refuses insufficient headroom without waiting, retrying, inspecting
+the executable or creating child stdout/stderr. Counter/query errors fail closed.
+An admitted execution also embeds this snapshot in its normal receipt. This is
+an observation, not a host-memory reservation: other processes and GPU/driver
+allocations can still change available memory after admission. Existing workload
+gates, device checks and kernel job limits remain necessary.
+Run `eng\test-host-memory-admission.ps1 -OutputDirectory <fresh-directory>` for
+exact-fit, one-byte-short, overflow and no-child refusal cases. Its optional
+`-ProbeExecutable <absolute-dotnet-path>` also checks admitted and legacy
+`--version` execution under a 128-MiB cap; zero reserves there are test inputs,
+not warehouse policy.
 
 Build the native check in a Windows Developer PowerShell, using an existing
 artifact directory:
@@ -762,6 +815,16 @@ cl /std:c++17 /W4 /WX /EHsc /O2 eng\test-bounded-native-memory.cpp `
 .\eng\test-bounded-process.ps1 -OutputDirectory <new-evidence-directory> `
   -NativeMemoryProbe <absolute-path-to-artifacts\test-bounded-native-memory.exe>
 ```
+
+If the driver is Microsoft Store PowerShell, select an unpackaged PowerShell 7
+child host with `-PowerShellExecutable`, such as an official portable installation.
+Windows PowerShell 5.1 is not a substitute for the modern allocation fixture:
+its .NET Framework runtime can terminate rather than return the expected refusal.
+Pass an installed Store PowerShell path through
+`-PackagedPowerShellExecutable` to additionally assert refusal with empty
+stdout/stderr before any packaged child code executes. The summary records
+whether this environment-specific check was requested; it is not inferred from
+the ordinary positive checks.
 
 The minimized nine-case check tests argument fidelity, native allocation refusal under a 128-MiB job cap,
 accepted parent/child payload and live private counters, timeout, descendant and
@@ -2019,6 +2082,10 @@ Scoped `TEMP` and `TMP` point to that same owned root for fixtures that create t
 directly; their prior process values are restored with the other fixture environment.
 Each scenario retains its hash-verified raw TUnit and HTML reports before the next process can
 overwrite the runner's usual paths, including test, minimum-execution and unexpected-skip failures.
+The `physics-history` scenario must also pass with the matched physics solver on `PATH`.
+Its queued edit deliberately holds the stage while the UI requests a refresh and changes the
+selected physics property. Native Storm override delivery must leave the UI responsive so it can
+release that edit; a solver-free pass alone does not exercise this deadlock regression.
 Pre-existing reports are separated as prior evidence before invocation; missing current reports
 cannot qualify as current output. Report-retention errors are explicit, preserve the original
 failing exit or exception, and fail qualification if execution otherwise succeeded. The HTML report
