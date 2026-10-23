@@ -326,6 +326,25 @@ public sealed class ViewerPropertyPagingNativeTests
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Light" });
             await WaitAsync(() => shaderQuery.IsEnabled && !registry.IsVisible, timeout);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
+            shaderQuery.Text = string.Empty;
+            await WaitAsync(() => Required<TextBlock>(main, "InspectorPropertyPageState").Text ==
+                "Properties 1-8 of 8 matches", timeout);
+            foreach (string lightControl in new[]
+            {
+                "inputs:intensity",
+                "inputs:exposure",
+                "inputs:diffuse",
+                "inputs:specular",
+                "inputs:colorTemperature",
+                "inputs:enableColorTemperature",
+                "inputs:normalize",
+                "inputs:color"
+            })
+            {
+                await Assert.That(ValueText(main)).Contains(lightControl);
+            }
+            await Assert.That(ValueText(main)).DoesNotContain("inputs:width");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderInputs;
             await FilterAttributeAsync(main, shaderQuery, "inputs:intensity", timeout, "/Light");
             float originalIntensity = await session.Scheduler.InvokeAsync(

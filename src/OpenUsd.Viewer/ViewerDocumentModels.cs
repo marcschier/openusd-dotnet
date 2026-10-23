@@ -607,6 +607,7 @@ internal sealed record ViewerPrimInspectorSnapshot(
     string? PrototypePath,
     bool IsImageable,
     bool IsCamera,
+    bool IsLight,
     UsdGeomVisibility? Visibility,
     UsdGeomPurpose? Purpose,
     string[] AppliedSchemas,
@@ -913,6 +914,7 @@ internal static partial class ViewerStageSnapshotBuilder
         bool isPrototype = prim.IsPrototype();
         bool isImageable = UsdGeomImageable.TryWrap(prim, out UsdGeomImageable imageable);
         bool isCamera = UsdGeomCamera.TryWrap(prim, out _);
+        bool isLight = ViewerAuthoredEditController.IsSupportedLight(prim);
         var unsupported = new List<ViewerUnsupportedFeature>();
         UsdGeomVisibility? visibility = null;
         UsdGeomPurpose? purpose = null;
@@ -941,6 +943,7 @@ internal static partial class ViewerStageSnapshotBuilder
             isInstance ? prim.GetPrototypePath() : null,
             isImageable,
             isCamera,
+            isLight,
             visibility,
             purpose,
             prim.GetAppliedSchemas(),

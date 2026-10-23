@@ -9,6 +9,35 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerLightPropertyNativeTests
 {
     [Test]
+    public async Task InspectorSnapshotMarksOnlyValidatedLightSchemasAsLight()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-inspector-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        await File.WriteAllTextAsync(path,
+            """
+            #usda 1.0
+            def RectLight "Light" {}
+            def Xform "Other" {}
+            """);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            (bool isLight, bool isOtherLight) = await scheduler.InvokeAsync(stage =>
+            {
+                bool light = ViewerStageSnapshotBuilder.BuildInspector(stage, "/Light").IsLight;
+                bool other = ViewerStageSnapshotBuilder.BuildInspector(stage, "/Other").IsLight;
+                return (light, other);
+            });
+            await Assert.That(isLight).IsTrue();
+            await Assert.That(isOtherLight).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("RectLight", "inputs:intensity", "float")]
     [Arguments("SphereLight", "inputs:intensity", "float")]
     [Arguments("DiskLight", "inputs:intensity", "float")]

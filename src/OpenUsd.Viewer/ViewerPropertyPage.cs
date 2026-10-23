@@ -18,6 +18,7 @@ internal enum ViewerPropertyGroup
     All,
     Transform,
     Camera,
+    Light,
     ShaderInputs,
     ShaderOutputs,
     MaterialBindings,
@@ -59,7 +60,8 @@ internal sealed class ViewerPropertyPage
         int pageIndex,
         ViewerPropertyFilter filter = ViewerPropertyFilter.All,
         ViewerPropertyGroup group = ViewerPropertyGroup.All,
-        bool isCamera = false)
+        bool isCamera = false,
+        bool isLight = false)
     {
         ArgumentNullException.ThrowIfNull(attributes);
         ArgumentNullException.ThrowIfNull(relationships);
@@ -77,7 +79,7 @@ internal sealed class ViewerPropertyPage
         int matches = 0;
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera))
+            if (Matches(attribute, filter, search, group, isCamera, isLight))
             {
                 matches++;
             }
@@ -97,7 +99,7 @@ internal sealed class ViewerPropertyPage
         var pageRelationships = new List<ViewerRelationshipSnapshot>();
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera) &&
+            if (Matches(attribute, filter, search, group, isCamera, isLight) &&
                 seen++ >= start && pageAttributes.Count < PageSize)
             {
                 pageAttributes.Add(attribute);
@@ -121,8 +123,8 @@ internal sealed class ViewerPropertyPage
 
     private static bool Matches(
         ViewerAttributeSnapshot attribute, ViewerPropertyFilter filter, string query,
-        ViewerPropertyGroup group, bool isCamera) =>
-        (group == ViewerPropertyGroup.All || AttributeGroup(attribute.Name, isCamera) == group) &&
+        ViewerPropertyGroup group, bool isCamera, bool isLight) =>
+        (group == ViewerPropertyGroup.All || AttributeGroup(attribute.Name, isCamera, isLight) == group) &&
         Matches(attribute.Name, attribute.TypeName, query) && (filter switch
         {
             ViewerPropertyFilter.All => true,
@@ -141,7 +143,7 @@ internal sealed class ViewerPropertyPage
         (group == ViewerPropertyGroup.All || RelationshipGroup(relationship.Name) == group) &&
         Matches(relationship.Name, "relationship", query);
 
-    private static ViewerPropertyGroup AttributeGroup(string name, bool isCamera)
+    private static ViewerPropertyGroup AttributeGroup(string name, bool isCamera, bool isLight)
     {
         if (name == "xformOpOrder" || name.StartsWith("xformOp:", StringComparison.Ordinal))
         {
@@ -153,6 +155,12 @@ internal sealed class ViewerPropertyPage
             "shutter:open" or "shutter:close" or "stereoRole")
         {
             return ViewerPropertyGroup.Camera;
+        }
+        if (isLight && name is "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
+            "inputs:specular" or "inputs:colorTemperature" or "inputs:enableColorTemperature" or
+            "inputs:normalize" or "inputs:color")
+        {
+            return ViewerPropertyGroup.Light;
         }
         if (name.StartsWith("inputs:", StringComparison.Ordinal))
         {

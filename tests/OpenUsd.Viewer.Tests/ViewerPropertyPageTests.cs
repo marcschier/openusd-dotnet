@@ -84,6 +84,44 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task CommonLightControlsHaveAnExplicitSchemaGroupWithoutHidingOtherShaderInputs()
+    {
+        string[] attributeNames =
+        [
+            "inputs:intensity",
+            "inputs:exposure",
+            "inputs:diffuse",
+            "inputs:specular",
+            "inputs:colorTemperature",
+            "inputs:enableColorTemperature",
+            "inputs:normalize",
+            "inputs:color",
+            "inputs:width",
+            "inputs:intensityExtra",
+            "inputs:color:red"
+        ];
+        ViewerAttributeSnapshot[] attributes = attributeNames
+            .Select(static name => new ViewerAttributeSnapshot(name, "float", true, false, 0, "<none>", "7"))
+            .ToArray();
+
+        ViewerPropertyPage lightControls = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Light, isLight: true);
+        await Assert.That(string.Join(",", lightControls.Attributes.Select(static item => item.Name)))
+            .IsEqualTo(
+                "inputs:intensity,inputs:exposure,inputs:diffuse,inputs:specular," +
+                "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color");
+
+        ViewerPropertyPage remainingShaderInputs = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs, isLight: true);
+        await Assert.That(string.Join(",", remainingShaderInputs.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("inputs:width,inputs:intensityExtra,inputs:color:red");
+
+        ViewerPropertyPage nonLightInputs = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs);
+        await Assert.That(nonLightInputs.Attributes).IsEquivalentTo(attributes);
+    }
+
+    [Test]
     public async Task GroupStateAndSearchIntersectBeforeClampingAndBoundedPaging()
     {
         ViewerAttributeSnapshot[] attributes = Enumerable.Range(0, 200)

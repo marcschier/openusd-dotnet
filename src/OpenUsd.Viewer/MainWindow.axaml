@@ -1198,10 +1198,11 @@
                 HorizontalAlignment="Stretch"
                 AutomationProperties.Name="Group existing properties"
                 AutomationProperties.AutomationId="inspector.propertyGroup"
-                ToolTip.Tip="Group cached properties by namespace and validated camera schema. Does not add or authorize edits.">
+                ToolTip.Tip="Group cached properties by namespace and validated camera/light schemas. Does not add or authorize edits.">
               <ComboBoxItem Content="All property groups" />
               <ComboBoxItem Content="Transform properties" />
               <ComboBoxItem Content="Camera properties" />
+              <ComboBoxItem Content="Common light controls" />
               <ComboBoxItem Content="Inputs (inputs:)" />
               <ComboBoxItem Content="Outputs (outputs:)" />
               <ComboBoxItem Content="Material bindings" />

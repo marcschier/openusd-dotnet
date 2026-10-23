@@ -128,7 +128,7 @@ internal sealed partial class ViewerAuthoredEditController
         return property;
     }
 
-    private static bool IsSupportedLight(UsdPrim prim) =>
+    internal static bool IsSupportedLight(UsdPrim prim) =>
         UsdLuxRectLight.TryWrap(prim, out _) ||
         UsdLuxSphereLight.TryWrap(prim, out _) ||
         UsdLuxDiskLight.TryWrap(prim, out _) ||
