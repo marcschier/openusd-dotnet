@@ -124,7 +124,10 @@ internal sealed class ViewerPropertyPage
     private static bool Matches(
         ViewerAttributeSnapshot attribute, ViewerPropertyFilter filter, string query,
         ViewerPropertyGroup group, bool isCamera, bool isLight) =>
-        (group == ViewerPropertyGroup.All || AttributeGroup(attribute.Name, isCamera, isLight) == group) &&
+        (group == ViewerPropertyGroup.All ||
+         (group == ViewerPropertyGroup.ShaderInputs &&
+             attribute.Name.StartsWith("inputs:", StringComparison.Ordinal)) ||
+         AttributeGroup(attribute.Name, isCamera, isLight) == group) &&
         Matches(attribute.Name, attribute.TypeName, query) && (filter switch
         {
             ViewerPropertyFilter.All => true,

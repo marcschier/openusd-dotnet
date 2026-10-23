@@ -111,14 +111,18 @@ public sealed class ViewerPropertyPageTests
                 "inputs:intensity,inputs:exposure,inputs:diffuse,inputs:specular," +
                 "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color");
 
-        ViewerPropertyPage remainingShaderInputs = ViewerPropertyPage.Create(
+        ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs, isLight: true);
-        await Assert.That(string.Join(",", remainingShaderInputs.Attributes.Select(static item => item.Name)))
-            .IsEqualTo("inputs:width,inputs:intensityExtra,inputs:color:red");
+        await Assert.That(string.Join(",", shaderInputs.Attributes.Select(static item => item.Name)))
+            .IsEqualTo(string.Join(",", attributeNames));
 
         ViewerPropertyPage nonLightInputs = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs);
         await Assert.That(nonLightInputs.Attributes).IsEquivalentTo(attributes);
+
+        ViewerPropertyPage nonLightControls = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Light);
+        await Assert.That(nonLightControls.Attributes).IsEmpty();
     }
 
     [Test]
