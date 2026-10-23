@@ -316,7 +316,11 @@ selected property through the shared document history; filtering does not grant 
 The property-group selector intersects that state filter and search before paging. Transform groups
 contain the existing `xformOp:*` attributes and `xformOpOrder`, without reordering or decomposing the
 operation stack. Camera optics, shutter, and stereo properties are grouped only when the detached
-snapshot identifies a validated camera schema. Inputs and outputs group attribute namespaces
+snapshot identifies a validated camera schema. **Common light controls** exposes the eight
+supported light inputs (`inputs:intensity`, `inputs:exposure`, `inputs:diffuse`, `inputs:specular`,
+`inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`, and `inputs:color`)
+only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. These controls remain
+available in the **Inputs** group as well. Inputs and outputs group attribute namespaces
 (`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
 group only `material:binding` relationships and its nested namespace, not similarly named attributes.
 **Other properties** retains everything outside those groups; **All property groups** restores
