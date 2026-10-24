@@ -1500,16 +1500,16 @@ display state. This is not shader-network authoring or general MDL evaluation.
 
 Native schema-validated declaration admission supports camera projection, focalLength, horizontalAperture,
 verticalAperture and clippingRange, plus common light intensity, exposure, color, diffuse, specular, normalize,
-enableColorTemperature and colorTemperature. Exact light shape fields include Rect width/height, Sphere/Disk/Cylinder
-radius, Cylinder length and Distant angle. Three float shaping inputs are editable only when ShapingAPI is already
-applied. Display snapshots supply declaration metadata, never edit authority; review capture, conflict-safe CAS and
-shared Undo remain separate. Native getters and the grouped intensity-edit/Undo UI journey execute on Windows; focused
-shape/shaping tests exercise declaration admission and review Undo/Redo.
+enableColorTemperature and colorTemperature. Exact light shape inputs are inputs:width/inputs:height on RectLight,
+inputs:radius on Sphere/Disk/Cylinder, inputs:length on Cylinder, and inputs:angle on DistantLight. Three float shaping
+inputs are editable only when ShapingAPI is already applied. Display snapshots supply declaration metadata, never edit
+authority; review capture, conflict-safe CAS and shared Undo remain separate. Native getters and the grouped
+intensity/shape edit-and-Undo UI journeys execute locally on Windows; exact-head hosted qualification is in progress.
 
 **Limits:** No automatic ShapingAPI application, arbitrary schema-field creation, full optics/light editor or numeric
-clamping. The grouped native UI edit journey currently covers common intensity; shape/shaping controls have focused
-native tests but still require current-head Windows execution. Required-runtime tests now complete plugin registration
-and resolver first use before concurrent fixtures; local evidence is not hosted qualification.
+clamping. Shape/shaping controller and grouped shape UI edit/Undo tests pass locally; current-head hosted qualification
+is still pending. Required-runtime tests now complete plugin registration and resolver first use before concurrent
+fixtures; local evidence is not hosted qualification.
 
 ### `viewer-direct-material-binding-review`
 

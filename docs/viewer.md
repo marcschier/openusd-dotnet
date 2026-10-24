@@ -320,9 +320,10 @@ snapshot identifies a validated camera schema. **Common light controls** exposes
 supported light inputs (`inputs:intensity`, `inputs:exposure`, `inputs:diffuse`, `inputs:specular`,
 `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`, and `inputs:color`)
 only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The same group includes
-native shape fields (`width`, `height`, `radius`, `length`, and `angle`) only on their matching
-light schemas, and `inputs:shaping:focus`, `inputs:shaping:cone:angle`, and
-`inputs:shaping:cone:softness` only when `ShapingAPI` is applied. These inputs remain available in
+native shape inputs (`inputs:width`, `inputs:height`, `inputs:radius`, `inputs:length`, and
+`inputs:angle`) only on their matching light schemas, and `inputs:shaping:focus`,
+`inputs:shaping:cone:angle`, and `inputs:shaping:cone:softness` only when `ShapingAPI` is applied.
+These inputs remain available in
 the **Inputs** group as well. Inputs and outputs group attribute namespaces
 (`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
 group only `material:binding` relationships and its nested namespace, not similarly named attributes.
@@ -1098,8 +1099,9 @@ instead of guessing their declaration metadata.
 Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
 cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
 `inputs:specular`, `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`,
-and `inputs:color`. The same exact-schema path supports rectangle `width`/`height`, sphere/disk/
-cylinder `radius`, cylinder `length`, distant-light `angle`, and the three float inputs on an
+and `inputs:color`. The same exact-schema path supports rectangle `inputs:width`/`inputs:height`,
+sphere/disk/cylinder `inputs:radius`, cylinder `inputs:length`, and distant-light `inputs:angle`.
+It also supports the three float inputs on an
 already-applied `ShapingAPI` (`inputs:shaping:focus`, `inputs:shaping:cone:angle`, and
 `inputs:shaping:cone:softness`). Admission checks the exact light schema or applied API, native
 type, and noncustom declaration metadata, not a property-name or registry hint. These fields reuse
