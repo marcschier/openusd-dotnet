@@ -340,8 +340,8 @@ public sealed class ViewerPropertyPagingNativeTests
                 "inputs:enableColorTemperature",
                 "inputs:normalize",
                 "inputs:color",
-                "width",
-                "height",
+                "inputs:width",
+                "inputs:height",
                 "inputs:shaping:focus",
                 "inputs:shaping:cone:angle",
                 "inputs:shaping:cone:softness"
@@ -349,7 +349,7 @@ public sealed class ViewerPropertyPagingNativeTests
             {
                 await Assert.That(ValueText(main)).Contains(lightControl);
             }
-            await Assert.That(ValueText(main)).DoesNotContain("inputs:width");
+            await Assert.That(ValueText(main)).DoesNotContain("inputs:intensityExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderInputs;
             await FilterAttributeAsync(main, shaderQuery, "inputs:intensity", timeout, "/Light");
             float originalIntensity = await session.Scheduler.InvokeAsync(
@@ -376,7 +376,7 @@ public sealed class ViewerPropertyPagingNativeTests
                 static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Light.Intensity, timeout))
                 .IsEqualTo(originalIntensity);
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
-            await FilterAttributeAsync(main, shaderQuery, "width", timeout, "/Light");
+            await FilterAttributeAsync(main, shaderQuery, "inputs:width", timeout, "/Light");
             float originalWidth = await session.Scheduler.InvokeAsync(
                 static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout);
             await WaitAsync(() => PropertyButtons(main).Single().IsEnabled, timeout);
@@ -385,7 +385,7 @@ public sealed class ViewerPropertyPagingNativeTests
             PropertyEditWindow widthEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
             await WaitAsync(() => Required<Button>(widthEdit, "SetPropertyButton").IsEnabled, timeout);
             await Assert.That(Required<ComboBox>(widthEdit, "PropertySelector").SelectedItem?.ToString())
-                .IsEqualTo("width (float)");
+                .IsEqualTo("inputs:width (float)");
             Required<TextBox>(widthEdit, "PropertyValue").Text = "3";
             Click(widthEdit, "SetPropertyButton");
             await WaitAsync(() => Required<TextBlock>(widthEdit, "PropertyEditStatus").Text ==

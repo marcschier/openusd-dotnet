@@ -129,13 +129,13 @@ public sealed class ViewerLightPropertyNativeTests
     }
 
     [Test]
-    [Arguments("RectLight", "width")]
-    [Arguments("RectLight", "height")]
-    [Arguments("SphereLight", "radius")]
-    [Arguments("DiskLight", "radius")]
-    [Arguments("CylinderLight", "radius")]
-    [Arguments("CylinderLight", "length")]
-    [Arguments("DistantLight", "angle")]
+    [Arguments("RectLight", "inputs:width")]
+    [Arguments("RectLight", "inputs:height")]
+    [Arguments("SphereLight", "inputs:radius")]
+    [Arguments("DiskLight", "inputs:radius")]
+    [Arguments("CylinderLight", "inputs:radius")]
+    [Arguments("CylinderLight", "inputs:length")]
+    [Arguments("DistantLight", "inputs:angle")]
     public async Task LightShapeControlsUseExactNativeDeclarationsAndReviewUndo(string schema, string name)
     {
         string root = Directory.CreateTempSubdirectory("openusd-light-shape-edit-").FullName;
@@ -166,13 +166,13 @@ public sealed class ViewerLightPropertyNativeTests
                 UsdPrim prim = stage.GetPrim("/Light");
                 return name switch
                 {
-                    "width" => UsdLuxRectLight.Wrap(prim).Width == value,
-                    "height" => UsdLuxRectLight.Wrap(prim).Height == value,
-                    "radius" when schema == "SphereLight" => UsdLuxSphereLight.Wrap(prim).Radius == value,
-                    "radius" when schema == "DiskLight" => UsdLuxDiskLight.Wrap(prim).Radius == value,
-                    "radius" => UsdLuxCylinderLight.Wrap(prim).Radius == value,
-                    "length" => UsdLuxCylinderLight.Wrap(prim).Length == value,
-                    "angle" => UsdLuxDistantLight.Wrap(prim).Angle == value,
+                    "inputs:width" => UsdLuxRectLight.Wrap(prim).Width == value,
+                    "inputs:height" => UsdLuxRectLight.Wrap(prim).Height == value,
+                    "inputs:radius" when schema == "SphereLight" => UsdLuxSphereLight.Wrap(prim).Radius == value,
+                    "inputs:radius" when schema == "DiskLight" => UsdLuxDiskLight.Wrap(prim).Radius == value,
+                    "inputs:radius" => UsdLuxCylinderLight.Wrap(prim).Radius == value,
+                    "inputs:length" => UsdLuxCylinderLight.Wrap(prim).Length == value,
+                    "inputs:angle" => UsdLuxDistantLight.Wrap(prim).Angle == value,
                     _ => throw new InvalidOperationException("Unexpected light shape.")
                 };
             })).IsTrue();
@@ -261,7 +261,7 @@ public sealed class ViewerLightPropertyNativeTests
             await Assert.That(async () => await editor.CapturePropertyAsync(
                 "/Pretend", "inputs:intensity", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
             await Assert.That(async () => await editor.CapturePropertyAsync(
-                "/Light", "inputs:width", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
+                "/Light", "width", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
             await Assert.That(async () => await editor.CapturePropertyAsync(
                 "/Light", "radius", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
             await Assert.That(async () => await editor.CapturePropertyAsync(
@@ -272,7 +272,7 @@ public sealed class ViewerLightPropertyNativeTests
             ViewerAuthoredEditCapture untouched = await editor.CaptureAsync(
             [
                 new("/Pretend.inputs:intensity", UsdLayerEditField.Default),
-                new("/Light.inputs:width", UsdLayerEditField.Default),
+                new("/Light.width", UsdLayerEditField.Default),
                 new("/Light.radius", UsdLayerEditField.Default),
                 new("/Light.inputs:shaping:focus", UsdLayerEditField.Default)
             ]);

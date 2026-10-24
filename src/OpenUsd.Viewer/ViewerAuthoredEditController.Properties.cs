@@ -33,7 +33,13 @@ internal sealed partial class ViewerAuthoredEditController
             return await _scheduler.InvokeAsync(stage =>
             {
                 ViewerDocumentObservation document = ReadDocument(stage);
-                string composedType = stage.GetPrim(primPath).GetAttribute(attributeName).TypeName;
+                UsdPrim prim = stage.GetPrim(primPath);
+                if (!prim.GetAttributeNames().Contains(attributeName, StringComparer.Ordinal))
+                {
+                    throw new NotSupportedException(
+                        "The requested property is not a composed attribute; no edit was captured.");
+                }
+                string composedType = prim.GetAttribute(attributeName).TypeName;
                 if (!ViewerPropertyEditParser.Supports(composedType))
                 {
                     throw new NotSupportedException("This declared type remains read-only in the focused editor.");
@@ -99,7 +105,7 @@ internal sealed partial class ViewerAuthoredEditController
             "focalLength" or "horizontalAperture" or "verticalAperture" => "float",
             "clippingRange" => "float2",
             "projection" => "token",
-            "width" or "height" or "radius" or "length" or "angle" or
+            "inputs:width" or "inputs:height" or "inputs:radius" or "inputs:length" or "inputs:angle" or
                 "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
                 "inputs:shaping:cone:softness" => "float",
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
@@ -134,11 +140,11 @@ internal sealed partial class ViewerAuthoredEditController
 
     private static bool IsSupportedLightProperty(UsdPrim prim, string attributeName) => attributeName switch
     {
-        "width" or "height" => UsdLuxRectLight.TryWrap(prim, out _),
-        "radius" => UsdLuxSphereLight.TryWrap(prim, out _) ||
+        "inputs:width" or "inputs:height" => UsdLuxRectLight.TryWrap(prim, out _),
+        "inputs:radius" => UsdLuxSphereLight.TryWrap(prim, out _) ||
             UsdLuxDiskLight.TryWrap(prim, out _) || UsdLuxCylinderLight.TryWrap(prim, out _),
-        "length" => UsdLuxCylinderLight.TryWrap(prim, out _),
-        "angle" => UsdLuxDistantLight.TryWrap(prim, out _),
+        "inputs:length" => UsdLuxCylinderLight.TryWrap(prim, out _),
+        "inputs:angle" => UsdLuxDistantLight.TryWrap(prim, out _),
         "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
             "inputs:shaping:cone:softness" => HasAppliedShaping(prim),
         "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or "inputs:specular" or

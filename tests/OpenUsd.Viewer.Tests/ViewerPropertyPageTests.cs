@@ -96,15 +96,15 @@ public sealed class ViewerPropertyPageTests
             "inputs:enableColorTemperature",
             "inputs:normalize",
             "inputs:color",
-            "width",
-            "height",
-            "radius",
-            "length",
-            "angle",
+            "inputs:width",
+            "inputs:height",
+            "inputs:radius",
+            "inputs:length",
+            "inputs:angle",
             "inputs:shaping:focus",
             "inputs:shaping:cone:angle",
             "inputs:shaping:cone:softness",
-            "inputs:width",
+            "inputs:shapeSpecific",
             "inputs:intensityExtra",
             "inputs:color:red"
         ];
@@ -118,7 +118,7 @@ public sealed class ViewerPropertyPageTests
             .IsEqualTo(
                 "inputs:intensity,inputs:exposure,inputs:diffuse,inputs:specular," +
                 "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color," +
-                "width,height,radius,length,angle,inputs:shaping:focus," +
+                "inputs:width,inputs:height,inputs:radius,inputs:length,inputs:angle,inputs:shaping:focus," +
                 "inputs:shaping:cone:angle,inputs:shaping:cone:softness");
 
         ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
