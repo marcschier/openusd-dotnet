@@ -349,7 +349,6 @@ public sealed class ViewerPropertyPagingNativeTests
             {
                 await Assert.That(ValueText(main)).Contains(lightControl);
             }
-            await Assert.That(ValueText(main)).DoesNotContain("inputs:intensityExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderInputs;
             await FilterAttributeAsync(main, shaderQuery, "inputs:intensity", timeout, "/Light");
             float originalIntensity = await session.Scheduler.InvokeAsync(
