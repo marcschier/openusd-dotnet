@@ -6,8 +6,8 @@ param(
     [string]$PhysicsRuntimeRoot,
     [string]$OutputRoot,
     [ValidateSet('workspace', 'document', 'portable', 'transitions', 'retirement',
-        'physics-history', 'property-pages', 'hierarchy-pages', 'asset-relink', 'render-sequence',
-        'camera-bookmarks', 'authored-product', 'physics-recording')]
+        'physics-history', 'property-pages', 'light-properties', 'hierarchy-pages', 'asset-relink',
+        'render-sequence', 'camera-bookmarks', 'authored-product', 'physics-recording')]
     [string[]]$Scenario,
     [ValidateSet('D3D12', 'Vulkan')]
     [string]$CaptureRenderer = 'D3D12',
@@ -28,6 +28,7 @@ $scenarios = @(
     @{ Id = 'retirement'; Class = 'ViewerDocumentRetirementNativeTests'; Flag = 'OPENUSD_VIEWER_RETIREMENT_SMOKE' },
     @{ Id = 'physics-history'; Class = 'ViewerPhysicsHistoryNativeTests'; Flag = 'OPENUSD_VIEWER_PHYSICS_HISTORY_SMOKE' },
     @{ Id = 'property-pages'; Class = 'ViewerPropertyPagingNativeTests'; Flag = 'OPENUSD_VIEWER_PROPERTY_PAGING_SMOKE' },
+    @{ Id = 'light-properties'; Class = 'ViewerLightPropertyNativeTests'; Flag = 'OPENUSD_VIEWER_LIGHT_PROPERTIES_SMOKE' },
     @{ Id = 'hierarchy-pages'; Class = 'ViewerHierarchyPagingNativeTests'; Flag = 'OPENUSD_VIEWER_HIERARCHY_PAGING_SMOKE' },
     @{ Id = 'asset-relink'; Class = 'ViewerAssetRelinkNativeTests'; Flag = 'OPENUSD_VIEWER_ASSET_RELINK_SMOKE' },
     @{ Id = 'render-sequence'; Class = 'ViewerRenderSequenceNativeTests'; Flag = 'OPENUSD_VIEWER_RENDER_SEQUENCE_SMOKE' },

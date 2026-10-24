@@ -396,7 +396,9 @@ public sealed class ViewerPropertyPagingNativeTests
                 static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(3f);
             await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
             Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
-            await WaitAsync(() => ValueText(main).Contains($"Value: {originalWidth:R}", StringComparison.Ordinal), timeout);
+            await WaitAsync(
+                () => ValueText(main).Contains($"Value: {originalWidth:R}", StringComparison.Ordinal),
+                timeout);
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(originalWidth);
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;

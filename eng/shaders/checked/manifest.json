@@ -151,7 +151,7 @@
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
-      "sha256": "12c57e278416a8741f0eb9dfdc4cee62d39b99aee10a1a669ee3b7243518880e"
+      "sha256": "8ced55facb50d3d77413e5ea6c9e4b676cbe9bf258f7272bb11546785ab07941"
     },
     {
       "path": "eng/run-viewer.ps1",
