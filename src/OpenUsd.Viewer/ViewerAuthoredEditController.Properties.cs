@@ -2,6 +2,7 @@
 
 using OpenUsd.Editing;
 using OpenUsd.Geom;
+using OpenUsd.Interop;
 using OpenUsd.Lux;
 
 namespace OpenUsd.Viewer;
@@ -34,12 +35,17 @@ internal sealed partial class ViewerAuthoredEditController
             {
                 ViewerDocumentObservation document = ReadDocument(stage);
                 UsdPrim prim = stage.GetPrim(primPath);
-                if (!prim.GetAttributeNames().Contains(attributeName, StringComparer.Ordinal))
+                string composedType;
+                try
+                {
+                    composedType = prim.GetAttribute(attributeName).TypeName;
+                }
+                catch (OpenUsdNativeException exception) when (exception.Status == OpenUsdNativeStatus.NotFound)
                 {
                     throw new NotSupportedException(
-                        "The requested property is not a composed attribute; no edit was captured.");
+                        "The requested property is not a composed attribute; no edit was captured.",
+                        exception);
                 }
-                string composedType = prim.GetAttribute(attributeName).TypeName;
                 if (!ViewerPropertyEditParser.Supports(composedType))
                 {
                     throw new NotSupportedException("This declared type remains read-only in the focused editor.");
