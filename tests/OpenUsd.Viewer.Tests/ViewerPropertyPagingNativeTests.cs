@@ -94,7 +94,7 @@ public sealed class ViewerPropertyPagingNativeTests
                 float inputs:roughness = 0.35
             }
             def Camera "Camera" {}
-            def RectLight "Light" {}
+            def RectLight "Light" (prepend apiSchemas = ["ShapingAPI"]) {}
             def Scope "Looks"
             {
                 def Material "Material" {}
@@ -329,7 +329,7 @@ public sealed class ViewerPropertyPagingNativeTests
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
             shaderQuery.Text = string.Empty;
             await WaitAsync(() => Required<TextBlock>(main, "InspectorPropertyPageState").Text ==
-                "Properties 1-8 of 8 matches", timeout);
+                "Properties 1-13 of 13 matches", timeout);
             foreach (string lightControl in new[]
             {
                 "inputs:intensity",
@@ -339,7 +339,12 @@ public sealed class ViewerPropertyPagingNativeTests
                 "inputs:colorTemperature",
                 "inputs:enableColorTemperature",
                 "inputs:normalize",
-                "inputs:color"
+                "inputs:color",
+                "width",
+                "height",
+                "inputs:shaping:focus",
+                "inputs:shaping:cone:angle",
+                "inputs:shaping:cone:softness"
             })
             {
                 await Assert.That(ValueText(main)).Contains(lightControl);
@@ -370,6 +375,30 @@ public sealed class ViewerPropertyPagingNativeTests
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Light.Intensity, timeout))
                 .IsEqualTo(originalIntensity);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
+            await FilterAttributeAsync(main, shaderQuery, "width", timeout, "/Light");
+            float originalWidth = await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout);
+            await WaitAsync(() => PropertyButtons(main).Single().IsEnabled, timeout);
+            PropertyButtons(main).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
+            PropertyEditWindow widthEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
+            await WaitAsync(() => Required<Button>(widthEdit, "SetPropertyButton").IsEnabled, timeout);
+            await Assert.That(Required<ComboBox>(widthEdit, "PropertySelector").SelectedItem?.ToString())
+                .IsEqualTo("width (float)");
+            Required<TextBox>(widthEdit, "PropertyValue").Text = "3";
+            Click(widthEdit, "SetPropertyButton");
+            await WaitAsync(() => Required<TextBlock>(widthEdit, "PropertyEditStatus").Text ==
+                "Review edit applied.", timeout);
+            await widthEdit.CloseAsync();
+            await WaitAsync(() => ValueText(main).Contains("Value: 3", StringComparison.Ordinal), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(3f);
+            await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
+            Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await WaitAsync(() => ValueText(main).Contains($"Value: {originalWidth:R}", StringComparison.Ordinal), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(originalWidth);
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });

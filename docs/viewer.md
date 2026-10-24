@@ -319,8 +319,11 @@ operation stack. Camera optics, shutter, and stereo properties are grouped only 
 snapshot identifies a validated camera schema. **Common light controls** exposes the eight
 supported light inputs (`inputs:intensity`, `inputs:exposure`, `inputs:diffuse`, `inputs:specular`,
 `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`, and `inputs:color`)
-only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. These controls remain
-available in the **Inputs** group as well. Inputs and outputs group attribute namespaces
+only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The same group includes
+native shape fields (`width`, `height`, `radius`, `length`, and `angle`) only on their matching
+light schemas, and `inputs:shaping:focus`, `inputs:shaping:cone:angle`, and
+`inputs:shaping:cone:softness` only when `ShapingAPI` is applied. These inputs remain available in
+the **Inputs** group as well. Inputs and outputs group attribute namespaces
 (`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
 group only `material:binding` relationships and its nested namespace, not similarly named attributes.
 **Other properties** retains everything outside those groups; **All property groups** restores
@@ -1095,11 +1098,14 @@ instead of guessing their declaration metadata.
 Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
 cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
 `inputs:specular`, `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`,
-and `inputs:color`. Admission checks exact native types and noncustom declaration metadata,
-not an `inputs:` name or registry hint. These fields reuse the focused typed review editor and
-shared history; they do not recreate lights, flatten shader graphs, or author shape/shaping fields.
-No values are silently clamped or normalized. Unauthored light dimensions and custom schema fields
-remain outside this admission path.
+and `inputs:color`. The same exact-schema path supports rectangle `width`/`height`, sphere/disk/
+cylinder `radius`, cylinder `length`, distant-light `angle`, and the three float inputs on an
+already-applied `ShapingAPI` (`inputs:shaping:focus`, `inputs:shaping:cone:angle`, and
+`inputs:shaping:cone:softness`). Admission checks the exact light schema or applied API, native
+type, and noncustom declaration metadata, not a property-name or registry hint. These fields reuse
+the focused typed review editor and shared history; they do not recreate lights, apply `ShapingAPI`,
+or flatten shader graphs. No values are silently clamped or normalized. Custom schema fields and
+other shape/shaping properties remain outside this admission path.
 
 Existing direct material bindings have an **Edit Direct Binding...** action in the Value tab,
 including the Material bindings property group. The action supports `material:binding` and the

@@ -99,6 +99,9 @@ internal sealed partial class ViewerAuthoredEditController
             "focalLength" or "horizontalAperture" or "verticalAperture" => "float",
             "clippingRange" => "float2",
             "projection" => "token",
+            "width" or "height" or "radius" or "length" or "angle" or
+                "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
+                "inputs:shaping:cone:softness" => "float",
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
                 "inputs:specular" or "inputs:colorTemperature" => "float",
             "inputs:enableColorTemperature" or "inputs:normalize" => "bool",
@@ -107,9 +110,10 @@ internal sealed partial class ViewerAuthoredEditController
         };
         UsdPrim prim = stage.GetPrim(primPath);
         bool supportedSchema = expectedType is not null &&
-            (attributeName.StartsWith("inputs:", StringComparison.Ordinal)
-                ? IsSupportedLight(prim)
-                : UsdGeomCamera.TryWrap(prim, out _));
+            (attributeName is "focalLength" or "horizontalAperture" or "verticalAperture" or
+                "clippingRange" or "projection"
+                ? UsdGeomCamera.TryWrap(prim, out _)
+                : IsSupportedLightProperty(prim, attributeName));
         if (!supportedSchema || composedType != expectedType)
         {
             throw new NotSupportedException(
@@ -126,6 +130,46 @@ internal sealed partial class ViewerAuthoredEditController
                 "The native schema property declaration is unavailable or incompatible; no edit was captured.");
         }
         return property;
+    }
+
+    private static bool IsSupportedLightProperty(UsdPrim prim, string attributeName) => attributeName switch
+    {
+        "width" or "height" => UsdLuxRectLight.TryWrap(prim, out _),
+        "radius" => UsdLuxSphereLight.TryWrap(prim, out _) ||
+            UsdLuxDiskLight.TryWrap(prim, out _) || UsdLuxCylinderLight.TryWrap(prim, out _),
+        "length" => UsdLuxCylinderLight.TryWrap(prim, out _),
+        "angle" => UsdLuxDistantLight.TryWrap(prim, out _),
+        "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
+            "inputs:shaping:cone:softness" => HasAppliedShaping(prim),
+        "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or "inputs:specular" or
+            "inputs:colorTemperature" or "inputs:enableColorTemperature" or
+            "inputs:normalize" or "inputs:color" => IsSupportedLight(prim),
+        _ => false
+    };
+
+    private static bool HasAppliedShaping(UsdPrim prim)
+    {
+        if (UsdLuxRectLight.TryWrap(prim, out UsdLuxRectLight rect))
+        {
+            return rect.Light.HasShaping;
+        }
+        if (UsdLuxSphereLight.TryWrap(prim, out UsdLuxSphereLight sphere))
+        {
+            return sphere.Light.HasShaping;
+        }
+        if (UsdLuxDiskLight.TryWrap(prim, out UsdLuxDiskLight disk))
+        {
+            return disk.Light.HasShaping;
+        }
+        if (UsdLuxCylinderLight.TryWrap(prim, out UsdLuxCylinderLight cylinder))
+        {
+            return cylinder.Light.HasShaping;
+        }
+        if (UsdLuxDistantLight.TryWrap(prim, out UsdLuxDistantLight distant))
+        {
+            return distant.Light.HasShaping;
+        }
+        return UsdLuxDomeLight.TryWrap(prim, out UsdLuxDomeLight dome) && dome.Light.HasShaping;
     }
 
     internal static bool IsSupportedLight(UsdPrim prim) =>

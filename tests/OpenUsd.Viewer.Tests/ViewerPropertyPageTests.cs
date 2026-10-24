@@ -96,6 +96,14 @@ public sealed class ViewerPropertyPageTests
             "inputs:enableColorTemperature",
             "inputs:normalize",
             "inputs:color",
+            "width",
+            "height",
+            "radius",
+            "length",
+            "angle",
+            "inputs:shaping:focus",
+            "inputs:shaping:cone:angle",
+            "inputs:shaping:cone:softness",
             "inputs:width",
             "inputs:intensityExtra",
             "inputs:color:red"
@@ -109,16 +117,20 @@ public sealed class ViewerPropertyPageTests
         await Assert.That(string.Join(",", lightControls.Attributes.Select(static item => item.Name)))
             .IsEqualTo(
                 "inputs:intensity,inputs:exposure,inputs:diffuse,inputs:specular," +
-                "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color");
+                "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color," +
+                "width,height,radius,length,angle,inputs:shaping:focus," +
+                "inputs:shaping:cone:angle,inputs:shaping:cone:softness");
 
         ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs, isLight: true);
         await Assert.That(string.Join(",", shaderInputs.Attributes.Select(static item => item.Name)))
-            .IsEqualTo(string.Join(",", attributeNames));
+            .IsEqualTo(string.Join(",", attributeNames.Where(
+                static name => name.StartsWith("inputs:", StringComparison.Ordinal))));
 
         ViewerPropertyPage nonLightInputs = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs);
-        await Assert.That(nonLightInputs.Attributes).IsEquivalentTo(attributes);
+        await Assert.That(nonLightInputs.Attributes).IsEquivalentTo(attributes.Where(
+            static item => item.Name.StartsWith("inputs:", StringComparison.Ordinal)));
 
         ViewerPropertyPage nonLightControls = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.Light);

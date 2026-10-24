@@ -129,6 +129,122 @@ public sealed class ViewerLightPropertyNativeTests
     }
 
     [Test]
+    [Arguments("RectLight", "width")]
+    [Arguments("RectLight", "height")]
+    [Arguments("SphereLight", "radius")]
+    [Arguments("DiskLight", "radius")]
+    [Arguments("CylinderLight", "radius")]
+    [Arguments("CylinderLight", "length")]
+    [Arguments("DistantLight", "angle")]
+    public async Task LightShapeControlsUseExactNativeDeclarationsAndReviewUndo(string schema, string name)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-shape-edit-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        string original = $"#usda 1.0\ndef {schema} \"Light\" {{}}\n";
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            await using var editor = new ViewerAuthoredEditController(scheduler);
+            ViewerPropertyEditCapture property = await editor.CapturePropertyAsync(
+                "/Light", name, UsdLayerEditField.Default, 0);
+            await Assert.That(property.TypeName).IsEqualTo("float");
+            await Assert.That(property.Custom).IsFalse();
+            await Assert.That(property.Capture.Snapshot.Opinions.Single().PropertyKind)
+                .IsEqualTo(UsdLayerPropertyKind.Absent);
+            const float value = 2.5f;
+            UsdLayerEditAddress address = property.Capture.Snapshot.Addresses.Single();
+            ViewerAuthoredEditResult applied = await editor.ApplyAsync(property.Capture,
+                [UsdLayerEdit.Set(address, UsdLayerEditValue.FromFloat(value),
+                    property.TypeName, property.Variability, property.Custom)],
+                $"Light {name}");
+            await Assert.That(applied.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(applied.After!.Opinions.Single().Value)
+                .IsEqualTo(UsdLayerEditValue.FromFloat(value));
+            await Assert.That(await scheduler.InvokeAsync(stage =>
+            {
+                UsdPrim prim = stage.GetPrim("/Light");
+                return name switch
+                {
+                    "width" => UsdLuxRectLight.Wrap(prim).Width == value,
+                    "height" => UsdLuxRectLight.Wrap(prim).Height == value,
+                    "radius" when schema == "SphereLight" => UsdLuxSphereLight.Wrap(prim).Radius == value,
+                    "radius" when schema == "DiskLight" => UsdLuxDiskLight.Wrap(prim).Radius == value,
+                    "radius" => UsdLuxCylinderLight.Wrap(prim).Radius == value,
+                    "length" => UsdLuxCylinderLight.Wrap(prim).Length == value,
+                    "angle" => UsdLuxDistantLight.Wrap(prim).Angle == value,
+                    _ => throw new InvalidOperationException("Unexpected light shape.")
+                };
+            })).IsTrue();
+            ViewerAuthoredEditResult undone = await editor.UndoAsync();
+            await Assert.That(undone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(undone.After!.Opinions.Single().PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+            ViewerAuthoredEditResult redone = await editor.RedoAsync();
+            await Assert.That(redone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(redone.After!.Opinions.Single().Value)
+                .IsEqualTo(UsdLayerEditValue.FromFloat(value));
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("inputs:shaping:focus", 2.5f)]
+    [Arguments("inputs:shaping:cone:angle", 45f)]
+    [Arguments("inputs:shaping:cone:softness", 0.25f)]
+    public async Task AppliedShapingControlsUseNativeDeclarationsAndReviewUndo(string name, float value)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-shaping-edit-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        const string original =
+            "#usda 1.0\ndef SphereLight \"Light\" (prepend apiSchemas = [\"ShapingAPI\"]) {}\n";
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            await using var editor = new ViewerAuthoredEditController(scheduler);
+            ViewerPropertyEditCapture property = await editor.CapturePropertyAsync(
+                "/Light", name, UsdLayerEditField.Default, 0);
+            await Assert.That(property.TypeName).IsEqualTo("float");
+            await Assert.That(property.Custom).IsFalse();
+            await Assert.That(property.Capture.Snapshot.Opinions.Single().PropertyKind)
+                .IsEqualTo(UsdLayerPropertyKind.Absent);
+            UsdLayerEditAddress address = property.Capture.Snapshot.Addresses.Single();
+            ViewerAuthoredEditResult applied = await editor.ApplyAsync(property.Capture,
+                [UsdLayerEdit.Set(address, UsdLayerEditValue.FromFloat(value),
+                    property.TypeName, property.Variability, property.Custom)],
+                $"Light {name}");
+            await Assert.That(applied.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(await scheduler.InvokeAsync(stage =>
+            {
+                UsdLuxShaping shaping = UsdLuxSphereLight.Wrap(stage.GetPrim("/Light")).Light.GetShaping();
+                return name switch
+                {
+                    "inputs:shaping:focus" => shaping.Focus == value,
+                    "inputs:shaping:cone:angle" => shaping.ConeAngle == value,
+                    "inputs:shaping:cone:softness" => shaping.ConeSoftness == value,
+                    _ => throw new InvalidOperationException("Unexpected shaping input.")
+                };
+            })).IsTrue();
+            ViewerAuthoredEditResult undone = await editor.UndoAsync();
+            await Assert.That(undone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(undone.After!.Opinions.Single().PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+            ViewerAuthoredEditResult redone = await editor.RedoAsync();
+            await Assert.That(redone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(redone.After!.Opinions.Single().Value)
+                .IsEqualTo(UsdLayerEditValue.FromFloat(value));
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task LightAdmissionRejectsReferencedLookalikesAndUnauthoredShapeFields()
     {
         string root = Directory.CreateTempSubdirectory("openusd-light-refusal-").FullName;
@@ -146,12 +262,19 @@ public sealed class ViewerLightPropertyNativeTests
                 "/Pretend", "inputs:intensity", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
             await Assert.That(async () => await editor.CapturePropertyAsync(
                 "/Light", "inputs:width", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
+            await Assert.That(async () => await editor.CapturePropertyAsync(
+                "/Light", "radius", UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
+            await Assert.That(async () => await editor.CapturePropertyAsync(
+                "/Light", "inputs:shaping:focus", UsdLayerEditField.Default, 0))
+                .Throws<NotSupportedException>();
             await Assert.That(editor.UndoDepth).IsEqualTo(0);
             await Assert.That(editor.RedoDepth).IsEqualTo(0);
             ViewerAuthoredEditCapture untouched = await editor.CaptureAsync(
             [
                 new("/Pretend.inputs:intensity", UsdLayerEditField.Default),
-                new("/Light.inputs:width", UsdLayerEditField.Default)
+                new("/Light.inputs:width", UsdLayerEditField.Default),
+                new("/Light.radius", UsdLayerEditField.Default),
+                new("/Light.inputs:shaping:focus", UsdLayerEditField.Default)
             ]);
             await Assert.That(untouched.Snapshot.Opinions.All(
                 static opinion => opinion.PropertyKind == UsdLayerPropertyKind.Absent)).IsTrue();

@@ -159,7 +159,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Camera;
         }
-        if (isLight && name is "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
+        if (isLight && name is "width" or "height" or "radius" or "length" or "angle" or
+            "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
+            "inputs:shaping:cone:softness" or
+            "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
             "inputs:specular" or "inputs:colorTemperature" or "inputs:enableColorTemperature" or
             "inputs:normalize" or "inputs:color")
         {
