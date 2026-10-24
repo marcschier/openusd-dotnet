@@ -54,7 +54,10 @@ public sealed class SilkMeshRendererTests
             points, indices, new int[indices.Length / 3], [1, 1, 1, 1],
             [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
             0, true, SilkMeshCullStyle.Nothing, normals, "", []);
-        _ = SilkMeshGeometryBuilder.Build(mesh);
+        for (int iteration = 0; iteration < 64; iteration++)
+        {
+            _ = SilkMeshGeometryBuilder.Build(mesh);
+        }
         long before = GC.GetAllocatedBytesForCurrentThread();
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
