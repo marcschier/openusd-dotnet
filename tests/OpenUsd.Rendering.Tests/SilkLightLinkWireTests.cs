@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -818,7 +819,7 @@ public sealed class SilkLightLinkWireTests
         List<SilkLightLinkEntry> entries = [];
         bool finished;
         {
-            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
             _ = commands.MoveNext();
             SilkLightLinkCommand command = commands.Current.AsLightLink();
             entryCount = command.EntryCount;
@@ -1089,7 +1090,7 @@ public sealed class SilkLightLinkWireTests
 
     private static void UpdateWideLinkTable(SilkLightLinkTable table, byte[] page)
     {
-        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
         if (!commands.MoveNext())
         {
             throw new InvalidDataException("The wide light-link command is missing.");
@@ -1427,15 +1428,15 @@ public sealed class SilkLightLinkWireTests
             8 => [uint.MaxValue, uint.MaxValue, uint.MaxValue, uint.MaxValue, 0, 0, 0, 0],
             _ => throw new ArgumentOutOfRangeException(nameof(maskCase)),
         };
-        byte[] storage = Enumerable.Repeat((byte)0xCD, 242).ToArray();
+        byte[] storage = Enumerable.Repeat((byte)0xCD, 274).ToArray();
         var headlight = new RenderHeadlight(
             new System.Numerics.Vector3(0, 3, -4), 2.5f,
             new System.Numerics.Vector3(0.125f, 0.375f, 0.875f), 0.625f);
         SilkLightLinkMasks? masks = maskCase == 7 ? null : new SilkLightLinkMasks(light, shadow, dome);
         SilkSurfaceUniformWriter.Write(
-            material: null, headlight, storage.AsSpan(1, 240),
+            material: null, headlight, storage.AsSpan(1, 272),
             supportsVolumeTextures: false, linkMasks: masks);
-        byte[] actual = storage[1..241];
+        byte[] actual = storage[1..273];
         float[] expectedPrefix =
         [
             0.18f, 0.18f, 0.18f, 1f,
@@ -1454,9 +1455,11 @@ public sealed class SilkLightLinkWireTests
         ];
 
         int surfaceSize = SilkSurfaceUniformWriter.ByteSize;
-        await Assert.That(surfaceSize).IsEqualTo(240);
+        await Assert.That(surfaceSize).IsEqualTo(272);
         await Assert.That(storage[0]).IsEqualTo((byte)0xCD);
-        await Assert.That(storage[241]).IsEqualTo((byte)0xCD);
+        await Assert.That(storage[273]).IsEqualTo((byte)0xCD);
+        await Assert.That(MemoryMarshal.Cast<byte, float>(actual.AsSpan(240))
+            .SequenceEqual([1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f])).IsTrue();
         for (int component = 0; component < expectedPrefix.Length; component++)
         {
             await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(actual.AsSpan(component * 4)))
@@ -1487,8 +1490,8 @@ public sealed class SilkLightLinkWireTests
         var secondMasks = new SilkLightLinkMasks(
             lowLight | (UInt128.One << (shadowSpace ? 127 : 96)),
             lowShadow | (UInt128.One << (shadowSpace ? 96 : 127)), 0x42u);
-        byte[] first = Enumerable.Repeat((byte)0xA5, 240).ToArray();
-        byte[] second = Enumerable.Repeat((byte)0x5A, 240).ToArray();
+        byte[] first = Enumerable.Repeat((byte)0xA5, 272).ToArray();
+        byte[] second = Enumerable.Repeat((byte)0x5A, 272).ToArray();
         SilkSurfaceUniformWriter.Write(
             null, RenderHeadlight.Deterministic, first, false, firstMasks);
         SilkSurfaceUniformWriter.Write(
@@ -1506,7 +1509,7 @@ public sealed class SilkLightLinkWireTests
             .IsEqualTo(secondMasks.ShadowMask);
         int offset = shadowSpace ? 224 : 208;
         List<int> differences = [];
-        for (int index = 0; index < 240; index++)
+        for (int index = 0; index < 272; index++)
         {
             if (first[index] != second[index])
             {
@@ -1525,8 +1528,9 @@ public sealed class SilkLightLinkWireTests
     [Test]
     [Arguments(0)]
     [Arguments(208)]
-    [Arguments(239)]
-    [Arguments(241)]
+    [Arguments(240)]
+    [Arguments(271)]
+    [Arguments(273)]
     public async Task SurfaceWriterRejectsNonExactWideDestinations(int length)
     {
         var masks = new SilkLightLinkMasks(UInt128.One << 96, UInt128.One << 127, 0x81u);
@@ -1536,7 +1540,7 @@ public sealed class SilkLightLinkWireTests
             .Throws<ArgumentException>();
         await Assert.That(invalid.All(static value => value == 0xCD)).IsTrue();
 
-        byte[] control = new byte[240];
+        byte[] control = new byte[272];
         SilkSurfaceUniformWriter.Write(null, RenderHeadlight.Deterministic, control, false, masks);
         await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(control.AsSpan(208)))
             .IsEqualTo(UInt128.One << 96);
@@ -1550,7 +1554,7 @@ public sealed class SilkLightLinkWireTests
     {
         UInt128 light = (UInt128.One << 64) | (UInt128.One << 96);
         UInt128 shadow = (UInt128.One << 127) | (UInt128.One << 32);
-        byte[] actual = new byte[240];
+        byte[] actual = new byte[272];
         for (int dome = 0; dome <= 255; dome++)
         {
             Array.Fill(actual, (byte)0xCD);

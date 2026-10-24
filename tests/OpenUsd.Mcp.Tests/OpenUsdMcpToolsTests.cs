@@ -299,6 +299,7 @@ public sealed class OpenUsdMcpToolsTests
             "present_scene",
             "read_sequence_frame",
             "read_sequence_sheet",
+            "render_physics_sequence",
             "render_preview",
             "render_product",
             "render_sequence",
@@ -334,6 +335,10 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(renderSchema).Contains("\"cameraPath\"");
         await Assert.That(tools.Single(static tool => tool.Name == "render_sequence")
             .ProtocolTool.InputSchema.GetRawText()).Contains("\"hdrColorFormat\"");
+        await Assert.That(tools.Single(static tool => tool.Name == "render_physics_sequence")
+            .ProtocolTool.InputSchema.GetRawText()).Contains("\"expectedMetersPerUnit\"");
+        await Assert.That(tools.Single(static tool => tool.Name == "open_scene")
+            .ProtocolTool.InputSchema.GetRawText()).Contains("\"stageSettings\"");
         foreach (string propertyName in new[]
                  {
                      "boolValue",
@@ -360,6 +365,49 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(call.IsError).IsFalse();
         await Assert.That(call.StructuredContent!.Value.GetProperty("sessionId").GetString())
             .IsEqualTo("session-1");
+
+        CallToolResult opened = await client.CallToolAsync("open_scene",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["sourcePath"] = "scene.usda",
+                    ["stageSettings"] = new Dictionary<string, object?>
+                    {
+                        ["metersPerUnit"] = 1,
+                        ["kilogramsPerUnit"] = 2,
+                        ["upAxis"] = "Z",
+                        ["startTimeCode"] = 12,
+                        ["endTimeCode"] = 252,
+                        ["timeCodesPerSecond"] = 60,
+                        ["framesPerSecond"] = 30
+                    }
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(opened.IsError).IsFalse();
+        await Assert.That(service.LastOpenRequest!.StageSettings!.ToSettings())
+            .IsEqualTo(new WorkspaceStageSettings(1, 2, "Z", 12, 252, 60, 30));
+
+        CallToolResult physics = await client.CallToolAsync("render_physics_sequence",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["sessionId"] = "session-1",
+                    ["generation"] = 2,
+                    ["stageRevision"] = 3,
+                    ["scenarioIdentity"] = "rigid-test",
+                    ["expectedMetersPerUnit"] = 0.01,
+                    ["expectedUpAxis"] = "Y",
+                    ["stepsPerFrame"] = 4,
+                    ["frameCount"] = 3
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(physics.IsError).IsFalse();
+        await Assert.That(physics.StructuredContent!.Value.GetProperty("jobId").GetString()).IsEqualTo("physics-1");
+        await Assert.That(service.LastPhysicsRequest!.ScenarioIdentity).IsEqualTo("rigid-test");
+        await Assert.That(service.LastPhysicsRequest.StepsPerFrame).IsEqualTo(4);
+        await Assert.That(service.LastPhysicsRequest.ExpectedMetersPerUnit).IsEqualTo(0.01);
 
         CallToolResult sequence = await client.CallToolAsync("render_sequence",
             new Dictionary<string, object?>
@@ -565,11 +613,16 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
 
     internal CancellationToken LastCancellationToken { get; private set; }
     internal RenderSequenceRequest? LastSequenceRequest { get; private set; }
+    internal RenderPhysicsSequenceRequest? LastPhysicsRequest { get; private set; }
+    internal OpenSceneRequest? LastOpenRequest { get; private set; }
 
     public ValueTask<McpSessionDto> OpenSceneAsync(
         OpenSceneRequest request,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(Session(cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        LastOpenRequest = request;
+        return ValueTask.FromResult(Session(cancellationToken));
+    }
 
     public ValueTask<McpClosedSceneDto> CloseSceneAsync(
         SceneRevisionRequest request,
@@ -661,6 +714,16 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 "raw-raster-split-planes-v1", "full",
                 [new McpProductVariableDto("/Render/Color", "color", "half4", "hdrColor")])
         });
+    }
+
+    public ValueTask<McpRenderSequenceResultDto> RenderPhysicsSequenceAsync(
+        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken)
+    {
+        LastCancellationToken = cancellationToken;
+        LastPhysicsRequest = request;
+        return ValueTask.FromResult(new McpRenderSequenceResultDto(
+            request.SessionId, request.Generation, request.StageRevision, "physics-1",
+            "session-1/renders/physics-1", "session-1/renders/physics-1/manifest.json", request.FrameCount, 2048, []));
     }
 
     public ValueTask<McpSequenceSheetResultDto> ReadSequenceSheetAsync(

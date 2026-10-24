@@ -89,6 +89,8 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
     private readonly MetalCompositionRenderCallback? _renderCallback;
     private readonly bool _required;
     private readonly SilkGpuBufferBudget? _gpuBufferBudget;
+    private readonly SilkTexturePreparationBudgets? _textureBudgets;
+    private readonly SilkTextureResidencyOptions _textureResidency = SilkTextureResidencyOptions.Default;
     private readonly List<MetalCompositionPresentationGeneration> _generations = [];
     private MetalSilkGraphicsDevice? _device;
     private MetalCompositionPipelineResources? _pipeline;
@@ -132,12 +134,36 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
     public MetalCompositionViewportPresenter(
         MetalCompositionRenderCallback renderCallback,
         SilkGpuBufferBudget? gpuBufferBudget,
-        bool required = false)
+        bool required = false) : this(renderCallback, gpuBufferBudget, null, required)
+    {
+    }
+
+    /// <summary>Creates a retained presenter sharing buffer, texture and staging pools with other devices.</summary>
+    public MetalCompositionViewportPresenter(
+        MetalCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets,
+        bool required)
+        : this(renderCallback, gpuBufferBudget, texturePreparationBudgets,
+            SilkTextureResidencyOptions.Default, required)
+    {
+    }
+
+    /// <summary>Creates a retained presenter with shared allocation pools and a material residency policy.</summary>
+    public MetalCompositionViewportPresenter(
+        MetalCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets,
+        SilkTextureResidencyOptions textureResidencyOptions,
+        bool required)
     {
         ArgumentNullException.ThrowIfNull(renderCallback);
+        ArgumentNullException.ThrowIfNull(textureResidencyOptions);
         _renderCallback = renderCallback;
         _required = required;
         _gpuBufferBudget = gpuBufferBudget;
+        _textureBudgets = texturePreparationBudgets;
+        _textureResidency = textureResidencyOptions;
     }
 
     /// <summary>Captures current presenter resources, ring reuse, and scene evidence.</summary>
@@ -250,7 +276,8 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
                     (MetalSilkGraphicsDevice device,
                         MetalCompositionPipelineResources? pipeline,
                         SilkMeshRenderer? renderer) =
-                        CreateInitializedResources(target, _renderCallback is not null, _gpuBufferBudget);
+                        CreateInitializedResources(target, _renderCallback is not null, _gpuBufferBudget,
+                            _textureBudgets, _textureResidency);
                     _device = device;
                     _pipeline = pipeline;
                     _renderer = renderer;
@@ -562,7 +589,9 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
         SilkMeshRenderer? Renderer) CreateInitializedResources(
             CompositionPresentationTarget target,
             bool createMeshRenderer,
-            SilkGpuBufferBudget? gpuBufferBudget)
+            SilkGpuBufferBudget? gpuBufferBudget,
+            SilkTexturePreparationBudgets? texturePreparationBudgets,
+            SilkTextureResidencyOptions textureResidencyOptions)
     {
         MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
         MetalCompositionPipelineResources? pipeline = null;
@@ -570,11 +599,12 @@ public sealed class MetalCompositionViewportPresenter : ICompositionViewportPres
         try
         {
             gpuBufferBudget?.ConfigureDevice(device);
+            texturePreparationBudgets?.ConfigureDevice(device);
             device.ProbeCompositionPresentation();
             ValidateDeviceIdentity(device, target);
             if (createMeshRenderer)
             {
-                renderer = new SilkMeshRenderer(device);
+                renderer = new SilkMeshRenderer(device, textureResidencyOptions);
             }
             else
             {

@@ -65,6 +65,10 @@ flowchart LR
 Data-only consumers pair the managed API with `OpenUsd.Runtime.Core`. Rendering consumers add a
 managed backend and `OpenUsd.Runtime.Imaging`, whose RID-specific dependencies also bring Core.
 Simulation consumers add `OpenUsd.Physics`, whose RID-specific dependencies also bring Core.
+Exact simulation recording consumers can add `OpenUsd.Rendering.Physics`. This optional managed
+bridge depends on `OpenUsd.Rendering` and `OpenUsd.Physics`, carries all three target frameworks,
+and embeds no native assets or render backend. Ordinary renderer-neutral consumers do not acquire
+the simulation runtime. A host supplies the recording capture adapter and retains renderer ownership.
 The Core, Imaging, and Physics metapackages depend on the published runtime packages, letting NuGet
 select the native asset group for the consuming app's `RuntimeIdentifier`. Core, Imaging, and
 Cesium cover `win-x64`, `linux-x64`, and `osx-arm64`; Physics covers `win-x64` and `linux-x64`,
@@ -136,8 +140,8 @@ rather than shaded.
 
 The package set requires project-owned data ABI version 17 and native capabilities `0x3FFFFFF`.
 Package-only execution prints and verifies both values before exercising stage operations.
-The physics packages additionally require retained physics world ABI version 7 and physics
-extraction page ABI version 1, both recorded in `eng/openusd.lock.json` and embedded in each
+The physics packages additionally require retained physics world ABI version 8 and physics
+extraction page ABI version 2, both recorded in `eng/openusd.lock.json` and embedded in each
 physics package as `build/<package id>.native-abi.json`.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
@@ -825,7 +829,7 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 24 and
-capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 6/24, and Storm child
+capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 6/27, and Storm child
 ABI 9. Metadata schema 3 records camera-state and EXR request version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

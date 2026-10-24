@@ -5,17 +5,32 @@ using System.Buffers.Binary;
 namespace OpenUsd.Rendering.Silk;
 
 /// <summary>
-/// Enumerates managed-owned command page bytes without allocating.
+/// Enumerates command views backed by managed-owned bytes.
 /// </summary>
+/// <remarks>Contiguous pages allocate nothing; file-backed pages copy individual commands to preserve view
+/// lifetimes.</remarks>
 public ref struct SilkCommandEnumerator
 {
     private ReadOnlySpan<byte> _remaining;
     private uint _remainingCount;
+    private SilkCommandStorageReader? _storage;
+    private ulong _offset;
     internal SilkCommandEnumerator(ReadOnlySpan<byte> data, uint commandCount)
     {
         _remaining = data;
         _remainingCount = commandCount;
+        _storage = null;
+        _offset = 0;
         Current = default;
+    }
+
+    internal SilkCommandEnumerator(SilkCommandStorage storage, uint commandCount, bool preserveViews)
+    {
+        _remaining = default;
+        _remainingCount = commandCount;
+        _offset = 0;
+        Current = default;
+        _storage = new SilkCommandStorageReader(storage, preserveViews);
     }
 
     /// <summary>Gets the current command.</summary>
@@ -24,6 +39,12 @@ public ref struct SilkCommandEnumerator
     /// <summary>Advances to the next command.</summary>
     public bool MoveNext()
     {
+        if (_storage is { } storage)
+        {
+            bool next = storage.MoveNext(ref _offset, ref _remainingCount, out SilkCommand command);
+            Current = command;
+            return next;
+        }
         if (_remainingCount == 0)
         {
             if (!_remaining.IsEmpty)
@@ -64,6 +85,12 @@ public ref struct SilkCommandEnumerator
     /// <summary>Completes enumeration.</summary>
     public void Dispose()
     {
+        if (_storage is { PreserveViews: false } storage)
+        {
+            storage.Dispose();
+        }
+        _storage = null;
+        _offset = 0;
         _remaining = default;
         _remainingCount = 0;
         Current = default;

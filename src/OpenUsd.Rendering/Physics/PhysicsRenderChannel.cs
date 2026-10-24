@@ -14,6 +14,12 @@ namespace OpenUsd.Rendering;
 /// observes a snapshot that is still being written and never blocks the simulation.
 /// </para>
 /// <para>
+/// One producer owns write operations. A claimed snapshot is borrowed only until
+/// <see cref="Publish"/> or <see cref="Abandon"/> ends that claim; the producer must
+/// not retain or reuse that reference afterward. Every new claim clears completion,
+/// so recycling storage cannot republish a previous frame without writing it again.
+/// </para>
+/// <para>
 /// The producer never blocks either. A buffer is free only when nothing references it, so a
 /// producer that outruns the renderer reports a dropped publication instead of waiting or growing
 /// the ring, because dropping an intermediate snapshot only loses a redundant frame while blocking
@@ -27,6 +33,7 @@ public sealed class PhysicsRenderChannel
 
     private readonly PhysicsRenderSnapshot[] _buffers;
     private readonly int[] _references;
+    private readonly int[] _writeClaims;
     private PhysicsRenderSnapshot? _published;
     private long _revision;
     private long _droppedPublications;
@@ -47,6 +54,7 @@ public sealed class PhysicsRenderChannel
         Capacities = capacities;
         _buffers = new PhysicsRenderSnapshot[bufferCount];
         _references = new int[bufferCount];
+        _writeClaims = new int[bufferCount];
         for (int index = 0; index < bufferCount; index++)
         {
             _buffers[index] = new PhysicsRenderSnapshot(capacities);
@@ -90,6 +98,8 @@ public sealed class PhysicsRenderChannel
             }
             if (Interlocked.CompareExchange(ref _references[index], 1, 0) == 0)
             {
+                candidate.Clear();
+                Volatile.Write(ref _writeClaims[index], 1);
                 return candidate;
             }
         }
@@ -104,12 +114,12 @@ public sealed class PhysicsRenderChannel
     /// <returns>The monotonic revision the snapshot was published with.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
     /// <exception cref="ArgumentException">
-    /// The snapshot is not one of this channel's buffers, or it was never completed.
+    /// The snapshot has no outstanding write claim or has not been completed for that claim.
     /// </exception>
     public ulong Publish(PhysicsRenderSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        _ = IndexOf(snapshot);
+        int index = IndexOf(snapshot);
         if (!snapshot.IsComplete)
         {
             throw new ArgumentException(
@@ -117,6 +127,7 @@ public sealed class PhysicsRenderChannel
                 nameof(snapshot));
         }
 
+        EndWriteClaim(index, snapshot);
         ulong revision = (ulong)Interlocked.Increment(ref _revision);
         snapshot.Revision = revision;
         PhysicsRenderSnapshot? previous = Interlocked.Exchange(ref _published, snapshot);
@@ -131,11 +142,13 @@ public sealed class PhysicsRenderChannel
     /// <summary>Returns a claimed buffer that will not be published.</summary>
     /// <param name="snapshot">The buffer previously claimed from <see cref="TryBeginWrite"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
-    /// <exception cref="ArgumentException">The snapshot is not one of this channel's buffers.</exception>
+    /// <exception cref="ArgumentException">The snapshot has no outstanding write claim on this channel.</exception>
     public void Abandon(PhysicsRenderSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        Interlocked.Decrement(ref _references[IndexOf(snapshot)]);
+        int index = IndexOf(snapshot);
+        EndWriteClaim(index, snapshot);
+        Interlocked.Decrement(ref _references[index]);
     }
 
     /// <summary>Copies the latest published snapshot without blocking the producer.</summary>
@@ -218,5 +231,15 @@ public sealed class PhysicsRenderChannel
         throw new ArgumentException(
             "The snapshot does not belong to this channel.",
             nameof(snapshot));
+    }
+
+    private void EndWriteClaim(int index, PhysicsRenderSnapshot snapshot)
+    {
+        if (Interlocked.CompareExchange(ref _writeClaims[index], 0, 1) != 1)
+        {
+            throw new ArgumentException(
+                "The snapshot has no outstanding write claim on this channel.",
+                nameof(snapshot));
+        }
     }
 }

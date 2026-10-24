@@ -1,4 +1,28 @@
 #nullable enable
+OpenUsd.Rendering.RenderJobImage.Simulation.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity?
+OpenUsd.Rendering.RenderJobImage.Simulation.init -> void
+OpenUsd.Rendering.RenderDiskFrameResult.Simulation.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity?
+OpenUsd.Rendering.RenderSimulationFrameIdentity
+OpenUsd.Rendering.RenderSimulationFrameIdentity.RenderSimulationFrameIdentity(System.Guid epoch, string! scenarioIdentity, ulong sourceRevision, ulong publicationRevision, ulong stepIndex, double simulationSeconds, double timeCode, double fixedStepSeconds, ulong bindingRevision, int bodyCount, int deformationCount, string? reviewIdentity = null) -> void
+OpenUsd.Rendering.RenderSimulationFrameIdentity.Epoch.get -> System.Guid
+OpenUsd.Rendering.RenderSimulationFrameIdentity.ScenarioIdentity.get -> string!
+OpenUsd.Rendering.RenderSimulationFrameIdentity.SourceRevision.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.PublicationRevision.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.StepIndex.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.SimulationSeconds.get -> double
+OpenUsd.Rendering.RenderSimulationFrameIdentity.TimeCode.get -> double
+OpenUsd.Rendering.RenderSimulationFrameIdentity.FixedStepSeconds.get -> double
+OpenUsd.Rendering.RenderSimulationFrameIdentity.BindingRevision.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.BodyCount.get -> int
+OpenUsd.Rendering.RenderSimulationFrameIdentity.DeformationCount.get -> int
+OpenUsd.Rendering.RenderSimulationFrameIdentity.ReviewIdentity.get -> string?
+OpenUsd.Rendering.RenderSimulationFrameIdentity.Equals(OpenUsd.Rendering.RenderSimulationFrameIdentity? other) -> bool
+OpenUsd.Rendering.RenderSimulationFrameIdentity.<Clone>$() -> OpenUsd.Rendering.RenderSimulationFrameIdentity!
+override OpenUsd.Rendering.RenderSimulationFrameIdentity.ToString() -> string!
+override OpenUsd.Rendering.RenderSimulationFrameIdentity.GetHashCode() -> int
+override OpenUsd.Rendering.RenderSimulationFrameIdentity.Equals(object? obj) -> bool
+static OpenUsd.Rendering.RenderSimulationFrameIdentity.operator !=(OpenUsd.Rendering.RenderSimulationFrameIdentity? left, OpenUsd.Rendering.RenderSimulationFrameIdentity? right) -> bool
+static OpenUsd.Rendering.RenderSimulationFrameIdentity.operator ==(OpenUsd.Rendering.RenderSimulationFrameIdentity? left, OpenUsd.Rendering.RenderSimulationFrameIdentity? right) -> bool
 OpenUsd.Rendering.RenderCameraFrameSettings
 OpenUsd.Rendering.RenderCameraFrameSettings.RenderCameraFrameSettings(double shutterOpen = 0, double shutterClose = 0, double exposure = 0, double exposureIso = 100, double exposureTime = 1, double exposureFStop = 1, double exposureResponsivity = 1) -> void
 static OpenUsd.Rendering.RenderCameraFrameSettings.Default.get -> OpenUsd.Rendering.RenderCameraFrameSettings!
@@ -298,6 +322,12 @@ OpenUsd.Rendering.ManagedRenderFrameResult.Failure.get -> OpenUsd.Rendering.Rend
 OpenUsd.Rendering.ManagedRenderFrameResult.Frame.get -> OpenUsd.Rendering.RenderFrameResult?
 OpenUsd.Rendering.ManagedRenderFrameResult.IsSuccess.get -> bool
 OpenUsd.Rendering.PhysicsRenderBinding
+OpenUsd.Rendering.PhysicsRenderBinding.IncludesDescendants.get -> bool
+OpenUsd.Rendering.PhysicsRenderBinding.IncludesDescendants.init -> void
+OpenUsd.Rendering.PhysicsRenderBinding.ReferencePosition.get -> OpenUsd.UsdVec3d
+OpenUsd.Rendering.PhysicsRenderBinding.ReferencePosition.init -> void
+OpenUsd.Rendering.PhysicsRenderBinding.ReferenceOrientation.get -> OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderBinding.ReferenceOrientation.init -> void
 OpenUsd.Rendering.PhysicsRenderBinding.Deconstruct(out string! PrimPath, out int InstanceIndex) -> void
 OpenUsd.Rendering.PhysicsRenderBinding.Equals(OpenUsd.Rendering.PhysicsRenderBinding other) -> bool
 OpenUsd.Rendering.PhysicsRenderBinding.InstanceIndex.get -> int
@@ -314,6 +344,7 @@ OpenUsd.Rendering.PhysicsRenderBindingTable.PhysicsRenderBindingTable(int capaci
 OpenUsd.Rendering.PhysicsRenderBindingTable.RefusedBindings.get -> long
 OpenUsd.Rendering.PhysicsRenderBindingTable.Revision.get -> ulong
 OpenUsd.Rendering.PhysicsRenderBindingTable.TryBind(OpenUsd.Rendering.PhysicsRenderObjectId id, string! primPath, int instanceIndex = 0) -> bool
+OpenUsd.Rendering.PhysicsRenderBindingTable.TryBindSubtree(OpenUsd.Rendering.PhysicsRenderObjectId id, string! primPath, OpenUsd.UsdVec3d referencePosition, OpenUsd.Rendering.PhysicsRenderOrientation referenceOrientation) -> bool
 OpenUsd.Rendering.PhysicsRenderBindingTable.TryResolve(OpenUsd.Rendering.PhysicsRenderObjectId id, out OpenUsd.Rendering.PhysicsRenderBinding binding) -> bool
 OpenUsd.Rendering.PhysicsRenderBindingTable.Unbind(OpenUsd.Rendering.PhysicsRenderObjectId id) -> bool
 OpenUsd.Rendering.PhysicsRenderBodyState
@@ -1182,3 +1213,7 @@ static OpenUsd.Rendering.StageTime.operator ==(OpenUsd.Rendering.StageTime left,
 static OpenUsd.Rendering.ViewportDimensions.Empty.get -> OpenUsd.Rendering.ViewportDimensions
 static OpenUsd.Rendering.ViewportDimensions.operator !=(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
 static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
+const OpenUsd.Rendering.CompositionHostReadback.ImageHandleType = "HostMemoryReadback" -> string!
+OpenUsd.Rendering.CompositionHostReadback
+OpenUsd.Rendering.ICompositionReadbackFrame
+OpenUsd.Rendering.ICompositionReadbackFrame.CopyPresentedPixels(System.Span<byte> destination) -> void

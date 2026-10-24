@@ -26,6 +26,41 @@ public sealed class UsdPhysicsCpuDomainTests
     private const double Gravity = 9.81;
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DomainCapacityRefusalsPreserveAnExistingArticulationOrVehicle(bool vehicle)
+    {
+        CpuDomainFixture.RequireRuntime();
+        using var fixture = CpuDomainFixture.Create(nameof(
+            DomainCapacityRefusalsPreserveAnExistingArticulationOrVehicle));
+        fixture.WriteStage(vehicle ? VehicleStage : ArticulationStage);
+        using UsdPhysicsSimulation simulation = fixture.BuildSimulation();
+        await Assert.That(simulation.Build.Succeeded).IsTrue();
+        await Assert.That(
+            vehicle ? simulation.Composition!.Vehicles : simulation.Composition!.Articulations).IsEqualTo(1);
+        UsdPhysicsFixedStep step = UsdPhysicsFixedStep.Resolve(UsdPhysicsTimeline.Default, 60);
+        var refusedOptions = new UsdPhysicsSessionOptions(
+            maxArticulations: vehicle ? 256 : 0, maxVehicles: vehicle ? 0 : 64);
+        UsdPhysicsWorldBuildResult refused = simulation.World.Build(
+            UsdPhysicsTimeline.Default, step, refusedOptions, CancellationToken.None);
+        await Assert.That(refused.Succeeded).IsFalse();
+        string option = vehicle ? "MaxVehicles" : "MaxArticulations";
+        await Assert.That(refused.Diagnostics.Entries.Any(entry =>
+            entry.Code == "OPENUSD_PHYSICS_WORLD_CAPACITY_EXCEEDED" &&
+            entry.Message.Contains(option, StringComparison.Ordinal))).IsTrue();
+        await Assert.That(simulation.World.LastComposition).IsSameReferenceAs(simulation.Composition);
+        simulation.Step(1);
+        await Assert.That(simulation.Frame.BodyCount).IsGreaterThan(0);
+        var exactOptions = new UsdPhysicsSessionOptions(
+            maxArticulations: vehicle ? 256 : 1, maxVehicles: vehicle ? 1 : 64);
+        UsdPhysicsWorldBuildResult exact = simulation.World.Build(
+            UsdPhysicsTimeline.Default, step, exactOptions, CancellationToken.None);
+        await Assert.That(exact.Succeeded).IsTrue();
+        simulation.Step(1);
+        await Assert.That(simulation.Frame.BodyCount).IsGreaterThan(0);
+    }
+
+    [Test]
     public async Task AnAuthoredStageSimulatesItsRigidBodiesThroughTheWholeChain()
     {
         CpuDomainFixture.RequireRuntime();
@@ -244,6 +279,18 @@ public sealed class UsdPhysicsCpuDomainTests
         using UsdPhysicsSimulation simulation = fixture.BuildSimulation();
         await Assert.That(simulation.Build.Succeeded).IsTrue();
         await Assert.That(simulation.Composition!.Joints).IsEqualTo(1);
+
+        UsdPhysicsFixedStep step = UsdPhysicsFixedStep.Resolve(UsdPhysicsTimeline.Default, 60);
+        UsdPhysicsWorldBuildResult refused = simulation.World.Build(UsdPhysicsTimeline.Default, step,
+            new UsdPhysicsSessionOptions(maxJoints: 0), CancellationToken.None);
+        await Assert.That(refused.Succeeded).IsFalse();
+        await Assert.That(refused.Diagnostics.Entries.Any(entry =>
+            entry.Code == "OPENUSD_PHYSICS_WORLD_CAPACITY_EXCEEDED" &&
+            entry.Message.Contains("MaxJoints", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(simulation.World.LastComposition).IsSameReferenceAs(simulation.Composition);
+        UsdPhysicsWorldBuildResult exact = simulation.World.Build(UsdPhysicsTimeline.Default, step,
+            new UsdPhysicsSessionOptions(maxJoints: 1), CancellationToken.None);
+        await Assert.That(exact.Succeeded).IsTrue();
 
         simulation.Step(120);
 

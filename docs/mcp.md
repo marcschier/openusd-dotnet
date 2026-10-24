@@ -428,6 +428,25 @@ separate Viewer root; it is not included in either the tool package or MCP RID b
 
 ### Environment variables
 
+- **`OPENUSD_D3D12_GPU_UPLOAD_HEAPS`:** explicit `true`/`false` opt-in for GPU-local,
+  CPU-writable D3D12 upload buffers. Unset is disabled. Requires Windows hardware,
+  `OPENUSD_MCP_USE_WARP=false`, `OPENUSD_SILK_GPU_BUFFER_BYTES`, and adapter Options16
+  GPU-upload support; incompatible requests fail rather than falling back to WARP.
+  Previews, sequences and products receive the same graphics options. Child Viewers
+  receive only the effective flag after any ambient value is removed, and cannot
+  bypass the policy by selecting Storm, Vulkan or Metal. This changes memory placement,
+  not private-commit charges or logical quotas; see
+  [GPU-local upload heaps](rendering.md#optional-d3d12-gpu-local-upload-heaps).
+
+- **`OPENUSD_SILK_STREAM_MATERIAL_TEXTURES`:** opt-in full-resolution material working-set
+  streaming for previews, sequences and products. Accepts `true`/`false` (case-insensitive)
+  or `1`/`0`; other values fail startup. Unset is disabled. Requires
+  `OPENUSD_SILK_GPU_BUFFER_BYTES` for transactional frame publication. CPU texture,
+  GPU texture and staging admission remain separately configurable. The effective
+  choice is forwarded to child Viewers; unrelated ambient streaming settings are removed.
+  Each material must still fit its budgets, and repeated decode/upload work can increase latency.
+  `HDSILK_MATERIAL_TEXTURE_STREAMING` capture diagnostics confirm that the policy is active.
+
 - **`OPENUSD_SILK_GPU_BUFFER_BYTES`:** optional positive invariant decimal ceiling for
   logical RHI buffer payload bytes. The process shares one pool across its preview/
   sequence/product devices; submission-held and replacement buffers remain charged.
@@ -436,6 +455,18 @@ separate Viewer root; it is not included in either the tool package or MCP RID b
   The maximum is forwarded explicitly to a launched Viewer, whose pool is independent
   because it runs in another process. Unsupported devices and Storm cannot bypass it.
   Stable `HDSILK_GPU_BUFFER_ADMISSION` information appears in capture diagnostics.
+
+- **`OPENUSD_SILK_CPU_TEXTURE_BYTES`, `OPENUSD_SILK_GPU_TEXTURE_BYTES`, and
+  `OPENUSD_SILK_GPU_STAGING_BYTES`:** independent optional positive invariant decimal
+  ceilings for owned managed texture pixels/command copies, owned RHI textures, and
+  backend upload/readback payloads. One configured set is shared by preview, sequence
+  and product devices in the MCP process. Invalid values fail startup; unset domains
+  stay unbounded. Stable `HDSILK_CPU_TEXTURE_ADMISSION`, `HDSILK_GPU_TEXTURE_ADMISSION`
+  and `HDSILK_GPU_STAGING_ADMISSION` diagnostics identify enabled domains. Child Viewers
+  receive effective maxima, not shared parent credit, and cannot inherit unrelated
+  ambient limits. Storm cannot enforce these policies. Source/SDK/geometry memory,
+  detached captures, native codec/OCIO scratch, imported images and driver overhead
+  remain excluded; these settings are not a whole-process memory cap.
 
 These managed bindings require an hdSilk runtime with explicit page acknowledgement.
 An older session-6/page-24 library without that extension fails session creation.
@@ -453,6 +484,13 @@ See [native-to-managed page acknowledgement](rendering.md#native-to-managed-page
   Successful captures include `HDSILK_PREPARATION_ADMISSION` information; native refusals
   retain the existing `render_failure` protocol classification and original inner diagnostic.
   Choose measured limits rather than treating these as a complete warehouse memory budget.
+- **`OPENUSD_SILK_STORAGE_LIVE_BYTES`, `OPENUSD_SILK_STORAGE_UPDATE_BYTES`,
+  `OPENUSD_SILK_STORAGE_COMMAND_BYTES`, `OPENUSD_SILK_STORAGE_TRANSFER_BYTES`:** opt-in
+  bounded file-backed updates. All four and the mesh/page pair are required. Files share
+  a per-native-session live-byte pool, not a process-wide pool. Preview and product
+  captures reuse the same atomic rendering/replay path. Launched Viewers receive only
+  the effective settings, with their own independent pools; ambient storage settings
+  are removed. See [file-backed command updates](rendering.md#file-backed-command-updates).
 - **`OPENUSD_MCP_SOURCE_ROOT`:** defaults to the client process current directory. It is
   the existing canonical read-only root for `open_scene` relative paths.
 - **`OPENUSD_MCP_OUTPUT_ROOT`:** defaults to
@@ -553,7 +591,8 @@ content plus one summary text block bounded to 2048 characters. Artifact-produci
 at most 16 image/resource-link blocks, with at most 17 content blocks total.
 
 - **`open_scene`:** requires no active session and one confined relative USD `sourcePath`.
-  It creates one overlay session. Errors are `invalid_argument`, `path_denied`, or
+  It creates one overlay session. Optional `stageSettings` explicitly authors root-layer
+  units, axis and timeline without converting source coordinates. Errors are `invalid_argument`, `path_denied`, or
   `native_failure`.
 - **`close_scene`:** requires the exact session and revision. It disposes render/native
   state before persisting `SessionClosed`; failed teardown permits only close retry.
@@ -587,6 +626,10 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 - **`render_product`:** a bounded authored-product execution route using the shared job planner. It
   preserves selected settings, variable order, camera samples and scene filters rather than treating
   a viewport capture as a product. It requires a matching ingestion-capable native runtime.
+- **`render_physics_sequence`:** records a fresh CPU rigid-body/joint world through exact fixed-step
+  publications, complete renderer acknowledgements and atomic disk output. It requires explicit
+  workspace units/up-axis expectations, a complete noninstanced extraction and the native physics shim.
+  It shares sequence quotas and gallery retrieval; unsupported or partial physics never produces a job.
 - **`read_sequence_frame`:** exposes one completed job frame through the existing immutable resource
   store after verifying its recorded length and SHA256. Historical frames retain their original
   revision. Unknown jobs, changed files, invalid indexes and exhausted artifact quotas are refused.
@@ -768,7 +811,7 @@ degradation; material changes clear stale entries before the next capture.
 
 ### `render_sequence` and `read_sequence_frame`
 
-These tools are unreleased source additions. The current source exposes 16 tools; the published
+These tools are unreleased source additions. The current source exposes 17 tools; the published
 `0.14.0-alpha` tool does not include disk-sequence execution.
 
 ```json
@@ -877,6 +920,99 @@ repeated calls create new resources. Invalid selections, changed files, cancella
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input
 decoding is separately bounded by the original 64-MiB-per-frame PNG/raster limits; those limits
 do not describe whole-process memory.
+
+### `render_physics_sequence`
+
+This command advances physics, unlike authored-time `render_sequence`. It builds a new nonlooping
+world at the workspace's authored start, then advances 1-8 whole fixed steps per capture.
+The actual step frequency comes from the workspace timeline. Up to 4096 frames share the existing
+8-job/4-GiB process quota and 64-MiB per-frame policy; HDR or depth charges 20 bytes per raster pixel.
+PNG, optional raw binary16 HDR and normalized float32 depth are published together. Use the returned
+job ID with `read_sequence_frame` or `read_sequence_sheet`.
+
+```json
+{
+  "request": {
+    "sessionId": "<id>",
+    "generation": 1,
+    "stageRevision": 2,
+    "scenarioIdentity": "rigid-drop-v1",
+    "expectedMetersPerUnit": 0.01,
+    "expectedUpAxis": "Y",
+    "frameCount": 24,
+    "stepsPerFrame": 1,
+    "width": 512,
+    "height": 512,
+    "includeDeviceDepth": true,
+    "includeHdrColor": true
+  }
+}
+```
+
+Units and up axis must match the **workspace stage**, not an assumption about its source file.
+Stage-root metadata is not implicitly inherited from the source sublayer. For a metre/kg/Z-up,
+60-Hz scenario such as the removable Warehouse-01 demonstration, explicitly initialize the
+workspace when opening it:
+
+```json
+{
+  "request": {
+    "sourcePath": "warehouse-box-drop.usda",
+    "stageSettings": {
+      "metersPerUnit": 1,
+      "kilogramsPerUnit": 1,
+      "upAxis": "Z",
+      "startTimeCode": 0,
+      "endTimeCode": 240,
+      "timeCodesPerSecond": 60,
+      "framesPerSecond": 60
+    }
+  }
+}
+```
+
+When `stageSettings` is present, all seven fields are required. Units and rates must be positive
+and finite, `upAxis` is `Y` or `Z`, and the finite end must be at or after the finite start with
+a finite duration. These settings author only the new overlay root, survive checkpoint/rollback
+and final export, and interpret existing coordinates; they do not rescale geometry, mass,
+velocity or time samples. Omitting the object retains the previous source-sublayer behavior.
+No source metadata is copied implicitly, and no arbitrary USDA or metadata key is accepted.
+
+Use matching `expectedMetersPerUnit` and `expectedUpAxis` in the recording request. A mismatch
+still fails before simulation, including the actual units/axis. The scenario label identifies
+an already-authored setup; the recording command does not create bodies, author motion, or
+modify the original file.
+
+The default profile admits CPU rigid bodies, static colliders and joints. Instanced extractions,
+articulated/controller/vehicle/particle/deformable domains, disabled objects and any extraction
+truncation are refused. Default extraction remains bounded to 4096 objects, 1,048,576 collider
+points and 3,145,728 indices.
+
+`"fullScenePhysics": true` explicitly selects a larger rigid-scene profile: up to 65,536
+extracted objects, 32,768 actors and 65,536 collision shapes. The existing 512-MiB extraction
+page and geometry ceilings remain unchanged. Static instances are retained; moving subtrees
+must be de-instanced in the scenario. A body may drive multiple noninstanced descendant meshes
+through an authored reference pose, preserving every child's offset, scale and shear. At most
+4096 render mesh targets can receive overrides. Missing, conflicting or over-capacity targets
+cannot acknowledge a complete recording; a compound body's meshes are not applied as a prefix.
+These are explicit structural bounds, not whole-process memory or full-warehouse image claims.
+
+The workspace retains at most one complete prepared physics page, bounded by the same page
+ceiling. Repeated recordings and render retries reuse it only while the stage revision,
+start time and selected profile match; each recording still creates a fresh solver world.
+Authored edits invalidate the cache, and closing the workspace releases it. Incorrect unit
+expectations are refused using metadata before expensive mesh preparation.
+
+Every image carries its recording epoch, exact physics publication and step/time identities,
+source revision and complete body/deformation counts in the job manifest. The source stages poses
+before native scene synchronization and resolves them afterwards, preserving the current authored
+scale/shear. It acknowledges consumed counts only after capture finishes. Restoration is drained
+before job publication; cancellation drains and resets the capture source, disposes the owned world,
+and leaves no partial directory. The native integration fixture verifies moving poses, depth/HDR,
+contact-sheet retrieval, cancellation/retry and an unchanged authored preview.
+
+The matching CPU physics shim is an additional loader-path prerequisite on Windows/Linux. The
+managed dotnet tool still contains no native runtime, and no macOS physics build is supplied.
 
 ### `render_product`
 

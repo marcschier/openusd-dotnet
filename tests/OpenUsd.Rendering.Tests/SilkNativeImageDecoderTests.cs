@@ -11,6 +11,118 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkNativeImageDecoderTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task BytePngDecodePreservesExactTransferAndAlphaForEveryChannelValue(bool linearize)
+    {
+        RequireNativeImages();
+        string root = Directory.CreateTempSubdirectory("silk-byte-transfer-").FullName;
+        try
+        {
+            byte[] pixels = new byte[256 * 4];
+            byte[] expected = new byte[pixels.Length];
+            for (int value = 0; value < 256; value++)
+            {
+                for (int channel = 0; channel < 4; channel++)
+                {
+                    byte encoded = (byte)((value + channel * 37) % 256);
+                    pixels[value * 4 + channel] = encoded;
+                    double normalized = encoded / 255.0;
+                    double transferred = normalized <= 0.04045
+                        ? normalized / 12.92 : Math.Pow((normalized + 0.055) / 1.055, 2.4);
+                    expected[value * 4 + channel] = !linearize || channel == 3 ? encoded :
+                        (byte)Math.Round(Math.Clamp(transferred, 0, 1) * 255, MidpointRounding.AwayFromZero);
+                }
+            }
+            string path = Path.Combine(root, "all-bytes.png");
+            using (FileStream output = File.Create(path))
+            {
+                _ = PngRgba8Writer.Write(output, 256, 1, pixels, 4096);
+            }
+            byte[] original = await File.ReadAllBytesAsync(path);
+            var budget = new SilkCpuTextureBudget((ulong)pixels.Length);
+            using (SilkDecodedImage image = SilkNativeImageDecoder.Decode(path, linearize, budget))
+            {
+                await Assert.That(image.Format).IsEqualTo(SilkTextureFormat.Rgba8Unorm);
+                await Assert.That(image.Width).IsEqualTo(256u);
+                await Assert.That(image.Height).IsEqualTo(1u);
+                await Assert.That(image.Pixels.SequenceEqual(expected)).IsTrue();
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo((ulong)pixels.Length);
+            }
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That((await File.ReadAllBytesAsync(path)).SequenceEqual(original)).IsTrue();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(false, 31ul)]
+    [Arguments(false, 32ul)]
+    [Arguments(true, 31ul)]
+    [Arguments(true, 32ul)]
+    public async Task PreferredFloatPngDecodePreservesTransferAlphaAndExactOwnership(bool linearize, ulong maximum)
+    {
+        RequireNativeImages();
+        string root = Directory.CreateTempSubdirectory("silk-float-png-").FullName;
+        try
+        {
+            byte[] pixels = [4, 12, 64, 17, 128, 192, 255, 203];
+            string path = Path.Combine(root, "source.png");
+            using (var output = File.Create(path))
+            {
+                _ = PngRgba8Writer.Write(output, 2, 1, pixels, 1024);
+            }
+            byte[] original = await File.ReadAllBytesAsync(path);
+            var budget = new SilkCpuTextureBudget(maximum);
+            if (maximum == 31)
+            {
+                SilkCpuTextureBudgetExceededException? failure = await Assert.That(() =>
+                    SilkNativeImageDecoder.Decode(path, linearize, true, budget))
+                    .Throws<SilkCpuTextureBudgetExceededException>();
+                await Assert.That(failure!.RequestedBytes).IsEqualTo(32ul);
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+            }
+            else
+            {
+                using SilkDecodedImage image = SilkNativeImageDecoder.Decode(path, linearize, true, budget);
+                await Assert.That(image.Format).IsEqualTo(SilkTextureFormat.Rgba32Float);
+                float[] actual = MemoryMarshal.Cast<byte, float>(image.Pixels).ToArray();
+                await Assert.That(actual.Length).IsEqualTo(8);
+                for (int index = 0; index < pixels.Length; index++)
+                {
+                    float encoded = pixels[index] / 255f;
+                    float expected = !linearize || index % 4 == 3 ? encoded : encoded <= 0.04045f
+                        ? encoded / 12.92f : MathF.Pow((encoded + 0.055f) / 1.055f, 2.4f);
+                    await Assert.That(MathF.Abs(actual[index] - expected)).IsLessThan(0.000001f);
+                }
+                await Assert.That(actual[0]).IsGreaterThan(0f);
+                await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(32ul);
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(32ul);
+                image.Dispose();
+                await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+                using SilkDecodedImage legacy = SilkNativeImageDecoder.Decode(path, linearize);
+                await Assert.That(legacy.Format).IsEqualTo(SilkTextureFormat.Rgba8Unorm);
+                if (linearize)
+                {
+                    await Assert.That(legacy.Pixels[0]).IsEqualTo((byte)0);
+                }
+                else
+                {
+                    await Assert.That(legacy.Pixels.SequenceEqual(pixels)).IsTrue();
+                }
+            }
+            await Assert.That((await File.ReadAllBytesAsync(path)).SequenceEqual(original)).IsTrue();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task CpuBudgetRefusesBeforeAllocatingPixelsAndHoldsCreditUntilOwnerDisposal()
     {
         RequireNativeImages();

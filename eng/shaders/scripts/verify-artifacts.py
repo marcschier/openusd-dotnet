@@ -17,6 +17,64 @@ from shader_model import (
 
 
 SPIRV_MAGIC = 0x07230203
+MAXIMUM_MESH_FRAGMENT_LOCAL_BYTES = 1024
+
+
+def spirv_numeric_local_bytes(data: bytes) -> int:
+    """Lower bound for private numeric storage, not a device register/spill measurement."""
+    if len(data) < 20 or len(data) % 4:
+        raise ValueError("Invalid SPIR-V word stream")
+    words = struct.unpack(f"<{len(data) // 4}I", data)
+    if words[0] != SPIRV_MAGIC:
+        raise ValueError("Invalid SPIR-V magic")
+    types: dict[int, tuple[int, tuple[int, ...]]] = {}
+    constants: dict[int, int] = {}
+    locals_by_function: dict[int, list[int]] = {0: []}
+    function = 0
+    offset = 5
+    while offset < len(words):
+        count, opcode = words[offset] >> 16, words[offset] & 0xFFFF
+        if count == 0 or offset + count > len(words):
+            raise ValueError("Invalid SPIR-V instruction length")
+        args = words[offset + 1:offset + count]
+        if opcode in (20, 21, 22, 23, 24, 28, 30, 32):
+            types[args[0]] = (opcode, args[1:])
+        elif opcode in (43, 50):
+            constants[args[1]] = args[2]
+        elif opcode == 54:
+            function = args[1]
+            locals_by_function[function] = []
+        elif opcode == 56:
+            function = 0
+        elif opcode == 59 and args[2] in (6, 7):
+            locals_by_function[0 if args[2] == 6 else function].append(args[0])
+        offset += count
+    if function != 0:
+        raise ValueError("Unterminated SPIR-V function")
+
+    def size(type_id: int) -> int:
+        opcode, args = types.get(type_id, (0, ()))
+        if opcode == 20:
+            return 4
+        if opcode in (21, 22):
+            return args[0] // 8
+        if opcode in (23, 24):
+            return size(args[0]) * args[1]
+        if opcode == 28:
+            if args[1] not in constants:
+                raise ValueError("Unresolved private SPIR-V array size")
+            return size(args[0]) * constants[args[1]]
+        if opcode == 30:
+            return sum(size(member) for member in args)
+        if opcode == 32:
+            return size(args[1])
+        return 0
+
+    private = sum(size(item) for item in locals_by_function.pop(0))
+    return private + max(
+        (sum(size(item) for item in local) for local in locals_by_function.values()),
+        default=0,
+    )
 
 
 def spirv_version_word(version: str) -> int:
@@ -66,6 +124,14 @@ def verify_program(
                 f"Unexpected SPIR-V header in {spirv}: magic={magic:#x}, "
                 f"version={version:#x}"
             )
+        if program["stage"] == "fragment" and program["name"].startswith("mesh."):
+            local_bytes = spirv_numeric_local_bytes(spirv.read_bytes())
+            if local_bytes > MAXIMUM_MESH_FRAGMENT_LOCAL_BYTES:
+                raise ValueError(
+                    f"Mesh fragment private numeric storage is {local_bytes} bytes, "
+                    f"exceeding {MAXIMUM_MESH_FRAGMENT_LOCAL_BYTES}: {spirv}. "
+                    "Read large frame arrays directly from the storage buffer."
+                )
 
     if artifact_scope == "spirv":
         return artifacts

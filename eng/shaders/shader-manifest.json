@@ -241,6 +241,34 @@
       "permutationResources": [
         {
           "feature": "MAP_MATERIAL",
+          "name": "emissiveValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 23,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 40,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "diffuseValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 22,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 39,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
           "name": "baseColorSampler",
           "access": "read",
           "d3d": {
@@ -292,6 +320,62 @@
           },
           "vulkan": {
             "binding": 3,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "detailNormalSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 4,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 13,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "detailNormalTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "normalValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 20,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 37,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "detailNormalValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 21,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 38,
             "set": 0
           }
         },

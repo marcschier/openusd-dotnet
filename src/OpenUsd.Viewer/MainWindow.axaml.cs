@@ -243,6 +243,9 @@ public sealed partial class MainWindow : Window, IDisposable
             HierarchyRootPrevious.Click += OnHierarchyRootPrevious;
             HierarchyRootNext.Click += OnHierarchyRootNext;
             InspectorPropertyQuery.TextChanged += OnInspectorPropertyQueryChanged;
+            InspectorPropertyFilter.SelectionChanged += OnInspectorPropertyFilterChanged;
+            InspectorPropertyGroup.SelectionChanged += OnInspectorPropertyFilterChanged;
+            InspectorShaderRegistryRead.Click += OnInspectorShaderRegistryRead;
             InspectorPropertyPrevious.Click += OnInspectorPropertyPrevious;
             InspectorPropertyNext.Click += OnInspectorPropertyNext;
             InspectorPropertyDefaultTime.Click += OnInspectorPropertyDefaultTime;
@@ -5364,6 +5367,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ShowInspector(ViewerPrimInspectorSnapshot inspector)
     {
+        PrepareShaderInspection(inspector);
         _currentInspector = inspector;
         ViewerPropertyPage properties = PrepareInspectorPropertyPage(inspector);
         _diagnostics.AddUnsupported(inspector.UnsupportedFeatures);
@@ -5582,6 +5586,11 @@ public sealed partial class MainWindow : Window, IDisposable
                     $"{attribute.TypeName}; {ViewerPropertyInspectionFormatter.State(attribute)}; " +
                     $"samples={ViewerPropertyInspectionFormatter.Count(attribute.TimeSampleCount)}; " +
                     $"value={attribute.Value}{splineSuffix}");
+                if (_shaderInspection?.DescribeProperty(attribute.Name) is { } shaderProperty)
+                {
+                    AddInspectorRow("Shader definition", shaderProperty);
+                    AddMetadataRow($"{attribute.Name} shader definition", shaderProperty);
+                }
                 AddValueAttributeRow(attribute, inspector);
             }
             string relationshipHeading =
@@ -5604,6 +5613,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     relationship.Name,
                     targets);
                 AddValueRow(relationship.Name, targets);
+                AddMaterialBindingEditRow(relationship, inspector);
                 AddMetadataRow(relationship.Name, targets);
                 if (relationship.Inspection is { } inspection)
                 {
@@ -5767,6 +5777,15 @@ public sealed partial class MainWindow : Window, IDisposable
             Classes = { "viewer-caption" },
             TextWrapping = TextWrapping.Wrap
         });
+        if (_shaderInspection?.DescribeProperty(attribute.Name) is { } shaderProperty)
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = shaderProperty,
+                Classes = { "viewer-caption" },
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
         row.Children.Add(new SelectableTextBlock
         {
             Text = $"Value: {ViewerScalarFormatter.Bound(attribute.Value, 512)}",
@@ -6555,6 +6574,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ReloadStageMenuItem.IsEnabled = false;
         CaptureFrameMenuItem.IsEnabled = false;
         RenderImageSequenceMenuItem.IsEnabled = false;
+        PhysicsRecordSequenceMenuItem.IsEnabled = false;
         RenderAuthoredProductMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         RenderStageCameraMenu();

@@ -307,6 +307,69 @@ main(int argc, char** argv)
         }
     }
 
+    {
+        const std::string names[] = {"diffuse_color_constant", "diffuse_tint", "diffuse_texture"};
+        const std::string module = "OmniPBR.mdl";
+        const std::string material = "OmniPBR";
+        const std::string path = "/World/Looks/Tinted";
+        const std::string asset = "/not-decoded-by-the-authored-adapter.png";
+        openusd_mdl_parameter parameters[3]{};
+        for (size_t index = 0; index < 2; ++index)
+        {
+            parameters[index].name = View(names[index]);
+            parameters[index].kind = OPENUSD_MDL_VALUE_FLOAT3;
+            parameters[index].component_count = 3;
+        }
+        parameters[0].value[0] = 0.72F;
+        parameters[0].value[1] = 0.28F;
+        parameters[0].value[2] = 0.12F;
+        parameters[1].value[0] = 0.5F;
+        parameters[1].value[1] = 0.25F;
+        parameters[1].value[2] = 1.5F;
+        parameters[2].name = View(names[2]);
+        parameters[2].kind = OPENUSD_MDL_VALUE_ASSET;
+        parameters[2].text = View(asset);
+        for (uint32_t parameter_count : {2u, 3u})
+        {
+            parameters[1].value[2] = parameter_count == 2 ? 1.5F : 0.75F;
+            openusd_mdl_material_request request{};
+            request.struct_size = static_cast<uint32_t>(sizeof(request));
+            request.module_uri = View(module);
+            request.material_name = View(material);
+            request.material_path = View(path);
+            request.parameters = parameters;
+            request.parameter_count = parameter_count;
+            const openusd_mdl_distilled_material* result = nullptr;
+            const uint32_t status = adapter.distill(instance, &request, &result);
+            if (status != OPENUSD_MDL_STATUS_OK || result == nullptr)
+            {
+                fail("Authored tint distillation failed: " + Diagnostic(result));
+            }
+            else
+            {
+                const auto* diffuse = FindScalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR);
+                if (!diffuse || !NearlyEqual(diffuse->value[0], 0.36F) ||
+                    !NearlyEqual(diffuse->value[1], 0.07F) ||
+                    !NearlyEqual(diffuse->value[2], parameter_count == 2 ? 0.18F : 0.09F) ||
+                    diffuse->origin != OPENUSD_MDL_ORIGIN_AUTHORED || Reported(result, "diffuse_tint"))
+                {
+                    fail("Authored diffuse tint did not multiply the constant exactly.");
+                }
+                if (parameter_count == 3 &&
+                    (result->texture_count != 1 ||
+                    !NearlyEqual(result->textures[0].scale[0], 0.5F) ||
+                    !NearlyEqual(result->textures[0].scale[1], 0.25F) ||
+                    !NearlyEqual(result->textures[0].scale[2], 0.75F) ||
+                    result->textures[0].scale[3] != 1.0F ||
+                    result->textures[0].bias[0] != 0.0F))
+                {
+                    fail("Authored diffuse tint did not preserve RGB scale and alpha.");
+                }
+            }
+            if (result != nullptr) { adapter.releaseResult(instance, result); }
+        }
+    }
+
     if (!sdkBacked || searchPath.empty())
     {
         std::cout << (sdkBacked

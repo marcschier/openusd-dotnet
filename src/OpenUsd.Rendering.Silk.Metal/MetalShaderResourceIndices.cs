@@ -53,6 +53,10 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.EnvironmentIrradianceTextureBinding => 17,
                 SilkBindingLayoutDescriptor.EnvironmentSpecularTextureBinding => 18,
                 SilkBindingLayoutDescriptor.EnvironmentBrdfTextureBinding => 19,
+                SilkBindingLayoutDescriptor.NormalValuesTextureBinding => 20,
+                SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding => 21,
+                SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding => 22,
+                SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding => 23,
                 _ => binding
             },
             SilkBindingKind.Sampler => binding switch

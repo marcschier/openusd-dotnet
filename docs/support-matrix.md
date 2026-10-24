@@ -123,6 +123,14 @@ ICD and SwiftShader implements neither `VK_KHR_external_memory_win32` nor
 hosted Linux reaches lavapipe, but the X11/Wayland compositor reports
 `supported image handles: (none)`, so no external Vulkan image can be imported.
 
+Those limits apply to zero-copy external-image import only. When the compositor offers no GPU
+interop, or offers interop without image handle types, `VulkanCompositionViewportPresenter`
+selects the `HostReadback` presentation path automatically: it renders into the same Vulkan ring,
+copies each completed frame into host memory, and `CompositionViewportControl` draws it through a
+CPU bitmap. Mesa lavapipe under Xvfb (no `VK_KHR_external_semaphore_fd`) therefore still presents
+real frames in X11 Vulkan and EGL modes, at the cost of one GPU-to-host copy per frame. Diagnostics
+report `PresentationPath = HostReadback` and `ImageHandleType = HostMemoryReadback`.
+
 No runtime package is currently defined for Windows arm64, Linux arm64, macOS x64, or mobile/browser
 RIDs.
 

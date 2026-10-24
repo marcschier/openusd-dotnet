@@ -94,6 +94,20 @@ leave a window behind.
 
 ### Opt-in session preparation ceilings
 
+`OPENUSD_D3D12_GPU_UPLOAD_HEAPS=true` opts into supported GPU-local D3D12 upload heaps;
+`false` disables it and other values fail startup. The default is off.
+`ViewerHostOptions.D3D12GpuUploadHeaps` overrides the environment, including explicit
+`false`. An explicit GPU-buffer budget is required. The effective choice is captured
+by the host and used when D3D12 resources are created or recreated; other backends
+are unavailable rather than silently bypassing it. Hardware support is checked before
+resource creation. This reduces observed host-resident pressure on supported discrete
+GPUs but does not lower private commit, resource quotas or the protected host-memory reserve.
+The small authored-product GUI workflow has been exercised with this option and
+material streaming enabled: a visible D3D12 viewport imported/presented frames, and
+File/menu plus command-palette actions produced persistent PNG/HDR products while
+preserving the source. The directly launched test process passed under a 2-GiB
+process/tree cap. This is not complete-warehouse or all-workflow acceptance.
+
 `ViewerHostOptions.GpuBufferBudget` or `OPENUSD_SILK_GPU_BUFFER_BYTES` independently
 enables shared RHI buffer-payload admission. The same pool covers viewport and isolated
 product renderers, and embedding hosts can reuse an object across Viewer hosts in one
@@ -101,6 +115,26 @@ process. The limit must be a positive invariant decimal byte count. It excludes 
 backend staging, driver overhead and source/managed memory; it is not a VRAM measurement.
 Submission-held buffers retain their reservations until their final native release.
 See [shared GPU buffer admission](rendering.md#shared-gpu-buffer-payload-admission).
+
+`ViewerHostOptions.TexturePreparationBudgets` groups independently optional CPU texture,
+owned GPU texture and backend staging pools. Without an explicit object, startup reads
+`OPENUSD_SILK_CPU_TEXTURE_BYTES`, `OPENUSD_SILK_GPU_TEXTURE_BYTES` and
+`OPENUSD_SILK_GPU_STAGING_BYTES`. Each configured value must be a positive invariant
+decimal byte count. An explicit object replaces all three environment settings and can
+be shared by multiple embedding hosts; viewport and isolated product captures share
+its pools. Storm is unavailable rather than bypassing configured limits. Source geometry,
+native codec/OCIO scratch, detached captures, imported presentation images and driver
+overhead remain outside these metrics.
+See [shared texture-preparation policies](rendering.md#shared-texture-preparation-policies-in-viewer-and-mcp).
+
+Set `OPENUSD_SILK_STREAM_MATERIAL_TEXTURES=true` (or `1`) to stream full-resolution
+material working sets through ordered, completed submissions. `false`/`0` disables
+it; unset remains disabled. `ViewerHostOptions.StreamMaterialTextures` overrides this
+environment choice, including an explicit `false`. A GPU-buffer budget is required
+for transactional private-frame publication; texture/staging pools remain independent.
+The policy follows D3D12, Vulkan and Metal presenter creation and isolated product
+capturers. It reduces simultaneous material residency at the cost of repeated
+decode/upload work, not by reducing resolution; a single material still must fit.
 
 Managed hdSilk session creation requires the native page-acknowledgement extension as
 well as matching ABI versions. Older runtimes fail explicitly instead of leaving copy
@@ -123,6 +157,13 @@ These are logical numeric-buffer reservations and per-page serialized-byte ceili
 not total RAM/VRAM or source/material/cache limits. Concurrent viewport and product sessions
 each have their own ceiling, not a shared pool. Measure an appropriate policy and keep
 independent host safeguards. See [render preparation admission](rendering.md#opt-in-coarse-mesh-preparation-admission).
+
+For multi-gigabyte updates, optionally add all four `OPENUSD_SILK_STORAGE_*_BYTES`
+settings described in [file-backed command updates](rendering.md#file-backed-command-updates),
+or set `SilkPreparationLimits.CommandStorage` through its constructor. This applies to
+viewport and product sessions; each has its own live-file pool. Explicit embedding
+options override the entire environment policy. Stored transport is not a promise that
+the scene's retained geometry, materials or GPU resources fit the host.
 
 ### Reacting to the operator
 
@@ -264,6 +305,33 @@ offer payload add/remove authoring.
 
 ### Searchable property pages
 
+The snapshot-state selector intersects the text search with authored, unauthored, blocked or
+time-sampled **attributes**, relationships, or attributes with unknown authored state. These
+categories use detached composed metadata, not opinions in a particular layer. A missing authored
+flag is unknown, never an unauthored default; a missing sample count is not evidence of animation.
+Changing the category resets the page without fetching new native values or changing selection.
+Choose **All properties** to restore the complete list. Review edits still capture the exact
+selected property through the shared document history; filtering does not grant write authority.
+
+The property-group selector intersects that state filter and search before paging. Transform groups
+contain the existing `xformOp:*` attributes and `xformOpOrder`, without reordering or decomposing the
+operation stack. Camera optics, shutter, and stereo properties are grouped only when the detached
+snapshot identifies a validated camera schema. **Common light controls** exposes the eight
+supported light inputs (`inputs:intensity`, `inputs:exposure`, `inputs:diffuse`, `inputs:specular`,
+`inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`, and `inputs:color`)
+only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The same group includes
+native shape inputs (`inputs:width`, `inputs:height`, `inputs:radius`, `inputs:length`, and
+`inputs:angle`) only on their matching light schemas, and `inputs:shaping:focus`,
+`inputs:shaping:cone:angle`, and `inputs:shaping:cone:softness` only when `ShapingAPI` is applied.
+These inputs remain available in
+the **Inputs** group as well. Inputs and outputs group attribute namespaces
+(`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
+group only `material:binding` relationships and its nested namespace, not similarly named attributes.
+**Other properties** retains everything outside those groups; **All property groups** restores
+the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
+Group changes reset the page and details without a native read, authoring an opinion, or changing
+the selected prim. Existing exact-property review edits and undo remain the only edit path.
+
 The Properties, Value, and Metadata tabs share a **Find properties by name or type** filter and
 **Previous / Next** navigation. Search is case-insensitive; `relationship` finds relationship rows.
 Each page contains at most 32 attributes and relationships combined, in their snapshot order, with
@@ -283,6 +351,28 @@ the cached snapshot, without another native read. Only one property's details ar
 time, and collapsing releases its detail controls. The chosen disclosure survives same-prim
 refreshes and undo but resets on a different prim. Missing assets remain visible as text warnings
 even when their details are collapsed.
+
+### Read-only shader registry inspection
+
+On a `Shader` prim, **Inspect shader registry** explicitly reads the implementation source and
+`info:id` through the stage scheduler. Only the `id` implementation source (including its schema
+default) with a nonempty identifier enumerates the bounded native Sdr registry. The action is
+unavailable during document-state refreshes. An exact,
+valid, unique identifier adds input/output direction, type, array state, and connectability to the
+current property page. Registry metadata is **not edit permission**: the existing review-layer
+capture, conflict checks, and undo remain authoritative.
+
+An empty or unknown identifier, invalid or ambiguous definition, or truncated registry produces an
+explicit unavailable result instead of guessed metadata. Source-asset-only shader definitions are
+not resolved by this action, even if an `info:id` is also authored. Source-code and unknown
+implementation modes likewise never fall back to that identifier. Custom properties and connections remain visible
+and unchanged; missing or duplicate registry properties are labeled rather than coerced or removed.
+Unset, blocked, and deferred identifier values remain distinct and never authorize a registry lookup
+from coincidental preview text. The explicit token reads use the inspector's selected snapshot time.
+
+Search, page changes, and property disclosures reuse the detached result without querying Sdr again.
+Selection changes, property refreshes, and explicit time snapshots invalidate it and require another
+click. An in-flight result for an older snapshot or retired document is discarded.
 
 ### Bounded values, provenance, and inspection time
 
@@ -729,7 +819,9 @@ reported without changing the camera.
 Native Storm child-window camera input is polled from the child ABI-9 navigation v2 snapshot at a bounded
 UI cadence. The snapshot carries physical pointer position, buttons, modifiers, cumulative wheel,
 focus/inside state, cumulative F/Home/P command counters, and four repeat-aware arrow counters, so
-the child may retain native focus
+the child may retain native focus. Input polling reads the native child's independently synchronized
+input state without waiting for the managed render-command gate; a stage edit blocking a render must
+not also block the UI timer that releases or cancels that edit. The Viewer can operate
 without losing orbit, pan, dolly, zoom, or shortcuts. Polling baselines reset on attach, focus
 transitions, and backend switches. Avalonia-routed camera events suppress the overlapping native
 sample to avoid duplicate handling. Composition backends continue to use Avalonia routing, and the
@@ -785,6 +877,7 @@ that are meaningful every time physics is running.
 | Speed | Physics menu | `0.25x` to `4x`. |
 | Apply Preview | Physics menu | Authors the simulated poses into the session overlay. |
 | Bake... | Physics menu | Opens the bake dialog. |
+| Record Sequence... | Physics menu / Search Commands | Records exact fixed steps from the paused world. |
 | Gizmo | Physics menu | Chooses what a viewport drag manipulates: nothing, move, rotate, scale, or drag a body. |
 | Snap | Physics menu | Quantizes gizmo drags to the configured translation, rotation, and scale increments. |
 | Undo / Redo | Physics menu | Reverses or replays the newest physics property edit. |
@@ -826,6 +919,11 @@ backend through the renderer-neutral physics channel. Storm and Silk receive the
 thread that owns their retained state. If no new frame is ready the previous pose is redrawn, so a
 slow simulation degrades to a repeated pose instead of stalling the camera.
 
+The native Storm child stages transform and deformation batches on the UI thread and submits
+them from the background frame task. It never waits for a native override command on the UI
+thread: the child can be waiting for a stage edit that itself needs the UI to continue.
+Override reports are published only after the corresponding native frame completes successfully.
+
 Building the world also builds the binding table: every extracted simulated identity is bound to the
 prim path it drives, and rebuilding or a new stage revision rebuilds it. An identity that cannot be
 bound is reported as a refused row in the inspector rather than silently dropped at the backend.
@@ -845,6 +943,13 @@ state, so the accepted count says nothing about how many poses were actually dra
 therefore reports back what it resolved and what it could not, as a revisioned, latest-wins report
 the render bridge drains around each apply. The applied and unresolved counts in the status line and
 the inspector come from those reports rather than from the count the Viewer handed over.
+
+hdSilk resolves staged rigid poses **after** applying the current authored scene page, preserving
+that page's scale and shear even on the first frame. It reports the consumed pose revision only
+after the render call succeeds; staging or a failed graphics submission is not acknowledgement.
+Capture must additionally finish readback before treating that revision as a recorded frame.
+An aborted transport-to-render copy returns its unpublished buffer claim and releases its physics
+frame lease, so a failed copy cannot consume the channel's reusable storage permanently.
 
 A failure while applying a batch never propagates into the render loop. Simulated poses stop being
 applied, the authored transforms are restored, the reason is shown in the status line and the
@@ -979,8 +1084,42 @@ owned, themed window. It supports existing local declarations of `bool`, `int`, 
 row-major `matrix4d`, and three-component float/double vectors and their point, normal,
 vector and colour roles. Supported aliases include `texCoord2f` and `color4f`.
 This includes camera clipping ranges, ordinary translate/scale/Euler/matrix attributes and supported
-light/material parameters, not a material graph editor. Unsupported, referenced-only and
-schema-only declarations remain read-only instead of guessing their declaration metadata.
+light/material parameters, not a material graph editor.
+
+Five native camera optics fields can also be edited without an authored local declaration:
+`projection`, `focalLength`, `horizontalAperture`, `verticalAperture`, and `clippingRange`.
+The controller validates the camera schema and exact supported type, then reads noncustom
+declaration metadata from a fresh bounded native query. It never derives creation metadata from a
+display string or Sdr hint. The query does not supply undo state: the review layer is separately
+captured, so undo removes a newly authored opinion and reveals the original schema fallback.
+Declared variability is preserved rather than guessed; uniform declarations cannot be authored
+as time samples. Other unsupported, referenced-only, and schema-only properties remain read-only
+instead of guessing their declaration metadata.
+
+Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
+cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
+`inputs:specular`, `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`,
+and `inputs:color`. The same exact-schema path supports rectangle `inputs:width`/`inputs:height`,
+sphere/disk/cylinder `inputs:radius`, cylinder `inputs:length`, and distant-light `inputs:angle`.
+It also supports the three float inputs on an
+already-applied `ShapingAPI` (`inputs:shaping:focus`, `inputs:shaping:cone:angle`, and
+`inputs:shaping:cone:softness`). Admission checks the exact light schema or applied API, native
+type, and noncustom declaration metadata, not a property-name or registry hint. These fields reuse
+the focused typed review editor and shared history; they do not recreate lights, apply `ShapingAPI`,
+or flatten shader graphs. No values are silently clamped or normalized. Custom schema fields and
+other shape/shaping properties remain outside this admission path.
+
+Existing direct material bindings have an **Edit Direct Binding...** action in the Value tab,
+including the Material bindings property group. The action supports `material:binding` and the
+`preview` and `full` purpose variants. It requires an already applied native `MaterialBindingAPI`
+and a noncustom relationship; it does not apply APIs or create missing bindings.
+**Set** takes one absolute path to an existing native Material prim. An empty Set authors an
+explicitly empty target list to unbind; **Clear** removes only the review target opinion and
+reveals weaker bindings. Exact six-bucket list operations are shown separately from the composed
+display snapshot and retained by shared Undo/Redo. Material schema validation is repeated at
+mutation time, and conflicting target edits require a refresh rather than overwriting them.
+Collection bindings, binding strength, shader connections and material graphs are not edited.
+Normal USD ancestor and collection-binding precedence still applies to the effective material.
 
 Vector, quaternion and matrix input requires the exact number of finite components; float fields
 reject values outside the float range. Commas, whitespace, parentheses and matrix brackets/separators
@@ -1598,9 +1737,52 @@ It also exercises GPU three-plane cancellation, mid-job source/non-finite failur
 cleanup and retry without stale HDR, actual rendered-view restoration, and pending Reload/Close.
 Running this scenario alone is not an all-Viewer-workflows result.
 
+### Recording a physics simulation
+
+**Physics > Record Sequence...**, also available through **Search Commands**, opens the
+image-sequence dialog with **Record physics fixed steps** selected. Set a frame count,
+**1-8 fixed steps per frame**, a bounded scenario identity, the output folder, and optional
+HDR/depth outputs. The current viewport and selected camera are used. Turn the option off to
+return to ordinary USD-time sampling; that mode still requires physics to be disabled.
+
+Build physics, pause playback, and turn **Loop** and **Apply Preview** off before recording.
+Large rigid scenes can explicitly select `--full-scene-physics`, or set
+`ViewerHostOptions.FullScenePhysics` when embedding. This admits up to 32,768 actors and
+65,536 collision shapes; it does not enlarge rendering, publication, texture or job budgets.
+Compound rigid bodies drive their noninstanced descendant meshes relative to the authored
+body pose, preserving child offsets, scale and shear. Moving instance subtrees must be
+de-instanced in the scenario; unrelated static instances remain unchanged.
+Recording refuses a build with errors or skipped composition inputs before advancing the world or
+creating output. The refusal remains attached to that build even after interactive stepping;
+correct the reported inputs and rebuild to clear it. `convexDecomposition` uses prepared multiple
+hulls; unsupported approximations such as `sdf` are not silently recorded as a different shape.
+The Viewer exclusively owns the transport while recording: live interpolation and interactive
+runtime-command submission cannot replace an exact captured pose. A fresh extraction fingerprint
+must match the built world before any recorded step. Each frame retains its exact physics
+publication through capture and records epoch, scenario, source revision, publication, step/time
+and binding metadata through `OpenUsd.Rendering.Physics`.
+
+Recording **advances the current world**; cancellation does not rewind it. Playback remains paused
+at the last completed step. The original camera/display state and authored render geometry are
+restored before atomic publication, and on capture failure. The ordinary live bridge can then show
+the paused world's latest pose again. No physics opinions are authored into the source or review
+layer. A completed publication wins a later cancellation request and remains visible in the result
+window rather than being mislabeled as a discarded job.
+
+This entry point currently requires an hdSilk capture backend and complete rigid-pose publications;
+deformable geometry is explicitly refused. It shares the existing frame, raster, encoding and
+4-GiB job limits, encoder choices and verified **View results** gallery. Windows D3D12 execution
+covers exact moving frames, live-pump exclusion, incomplete-build/stale-world/end-range/loop refusal, cancellation
+after capture and retry. Vulkan/Metal use the shared adapter but are not newly execution-qualified
+by that Windows evidence; macOS still has no supported physics runtime.
+
+The dedicated native workflow is `physics-recording`. It keeps simulation runtime prerequisites
+separate from the ordinary `render-sequence` workflow and checks the actual menu/palette, immutable
+simulation metadata, moving HDR pixels and completed gallery, including deeply nested output paths.
+
 ### Previewing completed render jobs
 
-After **Render Image Sequence** or **Render Authored Product** succeeds, its **View results**
+After **Render Image Sequence**, **Record Sequence** or **Render Authored Product** succeeds, its **View results**
 button opens an owned, themed **Contact sheet** window. The button stays disabled until success;
 starting another job closes and drains the previous preview before clearing its result. A failed
 or cancelled newer job cannot expose the previous job as its own result.

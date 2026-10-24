@@ -7,6 +7,38 @@ namespace OpenUsd.Viewer.Tests;
 public sealed partial class ViewerCompletedJobPreviewTests
 {
     [Test]
+    public async Task ACompletedJobBeyondTheLegacyWindowsPathLimitStillPreviewsVerifiedPixels()
+    {
+        string root = Directory.CreateTempSubdirectory("viewer-long-results-").FullName;
+        try
+        {
+            string parent = root;
+            while (parent.Length < 300)
+            {
+                parent = Path.Combine(parent, new string('a', 60));
+            }
+            Directory.CreateDirectory(parent);
+            var source = new CompletedSource();
+            StageRenderState state = StageRenderState.Create(new StageIdentity("completed-stage"))
+                .WithViewport(new ViewportDimensions(2, 1));
+            RenderDiskJobResult job = RenderDiskJob.Execute(new RenderDiskJobRequest(
+                Path.Combine(parent, "recording"), [state]), source);
+            source.Closed = true;
+
+            using ViewerCompletedJobPreview preview = await ViewerCompletedJobPreview.LoadAsync(job, default);
+
+            await Assert.That(preview.Frames.Count).IsEqualTo(1);
+            await Assert.That(Pixel(preview.Frames[0].Pixels, 0, 64)).IsEqualTo("FF000080");
+            await Assert.That(Pixel(preview.Frames[0].Pixels, 255, 191)).IsEqualTo("0000FF40");
+            await Assert.That(source.Calls).IsEqualTo(1);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task CompletedJobsSampleSixteenOrderedFramesWithEndpointsWithoutRenderingAgain()
     {
         string root = Directory.CreateTempSubdirectory("viewer-results-").FullName;

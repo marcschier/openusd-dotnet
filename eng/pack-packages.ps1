@@ -77,6 +77,7 @@ $published = @(
     'OpenUsd.Rendering.Storm'
     'OpenUsd.Cesium'
     'OpenUsd.Physics'
+    'OpenUsd.Rendering.Physics'
     'OpenUsd.Viewer'
     # The Viewer bridge integration is optional in the same way: it is the only assembly that
     # references both the Viewer and the gRPC client, so installing the Viewer alone never

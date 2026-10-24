@@ -1,4 +1,6 @@
 #nullable enable
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback! renderCallback, OpenUsd.Rendering.Silk.SilkGpuBufferBudget? gpuBufferBudget, OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets? texturePreparationBudgets, bool required) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback! renderCallback, OpenUsd.Rendering.Silk.SilkGpuBufferBudget? gpuBufferBudget, OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets? texturePreparationBudgets, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! textureResidencyOptions, bool required) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
 static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback! renderCallback, OpenUsd.Rendering.Silk.SilkGpuBufferBudget? gpuBufferBudget, bool required = false) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
 ~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ToString() -> string

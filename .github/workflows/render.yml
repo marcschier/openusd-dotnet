@@ -93,6 +93,13 @@ on:
       - 'eng/test-viewer-evidence-contract.ps1'
       - 'eng/test-ocio-alias-evidence.ps1'
       - 'eng/run-parity-capture.ps1'
+      - 'eng/run-viewer-workflow-tests.ps1'
+      - 'eng/physx.lock.json'
+      - 'eng/vhacd.lock.json'
+      - 'eng/fetch-vhacd.ps1'
+      - 'eng/fetch-physx-native.ps1'
+      - 'eng/build-physx-native.ps1'
+      - 'eng/build-physx-shim.ps1'
       - 'eng/verify-render-corpus.py'
       - 'eng/run-platform-smoke.ps1'
       - 'eng/run-native-probe.ps1'
@@ -112,6 +119,7 @@ on:
       - 'eng/build-cesium-shim.ps1'
       - 'eng/shaders/**'
       - 'src/OpenUsd.Rendering*/**'
+      - 'src/OpenUsd.Physics/**'
       - 'src/OpenUsd.Viewer/**'
       - 'src/OpenUsd.Viewer.App/**'
       - 'tests/OpenUsd.Rendering.ConformanceTests/**'
@@ -268,7 +276,7 @@ jobs:
         shell: pwsh
         run: ./eng/test-render-native-archive.ps1
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
-        if: env.NATIVE_SOURCE == 'build'
+        if: steps.native-ready.outputs.ready == 'true'
       - name: Download verified native pipeline archive
         if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -325,12 +333,33 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release -StormGl Mesa
-      - name: Execute native Viewer document and inspector workflows
+      - id: physx-vcpkg-cache
+        if: steps.native-ready.outputs.ready == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/.cache/vcpkg-*
+            native/build/physx/win-x64/vcpkg_installed
+          key: >-
+            physx-vcpkg-win-x64-${{ hashFiles(
+              'eng/physx.lock.json',
+              'eng/fetch-physx-native.ps1',
+              'eng/build-physx-native.ps1',
+              'eng/build-physx-shim.ps1'
+            ) }}
+      - name: Build matched CPU physics for Viewer recording
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          ./eng/build-physx-native.ps1 -Rid win-x64
+          ./eng/build-physx-shim.ps1 -Rid win-x64
+      - name: Execute native Viewer document, inspector and physics recording workflows
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           .\eng\run-viewer-workflow-tests.ps1 `
             -NativeRuntimeRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\parity-capture\win-x64\runtime') `
+            -PhysicsRuntimeRoot (Join-Path $env:GITHUB_WORKSPACE 'native\install\shim\win-x64-physx') `
             -OutputRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\viewer-workflows\windows-wgl') `
             -MesaWgl
       - name: Execute D3D12 transparent opacity conformance

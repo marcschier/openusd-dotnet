@@ -22,6 +22,54 @@ public sealed class SilkPhysicsDeformationTests
     private static readonly float[] AuthoredPoints = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task PageRollbackRestoresSimulatedPointsAndAuthoredStashes(bool stopping)
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(), 1, 1);
+        var bindings = new PhysicsRenderBindingTable(1);
+        var id = new PhysicsRenderObjectId(404, PhysicsRenderObjectKind.Deformable);
+        _ = bindings.TryBind(id, MeshPath);
+        var deformations = new SilkPhysicsDeformations();
+        float[] simulated = [-0.5f, 0.25f, 0, 0, 1.25f, 0, 0.5f, 0.25f, 0];
+        if (stopping)
+        {
+            _ = deformations.Refresh(scene, bindings, View(id, PhysicsRenderDomain.Cloth, simulated));
+            _ = deformations.Stage(bindings, new PhysicsRenderDeformationView(
+                ReadOnlyMemory<PhysicsRenderDeformableRegion>.Empty, ReadOnlyMemory<float>.Empty, 6));
+        }
+        else
+        {
+            _ = deformations.Stage(bindings, View(id, PhysicsRenderDomain.Cloth, simulated));
+        }
+        SilkMeshData original = scene.Meshes.Values.Single();
+        ulong revision = deformations.Revision;
+        ulong geometryRevision = scene.GeometryRevision;
+        using var page = new OpenUsdSilkPage(27, 2, [], 0);
+        ulong[] changed;
+        float[] candidate;
+        using (SilkSceneState.PreparedPage cpu = scene.PreparePage(page))
+        using (SilkPhysicsDeformations.PreparedApply physics = deformations.PrepareApply()!)
+        {
+            changed = physics.Apply(scene, cpu.Delta).UpsertedMeshIds.ToArray();
+            candidate = scene.Meshes.Values.Single().Points.ToArray();
+        }
+        await Assert.That(changed).IsEquivalentTo(new[] { original.Id });
+        await Assert.That(candidate).IsEquivalentTo(stopping ? AuthoredPoints : simulated);
+        await Assert.That(scene.Meshes.Values.Single()).IsSameReferenceAs(original);
+        await Assert.That(scene.GetInstances(MeshPath).Single()).IsSameReferenceAs(original);
+        await Assert.That(scene.HasAuthoredGeometry(original.Id)).IsEqualTo(stopping);
+        await Assert.That(scene.GeometryRevision).IsEqualTo(geometryRevision);
+        await Assert.That(deformations.Count).IsEqualTo(stopping ? 1 : 0);
+        await Assert.That(deformations.Revision).IsEqualTo(revision);
+        _ = deformations.Reapply(scene);
+        await Assert.That(scene.Meshes.Values.Single().Points.ToArray())
+            .IsEquivalentTo(stopping ? AuthoredPoints : simulated);
+        await Assert.That(scene.HasAuthoredGeometry(original.Id)).IsEqualTo(!stopping);
+    }
+
+    [Test]
     public async Task ARetainedMeshTakesTheSimulatedPoints()
     {
         var scene = new SilkSceneState();

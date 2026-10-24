@@ -13,6 +13,45 @@ namespace OpenUsd.Rendering.Tests;
 /// </summary>
 public sealed class SilkSubprimIdentityTests
 {
+    [Test]
+    public async Task IdentityInitializersDefensivelyCopyCallerOwnedTables()
+    {
+        int[] points = [0, 1, 2, 3];
+        int[] edges = [0, 1, -1, -1, 2, 3];
+        SilkMeshData mesh = CreateQuad(pointOriginOverride: points, cornerEdgeOverride: edges);
+
+        Array.Fill(points, -1);
+        Array.Fill(edges, -1);
+
+        await Assert.That(mesh.PointOrigins.Span.SequenceEqual([0, 1, 2, 3])).IsTrue();
+        await Assert.That(mesh.CornerEdges.Span.SequenceEqual([0, 1, -1, -1, 2, 3])).IsTrue();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task IdentityOnlyTablesPreserveDrawOrderWithoutProducingUnusedIndices(bool expanded)
+    {
+        SilkMeshData mesh = expanded ? CreateExpandedQuad() : CreateQuad();
+        bool fullEdges = SilkSubprimPickGeometry.TryResolveEdges(mesh, out int[] edges, out uint[] lines);
+        bool identityEdges = SilkSubprimPickGeometry.TryResolveEdges(mesh, out int[] edgeIds, out uint[] unusedLines,
+            includeDrawIndices: false);
+        bool fullPoints = SilkSubprimPickGeometry.TryResolvePoints(mesh, out int[] points, out uint[] vertices);
+        bool identityPoints = SilkSubprimPickGeometry.TryResolvePoints(mesh, out int[] pointIds,
+            out uint[] unusedVertices,
+            includeDrawIndices: false);
+        await Assert.That(identityEdges).IsEqualTo(fullEdges);
+        await Assert.That(identityPoints).IsEqualTo(fullPoints);
+        await Assert.That(edgeIds.AsSpan().SequenceEqual(edges)).IsTrue();
+        await Assert.That(pointIds.AsSpan().SequenceEqual(points)).IsTrue();
+        await Assert.That(lines.Length).IsEqualTo(edges.Length * 2);
+        await Assert.That(vertices.Length).IsEqualTo(points.Length);
+        await Assert.That(unusedLines.Length).IsEqualTo(0);
+        await Assert.That(unusedVertices.Length).IsEqualTo(0);
+        await Assert.That(mesh.SubprimTables.AuthoredEdges.AsSpan().SequenceEqual(edges)).IsTrue();
+        await Assert.That(mesh.SubprimTables.AuthoredPoints.AsSpan().SequenceEqual(points)).IsTrue();
+    }
+
     private static readonly int[] QuadAuthoredEdges = [0, 1, 2, 3];
     private static readonly uint[] QuadEdgeLineIndices = [0, 1, 1, 2, 2, 3, 3, 0];
     private static readonly int[] QuadAuthoredPoints = [0, 1, 2, 3];

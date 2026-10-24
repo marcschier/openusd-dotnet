@@ -19,6 +19,9 @@ internal enum UsdPhysicsRequestKind
     /// <summary>Advance the world by an explicit number of fixed sub-steps.</summary>
     Step,
 
+    /// <summary>Advance one bounded batch and retain its exact publication for capture.</summary>
+    StepAndAcquireFrame,
+
     /// <summary>Begin advancing the world.</summary>
     Play,
 
@@ -95,6 +98,9 @@ internal sealed class UsdPhysicsWorkItem
     /// <see cref="Completion"/> has completed, which is what publishes it safely without a lock.
     /// </remarks>
     internal UsdPhysicsCommandStaging Staging { get; set; }
+
+    /// <summary>The exact frame retained by an atomic step-and-acquire request.</summary>
+    internal UsdPhysicsFrameLease CapturedFrame { get; set; }
 
     /// <summary>Gets the completion the caller awaits.</summary>
     internal TaskCompletionSource Completion { get; } =

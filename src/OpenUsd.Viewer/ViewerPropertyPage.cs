@@ -2,6 +2,29 @@
 
 namespace OpenUsd.Viewer;
 
+internal enum ViewerPropertyFilter
+{
+    All,
+    AuthoredAttributes,
+    UnauthoredAttributes,
+    BlockedAttributes,
+    TimeSampledAttributes,
+    Relationships,
+    UnknownAuthoredState
+}
+
+internal enum ViewerPropertyGroup
+{
+    All,
+    Transform,
+    Camera,
+    Light,
+    ShaderInputs,
+    ShaderOutputs,
+    MaterialBindings,
+    Other
+}
+
 internal sealed class ViewerPropertyPage
 {
     internal const int PageSize = 32;
@@ -34,24 +57,36 @@ internal sealed class ViewerPropertyPage
         IReadOnlyList<ViewerAttributeSnapshot> attributes,
         IReadOnlyList<ViewerRelationshipSnapshot> relationships,
         string? query,
-        int pageIndex)
+        int pageIndex,
+        ViewerPropertyFilter filter = ViewerPropertyFilter.All,
+        ViewerPropertyGroup group = ViewerPropertyGroup.All,
+        bool isCamera = false,
+        bool isLight = false)
     {
         ArgumentNullException.ThrowIfNull(attributes);
         ArgumentNullException.ThrowIfNull(relationships);
         ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
+        if (!Enum.IsDefined(filter))
+        {
+            throw new ArgumentOutOfRangeException(nameof(filter));
+        }
+        if (!Enum.IsDefined(group))
+        {
+            throw new ArgumentOutOfRangeException(nameof(group));
+        }
         string search = query?.Trim() ?? string.Empty;
         int total = checked(attributes.Count + relationships.Count);
         int matches = 0;
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute.Name, attribute.TypeName, search))
+            if (Matches(attribute, filter, search, group, isCamera, isLight))
             {
                 matches++;
             }
         }
         foreach (ViewerRelationshipSnapshot relationship in relationships)
         {
-            if (Matches(relationship.Name, "relationship", search))
+            if (Matches(relationship, filter, search, group))
             {
                 matches++;
             }
@@ -64,7 +99,7 @@ internal sealed class ViewerPropertyPage
         var pageRelationships = new List<ViewerRelationshipSnapshot>();
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute.Name, attribute.TypeName, search) &&
+            if (Matches(attribute, filter, search, group, isCamera, isLight) &&
                 seen++ >= start && pageAttributes.Count < PageSize)
             {
                 pageAttributes.Add(attribute);
@@ -72,7 +107,7 @@ internal sealed class ViewerPropertyPage
         }
         foreach (ViewerRelationshipSnapshot relationship in relationships)
         {
-            if (Matches(relationship.Name, "relationship", search) &&
+            if (Matches(relationship, filter, search, group) &&
                 seen++ >= start && pageAttributes.Count + pageRelationships.Count < PageSize)
             {
                 pageRelationships.Add(relationship);
@@ -85,4 +120,68 @@ internal sealed class ViewerPropertyPage
     private static bool Matches(string name, string typeName, string query) =>
         name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         typeName.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private static bool Matches(
+        ViewerAttributeSnapshot attribute, ViewerPropertyFilter filter, string query,
+        ViewerPropertyGroup group, bool isCamera, bool isLight) =>
+        (group == ViewerPropertyGroup.All ||
+         (group == ViewerPropertyGroup.ShaderInputs &&
+             attribute.Name.StartsWith("inputs:", StringComparison.Ordinal)) ||
+         AttributeGroup(attribute.Name, isCamera, isLight) == group) &&
+        Matches(attribute.Name, attribute.TypeName, query) && (filter switch
+        {
+            ViewerPropertyFilter.All => true,
+            ViewerPropertyFilter.AuthoredAttributes => attribute.HasAuthoredValue == true,
+            ViewerPropertyFilter.UnauthoredAttributes => attribute.HasAuthoredValue == false,
+            ViewerPropertyFilter.BlockedAttributes => attribute.IsBlocked,
+            ViewerPropertyFilter.TimeSampledAttributes => attribute.TimeSampleCount > 0,
+            ViewerPropertyFilter.UnknownAuthoredState => attribute.HasAuthoredValue is null,
+            _ => false
+        });
+
+    private static bool Matches(
+        ViewerRelationshipSnapshot relationship, ViewerPropertyFilter filter, string query,
+        ViewerPropertyGroup group) =>
+        filter is ViewerPropertyFilter.All or ViewerPropertyFilter.Relationships &&
+        (group == ViewerPropertyGroup.All || RelationshipGroup(relationship.Name) == group) &&
+        Matches(relationship.Name, "relationship", query);
+
+    private static ViewerPropertyGroup AttributeGroup(string name, bool isCamera, bool isLight)
+    {
+        if (name == "xformOpOrder" || name.StartsWith("xformOp:", StringComparison.Ordinal))
+        {
+            return ViewerPropertyGroup.Transform;
+        }
+        if (isCamera && name is "projection" or "horizontalAperture" or "verticalAperture" or
+            "horizontalApertureOffset" or "verticalApertureOffset" or "focalLength" or
+            "clippingRange" or "clippingPlanes" or "fStop" or "focusDistance" or "exposure" or
+            "shutter:open" or "shutter:close" or "stereoRole")
+        {
+            return ViewerPropertyGroup.Camera;
+        }
+        if (isLight && name is "inputs:width" or "inputs:height" or "inputs:radius" or
+            "inputs:length" or "inputs:angle" or
+            "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
+            "inputs:shaping:cone:softness" or
+            "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
+            "inputs:specular" or "inputs:colorTemperature" or "inputs:enableColorTemperature" or
+            "inputs:normalize" or "inputs:color")
+        {
+            return ViewerPropertyGroup.Light;
+        }
+        if (name.StartsWith("inputs:", StringComparison.Ordinal))
+        {
+            return ViewerPropertyGroup.ShaderInputs;
+        }
+        if (name.StartsWith("outputs:", StringComparison.Ordinal))
+        {
+            return ViewerPropertyGroup.ShaderOutputs;
+        }
+        return ViewerPropertyGroup.Other;
+    }
+
+    private static ViewerPropertyGroup RelationshipGroup(string name) =>
+        name == "material:binding" || name.StartsWith("material:binding:", StringComparison.Ordinal)
+            ? ViewerPropertyGroup.MaterialBindings
+            : ViewerPropertyGroup.Other;
 }

@@ -30,6 +30,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Keep the transitive physics compile edge on the same packing property set as direct references. -->
+    <ProjectReference Include="..\OpenUsd.Physics\OpenUsd.Physics.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd.Rendering.Physics\OpenUsd.Rendering.Physics.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
     <ProjectReference Include="..\OpenUsd.Interop\OpenUsd.Interop.csproj">
       <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
         ContinuousIntegrationBuild=true
@@ -87,6 +98,8 @@
           AfterTargets="PackTool"
           Condition="'$(PackAsTool)' == 'true' AND '$(_IsPacking)' == 'true'">
     <ItemGroup>
+      <!-- Runtime carrier projects deliberately disable symbols; do not publish their intermediate PDBs. -->
+      <TfmSpecificPackageFile Remove="$(PublishDir)OpenUsd.Runtime.*.pdb" />
       <TfmSpecificPackageFile Remove="$(PublishDir)runtimes\**\native\**\*" />
       <TfmSpecificPackageFile Remove="$(PublishDir)runtimes/**/native/**/*" />
       <TfmSpecificPackageFile Remove="$(PublishDir)**\*.exe" />

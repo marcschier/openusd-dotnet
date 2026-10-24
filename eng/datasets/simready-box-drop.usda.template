@@ -1,0 +1,51 @@
+#usda 1.0
+# Derived demonstration from NVIDIA PhysicalAI-SimReady-Warehouse-01, CC BY 4.0.
+# https://huggingface.co/datasets/nvidia/PhysicalAI-SimReady-Warehouse-01
+# https://creativecommons.org/licenses/by/4.0/
+# Source revision: c7fe115cb79c7ddbd0532630d7768b5736b0ecc4
+# Modifications: one 1-kg body, 2-m/s upward velocity, explicit gravity and timeline.
+# Only the selected placement is de-instanced and moved above the existing A08_08 support.
+# All original geometry, material bindings, other placements and source files are retained.
+(
+    subLayers = [@LOCALIZED_ROOT@]
+    defaultPrim = "World"
+    metersPerUnit = 1
+    kilogramsPerUnit = 1
+    upAxis = "Z"
+    startTimeCode = 0
+    endTimeCode = 240
+    timeCodesPerSecond = 60
+    framesPerSecond = 60
+)
+
+def PhysicsScene "WarehouseDemoPhysics"
+{
+    vector3f physics:gravityDirection = (0, 0, -1)
+    float physics:gravityMagnitude = 9.81
+}
+
+over "World"
+{
+    over "Loading_Zone"
+    {
+        over "Xform"
+        {
+            over "sm_warehousecomposition_d01_01"
+            {
+                over "SM_MultiDepthBox_A08_02" (
+                    instanceable = false
+                    prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+                )
+                {
+                    bool physics:rigidBodyEnabled = true
+                    bool physics:kinematicEnabled = false
+                    float physics:mass = 1
+                    vector3f physics:velocity = (0, 0, 2)
+                    vector3f physics:angularVelocity = (0, 0, 0)
+                    matrix4d xformOp:transform:warehouseDemo = ((-0.00087155740799575037, 0.0099619467582505918, 0, 0), (-0.0099619467582505918, -0.00087155740799574929, 0, 0), (0, 0, 0.0099999997764825821, 0), (-24.608049049592257, -43.112257599286536, 2.4274192759542128, 1))
+                    uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:transform:warehouseDemo"]
+                }
+            }
+        }
+    }
+}

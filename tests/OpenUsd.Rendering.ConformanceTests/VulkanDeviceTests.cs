@@ -9,6 +9,35 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class VulkanDeviceTests
 {
     [Test]
+    [Arguments(16)]
+    [Arguments(257)]
+    public async Task RepeatedMeshDrawsDoNotCreateDescriptorPoolsPerDraw(int draws)
+    {
+        using ISilkGraphicsDevice graphics = SilkDepthCaptureConformance.CreateDevice(SilkGraphicsBackend.Vulkan);
+        var device = (VulkanSilkGraphicsDevice)graphics;
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(16, 16));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(16, 16));
+        var commands = new List<byte[]> { SilkMeshRendererConformance.CreateFrameCommand(16, 16,
+            SilkMeshRendererConformance.Identity()) };
+        float[] points = [-0.3f, -0.3f, 0.1f, 0, 0.3f, 0.5f, 0.3f, -0.3f, 0.1f];
+        uint[] indices = [0, 1, 2];
+        for (int index = 0; index < draws; index++)
+        {
+            commands.Add(SilkMeshRendererConformance.CreateMeshCommand(
+                (ulong)index + 1, $"/Mesh{index}", points, indices));
+        }
+        SilkMeshRendererConformance.Apply(renderer, 1, commands.ToArray());
+        for (int frame = 0; frame < 2; frame++)
+        {
+            long before = device.DrawDescriptorPoolCreations;
+            SilkMeshRenderResult result = renderer.Render(color, depth);
+            await Assert.That(result.DrawCount).IsEqualTo(draws);
+            await Assert.That(device.DrawDescriptorPoolCreations - before).IsEqualTo((draws + 255) / 256);
+        }
+    }
+
+    [Test]
     public async Task ExplicitVulkanLoaderPathIsAbsoluteExistingAndAuthoritative()
     {
         string? previous = Environment.GetEnvironmentVariable(

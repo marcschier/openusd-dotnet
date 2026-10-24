@@ -407,7 +407,7 @@ public sealed class SilkFrameLightingWireTests
         float[] ambient = new float[4];
         bool finished;
         {
-            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
             if (!commands.MoveNext())
             {
                 throw new InvalidDataException("The wide frame is missing.");
@@ -534,14 +534,14 @@ public sealed class SilkFrameLightingWireTests
 
     private static uint ReadWideLightType(byte[] page, int index)
     {
-        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
         _ = commands.MoveNext();
         return commands.Current.AsFrame().GetLightType(index);
     }
 
     private static SilkFrameState ReadWideFrameState(byte[] page)
     {
-        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 24u);
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
         if (!commands.MoveNext())
         {
             throw new InvalidDataException("The wide frame is missing.");

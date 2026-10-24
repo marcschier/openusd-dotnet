@@ -61,6 +61,78 @@ public sealed class UsdPhysicsExtractionComposerTests
     }
 
     [Test]
+    [Arguments("convexHull", true)]
+    [Arguments("convexDecomposition", false)]
+    [Arguments("boundingCube", false)]
+    [Arguments("boundingSphere", false)]
+    [Arguments("sdf", false)]
+    [Arguments("unknown", false)]
+    [Arguments("", false)]
+    public async Task MeshApproximationIsNotSilentlyReplacedWithASingleHull(string approximation, bool supported)
+    {
+        UsdPhysicsExtractionPageFixture fixture = CreateFixture();
+        int collider = fixture.AddObject(20, "/Concave", "Mesh",
+            UsdPhysicsExtractionObjectKind.Collider, UsdPhysicsExtractionDomains.Collision,
+            UsdPhysicsExtractionObjectTraits.Enabled, UsdPhysicsExtractionGeometryKind.ConvexMesh);
+        fixture.SetObjectLinks(collider, 0, -1);
+        int text = fixture.AddText(approximation);
+        fixture.AddProperty(UsdPhysicsExtractionKey.CollisionApproximation, "physics:approximation",
+            UsdPhysicsExtractionValueKind.Text, UsdPhysicsExtractionSource.Standard, 0, text, 1);
+        fixture.SetObjectRange(collider, 0, 1, 0, 0);
+        fixture.AddPoint(0, 0, 0);
+        fixture.AddPoint(1, 0, 0);
+        fixture.AddPoint(0, 1, 0);
+        fixture.AddPoint(0, 0, 1);
+        fixture.SetObjectGeometry(collider, 0, 4, 0, 0);
+        using var builder = new PhysxPageBuilder();
+
+        UsdPhysicsCompositionReport report = UsdPhysicsExtractionComposer.Compose(fixture.BuildPage(), builder);
+
+        await Assert.That(report.Shapes).IsEqualTo(supported ? 1 : 0);
+        if (!supported)
+        {
+            await Assert.That(report.Skipped.Any(message =>
+                message.Contains("/Concave", StringComparison.Ordinal) &&
+                message.Contains(approximation, StringComparison.Ordinal))).IsTrue();
+        }
+        else
+        {
+            await Assert.That(report.Skipped).IsEmpty();
+        }
+    }
+
+    [Test]
+    [Arguments(UsdPhysicsExtractionValueKind.Real, 0, UsdPhysicsExtractionPropertyTraits.None)]
+    [Arguments(UsdPhysicsExtractionValueKind.Text, 0, UsdPhysicsExtractionPropertyTraits.None)]
+    [Arguments(UsdPhysicsExtractionValueKind.Text, 2, UsdPhysicsExtractionPropertyTraits.None)]
+    [Arguments(UsdPhysicsExtractionValueKind.Text, 1, UsdPhysicsExtractionPropertyTraits.Invalid)]
+    public async Task InvalidMeshApproximationMetadataRefusesTheCollider(
+        UsdPhysicsExtractionValueKind kind, int count, UsdPhysicsExtractionPropertyTraits traits)
+    {
+        UsdPhysicsExtractionPageFixture fixture = CreateFixture();
+        int collider = fixture.AddObject(20, "/Invalid", "Mesh",
+            UsdPhysicsExtractionObjectKind.Collider, UsdPhysicsExtractionDomains.Collision,
+            UsdPhysicsExtractionObjectTraits.Enabled, UsdPhysicsExtractionGeometryKind.ConvexMesh);
+        fixture.SetObjectLinks(collider, 0, -1);
+        int text = fixture.AddText("convexHull");
+        fixture.AddText("convexHull");
+        fixture.AddProperty(UsdPhysicsExtractionKey.CollisionApproximation, "physics:approximation",
+            kind, UsdPhysicsExtractionSource.Standard, 0, text, count, traits);
+        fixture.SetObjectRange(collider, 0, 1, 0, 0);
+        fixture.AddPoint(0, 0, 0);
+        fixture.AddPoint(1, 0, 0);
+        fixture.AddPoint(0, 1, 0);
+        fixture.AddPoint(0, 0, 1);
+        fixture.SetObjectGeometry(collider, 0, 4, 0, 0);
+        using var builder = new PhysxPageBuilder();
+
+        UsdPhysicsCompositionReport report = UsdPhysicsExtractionComposer.Compose(fixture.BuildPage(), builder);
+
+        await Assert.That(report.Shapes).IsEqualTo(0);
+        await Assert.That(report.Skipped).Contains("/Invalid declares an invalid collision approximation.");
+    }
+
+    [Test]
     public async Task ASupportedPageComposesIntoAValidBuildPage()
     {
         UsdPhysicsExtractionPageFixture fixture = CreateFixture();

@@ -9,8 +9,8 @@ openusd-mcp
 ```
 
 The tool package contains the managed server and its complete managed dependency
-closure. It deliberately does not contain a local OpenUSD build, Core or Imaging
-runtime packages, hdSilk binaries, plug-in metadata, or other native assets.
+closure. It deliberately does not contain a local OpenUSD build, Core, Imaging
+or Physics runtime packages, hdSilk binaries, plug-in metadata, or other native assets.
 Installation and MCP tool discovery therefore work without a native runtime.
 
 Scene and rendering operations require verified, version-matched Core, Imaging, and
@@ -21,6 +21,25 @@ Repository builds should use `eng/run-mcp.ps1`, which verifies
 `native/install/<rid>` and `native/install/shim/<rid>` metadata before configuring
 those variables. `eng/publish-mcp-bundle.ps1` remains the RID-specific,
 self-contained distribution alternative.
+
+`render_physics_sequence` additionally requires the matching CPU `openusd_physx` shim on the
+native loader path (`native/install/shim/<rid>-physx/bin` on repository Windows builds, `lib`
+on Linux). No macOS physics runtime is supplied. The command records fresh nonlooping CPU
+rigid-body/joint simulations through exact frame leases and the existing disk-job/gallery path.
+It requires explicit workspace meters-per-unit and up-axis expectations, refuses incomplete or
+unsupported extraction and unresolved render bindings, and never authors source layers.
+The default small-scene profile is unchanged. An explicit `fullScenePhysics: true` request
+admits larger rigid scenes with static instances, while moving subtrees must be de-instanced.
+Compound-body overrides preserve child transforms and acknowledge complete bodies rather
+than confusing body counts with driven mesh counts.
+
+`open_scene` optionally accepts a complete `stageSettings` object with `metersPerUnit`,
+`kilogramsPerUnit`, `upAxis` (`Y` or `Z`), `startTimeCode`, `endTimeCode`,
+`timeCodesPerSecond` and `framesPerSecond`. It authors these settings only in the new overlay
+root, preserving them through checkpoint/rollback and export. Units and rates must be positive
+and finite; the finite timeline must have a nonnegative finite duration. Match the source's
+intended interpretation: this is not coordinate, mass or time-sample conversion. Omitting the
+object preserves existing behavior; source-sublayer root metadata is not implicitly inherited.
 
 Common server configuration:
 

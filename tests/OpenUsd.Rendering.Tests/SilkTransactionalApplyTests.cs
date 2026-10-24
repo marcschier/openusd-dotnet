@@ -569,7 +569,7 @@ public sealed class SilkTransactionalApplyTests
         return bytes;
     }
 
-    private static byte[] Removal(string path)
+    internal static byte[] Removal(string path)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         var bytes = new byte[24 + pathBytes.Length];

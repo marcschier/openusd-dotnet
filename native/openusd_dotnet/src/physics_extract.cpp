@@ -48,7 +48,7 @@
  *        relationships, targets, numbers, texts, points, indices, diagnostics
  *    184 4 reserved u64
  *
- *   object       208 bytes
+ *   object       216 bytes
  *   property      40 bytes
  *   relationship  24 bytes
  *   target        16 bytes
@@ -310,6 +310,8 @@ struct ObjectData
     std::vector<RelationshipData> hiddenRelationships;
     std::vector<float> points;
     std::vector<uint32_t> indices;
+    uint64_t geometryFingerprintLow = 0;
+    uint64_t geometryFingerprintHigh = 0;
     std::string simulationOwnerPath;
     uint32_t simulationOwnerCount = 0;
     uint32_t diagnosticCount = 0;
@@ -1722,6 +1724,12 @@ public:
         limits_.stringBytes =
             ClampLimit(options.max_string_bytes, OPENUSD_PHYSICS_EXTRACT_MAX_STRING_BYTES);
         strings_.SetMaxBytes(limits_.stringBytes);
+        if (options_.geometry_object_count != 0 ||
+            ((options_.flags & OPENUSD_PHYSICS_EXTRACT_OPTION_FINGERPRINT_MESH_DATA) != 0 &&
+                (options_.flags & OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA) == 0))
+        {
+            pageFlags_ |= OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_PARTIAL_GEOMETRY;
+        }
     }
 
     // The only method that touches the stage. Everything after it runs on collected data.
@@ -1781,6 +1789,14 @@ private:
         int32_t objectIndex,
         bool hidden);
     void CollectGeometry(const UsdPrim& prim, ObjectData& object, int32_t objectIndex);
+    bool IncludesGeometry(int32_t objectIndex) const noexcept
+    {
+        const uint32_t index = static_cast<uint32_t>(objectIndex);
+        return (options_.flags & OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA) != 0 &&
+            (options_.geometry_object_count == 0 ||
+                (index >= options_.geometry_object_start &&
+                    index - options_.geometry_object_start < options_.geometry_object_count));
+    }
     void ApplySpaceTransform(const UsdPrim& prim, ObjectData& object);
 
     UsdStageRefPtr stage_;
@@ -1806,6 +1822,7 @@ private:
     std::vector<ObjectFrame> objectStack_;
     std::unordered_map<std::string, int32_t> objectByPath_;
     std::unordered_map<std::string, int32_t> primaryByPath_;
+    std::unordered_map<SdfPath, std::pair<uint64_t, uint64_t>, SdfPath::Hash> geometryFingerprints_;
     std::vector<int32_t> sceneIndices_;
     uint64_t propertyCount_ = 0;
     uint64_t relationshipCount_ = 0;
@@ -2074,8 +2091,20 @@ void Extractor::CollectGeometry(const UsdPrim& prim, ObjectData& object, int32_t
                 object.geometry = OPENUSD_PHYSICS_EXTRACT_GEOMETRY_CONVEX_MESH;
             }
         }
-        if ((options_.flags & OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA) != 0)
+        if ((options_.flags & (OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA |
+                OPENUSD_PHYSICS_EXTRACT_OPTION_FINGERPRINT_MESH_DATA)) != 0)
         {
+            const SdfPath source = prim.IsInstanceProxy() ? prim.GetPrimInPrototype().GetPath() : prim.GetPath();
+            const auto cached = geometryFingerprints_.find(source);
+            if (cached != geometryFingerprints_.end())
+            {
+                object.geometryFingerprintLow = cached->second.first;
+                object.geometryFingerprintHigh = cached->second.second;
+                if (!IncludesGeometry(objectIndex))
+                {
+                    return;
+                }
+            }
             VtVec3fArray points;
             VtIntArray faceCounts;
             VtIntArray faceIndices;
@@ -2083,6 +2112,29 @@ void Extractor::CollectGeometry(const UsdPrim& prim, ObjectData& object, int32_t
             mesh.GetPointsAttr().Get(&points, time_);
             mesh.GetFaceVertexCountsAttr().Get(&faceCounts, time_);
             mesh.GetFaceVertexIndicesAttr().Get(&faceIndices, time_);
+            if (cached == geometryFingerprints_.end())
+            {
+                Fingerprint geometry;
+                geometry.AddText("authored-mesh");
+                geometry.AddUInt(points.size());
+                for (const GfVec3f& point : points)
+                {
+                    geometry.AddReal(point[0]);
+                    geometry.AddReal(point[1]);
+                    geometry.AddReal(point[2]);
+                }
+                geometry.AddUInt(faceCounts.size());
+                for (int count : faceCounts) geometry.AddUInt(static_cast<uint64_t>(count));
+                geometry.AddUInt(faceIndices.size());
+                for (int index : faceIndices) geometry.AddUInt(static_cast<uint64_t>(index));
+                object.geometryFingerprintLow = geometry.Low();
+                object.geometryFingerprintHigh = geometry.High();
+                geometryFingerprints_.emplace(source, std::make_pair(geometry.Low(), geometry.High()));
+            }
+            if (!IncludesGeometry(objectIndex))
+            {
+                return;
+            }
             if (pointCount_ + points.size() > limits_.points)
             {
                 truncationFlags_ |= 1u << 7;
@@ -2161,10 +2213,26 @@ void Extractor::CollectGeometry(const UsdPrim& prim, ObjectData& object, int32_t
         object.geometry = OPENUSD_PHYSICS_EXTRACT_GEOMETRY_POINTS;
         // A point cloud carries no topology, so only the points are collected.
         // They are what a particle body is simulated from.
-        if ((options_.flags & OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA) != 0)
+        if ((options_.flags & (OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA |
+                OPENUSD_PHYSICS_EXTRACT_OPTION_FINGERPRINT_MESH_DATA)) != 0)
         {
             VtVec3fArray points;
             UsdGeomPoints(prim).GetPointsAttr().Get(&points, time_);
+            Fingerprint geometry;
+            geometry.AddText("authored-points");
+            geometry.AddUInt(points.size());
+            for (const GfVec3f& point : points)
+            {
+                geometry.AddReal(point[0]);
+                geometry.AddReal(point[1]);
+                geometry.AddReal(point[2]);
+            }
+            object.geometryFingerprintLow = geometry.Low();
+            object.geometryFingerprintHigh = geometry.High();
+            if (!IncludesGeometry(objectIndex))
+            {
+                return;
+            }
             if (pointCount_ + points.size() > limits_.points)
             {
                 truncationFlags_ |= 1u << 7;
@@ -2581,6 +2649,11 @@ void Extractor::CollectUnmapped(
         if (consumed.find(name) != consumed.end())
         {
             continue;
+        }
+        for (int32_t candidate : primObjects)
+        {
+            objects_[static_cast<size_t>(candidate)].flags |=
+                OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_UNMAPPED_OPINIONS;
         }
         int32_t objectIndex = primObjects.front();
         if (StartsWith(name, "openUsdPhysics:"))
@@ -3169,7 +3242,8 @@ std::vector<unsigned char> Extractor::Serialize()
         fingerprint.AddUInt(object.objectType);
         fingerprint.AddUInt(object.domains);
         fingerprint.AddUInt(object.flags);
-        fingerprint.AddUInt(object.prototypeId);
+        // SDK prototype ordinals can change after reload without changing any authored content.
+        // Paths, instance traits and resolved values already identify the physical input.
         fingerprint.AddUInt(object.geometry);
         fingerprint.AddUInt(object.geometryAxis);
         for (size_t axis = 0; axis < 3; ++axis)
@@ -3201,14 +3275,8 @@ std::vector<unsigned char> Extractor::Serialize()
         {
             fingerprintRelationship(relationship);
         }
-        for (const float coordinate : object.points)
-        {
-            fingerprint.AddReal(static_cast<double>(coordinate));
-        }
-        for (const uint32_t index : object.indices)
-        {
-            fingerprint.AddUInt(index);
-        }
+        fingerprint.AddUInt(object.geometryFingerprintLow);
+        fingerprint.AddUInt(object.geometryFingerprintHigh);
 
         const uint32_t propertyStart = propertyCursor;
         for (const PropertyData& property : object.properties)
@@ -3295,6 +3363,8 @@ std::vector<unsigned char> Extractor::Serialize()
         }
         objectWriter.PutU32(object.geometryAxis);
         objectWriter.PutU32(0);
+        objectWriter.PutU32(0);
+        objectWriter.PutU32(0);
     }
 
     for (const DiagnosticData& diagnostic : diagnostics_)
@@ -3322,7 +3392,8 @@ std::vector<unsigned char> Extractor::Serialize()
     };
 
     const std::vector<unsigned char>& stringBytes = strings_.Bytes();
-    Section sections[10] = {
+    const std::vector<unsigned char> noPreparedHulls;
+    Section sections[11] = {
         {&stringBytes, static_cast<uint32_t>(stringBytes.size()), 0},
         {&objectWriter.Bytes(), static_cast<uint32_t>(objects_.size()), 0},
         {&propertyWriter.Bytes(), propertyCursor, 0},
@@ -3332,7 +3403,8 @@ std::vector<unsigned char> Extractor::Serialize()
         {&textWriter.Bytes(), textCursor, 0},
         {&pointWriter.Bytes(), pointCursor, 0},
         {&indexWriter.Bytes(), indexCursor, 0},
-        {&diagnosticWriter.Bytes(), static_cast<uint32_t>(diagnostics_.size()), 0}};
+        {&diagnosticWriter.Bytes(), static_cast<uint32_t>(diagnostics_.size()), 0},
+        {&noPreparedHulls, 0, 0}};
 
     uint64_t cursor = OPENUSD_PHYSICS_EXTRACT_HEADER_BYTES;
     for (Section& section : sections)
@@ -3358,7 +3430,8 @@ std::vector<unsigned char> Extractor::Serialize()
     cursor = (cursor + (kAlignment - 1)) & ~static_cast<uint64_t>(kAlignment - 1);
 
     fingerprint.AddUInt(pageFlags_ & ~static_cast<uint32_t>(
-        OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_TRUNCATED));
+        OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_TRUNCATED |
+        OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_PARTIAL_GEOMETRY));
 
     std::vector<unsigned char> page(static_cast<size_t>(cursor), 0);
     ByteWriter header;
@@ -3383,7 +3456,7 @@ std::vector<unsigned char> Extractor::Serialize()
         header.PutU32(section.offset);
         header.PutU32(section.count);
     }
-    for (size_t reserved = 0; reserved < 4; ++reserved)
+    for (size_t reserved = 0; reserved < 3; ++reserved)
     {
         header.PutU64(0);
     }
@@ -3454,10 +3527,19 @@ openusd_status openusd_physics_extract_stage(
                     static_cast<uint32_t>(sizeof(openusd_physics_extract_options)) ||
                 options->version != OPENUSD_PHYSICS_EXTRACT_OPTIONS_VERSION)
             {
-                WriteError(error, "Physics extraction options of version 1 are required.");
+                WriteError(error, "Physics extraction options of version 2 are required.");
                 return OPENUSD_STATUS_INVALID_ARGUMENT;
             }
             resolved = *options;
+        }
+        if ((resolved.geometry_object_count == 0 && resolved.geometry_object_start != 0) ||
+            resolved.geometry_object_start > OPENUSD_PHYSICS_EXTRACT_MAX_OBJECTS ||
+            resolved.geometry_object_count > OPENUSD_PHYSICS_EXTRACT_MAX_OBJECTS - resolved.geometry_object_start ||
+            (resolved.geometry_object_count != 0 &&
+                (resolved.flags & OPENUSD_PHYSICS_EXTRACT_OPTION_INCLUDE_MESH_DATA) == 0))
+        {
+            WriteError(error, "The physics geometry object window is invalid.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
 
         Extractor extractor(stage->value, resolved);

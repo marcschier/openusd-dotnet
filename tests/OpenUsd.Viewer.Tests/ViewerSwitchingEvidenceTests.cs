@@ -179,6 +179,71 @@ public sealed class ViewerSwitchingEvidenceTests
     }
 
     [Test]
+    public async Task IndependentCaptureApisMayObserveIdenticalFrame()
+    {
+        ViewerSwitchingEvidenceArtifact baseline = CreateValidStormArtifact();
+        ViewerPixelEvidence native = baseline.Pixels[0];
+        ViewerSwitchingEvidenceArtifact artifact = baseline with
+        {
+            Pixels =
+            [
+                native,
+                native with
+                {
+                    Phase = native.Phase + "-shell",
+                    Artifact = native.Phase + "-shell.bmp",
+                    CaptureApi = "PrintWindow(PW_CLIENTONLY|PW_RENDERFULLCONTENT)+DwmFlush"
+                },
+                .. baseline.Pixels[1..]
+            ]
+        };
+
+        artifact.Validate();
+
+        await Assert.That(artifact.Pixels[0].Sha256)
+            .IsEqualTo(artifact.Pixels[1].Sha256);
+        await Assert.That(artifact.Pixels[0].CaptureApi)
+            .IsNotEqualTo(artifact.Pixels[1].CaptureApi);
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task StaleFrameCannotMasqueradeAsPairedShellCapture(bool pairedPhase)
+    {
+        ViewerSwitchingEvidenceArtifact baseline = CreateValidStormArtifact();
+        ViewerPixelEvidence native = baseline.Pixels[0];
+        ViewerSwitchingEvidenceArtifact artifact = baseline with
+        {
+            Pixels =
+            [
+                native,
+                native with
+                {
+                    Phase = pairedPhase ? native.Phase + "-shell" : "unpaired-shell",
+                    Artifact = "unpaired-shell.bmp",
+                    CaptureApi = pairedPhase
+                        ? native.CaptureApi
+                        : "PrintWindow(PW_CLIENTONLY|PW_RENDERFULLCONTENT)+DwmFlush"
+                },
+                .. baseline.Pixels[1..]
+            ]
+        };
+
+        InvalidDataException? failure = null;
+        try
+        {
+            artifact.Validate();
+        }
+        catch (InvalidDataException exception)
+        {
+            failure = exception;
+        }
+        await Assert.That(failure).IsNotNull();
+        await Assert.That(failure!.Message).IsEqualTo("Viewer pixel evidence is invalid or stale.");
+    }
+
+    [Test]
     public async Task StalePixelChecksumIsRejected()
     {
         ViewerSwitchingEvidenceArtifact artifact = CreateValidArtifact();

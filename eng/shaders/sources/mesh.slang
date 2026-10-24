@@ -24,6 +24,9 @@
 #ifndef VOLUME_DENSITY_TEXTURES
 #define VOLUME_DENSITY_TEXTURES 0
 #endif
+#if VOLUME_DENSITY_TEXTURES && MAP_NORMAL
+#error Density volumes and normal-mapped surfaces cannot share a permutation.
+#endif
 
 static const uint MaximumDirectLights = 128;
 
@@ -222,6 +225,27 @@ typedef FrameParameters FragmentFrameParameters;
 #endif
 #endif
 
+#if FRAGMENT_STAGE
+// Match SilkFrameUniformWriter without copying its seven 128-entry arrays into
+// per-fragment local storage. Dynamically index the raw buffer, not a loaded struct.
+static const uint FrameLightArrayBytes = MaximumDirectLights * 16u;
+static const uint FrameLightArraysOffset = 224u;
+static const uint FrameShadowSlotsOffset =
+    FrameLightArraysOffset + 6u * FrameLightArrayBytes + 64u + 4u * (64u + 16u + 16u);
+
+[ForceInline]
+float4 ReadFrameLight(uint field, uint index)
+{
+    return frameParameters.Load<float4>(FrameLightArraysOffset + field * FrameLightArrayBytes + index * 16u);
+}
+
+[ForceInline]
+float4 ReadFrameShadowSlot(uint index)
+{
+    return frameParameters.Load<float4>(FrameShadowSlotsOffset + index * 16u);
+}
+#endif
+
 #if VERTEX_STAGE
 struct InstanceParameters
 {
@@ -284,10 +308,23 @@ SamplerState volumeDensitySampler : register(s4);
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(2, 0)]]
 Texture2D<float4> baseColorTexture : register(t0);
+[[vk::binding(39, 0)]]
+Texture2D<float4> diffuseValuesTexture : register(t22);
+[[vk::binding(40, 0)]]
+Texture2D<float4> emissiveValuesTexture : register(t23);
 #endif
 #if FRAGMENT_STAGE && MAP_NORMAL
 [[vk::binding(3, 0)]]
 Texture2D<float4> normalTexture : register(t1);
+// Density volumes and normal-mapped surfaces are disjoint permutations.
+[[vk::binding(13, 0)]]
+SamplerState detailNormalSampler : register(s4);
+[[vk::binding(9, 0)]]
+Texture2D<float4> detailNormalTexture : register(t9);
+[[vk::binding(37, 0)]]
+Texture2D<float4> normalValuesTexture : register(t20);
+[[vk::binding(38, 0)]]
+Texture2D<float4> detailNormalValuesTexture : register(t21);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(4, 0)]]
@@ -474,12 +511,12 @@ struct SurfaceParameters
     float4 emissiveOcclusion;
     float4 specularIor;
     float4 metallicRoughnessThresholdWorkflow;
-    // (clearcoat, clearcoatRoughness, shaded, 0).
+    // (clearcoat, clearcoatRoughness, shaded, OmniPBR dielectric specular weight).
     float4 clearcoatShaded;
     float4 lightDirectionIntensity;
     float4 lightColorAmbient;
     float4 reserved;
-    // (textureMask, udimMask, volumeVoxelDepth, 0).
+    // (textureMask, udimMask, volumeVoxelDepth, OmniPBR custom-curve enabled).
     float4 textureControls;
     // The one constant texture-coordinate transform this material samples every
     // texture through, as (m00, m01, tx, 0) and (m10, m11, ty, 0). Identity
@@ -501,7 +538,33 @@ struct SurfaceParameters
     // Bit i is in word i/32, bit i%32. Never convert direct membership to float.
     uint4 lightLinkMask;
     uint4 shadowLinkMask;
+    float4 detailUvTransformRow0;
+    float4 detailUvTransformRow1;
 };
+
+#if MAP_NORMAL || MAP_MATERIAL
+// The ordinary nearest sample selects the texel AND mip. No LOD query or
+// reconstructed texture coordinates can disagree with the reference sampler.
+// RGB bytes index exact CPU float32 channel values at level zero; lower levels
+// point at unchanged CPU mip values. R32F triples omit only unused alpha.
+[ForceInline]
+float3 DecodeIndexedRgb(float4 sampled, Texture2D<float4> values)
+{
+    if (sampled.a > 1.0)
+    {
+        return sampled.rgb;
+    }
+    uint width, height;
+    values.GetDimensions(width, height);
+    uint3 code = uint3(round(sampled.rgb * 255.0));
+    uint index = code.r | (code.g << 8u) | (code.b << 16u);
+    uint3 address = (sampled.a == 0.0 ? code : uint3(index, index, index)) * 3u + uint3(0u, 1u, 2u);
+    return float3(
+        values.Load(int3(address.r % width, address.r / width, 0)).r,
+        values.Load(int3(address.g % width, address.g / width, 0)).r,
+        values.Load(int3(address.b % width, address.b / width, 0)).r);
+}
+#endif
 
 [[vk::binding(7, 0)]]
 StructuredBuffer<SurfaceParameters> surfaceParameters : register(t7);
@@ -524,6 +587,12 @@ static const float SurfaceDenominatorEpsilon = 1.0e-30;
 static const float SurfaceMinimumRoughness = 0.001;
 
 [ForceInline]
+uint LoadUdimByte(Texture2D<float4> textureMap, uint width, uint offset)
+{
+    return uint(round(textureMap.Load(int3(offset % width, offset / width, 0)).r * 255.0));
+}
+
+[ForceInline]
 float4 SampleMaterialTexture(
     Texture2D<float4> textureMap,
     SamplerState textureSampler,
@@ -539,6 +608,34 @@ float4 SampleMaterialTexture(
     uint atlasHeight;
     textureMap.GetDimensions(atlasWidth, atlasHeight);
     float4 metadata = round(textureMap.Load(int3(0, 0, 0)) * 255.0);
+    if (metadata.x == 255.0)
+    {
+        int2 minimumTile = int2(LoadUdimByte(textureMap, atlasWidth, 2), LoadUdimByte(textureMap, atlasWidth, 3));
+        uint2 grid = uint2(LoadUdimByte(textureMap, atlasWidth, 4), LoadUdimByte(textureMap, atlasWidth, 5));
+        int2 tile = int2(floor(textureCoordinate)) - minimumTile;
+        if (any(tile < 0) || any(tile >= int2(grid)))
+        {
+            return textureMap.Load(int3(1, 0, 0));
+        }
+        uint offset = 10 + 2 * (uint(tile.y) * grid.x + uint(tile.x));
+        uint slot = LoadUdimByte(textureMap, atlasWidth, offset) |
+            (LoadUdimByte(textureMap, atlasWidth, offset + 1) << 8);
+        if (slot == 0)
+        {
+            return textureMap.Load(int3(1, 0, 0));
+        }
+        --slot;
+        uint columns = LoadUdimByte(textureMap, atlasWidth, 6) |
+            (LoadUdimByte(textureMap, atlasWidth, 7) << 8);
+        uint count = LoadUdimByte(textureMap, atlasWidth, 8) |
+            (LoadUdimByte(textureMap, atlasWidth, 9) << 8);
+        uint rows = (count + columns - 1) / columns;
+        uint metadataRows = (10 + 2 * grid.x * grid.y + atlasWidth - 1) / atlasWidth;
+        float2 cellSize = float2(atlasWidth / columns, (atlasHeight - metadataRows) / rows);
+        float2 pixel = float2(slot % columns, slot / columns) * cellSize +
+            float2(1.5, metadataRows + 1.5) + frac(textureCoordinate) * max(cellSize - 3.0, 0.0);
+        return textureMap.Sample(textureSampler, pixel / float2(atlasWidth, atlasHeight));
+    }
     int2 minimumTile = int2(metadata.xy);
     int2 gridSize = int2(metadata.zw);
     int2 tile = int2(floor(textureCoordinate)) - minimumTile;
@@ -566,6 +663,38 @@ float2 TransformTextureCoordinate(SurfaceParameters surface, float2 textureCoord
         dot(surface.uvTransformRow0.xy, textureCoordinate) + surface.uvTransformRow0.z,
         dot(surface.uvTransformRow1.xy, textureCoordinate) + surface.uvTransformRow1.z);
 }
+
+#if MAP_NORMAL
+[ForceInline]
+float3 OrientMappedNormal(float3 mapped, float2 row0, float2 row1)
+{
+    if (any(row1 != float2(0.0, 0.0)))
+    {
+        float scale = max(abs(row1.x), abs(row1.y));
+        float2 tangent = normalize(float2(row1.y, -row1.x) / scale);
+        float2 bitangent = float2(-tangent.y, tangent.x);
+        if (dot(row0, tangent) < 0.0)
+        {
+            tangent = -tangent;
+        }
+        mapped.xy = tangent * mapped.x + bitangent * mapped.y;
+    }
+    return mapped;
+}
+
+[ForceInline]
+float3 CombineDetailNormal(float3 primary, float3 detail)
+{
+    float3 t = normalize(primary) + float3(0.0, 0.0, 1.0);
+    float3 u = normalize(detail) * float3(-1.0, -1.0, 1.0);
+    if (t.z == 0.0)
+    {
+        // The shortest arc is ambiguous at -Z; choose a half-turn about tangent X.
+        return float3(-u.x, u.y, -u.z);
+    }
+    return normalize(t * (dot(t, u) / t.z) - u);
+}
+#endif
 
 // Wire values of OPENUSD_SILK_COMPOSITE_*; see openusd_hdsilk.h.
 static const uint CompositeOpNone = 0u;
@@ -1108,24 +1237,58 @@ float4 FRAGMENT_ENTRY_POINT(
 #if MAP_MATERIAL
     if ((textureMask & 2u) != 0)
     {
+        float4 diffuseSample = SampleMaterialTexture(
+            baseColorTexture, baseColorSampler, materialTexCoord, (udimMask & 2u) != 0);
+        // Equal widths explicitly identify the split-RGB fallback. Indexed tables
+        // are admitted only with a different width; dimensions are exact integers.
+        if (surface.compositeControls.x == 0.0 && surface.compositeControls.w == 2.0)
+        {
+            uint sourceWidth, sourceHeight, valueWidth, valueHeight;
+            baseColorTexture.GetDimensions(sourceWidth, sourceHeight);
+            diffuseValuesTexture.GetDimensions(valueWidth, valueHeight);
+            if (valueWidth != sourceWidth)
+            {
+                diffuseSample.rgb = DecodeIndexedRgb(diffuseSample, diffuseValuesTexture);
+            }
+            else
+            {
+                diffuseSample.b = diffuseValuesTexture.Sample(baseColorSampler, materialTexCoord).r;
+            }
+        }
         diffuseColor = ApplyMaterialComposite(
             surface,
             2.0,
-            SampleMaterialTexture(
-                baseColorTexture,
-                baseColorSampler,
-                materialTexCoord,
-                (udimMask & 2u) != 0),
+            diffuseSample,
             materialTexCoord).rgb;
     }
 #endif
 #if MAP_NORMAL
-    float3 sampledNormal =
-        SampleMaterialTexture(
-            normalTexture,
-            normalSampler,
-            materialTexCoord,
-            (udimMask & 4u) != 0).xyz * 2.0 - 1.0;
+    float4 baseNormalSample = SampleMaterialTexture(
+        normalTexture, normalSampler, materialTexCoord, (udimMask & 4u) != 0);
+    if (surface.detailUvTransformRow0.w != 0.0)
+    {
+        baseNormalSample.rgb = DecodeIndexedRgb(baseNormalSample, normalValuesTexture);
+    }
+    float3 sampledNormal = (textureMask & 4u) == 0 ? float3(0.0, 0.0, 1.0) :
+        baseNormalSample.xyz * 2.0 - 1.0;
+    sampledNormal = OrientMappedNormal(
+        sampledNormal, surface.uvTransformRow0.xy, surface.uvTransformRow1.xy);
+    if ((textureMask & 4096u) != 0)
+    {
+        float2 detailUv = float2(
+            dot(surface.detailUvTransformRow0.xy, input.texCoord) + surface.detailUvTransformRow0.z,
+            dot(surface.detailUvTransformRow1.xy, input.texCoord) + surface.detailUvTransformRow1.z);
+        float4 detailSample = SampleMaterialTexture(
+            detailNormalTexture, detailNormalSampler, detailUv, (udimMask & 4096u) != 0);
+        if (surface.detailUvTransformRow1.w != 0.0)
+        {
+            detailSample.rgb = DecodeIndexedRgb(detailSample, detailNormalValuesTexture);
+        }
+        float3 detail = detailSample.xyz * 2.0 - 1.0;
+        detail = OrientMappedNormal(
+            detail, surface.detailUvTransformRow0.xy, surface.detailUvTransformRow1.xy);
+        sampledNormal = CombineDetailNormal(sampledNormal, detail);
+    }
     float3 tangent = normalize(input.tangent.xyz);
     float3 bitangent = cross(normalize(shadingNormal), tangent) * input.tangent.w;
     shadingNormal = normalize(
@@ -1192,14 +1355,26 @@ float4 FRAGMENT_ENTRY_POINT(
     }
     if ((textureMask & 16u) != 0)
     {
+        float4 emissionSample = SampleMaterialTexture(
+            emissiveTexture, emissiveSampler, materialTexCoord, (udimMask & 16u) != 0);
+        if (surface.uvTransformRow0.w != 0.0)
+        {
+            uint sourceWidth, sourceHeight, valueWidth, valueHeight;
+            emissiveTexture.GetDimensions(sourceWidth, sourceHeight);
+            emissiveValuesTexture.GetDimensions(valueWidth, valueHeight);
+            if (valueWidth != sourceWidth)
+            {
+                emissionSample.rgb = DecodeIndexedRgb(emissionSample, emissiveValuesTexture);
+            }
+            else
+            {
+                emissionSample.b = emissiveValuesTexture.Sample(emissiveSampler, materialTexCoord).r;
+            }
+        }
         emissiveColor = ApplyMaterialComposite(
             surface,
             16.0,
-            SampleMaterialTexture(
-                emissiveTexture,
-                emissiveSampler,
-                materialTexCoord,
-                (udimMask & 16u) != 0),
+            emissionSample,
             materialTexCoord).rgb;
     }
     if ((textureMask & 64u) != 0)
@@ -1282,9 +1457,13 @@ float4 FRAGMENT_ENTRY_POINT(
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;
-    if (opacityThreshold > 0.0 && opacity < opacityThreshold)
+    if (opacityThreshold > 0.0)
     {
-        discard;
+        if (opacity < opacityThreshold)
+        {
+            discard;
+        }
+        opacity = 1.0;
     }
 
     float3 normal = normalize(shadingNormal);
@@ -1312,7 +1491,15 @@ float4 FRAGMENT_ENTRY_POINT(
     float3 diffuse = diffuseColor / SurfacePi;
     float3 normalIncidence;
     float3 grazingIncidence;
-    if (surface.metallicRoughnessThresholdWorkflow.w >= 0.5)
+    bool omniPbrSpecular = surface.textureControls.w >= 0.5;
+    float dielectricLevel = surface.clearcoatShaded.w;
+    if (omniPbrSpecular)
+    {
+        normalIncidence = lerp(float3(0.08, 0.08, 0.08) * dielectricLevel, diffuseColor, metallic);
+        grazingIncidence = lerp(float3(1.0, 1.0, 1.0) * dielectricLevel, diffuseColor, metallic);
+        diffuse *= 1.0 - metallic;
+    }
+    else if (surface.metallicRoughnessThresholdWorkflow.w >= 0.5)
     {
         normalIncidence = specularColor;
         grazingIncidence = float3(1.0, 1.0, 1.0);
@@ -1414,37 +1601,37 @@ float4 FRAGMENT_ENTRY_POINT(
         }
         float lightType = lightIndex == 0u && !hasSceneLighting
             ? 1.0
-            : frame.lightPositionType[lightIndex].w;
+            : ReadFrameLight(0u, lightIndex).w;
         float3 lightDirection = lightIndex == 0u && !hasSceneLighting
             ? normalize(surface.lightDirectionIntensity.xyz)
-            : normalize(frame.lightDirectionRadius[lightIndex].xyz);
+            : normalize(ReadFrameLight(1u, lightIndex).xyz);
         float lightIntensity = lightIndex == 0u && !hasSceneLighting
             ? surface.lightDirectionIntensity.w
-            : frame.lightColorIntensity[lightIndex].w;
+            : ReadFrameLight(2u, lightIndex).w;
         float3 lightColor = lightIndex == 0u && !hasSceneLighting
             ? surface.lightColorAmbient.rgb
-            : frame.lightColorIntensity[lightIndex].rgb;
+            : ReadFrameLight(2u, lightIndex).rgb;
         float diffuseScale = lightIndex == 0u && !hasSceneLighting
             ? 1.0
-            : frame.lightControls[lightIndex].x;
+            : ReadFrameLight(3u, lightIndex).x;
         float specularScale = lightIndex == 0u && !hasSceneLighting
             ? 1.0
-            : frame.lightControls[lightIndex].y;
+            : ReadFrameLight(3u, lightIndex).y;
         float3 lightTangent = lightIndex == 0u && !hasSceneLighting
             ? float3(1.0, 0.0, 0.0)
-            : normalize(frame.lightTangentShapeX[lightIndex].xyz);
+            : normalize(ReadFrameLight(4u, lightIndex).xyz);
         float3 lightBitangent = lightIndex == 0u && !hasSceneLighting
             ? float3(0.0, 1.0, 0.0)
-            : normalize(frame.lightBitangentShapeY[lightIndex].xyz);
+            : normalize(ReadFrameLight(5u, lightIndex).xyz);
         float shapeX = lightIndex == 0u && !hasSceneLighting
             ? 0.0
-            : frame.lightTangentShapeX[lightIndex].w;
+            : ReadFrameLight(4u, lightIndex).w;
         float shapeY = lightIndex == 0u && !hasSceneLighting
             ? 0.0
-            : frame.lightBitangentShapeY[lightIndex].w;
+            : ReadFrameLight(5u, lightIndex).w;
         float lightRadius = lightIndex == 0u && !hasSceneLighting
             ? 0.0
-            : frame.lightDirectionRadius[lightIndex].w;
+            : ReadFrameLight(1u, lightIndex).w;
         float3 lightEyeBase = lightIndex == 0u && !hasSceneLighting
             ? eye
             : sceneEye;
@@ -1455,7 +1642,7 @@ float4 FRAGMENT_ENTRY_POINT(
         float shadowVisibility = 1.0;
         if (hasSceneLighting)
         {
-            int shadowSlot = (int)frame.shadowSlots[lightIndex].x;
+            int shadowSlot = (int)ReadFrameShadowSlot(lightIndex).x;
             if (shadowSlot >= 0)
             {
                 shadowVisibility = ResolveShadowVisibility(
@@ -1509,7 +1696,7 @@ float4 FRAGMENT_ENTRY_POINT(
             float3 sampleDirection = lightDirection;
             if (lightType >= 2.0)
             {
-                float3 samplePosition = frame.lightPositionType[lightIndex].xyz + sampleOffsets[sampleIndex];
+                float3 samplePosition = ReadFrameLight(0u, lightIndex).xyz + sampleOffsets[sampleIndex];
                 float3 toLight = samplePosition - worldPosition;
                 float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
                 sampleDirection = toLight * rsqrt(distanceSquared);
@@ -1524,8 +1711,11 @@ float4 FRAGMENT_ENTRY_POINT(
             float normalDotHalf = saturate(dot(normal, half));
             float eyeDotHalf = saturate(dot(lightEyeBase, half));
             float fresnel = SchlickFresnel(eyeDotHalf);
+            float3 diffuseFresnel = omniPbrSpecular
+                ? float3(1.0, 1.0, 1.0) * dielectricLevel * lerp(0.08, 1.0, fresnel)
+                : lerp(normalIncidence, grazingIncidence, fresnel);
             float3 directDiffuse =
-                diffuse * (1.0 - lerp(normalIncidence, grazingIncidence, fresnel));
+                diffuse * (1.0 - diffuseFresnel);
             float3 directSpecular = EvaluateDirectSpecular(
                 normalIncidence,
                 grazingIncidence,
@@ -1589,7 +1779,11 @@ float4 FRAGMENT_ENTRY_POINT(
         float3 specularWeight =
             (normalIncidence * environmentBrdfTerm.x) +
             (grazingIncidence * environmentBrdfTerm.y);
-        float3 diffuseWeight = saturate(float3(1.0, 1.0, 1.0) - specularWeight);
+        float3 diffuseFresnel = omniPbrSpecular
+            ? float3(1.0, 1.0, 1.0) * dielectricLevel *
+                (0.08 * environmentBrdfTerm.x + environmentBrdfTerm.y)
+            : specularWeight;
+        float3 diffuseWeight = saturate(float3(1.0, 1.0, 1.0) - diffuseFresnel);
         float3 reflectionDirection = reflect(-sceneEye, environmentNormal);
 
         float environmentGroupCount = max(frame.domeControls.y, 1.0);

@@ -7,6 +7,7 @@
 #include "material.h"
 #include "materialXBridge.h"
 #include "mdlAdapter.h"
+#include "mdlIdentifier.h"
 #include "openusd_dotnet_test_hooks.h"
 #include "sceneState.h"
 
@@ -90,7 +91,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 24);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 27);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -221,6 +222,7 @@ struct ParsedMaterialRecord
 
 struct ParsedPage
 {
+    uint64_t page_revision = 0;
     uint32_t frame_count = 0;
     uint32_t mesh_upsert_count = 0;
     uint32_t mesh_remove_count = 0;
@@ -5054,6 +5056,44 @@ bool VerifyUnshadowedScenePublishesNoShadowTable()
     return page.shadow_count == 0 && page.mesh_upsert_count == 1;
 }
 
+bool VerifyLuminanceMixWireValidation()
+{
+    HdSilkMaterialRecord valid;
+    valid.path = "/Material";
+    valid.surfaceKind = OPENUSD_SILK_SURFACE_PREVIEW_SURFACE;
+    valid.scalars.push_back({OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX,
+        4, {0.25F, 0.5F, 0.25F, 0.5F}});
+    for (int kind = 0; kind < 9; ++kind)
+    {
+        HdSilkMaterialRecord record = valid;
+        switch (kind)
+        {
+            case 1: record.scalars[0].componentCount = 1; break;
+            case 2: record.scalars[0].value[0] = -0.25F; break;
+            case 3: record.scalars[0].value[0] = 0.5F; break;
+            case 4: record.scalars[0].value[3] = std::numeric_limits<float>::quiet_NaN(); break;
+            case 5: record.scalars[0].value[3] = std::numeric_limits<float>::infinity(); break;
+            case 6: record.scalars[0].value[1] = std::numeric_limits<float>::quiet_NaN(); break;
+            case 7: record.scalars[0].value[3] = std::numeric_limits<float>::infinity(); break;
+            case 8: record.scalars.push_back(record.scalars[0]); break;
+        }
+        HdSilkSceneState state;
+        state.ReplaceMaterial(std::move(record));
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        try
+        {
+            const auto bytes = state.BuildPage(&revision, &count);
+            if (bytes.empty() || count != (kind == 0 ? 2u : 1u)) { return false; }
+        }
+        catch (const std::invalid_argument&)
+        {
+            if (kind == 0) { return false; }
+        }
+    }
+    return true;
+}
+
 bool VerifySceneStateSerialization()
 {
     HdSilkSceneState state;
@@ -5164,7 +5204,8 @@ openusd_status Sync(
     openusd_error_buffer* error,
     const openusd_render_camera* requestedCamera = nullptr,
     double timeCode = 0.0,
-    const uint32_t* requestedComplexity = nullptr)
+    const uint32_t* requestedComplexity = nullptr,
+    std::vector<uint8_t>* materialCommands = nullptr)
 {
     const openusd_render_camera automatic = AutomaticCamera();
     const openusd_render_camera* camera =
@@ -5203,7 +5244,30 @@ openusd_status Sync(
         return OPENUSD_STATUS_NATIVE_ERROR;
     }
     *parsed = ParseCommands(view.data, view.data_size);
+    parsed->page_revision = view.revision;
     const bool countMatches = parsed->parsed_count == view.command_count;
+    if (countMatches && materialCommands != nullptr)
+    {
+        materialCommands->clear();
+        size_t offset = 0;
+        while (offset < view.data_size)
+        {
+            uint32_t type = 0;
+            uint32_t bytes = 0;
+            if (!ReadValue(view.data, view.data_size, offset, &type) ||
+                !ReadValue(view.data, view.data_size, offset + 4, &bytes) ||
+                bytes < 8 || bytes > view.data_size - offset)
+            {
+                openusd_silk_page_release(page);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            if (type == OPENUSD_SILK_COMMAND_MATERIAL_UPSERT)
+            {
+                materialCommands->insert(materialCommands->end(), view.data + offset, view.data + offset + bytes);
+            }
+            offset += bytes;
+        }
+    }
     openusd_silk_page_release(page);
     return countMatches ? OPENUSD_STATUS_OK : OPENUSD_STATUS_NATIVE_ERROR;
 }
@@ -6836,6 +6900,166 @@ MakeTransform2dNetwork(bool connectReader)
     return map;
 }
 
+bool VerifyMissingPrimvarFallback()
+{
+    HdMaterialNetworkMap network = MakeTransform2dNetwork(true);
+    network.map[HdMaterialTerminalTokens->surface].nodes[0].parameters[TfToken("fallback")] =
+        VtValue(GfVec2f(0.25F, 0.75F));
+    HdSilkSceneState state;
+    state.ReplaceMaterial(HdSilkMaterial::Resolve(SdfPath("/World/Preview"), network));
+    HdSilkMeshRecord mesh = MakeSceneStateRecord(PrimvarMeshPath, 1);
+    mesh.materialPath = "/World/Preview";
+    ReplaceSingleMesh(state, PrimvarMeshPath, mesh);
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    auto read = [&]()
+    {
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        return ParseCommands(bytes.data(), bytes.size());
+    };
+    auto hasFallback = [](const ParsedPage& page, float u, float v)
+    {
+        return page.found_primvar_mesh && page.primvar_mesh_attributes.size() == 1 &&
+            page.primvar_mesh_attributes[0].name == "uvSet1" &&
+            page.primvar_mesh_attributes[0].semantic == OPENUSD_SILK_ATTRIBUTE_TEXCOORD &&
+            page.primvar_mesh_attributes[0].interpolation == OPENUSD_SILK_INTERPOLATION_CONSTANT &&
+            page.primvar_mesh_attributes[0].values == std::vector<float>({u, v});
+    };
+    if (!hasFallback(read(), 0.25F, 0.75F))
+    {
+        std::cerr << "A missing named primvar did not publish the reader's untransformed fallback.\n";
+        return false;
+    }
+    if (read().mesh_upsert_count != 0)
+    {
+        std::cerr << "An unchanged reader fallback republished geometry.\n";
+        return false;
+    }
+    HdSilkMaterialRecord scalarOnly = HdSilkMaterial::Resolve(SdfPath("/World/Preview"), network);
+    HdSilkMaterialScalar roughness;
+    roughness.parameter = OPENUSD_SILK_MATERIAL_ROUGHNESS;
+    roughness.componentCount = 1;
+    roughness.value[0] = 0.2F;
+    scalarOnly.scalars.push_back(roughness);
+    state.ReplaceMaterial(std::move(scalarOnly));
+    if (read().mesh_upsert_count != 0)
+    {
+        std::cerr << "A shading-only edit unnecessarily republished fallback geometry.\n";
+        return false;
+    }
+    network.map[HdMaterialTerminalTokens->surface].nodes[0].parameters[TfToken("fallback")] =
+        VtValue(GfVec2f(0.5F, 0.125F));
+    state.ReplaceMaterial(HdSilkMaterial::Resolve(SdfPath("/World/Preview"), network));
+    if (!hasFallback(read(), 0.5F, 0.125F))
+    {
+        std::cerr << "A material-only reader fallback edit did not update bound geometry.\n";
+        return false;
+    }
+    HdSilkMeshAttribute authored;
+    authored.name = "uvSet1";
+    authored.semantic = OPENUSD_SILK_ATTRIBUTE_TEXCOORD;
+    authored.componentCount = 2;
+    authored.interpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
+    authored.data = {0.875F, 0.625F};
+    mesh.attributes.push_back(authored);
+    ReplaceSingleMesh(state, PrimvarMeshPath, mesh);
+    if (!hasFallback(read(), 0.875F, 0.625F))
+    {
+        std::cerr << "A reader fallback overrode an authored coordinate.\n";
+        return false;
+    }
+    mesh.attributes.clear();
+    ReplaceSingleMesh(state, PrimvarMeshPath, mesh);
+    if (!hasFallback(read(), 0.5F, 0.125F))
+    {
+        return false;
+    }
+    state.RemoveMaterial("/World/Preview");
+    const ParsedPage removed = read();
+    if (removed.mesh_upsert_count != 1 || !removed.primvar_mesh_attributes.empty())
+    {
+        std::cerr << "Removing a material retained its synthesized coordinate fallback.\n";
+        return false;
+    }
+    for (int variant = 0; variant < 4; ++variant)
+    {
+        HdMaterialNetworkMap malformed = network;
+        HdMaterialNetwork& surface = malformed.map[HdMaterialTerminalTokens->surface];
+        if (variant == 0)
+        {
+            surface.nodes[0].parameters[TfToken("fallback")] = VtValue(1.0F);
+        }
+        else if (variant == 1)
+        {
+            surface.nodes[0].parameters[TfToken("fallback")] =
+                VtValue(GfVec2f(std::numeric_limits<float>::quiet_NaN(), 0.0F));
+        }
+        else if (variant == 2)
+        {
+            surface.relationships.push_back(
+                {surface.nodes[2].path, TfToken("rgb"), surface.nodes[0].path, TfToken("fallback")});
+        }
+        else
+        {
+            surface.nodes[0].parameters.erase(TfToken("fallback"));
+        }
+        const HdSilkMaterialRecord result =
+            HdSilkMaterial::Resolve(SdfPath("/World/Preview"), malformed);
+        if (variant == 3
+            ? (result.textures.size() != 1 || !result.textures[0].hasUvFallback ||
+                result.textures[0].uvFallback[0] != 0 || result.textures[0].uvFallback[1] != 0)
+            : !result.textures.empty())
+        {
+            std::cerr << "Coordinate fallback validation/default failed for variant " << variant << ".\n";
+            return false;
+        }
+    }
+    state.ReplaceMaterial(HdSilkMaterial::Resolve(SdfPath("/World/Preview"), network));
+    mesh.instanceId = 42;
+    mesh.instanceIndex = 0;
+    mesh.instancerPath = "/Instancer";
+    mesh.instancerContext = {{"/Instancer", 0}};
+    HdSilkMeshRecord instance = HdSilkMakeInstanceReference(mesh);
+    instance.instanceIndex = 1;
+    instance.instancerPath = "/Instancer";
+    instance.instancerContext = {{"/Instancer", 1}};
+    state.ReplaceMeshInstances(PrimvarMeshPath, {mesh, instance});
+    const ParsedPage instanced = read();
+    if (instanced.mesh_upsert_count != 2 ||
+        instanced.mesh_attribute_counts != std::vector<uint32_t>({1, 0}))
+    {
+        std::cerr << "Fallback publication expanded a lightweight instance reference.\n";
+        return false;
+    }
+    network.map[HdMaterialTerminalTokens->surface].nodes[0].parameters[TfToken("fallback")] =
+        VtValue(GfVec2f(0.125F, 0.25F));
+    state.ReplaceMaterial(HdSilkMaterial::Resolve(SdfPath("/World/Preview"), network));
+    const std::vector<uint8_t> pending = state.BuildPage(&revision, &count, SIZE_MAX, true);
+    if (ParseCommands(pending.data(), pending.size()).mesh_upsert_count != 2 ||
+        !state.CompletePage(revision, false))
+    {
+        std::cerr << "A fallback edit did not republish its complete prototype family.\n";
+        return false;
+    }
+    bool refused = false;
+    try
+    {
+        (void)state.BuildPage(&revision, &count, pending.size() - 1);
+    }
+    catch (const std::bad_alloc&)
+    {
+        refused = true;
+    }
+    const std::vector<uint8_t> retry = state.BuildPage(&revision, &count, pending.size());
+    if (!refused || retry != pending || read().mesh_upsert_count != 0)
+    {
+        std::cerr << "Fallback byte admission or retry lost a material/mesh update.\n";
+        return false;
+    }
+    std::cout << "Missing primvar fallback publication and material-only edits passed.\n";
+    return true;
+}
+
 /// Builds a MaterialX standard-surface network with a transformed base-colour
 /// image and an untransformed normal map, which is the ordinary authoring shape
 /// this renderer's single coordinate stream per material cannot serve.
@@ -8053,6 +8277,79 @@ MakeDisplacementNetwork(
     return map;
 }
 
+bool VerifyTextureStringMetadata()
+{
+    struct MetadataCase
+    {
+        const char* color_space;
+        const char* wrap;
+        uint32_t expected_color_space;
+        uint32_t expected_wrap;
+    };
+    const MetadataCase cases[] = {
+        {"raw", "repeat", OPENUSD_SILK_COLOR_SPACE_RAW, OPENUSD_SILK_WRAP_REPEAT},
+        {"sRGB", "clamp", OPENUSD_SILK_COLOR_SPACE_SRGB, OPENUSD_SILK_WRAP_CLAMP},
+        {"auto", "mirror", OPENUSD_SILK_COLOR_SPACE_AUTO, OPENUSD_SILK_WRAP_MIRROR},
+        {"unknown", "unknown", OPENUSD_SILK_COLOR_SPACE_AUTO, OPENUSD_SILK_WRAP_BLACK},
+        {"auto", "useMetadata", OPENUSD_SILK_COLOR_SPACE_AUTO, OPENUSD_SILK_WRAP_USE_METADATA}
+    };
+    for (const auto& value : cases)
+    {
+        for (bool as_string : {false, true})
+        {
+            auto network = MakeDisplacementNetwork(true, DisplacementDriver::Texture);
+            for (auto& node : network.map[HdMaterialTerminalTokens->displacement].nodes)
+            {
+                if (node.identifier != TfToken("UsdUVTexture")) { continue; }
+                node.parameters[TfToken("sourceColorSpace")] = as_string
+                    ? VtValue(std::string(value.color_space)) : VtValue(TfToken(value.color_space));
+                node.parameters[TfToken("wrapS")] = as_string
+                    ? VtValue(std::string(value.wrap)) : VtValue(TfToken(value.wrap));
+                node.parameters[TfToken("wrapT")] = as_string
+                    ? VtValue(std::string("repeat")) : VtValue(TfToken("repeat"));
+            }
+            const auto record = HdSilkMaterial::Resolve(SdfPath("/World/Displaced"), network);
+            const auto* texture = FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+            if (!texture || texture->sourceColorSpace != value.expected_color_space ||
+                texture->wrapS != value.expected_wrap || texture->wrapT != OPENUSD_SILK_WRAP_REPEAT)
+            {
+                std::cerr << "Texture metadata changed for " << value.color_space << '/' << value.wrap
+                    << " string=" << as_string << '\n';
+                return false;
+            }
+        }
+    }
+    for (const char* authored : {"", "auto", "raw", "sRGB"})
+    {
+        for (bool as_string : {false, true})
+        {
+            auto network = MakeDisplacementNetwork(true, DisplacementDriver::Texture);
+            for (auto& node : network.map[HdMaterialTerminalTokens->displacement].nodes)
+            {
+                if (node.identifier != TfToken("UsdUVTexture")) { continue; }
+                node.parameters.erase(TfToken("sourceColorSpace"));
+                if (authored[0] != '\0')
+                {
+                    node.parameters[TfToken("sourceColorSpace")] = VtValue(TfToken(authored));
+                }
+                node.parameters[TfToken("colorSpace:file")] = as_string
+                    ? VtValue(std::string("raw")) : VtValue(TfToken("raw"));
+            }
+            const auto record = HdSilkMaterial::Resolve(SdfPath("/World/Displaced"), network);
+            const auto* texture = FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+            const uint32_t expected = std::string(authored) == "sRGB"
+                ? OPENUSD_SILK_COLOR_SPACE_SRGB : OPENUSD_SILK_COLOR_SPACE_RAW;
+            if (!texture || texture->sourceColorSpace != expected)
+            {
+                std::cerr << "File color-space metadata lost or overrode an explicit texture input.\n";
+                return false;
+            }
+        }
+    }
+    std::cout << "HDSILK_TEXTURE_STRING_METADATA=passed\n";
+    return true;
+}
+
 /// Proves hdSilk resolves displacement from the authored `displacement` material
 /// terminal and from nothing else.
 ///
@@ -9137,6 +9434,27 @@ bool VerifyMaterialXUvChainProjection()
         }
     }
 
+    for (bool divergentFallback : {false, true})
+    {
+        HdMaterialNetworkMap defaults = MakeSharedUvPrimvarNetwork();
+        auto& nodes = defaults.map[HdMaterialTerminalTokens->surface].nodes;
+        nodes[0].parameters[TfToken("default")] = VtValue(GfVec2f(0.125F, 0.75F));
+        nodes[2].parameters[TfToken("default")] =
+            VtValue(GfVec2f(divergentFallback ? 0.5F : 0.125F, 0.75F));
+        const HdSilkMaterialRecord resolved = HdSilkMaterial::Resolve(streamPath, defaults);
+        if (resolved.textures.size() != (divergentFallback ? 1u : 2u) ||
+            std::any_of(resolved.textures.begin(), resolved.textures.end(),
+                [](const HdSilkMaterialTexture& texture)
+                {
+                    return !texture.hasUvFallback || texture.uvFallback[0] != 0.125F ||
+                        texture.uvFallback[1] != 0.75F;
+                }))
+        {
+            std::cerr << "MaterialX coordinate defaults were lost or divergent defaults were merged.\n";
+            return false;
+        }
+    }
+
     HdSilkMaterialRecord chainedBehindUnsupported = HdSilkMaterial::Resolve(
         materialPath, MakePlace2dBehindUnsupportedNodeNetwork());
     if (!chainedBehindUnsupported.textures.empty() ||
@@ -9329,6 +9647,54 @@ MakeMdlNetwork(
     map.map[HdMaterialTerminalTokens->surface] = network;
     map.terminals.push_back(surface.path);
     return map;
+}
+
+bool VerifyMdlIdentifierFraming()
+{
+    const std::vector<std::pair<std::string, std::string>> cases{
+        {"OmniPBR.mdl", "OmniPBR"},
+        {"C:\\materials (old)\\OmniPBR.mdl", "OmniPBR(float,::base::mono_mode)"},
+        {"omniverse://server:3009/Looks (v2)/Surface.mdl", "Surface(::a::Mode,float)"},
+        {"C:\\materials\\caf\xC3\xA9.mdl", "Surface(::a::Mode)"},
+        {"::materials::Surface", "Surface(::a::Mode)"},
+        {"empty-material.mdl", ""},
+        {"C:\\path:(text).mdl", "opaque:identity(broken"},
+    };
+    for (const auto& entry : cases)
+    {
+        std::string module = "unchanged";
+        std::string material = "unchanged";
+        if (!HdSilkDecodeMdlIdentifier(
+                HdSilkEncodeMdlIdentifier(entry.first, entry.second), &module, &material) ||
+            module != entry.first || material != entry.second)
+        {
+            return false;
+        }
+    }
+    for (const char* invalid : {"mdl:", "mdl:len::x", "mdl:len:0:x", "mdl:len:2:x",
+             "mdl:len:-1:x", "mdl:len:99999999999999999999999999999:x", "not-mdl:a:b"})
+    {
+        std::string module = "unchanged";
+        std::string material = "unchanged";
+        if (HdSilkDecodeMdlIdentifier(invalid, &module, &material) ||
+            module != "unchanged" || material != "unchanged")
+        {
+            return false;
+        }
+    }
+    for (size_t index : {size_t(0), size_t(1), size_t(2), size_t(4), size_t(5)})
+    {
+        const auto& entry = cases[index];
+        std::string module;
+        std::string material;
+        if (!HdSilkDecodeMdlIdentifier(
+                "mdl:" + entry.first + ":" + entry.second, &module, &material) ||
+            module != entry.first || material != entry.second)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 std::map<TfToken, VtValue>
@@ -9531,7 +9897,7 @@ bool VerifyMdlAdapterAbiMismatchAndSiblingDependency()
         return false;
     }
     const std::string description = HdSilkMdlAdapter::GetDescription();
-    return description.find("ABI version") != std::string::npos;
+    return description.find("ABI version " + std::to_string(OPENUSD_MDL_ABI_VERSION)) != std::string::npos;
 }
 
 #if defined(HDSILK_PROBE_MDL_ADAPTER)
@@ -10949,6 +11315,292 @@ bool VerifyDeformationInvalidation(
 
 int main(int argc, char** argv)
 {
+    if (argc >= 5 && std::string(argv[1]) == "--decode-scene-identities")
+    {
+        std::array<char, 4096> errorText{};
+        openusd_error_buffer error{errorText.data(), errorText.size(), 0};
+        openusd_stage* stage = nullptr;
+        openusd_silk_session* session = nullptr;
+        if (openusd_stage_open(argv[3], &stage, &error) != OPENUSD_STATUS_OK ||
+            openusd_stage_set_edit_target_session_layer(stage, &error) != OPENUSD_STATUS_OK ||
+            openusd_silk_session_create_from_stage(argv[2], stage, &session, &error) != OPENUSD_STATUS_OK)
+        {
+            std::cerr << errorText.data() << "\n";
+            openusd_stage_release(stage);
+            return 1;
+        }
+        ParsedPage page;
+        bool valid = Sync(session, &page, &error) == OPENUSD_STATUS_OK;
+        std::vector<openusd_silk_source_identity_query> queries;
+        for (const ParsedMeshIdentity& identity : page.mesh_identities)
+        {
+            queries.push_back({identity.path.c_str(), identity.instance_index, 0});
+        }
+        openusd_silk_source_identity_request request{
+            sizeof(request), OPENUSD_SILK_SOURCE_IDENTITY_VERSION, page.page_revision,
+            queries.data(), static_cast<uint32_t>(queries.size()), 65536};
+        size_t required = 0;
+        valid = valid && openusd_silk_session_resolve_source_identities(
+            session, &request, nullptr, 0, &required, &error) == OPENUSD_STATUS_BUFFER_TOO_SMALL &&
+            required >= 8 && required <= request.maximum_result_bytes;
+        std::vector<uint8_t> result(required);
+        valid = valid && openusd_silk_session_resolve_source_identities(
+            session, &request, result.data(), result.size(), &required, &error) == OPENUSD_STATUS_OK;
+        std::vector<std::string> actual;
+        size_t offset = 8;
+        size_t firstRecordBytes = 0;
+        uint32_t version = 0;
+        uint32_t count = 0;
+        valid = valid &&
+            ReadValue(result.data(), result.size(), 0, &version) &&
+            ReadValue(result.data(), result.size(), 4, &count) &&
+            version == OPENUSD_SILK_SOURCE_IDENTITY_VERSION && count == queries.size();
+        for (uint32_t item = 0; valid && item < count; ++item)
+        {
+            uint32_t length = 0;
+            uint32_t levels = 0;
+            valid = ReadValue(result.data(), result.size(), offset, &length) &&
+                ReadValue(result.data(), result.size(), offset + 4, &levels);
+            offset += 8;
+            if (!valid || length > result.size() - offset)
+            {
+                valid = false;
+                break;
+            }
+            actual.emplace_back(reinterpret_cast<const char*>(result.data() + offset), length);
+            offset += length;
+            if (levels == 0)
+            {
+                openusd_matrix4d sourceTransform{};
+                valid = openusd_geom_xformable_get_world_transform(
+                    stage, actual.back().c_str(), 1, 0.0, &sourceTransform, &error) == OPENUSD_STATUS_OK;
+                for (size_t component = 0; valid && component < 16; ++component)
+                {
+                    const double authored = sourceTransform.values[component];
+                    const double emitted = page.mesh_identities[item].transform[component];
+                    valid = std::isfinite(authored) && std::isfinite(emitted) &&
+                        std::fabs(authored - emitted) <=
+                            std::max(1e-6, 1e-9 * std::max(std::fabs(authored), std::fabs(emitted)));
+                }
+            }
+            for (uint32_t level = 0; valid && level < levels; ++level)
+            {
+                int32_t index = -1;
+                valid = ReadValue(result.data(), result.size(), offset, &index) &&
+                    ReadValue(result.data(), result.size(), offset + 4, &length);
+                offset += 8;
+                if (!valid || index < 0 || length > result.size() - offset)
+                {
+                    valid = false;
+                    break;
+                }
+                actual.back() += "|" +
+                    std::string(reinterpret_cast<const char*>(result.data() + offset), length) +
+                    ":" + std::to_string(index);
+                offset += length;
+            }
+            std::cout << "Source: " << actual.back() << "\n";
+            if (item == 0)
+            {
+                firstRecordBytes = offset - 8;
+            }
+        }
+        valid = valid && offset == result.size();
+        std::vector<uint8_t> sentinel(result.size(), 0x5a);
+        const auto refused = [&]()
+        {
+            size_t size = SIZE_MAX;
+            const auto status = openusd_silk_session_resolve_source_identities(
+                session, &request, sentinel.data(), sentinel.size(), &size, &error);
+            return status != OPENUSD_STATUS_OK && status != OPENUSD_STATUS_BUFFER_TOO_SMALL &&
+                size == 0 && std::all_of(sentinel.begin(), sentinel.end(),
+                    [](uint8_t value) { return value == 0x5a; });
+        };
+        request.maximum_result_bytes = static_cast<uint32_t>(result.size());
+        required = 0;
+        valid = valid && openusd_silk_session_resolve_source_identities(
+            session, &request, result.data(), result.size(), &required, &error) == OPENUSD_STATUS_OK &&
+            required == result.size();
+        required = 0;
+        valid = valid && openusd_silk_session_resolve_source_identities(
+            session, &request, sentinel.data(), sentinel.size() - 1, &required, &error) ==
+                OPENUSD_STATUS_BUFFER_TOO_SMALL &&
+            required == result.size() && std::all_of(sentinel.begin(), sentinel.end(),
+                [](uint8_t value) { return value == 0x5a; });
+        --request.maximum_result_bytes;
+        valid = valid && refused();
+        request.maximum_result_bytes = 65536;
+        ++request.version;
+        valid = valid && refused();
+        --request.version;
+        if (!queries.empty())
+        {
+            std::vector<openusd_silk_source_identity_query> maximum(
+                OPENUSD_SILK_MAX_SOURCE_IDENTITY_QUERIES, queries.front());
+            request.queries = maximum.data();
+            request.query_count = static_cast<uint32_t>(maximum.size());
+            request.maximum_result_bytes = OPENUSD_SILK_MAX_SOURCE_IDENTITY_RESULT_BYTES;
+            size_t maximumRequired = 0;
+            valid = valid && openusd_silk_session_resolve_source_identities(
+                session, &request, nullptr, 0, &maximumRequired, &error) == OPENUSD_STATUS_BUFFER_TOO_SMALL;
+            std::vector<uint8_t> maximumResult(maximumRequired);
+            valid = valid && openusd_silk_session_resolve_source_identities(
+                session, &request, maximumResult.data(), maximumResult.size(), &maximumRequired, &error) ==
+                    OPENUSD_STATUS_OK &&
+                ReadValue(maximumResult.data(), maximumResult.size(), 4, &count) &&
+                count == OPENUSD_SILK_MAX_SOURCE_IDENTITY_QUERIES &&
+                maximumResult.size() == 8 + firstRecordBytes * count;
+            for (uint32_t item = 0; valid && item < count; ++item)
+            {
+                valid = std::equal(result.begin() + 8, result.begin() + 8 + firstRecordBytes,
+                    maximumResult.begin() + 8 + firstRecordBytes * item);
+            }
+            ++request.query_count;
+            valid = valid && refused();
+            request.queries = queries.data();
+            request.query_count = static_cast<uint32_t>(queries.size());
+            request.maximum_result_bytes = 65536;
+        }
+        ++request.page_revision;
+        valid = valid && refused();
+        --request.page_revision;
+        if (!queries.empty())
+        {
+            const auto previous = queries.back();
+            queries.back().path = "/Missing";
+            valid = valid && refused();
+            queries.back() = previous;
+            queries.back().instance_index = -1;
+            valid = valid && refused();
+            queries.back() = previous;
+            queries.back().instance_index = INT32_MAX;
+            valid = valid && refused();
+            queries.back() = previous;
+            queries.back().reserved = 1;
+            valid = valid && refused();
+            queries.back() = previous;
+        }
+        valid = valid && openusd_stage_define_prim(
+            stage, "/IdentityEdit", "Scope", &error) == OPENUSD_STATUS_OK && refused();
+        ParsedPage next;
+        valid = valid && Sync(session, &next, &error) == OPENUSD_STATUS_OK && refused();
+        request.page_revision = next.page_revision;
+        std::vector<uint8_t> replay(result.size());
+        valid = valid && openusd_silk_session_resolve_source_identities(
+            session, &request, replay.data(), replay.size(), &required, &error) == OPENUSD_STATUS_OK &&
+            replay == result;
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::vector<std::string> expected(argv + 4, argv + argc);
+        std::sort(actual.begin(), actual.end());
+        std::sort(expected.begin(), expected.end());
+        if (!valid || actual != expected)
+        {
+            std::cerr << errorText.data() << "\n";
+            std::cerr << "Published identities did not resolve to every expected source prim.\n";
+            for (const auto& path : actual)
+            {
+                std::cerr << "Actual: " << path << "\n";
+            }
+            return 1;
+        }
+        return 0;
+    }
+    if (argc == 5 && (std::string(argv[1]) == "--mdl-udim-stage-match" ||
+        std::string(argv[1]) == "--mdl-normal-stage-match"))
+    {
+        const bool udim = std::string(argv[1]) == "--mdl-udim-stage-match";
+        std::array<char, 4096> errorText{};
+        openusd_error_buffer error{errorText.data(), errorText.size(), 0};
+        std::vector<uint8_t> reference;
+        for (int index = 3; index < 5; ++index)
+        {
+            openusd_silk_session* session = nullptr;
+            if (openusd_silk_session_create(argv[2], argv[index], &session, &error) != OPENUSD_STATUS_OK)
+            {
+                std::cerr << errorText.data() << "\n";
+                return 1;
+            }
+            ParsedPage page;
+            std::vector<uint8_t> commands;
+            const auto status = Sync(session, &page, &error, nullptr, 0, nullptr, &commands);
+            openusd_silk_session_release(session);
+            const auto* material = FindParsedMaterial(page, "/World/Material");
+            if (status != OPENUSD_STATUS_OK || !page.material_valid || page.mesh_upsert_count != 1 ||
+                material == nullptr || material->surface_kind != OPENUSD_SILK_SURFACE_MDL_DISTILLED ||
+                material->textures.size() != 1 ||
+                (udim ? std::get<2>(material->textures[0]).find("<UDIM>") == std::string::npos :
+                    std::get<0>(material->textures[0]) != OPENUSD_SILK_MATERIAL_NORMAL))
+            {
+                std::cerr << "The tiny stage did not publish its expected one-mesh textured material: "
+                          << argv[index] << "\n" << errorText.data() << "\n";
+                return 1;
+            }
+            std::cout << "Texture asset: " << std::get<2>(material->textures[0]) << "\n";
+            if (index == 3) { reference = commands; }
+            else if (commands != reference)
+            {
+                std::cerr << "Reference and projected material command bytes differ.\n";
+                return 1;
+            }
+        }
+        std::cout << (udim ? "Authored/default UDIM" : "Reference/detail normal")
+                  << " stage material bytes match: " << reference.size() << "\n";
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--mdl-identifiers")
+    {
+        return VerifyMdlIdentifierFraming() ? 0 : 1;
+    }
+    if (argc == 4 && std::string(argv[1]) == "--mdl-compatibility-network")
+    {
+        for (bool framed : {false, true})
+        {
+            auto map = MakeMdlNetwork(argv[2], argv[3], {});
+            if (framed)
+            {
+                map.map[HdMaterialTerminalTokens->surface].nodes[0].identifier =
+                    TfToken(HdSilkEncodeMdlIdentifier(argv[2], argv[3]));
+            }
+            const auto record = HdSilkMaterial::Resolve(SdfPath("/CompatibilityProbe"), map);
+            const auto* specular = FindScalar(record, OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL);
+            if (record.surfaceKind != OPENUSD_SILK_SURFACE_MDL_DISTILLED ||
+                specular == nullptr || specular->componentCount != 1 ||
+                std::fabs(specular->value[0] - 0.5F) >= 1e-5F)
+            {
+                std::cerr << "The original MDL module/signature did not survive network projection.\n";
+                return 1;
+            }
+        }
+        return 0;
+    }
+    if (argc == 4 && std::string(argv[1]) == "--mdl-compatibility-diagnostic")
+    {
+        const auto result = HdSilkMdlAdapter::Distill(
+            "/CompatibilityProbe", argv[2], argv[3], {});
+        const bool specular = std::any_of(result.scalars.begin(), result.scalars.end(),
+            [](const HdSilkMdlDistilledScalar& scalar) {
+                return scalar.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL &&
+                    scalar.componentCount == 1 && std::fabs(scalar.value[0] - 0.5F) < 1e-5F;
+            });
+        if (!result.succeeded || !specular ||
+            result.diagnostic.find("exact-signature compatibility") == std::string::npos)
+        {
+            std::cerr << "MDL compatibility projection/diagnostic was lost: "
+                      << result.diagnostic << "\n";
+            return 1;
+        }
+        std::cout << result.diagnostic << "\n";
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--uv-fallback")
+    {
+        return VerifyMissingPrimvarFallback() ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--texture-metadata")
+    {
+        return VerifyTextureStringMetadata() ? 0 : 1;
+    }
     if (argc != 3)
     {
         std::cerr << "Usage: hdsilk_probe <plugin-path> <stage-path>\n";
@@ -10975,6 +11627,12 @@ int main(int argc, char** argv)
     if (!VerifyDisplacementTerminal())
     {
         std::cerr << "hdSilk displacement terminal resolution check failed.\n";
+        return 4;
+    }
+    if (!VerifyTextureStringMetadata()) { return 4; }
+    if (!VerifyLuminanceMixWireValidation())
+    {
+        std::cerr << "hdSilk diffuse texture luminance-mix validation failed.\n";
         return 4;
     }
     if (!VerifyMaterialXUvChainProjection())

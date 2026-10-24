@@ -168,6 +168,21 @@ internal sealed class UsdPhysicsTickScheduler
         return new UsdPhysicsTickPlan(bounded, false, false);
     }
 
+    /// <summary>Plans a complete capture batch without rounding a partial final step upward.</summary>
+    internal UsdPhysicsTickPlan PlanExactSteps(int steps)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(steps);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(steps, _maxSubSteps);
+        double targetSeconds = checked(_stepIndex + (ulong)steps) * _stepSeconds;
+        if (_hasAuthoredRange && targetSeconds - _durationSeconds > _endTolerance)
+        {
+            throw new ArgumentOutOfRangeException(nameof(steps),
+                "The requested exact step batch exceeds the remaining authored timeline.");
+        }
+        return new UsdPhysicsTickPlan(
+            steps, _hasAuthoredRange && _durationSeconds - targetSeconds <= _endTolerance, false);
+    }
+
     /// <summary>Records that the world actually advanced explicitly requested sub-steps.</summary>
     internal void CommitSteps(in UsdPhysicsTickPlan plan)
     {

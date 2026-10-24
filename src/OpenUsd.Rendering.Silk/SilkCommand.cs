@@ -826,7 +826,8 @@ public readonly ref struct SilkMeshUpsertCommand
     public SilkMeshCullStyle CullStyle =>
         (SilkMeshCullStyle)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[44..48]);
 
-    /// <summary>Gets the USD prim path.</summary>
+    /// <summary>Gets the retained Hydra prim path, which can name a propagated prototype.</summary>
+    /// <remarks>Resolve authored source paths with <see cref="OpenUsdSilkSession.ResolveSourceIdentities"/>.</remarks>
     public string Path => _path;
 
     /// <summary>Gets the number of mesh points.</summary>
@@ -1720,7 +1721,25 @@ public enum SilkMaterialParameter : uint
     UseSpecularWorkflow = 14,
 
     /// <summary>Uniform volume density, one component.</summary>
-    VolumeDensity = 15
+    VolumeDensity = 15,
+
+    /// <summary>
+    /// Diffuse texture luminance mix: normalized nonnegative RGB weights, then a finite amount.
+    /// Applied before texture scale/bias; constant diffuse color and alpha are unchanged.
+    /// </summary>
+    DiffuseTextureLuminanceMix = 16,
+
+    /// <summary>OmniPBR dielectric custom-curve weight in [0,1], with F0=0.08, F90=1 and exponent 5.</summary>
+    OmniPbrSpecularLevel = 17,
+
+    /// <summary>Tangent-space detail normal, combined with the base normal using RNM.</summary>
+    DetailNormal = 18,
+
+    /// <summary>Independent detail UV affine row (m00, m01, tx), three finite components.</summary>
+    DetailUvRow0 = 19,
+
+    /// <summary>Independent detail UV affine row (m10, m11, ty), three finite components.</summary>
+    DetailUvRow1 = 20
 }
 
 /// <summary>
@@ -1813,8 +1832,9 @@ public enum SilkColorSpace : uint
 /// of the sampled texel drives the bound surface input.
 /// </summary>
 /// <remarks>
-/// These are exactly the outputs <c>UsdUVTexture</c> declares: four single-channel
-/// outputs and one three-channel output. There is no unspecified value: hdSilk
+/// The first five values are the outputs <c>UsdUVTexture</c> declares: four single-channel
+/// outputs and one three-channel output. The remaining values explicitly reduce RGB
+/// for scalar opacity only. There is no unspecified value: hdSilk
 /// rejects a connection whose output it cannot resolve rather than publishing a
 /// channel nobody authored, so every entry on the wire names a real port.
 /// </remarks>
@@ -1833,7 +1853,16 @@ public enum SilkTextureChannel : uint
     A = 3,
 
     /// <summary>The three-channel <c>outputs:rgb</c> port.</summary>
-    Rgb = 4
+    Rgb = 4,
+
+    /// <summary>Mean of scaled RGB, for scalar opacity textures only.</summary>
+    AverageRgb = 5,
+
+    /// <summary>MDL luminance of scaled RGB, for scalar opacity textures only.</summary>
+    LuminanceRgb = 6,
+
+    /// <summary>Maximum scaled RGB component, for scalar opacity textures only.</summary>
+    MaximumRgb = 7
 }
 
 /// <summary>
@@ -2168,6 +2197,61 @@ public readonly ref struct SilkMaterialUpsertCommand
         {
             throw new InvalidDataException("A material scalar entry is truncated.");
         }
+        uint parameter = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4));
+        if (parameter == (uint)SilkMaterialParameter.DetailNormal)
+        {
+            throw new InvalidDataException("A detail normal requires a texture.");
+        }
+        if (parameter is (uint)SilkMaterialParameter.DetailUvRow0 or (uint)SilkMaterialParameter.DetailUvRow1)
+        {
+            if (components != 3)
+            {
+                throw new InvalidDataException("A detail UV row requires three finite components.");
+            }
+            for (int component = 0; component < 3; component++)
+            {
+                if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8 + (
+                    component * 4), 4))))
+                {
+                    throw new InvalidDataException("A detail UV row requires three finite components.");
+                }
+            }
+        }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) ==
+            (uint)SilkMaterialParameter.OmniPbrSpecularLevel)
+        {
+            float level = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8, 4));
+            if (components != 1 || !float.IsFinite(level) || level < 0 || level > 1)
+            {
+                throw new InvalidDataException("OmniPBR specular level requires one finite value in [0,1].");
+            }
+        }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) ==
+            (uint)SilkMaterialParameter.DiffuseTextureLuminanceMix)
+        {
+            if (components != 4)
+            {
+                throw new InvalidDataException("A diffuse texture luminance mix requires four components.");
+            }
+            float sum = 0;
+            for (int component = 0; component < 4; component++)
+            {
+                float value = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8 + (component * 4), 4));
+                if (!float.IsFinite(value) || (component < 3 && (value < 0 || value > 1)))
+                {
+                    throw new InvalidDataException(
+                        "Diffuse texture luminance weights must be in [0,1] and all four values must be finite.");
+                }
+                if (component < 3)
+                {
+                    sum += value;
+                }
+            }
+            if (MathF.Abs(sum - 1) > 0.000001f)
+            {
+                throw new InvalidDataException("Diffuse texture luminance weights must sum to one.");
+            }
+        }
         return offset + size;
     }
 
@@ -2190,15 +2274,24 @@ public readonly ref struct SilkMaterialUpsertCommand
             throw new InvalidDataException(
                 "A material texture entry requires a resolved asset path.");
         }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) is
+            (uint)SilkMaterialParameter.DiffuseTextureLuminanceMix or (
+                uint)SilkMaterialParameter.OmniPbrSpecularLevel or
+            (uint)SilkMaterialParameter.DetailUvRow0 or (uint)SilkMaterialParameter.DetailUvRow1)
+        {
+            throw new InvalidDataException("The material operation requires a constant scalar, not a texture.");
+        }
         if (components is 0 or > 4)
         {
             throw new InvalidDataException(
                 "A material texture entry must consume one to four components.");
         }
-        if (channel > (uint)SilkTextureChannel.Rgb)
+        if (channel > (uint)SilkTextureChannel.MaximumRgb ||
+            (channel > (uint)SilkTextureChannel.Rgb &&
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) != (uint)SilkMaterialParameter.Opacity))
         {
             throw new InvalidDataException(
-                "A material texture entry must name a known UsdUVTexture output channel.");
+                "A material texture entry must name a known output channel or a supported scalar opacity reduction.");
         }
         // The channel and the consumed width are two statements about the same
         // connection, so a page that disagrees with itself is malformed rather

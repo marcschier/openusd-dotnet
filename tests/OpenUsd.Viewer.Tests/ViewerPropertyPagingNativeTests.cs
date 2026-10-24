@@ -7,6 +7,10 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using OpenUsd.Geom;
+using OpenUsd.Lux;
+using OpenUsd.Shade;
 
 namespace OpenUsd.Viewer.Tests;
 
@@ -27,6 +31,7 @@ public sealed class ViewerPropertyPagingNativeTests
             "#usda 1.0\ndef Xform \"Source\"\n{\n custom double details:reference = 42\n" +
             " custom int[] details:array = [" + string.Join(", ", Enumerable.Range(1, 1000)) + "]\n}\n");
         await File.WriteAllBytesAsync(Path.Combine(root, "texture.bin"), [1, 2, 3, 4]);
+        await File.WriteAllTextAsync(Path.Combine(root, "shader.opaque"), "Unresolved source asset.");
         var source = new StringBuilder("""
             #usda 1.0
             (
@@ -35,20 +40,67 @@ public sealed class ViewerPropertyPagingNativeTests
             )
             def Xform "World" (
                 prepend references = @reference.usda@</Source>
+                prepend apiSchemas = ["MaterialBindingAPI"]
             )
             {
                 custom double details:reference
                 custom double details:animated.timeSamples = { 0: 0, 10: 20 }
+                custom double details:blocked = None
                 custom asset details:texture = @texture.bin@
                 custom float details:connected = 4
                 custom float details:connected.connect = </Graph.outputs:value>
+                double3 xformOp:translate = (1, 2, 3)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel material:binding = </Looks/Material>
 
             """);
         for (int index = 0; index < 257; index++)
         {
             source.Append(FormattableString.Invariant($"    custom double reviewTest:a{index:D3} = {index}\n"));
         }
-        source.Append("    rel reviewTest:link = </Other>\n}\ndef Xform \"Other\" {}\n");
+        source.Append("""
+                rel reviewTest:link = </Other>
+            }
+            def Xform "Other" {}
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                float inputs:roughness = 0.5
+                color3f inputs:diffuseColor.connect = </Graph.outputs:value>
+                custom float inputs:custom = 7
+                token outputs:surface
+                custom float focalLength = 100
+            }
+            def Shader "AssetSurface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform token info:id = "UsdPreviewSurface"
+                uniform asset info:custom:sourceAsset = @shader.opaque@
+                float inputs:roughness = 0.75
+            }
+            def Shader "CodeSurface"
+            {
+                uniform token info:implementationSource = "sourceCode"
+                uniform token info:id = None
+                float inputs:roughness = 0.6
+            }
+            def Shader "NoIdSurface"
+            {
+                float inputs:roughness = 0.25
+            }
+            def Shader "BlockedIdSurface"
+            {
+                uniform token info:id = None
+                float inputs:roughness = 0.35
+            }
+            def Camera "Camera" {}
+            def RectLight "Light" (prepend apiSchemas = ["ShapingAPI"]) {}
+            def Scope "Looks"
+            {
+                def Material "Material" {}
+                def Material "Alternate" {}
+            }
+            """);
         string original = source.ToString();
         await File.WriteAllTextAsync(path, original);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(80));
@@ -97,6 +149,8 @@ public sealed class ViewerPropertyPagingNativeTests
         {
             await completion.Task.WaitAsync(TimeSpan.FromSeconds(90));
             await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+            await Assert.That(await File.ReadAllTextAsync(Path.Combine(root, "shader.opaque")))
+                .IsEqualTo("Unresolved source asset.");
         }
         finally
         {
@@ -135,11 +189,303 @@ public sealed class ViewerPropertyPagingNativeTests
             ViewerStageSession session = await opened.Task.WaitAsync(timeout);
             TreeView tree = Required<TreeView>(main, "StageHierarchy");
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });
+            Required<TabControl>(main, "InspectorTabs").SelectedItem = Required<TabItem>(main, "ValueTab");
+            TextBox shaderQuery = Required<TextBox>(main, "InspectorPropertyQuery");
+            await WaitAsync(() => shaderQuery.IsEnabled, timeout);
+            Button registry = Required<Button>(main, "InspectorShaderRegistryRead");
+            await WaitAsync(() => registry.IsVisible && registry.IsEnabled, timeout);
+            await Assert.That(registry.IsVisible && registry.IsEnabled).IsTrue();
+            await Assert.That(AutomationProperties.GetAutomationId(registry))
+                .IsEqualTo("inspector.shaderRegistryRead");
+            await FilterAttributeAsync(main, shaderQuery, "inputs:roughness", timeout, "/Surface");
+            await Assert.That(ValueText(main)).DoesNotContain("Sdr input");
+            registry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => registry.IsEnabled, timeout);
+            await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text)
+                .StartsWith("Sdr definition: UsdPreviewSurface");
+            await Assert.That(ValueText(main)).Contains("Sdr input; type: float");
+            await Assert.That(ValueText(main)).Contains("connectable: Yes");
+            ComboBox propertyGroup = Required<ComboBox>(main, "InspectorPropertyGroup");
+            await Assert.That(AutomationProperties.GetAutomationId(propertyGroup))
+                .IsEqualTo("inspector.propertyGroup");
+            await FilterAttributeAsync(main, shaderQuery, "inputs:custom", timeout, "/Surface");
+            await Assert.That(ValueText(main)).Contains("No matching property in this Sdr definition");
+            await Assert.That(AutomationProperties.GetAutomationId(PropertyButtons(main).Single()))
+                .IsEqualTo("edit.property:/Surface.inputs:custom");
+            await FilterAttributeAsync(main, shaderQuery, "inputs:diffuseColor", timeout, "/Surface");
+            await ExpandPropertyDetailsAsync(main, timeout);
+            await Assert.That(ValueText(main)).Contains("/Graph.outputs:value");
+            Click(main, "InspectorPropertyCurrentTime");
+            await WaitAsync(() => registry.IsEnabled, timeout);
+            await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text)
+                .StartsWith("Read the Sdr registry explicitly");
+            await Assert.That(ValueText(main)).DoesNotContain("Sdr input");
+            registry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => registry.IsEnabled, timeout);
+            await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text)
+                .StartsWith("Sdr definition: UsdPreviewSurface");
+
+            var shaderReadEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (var releaseShaderRead = new ManualResetEventSlim())
+            {
+                Task held = session.Scheduler.InvokeAsync(_ =>
+                {
+                    shaderReadEntered.TrySetResult();
+                    releaseShaderRead.Wait(timeout);
+                    return 0;
+                }, timeout).AsTask();
+                try
+                {
+                    await shaderReadEntered.Task.WaitAsync(timeout);
+                    propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderOutputs;
+                    shaderQuery.Text = string.Empty;
+                    await WaitAsync(() => Required<TextBlock>(main, "InspectorPropertyPageState").Text ==
+                        "Properties 1-1 of 1 matches", timeout);
+                    await Assert.That(ValueText(main)).Contains("outputs:surface");
+                    await Assert.That(ValueText(main)).DoesNotContain("inputs:roughness");
+                    propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderInputs;
+                    await FilterAttributeAsync(main, shaderQuery, "inputs:roughness", timeout, "/Surface");
+                    await Assert.That(ValueText(main)).Contains("Sdr input; type: float");
+                    registry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    await Assert.That(registry.IsEnabled).IsFalse();
+                    await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text)
+                        .IsEqualTo("Reading bounded Sdr registry snapshot...");
+                    tree.SelectedItem = null;
+                    await Assert.That(registry.IsVisible).IsFalse();
+                }
+                finally
+                {
+                    releaseShaderRead.Set();
+                    await held.WaitAsync(timeout);
+                }
+            }
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });
+            await WaitAsync(() => registry.IsVisible && registry.IsEnabled, timeout);
+            await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text)
+                .StartsWith("Read the Sdr registry explicitly");
+            await Assert.That(ValueText(main)).DoesNotContain("Sdr input");
+            registry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => registry.IsEnabled, timeout);
+            await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text)
+                .StartsWith("Sdr definition: UsdPreviewSurface");
+            await Assert.That(ValueText(main)).Contains("Sdr input; type: float");
+            Click(main, "InspectorPropertyDefaultTime");
+            await WaitAsync(() => registry.IsEnabled, timeout);
+            await Assert.That(ValueText(main)).DoesNotContain("Sdr input");
+            foreach ((string primPath, string reason, string value) in new[]
+            {
+                ("/AssetSurface", "sourceAsset", "0.75"),
+                ("/CodeSurface", "sourceCode", "0.6"),
+                ("/NoIdSurface", "No shader info:id", "0.25"),
+                ("/BlockedIdSurface", "info:id is blocked", "0.35")
+            })
+            {
+                tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                    item => item.Tag is ViewerHierarchyTreeNode node && node.Entry.Path == primPath);
+                await WaitAsync(() => registry.IsVisible && registry.IsEnabled, timeout);
+                await FilterAttributeAsync(main, shaderQuery, "inputs:roughness", timeout, primPath);
+                registry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitAsync(() => registry.IsEnabled, timeout);
+                await Assert.That(Required<TextBlock>(main, "InspectorShaderRegistryState").Text).Contains(reason);
+                await Assert.That(ValueText(main)).DoesNotContain("Sdr input");
+                await Assert.That(ValueText(main)).Contains($"Value: {value}");
+            }
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Camera" });
+            await WaitAsync(() => shaderQuery.IsEnabled && !registry.IsVisible, timeout);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;
+            await FilterAttributeAsync(main, shaderQuery, "focalLength", timeout, "/Camera");
+            await Assert.That(ValueText(main)).Contains("Value: 50");
+            await WaitAsync(() => PropertyButtons(main).Single().IsEnabled, timeout);
+            PropertyButtons(main).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
+            PropertyEditWindow cameraEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
+            await WaitAsync(() => Required<Button>(cameraEdit, "SetPropertyButton").IsEnabled ||
+                Required<TextBlock>(cameraEdit, "PropertyEditStatus").Text?.StartsWith(
+                    "Review edit unavailable:", StringComparison.Ordinal) == true, timeout);
+            await Assert.That(Required<TextBlock>(cameraEdit, "PropertyEditStatus").Text)
+                .DoesNotContain("Review edit unavailable:");
+            await Assert.That(Required<ComboBox>(cameraEdit, "PropertySelector").SelectedItem?.ToString())
+                .IsEqualTo("focalLength (float)");
+            Required<TextBox>(cameraEdit, "PropertyValue").Text = "60";
+            Click(cameraEdit, "SetPropertyButton");
+            await WaitAsync(() => Required<TextBlock>(cameraEdit, "PropertyEditStatus").Text ==
+                "Review edit applied.", timeout);
+            await cameraEdit.CloseAsync();
+            await WaitAsync(() => ValueText(main).Contains("Value: 60", StringComparison.Ordinal), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdGeomCamera.Wrap(stage.GetPrim("/Camera")).FocalLength, timeout)).IsEqualTo(60f);
+            await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
+            Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await WaitAsync(() => ValueText(main).Contains("Value: 50", StringComparison.Ordinal), timeout);
+            await Assert.That(propertyGroup.SelectedIndex).IsEqualTo((int)ViewerPropertyGroup.Camera);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdGeomCamera.Wrap(stage.GetPrim("/Camera")).FocalLength, timeout)).IsEqualTo(50f);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Light" });
+            await WaitAsync(() => shaderQuery.IsEnabled && !registry.IsVisible, timeout);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
+            shaderQuery.Text = string.Empty;
+            await WaitAsync(() => Required<TextBlock>(main, "InspectorPropertyPageState").Text ==
+                "Properties 1-13 of 13 matches", timeout);
+            foreach (string lightControl in new[]
+            {
+                "inputs:intensity",
+                "inputs:exposure",
+                "inputs:diffuse",
+                "inputs:specular",
+                "inputs:colorTemperature",
+                "inputs:enableColorTemperature",
+                "inputs:normalize",
+                "inputs:color",
+                "inputs:width",
+                "inputs:height",
+                "inputs:shaping:focus",
+                "inputs:shaping:cone:angle",
+                "inputs:shaping:cone:softness"
+            })
+            {
+                await Assert.That(ValueText(main)).Contains(lightControl);
+            }
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderInputs;
+            await FilterAttributeAsync(main, shaderQuery, "inputs:intensity", timeout, "/Light");
+            float originalIntensity = await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Light.Intensity, timeout);
+            await WaitAsync(() => PropertyButtons(main).Single().IsEnabled, timeout);
+            PropertyButtons(main).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
+            PropertyEditWindow lightEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
+            await WaitAsync(() => Required<Button>(lightEdit, "SetPropertyButton").IsEnabled, timeout);
+            await Assert.That(Required<ComboBox>(lightEdit, "PropertySelector").SelectedItem?.ToString())
+                .IsEqualTo("inputs:intensity (float)");
+            Required<TextBox>(lightEdit, "PropertyValue").Text = "42";
+            Click(lightEdit, "SetPropertyButton");
+            await WaitAsync(() => Required<TextBlock>(lightEdit, "PropertyEditStatus").Text ==
+                "Review edit applied.", timeout);
+            await lightEdit.CloseAsync();
+            await WaitAsync(() => ValueText(main).Contains("Value: 42", StringComparison.Ordinal), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Light.Intensity, timeout)).IsEqualTo(42f);
+            await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
+            Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await WaitAsync(() => Required<MenuItem>(main, "EditRedoMenuItem").IsEnabled, timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Light.Intensity, timeout))
+                .IsEqualTo(originalIntensity);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
+            await FilterAttributeAsync(main, shaderQuery, "inputs:width", timeout, "/Light");
+            float originalWidth = await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout);
+            await WaitAsync(() => PropertyButtons(main).Single().IsEnabled, timeout);
+            PropertyButtons(main).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
+            PropertyEditWindow widthEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
+            await WaitAsync(() => Required<Button>(widthEdit, "SetPropertyButton").IsEnabled, timeout);
+            await Assert.That(Required<ComboBox>(widthEdit, "PropertySelector").SelectedItem?.ToString())
+                .IsEqualTo("inputs:width (float)");
+            Required<TextBox>(widthEdit, "PropertyValue").Text = "3";
+            Click(widthEdit, "SetPropertyButton");
+            await WaitAsync(() => Required<TextBlock>(widthEdit, "PropertyEditStatus").Text ==
+                "Review edit applied.", timeout);
+            await widthEdit.CloseAsync();
+            await WaitAsync(() => ValueText(main).Contains("Value: 3", StringComparison.Ordinal), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(3f);
+            await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
+            Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await WaitAsync(
+                () => ValueText(main).Contains($"Value: {originalWidth:R}", StringComparison.Ordinal),
+                timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(originalWidth);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });
+            await WaitAsync(() => shaderQuery.IsEnabled && registry.IsVisible, timeout);
+            await WaitAsync(() => Required<TextBlock>(main, "InspectorPropertyPageState").Text ==
+                "No properties match the current filter.", timeout);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.All;
+            await FilterAttributeAsync(main, shaderQuery, "focalLength", timeout, "/Surface");
+            await Assert.That(ValueText(main)).Contains("Value: 100");
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/World" });
             Required<TabControl>(main, "InspectorTabs").SelectedItem = Required<TabItem>(main, "ValueTab");
             TextBox query = Required<TextBox>(main, "InspectorPropertyQuery");
             TextBlock state = Required<TextBlock>(main, "InspectorPropertyPageState");
-            await WaitAsync(() => query.IsEnabled, timeout);
+            await WaitAsync(() => query.IsEnabled && !registry.IsVisible, timeout);
+            await Assert.That(registry.IsVisible).IsFalse();
+            query.Text = string.Empty;
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Transform;
+            await WaitAsync(() => state.Text == "Properties 1-2 of 2 matches", timeout);
+            await Assert.That(ValueText(main)).Contains("xformOp:translate");
+            await Assert.That(ValueText(main)).Contains("xformOpOrder");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.MaterialBindings;
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                .Any(static row => row.Text == "material:binding: /Looks/Material")).IsTrue();
+            await Assert.That(PropertyButtons(main)).IsEmpty();
+            Button bindingButton = main.GetVisualDescendants().OfType<Button>().Single(
+                static button => AutomationProperties.GetAutomationId(button) ==
+                    "edit.binding:/World.material:binding");
+            await WaitAsync(() => bindingButton.IsEnabled, timeout);
+            bindingButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
+            PropertyEditWindow bindingEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
+            await WaitAsync(() => Required<Button>(bindingEdit, "SetPropertyButton").IsEnabled, timeout);
+            Required<TextBox>(bindingEdit, "PropertyValue").Text = "/Looks/Alternate";
+            Click(bindingEdit, "SetPropertyButton");
+            await WaitAsync(() => Required<TextBlock>(bindingEdit, "PropertyEditStatus").Text ==
+                "Review edit applied.", timeout);
+            await bindingEdit.CloseAsync();
+            await WaitAsync(() => Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                .Any(static row => row.Text == "material:binding: /Looks/Alternate"), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => stage.GetBoundMaterial(stage.GetPrim("/World")).Path, timeout))
+                .IsEqualTo("/Looks/Alternate");
+            await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
+            Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await WaitAsync(() => Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                .Any(static row => row.Text == "material:binding: /Looks/Material"), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => stage.GetBoundMaterial(stage.GetPrim("/World")).Path, timeout))
+                .IsEqualTo("/Looks/Material");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Other;
+            query.Text = "reviewTest:";
+            ComboBox propertyFilter = Required<ComboBox>(main, "InspectorPropertyFilter");
+            await Assert.That(propertyFilter.IsEnabled).IsTrue();
+            await Assert.That(AutomationProperties.GetAutomationId(propertyFilter))
+                .IsEqualTo("inspector.propertyFilter");
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.AuthoredAttributes;
+            await WaitAsync(() => state.Text == "Properties 1-32 of 257 matches", timeout);
+            Click(main, "InspectorPropertyNext");
+            await Assert.That(state.Text).IsEqualTo("Properties 33-64 of 257 matches");
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.Relationships;
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(PropertyButtons(main)).IsEmpty();
+            await Assert.That(Required<Button>(main, "InspectorPropertyPrevious").IsEnabled).IsFalse();
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.UnauthoredAttributes;
+            await WaitAsync(() => state.Text == "No properties match the current filter.", timeout);
+            await Assert.That(PropertyButtons(main)).IsEmpty();
+            query.Text = "visibility";
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(ValueText(main)).Contains("inherited");
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.AuthoredAttributes;
+            await WaitAsync(() => state.Text == "No properties match the current filter.", timeout);
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.BlockedAttributes;
+            query.Text = "details:blocked";
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(AutomationProperties.GetAutomationId(PropertyButtons(main).Single()))
+                .IsEqualTo("edit.property:/World.details:blocked");
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.TimeSampledAttributes;
+            query.Text = "details:animated";
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(AutomationProperties.GetAutomationId(PropertyButtons(main).Single()))
+                .IsEqualTo("edit.property:/World.details:animated");
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.UnknownAuthoredState;
+            await WaitAsync(() => state.Text == "No properties match the current filter.", timeout);
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.All;
             query.Text = "reviewTest:";
             await WaitAsync(() => state.Text == "Properties 1-32 of 258 matches", timeout);
             await Assert.That(PropertyButtons(main).Length).IsEqualTo(32);
@@ -174,6 +520,7 @@ public sealed class ViewerPropertyPagingNativeTests
                 .IsEqualTo("edit.property:/World.reviewTest:a256");
 
             query.Text = "REVIEWTEST:a256";
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.AuthoredAttributes;
             await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
             await Assert.That(state.Text).IsEqualTo("Properties 1-1 of 1 matches");
             await Assert.That(Required<Button>(main, "InspectorPropertyPrevious").IsEnabled).IsFalse();
@@ -196,9 +543,12 @@ public sealed class ViewerPropertyPagingNativeTests
             Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             await WaitAsync(() => Required<MenuItem>(main, "EditRedoMenuItem").IsEnabled, timeout);
             await Assert.That(query.Text).IsEqualTo("REVIEWTEST:a256");
+            await Assert.That(propertyFilter.SelectedIndex).IsEqualTo((int)ViewerPropertyFilter.AuthoredAttributes);
+            await Assert.That(propertyGroup.SelectedIndex).IsEqualTo((int)ViewerPropertyGroup.Other);
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => stage.GetPrim("/World").GetDouble("reviewTest:a256"), timeout)).IsEqualTo(256d);
             await WaitAsync(() => query.IsEnabled, timeout);
+            propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.All;
             query.Text = "relationship";
             await WaitAsync(() => PropertyButtons(main).Length == 0 &&
                 Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
@@ -412,11 +762,11 @@ public sealed class ViewerPropertyPagingNativeTests
     }
 
     private static async Task FilterAttributeAsync(
-        MainWindow main, TextBox query, string name, CancellationToken timeout)
+        MainWindow main, TextBox query, string name, CancellationToken timeout, string primPath = "/World")
     {
         query.Text = name;
         await WaitAsync(() => PropertyButtons(main) is [Button button] &&
-            AutomationProperties.GetAutomationId(button) == $"edit.property:/World.{name}", timeout);
+            AutomationProperties.GetAutomationId(button) == $"edit.property:{primPath}.{name}", timeout);
     }
 
     private static T Required<T>(Control owner, string name) where T : Control =>

@@ -174,6 +174,7 @@ internal static class ViewerCommandIds
     internal const string PhysicsSpeedQuadruple = "physics.speed.quadruple";
     internal const string PhysicsPreviewApply = "physics.previewApply";
     internal const string PhysicsBake = "physics.bake";
+    internal const string PhysicsRecordSequence = "physics.recordSequence";
     internal const string PhysicsGizmoNone = "physics.gizmo.none";
     internal const string PhysicsGizmoMove = "physics.gizmo.move";
     internal const string PhysicsGizmoRotate = "physics.gizmo.rotate";
@@ -491,6 +492,8 @@ internal static class ViewerCommandCatalog
             ViewerCommandCheckKind.Check),
         new(ViewerCommandIds.PhysicsBake, ViewerCommandGroup.Physics,
             "Bake...", "Bake physics simulation", Gesture: "B"),
+        new(ViewerCommandIds.PhysicsRecordSequence, ViewerCommandGroup.Physics,
+            "Record Sequence...", "Record physics sequence"),
         new(ViewerCommandIds.PhysicsGizmoNone, ViewerCommandGroup.Physics,
             "No Gizmo", "Physics manipulation gizmo: No Gizmo",
             ViewerCommandCheckKind.Radio, "physics.gizmo", "Q"),

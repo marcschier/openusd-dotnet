@@ -197,6 +197,7 @@ HdSilkInstancer::ComputeInstanceSamples(SdfPath const& prototypeId)
         HdSilkInstanceSample sample;
         sample.transform = instancerTransform;
         sample.index = static_cast<int64_t>(instanceIndices[i]);
+        sample.sourcePickIndex = static_cast<int64_t>(i);
         samples.push_back(sample);    }
 
     if (const VtValue* translations = FindPrimvar(
@@ -361,6 +362,12 @@ HdSilkInstancer::ComputeInstanceSamples(SdfPath const& prototypeId)
             HdSilkInstanceSample composed;
             composed.transform = sample.transform * parentSample.transform;
             composed.index = (parentSample.index * stride) + sample.index;
+            const int64_t pickStride = static_cast<int64_t>(instanceIndices.size());
+            if (parentSample.sourcePickIndex > (maximum - sample.sourcePickIndex) / pickStride)
+            {
+                throw std::overflow_error("The hdSilk source-pick instance index overflows.");
+            }
+            composed.sourcePickIndex = parentSample.sourcePickIndex * pickStride + sample.sourcePickIndex;
 
             // The chain composes by concatenation, outermost first: the parent
             // levels exactly as the parent resolved them, then this level's own

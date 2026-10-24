@@ -192,7 +192,10 @@ public enum SilkShaderFeatures
     ClearcoatRoughnessMap = 1024,
 
     /// <summary>An index-of-refraction texture is bound.</summary>
-    IorMap = 2048
+    IorMap = 2048,
+
+    /// <summary>An independently transformed detail normal is bound.</summary>
+    DetailNormalMap = 4096
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -202,6 +205,7 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.Uv |
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
+        SilkShaderFeatures.DetailNormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
         SilkShaderFeatures.EmissiveMap |
         SilkShaderFeatures.MetallicMap |
@@ -214,6 +218,7 @@ public readonly record struct SilkShaderPermutationId
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
+        SilkShaderFeatures.DetailNormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
         SilkShaderFeatures.EmissiveMap |
         SilkShaderFeatures.MetallicMap |
@@ -296,11 +301,11 @@ public readonly record struct SilkShaderPermutationId
                 SilkBindingLayoutDescriptor.IorSamplerBinding,
                 SilkBindingLayoutDescriptor.IorTextureBinding);
         }
-        AddTextureSlots(
-            slots,
-            SilkShaderFeatures.NormalMap,
-            SilkBindingLayoutDescriptor.NormalSamplerBinding,
-            SilkBindingLayoutDescriptor.NormalTextureBinding);
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
+        {
+            AddTextureSlots(slots, SilkBindingLayoutDescriptor.NormalSamplerBinding,
+                SilkBindingLayoutDescriptor.NormalTextureBinding);
+        }
         if ((Features & MapFeatures) != 0)
         {
             // The material's single composite image, declared for every
@@ -314,7 +319,31 @@ public readonly record struct SilkShaderPermutationId
                 SilkBindingLayoutDescriptor.CompositeSamplerBinding,
                 SilkBindingLayoutDescriptor.CompositeTextureBinding);
         }
-        return SilkBindingLayoutDescriptor.ForMaterial(slots);
+        SilkBindingLayoutDescriptor layout = SilkBindingLayoutDescriptor.ForMaterial(slots);
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
+        {
+            // Append after shared resources to preserve every existing descriptor offset.
+            var extended = new List<SilkBindingSlot>(layout.MaterialSlots);
+            AddTextureSlots(extended, SilkBindingLayoutDescriptor.DetailNormalSamplerBinding,
+                SilkBindingLayoutDescriptor.DetailNormalTextureBinding);
+            extended.Add(new(0, SilkBindingLayoutDescriptor.NormalValuesTextureBinding,
+                SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment));
+            extended.Add(new(0, SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding,
+                SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment));
+            layout = layout with { MaterialSlots = extended };
+        }
+        if ((Features & MapFeatures) != 0)
+        {
+            layout = layout with
+            {
+                MaterialSlots = [.. layout.MaterialSlots,
+                    new(0, SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding,
+                        SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+                    new(0, SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding,
+                        SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment)]
+            };
+        }
+        return layout;
     }
 
     internal SilkShaderPermutationId CanonicalizeForPipeline()
@@ -326,7 +355,7 @@ public readonly record struct SilkShaderPermutationId
 
         SilkShaderFeatures canonical =
             SilkShaderFeatures.Uv | SilkShaderFeatures.BaseColorMap;
-        if ((Features & SilkShaderFeatures.NormalMap) != 0)
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
         {
             canonical |= SilkShaderFeatures.NormalMap;
         }
@@ -358,7 +387,7 @@ public readonly record struct SilkShaderPermutationId
 
         var suffix = new StringBuilder();
         AppendToken(suffix, Features, SilkShaderFeatures.Uv, "uv");
-        AppendToken(suffix, Features, SilkShaderFeatures.NormalMap, "normal");
+        AppendToken(suffix, Features, SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap, "normal");
         return $"{baseName}.{suffix}";
     }
 
@@ -375,7 +404,7 @@ public readonly record struct SilkShaderPermutationId
         {
             suffix.Append("+material");
         }
-        if ((Features & SilkShaderFeatures.NormalMap) != 0)
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
         {
             suffix.Append("+normal");
         }
@@ -399,20 +428,6 @@ public readonly record struct SilkShaderPermutationId
             SilkBindingKind.SampledTexture,
             0,
             SilkShaderStageVisibility.Fragment));
-    }
-
-    private void AddTextureSlots(
-        List<SilkBindingSlot> slots,
-        SilkShaderFeatures feature,
-        uint samplerBinding,
-        uint textureBinding)
-    {
-        if ((Features & feature) == 0)
-        {
-            return;
-        }
-
-        AddTextureSlots(slots, samplerBinding, textureBinding);
     }
 
     private static void AppendToken(
@@ -617,6 +632,14 @@ public readonly record struct SilkBindingLayoutDescriptor(
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
 
+    // Normal-mapped surfaces and density volumes use disjoint shader permutations.
+    internal const uint DetailNormalSamplerBinding = VolumeSamplerBinding;
+    internal const uint DetailNormalTextureBinding = VolumeDensityTextureBinding;
+    internal const uint NormalValuesTextureBinding = 37;
+    internal const uint DetailNormalValuesTextureBinding = 38;
+    internal const uint DiffuseValuesTextureBinding = 39;
+    internal const uint EmissiveValuesTextureBinding = 40;
+
     private static IReadOnlyList<SilkBindingSlot> SharedMeshSlots =>
     [
         new(
@@ -814,6 +837,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (BaseColorSamplerBinding, BaseColorTextureBinding),
             SilkMaterialParameter.Normal =>
                 (NormalSamplerBinding, NormalTextureBinding),
+            SilkMaterialParameter.DetailNormal =>
+                (DetailNormalSamplerBinding, DetailNormalTextureBinding),
             SilkMaterialParameter.Roughness =>
                 (RoughnessMetallicSamplerBinding, RoughnessMetallicTextureBinding),
             SilkMaterialParameter.Metallic =>
@@ -1066,7 +1091,7 @@ public readonly record struct SilkVertexLayoutDescriptor(
         }
     }
 
-    private bool Matches(SilkVertexLayoutDescriptor expected)
+    internal bool Matches(SilkVertexLayoutDescriptor expected)
     {
         if (Stride != expected.Stride || Attributes.Count != expected.Attributes.Count)
         {

@@ -11,6 +11,31 @@ pack leg with explicit unavailable-native-input deferral evidence may defer the 
 failed/cancelled producers and duplicate, expired or mismatched artifacts fail visibly. Original
 bundle/smoke commands and strict local OpenUsd package-source mapping are unchanged. Viewer
 distribution remains outside the six publication gates, but its applicable PR check must pass.
+The barrier retains the observed run, job and artifact API responses in
+`openusd-viewer-input-readiness`, including when validation fails. Rejected pack-job errors
+include the expected run/source and observed job identity, status and conclusion; inspect
+the retained step conclusions rather than inferring readiness from the final PR check rollup.
+Run `pwsh -File eng/test-viewer-input-readiness.ps1` for the focused provenance and diagnostic checks.
+
+Windows Viewer workflow fixtures live in an owned `work` directory below the fresh evidence
+root, not the global `TMP` directory, whose ancestors can deny the directory leases required
+for review recovery. The runner uses the filesystem's spelling of every scratch-directory
+component; reparse-point ancestors are rejected, not redirected. This keeps verified-source
+alias and filesystem-lease checks unchanged. A differently cased ancestor must not turn a
+document-opening test into a stage-ready timeout.
+Run `pwsh -File eng/test-managed-workflow-paths.ps1` on Windows for the focused regression.
+
+When `OPENUSD_VIEWER_TEST_NATIVE_ROOT` requires a native Viewer test runtime, the
+test assembly registers its configured plugin tree and constructs the primary
+resolver in its module initializer, after configuring native library lookup and
+before any test starts. This follows the documented single-threaded resolver
+first-use contract. Individual parallel fixtures must not race first stage
+opening against plugin registration. Invalid required plugin configuration fails
+startup rather than becoming a native-test skip.
+Without that prerequisite, parallel fixtures reproduced a fatal
+`PlugRegistry::DemandPluginForType` call during resolver construction from
+`UsdStage.Open`, before any test report was written. Serializing the tests or
+retrying a failed host is not a substitute for initialization before dispatch.
 
 **On this page:** [Workflow graph](#workflow-and-evidence-graph) ·
 [Managed runner](#managed-test-runner) · [Performance](#performance-safety-gates) ·
@@ -188,6 +213,7 @@ leak between scenarios.
 ```powershell
 .\eng\run-viewer-workflow-tests.ps1 `
   -NativeRuntimeRoot 'D:\openusd-runtime' `
+  -PhysicsRuntimeRoot 'D:\openusd-physics-runtime' `
   -OutputRoot 'D:\viewer-evidence\new-run'
 ```
 
@@ -196,6 +222,23 @@ The gate builds the current Viewer test project, restoring only after a missing-
 `-SkipBuild` instead uses an already-built matching test graph. Use `-ListScenarios` to list
 workflows, or `-Scenario asset-relink` for a focused run. Partial runs are identified as partial
 in the evidence rather than presented as the full registered set.
+
+The registered `physics-recording` scenario additionally requires a matching
+`PhysicsRuntimeRoot\bin\openusd_physx.dll`; if that root is omitted, the runner checks the
+repository's `native\install\shim\win-x64-physx` prefix. The Windows render workflow builds the
+locked CPU physics shim before running the full set. Other selected scenarios do not acquire
+that prerequisite. The dedicated test process uses
+`OPENUSD_VIEWER_PHYSICS_RECORDING_SMOKE=1` and retains its outputs under
+`OPENUSD_VIEWER_PHYSICS_RECORDING_EVIDENCE_ROOT`. The runner supplies
+`OPENUSD_VIEWER_PHYSICS_RUNTIME_ROOT`; the test hashes the actually loaded solver and requires it
+to match that prefix rather than accepting another ABI-compatible DLL found by the loader.
+
+It records actual exact-step physics through the coordinator and the Physics menu/command palette,
+opens the completed gallery, cancels after a captured frame, retries from the advanced paused world,
+and refuses stale physics inputs, looping and an overlong simulation range before stepping.
+It also proves live interpolation and interactive command submission cannot enter the recording.
+`ViewerCompletedJobPreviewTests` separately pins verified thumbnail reads beyond Windows'
+legacy `MAX_PATH` limit without changing hash, alias or reparse-point admission.
 
 The sequence and authored-product journeys default to D3D12. Pass `-CaptureRenderer Vulkan`
 with `-Scenario render-sequence,authored-product` to execute the same pixel, output, cancellation,
@@ -502,6 +545,137 @@ These are pixel-ownership gates; per-point geometry arrays are not included in t
 `DisplacementPixelRefusalKeepsPublishedPixelsUntilRetry` additionally requires exact
 old pixels during refusal and exact new control pixels after retry on D3D12/Vulkan.
 
+`SilkInstanceSlotTests` injects partial native writes, one-byte-below replacement
+capacity, failed publication and changed caster counts into admitted color/shadow
+tables. It requires exact old bytes on refusal, full rewrites after partial spare
+corruption, two-slot reuse and final charge release. The nested-instance real-backend
+gate also checks mask-split coverage and retirement pixels with buffer admission.
+Page-capacity cases assert exact color/shadow limits before CPU publication, rollback
+across multiple geometries, culling-dependent grouping and original-option replay.
+`InstancePageCapacityRefusalKeepsPublishedPixelsUntilRetry` requires exact old pixels
+under a one-byte-below growth limit and all four instanced quads after successful retry
+on D3D12/Vulkan, without rebuilding their shared geometry.
+Uniform cases require a failed write to remain retryable without changing cached
+mesh/frame identities. Under admission, partial writes and one-byte-below spare
+capacity preserve exact published uniform bytes; successful updates reuse two charged
+blocks and disposal returns both reservations. A renderer-page test fills all remaining
+buffer credit after commit and still updates mesh/frame constants from the admitted spares.
+`SilkGpuPublicationTests` also refuses deformation submission and a later instance
+allocation after a successful dispatch. Both D3D12/Vulkan must keep the published
+pose, vertex buffer, scene revision and exact old pixels until the page retries.
+The existing animation reuse gate permits only the two planned per-mesh uniform
+allocations, not additional rig-input or vertex allocations on warm pose changes.
+Shadow-page gates refuse fresh and reused candidate submissions, including the second
+light after the first completed, and require exact old scene membership and pixels.
+A combined deformation/shadow gate requires the unpublished pose's shadow to match
+CPU-resolved control pixels without repeating either dispatch after page commit.
+Display preparation cases inject upload, binding, exposure-parameter, target-format
+and one-byte-below buffer refusals on D3D12/Vulkan. They re-render the previous binding
+and require exact old pixels with exposure-sensitive inputs, then changed pixels on a successful
+retry and no new allocations for an unchanged request.
+Renderer/capture page cases also require display refusal before scene revision changes,
+survival of published display resources when a later mesh allocation fails, and
+repeated ordered replay refusal even when the next caller supplies no display target.
+The edited display config remains edited during the retained-old-scene check; resetting
+the source would hide a reload that bypassed the rejected page transaction.
+Color-pipeline refusal cases change the target format and require the previous scene
+revision and resource ownership until the new pipeline can be created.
+Selection resource cases require the old outline pixels with allocation/binding refusal
+still enabled after a rejected format or style change. Vulkan binding lifecycle tests
+create bindings without any last-created pipeline and count exact layout creation/destruction.
+Scoped-selection gates retain one old triangle-index buffer and refuse one-byte-below
+replacement capacity for one or two selected faces. A partial candidate is released,
+the previous outline can be redrawn with pressure still applied, and successful retry
+changes the selected pixels without leaking the old index ownership.
+Component-selection page cases also edit a selected prim under an eleven-byte
+remaining quota, and refuse a later target-format pipeline after candidate indices
+exist. Both retain the old scene revision and outline pixels until successful retry.
+Overlay-page cases fail binding creation before scene publication and repeat that
+refusal through targetless replay, then recover both with a supplied depth target
+and via a temporary admitted replay target whose binding is replaced on the next draw.
+Full-frame replay cases test exact 6,144-byte temporary RGBA8/D32 ownership at 32x24
+and a one-byte-short
+refusal, preserve prior pixels, and require zero final texture/buffer reservations.
+Mask preflight cases cover whole/face x-ray and authored edge/point variants.
+Capture-origin replay must remain overlay-free even when the following page requests
+selection. A late color-pipeline refusal after resized overlay preparation retains
+the old resources, while an injected device-loss generation retires them instead.
+`SilkRenderTargetCopyTests` checks exact ordered RGBA8/binary16/binary32 and D32 copies,
+including subsequent submissions, rejected shapes/formats/usages/aliases, foreign or
+disposed targets and active render scopes. A one-byte CPU/staging pool proves that
+copying allocates no pixel staging, while disposed targets remain charged until their
+submission releases them. The RHI probe and clean-feed NativeAOT imaging consumer
+also execute color/depth copies. Metal cases require an actual macOS host; compilation
+on Windows is not runtime qualification.
+Final-color refusal cases keep the published mesh uniform handle through two
+refused submissions, preserve prior pixels when submission was refused before
+execution, and require exact mesh-plus-frame byte counts on successful retry.
+Both preadmitted and lazily allocated spare capacities return to their original
+reservation totals on refusal; warmed successful rendering writes no new bytes.
+Instanced-frame cases also preserve the exact published table handle, bytes and
+prior pixels through repeated refusal. Managed cases cover growth, three writes
+to one slot before completion, new slots, commit and device loss. Returning to an
+intermediate mesh identity after rollback must rewrite its constants rather than
+trust a CPU checkpoint that a failed frame overwrote.
+Display and selection frame cases refuse the final color submission after new
+parameters/bindings or component indices were prepared, then draw the original
+settings while new binding creation remains refused. The retained image must match
+exactly, and success must publish the changed settings without leaked reservations.
+GPU page-activation cases exercise metadata-only and replacement meshes together
+with removal/addition, fresh-page capacity, final commit and rollback. Actual
+deformation cases activate already-dispatched candidate vertices, refuse color
+submission, then require the original pose/vertex handles, publication revisions,
+reservation totals and pixels before a successful retry.
+Shadow activation cases cover fresh, borrowed-spare and resized atlases with both
+rollback and commit, requiring exact atlas/binding identity, revisions, render counts,
+resource disposal and texture-pool accounting.
+Public page render/capture cases refuse both the color submission and the final
+GPU copy after scene rendering completed. They require unchanged CPU/GPU revisions,
+mesh identity, reservations and exact caller color/depth pixels through repeated
+replay refusal. Native session cases dispose the rejected page and require replay
+to finish before another native sync advances. Shadow movement/removal and staged
+physics geometry have final-copy refusal cases with old scene/pixel recovery.
+Retained physics rendering must also restore the CPU geometry and authored stash,
+and must leave a previously rejected native page pending through both failed and
+successful retained frames. Output resize tests measure exact old/new color-depth
+overlap and one-byte-short refusal, including partial target-allocation cleanup.
+Cancellation after scene submission must preserve the prior public frame while a
+later ordered replay succeeds despite the cancelled original token. Conversely,
+injected cleanup failure after a completed output copy must report the failure
+without reverting scene metadata behind the already-published pixels.
+Capture-readback refusal cases fill the shared staging pool after a native scene edit.
+Color-only, HDR+depth, selected capture, CPU OCIO and GPU OCIO variants must retain the
+old scene and stop further native sync until full capture replay succeeds. The caller
+disposes its CPU OCIO processor before replay to prove that only the transform descriptor
+is retained. Every returned color/HDR/depth plane then matches an independent fresh capture.
+Pick-publication cases refuse the pick submission and the later output-copy submission,
+requiring old scene/color, faulted rather than successful hit tasks, exact buffer/texture/
+staging reservations and a subsequent real hit. Vulkan's preparation-only staging refusal
+also verifies release of a framebuffer lease created before descriptor allocation failed.
+Target-allocation cases refuse both the first target and the depth target after color
+allocation, requiring a faulted request and complete partial-target cleanup.
+Resized face/edge/point cases refuse either pick submission or publication, preserve
+both caller color/depth planes and all three pool totals, then pick the old frame under
+exhausted texture capacity before retrying the resized frame. The successful retry must
+resolve the exact authored face, edge or point, not an emitted primitive index.
+Ring tests discard only the unpublished reservation, preserve another in-flight token,
+reuse the original persistent buffer and reject foreign/stale reservations.
+The NativeAOT RHI probe also renders and resolves a real face pick under shared
+buffer/texture/staging pools on D3D12 and Vulkan, then requires every reservation
+to be released after renderer teardown.
+Shared host-policy cases cover independent configuration domains, full-width ceilings,
+strict malformed/zero refusal, explicit embedding overrides and Storm rejection.
+Child-launch checks distinguish effective maxima from parent credit and strip ambient
+values even when only one domain is configured. Real-device cases share one policy
+across two devices, exhaust CPU copy and texture credit, compare uploaded pixels and
+require all three pools to return to zero. Native MCP sequence/product and Viewer
+authored-product journeys require per-domain diagnostics and released ownership.
+Lattice ownership cases require exact 10,240-byte workspace/output admission for an
+8-cube native OCIO bake, one-byte-below refusal, byte-identical output and release of
+the temporary workspace. Cache eviction, invalidation, clearing, provider failure and
+concurrent duplicate bakes retain the right owners. Display refusal cases additionally
+clear the cache and still render the old pixels while their published lease remains charged.
+
 `SilkShadowAdmissionTests` verifies real shadow pixels, quota refusal, retry and descriptor
 retirement on both backends. The core shadow suite checks charged two-atlas reuse and
 failure-atomic shadow-instance buffer growth. Controlled negative probes catch early
@@ -588,6 +762,85 @@ and metadata. These are preparation safeguards, not shared texture/staging admis
 
 ## GPU page publication
 
+### Kernel-bounded Windows diagnostics
+
+`eng\run-bounded-process.ps1` starts a child suspended, installs mandatory Windows
+job process/tree commit ceilings, and only then resumes it. The job disallows
+breakaway and kills remaining descendants on explicit stop or disposal, including
+descendants whose parent already exited. Only the explicitly listed
+stdin/stdout/stderr handles are inherited. Use an existing absolute executable and
+working directory, explicit `-MaximumCommitBytes`, and a new `-OutputDirectory`.
+Timeouts and nonzero exits fail explicitly; the receipt retains the original exit
+code, observed job-process count and raw Windows peak-memory counters.
+
+Packaged executables, including Microsoft Store PowerShell, are refused while
+the child is still suspended. An observed Store PowerShell launcher retained its
+own job membership but launched an unpackaged .NET child outside the private job;
+that child survived job termination. A process-count or parent-membership check
+alone is not a tree-containment guarantee. Use an unpackaged launcher or pass the
+actual unpackaged `.dotnet\dotnet.exe` directly, without a packaged shell between
+the guard and the workload. The caller running the guard may itself be packaged;
+the executable being resumed must not be.
+
+`-MaximumWorkingSetBytes` is optional and may require additional Windows privilege.
+A requested limit that cannot be installed fails before child creation; it is never
+silently ignored. Private commit limits are not a total physical-RAM bound: mapped
+files, system cache and GPU/driver allocations remain separate domains.
+
+Use `-PhysicalReserveBytes` and `-CommitReserveBytes` for pre-start host
+admission. Each requested counter must cover the complete child commit ceiling
+**plus** its reserve. Omitting a reserve preserves the existing opt-in behavior;
+explicit zero still requires headroom for the full ceiling. Windows
+`GetPerformanceInfo` supplies available physical pages and system commit
+headroom (`CommitLimit - CommitTotal`), not free virtual-address space.
+The runner writes `host-admission.json` before child creation, including refused
+requests, and refuses insufficient headroom without waiting, retrying, inspecting
+the executable or creating child stdout/stderr. Counter/query errors fail closed.
+An admitted execution also embeds this snapshot in its normal receipt. This is
+an observation, not a host-memory reservation: other processes and GPU/driver
+allocations can still change available memory after admission. Existing workload
+gates, device checks and kernel job limits remain necessary.
+Run `eng\test-host-memory-admission.ps1 -OutputDirectory <fresh-directory>` for
+exact-fit, one-byte-short, overflow and no-child refusal cases. Its optional
+`-ProbeExecutable <absolute-dotnet-path>` also checks admitted and legacy
+`--version` execution under a 128-MiB cap; zero reserves there are test inputs,
+not warehouse policy.
+
+Build the native check in a Windows Developer PowerShell, using an existing
+artifact directory:
+
+```powershell
+cl /std:c++17 /W4 /WX /EHsc /O2 eng\test-bounded-native-memory.cpp `
+  /Foartifacts\test-bounded-native-memory.obj /Feartifacts\test-bounded-native-memory.exe /link psapi.lib
+.\eng\test-bounded-process.ps1 -OutputDirectory <new-evidence-directory> `
+  -NativeMemoryProbe <absolute-path-to-artifacts\test-bounded-native-memory.exe>
+```
+
+If the driver is Microsoft Store PowerShell, select an unpackaged PowerShell 7
+child host with `-PowerShellExecutable`, such as an official portable installation.
+Windows PowerShell 5.1 is not a substitute for the modern allocation fixture:
+its .NET Framework runtime can terminate rather than return the expected refusal.
+Pass an installed Store PowerShell path through
+`-PackagedPowerShellExecutable` to additionally assert refusal with empty
+stdout/stderr before any packaged child code executes. The summary records
+whether this environment-specific check was requested; it is not inferred from
+the ordinary positive checks.
+
+The minimized nine-case check tests argument fidelity, native allocation refusal under a 128-MiB job cap,
+accepted parent/child payload and live private counters, timeout, descendant and
+idempotent-stop cleanup, explicit tree stop after parent exit, nonzero exit propagation,
+and the working-set privilege path.
+It loads no warehouse or topology data. Polling may
+additionally monitor host headroom, but is not a substitute for pre-start admission.
+
+On this Windows host, the extended job information's peak-memory counters can exceed
+the configured commit ceiling even though excess native commits fail and the measured
+accepted parent/child private bytes remain below it. The receipt exposes this observation
+with `reportedPeakExceedsConfiguredCommit`; its cause is not attributed. Do not use those
+raw counters as proof of a strict historical aggregate-commit or physical-RAM ceiling.
+Installed limits are read back before execution, and refusal is tested with actual
+`VirtualAlloc` requests rather than inferred from the peak counter.
+
 `SilkGpuBufferBudgetTests` checks exact and full-width thresholds, refusal before a
 recording factory runs, immutable configuration, shared-device and concurrent reservations,
 creation rollback, delayed release through owner leases and withheld credits when native
@@ -649,7 +902,7 @@ case verifies replay does not hold the native-session lock. Vulkan uses SwiftSha
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 24 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 27 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 `hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable
@@ -741,6 +994,15 @@ page on offscreen D3D12 and Vulkan. It proves index 96/127 affects only linked m
 then removes and restores that light. Set `OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED=1` and supply
 the matched ABI-24 native library/plugin paths; missing prerequisites fail rather than skip in this
 profile. These fixtures qualify the bounded profile, not full-warehouse material fidelity or rendering.
+
+The direct frame-buffer light reads are guarded at compiled SPIR-V, not merely by source text.
+`verify-artifacts.py` rejects mesh fragment programs whose per-function numeric local-storage
+lower bound plus private numeric globals exceeds 1024 bytes. This is a static spill-risk guard,
+not a device-register or process-memory estimate. The old full-frame array copies require
+15180 bytes and fail; the direct reads require 844 bytes. Python tests cover the exact boundary,
+one-vector overflow, storage-buffer exclusion, independent functions and malformed streams.
+Native 97/128-light controls and paired D3D12/Vulkan light/shadow pixel cases remain unchanged;
+the native fixture now expects the current exact page ABI 27 rather than stale ABI 25.
 
 The default D3D12 cases continue to require WARP. Set
 `OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED=1` to additionally run
@@ -1078,7 +1340,112 @@ obvious failure. The test derives the size from `SurfaceParameters` in `mesh.sla
 copies to write that many floats, not merely to allocate that many bytes: the offscreen RHI conformance harness
 allocated the right size and filled two rows fewer.
 
+## Native page allocation preflight
+
+`LargeTrianglePageRefusalPrecedesPayloadCopies` in the native publication-allocation
+probe measures every ordinary allocation during refusal of a 1.2-MB mesh payload.
+Neither a 64-KiB page ceiling nor a one-byte-short ceiling may allocate 64 KiB or
+more; caller sentinels and exact-limit retry bytes must remain unchanged. The full
+allocation-failure sweep and deferred acknowledgement checks run beside it.
+
 ## Optional MDL adapter gates
+
+`SilkWarehouseMdlWrapperTests.DiffuseTintReachesConstantAndTexturedHdrPixels` compares
+constant and decoded PNG diffuse tint against independent PreviewSurface controls on
+D3D12 and Vulkan. It requires identical texture scale/bias, color space, wrap and
+primvar identity, exact HDR bytes, an untinted negative control, unchanged USD source,
+and no failed/missing-texture fallback. Native adapter cases cover mixed provenance,
+zero/scalar tint, malformed values, non-finite/overflow refusal and finite texture
+tints outside the byte-texture range. Extended tint is also compared on hardware D3D12.
+Grading variants additionally compare brightness/addition applied before tint,
+require a tint-only control to differ for textures, and require unchanged constant
+color when no texture is active. Native
+`AlbedoGradingAppliesBeforeTintOnlyToTexturesAndPreservesAlpha` checks inherited
+wrapper values, authored overrides, zero/negative brightness, unchanged alpha/origin,
+malformed/non-finite/overflow rejection and separate desaturation projection.
+
+`hdsilk_texture_metadata` separately checks string/token equivalence for wrap and
+color-space parameters and Hydra's `colorSpace:file` metadata. Explicit non-auto
+`sourceColorSpace` takes precedence; absent/auto values use file metadata. The real
+PNG tint comparison also exercises that live scene-index metadata path.
+
+`ScalarTextureInfluenceReachesHdrWithoutDuplicateOrmInputs` checks direct and packed
+roughness/metallic blends. It compares exact affine wire values and HDR bytes with
+independent PreviewSurface controls, requires a full-strength negative control to
+differ, and checks that ORM selection does not publish duplicate standalone maps.
+Native SDK cases additionally cover zero/full influence, out-of-range and non-finite
+refusal, texture origin and the actual warehouse wrapper's 0.45 roughness influence.
+
+`AuthoredUvTransformMatchesClockwiseThenScaleTextureCoordinates` compares an OmniPBR
+nonuniform scale, 90-degree clockwise rotation and translation with independently
+composed `UsdTransform2d` nodes. It checks the material affine, exact HDR pixels and
+an identity negative control on D3D12/Vulkan. Native ABI-3 cases cover identity,
+mirrored/zero scale, module versus authored provenance and rejected projected/alternate
+UV sets. The loader's sibling-dependency mismatch fixture now explicitly returns
+the prior ABI 3, which must be refused before reading the current result.
+
+The later optional ABI-5 gate replaces that mismatch fixture with ABI 4, while
+keeping the same explicit refusal requirement.
+
+`RotatedNormalMapBasisMatchesBakedTextureCoordinates` compares rotated and mirrored
+normal-map UV affines with geometry carrying the same baked UV coordinates. Exact
+HDR bytes must match on D3D12/Vulkan and an untransformed control must differ.
+The control preserves float trigonometry instead of replacing a tiny cosine with
+an exact zero. `SilkTangentHandednessTests` independently checks generated tangent
+signs for mirrored UVs and reversed authored normals. The shared normal shader
+updates both object and world shading through the transformed tangent basis.
+
+`NormalStrengthAndFlipsMatchExplicitUnclippedNormalAffine` compares weak and
+greater-than-one normal strengths and tangent flips with independent PreviewSurface
+affines, using constant and nonuniform 2x2 PNGs on D3D12/Vulkan. The native SDK cases
+also cover negative/zero strength, default vertical flip and non-finite refusal.
+`ByteTextureAffinePromotesWithoutClippingAndAdmitsAllLiveCopies` checks 19/31-byte
+refusals and the exact 32-byte peak for a 1x1 promoted image. Promoted UDIM tiles
+require exactly 416 bytes of overlapping ownership for a 384-byte atlas; one byte
+less must refuse without uploads or leaked credit. Fallback tests distinguish
+unclipped float values from unchanged unit-range byte storage.
+`PromotedNormalTextureMipsPreserveUnclippedDirectionAndAlpha` checks every base texel,
+an independently calculated normal mip and alpha average, and 143/144-byte ownership.
+`MaterialPreparationRefusalPreservesPixelsAndReplaysNativeRetirements` repeats
+CPU/texture/staging refusals with both byte and promoted float images on real D3D12
+and Vulkan devices. Refusal preserves all three pool totals, old pixels and native
+page order; retry applies the material and retirement, and disposal returns all credit.
+
+`DesaturationAndGradingMatchIndependentlyPremixedFloatTexels` compares the page-25
+luminance operation with independently premixed linear float texels, followed by
+explicit PreviewSurface grading/tint. Quarter/full and negative/greater-than-one mixes produce exact HDR
+bytes on D3D12/Vulkan and differ from an unmixed control; source bytes and all three
+pool totals are preserved. Unit material cases cover ordinary/UDIM/fallback ordering,
+alpha, zero/other-slot byte preservation, malformed/duplicate records, and a mix-only
+cache edit with refused CPU/texture/staging preparation followed by successful retry.
+
+`OpacityMonoModesAndCutoutMatchIndependentScalarTexels` checks all four MDL mono
+modes against explicit alpha or independently reduced float textures on D3D12/Vulkan.
+A two-thirds-opacity texel passing a half threshold must match an opaque reference,
+not retain fractional alpha. `CutoutThresholdEqualityPreservesFullyOpaqueCoverage`
+checks equality and immediately below it for scalar PreviewSurface opacity.
+The original cutout pixel cases failed before the shared shader correction.
+`OpacityRgbReductionRunsAfterAffineAndRetainsExactOwnedFloatStorage` covers the
+three RGB reductions after affine processing, ordinary/UDIM/fallback ownership and
+one-byte-short refusal; derived channels are rejected outside scalar opacity.
+
+`DiffuseEmissionRadianceAndMasksMatchIndependentHdrControls` verifies the pinned
+diffuse EDF's `1/pi` exitance-to-radiance factor for constant, texture, mask-only
+and color-times-mask emission on D3D12/Vulkan. Most references use independently
+calculated float texels; the two-image case uses an independent MaterialX product,
+keeping byte-mask sampling on the GPU. A premixed float oracle was not bit-equivalent
+to SwiftShader's byte-mask sampling (84 half channels differed by one ULP); the
+production mask was not forcibly promoted and exact HDR assertions were retained.
+Native cases also cover default/authored intensity, inactive/zero emission,
+overflow/non-finite refusal and unchanged legacy unproven-body behavior.
+
+`HighRangeSrgbTextureRetainsLinearFloatPrecision` fails if the native decoder
+linearizes an sRGB PNG into bytes before an HDR affine; independent linear float
+texels must produce the exact same HDR output on D3D12/Vulkan.
+`PreferredFloatPngDecodePreservesTransferAlphaAndExactOwnership` checks both transfer
+choices, unchanged alpha and source, 31/32-byte refusal/admission, and preserved
+legacy byte behavior. Material-level tests require precision to be selected before
+decode and the same shared CPU owner to reach the decoder.
 
 The MDL slice is proven in two configurations, because the two states it must handle are mutually
 exclusive within one build.
@@ -1626,10 +1993,25 @@ bash ./eng/test-storm-native-child-linux.sh
 
 The X11 gate uses Xvfb. The Wayland gate uses Weston's compositor-managed XWayland/XWM and runs the
 entire mapped Avalonia shell through it so Storm and Vulkan can switch without restarting the
-process. The native probe serializes process-global X error traps, injects a GLX 4.6 X error and
+process. Weston uses its X11 backend nested on Xvfb: the headless backend supplies no keyboard seat,
+so XTest keyboard requests alone cannot prove real keyboard delivery there. Top-level Avalonia
+handlers and native child counters independently observe the generated input. Resize diagnostics
+wait for measured Linux resize and restoration before recording physical dimensions. Diagnostic Close
+discards edits to its disposable fixture through the ordinary guarded document-retirement lifecycle;
+interactive users still receive the unsaved-changes prompt.
+The switching fixture includes a daylight-intensity key light for the viewer's
+daylight-oriented -6-stop presentation exposure. An unlit cube at that exposure is
+nearly black; the scene-pixel, camera-change, input, and resource-drain assertions
+remain unchanged.
+Native and mapped-shell captures of the same phase may be byte-identical; that paired
+measurement is not a stale frame. Repeated frames outside that pair still fail.
+The runner requires an ABI 9 native capture immediately before each matching shell
+measurement; a shell capture cannot replace native evidence. Its summary reports the
+observed Vulkan presentation path, including CPU readback when used for display.
+The native probe serializes process-global X error traps, injects a GLX 4.6 X error and
 proves clean 4.5 fallback, rejects destroyed parent XIDs, and proves capture still returns the exact
 pre-swap frame after the post-swap backbuffer is corrupted. Viewer evidence requires native
-focus/pointer/wheel/key counter deltas and mapped-shell `XGetImage` pixels. Vulkan opaque-FD support
+focus/pointer/wheel/key counter deltas and mapped-shell `XGetImage` pixels. Vulkan presentation support
 produces 100 Storm/Vulkan switches; only a schema-valid typed unavailable diagnostic permits the
 Storm-only proof. Runner crashes, timeouts, missing/malformed artifacts, and zero native counters
 fail.
@@ -1700,6 +2082,10 @@ Scoped `TEMP` and `TMP` point to that same owned root for fixtures that create t
 directly; their prior process values are restored with the other fixture environment.
 Each scenario retains its hash-verified raw TUnit and HTML reports before the next process can
 overwrite the runner's usual paths, including test, minimum-execution and unexpected-skip failures.
+The `physics-history` scenario must also pass with the matched physics solver on `PATH`.
+Its queued edit deliberately holds the stage while the UI requests a refresh and changes the
+selected physics property. Native Storm override delivery must leave the UI responsive so it can
+release that edit; a solver-free pass alone does not exercise this deadlock regression.
 Pre-existing reports are separated as prior evidence before invocation; missing current reports
 cannot qualify as current output. Report-retention errors are explicit, preserve the original
 failing exit or exception, and fail qualification if execution otherwise succeeded. The HTML report
@@ -1990,6 +2376,21 @@ VK_KHR_external_semaphore_win32`, and `D3D11BridgeImportsPixelsAndReusesKeyedMut
 On Linux the driver is not the problem. Lavapipe is present and used, and the smoke reaches the
 compositor; the compositor is what reports `supported image handles: (none)`, so there is no handle
 type through which an external image could be imported.
+
+Displayed rendering does not depend on that import. When Avalonia returns no composition GPU
+interop, or interop with no image handle types, the viewer falls back to the `HostReadback`
+presentation path, which copies frames to host memory and draws them through a CPU bitmap. The
+same `VulkanCompositionPresentationTests` filter covers that path without external-object
+extensions: `HostReadbackSelectedWhenCompositorCannotImportExternalObjects` and
+`ExternalObjectsPreferredOverHostReadbackWhenBothAreOffered` pin the selection rule, and
+`HostReadbackPresentsChangedPixelsAcrossEditsAndResizeThenDrains` renders under SwiftShader. It
+verifies changed pixels after an edit, a resize, rejection of handle leases, and full ring drain.
+`HostReadbackCompositionSurfaceBridgeTests` in `OpenUsd.Viewer.Tests` verifies the bitmap bridge
+on a Skia-backed headless platform. `PresentCompletesOnlyAfterChangedPixelsReachTheCompositor`
+requires changed and restored pixels in the last rendered frame when presentation completes,
+without forcing another render. Presentation waits for the rendered composition batch, not an
+animation callback that precedes drawing; a pacing timeout fails instead of reporting success.
+Only zero-copy import still needs the GPU runner described below.
 
 Both are restored the same way: run these jobs on a GPU-equipped self-hosted runner. On Windows,
 once an ICD exists the `Resolve system Vulkan ICD` step reports `available=true` and every guarded

@@ -20,6 +20,10 @@ public sealed record UsdPhysicsExtractionOptions
     /// <summary>Gets whether collider mesh points and indices are recorded.</summary>
     public bool IncludeMeshData { get; init; } = true;
 
+    /// <summary>Gets whether source geometry is fingerprinted even when mesh payloads are omitted.</summary>
+    /// <remarks>This permits bounded whole-stage input validation without retaining raw geometry.</remarks>
+    public bool FingerprintMeshData { get; init; }
+
     /// <summary>Gets whether authored physics properties without a canonical key are recorded.</summary>
     /// <remarks>
     /// Unmapped properties always take part in the content fingerprint. This switch only decides
@@ -63,12 +67,33 @@ public sealed record UsdPhysicsExtractionOptions
     /// <summary>Gets the largest string byte count to record, or zero for the bound.</summary>
     public int MaxStringBytes { get; init; }
 
+    /// <summary>Gets the first object index whose geometry is retained in a bounded batch.</summary>
+    /// <remarks>Metadata and the source fingerprint still cover the whole traversal.</remarks>
+    public int GeometryObjectStart { get; init; }
+
+    /// <summary>Gets the geometry object window length, or zero to retain all geometry.</summary>
+    /// <remarks>A nonzero window requires mesh data and marks the page as partial geometry.</remarks>
+    public int GeometryObjectCount { get; init; }
+
     internal PhysicsExtractNativeOptions ToNative()
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(GeometryObjectStart);
+        ArgumentOutOfRangeException.ThrowIfNegative(GeometryObjectCount);
+        if (GeometryObjectStart > PhysicsExtractAbi.MaxObjects ||
+            GeometryObjectCount > PhysicsExtractAbi.MaxObjects - GeometryObjectStart ||
+            (GeometryObjectCount == 0 && GeometryObjectStart != 0) ||
+            (GeometryObjectCount != 0 && !IncludeMeshData))
+        {
+            throw new ArgumentException("The physics geometry object window is invalid.");
+        }
         uint flags = 0;
         if (IncludeMeshData)
         {
             flags |= PhysicsExtractAbi.OptionIncludeMeshData;
+        }
+        if (FingerprintMeshData)
+        {
+            flags |= PhysicsExtractAbi.OptionFingerprintMeshData;
         }
         if (IncludeUnmapped)
         {
@@ -100,6 +125,8 @@ public sealed record UsdPhysicsExtractionOptions
             MaxDiagnostics = Bound(MaxDiagnostics, PhysicsExtractAbi.SectionDiagnostics),
             MaxStringBytes = Bound(MaxStringBytes, PhysicsExtractAbi.SectionStrings),
             Reserved0 = 0,
+            GeometryObjectStart = (uint)GeometryObjectStart,
+            GeometryObjectCount = (uint)GeometryObjectCount,
         };
     }
 

@@ -29,7 +29,7 @@ namespace OpenUsd.Viewer;
 /// instead of racing a half-built world.
 /// </para>
 /// </remarks>
-internal sealed class ViewerPhysicsController : IAsyncDisposable
+internal sealed partial class ViewerPhysicsController : IAsyncDisposable
 {
     /// <summary>How many controller-authored edits are remembered while they are observed.</summary>
     /// <remarks>
@@ -749,8 +749,15 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         }
 
         using CancellationTokenSource linked = LinkLifetime(cancellationToken);
+        Interlocked.Increment(ref _runtimeSubmissions);
         try
         {
+            if (Volatile.Read(ref _recording) != 0)
+            {
+                Interlocked.Add(ref _refusedCommands, commands.Count);
+                return new ViewerPhysicsCommandOutcome(
+                    0, commands.Count, "Interactive commands are disabled while exact-step recording owns physics.");
+            }
             ViewerPhysicsCommandOutcome outcome = await transport
                 .SubmitCommandsAsync(commands, linked.Token)
                 .ConfigureAwait(false);
@@ -774,6 +781,10 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
             // An interaction that cannot reach the world must not fault the whole controller: the
             // user is told the input was refused and the simulation keeps running.
             return new ViewerPhysicsCommandOutcome(0, commands.Count, exception.Message);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _runtimeSubmissions);
         }
     }
 
@@ -1251,19 +1262,28 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
         IViewerPhysicsOverrideTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        if (Volatile.Read(ref _bridgeDisabled) != 0)
+        if (Volatile.Read(ref _bridgeDisabled) != 0 || Volatile.Read(ref _recording) != 0 ||
+            Interlocked.CompareExchange(ref _renderPumping, 1, 0) != 0)
         {
             return default;
         }
 
         try
         {
+            if (Volatile.Read(ref _recording) != 0)
+            {
+                return default;
+            }
             return PumpRenderFrameCore(renderSeconds, target);
         }
         catch (Exception exception)
         {
             DisableBridge(exception, target);
             return default;
+        }
+        finally
+        {
+            Volatile.Write(ref _renderPumping, 0);
         }
     }
 
@@ -1605,10 +1625,10 @@ internal sealed class ViewerPhysicsController : IAsyncDisposable
             string reason;
             try
             {
-                stored = table.TryBind(
-                    new PhysicsRenderObjectId(binding.Id, binding.Kind, instanceIndex),
-                    binding.PrimPath,
-                    instanceIndex);
+                var id = new PhysicsRenderObjectId(binding.Id, binding.Kind, instanceIndex);
+                stored = binding.ReferencePosition is { } reference && instanceIndex == 0
+                    ? table.TryBindSubtree(id, binding.PrimPath, reference, binding.ReferenceOrientation)
+                    : table.TryBind(id, binding.PrimPath, instanceIndex);
                 reason = " The bounded binding table is full, so it is not drawn.";
             }
             catch (ArgumentException exception)

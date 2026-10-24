@@ -169,8 +169,14 @@ internal static class VolumeCommandAuthoring
         ArgumentNullException.ThrowIfNull(mesh);
         byte[] pathBytes = Encoding.UTF8.GetBytes(materialPath);
         byte[] bound = new byte[mesh.Length + pathBytes.Length];
-        mesh.CopyTo(bound, 0);
-        pathBytes.CopyTo(bound, mesh.Length);
+        int materialOffset = checked(268 +
+            (int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(48)) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(52)) * 12) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(56)) * 4) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(60)) * 4));
+        mesh.AsSpan(0, materialOffset).CopyTo(bound);
+        pathBytes.CopyTo(bound, materialOffset);
+        mesh.AsSpan(materialOffset).CopyTo(bound.AsSpan(materialOffset + pathBytes.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(bound.AsSpan(4), checked((uint)bound.Length));
         BinaryPrimitives.WriteUInt64LittleEndian(
             bound.AsSpan(208),

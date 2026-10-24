@@ -10,18 +10,24 @@ add_test(NAME openusd_warehouse_audit_contract
     COMMAND openusd_warehouse_audit_probe --self-test)
 add_test(NAME openusd_warehouse_localization_contract
     COMMAND openusd_warehouse_audit_probe --localization-self-test)
-set_tests_properties(openusd_warehouse_audit_contract openusd_warehouse_localization_contract
+add_test(NAME openusd_warehouse_material_census_contract
+    COMMAND openusd_warehouse_audit_probe --material-census-self-test)
+add_test(NAME openusd_warehouse_placement_census_contract
+    COMMAND openusd_warehouse_audit_probe --placement-census-self-test)
+set(_warehouse_audit_contracts openusd_warehouse_audit_contract openusd_warehouse_localization_contract
+    openusd_warehouse_material_census_contract openusd_warehouse_placement_census_contract)
+set_tests_properties(${_warehouse_audit_contracts}
     PROPERTIES TIMEOUT 30)
 if(WIN32)
-    set_tests_properties(openusd_warehouse_audit_contract openusd_warehouse_localization_contract PROPERTIES
+    set_tests_properties(${_warehouse_audit_contracts} PROPERTIES
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:${_openusd_test_prefix}/bin;PATH=path_list_prepend:${_openusd_test_prefix}/lib")
 elseif(APPLE)
-    set_tests_properties(openusd_warehouse_audit_contract openusd_warehouse_localization_contract PROPERTIES
+    set_tests_properties(${_warehouse_audit_contracts} PROPERTIES
         ENVIRONMENT_MODIFICATION
             "DYLD_LIBRARY_PATH=path_list_prepend:${_openusd_test_prefix}/lib")
 else()
-    set_tests_properties(openusd_warehouse_audit_contract openusd_warehouse_localization_contract PROPERTIES
+    set_tests_properties(${_warehouse_audit_contracts} PROPERTIES
         ENVIRONMENT_MODIFICATION
             "LD_LIBRARY_PATH=path_list_prepend:${_openusd_test_prefix}/lib")
 endif()

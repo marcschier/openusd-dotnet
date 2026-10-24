@@ -72,6 +72,8 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     private readonly VulkanCompositionRenderCallback? _renderCallback;
     private readonly bool _required;
     private readonly SilkGpuBufferBudget? _gpuBufferBudget;
+    private readonly SilkTexturePreparationBudgets? _textureBudgets;
+    private readonly SilkTextureResidencyOptions _textureResidency;
     private SilkMeshRenderer? _renderer;
     private SilkMeshRenderResult? _lastMeshRenderResult;
     private int _generationCount;
@@ -86,12 +88,16 @@ public sealed unsafe class VulkanCompositionViewportPresenter
         VulkanCompositionContext context,
         VulkanCompositionRenderCallback? renderCallback,
         bool required,
-        SilkGpuBufferBudget? gpuBufferBudget = null)
+        SilkGpuBufferBudget? gpuBufferBudget = null,
+        SilkTexturePreparationBudgets? texturePreparationBudgets = null,
+        SilkTextureResidencyOptions? textureResidencyOptions = null)
     {
         _context = context;
         _renderCallback = renderCallback;
         _required = required;
         _gpuBufferBudget = gpuBufferBudget;
+        _textureBudgets = texturePreparationBudgets;
+        _textureResidency = textureResidencyOptions ?? SilkTextureResidencyOptions.Default;
     }
 
     /// <summary>Creates a headless Vulkan composition presenter.</summary>
@@ -112,14 +118,34 @@ public sealed unsafe class VulkanCompositionViewportPresenter
     public static VulkanCompositionViewportPresenter Create(
         VulkanCompositionRenderCallback renderCallback,
         SilkGpuBufferBudget? gpuBufferBudget,
-        bool required = false)
+        bool required = false) => Create(renderCallback, gpuBufferBudget, null, required);
+
+    /// <summary>Creates a retained presenter sharing buffer, texture and staging pools with other devices.</summary>
+    public static VulkanCompositionViewportPresenter Create(
+        VulkanCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets,
+        bool required)
+        => Create(renderCallback, gpuBufferBudget, texturePreparationBudgets,
+            SilkTextureResidencyOptions.Default, required);
+
+    /// <summary>Creates a retained presenter with shared allocation pools and a material residency policy.</summary>
+    public static VulkanCompositionViewportPresenter Create(
+        VulkanCompositionRenderCallback renderCallback,
+        SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets,
+        SilkTextureResidencyOptions textureResidencyOptions,
+        bool required)
     {
         ArgumentNullException.ThrowIfNull(renderCallback);
+        ArgumentNullException.ThrowIfNull(textureResidencyOptions);
         return new VulkanCompositionViewportPresenter(
             VulkanCompositionContext.Create(),
             renderCallback,
             required,
-            gpuBufferBudget);
+            gpuBufferBudget,
+            texturePreparationBudgets,
+            textureResidencyOptions);
     }
 
     /// <summary>Captures current presenter resources and render evidence.</summary>
@@ -132,7 +158,9 @@ public sealed unsafe class VulkanCompositionViewportPresenter
             Interlocked.Read(ref _renderCallbacks),
             _lastMeshRenderResult,
             _context.SelectedImageHandleType,
-            _context.UsesD3D11Bridge ? "D3D11GpuCopy" : "DirectVulkan");
+            _context.UsesHostReadback
+                ? "HostReadback"
+                : _context.UsesD3D11Bridge ? "D3D11GpuCopy" : "DirectVulkan");
 
     internal bool IsDeviceCreatedForTesting => _context.IsDeviceCreated;
 
@@ -150,7 +178,8 @@ public sealed unsafe class VulkanCompositionViewportPresenter
         if (_compatible && _renderCallback is not null && _renderer is null)
         {
             _gpuBufferBudget?.ConfigureDevice(_context.GraphicsDevice);
-            _renderer = new SilkMeshRenderer(_context.GraphicsDevice);
+            _textureBudgets?.ConfigureDevice(_context.GraphicsDevice);
+            _renderer = new SilkMeshRenderer(_context.GraphicsDevice, _textureResidency);
         }
         return new ValueTask<CompositionPresenterProbeResult>(result);
     }
@@ -339,7 +368,7 @@ internal sealed class VulkanCompositionGeneration : ICompositionPresentationGene
     }
 }
 
-internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFrame
+internal sealed unsafe class VulkanCompositionFrame : ICompositionReadbackFrame
 {
     private static long _nextAllocationId;
 
@@ -352,7 +381,7 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
     private readonly ImageView _imageView;
     private readonly Semaphore _renderReady;
     private readonly Semaphore _compositorRelease;
-    private readonly SafeHandle _memoryHandle;
+    private readonly SafeHandle? _memoryHandle;
     private readonly SafeHandle? _renderReadyHandle;
     private readonly SafeHandle? _compositorReleaseHandle;
     private readonly VulkanD3D11SharedTexture? _d3d11Texture;
@@ -362,7 +391,10 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
     private readonly VulkanCompositionRenderCallback? _renderCallback;
     private readonly CompositionExternalSemaphore[] _semaphores;
     private readonly CompositionFrameSynchronization _synchronization;
+    private readonly byte[]? _hostPixels;
+    private readonly object _hostPixelsLock = new();
     private readonly int _frameIndex;
+    private bool _hostPixelsValid;
     private int _useCount;
     private bool _presented;
     private bool _disposed;
@@ -400,7 +432,16 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
         bool success = false;
         try
         {
-            if (context.UsesD3D11Bridge)
+            if (context.UsesHostReadback)
+            {
+                colorTarget = context.GraphicsDevice.CreateTexture2D(
+                    SilkTextureDescriptor.ColorTarget(
+                        checked((uint)size.Width),
+                        checked((uint)size.Height)));
+                memorySize = checked((ulong)size.Width * (ulong)size.Height * 4UL);
+                _hostPixels = new byte[checked((int)memorySize)];
+            }
+            else if (context.UsesD3D11Bridge)
             {
                 if (!OperatingSystem.IsWindows())
                 {
@@ -503,7 +544,12 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
                 memoryOffset: 0,
                 memorySize,
                 topLeftOrigin: true);
-            if (context.UsesD3D11Bridge)
+            if (context.UsesHostReadback)
+            {
+                _semaphores = [];
+                _synchronization = CompositionFrameSynchronization.Automatic;
+            }
+            else if (context.UsesD3D11Bridge)
             {
                 _semaphores = [];
                 _synchronization = CompositionFrameSynchronization.KeyedMutex(1, 0);
@@ -567,6 +613,11 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
+        if (_memoryHandle is null)
+        {
+            throw new NotSupportedException(
+                $"Host-readback frame {AllocationId} has no external image handle.");
+        }
         return new ValueTask<ICompositionExternalHandleLease>(
             VulkanCompositionContext.LeaseHandle(_memoryHandle, Image.HandleType));
     }
@@ -577,10 +628,10 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
-        if (_context.UsesD3D11Bridge)
+        if (_context.UsesD3D11Bridge || _context.UsesHostReadback)
         {
             throw new NotSupportedException(
-                $"D3D11 keyed-mutex frame {AllocationId} has no external semaphores.");
+                $"Frame {AllocationId} has no external semaphores.");
         }
         SafeHandle source = resourceId switch
         {
@@ -601,6 +652,10 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Result result;
+        if (_context.UsesHostReadback)
+        {
+            return RenderHostReadback();
+        }
         if (_context.UsesD3D11Bridge)
         {
             if (_renderCallback is null)
@@ -675,6 +730,77 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
             _synchronization);
     }
 
+    private CompositionFrameRenderResult RenderHostReadback()
+    {
+        if (_renderCallback is null)
+        {
+            using ISilkGraphicsCommandList commands =
+                _context.GraphicsDevice.CreateCommandList();
+            commands.ClearColor(
+                _colorTarget!,
+                new SilkColor(
+                    0.0625f,
+                    0.125f,
+                    0.25f + (_frameIndex * 0.125f),
+                    1));
+            using ISilkGraphicsSubmission submission =
+                _context.GraphicsDevice.Submit(commands);
+            submission.Wait();
+        }
+        else
+        {
+            int useCount = checked(++_useCount);
+            SilkMeshRenderResult meshResult = _renderCallback(
+                new VulkanCompositionRenderContext(
+                    _renderer!,
+                    _colorTarget!,
+                    _depthTarget!,
+                    AllocationId,
+                    _frameIndex,
+                    useCount));
+            Owner.RecordMeshRender(meshResult);
+        }
+        lock (_hostPixelsLock)
+        {
+            _hostPixelsValid = false;
+            _context.GraphicsDevice.Readback(
+                (VulkanSilkGraphicsTexture)_colorTarget!,
+                _hostPixels);
+            _hostPixelsValid = true;
+        }
+        _presented = true;
+        return new CompositionFrameRenderResult(
+            CompositionFrameRenderStatus.Presented,
+            ContinueRendering: true,
+            _synchronization);
+    }
+
+    /// <inheritdoc/>
+    public void CopyPresentedPixels(Span<byte> destination)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_hostPixels is null)
+        {
+            throw new NotSupportedException(
+                $"Frame {AllocationId} uses GPU external-object presentation, not host readback.");
+        }
+        if (destination.Length != _hostPixels.Length)
+        {
+            throw new ArgumentException(
+                $"The destination must contain exactly {_hostPixels.Length} bytes.",
+                nameof(destination));
+        }
+        lock (_hostPixelsLock)
+        {
+            if (!_hostPixelsValid)
+            {
+                throw new InvalidOperationException(
+                    $"Host-readback frame {AllocationId} has not been presented.");
+            }
+            _hostPixels.CopyTo(destination);
+        }
+    }
+
     internal void CompleteCompositorRoundTripForTesting()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -707,7 +833,7 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
                 "D3D11 shared-texture readback requires the Windows bridge.");
         }
         _context.ReadbackD3D11SharedTextureForTesting(
-            _memoryHandle.DangerousGetHandle(),
+            _memoryHandle!.DangerousGetHandle(),
             destination);
     }
 
@@ -723,7 +849,7 @@ internal sealed unsafe class VulkanCompositionFrame : ICompositionPresentationFr
         _colorTarget?.Dispose();
         _compositorReleaseHandle?.Dispose();
         _renderReadyHandle?.Dispose();
-        _memoryHandle.Dispose();
+        _memoryHandle?.Dispose();
         _context.DestroyFrameResources(
             _commandPool,
             _compositorRelease,
@@ -774,6 +900,30 @@ internal sealed record class VulkanCompositionCapabilitySnapshot
 internal static class VulkanCompositionCompatibility
 {
     internal static CompositionPresenterProbeResult Probe(
+        CompositionPresentationTarget target,
+        VulkanCompositionCapabilitySnapshot capabilities)
+    {
+        CompositionPresenterProbeResult external = ProbeExternal(target, capabilities);
+        if (external.IsAvailable ||
+            !Contains(target.ImageHandleTypes, CompositionHostReadback.ImageHandleType))
+        {
+            return external;
+        }
+        CompositionPresenterProbeResult common = ProbeCommon(target, capabilities);
+        return common.IsAvailable
+            ? CompositionPresenterProbeResult.Available(
+                "Vulkan host-readback presentation available " +
+                "(compositor GPU interop unavailable)")
+            : common;
+    }
+
+    internal static bool SelectsHostReadback(
+        CompositionPresentationTarget target,
+        VulkanCompositionCapabilitySnapshot capabilities) =>
+        Contains(target.ImageHandleTypes, CompositionHostReadback.ImageHandleType) &&
+        !ProbeExternal(target, capabilities).IsAvailable;
+
+    private static CompositionPresenterProbeResult ProbeExternal(
         CompositionPresentationTarget target,
         VulkanCompositionCapabilitySnapshot capabilities)
     {
@@ -1053,6 +1203,7 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
     private nint _getMemoryWin32HandleProperties;
     private VulkanD3D11Bridge? _d3d11Bridge;
     private bool _usesD3D11Bridge;
+    private bool _usesHostReadback;
     private VulkanCompositionCapabilitySnapshot? _capabilities;
     private bool _disposed;
 
@@ -1069,6 +1220,8 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
     internal bool IsDeviceCreated => _device.Handle != 0;
 
     internal bool UsesD3D11Bridge => _usesD3D11Bridge;
+
+    internal bool UsesHostReadback => _usesHostReadback;
 
     internal string? SelectedImageHandleType => _capabilities?.ImageHandleType;
 
@@ -1143,9 +1296,19 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
 
         VulkanCompositionCapabilitySnapshot capabilities =
             candidates[selection.CandidateIndex];
-        _usesD3D11Bridge =
+        _usesHostReadback =
+            VulkanCompositionCompatibility.SelectsHostReadback(target, capabilities);
+        _usesD3D11Bridge = !_usesHostReadback &&
             VulkanCompositionCompatibility.SelectsD3D11Bridge(target, capabilities);
-        if (_usesD3D11Bridge)
+        if (_usesHostReadback)
+        {
+            capabilities = capabilities with
+            {
+                ImageHandleType = CompositionHostReadback.ImageHandleType,
+                SemaphoreHandleType = string.Empty
+            };
+        }
+        else if (_usesD3D11Bridge)
         {
             capabilities = capabilities with
             {
@@ -1178,7 +1341,9 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
         PhysicalDevice physicalDevice,
         VulkanCompositionCapabilitySnapshot capabilities)
     {
-        string[] requiredExtensions = GetRequiredDeviceExtensions(_usesD3D11Bridge);
+        string[] requiredExtensions = _usesHostReadback
+            ? []
+            : GetRequiredDeviceExtensions(_usesD3D11Bridge);
         using GlobalMemory extensionNames = SilkMarshal.StringArrayToMemory(
             requiredExtensions,
             NativeStringEncoding.UTF8);
@@ -1235,7 +1400,7 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
                     device,
                     "vkGetMemoryWin32HandlePropertiesKHR");
             }
-            else
+            else if (!_usesHostReadback)
             {
                 getMemoryHandle = GetRequiredDeviceFunction(
                     _api,

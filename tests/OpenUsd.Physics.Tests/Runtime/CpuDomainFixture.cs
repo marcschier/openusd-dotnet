@@ -141,14 +141,21 @@ internal sealed class CpuDomainFixture : IDisposable
             return _extraction;
         }
 
+        _extraction = Extract(UsdPhysicsExtractionOptions.Default);
+        return _extraction;
+    }
+
+    internal UsdPhysicsExtractionPage Extract(UsdPhysicsExtractionOptions options)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         lock (Sync)
         {
             using UsdStage stage = UsdStage.Open(_stagePath);
-            _extraction = UsdPhysicsStageExtractor.Extract(stage, UsdPhysicsExtractionOptions.Default);
+            return UsdPhysicsStageExtractor.Extract(stage, options);
         }
-
-        return _extraction;
     }
+
+    internal UsdStageScheduler OpenScheduler() => UsdStageScheduler.Open(_stagePath);
 
     /// <summary>Extracts, composes, and builds a retained native world from the authored stage.</summary>
     internal UsdPhysicsSimulation BuildSimulation() => UsdPhysicsSimulation.Create(Extract());

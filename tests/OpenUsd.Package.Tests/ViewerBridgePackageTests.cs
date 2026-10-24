@@ -20,6 +20,36 @@ public sealed class ViewerBridgePackageTests
     private static readonly string[] SupportedFrameworks = ["net8.0", "net9.0", "net10.0"];
 
     [Test]
+    public async Task TheViewerPackageDeclaresItsSharedPhysicsRecorderOnEveryFramework()
+    {
+        string root = FindRepositoryRoot();
+        string work = CreateWorkRoot(root);
+        try
+        {
+            string packages = Path.Combine(work, "packages");
+            Directory.CreateDirectory(packages);
+            string path = await PackAsync(root, "OpenUsd.Viewer", packages);
+            using ZipArchive archive = ZipFile.OpenRead(path);
+            foreach (string framework in SupportedFrameworks)
+            {
+                await Assert.That(archive.GetEntry($"lib/{framework}/OpenUsd.Viewer.dll")).IsNotNull();
+            }
+            XDocument nuspec = XDocument.Parse(await ReadNuspecAsync(path));
+            XElement[] groups = nuspec.Descendants().Where(element => element.Name.LocalName == "group").ToArray();
+            await Assert.That(groups.Length).IsEqualTo(3);
+            foreach (XElement group in groups)
+            {
+                await Assert.That(group.Elements().Select(element => element.Attribute("id")?.Value))
+                    .Contains("OpenUsd.Rendering.Physics");
+            }
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task TheViewerPackageCarriesNoTransportOrNvidiaDependency()
     {
         string repositoryRoot = FindRepositoryRoot();

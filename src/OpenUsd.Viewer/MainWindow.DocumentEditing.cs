@@ -23,6 +23,7 @@ public sealed partial class MainWindow
     private bool _closeDecisionPending;
     private bool _documentRefreshRequested;
     private bool _documentSnapshotRefreshBusy;
+    private bool _canEditReviewPrim;
     private Task _documentRefreshTask = Task.CompletedTask;
 
     private void WireDocumentCommands()
@@ -98,10 +99,12 @@ public sealed partial class MainWindow
             ? $"_Undo {editor.UndoDescription.Replace("_", "__", StringComparison.Ordinal)}" : "_Undo";
         EditRedoMenuItem.Header = editor is { CanRedo: true }
             ? $"_Redo {editor.RedoDescription.Replace("_", "__", StringComparison.Ordinal)}" : "_Redo";
-        EditPropertyMenuItem.IsEnabled = ready && !_inspectorPropertiesLoading && _currentInspector is
+        _canEditReviewPrim = ready && !_inspectorPropertiesLoading && _currentInspector is
         {
             IsPrototype: false, IsInPrototype: false
-        } inspector && PropertyEditorAttributes(inspector).Any(
+        };
+        EditPropertyMenuItem.IsEnabled = _canEditReviewPrim && _currentInspector is { } inspector &&
+            PropertyEditorAttributes(inspector).Any(
             static attribute => ViewerPropertyEditParser.Supports(attribute.TypeName));
         UpdateInspectorPropertyControls();
         UpdateHierarchyNavigation();
@@ -127,7 +130,7 @@ public sealed partial class MainWindow
         UpdateSavedViewsContext();
     }
 
-    private void ShowPropertyEditor(string? selectedName = null)
+    private void ShowPropertyEditor(string? selectedName = null, ViewerRelationshipSnapshot? binding = null)
     {
         if (_propertyEditor is { } existing)
         {
@@ -135,7 +138,7 @@ public sealed partial class MainWindow
             return;
         }
         if (_documentEditor is not { } editor || _currentInspector is not { } inspector ||
-            !EditPropertyMenuItem.IsEnabled)
+            (binding is null ? !EditPropertyMenuItem.IsEnabled : !_canEditReviewPrim))
         {
             ShowError(
                 "Select a prim with supported local typed properties before editing its review layer.");
@@ -144,9 +147,11 @@ public sealed partial class MainWindow
         try
         {
             WorkspaceFocus focus = CaptureWorkspaceFocus();
-            var window = new PropertyEditWindow(
-                editor, inspector.Path, PropertyEditorAttributes(inspector), _currentTimeCode,
-                selectedName, _assetFilePicker);
+            var window = binding is null
+                ? new PropertyEditWindow(
+                    editor, inspector.Path, PropertyEditorAttributes(inspector), _currentTimeCode,
+                    selectedName, _assetFilePicker)
+                : new PropertyEditWindow(editor, inspector.Path, binding);
             _propertyEditor = window;
             window.Closed += (_, _) =>
             {
@@ -363,6 +368,13 @@ public sealed partial class MainWindow
             transition, () => observed.State,
             async (_, action, token) =>
             {
+                if (action == ViewerDocumentTransition.Close && IsAutomatedViewerRun())
+                {
+                    // Diagnostics mutate disposable fixtures; still revalidate and retire through the lifecycle.
+                    token.ThrowIfCancellationRequested();
+                    ViewerStartupOptions.WriteStatus("Viewer diagnostic close: discarding unsaved fixture edits.");
+                    return ViewerDocumentUnsavedChoice.Discard;
+                }
                 var prompt = new DocumentChangesWindow(
                     original, action, editor.CanSaveReview && action != ViewerDocumentTransition.RevertReview,
                     action == ViewerDocumentTransition.RevertReview

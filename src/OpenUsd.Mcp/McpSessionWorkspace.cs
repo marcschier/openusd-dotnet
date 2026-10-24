@@ -46,9 +46,17 @@ public sealed partial class McpSessionWorkspace : IAsyncDisposable, IPreviewRend
     }
 
     /// <summary>Creates the single active session and its isolated overlay.</summary>
+    public ValueTask<WorkspaceSessionInfo> StartAsync(
+        string relativeSourcePath,
+        CancellationToken cancellationToken = default) =>
+        StartAsync(relativeSourcePath, null, cancellationToken);
+
+    /// <summary>Creates an isolated overlay with optional explicitly authored root-layer settings.</summary>
+    /// <remarks>Null preserves existing behavior. Settings never convert coordinates or mutate source files.</remarks>
     public async ValueTask<WorkspaceSessionInfo> StartAsync(
         string relativeSourcePath,
-        CancellationToken cancellationToken = default)
+        WorkspaceStageSettings? stageSettings,
+        CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         IWorkspaceSessionBackend? createdBackend = null;
@@ -68,7 +76,10 @@ public sealed partial class McpSessionWorkspace : IAsyncDisposable, IPreviewRend
                 sessionId,
                 sourcePath,
                 outputDirectory,
-                overlayPath);
+                overlayPath)
+            {
+                StageSettings = stageSettings
+            };
             createdBackend = await _backendFactory.CreateAsync(
                     context,
                     cancellationToken)

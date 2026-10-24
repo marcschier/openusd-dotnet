@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
@@ -54,6 +55,16 @@ public sealed partial class MainWindow
         }
     }
 
+    private void OnInspectorPropertyFilterChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_rebuildingInspector && !_inspectorPropertiesLoading && _currentInspector is { } inspector)
+        {
+            _inspectorPropertyPageIndex = 0;
+            _expandedPropertyName = null;
+            ShowInspector(inspector);
+        }
+    }
+
     private void OnInspectorPropertyPrevious(object? sender, RoutedEventArgs e)
     {
         if (InspectorPropertyPrevious.IsEnabled && _inspectorPropertyPage is { HasPrevious: true } &&
@@ -84,21 +95,27 @@ public sealed partial class MainWindow
         }
         _inspectorPropertiesLoading = false;
         _inspectorPropertyPage = ViewerPropertyPage.Create(inspector.Attributes, inspector.Relationships,
-            InspectorPropertyQuery.Text, _inspectorPropertyPageIndex);
+            InspectorPropertyQuery.Text, _inspectorPropertyPageIndex,
+            (ViewerPropertyFilter)InspectorPropertyFilter.SelectedIndex,
+            (ViewerPropertyGroup)InspectorPropertyGroup.SelectedIndex,
+            inspector.IsCamera, inspector.IsLight);
         _inspectorPropertyPageIndex = _inspectorPropertyPage.PageIndex;
         return _inspectorPropertyPage;
     }
 
     private void UpdateInspectorPropertyControls()
     {
+        UpdateShaderInspectionControls();
         bool showsProperties = InspectorTabs.SelectedItem == PropertiesTab ||
             InspectorTabs.SelectedItem == ValueTab || InspectorTabs.SelectedItem == MetadataTab;
-        InspectorPropertyQuery.IsVisible = showsProperties;
+        InspectorPropertyFilters.IsVisible = showsProperties;
         InspectorPropertyNavigation.IsVisible = showsProperties;
         InspectorPropertyTimeControls.IsVisible = showsProperties;
         bool ready = _currentInspector is not null && !_inspectorPropertiesLoading &&
             !_documentBusy && !_shutdownStarted;
         InspectorPropertyQuery.IsEnabled = ready;
+        InspectorPropertyFilter.IsEnabled = ready;
+        InspectorPropertyGroup.IsEnabled = ready;
         InspectorPropertyPrevious.IsEnabled = ready && _inspectorPropertyPage is { HasPrevious: true };
         InspectorPropertyNext.IsEnabled = ready && _inspectorPropertyPage is { HasNext: true };
         bool canRead = CanReadInspectorSnapshot();
@@ -132,6 +149,11 @@ public sealed partial class MainWindow
                     button.IsEnabled = ready && EditPropertyMenuItem.IsEnabled &&
                         ViewerPropertyEditParser.Supports(attribute.TypeName);
                 }
+                else if (child is Button { Tag: ViewerRelationshipSnapshot binding } bindingButton)
+                {
+                    bindingButton.IsEnabled = ready && _canEditReviewPrim &&
+                        ViewerAuthoredEditController.IsDirectMaterialBinding(binding.Name);
+                }
             }
         }
     }
@@ -140,6 +162,24 @@ public sealed partial class MainWindow
         inspector.Attributes.Length <= 256
             ? inspector.Attributes
             : _inspectorPropertyPage?.Attributes ?? Array.Empty<ViewerAttributeSnapshot>();
+
+    private void AddMaterialBindingEditRow(
+        ViewerRelationshipSnapshot relationship, ViewerPrimInspectorSnapshot inspector)
+    {
+        if (!ViewerAuthoredEditController.IsDirectMaterialBinding(relationship.Name))
+        {
+            return;
+        }
+        var button = new Button { Content = "Edit Direct Binding...", Tag = relationship, IsEnabled = false };
+        AutomationProperties.SetName(button, $"Edit direct material binding {relationship.Name} on {inspector.Path}");
+        AutomationProperties.SetAutomationId(button, $"edit.binding:{inspector.Path}.{relationship.Name}");
+        ToolTip.SetTip(button,
+            "Capture exact review targets. Existing MaterialBindingAPI and native Material targets are required.");
+        button.Click += (_, _) => ShowPropertyEditor(binding: relationship);
+        var row = new StackPanel();
+        row.Children.Add(button);
+        ValueRows.Children.Add(row);
+    }
 
     private static string PropertyPageSummary(ViewerPropertyPage page)
     {
@@ -150,6 +190,7 @@ public sealed partial class MainWindow
 
     private void ResetInspectorPropertyPaging()
     {
+        PrepareShaderInspection(null);
         _inspectorPropertiesLoading = false;
         _inspectorPropertyPage = null;
         _inspectorPropertyPath = null;
@@ -157,6 +198,8 @@ public sealed partial class MainWindow
         _inspectorTimeCode = null;
         _expandedPropertyName = null;
         InspectorPropertyQuery.Text = string.Empty;
+        InspectorPropertyFilter.SelectedIndex = 0;
+        InspectorPropertyGroup.SelectedIndex = 0;
         UpdateInspectorPropertyControls();
     }
 }

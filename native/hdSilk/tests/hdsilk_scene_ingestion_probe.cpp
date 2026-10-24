@@ -21,7 +21,7 @@
 namespace
 {
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6u);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 24u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 27u);
 static_assert(sizeof(openusd_silk_scene_ingestion_request) == 32u);
 static_assert(offsetof(openusd_silk_scene_ingestion_request, material_binding_purpose) == 24u);
 
@@ -979,14 +979,150 @@ bool VerifyAcknowledgedPagesRetainOwnershipAndBlockSync(const char* pluginPath)
     return true;
 }
 
+bool VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota(const char* pluginPath)
+{
+    static_assert(sizeof(openusd_silk_command_storage_limits) == 32);
+    static_assert(sizeof(openusd_silk_command_storage_view) == 40);
+    static_assert(sizeof(openusd_silk_command_storage_usage) == 32);
+    EditableSession editable = CreateEditableSession(pluginPath);
+    openusd_silk_page* page = nullptr;
+    try
+    {
+        char errorBytes[4096]{};
+        openusd_error_buffer error{errorBytes, sizeof(errorBytes), 0};
+        const openusd_render_camera camera = MakeCamera();
+        const openusd_silk_mesh_preparation_page_limits preparation{
+            {sizeof(preparation), 2, 64 * 1024 * 1024}, 1024 * 1024};
+        RequireStatus(openusd_silk_session_set_preparation_limits(editable.session, &preparation, &error),
+            error, "Could not configure the contiguous control");
+        openusd_silk_page_view control{};
+        control.struct_size = sizeof(control);
+        RequireStatus(openusd_silk_session_sync(editable.session, 96, 96, 0, &camera, &page, &control, &error),
+            error, "Could not synchronize the contiguous control");
+        const std::vector<uint8_t> expected(control.data, control.data + control.data_size);
+        const uint32_t expectedCommands = control.command_count;
+        uint32_t largest = 0;
+        for (size_t offset = 0; offset < expected.size();)
+        {
+            const uint32_t bytes = ReadU32(expected.data() + offset + 4);
+            largest = std::max(largest, bytes);
+            offset += bytes;
+        }
+        openusd_silk_page_release(page);
+        page = nullptr;
+        DestroyEditableSession(&editable);
+        editable = CreateEditableSession(pluginPath);
+        openusd_silk_command_storage_limits limits{
+            sizeof(limits), 1, expected.size(), expected.size(), largest, 31};
+        Require(openusd_silk_session_set_command_storage_limits(editable.session, &limits, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "Storage was configured without preparation/acknowledgement.");
+        RequireStatus(openusd_silk_session_set_preparation_limits(editable.session, &preparation, &error),
+            error, "Could not configure bounded stored preparation");
+        RequireStatus(openusd_silk_session_enable_page_acknowledgement(editable.session, &error),
+            error, "Could not configure stored acknowledgement");
+        for (int invalid = 0; invalid < 7; ++invalid)
+        {
+            auto bad = limits;
+            if (invalid == 0) { bad.struct_size--; }
+            if (invalid == 1) { bad.version++; }
+            if (invalid == 2) { bad.maximum_live_bytes = 0; }
+            if (invalid == 3) { bad.maximum_update_bytes = bad.maximum_live_bytes + 1; }
+            if (invalid == 4) { bad.maximum_command_bytes = 7; }
+            if (invalid == 5) { bad.transfer_buffer_bytes = 0; }
+            if (invalid == 6) { bad.transfer_buffer_bytes = bad.maximum_command_bytes + 1; }
+            Require(openusd_silk_session_set_command_storage_limits(editable.session, &bad, &error) ==
+                OPENUSD_STATUS_INVALID_ARGUMENT, "Invalid command storage limits were accepted.");
+        }
+        RequireStatus(openusd_silk_session_set_command_storage_limits(editable.session, &limits, &error),
+            error, "Could not configure stored command limits");
+        Require(openusd_silk_session_set_command_storage_limits(editable.session, &limits, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "Command storage policy was mutable.");
+        openusd_silk_command_storage_usage usage{sizeof(usage), 1, 0, 0, 0};
+        auto readUsage = [&]()
+        {
+            RequireStatus(openusd_silk_session_get_command_storage_usage(editable.session, &usage, &error),
+                error, "Could not read live command storage usage");
+            Require(usage.maximum_live_bytes == expected.size() && usage.live_bytes <= usage.peak_live_bytes &&
+                usage.peak_live_bytes <= usage.maximum_live_bytes, "Invalid live-file accounting.");
+        };
+        readUsage();
+        Require(usage.live_bytes == 0, "A configured storage pool was not empty.");
+        openusd_silk_command_storage_view view{};
+        view.struct_size = sizeof(view);
+        view.version = 1;
+        auto sync = [&]()
+        {
+            return openusd_silk_session_sync_to_storage(
+                editable.session, 96, 96, 0, &camera, nullptr, nullptr, nullptr, &page, &view, &error);
+        };
+        auto read = [&]()
+        {
+            std::vector<uint8_t> bytes(static_cast<size_t>(view.data_size));
+            for (size_t offset = 0; offset < bytes.size();)
+            {
+                const size_t count = std::min(size_t{31}, bytes.size() - offset);
+                RequireStatus(openusd_silk_page_read_storage(page, offset, bytes.data() + offset, count, &error),
+                    error, "Could not read stored command bytes");
+                offset += count;
+            }
+            return bytes;
+        };
+        RequireStatus(sync(), error, "Could not synchronize to command storage");
+        Require(view.revision == 1 && view.command_count == expectedCommands &&
+            view.page_abi_version == OPENUSD_SILK_PAGE_ABI_VERSION &&
+            view.maximum_command_bytes == largest && view.maximum_transfer_bytes == 31 &&
+            read() == expected, "File-backed legacy ingestion changed its bytes or metadata.");
+        readUsage();
+        Require(usage.live_bytes == expected.size(), "Published file bytes were not charged.");
+        uint8_t destination[32];
+        std::memset(destination, 0xa5, sizeof(destination));
+        Require(openusd_silk_page_read_storage(page, 0, destination, sizeof(destination), &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "An over-limit native storage read was accepted.");
+        Require(openusd_silk_page_read_storage(page, view.data_size, destination, 1, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "An out-of-extent native storage read was accepted.");
+        for (uint8_t value : destination) { Require(value == 0xa5, "An invalid read modified output bytes."); }
+        RequireStatus(openusd_silk_page_acknowledge(page, &error), error, "Could not acknowledge a stored update");
+        openusd_silk_page* retained = page;
+        page = nullptr;
+        view.revision = 1234;
+        view.command_count = 4321;
+        const openusd_status refused = sync();
+        openusd_silk_page_release(page);
+        page = retained;
+        Require(refused == OPENUSD_STATUS_NATIVE_ERROR && view.revision == 1234 && view.command_count == 4321,
+            "Live-file quota refusal published outputs or ignored an acknowledged file.");
+        readUsage();
+        Require(usage.live_bytes == expected.size(), "Refused file storage leaked live-file credit.");
+        openusd_silk_page_release(page);
+        page = nullptr;
+        readUsage();
+        Require(usage.live_bytes == 0, "Releasing acknowledged storage did not return its credit.");
+        RequireStatus(sync(), error, "Released storage credit did not allow a retry");
+        const auto retry = read();
+        Require(view.command_count == expectedCommands, "Quota retry lost scene commands.");
+        RequireStatus(openusd_silk_page_acknowledge(page, &error), error, "Could not acknowledge the stored retry");
+        DestroyEditableSession(&editable);
+        Require(read() == retry, "Session destruction invalidated owned command storage.");
+    }
+    catch (...)
+    {
+        openusd_silk_page_release(page);
+        DestroyEditableSession(&editable);
+        throw;
+    }
+    openusd_silk_page_release(page);
+    std::cout << "VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota: exact bytes, read limits, quota, retry and lifetime passed\n";
+    return true;
+}
+
 bool VerifyRetainedInvalidation(const char* pluginPath)
 {
     Require(
         openusd_silk_get_session_abi_version() == 6u,
         "The built hdSilk binary does not export session ABI 6.");
     Require(
-        openusd_silk_get_page_abi_version() == 24u,
-        "The built hdSilk binary does not export page ABI 24.");
+        openusd_silk_get_page_abi_version() == 27u,
+        "The built hdSilk binary does not export page ABI 25.");
 
     const std::filesystem::path scene = WriteStage();
     char errorBytes[4096] = {};
@@ -1550,7 +1686,8 @@ int main(int argc, char** argv)
             return 2;
         }
 
-        if (!VerifyAcknowledgedPagesRetainOwnershipAndBlockSync(argv[1]) ||
+        if (!VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota(argv[1]) ||
+             !VerifyAcknowledgedPagesRetainOwnershipAndBlockSync(argv[1]) ||
             !VerifySessionLimitsCannotBeBypassed(argv[1]) ||
             !VerifySessionLimitsPreserveLegacyChoicesAndPageSnapshots(argv[1]) ||
             !VerifyRetainedInvalidation(argv[1]) ||

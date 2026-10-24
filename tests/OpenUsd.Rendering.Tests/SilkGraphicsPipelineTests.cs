@@ -280,7 +280,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap
         ];
 
-        await Assert.That(fragmentFeatures.Length).IsEqualTo(2049);
+        await Assert.That(fragmentFeatures.Length).IsEqualTo(4097);
         foreach (SilkShaderFeatures features in fragmentFeatures)
         {
             var permutation = new SilkShaderPermutationId(features);
@@ -339,7 +339,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(() => new SilkShaderPermutationId(
             SilkShaderFeatures.BaseColorMap)).Throws<ArgumentException>();
         await Assert.That(() => new SilkShaderPermutationId(
-            (SilkShaderFeatures)4096)).Throws<ArgumentOutOfRangeException>();
+            (SilkShaderFeatures)8192)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => new SilkShaderPermutationId(
+            SilkShaderFeatures.DetailNormalMap)).Throws<ArgumentException>();
     }
 
     [Test]
@@ -400,6 +402,8 @@ public sealed class SilkGraphicsPipelineTests
                 (34u, SilkBindingKind.SampledTexture),
                 (35u, SilkBindingKind.Sampler),
                 (36u, SilkBindingKind.SampledTexture),
+                (39u, SilkBindingKind.SampledTexture),
+                (40u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -426,6 +430,8 @@ public sealed class SilkGraphicsPipelineTests
             (2u, SilkBindingKind.SampledTexture),
             (10u, SilkBindingKind.Sampler),
             (3u, SilkBindingKind.SampledTexture),
+            (13u, SilkBindingKind.Sampler),
+            (9u, SilkBindingKind.SampledTexture),
             (11u, SilkBindingKind.Sampler),
             (4u, SilkBindingKind.SampledTexture),
             (14u, SilkBindingKind.Sampler),
@@ -460,7 +466,12 @@ public sealed class SilkGraphicsPipelineTests
             (33u, SilkBindingKind.SampledTexture),
             (34u, SilkBindingKind.SampledTexture),
             (35u, SilkBindingKind.Sampler),
-            (36u, SilkBindingKind.SampledTexture)
+            (36u, SilkBindingKind.SampledTexture),
+            // Private normal value tables use integer loads and need no samplers.
+            (37u, SilkBindingKind.SampledTexture),
+            (38u, SilkBindingKind.SampledTexture),
+            (39u, SilkBindingKind.SampledTexture),
+            (40u, SilkBindingKind.SampledTexture)
         ]);
     }
 
@@ -518,7 +529,9 @@ public sealed class SilkGraphicsPipelineTests
             (33u, SilkBindingKind.SampledTexture),
             (34u, SilkBindingKind.SampledTexture),
             (35u, SilkBindingKind.Sampler),
-            (36u, SilkBindingKind.SampledTexture)
+            (36u, SilkBindingKind.SampledTexture),
+            (39u, SilkBindingKind.SampledTexture),
+            (40u, SilkBindingKind.SampledTexture)
         ]);
         layout.Validate();
     }
@@ -578,7 +591,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(32);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(34);
     }
 
     [Test]
@@ -699,8 +712,10 @@ public sealed class SilkGraphicsPipelineTests
         descriptor.Validate();
         await Assert.That(reflection).IsEqualTo(
             new SilkPickParametersReflection(0, 1, 0, 16, 16, true));
-        await Assert.That(dxilVertex.Code.Length).IsEqualTo(4008);
-        await Assert.That(dxilFragment.Code.Length).IsEqualTo(3732);
+        await Assert.That(dxilVertex.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("pick.vertex", "dxil"));
+        await Assert.That(dxilFragment.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("pick.fragment", "dxil"));
         await Assert.That(spirvVertex.Code.Length).IsEqualTo(804);
         await Assert.That(spirvFragment.Code.Length).IsEqualTo(1152);
         await Assert.That(dxilVertex.EntryPoint)
@@ -720,9 +735,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(descriptor.DepthCompare)
             .IsEqualTo(SilkPickDepthCompare.LessEqual);
         await Assert.That(GetSha256(dxilVertex.Code.Span)).IsEqualTo(
-            "0796a8c15c4e8b46927a3d4dffec53246a341876fc5740249062ee444d232077");
+            "804aff7fd6f4b8464127b73c079e968cb81d22d0ec439afa1439b9309aa56e79");
         await Assert.That(GetSha256(dxilFragment.Code.Span)).IsEqualTo(
-            "6f13c55f9a3a1f4cbf27118ad1cc5f59dfeccbee4f9721d30b965ec3ffdfbc7e");
+            "1d6fce34ab218e9fbc0b8daef4cb024c75298640914683d1c41062baeed06d67");
         await Assert.That(GetSha256(spirvVertex.Code.Span)).IsEqualTo(
             "54e401ddf27cb2cc3107814c90c2b587eeca5e7dac19f545c644953f86b4211e");
         await Assert.That(GetSha256(spirvFragment.Code.Span)).IsEqualTo(
@@ -791,14 +806,16 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(outlineDescriptor.DepthTestEnabled).IsFalse();
         await Assert.That(outlineDescriptor.Primitive)
             .IsEqualTo(SilkSelectionOutlinePrimitive.FullscreenTriangle);
-        await Assert.That(dxilMaskVertex.Code.Length).IsEqualTo(4052);
-        await Assert.That(dxilMaskFragment.Code.Length).IsEqualTo(2752);
+        await Assert.That(dxilMaskVertex.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("selection.mask.vertex", "dxil"));
+        await Assert.That(dxilMaskFragment.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("selection.mask.fragment", "dxil"));
         await Assert.That(spirvOutlineVertex.Code.Length).IsEqualTo(960);
         await Assert.That(spirvOutlineFragment.Code.Length).IsEqualTo(3800);
         await Assert.That(GetSha256(dxilMaskVertex.Code.Span)).IsEqualTo(
-            "ac21f3441e4e80bbfea238591f17a43b14255e767cf07e26d2931ad536a6a84f");
+            "51ebc76ddcd7790673b23bc3af0ce74523a15e32bb0a85b46e4465f69d38faa2");
         await Assert.That(GetSha256(dxilMaskFragment.Code.Span)).IsEqualTo(
-            "682348314c6ef981564dbf7ac7ccd50814009a6f12b51223ac13c3efcdc9b00d");
+            "e954faf831f98f7958551755fdfaaf01ac9ea3e4c1b70f1790c83476496d1852");
         await Assert.That(GetSha256(spirvOutlineVertex.Code.Span)).IsEqualTo(
             "8f5f6854662fa8d097ddcb6d339f0a89b217fb62115f02af30c4e90284fc51cf");
         await Assert.That(GetSha256(spirvOutlineFragment.Code.Span)).IsEqualTo(
@@ -848,8 +865,10 @@ public sealed class SilkGraphicsPipelineTests
 
         await Assert.That(reflection).IsEqualTo(
             new SilkComputeReflection(0, 0, 16, 0, 1, 8, 16, 64, 1, 1));
-        await Assert.That(dxilFill.Code.Length).IsEqualTo(3608);
-        await Assert.That(dxilScale.Code.Length).IsEqualTo(3776);
+        await Assert.That(dxilFill.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("compute.fill", "dxil"));
+        await Assert.That(dxilScale.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("compute.scale", "dxil"));
         await Assert.That(spirvFill.Code.Length).IsEqualTo(1260);
         await Assert.That(spirvScale.Code.Length).IsEqualTo(1244);
         await Assert.That(dxilFill.EntryPoint).IsEqualTo("fillMain");
@@ -1061,7 +1080,8 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.SpecularColorMap,
             SilkShaderFeatures.ClearcoatMap,
             SilkShaderFeatures.ClearcoatRoughnessMap,
-            SilkShaderFeatures.IorMap
+            SilkShaderFeatures.IorMap,
+            SilkShaderFeatures.DetailNormalMap
         ];
         var features = new List<SilkShaderFeatures>
         {
@@ -1113,7 +1133,7 @@ public sealed class SilkGraphicsPipelineTests
     private static string GetExpectedVertexEntryPoint(SilkShaderFeatures features)
     {
         var permutation = new SilkShaderPermutationId(
-            features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap));
+            features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap));
         if (permutation.Features == SilkShaderFeatures.None)
         {
             return "vertexMain";

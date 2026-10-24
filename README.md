@@ -156,6 +156,7 @@ All 31 package IDs below ship together in `0.14.0-alpha`. This release adds
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
 | `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
 | `OpenUsd.Physics` | 8/9/10 | Optional retained `UsdPhysics` simulation sessions and baking |
+| `OpenUsd.Rendering.Physics` | 8/9/10 | Optional exact-step simulation recording through renderer capture adapters |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |

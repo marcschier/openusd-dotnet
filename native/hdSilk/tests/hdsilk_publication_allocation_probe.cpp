@@ -2,8 +2,10 @@
 
 #include "../src/sceneState.h"
 #include "../src/pageWriter.h"
+#include "../src/commandFile.h"
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -15,10 +17,15 @@ namespace
 thread_local bool countAllocations = false;
 thread_local bool allocationFailed = false;
 thread_local size_t allocationIndex = 0;
+thread_local size_t largestAllocation = 0;
 thread_local size_t failAt = std::numeric_limits<size_t>::max();
 
 void* Allocate(size_t size)
 {
+    if (countAllocations && size > largestAllocation)
+    {
+        largestAllocation = size;
+    }
     if (countAllocations && allocationIndex++ == failAt)
     {
         countAllocations = false;
@@ -35,6 +42,7 @@ void* Allocate(size_t size)
 void BeginAllocations(size_t failure = std::numeric_limits<size_t>::max())
 {
     allocationIndex = 0;
+    largestAllocation = 0;
     failAt = failure;
     allocationFailed = false;
     countAllocations = true;
@@ -85,6 +93,16 @@ HdSilkMaterialRecord Material(const std::string& path, float roughness)
     scalar.componentCount = 1;
     scalar.value[0] = roughness;
     record.scalars = {scalar};
+    HdSilkMaterialTexture texture;
+    texture.parameter = OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR;
+    texture.componentCount = 3;
+    texture.outputChannel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+    texture.asset = "fallback-allocation.png";
+    texture.uvPrimvar = "uv";
+    texture.hasUvFallback = true;
+    texture.uvFallback[0] = roughness;
+    texture.uvFallback[1] = 0.25f;
+    record.textures = {texture};
     return record;
 }
 
@@ -161,6 +179,191 @@ void RequireControlCommands(const std::vector<uint8_t>& bytes, uint32_t count)
         observed[OPENUSD_SILK_COMMAND_LIGHT_LINK] == 1 &&
         observed[OPENUSD_SILK_COMMAND_SHADOW] == 1,
         "The control must cover environments, materials, meshes, linking and shadows.");
+}
+
+void LargeTrianglePageRefusalPrecedesPayloadCopies()
+{
+    auto prepare = []()
+    {
+        auto state = std::make_unique<HdSilkSceneState>();
+        HdSilkMeshRecord record = Mesh("/Large", 0);
+        record.points.resize(300000, 0);
+        state->ReplaceMeshInstances("/Large", {std::move(record)});
+        return state;
+    };
+    auto control = prepare();
+    uint64_t expectedRevision = 0;
+    uint32_t expectedCount = 0;
+    const auto expected = control->BuildPage(&expectedRevision, &expectedCount);
+    for (size_t limit : {size_t{65536}, expected.size() - 1})
+    {
+        auto state = prepare();
+        uint64_t revision = 123;
+        uint32_t count = 456;
+        bool refused = false;
+        BeginAllocations();
+        try
+        {
+            (void)state->BuildPage(&revision, &count, limit);
+        }
+
+        catch (const HdSilkPageLimitExceeded& error)
+        {
+            refused = true;
+            Require(std::string(error.what()).find("Largest mesh command:") != std::string::npos,
+                "Aggregate preflight omitted the indivisible mesh command requirement.");
+        }
+        countAllocations = false;
+        Require(refused && revision == 123 && count == 456, "Page refusal published outputs.");
+        Require(largestAllocation < 65536, "Refused page copied or allocated its large mesh payload.");
+        const auto retry = state->BuildPage(&revision, &count, expected.size());
+        Require(retry == expected && revision == expectedRevision && count == expectedCount,
+            "Page preflight changed the exact-limit retry.");
+    }
+    std::cout << "LargeTrianglePageRefusalPrecedesPayloadCopies: bounded allocation and exact retries passed\n";
+}
+
+void NativeMeshArraysShareExactStorageAndDetachOnMutation()
+{
+    HdSilkSceneState state;
+    auto attributes = []()
+    {
+        HdSilkMeshAttribute attribute;
+        attribute.name = "normals";
+        attribute.semantic = 1;
+        attribute.componentCount = 3;
+        attribute.interpolation = 1;
+        attribute.data = {0.0f, 0.5f, 1.0f};
+        return HdSilkMeshAttributes{attribute};
+    };
+    HdSilkMeshAttributes first = attributes();
+    HdSilkMeshAttributes second = attributes();
+    Require(first.cdata() != second.cdata(), "The independent attribute control already shared storage.");
+    state.ShareMeshAttributes(&first);
+    state.ShareMeshAttributes(&second);
+    Require(first.cdata() == second.cdata(), "Identical native mesh attributes were duplicated.");
+    second[0].data[1] = 0.25f;
+    Require(first.cdata() != second.cdata() && first.cdata()[0].data[1] == 0.5f,
+        "Editing shared native attributes changed another mesh.");
+    HdSilkMeshAttributes signedZero = attributes();
+    signedZero[0].data[0] = -0.0f;
+    state.ShareMeshAttributes(&signedZero);
+    Require(first.cdata() != signedZero.cdata() && std::signbit(signedZero.cdata()[0].data[0]),
+        "Sharing collapsed signed-zero attribute bits.");
+    for (int field = 0; field < 4; ++field)
+    {
+        HdSilkMeshAttributes changed = attributes();
+        if (field == 0) { changed[0].name = "other"; }
+        if (field == 1) { changed[0].semantic = 2; }
+        if (field == 2) { changed[0].componentCount = 1; }
+        if (field == 3) { changed[0].interpolation = 2; }
+        state.ShareMeshAttributes(&changed);
+        Require(changed.cdata() != first.cdata(), "Attribute sharing ignored its metadata.");
+    }
+    VtArray<uint32_t> indices{0, 1, 2};
+    VtArray<uint32_t> duplicate{0, 1, 2};
+    VtArray<uint32_t> different{0, 2, 1};
+    state.ShareMeshIndices(&indices);
+    state.ShareMeshIndices(&duplicate);
+    state.ShareMeshIndices(&different);
+    Require(indices.cdata() == duplicate.cdata() && indices.cdata() != different.cdata(),
+        "Native index sharing did not preserve the exact ordered values.");
+    duplicate[1] = 9;
+    Require(indices.cdata()[1] == 1 && duplicate.cdata()[1] == 9,
+        "Editing shared indices changed another mesh.");
+    state.ClearMeshArraySharing();
+    HdSilkMeshAttributes following = attributes();
+    VtArray<uint32_t> followingIndices{0, 1, 2};
+    state.ShareMeshAttributes(&following);
+    state.ShareMeshIndices(&followingIndices);
+    Require(following.cdata() != first.cdata() && followingIndices.cdata() != indices.cdata(),
+        "The sharing index retained payloads across sync epochs.");
+    Require(first.cdata()[0].data[1] == 0.5f && indices.cdata()[1] == 1,
+        "Clearing the sharing index invalidated live mesh owners.");
+    std::cout << "NativeMeshArraysShareExactStorageAndDetachOnMutation: passed\n";
+}
+
+void NativeSharingBoundsVerifyCollisionsAndKeepUncachedArrays()
+{
+    HdSilkArraySharing<VtArray<uint32_t>, 2, 1> sharing;
+    auto equal = [](const VtArray<uint32_t>& a, const VtArray<uint32_t>& b) { return a == b; };
+    VtArray<uint32_t> empty;
+    Require(!sharing.Intern(empty, 0, equal) && sharing.EntryCount() == 0,
+        "An empty native array consumed sharing capacity.");
+    VtArray<uint32_t> first{1, 2, 3};
+    VtArray<uint32_t> collision{3, 2, 1};
+    VtArray<uint32_t> second{4, 5, 6};
+    VtArray<uint32_t> over{7, 8, 9};
+    const uint32_t* collisionStorage = collision.cdata();
+    const uint32_t* overStorage = over.cdata();
+    Require(!sharing.Intern(first, 10, equal) && sharing.EntryCount() == 1,
+        "The first native array did not enter the bounded index.");
+    Require(!sharing.Intern(collision, 10, equal) && collision.cdata() == collisionStorage &&
+        sharing.EntryCount() == 1 && collision.cdata()[0] == 3,
+        "A full collision bucket changed or retained an unequal array.");
+    Require(!sharing.Intern(second, 11, equal) && sharing.EntryCount() == 2,
+        "The exact sharing entry limit was refused.");
+    Require(!sharing.Intern(over, 12, equal) && sharing.EntryCount() == 2 &&
+        over.cdata() == overStorage && over.cdata()[0] == 7,
+        "An over-capacity sharing index changed its uncached input.");
+    VtArray<uint32_t> duplicate{1, 2, 3};
+    Require(sharing.Intern(duplicate, 10, equal) && duplicate.cdata() == first.cdata(),
+        "A full index refused an existing exact match.");
+    sharing.Clear();
+    Require(sharing.EntryCount() == 0 && first.cdata()[2] == 3 && duplicate.cdata()[0] == 1,
+        "Clearing the index invalidated a live owner.");
+    Require(!sharing.Intern(over, 12, equal) && sharing.EntryCount() == 1,
+        "Cleared sharing capacity could not be reused.");
+    std::cout << "NativeSharingBoundsVerifyCollisionsAndKeepUncachedArrays: passed\n";
+}
+
+void NativeSharingPreservesCompleteWireUpdates()
+{
+    auto makeMesh = [](const std::string& path, float height)
+    {
+        HdSilkMeshRecord mesh = Mesh(path, height);
+        HdSilkMeshAttribute attribute;
+        attribute.name = "weight";
+        attribute.componentCount = 1;
+        attribute.interpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
+        attribute.data = {0.5f};
+        mesh.attributes = {attribute};
+        return mesh;
+    };
+    HdSilkSceneState actual;
+    HdSilkSceneState expected;
+    HdSilkMeshRecord a = makeMesh("/A", 0);
+    HdSilkMeshRecord b = makeMesh("/B", 1);
+    expected.ReplaceMeshInstances("/A", {a});
+    expected.ReplaceMeshInstances("/B", {b});
+    actual.ShareMeshAttributes(&a.attributes);
+    actual.ShareMeshAttributes(&b.attributes);
+    actual.ShareMeshIndices(&a.indices);
+    actual.ShareMeshIndices(&b.indices);
+    Require(a.attributes.cdata() == b.attributes.cdata() && a.indices.cdata() == b.indices.cdata(),
+        "The serialization control did not actually share its mesh arrays.");
+    actual.ReplaceMeshInstances("/A", {a});
+    actual.ReplaceMeshInstances("/B", {b});
+    uint64_t actualRevision = 0, expectedRevision = 0;
+    uint32_t actualCount = 0, expectedCount = 0;
+    auto compare = [&]()
+    {
+        const auto actualPage = actual.BuildPage(&actualRevision, &actualCount);
+        const auto expectedPage = expected.BuildPage(&expectedRevision, &expectedCount);
+        Require(actualPage == expectedPage && actualRevision == expectedRevision &&
+            actualCount == expectedCount && actualCount > 1,
+            "Native sharing changed or dropped a complete serialized update.");
+    };
+    compare();
+    a.attributes[0].data[0] = 0.75f;
+    a.indices[1] = 2;
+    a.indices[2] = 1;
+    Require(b.attributes.cdata()[0].data[0] == 0.5f && b.indices.cdata()[1] == 1,
+        "A native mesh edit changed its shared peer.");
+    actual.ReplaceMeshInstances("/A", {a});
+    expected.ReplaceMeshInstances("/A", {a});
+    compare();
+    std::cout << "NativeSharingPreservesCompleteWireUpdates: passed\n";
 }
 
 void EveryAllocationFailurePreservesTheCompleteRetry(bool deferred = false)
@@ -394,18 +597,451 @@ void ManyCommandsReuseOneAmortizedPageBuffer()
     std::cout << "ManyCommandsReuseOneAmortizedPageBuffer: " << allocationIndex
         << " buffer allocations for 1000 commands\n";
 }
+
+std::vector<uint8_t> ReadFileBytes(HdSilkCommandFile& file, size_t transferBytes)
+{
+    std::vector<uint8_t> bytes(file.size());
+    for (size_t offset = 0; offset < bytes.size();)
+    {
+        const size_t count = std::min(transferBytes, bytes.size() - offset);
+        file.Read(offset, bytes.data() + offset, count);
+        offset += count;
+    }
+    return bytes;
+}
+
+class FaultSink final : public HdSilkCommandSink
+{
+public:
+    explicit FaultSink(HdSilkCommandSink& target) : inner(target) {}
+    void Append(const uint8_t* bytes, size_t count) override
+    {
+        if (appends++ == failAppend)
+        {
+            inner.Append(bytes, count / 2);
+            throw std::runtime_error("Injected partial command write.");
+        }
+        inner.Append(bytes, count);
+    }
+    void Truncate(size_t size) override
+    {
+        inner.Truncate(size);
+        if (failTruncate) { throw std::runtime_error("Injected truncate failure."); }
+    }
+    void Flush() override
+    {
+        if (failFlush == 1) { throw std::runtime_error("Injected pre-flush failure."); }
+        inner.Flush();
+        if (failFlush == 2) { throw std::runtime_error("Injected post-flush failure."); }
+    }
+    HdSilkCommandSink& inner;
+    size_t failAppend = SIZE_MAX;
+    size_t appends = 0;
+    int failFlush = 0;
+    bool failTruncate = false;
+};
+
+void EveryStorageFailurePreservesTheCompleteRetry()
+{
+    auto control = PreparedState();
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const auto expected = control->BuildPage(&revision, &count);
+    const uint32_t expectedCount = count;
+    const auto quiet = control->BuildPage(nullptr, nullptr);
+    for (size_t failure = 0; failure < static_cast<size_t>(expectedCount) + 2; ++failure)
+    {
+        auto state = PreparedState();
+        HdSilkCommandFile file(expected.size(), 23);
+        FaultSink sink(file);
+        if (failure < expectedCount) { sink.failAppend = failure; }
+        else { sink.failFlush = static_cast<int>(failure - expectedCount) + 1; }
+        revision = 123;
+        count = 456;
+        const uint64_t rejectedMeshes = HdSilkSceneState::GetRejectedMeshCount();
+        const uint64_t rejectedMaterials = HdSilkSceneState::GetRejectedMaterialCount();
+        bool failed = false;
+        try { state->BuildPageTo(sink, expected.size(), expected.size(), &revision, &count); }
+        catch (const HdSilkCommandStorageError&) { failed = true; }
+        Require(failed && revision == 123 && count == 456, "Storage failure published a partial update.");
+        Require(rejectedMeshes == HdSilkSceneState::GetRejectedMeshCount() &&
+            rejectedMaterials == HdSilkSceneState::GetRejectedMaterialCount(),
+            "Storage failure was misreported as malformed scene content.");
+        const auto retry = state->BuildPage(&revision, &count);
+        Require(retry == expected && revision == 2 && count == expectedCount,
+            "Storage failure lost pending commands or advanced the revision.");
+        Require(state->BuildPage(nullptr, nullptr) == quiet, "Storage recovery changed the acknowledged scene.");
+    }
+    std::cout << "EveryStorageFailurePreservesTheCompleteRetry: " << expectedCount
+        << " partial writes and both flush failure positions passed\n";
+}
+
+void FilePublicationAllocationFailuresPreserveTheCompleteRetry()
+{
+    auto control = PreparedState();
+    const auto expected = control->BuildPage(nullptr, nullptr);
+    auto measured = PreparedState();
+    HdSilkCommandFile measuredFile(expected.size(), 31);
+    BeginAllocations();
+    measured->BuildPageTo(measuredFile, expected.size(), expected.size(), nullptr, nullptr, false);
+    countAllocations = false;
+    const size_t allocations = allocationIndex;
+    Require(allocations > 10 && allocations < 4096, "The file allocation sweep did not cover a bounded real update.");
+    for (size_t failure = 0; failure < allocations; ++failure)
+    {
+        auto state = PreparedState();
+        HdSilkCommandFile file(expected.size(), 31);
+        uint64_t revision = 123;
+        uint32_t count = 456;
+        bool failed = false;
+        BeginAllocations(failure);
+        try { state->BuildPageTo(file, expected.size(), expected.size(), &revision, &count); }
+        catch (const std::bad_alloc&) { failed = true; }
+        countAllocations = false;
+        Require(failed && allocationFailed && revision == 123 && count == 456,
+            "A file publication allocation failure was swallowed or published outputs.");
+        Require(state->BuildPage(&revision, &count) == expected && revision == 2 && count == 10,
+            "A file publication allocation failure changed the exact retry.");
+    }
+    std::cout << "FilePublicationAllocationFailuresPreserveTheCompleteRetry: "
+        << allocations << " allocation points passed\n";
+}
+
+void FilePublicationMatchesContiguousAndRequiresAcknowledgement()
+{
+    auto control = PreparedState();
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const auto expected = control->BuildPage(&revision, &count);
+    const uint32_t expectedCount = count;
+    const auto quiet = control->BuildPage(nullptr, nullptr);
+    size_t largest = 0;
+    for (size_t offset = 0; offset < expected.size();)
+    {
+        const size_t size = ReadU32(expected, offset + 4);
+        largest = std::max(largest, size);
+        offset += size;
+    }
+    for (bool commandLimit : {false, true})
+    {
+        auto state = PreparedState();
+        HdSilkCommandFile refused(expected.size(), 23);
+        revision = 123;
+        count = 456;
+        bool failed = false;
+        try
+        {
+            state->BuildPageTo(refused, expected.size() - (commandLimit ? 0 : 1),
+                largest - (commandLimit ? 1 : 0), &revision, &count);
+        }
+        catch (const HdSilkPageLimitExceeded&) { failed = true; }
+        Require(failed && revision == 123 && count == 456, "A one-byte-short storage ceiling published outputs.");
+        for (size_t attempt = 0; attempt < 2; ++attempt)
+        {
+            HdSilkCommandFile file(expected.size(), 23);
+            Require(state->BuildPageTo(file, expected.size(), largest, &revision, &count) == expected.size() &&
+                file.size() == expected.size(), "File publication reported the wrong extent.");
+            Require(ReadFileBytes(file, 23) == expected && count == expectedCount && revision == attempt + 2,
+                "Exact-limit file publication changed command bytes, count or revision.");
+            bool blocked = false;
+            try { state->RemoveMesh("/World/KeepMesh"); }
+            catch (const std::logic_error&) { blocked = true; }
+            Require(blocked && !state->CompletePage(revision + 1, true), "Deferred file publication allowed mutation.");
+            Require(state->CompletePage(revision, attempt == 1), "Deferred file publication could not resolve.");
+        }
+        Require(state->BuildPage(nullptr, nullptr) == quiet, "File acknowledgement lost updates or retirements.");
+    }
+    std::cout << "FilePublicationMatchesContiguousAndRequiresAcknowledgement: exact bytes, limits and replay passed\n";
+}
+
+void FilePreflightRefusesBeforeLargePayloadCopies()
+{
+    auto prepare = []()
+    {
+        auto state = std::make_unique<HdSilkSceneState>();
+        auto record = Mesh("/Large", 0);
+        record.points.resize(300000, 0);
+        state->ReplaceMeshInstances("/Large", {std::move(record)});
+        return state;
+    };
+    auto control = prepare();
+    const auto expected = control->BuildPage(nullptr, nullptr);
+    size_t largest = 0;
+    for (size_t offset = 0; offset < expected.size();)
+    {
+        const size_t bytes = ReadU32(expected, offset + 4);
+        largest = std::max(largest, bytes);
+        offset += bytes;
+    }
+    for (bool commandLimit : {false, true})
+    {
+        auto state = prepare();
+        HdSilkCommandFile file(expected.size(), 4096);
+        uint64_t revision = 123;
+        uint32_t count = 456;
+        bool failed = false;
+        BeginAllocations();
+        try
+        {
+            state->BuildPageTo(file, expected.size() - (commandLimit ? 0 : 1),
+                largest - (commandLimit ? 1 : 0), &revision, &count);
+        }
+        catch (const HdSilkPageLimitExceeded&) { failed = true; }
+        countAllocations = false;
+        Require(failed && revision == 123 && count == 456 && largestAllocation < 65536,
+            "File preflight copied a large refused mesh or published outputs.");
+        Require(state->BuildPage(&revision, &count) == expected && revision == 1 && count == 2,
+            "File preflight changed the retry.");
+    }
+    std::cout << "FilePreflightRefusesBeforeLargePayloadCopies: total and command limits passed\n";
+}
+
+std::unique_ptr<HdSilkSceneState> InvalidInstanceState()
+{
+    auto state = std::make_unique<HdSilkSceneState>();
+    auto first = Mesh("/Bad", 0);
+    auto second = first;
+    first.instanceIndex = 0;
+    second.instanceIndex = 1;
+    second.indices = {0, 1, 4096};
+    state->ReplaceMeshInstances("/Bad", {std::move(first), std::move(second)});
+    state->ReplaceMeshInstances("/Healthy", {Mesh("/Healthy", 0)});
+    return state;
+}
+
+void FileRollbackRemovesWholePathsAndTruncateFailureAborts()
+{
+    auto control = InvalidInstanceState();
+    uint32_t expectedCount = 0;
+    const auto expected = control->BuildPage(nullptr, &expectedCount);
+    auto state = InvalidInstanceState();
+    HdSilkCommandFile file(65536, 17);
+    uint32_t count = 0;
+    const uint64_t rejected = HdSilkSceneState::GetRejectedMeshCount();
+    state->BuildPageTo(file, 65536, 32768, nullptr, &count, false);
+    Require(ReadFileBytes(file, 17) == expected && count == expectedCount &&
+        HdSilkSceneState::GetRejectedMeshCount() == rejected + 2,
+        "Disk rollback retained a partial instance group or removed its healthy sibling.");
+
+    state = InvalidInstanceState();
+    HdSilkCommandFile broken(65536, 17);
+    FaultSink sink(broken);
+    sink.failTruncate = true;
+    uint64_t revision = 123;
+    count = 456;
+    bool failed = false;
+    try { state->BuildPageTo(sink, 65536, 32768, &revision, &count); }
+    catch (const HdSilkCommandStorageError&) { failed = true; }
+    Require(failed && revision == 123 && count == 456, "Truncate failure published an incomplete scene.");
+    Require(state->BuildPage(&revision, &count) == expected && revision == 1 && count == expectedCount,
+        "Truncate failure changed the complete retry.");
+    std::cout << "FileRollbackRemovesWholePathsAndTruncateFailureAborts: rollback and retry passed\n";
+}
+
+void CommandFileBoundsBufferRollbackAndFinalization()
+{
+    for (const auto& limits : {std::pair<size_t, size_t>{0, 16}, {16, 0}, {SIZE_MAX, 16},
+        {16, static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1}})
+    {
+        bool refused = false;
+        try { HdSilkCommandFile invalid(limits.first, limits.second); }
+        catch (const std::invalid_argument&) { refused = true; }
+        Require(refused, "Invalid file admission was accepted.");
+    }
+    for (size_t buffer : {size_t{7}, size_t{16}, size_t{31}})
+    {
+        HdSilkCommandFile file(64, buffer);
+        std::vector<uint8_t> data(64);
+        for (size_t index = 0; index < data.size(); ++index) { data[index] = static_cast<uint8_t>(index); }
+        file.Append(data.data(), 5);
+        file.Truncate(3);
+        file.Append(data.data() + 3, 61);
+        bool refused = false;
+        try { file.Append(data.data(), 1); }
+        catch (const HdSilkPageLimitExceeded&) { refused = true; }
+        Require(refused && file.size() == 64, "File quota was not enforced at its exact boundary.");
+        file.Truncate(18);
+        file.Append(data.data() + 18, 10);
+        Require(file.size() == 28, "Rollback changed the logical file extent.");
+        refused = false;
+        try { file.Read(0, data.data(), 1); }
+        catch (const HdSilkCommandStorageError&) { refused = true; }
+        Require(refused, "An unfinalized command store was readable.");
+        file.Flush();
+        data.resize(28);
+        Require(ReadFileBytes(file, buffer) == data, "Buffered or on-disk rollback corrupted bytes.");
+        uint8_t last = 0;
+        file.Read(27, &last, 1);
+        Require(last == 27, "Random-access command reads returned the wrong byte.");
+        file.Read(28, nullptr, 0);
+        refused = false;
+        try { file.Read(28, &last, 1); }
+        catch (const std::invalid_argument&) { refused = true; }
+        Require(refused, "An out-of-extent read was accepted.");
+        refused = false;
+        try { file.Read(0, data.data(), buffer + 1); }
+        catch (const std::invalid_argument&) { refused = true; }
+        Require(refused, "An oversized transfer was accepted.");
+        refused = false;
+        try { file.Append(data.data(), 1); }
+        catch (const HdSilkCommandStorageError&) { refused = true; }
+        Require(refused, "Finalized command data was mutable.");
+    }
+    std::cout << "CommandFileBoundsBufferRollbackAndFinalization: disk boundaries and immutable reads passed\n";
+}
+
+void StreamingWriterAbandonsIncompleteCommandsAndPoisonsFailedStorage()
+{
+    HdSilkCommandFile file(64, 16);
+    HdSilkPageWriter writer(64, file, 16);
+    {
+        HdSilkCommandPayload command(writer, 1);
+        command.AppendU64(123);
+        command.Complete();
+        bool refused = false;
+        try { command.Complete(); }
+        catch (const std::logic_error&) { refused = true; }
+        Require(refused, "A completed streamed command was completed again.");
+    }
+    {
+        HdSilkCommandPayload abandoned(writer, 2);
+        abandoned.AppendU32(456);
+    }
+    bool refused = false;
+    try
+    {
+        HdSilkCommandPayload oversized(writer, 2);
+        oversized.AppendU64(456);
+        oversized.AppendU32(789);
+    }
+    catch (const HdSilkPageLimitExceeded&) { refused = true; }
+    Require(refused && writer.size() == 16 && file.size() == 16,
+        "An abandoned or oversized command reached storage.");
+    {
+        HdSilkCommandPayload empty(writer, 3);
+        empty.Complete();
+    }
+    writer.Finish();
+    const auto bytes = ReadFileBytes(file, 16);
+    Require(bytes.size() == 24 && ReadU32(bytes, 0) == 1 && ReadU32(bytes, 4) == 16 &&
+        ReadU32(bytes, 8) == 123 && ReadU32(bytes, 12) == 0 &&
+        ReadU32(bytes, 16) == 3 && ReadU32(bytes, 20) == 8,
+        "Incomplete command recovery changed the preceding or following command.");
+
+    HdSilkCommandFile broken(64, 16);
+    FaultSink sink(broken);
+    sink.failAppend = 0;
+    HdSilkPageWriter poisoned(64, sink, 16);
+    refused = false;
+    try
+    {
+        HdSilkCommandPayload command(poisoned, 1);
+        command.AppendU64(123);
+        command.Complete();
+    }
+    catch (const HdSilkCommandStorageError&) { refused = true; }
+    Require(refused && broken.size() == 8, "Partial storage failure was not observed.");
+    for (int action = 0; action < 3; ++action)
+    {
+        refused = false;
+        try
+        {
+            if (action == 0) { poisoned.Finish(); }
+            else if (action == 1) { poisoned.resize(0); }
+            else { HdSilkCommandPayload next(poisoned, 2); }
+        }
+        catch (const HdSilkCommandStorageError&) { refused = true; }
+        Require(refused && sink.appends == 1 && broken.size() == 8,
+            "A poisoned command store was reused or finalized.");
+    }
+    std::cout << "StreamingWriterAbandonsIncompleteCommandsAndPoisonsFailedStorage: recovery and sticky failure passed\n";
+}
+
+void StreamingWriterExceedsFourGiBWithOneBoundedCommandBuffer()
+{
+    class CountingSink final : public HdSilkCommandSink
+    {
+    public:
+        void Append(const uint8_t* data, size_t size) override
+        {
+            uint32_t command = 0;
+            uint32_t payload = 0;
+            for (size_t index = 0; index < 4; ++index)
+            {
+                command |= uint32_t{data[4 + index]} << (index * 8);
+                payload |= uint32_t{data[8 + index]} << (index * 8);
+            }
+            Require(size == 65536 && command == size && data[0] == 7 && payload == count &&
+                data[size - 1] == 0xa5, "Streaming used a global offset inside the bounded command buffer.");
+            bytes += size;
+            ++count;
+        }
+        void Truncate(size_t) override { throw std::logic_error("Unexpected counting-store rollback."); }
+        void Flush() override { flushed = true; }
+        uint64_t bytes = 0;
+        uint32_t count = 0;
+        bool flushed = false;
+    } sink;
+    constexpr size_t commands = 65537;
+    constexpr size_t commandSize = 65536;
+    constexpr size_t extent = commands * commandSize;
+    size_t oneBufferAllocation = 0;
+    {
+        BeginAllocations();
+        const std::vector<uint8_t> allocatorControl(commandSize);
+        countAllocations = false;
+        oneBufferAllocation = largestAllocation;
+        Require(allocatorControl.capacity() == commandSize && oneBufferAllocation >= commandSize,
+            "The allocator control did not measure one command buffer including its platform overhead.");
+    }
+    HdSilkPageWriter writer(extent, sink, commandSize);
+    const std::vector<uint8_t> tail(commandSize - 12, 0xa5);
+    BeginAllocations();
+    for (uint32_t index = 0; index < commands; ++index)
+    {
+        HdSilkCommandPayload payload(writer, 7);
+        payload.reserve(SIZE_MAX);
+        payload.AppendU32(index);
+        payload.AppendBytes(tail.data(), tail.size());
+        payload[0] = static_cast<uint8_t>(index);
+        payload.Complete();
+    }
+    writer.Finish();
+    countAllocations = false;
+    Require(extent > std::numeric_limits<uint32_t>::max() && writer.size() == extent &&
+        sink.bytes == extent && sink.count == commands && sink.flushed,
+        "Streaming command offsets wrapped at a managed-array or 32-bit limit.");
+    std::cout << "Streaming buffer accounting: largest allocation=" << largestAllocation
+        << ", capacity=" << writer.capacity() << ", allocations=" << allocationIndex << '\n';
+    Require(largestAllocation == oneBufferAllocation && writer.capacity() == commandSize && allocationIndex == 2,
+        "Streaming retained the whole update or allocated one buffer per command.");
+    std::cout << "StreamingWriterExceedsFourGiBWithOneBoundedCommandBuffer: " << extent
+        << " serialized bytes, " << writer.capacity() << " buffer bytes, " << allocationIndex << " allocations\n";
+}
 }
 
 int main()
 {
     try
     {
+        NativeMeshArraysShareExactStorageAndDetachOnMutation();
+        NativeSharingBoundsVerifyCollisionsAndKeepUncachedArrays();
+        NativeSharingPreservesCompleteWireUpdates();
         EveryAllocationFailurePreservesTheCompleteRetry();
         EveryAllocationFailurePreservesTheCompleteRetry(true);
         DeferredAcknowledgementPreservesAllUpdatesAndRetirements();
         PageByteLimitsPreserveCompleteUpdatesAndRetirements();
+        LargeTrianglePageRefusalPrecedesPayloadCopies();
         PageWriterCapsGrowthAndRollsBackIncompleteCommands();
         ManyCommandsReuseOneAmortizedPageBuffer();
+        EveryStorageFailurePreservesTheCompleteRetry();
+        FilePublicationAllocationFailuresPreserveTheCompleteRetry();
+        FilePublicationMatchesContiguousAndRequiresAcknowledgement();
+        FilePreflightRefusesBeforeLargePayloadCopies();
+        FileRollbackRemovesWholePathsAndTruncateFailureAborts();
+        CommandFileBoundsBufferRollbackAndFinalization();
+        StreamingWriterAbandonsIncompleteCommandsAndPoisonsFailedStorage();
+        StreamingWriterExceedsFourGiBWithOneBoundedCommandBuffer();
         return 0;
     }
     catch (const std::exception& error)

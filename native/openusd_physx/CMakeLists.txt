@@ -1,7 +1,9 @@
 set(OPENUSD_PHYSX_SOURCES
     include/openusd_physx.h
+    include/openusd_physx_mesh.h
     include/openusd_physx_world.h
     src/openusd_physx.cpp
+    src/openusd_physx_mesh.cpp
     src/openusd_physx_cuda.h
     src/openusd_physx_cuda.cpp
     src/openusd_physx_events.h
@@ -21,7 +23,33 @@ set(OPENUSD_PHYSX_SOURCES
     src/openusd_physx_vehicle.cpp
     src/openusd_physx_world.cpp)
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../../eng/vhacd.lock.json" openusd_vhacd_lock)
+string(JSON openusd_vhacd_commit GET "${openusd_vhacd_lock}" commit)
+set(OPENUSD_VHACD_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/V-HACD-${openusd_vhacd_commit}"
+    CACHE PATH "Directory containing the locked V-HACD header and license")
+foreach(openusd_vhacd_index RANGE 0 1)
+    string(JSON openusd_vhacd_name GET "${openusd_vhacd_lock}" files ${openusd_vhacd_index} name)
+    string(JSON openusd_vhacd_expected GET "${openusd_vhacd_lock}" files ${openusd_vhacd_index} sha256)
+    if(NOT EXISTS "${OPENUSD_VHACD_ROOT}/${openusd_vhacd_name}")
+        message(FATAL_ERROR "Missing locked V-HACD input. Run eng/fetch-vhacd.ps1 first.")
+    endif()
+    file(SHA256 "${OPENUSD_VHACD_ROOT}/${openusd_vhacd_name}" openusd_vhacd_actual)
+    string(TOUPPER "${openusd_vhacd_actual}" openusd_vhacd_actual)
+    if(NOT openusd_vhacd_actual STREQUAL openusd_vhacd_expected)
+        message(FATAL_ERROR "V-HACD ${openusd_vhacd_name} does not match eng/vhacd.lock.json.")
+    endif()
+endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../eng/vhacd.lock.json")
+add_library(openusd_vhacd STATIC src/vhacd.cpp)
+target_compile_features(openusd_vhacd PRIVATE cxx_std_17)
+target_compile_definitions(openusd_vhacd PUBLIC VHACD_DISABLE_THREADING=1)
+target_include_directories(openusd_vhacd SYSTEM PUBLIC "${OPENUSD_VHACD_ROOT}")
+set_target_properties(openusd_vhacd PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(openusd_physx SHARED ${OPENUSD_PHYSX_SOURCES})
+target_link_libraries(openusd_physx PRIVATE openusd_vhacd)
 target_compile_features(openusd_physx PRIVATE cxx_std_17)
 target_compile_definitions(openusd_physx PRIVATE OPENUSD_PHYSX_BUILD PX_PHYSX_STATIC_LIB)
 target_include_directories(openusd_physx
@@ -103,6 +131,7 @@ else()
 endif()
 if(TARGET openusd_native_sanitizers)
     target_link_libraries(openusd_physx PRIVATE openusd_native_sanitizers)
+    target_link_libraries(openusd_vhacd PRIVATE openusd_native_sanitizers)
 endif()
 if(MSVC)
     target_compile_options(openusd_physx PRIVATE /W4 /WX /permissive- /EHsc)
@@ -155,5 +184,7 @@ install(TARGETS openusd_physx
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/openusd_physx.h include/openusd_physx_world.h
+install(FILES include/openusd_physx.h include/openusd_physx_world.h include/openusd_physx_mesh.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES "${OPENUSD_VHACD_ROOT}/LICENSE"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/openusd_physx" RENAME V-HACD-LICENSE.txt)

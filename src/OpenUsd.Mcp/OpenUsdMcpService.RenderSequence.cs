@@ -35,21 +35,14 @@ internal sealed partial class OpenUsdMcpService
                     OpenUsdMcpErrorCodes.RenderFailure, "EXR sequence output currently requires Windows x64.");
             }
         }
-        if (request.Width is < 1 or > 4096 || request.Height is < 1 or > 4096 ||
-            request.FrameCount is < 1 or > 4096 || !double.IsFinite(request.StartTimeCode) ||
+        ValidateSequenceRaster(request.Width, request.Height, request.FrameCount,
+            request.IncludeDeviceDepth, request.IncludeHdrColor);
+        if (!double.IsFinite(request.StartTimeCode) ||
             !double.IsFinite(request.TimeStep) || request.TimeStep == 0 ||
             !double.IsFinite(request.StartTimeCode + ((request.FrameCount - 1) * request.TimeStep)))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(request), "Sequence dimensions, frame count or times are invalid.");
-        }
-        long pixelCharge = (long)request.Width * request.Height *
-            (request.IncludeDeviceDepth || request.IncludeHdrColor
-                ? RenderDiskJobRequest.ExpandedCaptureManagedBytesPerPixel : 4);
-        if (pixelCharge > RenderDiskJobLimits.Default.MaximumFrameBytes)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(request), "The requested color/depth raster exceeds the managed frame budget.");
         }
         if (request.CameraPath is { } cameraPath)
         {
@@ -221,7 +214,8 @@ internal sealed partial class OpenUsdMcpService
                 DeviceDepth = depth is null ? null : ToArtifact(depth),
                 HdrColor = hdr is null ? null : ToArtifact(hdr),
                 HdrColorFormat = hdr is null ? null : frame.HdrColorFormat == RenderHdrColorFormat.Exr ? "exr" : "raw",
-                AuthoredProduct = sequence.AuthoredProduct
+                AuthoredProduct = sequence.AuthoredProduct,
+                Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null
             };
         }
         finally
@@ -250,6 +244,21 @@ internal sealed partial class OpenUsdMcpService
         }
     }
 
+    private static void ValidateSequenceRaster(int width, int height, int frameCount, bool depth, bool hdr)
+    {
+        if (width is < 1 or > 4096 || height is < 1 or > 4096 || frameCount is < 1 or > 4096)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), "Sequence dimensions or frame count are invalid.");
+        }
+        long charge = (long)width * height * (depth
+            || hdr ? RenderDiskJobRequest.ExpandedCaptureManagedBytesPerPixel : 4);
+        if (charge > RenderDiskJobLimits.Default.MaximumFrameBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width),
+                "The requested raster exceeds the managed frame budget.");
+        }
+    }
+
     private McpRenderSequenceResultDto RegisterCompletedSequence(
         WorkspaceSessionRevision revision, string id, RenderDiskJobResult result,
         McpAuthoredProductDto? authoredProduct = null)
@@ -262,7 +271,10 @@ internal sealed partial class OpenUsdMcpService
             id, relative, relative + "/manifest.json", result.Frames.Count, result.TotalBytes,
             Array.AsReadOnly(result.Diagnostics.Select(ToDiagnostic).ToArray()))
         {
-            AuthoredProduct = authoredProduct
+            AuthoredProduct = authoredProduct,
+            Simulation = result.Frames[0].Simulation is { } simulation
+                ? new McpSimulationRecordingDto(simulation.Epoch, simulation.ScenarioIdentity, simulation.StepIndex,
+                    result.Frames[^1].Simulation!.StepIndex, simulation.FixedStepSeconds) : null
         };
     }
 

@@ -1,4 +1,28 @@
 #nullable enable
+OpenUsd.Rendering.Silk.SilkFrameCapturer.PhysicsOverrides.get -> OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides?
+OpenUsd.Rendering.Silk.SilkFrameCapturer.PhysicsOverrides.set -> void
+OpenUsd.Rendering.Silk.SilkFrameCapturer.PhysicsDeformations.get -> OpenUsd.Rendering.Silk.SilkPhysicsDeformations?
+OpenUsd.Rendering.Silk.SilkFrameCapturer.PhysicsDeformations.set -> void
+OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.SourceRevision.get -> ulong
+OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.HasStaged.get -> bool
+OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.Stage(OpenUsd.Rendering.PhysicsRenderBindingTable! bindings, OpenUsd.Rendering.PhysicsRenderOverrideView overrides) -> void
+OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.RefreshStaged(OpenUsd.Rendering.Silk.SilkSceneState! scene) -> int
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.MaxTextureDimension2D.get -> uint
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.MaxTextureDimension2D.init -> void
+OpenUsd.Rendering.Silk.SilkMaterialParameter.DetailNormal = 18 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkMaterialParameter.DetailUvRow0 = 19 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkMaterialParameter.DetailUvRow1 = 20 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkShaderFeatures.DetailNormalMap = 4096 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets
+OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets.SilkTexturePreparationBudgets(OpenUsd.Rendering.Silk.SilkCpuTextureBudget? cpuTextureBudget, OpenUsd.Rendering.Silk.SilkGpuTextureBudget? gpuTextureBudget, OpenUsd.Rendering.Silk.SilkGpuStagingBudget? gpuStagingBudget) -> void
+OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets.CpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkCpuTextureBudget?
+OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets.GpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkGpuTextureBudget?
+OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets.GpuStagingBudget.get -> OpenUsd.Rendering.Silk.SilkGpuStagingBudget?
+OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets.ConfigureDevice(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+static OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets.FromConfiguration(string? cpuTextureBytes, string? gpuTextureBytes, string? gpuStagingBytes) -> OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets?
+OpenUsd.Rendering.Silk.ISilkTextureCopyGraphicsCommandList
+OpenUsd.Rendering.Silk.ISilkTextureCopyGraphicsCommandList.CopyRenderTarget(OpenUsd.Rendering.Silk.ISilkGraphicsTexture! source, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! destination) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.CopyRenderTarget = 28 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.ISilkCpuTextureAdmissionDevice
 OpenUsd.Rendering.Silk.ISilkCpuTextureAdmissionDevice.CpuTextureBudget.get -> OpenUsd.Rendering.Silk.SilkCpuTextureBudget?
 OpenUsd.Rendering.Silk.ISilkCpuTextureAdmissionDevice.ConfigureCpuTextureBudget(OpenUsd.Rendering.Silk.SilkCpuTextureBudget! budget) -> void
@@ -73,15 +97,26 @@ OpenUsd.Rendering.Silk.SilkGpuBufferBudgetExceededException.ReservedBytes.get ->
 OpenUsd.Rendering.Silk.SilkGpuBufferBudgetExceededException.MaximumBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkPreparationLimits
 OpenUsd.Rendering.Silk.SilkPreparationLimits.SilkPreparationLimits(ulong maximumMeshPreparationReservationBytes, int maximumCommandPageBytes) -> void
+OpenUsd.Rendering.Silk.SilkPreparationLimits.SilkPreparationLimits(ulong maximumMeshPreparationReservationBytes, int maximumCommandPageBytes, OpenUsd.Rendering.Silk.SilkCommandStorageLimits? commandStorage) -> void
+OpenUsd.Rendering.Silk.SilkPreparationLimits.CommandStorage.get -> OpenUsd.Rendering.Silk.SilkCommandStorageLimits?
+OpenUsd.Rendering.Silk.SilkCommandStorageLimits
+OpenUsd.Rendering.Silk.SilkCommandStorageLimits.SilkCommandStorageLimits(ulong maximumLiveBytes, ulong maximumUpdateBytes, int maximumCommandBytes, int transferBufferBytes) -> void
+OpenUsd.Rendering.Silk.SilkCommandStorageLimits.MaximumLiveBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkCommandStorageLimits.MaximumUpdateBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkCommandStorageLimits.MaximumCommandBytes.get -> int
+OpenUsd.Rendering.Silk.SilkCommandStorageLimits.TransferBufferBytes.get -> int
+static OpenUsd.Rendering.Silk.SilkCommandStorageLimits.FromConfiguration(string? maximumLiveBytes, string? maximumUpdateBytes, string? maximumCommandBytes, string? transferBufferBytes) -> OpenUsd.Rendering.Silk.SilkCommandStorageLimits?
 OpenUsd.Rendering.Silk.SilkPreparationLimits.MaximumMeshPreparationReservationBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkPreparationLimits.MaximumCommandPageBytes.get -> int
 static OpenUsd.Rendering.Silk.SilkPreparationLimits.FromConfiguration(string? maximumMeshPreparationReservationBytes, string? maximumCommandPageBytes) -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
+static OpenUsd.Rendering.Silk.SilkPreparationLimits.FromConfiguration(string? maximumMeshPreparationReservationBytes, string? maximumCommandPageBytes, OpenUsd.Rendering.Silk.SilkCommandStorageLimits? commandStorage) -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.PreparationLimits.get -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, string! stagePath, OpenUsd.Rendering.Silk.SilkPreparationLimits? preparationLimits) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source, OpenUsd.Rendering.Silk.SilkPreparationLimits? preparationLimits) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
 OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.SilkSceneIngestionOptions(OpenUsd.Rendering.RenderPurpose includedPurposes, string! materialBindingPurpose, ulong maximumMeshPreparationReservationBytes, int maximumCommandPageBytes) -> void
 OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.MaximumCommandPageBytes.get -> int?
 OpenUsd.Rendering.Silk.OpenUsdSilkPage.ByteLength.get -> int
+OpenUsd.Rendering.Silk.OpenUsdSilkPage.SerializedByteLength.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.SilkSceneIngestionOptions(OpenUsd.Rendering.RenderPurpose includedPurposes, string! materialBindingPurpose, ulong maximumMeshPreparationReservationBytes) -> void
 OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.MaximumMeshPreparationReservationBytes.get -> ulong?
 OpenUsd.Rendering.Silk.SilkMeshPreparationUsage
@@ -242,6 +277,7 @@ OpenUsd.Rendering.Silk.OpenUsdSilkPage.Revision.get -> ulong
 OpenUsd.Rendering.Silk.OpenUsdSilkRuntime
 OpenUsd.Rendering.Silk.OpenUsdSilkSession
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Dispose() -> void
+OpenUsd.Rendering.Silk.OpenUsdSilkSession.ResolveSourceIdentities(ulong pageRevision, System.ReadOnlySpan<(string! Path, int InstanceIndex)> queries) -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.SelectionItem>!
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low, OpenUsd.Rendering.RenderDrawMode drawMode = OpenUsd.Rendering.RenderDrawMode.SmoothShaded) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, OpenUsd.Rendering.Silk.SilkSceneIngestionOptions! ingestionOptions, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low, OpenUsd.Rendering.RenderDrawMode drawMode = OpenUsd.Rendering.RenderDrawMode.SmoothShaded) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
 OpenUsd.Rendering.Silk.SilkSceneIngestionOptions
@@ -763,6 +799,7 @@ OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithDepth(OpenUsd.Rendering.Silk
 OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithDepth(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, OpenUsd.Rendering.Silk.SilkDepthCaptureOptions? depthOptions = null, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 OpenUsd.Rendering.Silk.SilkFrameCapturer.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkFrameCapturer.SilkFrameCapturer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+OpenUsd.Rendering.Silk.SilkFrameCapturer.SilkFrameCapturer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! textureResidencyOptions) -> void
 OpenUsd.Rendering.Silk.SilkFrameCommand
 OpenUsd.Rendering.Silk.SilkFrameCommand.GetProjectionElement(int index) -> double
 OpenUsd.Rendering.Silk.SilkFrameCommand.GetViewElement(int index) -> double
@@ -983,6 +1020,7 @@ OpenUsd.Rendering.Silk.SilkMaterialParameter.Roughness = 5 -> OpenUsd.Rendering.
 OpenUsd.Rendering.Silk.SilkMaterialParameter.SpecularColor = 3 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.UseSpecularWorkflow = 14 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.VolumeDensity = 15 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkMaterialParameter.DiffuseTextureLuminanceMix = 16 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.SilkMaterialRemoveCommand() -> void
@@ -1305,6 +1343,7 @@ OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.Clear() -> void
 OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.CollectDiagnostics(System.Collections.Generic.IList<OpenUsd.Rendering.RenderDiagnostic!>! destination) -> void
 OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.Contains(ulong meshId) -> bool
 OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.Count.get -> int
+OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.ResolvedOverrideCount.get -> int
 OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.DroppedOverrides.get -> long
 OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.GetTransform(ulong meshId) -> System.ReadOnlySpan<double>
 OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides.HasOverrides.get -> bool
@@ -2089,6 +2128,9 @@ OpenUsd.Rendering.Silk.SilkTextureChannel.B = 2 -> OpenUsd.Rendering.Silk.SilkTe
 OpenUsd.Rendering.Silk.SilkTextureChannel.G = 1 -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkTextureChannel.R = 0 -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkTextureChannel.Rgb = 4 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.AverageRgb = 5 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.LuminanceRgb = 6 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.MaximumRgb = 7 -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkTextureDescriptor
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage, out uint MipLevelCount) -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(OpenUsd.Rendering.Silk.SilkTextureDescriptor other) -> bool
@@ -2108,6 +2150,8 @@ OpenUsd.Rendering.Silk.SilkTextureDescriptor.Width.init -> void
 OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.D32Float = 1 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.R32Float = 2 -> OpenUsd.Rendering.Silk.SilkTextureFormat
+OpenUsd.Rendering.Silk.SilkTextureFormat.R8Unorm = 5 -> OpenUsd.Rendering.Silk.SilkTextureFormat
+OpenUsd.Rendering.Silk.SilkTextureFormat.Rg32Float = 6 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba16Float = 3 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba32Float = 4 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm = 0 -> OpenUsd.Rendering.Silk.SilkTextureFormat
@@ -2122,6 +2166,11 @@ OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.X.init -> void
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Y.get -> uint
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Y.init -> void
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions
+OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.SilkTextureResidencyOptions(ulong maxDecodedCpuBytes, ulong maxGpuBytes, bool streamMaterialTextures) -> void
+OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.StreamMaterialTextures.get -> bool
+OpenUsd.Rendering.Silk.SilkMaterialParameter.OmniPbrSpecularLevel = 17 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable = "OPENUSD_SILK_TEXTURE_COORDINATES_UNAVAILABLE" -> string!
+static OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.FromConfiguration(string? streamMaterialTextures) -> OpenUsd.Rendering.Silk.SilkTextureResidencyOptions?
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.MaxDecodedCpuBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.MaxGpuBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.SilkTextureResidencyOptions(ulong maxDecodedCpuBytes = 536870912, ulong maxGpuBytes = 536870912) -> void
@@ -2207,7 +2256,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 24 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 27 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint

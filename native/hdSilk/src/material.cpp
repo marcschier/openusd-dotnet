@@ -4,6 +4,7 @@
 
 #include "materialXBridge.h"
 #include "mdlAdapter.h"
+#include "mdlIdentifier.h"
 #include "openusd_hdsilk.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
@@ -154,6 +155,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((bias, "bias"))
     ((fallback, "fallback"))
     ((sourceColorSpace, "sourceColorSpace"))
+    ((fileColorSpace, "colorSpace:file"))
     ((clamp, "clamp"))
     ((repeat, "repeat"))
     ((mirror, "mirror"))
@@ -485,7 +487,10 @@ uint32_t _ReadFloats(const VtValue& value, float (&out)[4])
     return 0;
 }
 
-/// Reads one UsdUVTexture wrap token onto the wire enum.
+bool _TryReadStringParameter(
+    const std::map<TfToken, VtValue>& parameters, const TfToken& name, std::string* out);
+
+/// Reads one UsdUVTexture wrap token or string onto the wire enum.
 ///
 /// OPENUSD_SILK_WRAP_BLACK is the value for an authored `black` and for any
 /// token this delegate does not recognise, which is USD's documented fallback.
@@ -495,8 +500,8 @@ uint32_t _ReadFloats(const VtValue& value, float (&out)[4])
 /// intent. See OPENUSD_SILK_WRAP_BLACK in openusd_hdsilk.h.
 uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& name)
 {
-    const auto entry = parameters.find(name);
-    if (entry == parameters.end() || !entry->second.IsHolding<TfToken>())
+    std::string wrap;
+    if (!_TryReadStringParameter(parameters, name, &wrap))
     {
         // UsdUVTexture's schema default for `wrap` is `useMetadata`, so an
         // unauthored wrap is that value rather than an authored `black`. It is
@@ -505,29 +510,27 @@ uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& 
         // that it did so because no metadata was read.
         return OPENUSD_SILK_WRAP_USE_METADATA;
     }
-    const TfToken wrap = entry->second.UncheckedGet<TfToken>();
-    if (wrap == _tokens->clamp)
+    if (wrap == _tokens->clamp.GetString())
     {
         return OPENUSD_SILK_WRAP_CLAMP;
     }
-    if (wrap == _tokens->repeat)
+    if (wrap == _tokens->repeat.GetString())
     {
         return OPENUSD_SILK_WRAP_REPEAT;
     }
-    if (wrap == _tokens->mirror)
+    if (wrap == _tokens->mirror.GetString())
     {
         return OPENUSD_SILK_WRAP_MIRROR;
     }
-    if (wrap == _tokens->useMetadata)
+    if (wrap == _tokens->useMetadata.GetString())
     {
         return OPENUSD_SILK_WRAP_USE_METADATA;
     }
     return OPENUSD_SILK_WRAP_BLACK;
 }
 
-/// Reads a string-valued MaterialX parameter. usdMtlx carries MaterialX
-/// `string` inputs as either std::string or TfToken depending on how the layer
-/// was authored, so both are accepted rather than one being silently ignored.
+/// Hydra texture parameters can carry std::string or TfToken, including values
+/// normalized through Sdr; both preserve the same authored textual intent.
 bool _TryReadStringParameter(
     const std::map<TfToken, VtValue>& parameters,
     const TfToken& name,
@@ -608,17 +611,16 @@ bool _TryReadMaterialXAddressMode(
 
 uint32_t _ReadColorSpace(const std::map<TfToken, VtValue>& parameters)
 {
-    const auto entry = parameters.find(_tokens->sourceColorSpace);
-    if (entry == parameters.end() || !entry->second.IsHolding<TfToken>())
+    std::string space;
+    if (!_TryReadStringParameter(parameters, _tokens->sourceColorSpace, &space) || space == "auto")
     {
-        return OPENUSD_SILK_COLOR_SPACE_AUTO;
+        (void)_TryReadStringParameter(parameters, _tokens->fileColorSpace, &space);
     }
-    const TfToken space = entry->second.UncheckedGet<TfToken>();
-    if (space == _tokens->raw)
+    if (space == _tokens->raw.GetString())
     {
         return OPENUSD_SILK_COLOR_SPACE_RAW;
     }
-    return space == _tokens->sRGB
+    return space == _tokens->sRGB.GetString()
         ? OPENUSD_SILK_COLOR_SPACE_SRGB
         : OPENUSD_SILK_COLOR_SPACE_AUTO;
 }
@@ -805,31 +807,6 @@ const HdMaterialNode* _FindMdlSurface(const HdMaterialNetwork& network)
     return nullptr;
 }
 
-/// Splits "mdl:<module>:<material>" back into its two halves. The module may
-/// itself contain colons, as an omniverse:// URI does, so the split is on the
-/// last separator rather than the first.
-void _ParseMdlIdentifier(
-    const TfToken& identifier,
-    std::string* module,
-    std::string* material)
-{
-    const std::string text = identifier.GetString();
-    const size_t start = std::strlen(_mdlIdentifierPrefix);
-    if (text.size() <= start)
-    {
-        return;
-    }
-    const std::string body = text.substr(start);
-    const size_t separator = body.rfind(':');
-    if (separator == std::string::npos)
-    {
-        *module = body;
-        return;
-    }
-    *module = body.substr(0, separator);
-    *material = body.substr(separator + 1);
-}
-
 /// Converts one authored MDL input into the value kinds the openusd_mdl C ABI
 /// carries. Returns false for anything else, so an input this bridge cannot
 /// express is reported by name instead of being narrowed into a different type.
@@ -955,12 +932,11 @@ void _ResolveMdlSurface(
 
     std::string module;
     std::string material;
-    _ParseMdlIdentifier(surface.identifier, &module, &material);
-    if (module.empty())
+    if (!HdSilkDecodeMdlIdentifier(surface.identifier.GetString(), &module, &material))
     {
         TF_WARN(
             "hdSilk material '%s' has an MDL surface terminal that names no "
-            "module; it cannot be distilled and is not shaded.",
+            "valid module identity; it cannot be distilled and is not shaded.",
             record.path.c_str());
         return;
     }
@@ -1020,6 +996,11 @@ void _ResolveMdlSurface(
         return;
     }
 
+    if (!distillation.diagnostic.empty())
+    {
+        TF_WARN("hdSilk material '%s' MDL projection diagnostic: %s",
+            record.path.c_str(), distillation.diagnostic.c_str());
+    }
     for (const HdSilkMdlDistilledScalar& source : distillation.scalars)
     {
         HdSilkMaterialScalar scalar;
@@ -1040,6 +1021,7 @@ void _ResolveMdlSurface(
         texture.wrapS = source.wrapS;
         texture.wrapT = source.wrapT;
         texture.sourceColorSpace = source.colorSpace;
+        texture.compositeOp = source.compositeOperator;
         for (size_t index = 0; index < 4; ++index)
         {
             texture.scale[index] = source.scale[index];
@@ -1047,6 +1029,10 @@ void _ResolveMdlSurface(
         }
         texture.asset = source.asset;
         texture.uvPrimvar = _tokens->st.GetString();
+        for (size_t index = 0; index < 6; ++index)
+        {
+            texture.uvTransform[index] = distillation.uvTransform[index];
+        }
         record.textures.push_back(std::move(texture));
     }
     record.surfaceKind = OPENUSD_SILK_SURFACE_MDL_DISTILLED;
@@ -1127,6 +1113,8 @@ bool _ReadParameterFloats(
 struct _UvBinding
 {
     std::string primvar = "st";
+    bool hasFallback = false;
+    float fallback[2] = {0.0f, 0.0f};
     float transform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     bool supported = true;
     std::string unsupportedReason;
@@ -1445,6 +1433,27 @@ _UvBinding _ResolveUvBinding(
             if (!name.empty())
             {
                 binding.primvar = name;
+                const TfToken fallbackName = node->identifier == _tokens->UsdPrimvarReaderFloat2
+                    ? TfToken("fallback") : TfToken("default");
+                if (_FindInputConnection(network, node->path, fallbackName) != nullptr)
+                {
+                    binding.supported = false;
+                    binding.unsupportedReason = "its coordinate fallback is connected rather than constant";
+                    return binding;
+                }
+                const auto fallback = node->parameters.find(fallbackName);
+                float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                if (fallback != node->parameters.end() &&
+                    (_ReadFloats(fallback->second, values) != 2 ||
+                        !std::isfinite(values[0]) || !std::isfinite(values[1])))
+                {
+                    binding.supported = false;
+                    binding.unsupportedReason = "its coordinate fallback is not a finite float2";
+                    return binding;
+                }
+                binding.hasFallback = true;
+                binding.fallback[0] = values[0];
+                binding.fallback[1] = values[1];
             }
             return binding;
         }
@@ -2450,6 +2459,9 @@ bool _TryCreateTextureEntry(
         return fail(_TextureEntryFailure::UnsupportedGraph);
     }
     entry.uvPrimvar = uv.primvar;
+    entry.hasUvFallback = uv.hasFallback;
+    entry.uvFallback[0] = uv.fallback[0];
+    entry.uvFallback[1] = uv.fallback[1];
     for (size_t index = 0; index < 6; ++index)
     {
         entry.uvTransform[index] = uv.transform[index];
@@ -2607,7 +2619,9 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
             _UvTransformsEqual(texture.uvTransform, record.uvTransform);
         const bool primvarAgrees =
             texture.uvPrimvar.empty() || texture.uvPrimvar == primvar;
-        if (transformAgrees && primvarAgrees)
+        const bool fallbackAgrees = texture.uvFallback[0] == first->uvFallback[0] &&
+            texture.uvFallback[1] == first->uvFallback[1];
+        if (transformAgrees && primvarAgrees && fallbackAgrees)
         {
             continue;
         }
@@ -2617,6 +2631,14 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
             continue;
         }
         divergent.push_back(texture.parameter);
+        if (!fallbackAgrees)
+        {
+            TF_WARN(
+                "hdSilk material '%s' texture for parameter %u asks for a different "
+                "primvar-reader fallback than its single coordinate stream; this input is left at its default.",
+                record.path.c_str(), texture.parameter);
+            continue;
+        }
         if (!primvarAgrees)
         {
             TF_WARN(
@@ -2987,14 +3009,24 @@ void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
         }
         return;
     }
-    if (_UvTransformsEqual(displacement->uvTransform, record.uvTransform))
+    bool fallbackAgrees = true;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_BelongsToSurfaceUvStream(texture) && texture.uvPrimvar == displacement->uvPrimvar &&
+            (texture.uvFallback[0] != displacement->uvFallback[0] ||
+                texture.uvFallback[1] != displacement->uvFallback[1]))
+        {
+            fallbackAgrees = false;
+        }
+    }
+    if (_UvTransformsEqual(displacement->uvTransform, record.uvTransform) && fallbackAgrees)
     {
         return;
     }
     TF_WARN(
         "hdSilk material '%s' displacement asks for a different folded texture "
-        "coordinate transform than the material's surface textures; hdSilk "
-        "carries one transform per material, so the displacement is left "
+        "coordinate transform or reader fallback than the material's surface textures; hdSilk "
+        "carries one transform per material and one default per missing primvar, so the displacement is left "
         "unpublished rather than sampled through coordinates it did not author.",
         record.path.c_str());
     std::vector<HdSilkMaterialTexture> kept;

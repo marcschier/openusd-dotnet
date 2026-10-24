@@ -32,6 +32,9 @@ public static class SilkRenderDiagnosticCodes
     /// <summary>An authored texture fallback value was used.</summary>
     public const string TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED";
 
+    /// <summary>The material samples default coordinates because the selected mesh primvar is absent.</summary>
+    public const string TextureCoordinatesUnavailable = "OPENUSD_SILK_TEXTURE_COORDINATES_UNAVAILABLE";
+
     /// <summary>
     /// An authored UsdPreviewSurface <c>displacement</c> input moved the geometry
     /// hdSilk drew, at the named emitted vertex density.

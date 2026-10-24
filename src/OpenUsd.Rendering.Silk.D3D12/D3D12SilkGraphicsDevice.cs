@@ -88,7 +88,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12CommandQueue* queue,
         ID3D12Fence* fence,
         string adapterName,
-        bool software)
+        bool software,
+        bool useGpuUploadHeaps)
     {
         _api = api;
         _dxgi = dxgi;
@@ -97,6 +98,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         _device = device;
         _queue = queue;
         _fence = fence;
+        UsesGpuUploadHeaps = useGpuUploadHeaps;
         string? descriptorIndexedTextureTablesDiagnostic = null;
         if (SupportsD3D12DescriptorIndexedTextureTables(
             device,
@@ -122,6 +124,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             // Direct3D 11 and 12 both require every feature-level 11_0+ device -- including
             // WARP -- to support up to 16x anisotropic filtering (D3D12_REQ_MAXANISOTROPY).
             MaxSamplerAnisotropy = 16f,
+            MaxTextureDimension2D = 16384,
             // A pipeline state with zero render targets and OMSetRenderTargets with
             // a depth view alone are core Direct3D 12, so every device this backend
             // creates can record the depth-only shadow pass.
@@ -135,11 +138,23 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     /// <inheritdoc/>
     public SilkGraphicsCapabilities Capabilities { get; }
 
+    /// <summary>Gets whether CPU-writable upload buffers use GPU-local upload heaps.</summary>
+    /// <remarks>Texture staging and GPU-only storage buffers retain their existing heap policies.</remarks>
+    public bool UsesGpuUploadHeaps { get; }
+
     internal D3D12DescriptorIndexedTextureTables? MaterialDescriptorTables =>
         _materialDescriptorTables;
 
     /// <summary>Creates a D3D12 device. WARP is deterministic and suitable for CI.</summary>
-    public static D3D12SilkGraphicsDevice Create(bool useWarp = true)
+    public static D3D12SilkGraphicsDevice Create(bool useWarp = true) => Create(useWarp, useGpuUploadHeaps: false);
+
+    /// <summary>Creates a device with an explicit optional GPU-local upload-buffer policy.</summary>
+    /// <remarks>
+    /// GPU-upload heaps require a hardware adapter reporting D3D12 Options16 support.
+    /// Unsupported devices fail explicitly rather than silently choosing system upload memory.
+    /// Logical buffer admission is unchanged; this option does not guarantee physical VRAM headroom.
+    /// </remarks>
+    public static D3D12SilkGraphicsDevice Create(bool useWarp, bool useGpuUploadHeaps)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -180,6 +195,27 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 &deviceId,
                 (void**)&device));
 
+            if (useGpuUploadHeaps)
+            {
+                if (software)
+                {
+                    throw new NotSupportedException("GPU-local upload heaps require a hardware D3D12 adapter.");
+                }
+                var options = new FeatureDataD3D12Options16();
+                int status = device->CheckFeatureSupport(
+                    global::Silk.NET.Direct3D12.Feature.D3D12Options16,
+                    &options, (uint)sizeof(FeatureDataD3D12Options16));
+                if (status == unchecked((int)0x80070057))
+                {
+                    throw new NotSupportedException("The D3D12 runtime does not expose GPU-upload-heap support.");
+                }
+                SilkMarshal.ThrowHResult(status);
+                if (!options.GPUUploadHeapSupported)
+                {
+                    throw new NotSupportedException("The D3D12 adapter does not support GPU-upload heaps.");
+                }
+            }
+
             var queueDescription = new CommandQueueDesc
             {
                 Type = CommandListType.Direct,
@@ -209,7 +245,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 queue,
                 fence,
                 adapterName,
-                software);
+                software,
+                useGpuUploadHeaps);
         }
         catch
         {
@@ -259,7 +296,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         bool upload = usage.HasFlag(SilkBufferUsage.Upload);
         RegisterDependentObject();
 
-        var heapProperties = new HeapProperties(storage && !upload ? HeapType.Default : HeapType.Upload);
+        var heapProperties = new HeapProperties(storage && !upload ? HeapType.Default :
+            upload && UsesGpuUploadHeaps ? HeapType.GpuUpload : HeapType.Upload);
         var description = new ResourceDesc(
             ResourceDimension.Buffer,
             0,
@@ -275,26 +313,32 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             ? ResourceStates.UnorderedAccess
             : ResourceStates.GenericRead;
         ID3D12Resource* resource = null;
+        UniformAllocation? uniform = null;
         IDisposable? reservation = null;
         bool success = false;
         try
         {
             reservation = ReserveBufferAllocation(size);
-            Guid resourceId = ID3D12Resource.Guid;
-            SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
-                &heapProperties,
-                HeapFlags.None,
-                &description,
-                initialState,
-                null,
-                &resourceId,
-                (void**)&resource));
+            if ((usage == (SilkBufferUsage.Uniform | SilkBufferUsage.Upload) ||
+                usage == (SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload)) &&
+                size <= 4096)
+            {
+                uniform = AllocateUniform(size);
+            }
+            else
+            {
+                Guid resourceId = ID3D12Resource.Guid;
+                SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+                    &heapProperties, HeapFlags.None, &description, initialState,
+                    null, &resourceId, (void**)&resource));
+            }
             var buffer = new D3D12SilkGraphicsBuffer(
                 this,
-                resource,
+                uniform is null ? resource : uniform.Resource,
                 size,
                 usage,
-                initialState);
+                initialState,
+                uniform);
             buffer.OwnBufferReservation(reservation);
             success = true;
             return buffer;
@@ -303,6 +347,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             if (!success)
             {
+                uniform?.Dispose();
                 Release(ref resource);
                 ReleaseDependentObject();
                 reservation?.Dispose();
@@ -847,6 +892,7 @@ internal sealed unsafe class D3D12StagingResource(ID3D12Resource* resource, IDis
 internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
 {
     private readonly D3D12SilkGraphicsDevice _device;
+    private readonly D3D12SilkGraphicsDevice.UniformAllocation? _uniform;
     private ID3D12Resource* _resource;
 
     internal D3D12SilkGraphicsBuffer(
@@ -854,11 +900,13 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
         ID3D12Resource* resource,
         nuint size,
         SilkBufferUsage usage,
-        ResourceStates state)
+        ResourceStates state,
+        D3D12SilkGraphicsDevice.UniformAllocation? uniform = null)
         : base(size, usage)
     {
         _device = device;
         _resource = resource;
+        _uniform = uniform;
         State = state;
     }
 
@@ -880,7 +928,7 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
             {
                 System.Buffer.MemoryCopy(
                     source,
-                    (byte*)mapped + checked((nint)offset),
+                    (byte*)mapped + checked((nint)(ResourceOffset + offset)),
                     checked((long)(Size - offset)),
                     data.Length);
             }
@@ -889,8 +937,8 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
         finally
         {
             var writtenRange = new global::Silk.NET.Direct3D12.Range(
-                offset,
-                offset + length);
+                ResourceOffset + offset,
+                ResourceOffset + offset + length);
             _resource->Unmap(0, &writtenRange);
         }
     }
@@ -903,12 +951,21 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
 
     protected override void ReleaseNative()
     {
-        _ = _resource->Release();
+        if (_uniform is null)
+        {
+            _ = _resource->Release();
+        }
+        else
+        {
+            _uniform.Dispose();
+        }
         _resource = null;
         _device.ReleaseDependentObject();
     }
 
     internal ID3D12Resource* Resource => _resource;
+    internal nuint ResourceOffset => _uniform?.Offset ?? 0;
+    internal ulong GpuVirtualAddress => _resource->GetGPUVirtualAddress() + (ulong)ResourceOffset;
 
     internal D3D12SilkGraphicsDevice Device => _device;
 

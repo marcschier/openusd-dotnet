@@ -10,6 +10,14 @@ only extra step is that instead of drawing with a graphics API, it serializes
 whatever changed into a byte buffer ("page") that a managed renderer can
 consume without touching any native pointers.
 
+Mesh synchronization uses a bounded per-sync index to share exact attribute, triangulation and
+identity buffers with copy-on-write ownership. Attribute metadata and every payload byte must
+match, including signed-zero bits. Each index permits at most 65,536 entries and eight candidates
+per hash; reaching either bound leaves the original data intact. The lookup owners are cleared
+after resource commit, on failed renders and on scene reset. Live mesh owners remain valid,
+and subsequent edits detach rather than changing another mesh. Wire data and ABI versions are
+unchanged.
+
 ## Architecture
 
 - **`src/rendererPlugin.{h,cpp}`**: `HdSilkRendererPlugin`, registered with `HdRendererPluginRegistry` via
@@ -82,7 +90,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 6 and page ABI 24. Managed creation requires the matching session/page
+session ABI 6 and page ABI 26. Managed creation requires the matching session/page
 version exports; older session-5 libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -129,6 +137,15 @@ page-publication failures, while managed pixel cases cover hidden primvars,
 normals, topology, ancestor transforms, deletion/redefinition and instancing.
 
 ## Wire format
+
+Named `UsdPrimvarReader_float2` fallbacks and MaterialX `geompropvalue_vector2` defaults
+are projected as constant texture-coordinate attributes only when the bound mesh lacks
+the named authored attribute. No source primvar is authored or changed. Values remain
+before the material's folded UV transform. Material-only default edits dirty the complete
+prototype family; lightweight references remain payload-free. Synthesis participates in
+page byte admission, per-path rollback and acknowledgement without changing the ABI.
+`hdsilk_uv_fallback` covers defaults, malformed/connected values, authored-coordinate
+precedence, material-only edits, instance families, exact limits and retry.
 
 Meshes with published normals can share triangle corners whose original point identity
 and every resolved vertex attribute agree bit-for-bit. `src/meshVertexLayout.h` builds a
@@ -219,6 +236,73 @@ as malformed scene records. Environment acknowledgements, dirty flags and remova
 advance only after a complete page is built, so a retry still publishes every pending
 change. Invalid authored records retain their existing diagnostic behavior. This is
 failure atomicity, not a total-process memory limit or pre-allocation admission policy.
+
+### Opt-in file-backed command storage
+
+`HdSilkSceneState::BuildPageTo` shares the contiguous page serializer and publication
+journal, but feeds complete commands into a private store. Its update-byte ceiling
+and reusable command-buffer ceiling are independent. Triangle preflight checks both
+before large payload copies. Per-path rollback can truncate already flushed commands;
+write, truncate and flush failures abort the whole update rather than masquerading as
+malformed scene records. Final flush precedes revision/output mutation and deferred
+acknowledgement. No wire layout or existing C entry point changes.
+
+`src/commandFile.h` implements bounded buffered storage and bounded random-access reads.
+Windows uses create-new, non-shared, delete-on-close temporary files. POSIX uses exclusive
+mode-0600 files with atomic close-on-exec, unlinked before the first write. Finalized
+storage is immutable. The native publication probe covers byte-identical file/contiguous output, allocation and
+partial-write failures, both sides of final flush, rollback, exact ceilings and replay.
+A counting-store probe serializes more than 4 GiB with one 64-KiB command buffer; it
+does **not** write a multi-gigabyte file or qualify warehouse geometry.
+
+The additive version-1 storage extension exposes `openusd_silk_session_set_command_storage_limits`,
+`openusd_silk_session_sync_to_storage`, `openusd_silk_page_read_storage` and
+`openusd_silk_session_get_command_storage_usage`. Configure it once after preparation
+ceilings and acknowledgement, before synchronization. The pool charges all live files
+from that session, including acknowledged pages, and returns credit on truncation or
+final release. Files survive session destruction. Contiguous sync entry points keep
+their original limits; the explicitly opted-in stored path applies the page ceiling
+to each command and uses the separate update ceiling for its full extent.
+
+Managed `SilkPreparationLimits.CommandStorage` selects this transport through the
+existing Viewer/MCP capture path. The renderer uses bounded bulk reads and a reusable
+command buffer for both preflight and transactional application. Failed CPU/GPU preparation
+retains the exact file for ordered replay; successful publication or renderer disposal
+releases that reference. Public enumerators instead copy each command into managed
+storage to preserve existing span lifetimes across advancement and page disposal.
+Enumerator copies retain their shared file reader until collection; renderer-owned
+enumeration releases it deterministically. `SerializedByteLength` reports the full
+64-bit extent; `ByteLength` throws on stored updates exceeding Int32.
+
+File buffering, allocator/reallocation overhead, filesystem cache, retained geometry
+and GPU resources remain separate from serialized-byte limits. Only Windows file
+storage has local execution evidence. Small-fixture captures match color and depth
+on software backends and RTX 5070 D3D12/Vulkan. A guarded no-MDL/no-GPU warehouse run
+successfully read and hashed 4,743,378,157 command bytes. Separate bounded exterior
+diagnostics now render the complete expected mesh-record set on both backends after
+closing native imaging. They deliberately disable MDL and do not qualify material fidelity
+or the live Viewer/MCP journey; see `docs/simready-warehouse.md` for limits and scope.
+
+### Source identity batches
+
+The optional version-1 `openusd_silk_session_resolve_source_identities` extension resolves
+retained `(Hydra path, instance index)` keys to authored source prim paths and ordered
+point-instancer contexts. It requires the latest successful page revision and the same
+source-stage change serial. Native USD instances resolve to their instance-proxy paths,
+not `/UsdNiPropagatedPrototypes/...`. The terminal render keys and wire ABI remain unchanged.
+
+Requests contain at most 1,024 keys and admit at most 8 MiB of serialized results. Results
+preserve input order and are copied only after the complete batch succeeds. Unknown keys,
+stale revisions, source edits and byte-budget failures return no partial results. A short
+caller buffer reports the exact required size without modifying the buffer.
+
+USD pick ordinals are tracked separately from stable authored instance indices. Each level
+uses its position in the masked, per-prototype Hydra index array; nested ordinals compose
+with that array's size. Reusing the stable wire index would resolve sparse/multi-prototype
+instances to the wrong source slot. Ordinary, nested native and masked point-instance
+fixtures exercise this distinction, together with exact quotas, invalid keys and edit/retry.
+The managed entry point is `OpenUsdSilkSession.ResolveSourceIdentities`; missing native
+support throws explicitly. Returned selections name source objects, not GPU cache keys.
 
 ### Native copy acknowledgement
 

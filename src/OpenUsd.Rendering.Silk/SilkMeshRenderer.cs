@@ -119,7 +119,7 @@ public readonly record struct SilkPickRendererStatistics(
 /// <summary>
 /// Owns retained mesh buffers and the checked mesh graphics pipeline for one RHI device.
 /// </summary>
-public sealed class SilkMeshRenderer :
+public sealed partial class SilkMeshRenderer :
     ISilkRenderTargetRenderer,
     IRenderPickingBackend
 {
@@ -205,6 +205,9 @@ public sealed class SilkMeshRenderer :
     private int _missingSelectionPathCount;
     private bool _selectionResolutionDirty = true;
     private ulong _selectionResolvedGpuRevision = ulong.MaxValue;
+    private SelectionState? _resolvedSelection;
+    private int _resolvedMissingSelectionPaths;
+    private bool _selectionResourcePreparation;
     private ulong _selectionRevision;
     private SilkSelectionOutlineStatus _selectionOutlineStatus =
         SilkSelectionOutlineStatus.EmptySelection;
@@ -245,7 +248,10 @@ public sealed class SilkMeshRenderer :
     private ulong _unsupportedXRayRequests;
     private bool _disposed;
     private OpenUsdSilkPage.ReplaySnapshot? _rejectedPage;
-    private bool _rejectedPageUsesMaterials;
+    private SilkMeshRenderOptions _rejectedPageOptions = SilkMeshRenderOptions.Default;
+    private SilkTextureDescriptor? _rejectedDisplayTarget;
+    private SilkTextureDescriptor? _rejectedSelectionDepth;
+    private PageFrame? _rejectedFrame;
     private readonly Action _replayRejectedPage;
 
     /// <summary>Initializes a retained renderer using checked shaders for the device backend.</summary>
@@ -298,9 +304,17 @@ public sealed class SilkMeshRenderer :
         Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
         SilkTextureResidencyOptions? textureResidencyOptions = null,
         SilkCpuTextureBudget? cpuTextureBudget = null,
-        Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null)
+        Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null,
+        SilkDisplayTransformLatticeCache? displayLattices = null)
     {
         ArgumentNullException.ThrowIfNull(device);
+        if (textureResidencyOptions?.StreamMaterialTextures == true &&
+            !SilkMeshGpuGeometryResource.UsesInstanceAdmission(device))
+        {
+            throw new InvalidOperationException(
+                "Material texture streaming requires a configured GPU buffer budget for transactional frame " +
+                    "publication.");
+        }
         _device = device;
         _replayRejectedPage = ReplayRejectedPage;
         _shaderFormat = shaderFormat;
@@ -346,7 +360,7 @@ public sealed class SilkMeshRenderer :
 
         _pipelineCache = new SilkGraphicsPipelineCache(device, shaderFormat);
         _shadowMaps = new SilkShadowMapCache(device, _pipelineCache);
-        _displayTransform = new SilkDisplayTransformPass(device, shaderFormat);
+        _displayTransform = new SilkDisplayTransformPass(device, shaderFormat, displayLattices);
         _materialShaderGenerator = new SilkProjectedMaterialShaderGenerator();
         _materialShaderCompiler = new SilkMaterialShaderCompilerService(_materialShaderGenerator);
         if (pickPipeline is not null)
@@ -407,6 +421,7 @@ public sealed class SilkMeshRenderer :
         ISilkPickingGraphicsDevice device = _pickingDevice ??
             throw new InvalidOperationException(
                 "The renderer has no pick-capable device.");
+        _pickPipelines.EnsureCapacity(checked(_pickPipelines.Count + 1));
         ISilkPickGraphicsPipeline created = CreatePickPipeline(
             device,
             _shaderFormat,
@@ -664,17 +679,14 @@ public sealed class SilkMeshRenderer :
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
             ValidateOptions(options ?? SilkMeshRenderOptions.Default);
+            ReplayRejectedPage(depthTarget);
             using OpenUsdSilkPage page = session.Sync(
                 checked((int)colorTarget.Width),
                 checked((int)colorTarget.Height),
                 timeCode,
                 CameraState.Default);
-            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
-            return RenderCore(
-                colorTarget,
-                depthTarget,
-                options ?? SilkMeshRenderOptions.Default,
-                pickBinding: null);
+            return RenderPage(page, colorTarget, depthTarget, options ?? SilkMeshRenderOptions.Default,
+                null, null, out _);
         }
     }
 
@@ -695,17 +707,14 @@ public sealed class SilkMeshRenderer :
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
             ValidateOptions(options ?? SilkMeshRenderOptions.Default);
+            ReplayRejectedPage(depthTarget);
             using OpenUsdSilkPage page = session.Sync(
                 checked((int)colorTarget.Width),
                 checked((int)colorTarget.Height),
                 timeCode,
                 CameraState.Default);
-            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
-            return RenderCore(
-                colorTarget,
-                depthTarget,
-                options ?? SilkMeshRenderOptions.Default,
-                pickBinding);
+            return RenderPage(page, colorTarget, depthTarget, options ?? SilkMeshRenderOptions.Default,
+                pickBinding, null, out _);
         }
     }
 
@@ -722,12 +731,8 @@ public sealed class SilkMeshRenderer :
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
             ValidateOptions(options ?? SilkMeshRenderOptions.Default);
-            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
-            return RenderCore(
-                colorTarget,
-                depthTarget,
-                options ?? SilkMeshRenderOptions.Default,
-                pickBinding: null);
+            return RenderPage(page, colorTarget, depthTarget, options ?? SilkMeshRenderOptions.Default,
+                null, null, out _);
         }
     }
 
@@ -747,12 +752,8 @@ public sealed class SilkMeshRenderer :
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
             ValidateOptions(options ?? SilkMeshRenderOptions.Default);
-            ApplyPage(page, (options ?? SilkMeshRenderOptions.Default).UseSceneMaterials);
-            return RenderCore(
-                colorTarget,
-                depthTarget,
-                options ?? SilkMeshRenderOptions.Default,
-                pickBinding);
+            return RenderPage(page, colorTarget, depthTarget, options ?? SilkMeshRenderOptions.Default,
+                pickBinding, null, out _);
         }
     }
 
@@ -839,15 +840,36 @@ public sealed class SilkMeshRenderer :
             ThrowIfDisposed();
             ValidateTargets(colorTarget, depthTarget);
             ValidateOptions(options);
-            ApplyPage(page, options.UseSceneMaterials);
-            return RenderCore(
-                colorTarget,
-                depthTarget,
-                options,
-                pickBinding: null,
-                captureRequest,
-                out hdrColor,
-                renderSelectionOutline: false);
+            return RenderPage(page, colorTarget, depthTarget, options, null, captureRequest,
+                out hdrColor, renderSelection: false);
+        }
+    }
+
+    internal SilkFrameCaptureResult ApplyAndCapture(
+        OpenUsdSilkPage page, ISilkGraphicsTexture color, ISilkGraphicsTexture depth, SilkMeshRenderOptions options,
+        SilkFrameCapture.Completion completion)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            ValidateTargets(color, depth);
+            ValidateOptions(options);
+            _ = RenderPage(page, color, depth, options, null, completion.DisplayRequest, out _,
+                renderSelection: false, completion: completion);
+            return completion.Finish(this);
+        }
+    }
+
+    internal SilkFrameCaptureResult CaptureRetained(
+        ISilkGraphicsTexture color, ISilkGraphicsTexture depth, SilkMeshRenderOptions options,
+        SilkFrameCapture.Completion completion)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            _ = RenderCore(color, depth, options, null, completion.DisplayRequest, out _,
+                renderSelectionOutline: false, completion: completion);
+            return completion.Finish(this);
         }
     }
 
@@ -922,6 +944,7 @@ public sealed class SilkMeshRenderer :
             {
                 session.RevokePageReplay(_replayRejectedPage);
             }
+            _rejectedPage?.Dispose();
             _rejectedPage = null;
             var disposed = new ObjectDisposedException(nameof(SilkMeshRenderer));
             _activePick?.Fail(disposed);
@@ -957,6 +980,8 @@ public sealed class SilkMeshRenderer :
             DisposeSelectionOutlineInfrastructure();
             _displayTransform.Dispose();
             _shadowMaps.Dispose();
+            _frameTargets?.Dispose();
+            _frameTargets = null;
             GpuResources.Dispose();
             _materialShaderCompiler.Dispose();
             _pipelineCache.Dispose();
@@ -984,12 +1009,34 @@ public sealed class SilkMeshRenderer :
         SilkPickFrameBinding? pickBinding,
         SilkDepthCaptureRequest? captureRequest,
         out SilkHdrColorCaptureResult? hdrColor,
-        bool renderSelectionOutline = true)
+        bool renderSelectionOutline = true,
+        bool preparedPage = false,
+        PreparedFrameOutput? output = null,
+        SilkFrameCapture.Completion? completion = null)
     {
         hdrColor = null;
         ValidateTargets(displayTarget, depthTarget);
         ValidateOptions(options);
-        SyncPhysicsDeformations();
+        if (output is null && !preparedPage && SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device))
+        {
+            if (PhysicsDeformations?.HasBatch == true)
+            {
+                using var retainedPage = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, Scene.Revision, [], 0);
+                return RenderPage(retainedPage, displayTarget, depthTarget, options, pickBinding, captureRequest,
+                    out hdrColor, renderSelectionOutline, retained: true, completion: completion);
+            }
+            using var preparedOutput = new PreparedFrameOutput(
+                this, displayTarget, depthTarget, privateCapture: completion is not null);
+            return RenderCore(preparedOutput.Color, preparedOutput.Depth, options, pickBinding, captureRequest,
+                out hdrColor, renderSelectionOutline, false, preparedOutput, completion);
+        }
+        if (!preparedPage)
+        {
+            SyncPhysicsDeformations();
+        }
+        using SilkSceneGpuResources.PreparedFrameUniforms? uniforms = GpuResources.PrepareFrameUniforms();
+        using SilkDisplayTransformPass.PreparedPage? display = preparedPage ? null : _displayTransform.PrepareFrame();
+        PhysicsOverrides?.RefreshStaged(Scene);
         int uniformUploads = GpuResources.UpdateUniforms(Scene.Frame, PhysicsOverrides);
         // A colour-managed display transform moves the scene off the caller's target and
         // into a renderer-owned linear intermediate of the same size. Everything below
@@ -1036,7 +1083,14 @@ public sealed class SilkMeshRenderer :
         // them, and before the frame constants are packed, because those constants
         // carry the atlas tiles and light-space matrices this pass just resolved.
         // A scene that publishes no descriptor records nothing here at all.
-        _shadowMaps.Prepare(Scene, GpuResources);
+        if (preparedPage)
+        {
+            _shadowMaps.ReportPreparedCasters(GpuResources);
+        }
+        else
+        {
+            _shadowMaps.Prepare(Scene, GpuResources);
+        }
         // The prefiltered environment is resolved next and for the same reason:
         // the frame constants carry whether it is live and how many prefiltered
         // roughness levels it has, and the mean-radiance ambient term they also
@@ -1048,10 +1102,19 @@ public sealed class SilkMeshRenderer :
             sceneExposure,
             _shadowMaps.Binding,
             _shadowMaps.BindingRevision);
+        using PreparedSelectionGeometry? selectedGeometry = (renderSelectionOutline || completion is not null) &&
+            !preparedPage
+            ? PrepareSelectionGeometry(sceneChanged: false) : null;
+        using PreparedSelectionResources? selectedResources = preparedPage ? null :
+            renderSelectionOutline ? PrepareSelectionResources(DescribeDisplayTarget(displayTarget), depthTarget) :
+            completion is not null ? BeginCaptureSelectionResources() : null;
         bool shouldRenderSelectionOutline =
             renderSelectionOutline &&
             PrepareSelectionOutline(displayTarget, depthTarget);
-        using ISilkGraphicsCommandList commands = _device.CreateCommandList();
+        ISilkGraphicsCommandList commands = _device.CreateCommandList();
+        bool streamMaterials = GpuResources.StreamsMaterialTextures;
+        using var frameCommands = new FrameCommands(_device, commands, streamMaterials ? GpuResources : null);
+        using IDisposable textureFrame = GpuResources.BeginMaterialTextureFrame(captureRequest);
 
         // Any upload still marked pending here was recorded into a command list
         // that never completed -- a submission that failed, or a frame that threw
@@ -1102,9 +1165,6 @@ public sealed class SilkMeshRenderer :
         SilkShaderFeatures resolveMaterialFeatures(SilkMeshData mesh) =>
             options.UseSceneMaterials ? GetMaterialFeatures(mesh) : SilkShaderFeatures.None;
 
-        string resolveMaterialShaderIdentity(SilkMeshData mesh) =>
-            options.UseSceneMaterials ? GetMaterialShaderIdentity(mesh) : string.Empty;
-
         // A screen-space line or point has no facing, so no cull style can apply
         // to one. Resolving it to None here rather than letting the mesh's style
         // through keeps that invariant where the topology is known -- the
@@ -1117,15 +1177,11 @@ public sealed class SilkMeshRenderer :
                 ? SilkCullMode.None
                 : GetCullMode(mesh);
 
-        bool resolveSampledVolume(SilkMeshData mesh) =>
-            options.UseSceneMaterials && IsSampledVolumeMesh(mesh);
-
         bool resolveTransparent(SilkMeshData mesh) =>
             options.UseSceneMaterials && IsTransparent(mesh);
 
-        SilkLightLinkMasks resolveLinkMasks(SilkMeshData mesh) =>
-            Scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex);
-
+        bool outsideSingle = streamMaterials && singleMesh is not null &&
+            !IsSampledVolumeMesh(singleMesh.Mesh) && singleMesh.IsOutsideClipVolume();
         if (singleMesh is not null)
         {
             // The prefiltered environment is uploaded here, with the material
@@ -1133,7 +1189,10 @@ public sealed class SilkMeshRenderer :
             // recorded inside one on any backend. It is a no-op on every frame
             // that did not rebuild the maps.
             GpuResources.UploadEnvironment(commands);
-            PrepareMaterialTextures(commands, singleMesh, resolveMaterialFeatures(singleMesh.Mesh));
+            if (!outsideSingle)
+            {
+                PrepareMaterialTextures(commands, singleMesh, resolveMaterialFeatures(singleMesh.Mesh));
+            }
         }
 
         if (singleMesh is null)
@@ -1150,19 +1209,7 @@ public sealed class SilkMeshRenderer :
                 {
                     continue;
                 }
-                bool transparent = resolveTransparent(mesh.Mesh);
-                BatchKey key = new(
-                    mesh.Geometry,
-                    mesh.Mesh.MaterialPath,
-                    resolveMaterialFeatures(mesh.Mesh),
-                    resolveMaterialShaderIdentity(mesh.Mesh),
-                    resolveSampledVolume(mesh.Mesh),
-                    transparent,
-                    transparent ? GetEyeDepth(mesh.Mesh, Scene.Frame) : 0,
-                    transparent ? mesh.Mesh.StableHash : 0,
-                    resolveCullMode(mesh.Mesh),
-                    mesh.Mesh.TopologyKind,
-                    resolveLinkMasks(mesh.Mesh));
+                BatchKey key = CreateBatchKey(mesh.Geometry, mesh.Mesh, options);
                 if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
                 {
                     batch = RentBatch();
@@ -1174,8 +1221,11 @@ public sealed class SilkMeshRenderer :
             _batchOrder.Sort(CompareBatchKeys);
             foreach (BatchKey key in _batchOrder)
             {
-                List<SilkMeshGpuResource> batch = _batches[key];
-                PrepareMaterialTextures(commands, batch[0], key.Features);
+                if (!streamMaterials)
+                {
+                    List<SilkMeshGpuResource> batch = _batches[key];
+                    PrepareMaterialTextures(commands, batch[0], key.Features);
+                }
             }
         }
 
@@ -1186,20 +1236,16 @@ public sealed class SilkMeshRenderer :
                 sceneOutputTransform,
                 sceneExposure));
         commands.ClearDepth(depthTarget, options.ClearDepth);
-        commands.BeginRendering(new SilkRenderingDescriptor(colorTarget, depthTarget));
-        commands.SetViewport(new SilkViewport(
-            0,
-            0,
-            colorTarget.Width,
-            colorTarget.Height,
-            0,
-            1));
-        commands.SetScissor(new SilkScissor(0, 0, colorTarget.Width, colorTarget.Height));
+        bool materialRendering = !streamMaterials || singleMesh is not null || _batchOrder.Count == 0;
+        if (materialRendering)
+        {
+            BeginMaterialRendering(commands, colorTarget, depthTarget);
+        }
 
         int drawCount = 0;
         PipelineKey? boundPipeline = null;
         (string MaterialPath, SilkLightLinkMasks LinkMasks)? boundSurface = null;
-        if (singleMesh is not null)
+        if (singleMesh is not null && !outsideSingle)
         {
             SilkShaderFeatures features = resolveMaterialFeatures(singleMesh.Mesh);
             SilkMaterialShaderRequest? materialShader = options.UseSceneMaterials
@@ -1241,10 +1287,41 @@ public sealed class SilkMeshRenderer :
         }
         else
         {
+            (string Path, SilkShaderFeatures Features, bool Volume)? streamedMaterial = null;
+            SilkMaterialData? previousStreamedMaterial = null;
             foreach (BatchKey key in _batchOrder)
             {
                 List<SilkMeshGpuResource> meshes = _batches[key];
                 SilkMeshGpuResource first = meshes[0];
+                if (streamMaterials && !key.SampledVolume &&
+                    meshes.TrueForAll(static mesh => mesh.IsOutsideClipVolume()))
+                {
+                    if (meshes.Count >= 2)
+                    {
+                        _ = ReserveInstanceSlot(key.Geometry);
+                    }
+                    continue;
+                }
+                var materialIdentity = (first.Mesh.MaterialPath, key.Features, IsSampledVolumeMesh(first.Mesh));
+                if (streamMaterials &&
+                    (!materialRendering || streamedMaterial != materialIdentity))
+                {
+                    captureRequest?.ThrowIfCancellationRequested();
+                    if (materialRendering)
+                    {
+                        commands.EndRendering();
+                        SubmitAndCommitUploads(commands).Dispose();
+                        commands = frameCommands.Advance(previousStreamedMaterial, ResolveMaterial(first.Mesh));
+                        captureRequest?.ThrowIfCancellationRequested();
+                    }
+                    PrepareMaterialTextures(commands, first, key.Features);
+                    BeginMaterialRendering(commands, colorTarget, depthTarget);
+                    materialRendering = true;
+                    streamedMaterial = materialIdentity;
+                    previousStreamedMaterial = ResolveMaterial(first.Mesh);
+                    boundPipeline = null;
+                    boundSurface = null;
+                }
                 // A batch of one gains nothing from instancing and would cost an
                 // instance storage buffer per unique geometry, which for a scene of
                 // mostly distinct meshes is a pure allocation regression. The
@@ -1289,11 +1366,8 @@ public sealed class SilkMeshRenderer :
                 // at all. Each batch is given its own retained slot instead, and the
                 // slot ordinal is assigned in batch order so an unchanged scene keeps
                 // writing the same slot and keeps the delta upload.
-                if (!_instanceSlots.TryGetValue(key.Geometry, out int slot))
-                {
-                    slot = 0;
-                }
-                _instanceSlots[key.Geometry] = slot + 1;
+                int slot = ReserveInstanceSlot(key.Geometry);
+                uniforms?.TrackInstances(key.Geometry);
                 key.Geometry.UpdateInstanceBuffer(
                     _device,
                     Scene.Frame,
@@ -1320,8 +1394,23 @@ public sealed class SilkMeshRenderer :
                 drawCount++;
             }
         }
+        if (!materialRendering)
+        {
+            BeginMaterialRendering(commands, colorTarget, depthTarget);
+        }
         // Both draw paths share display, submission, picking and capture completion.
         commands.EndRendering();
+        if (streamMaterials)
+        {
+            displayTransformCommands = displayTransformActive
+                ? commands as ISilkDisplayTransformGraphicsCommandList ??
+                    throw new InvalidOperationException("The streamed command list cannot record display conversion.")
+                : null;
+            selectionCommands = shouldRenderSelectionOutline
+                ? commands as ISilkSelectionOutlineGraphicsCommandList ??
+                    throw new InvalidOperationException("The streamed command list cannot record selection.")
+                : null;
+        }
         if (displayTransformCommands is not null)
         {
             _displayTransform.Record(
@@ -1338,7 +1427,29 @@ public sealed class SilkMeshRenderer :
                 depthTarget);
         }
 
-        using ISilkGraphicsSubmission submission = SubmitAndCommitUploads(commands);
+        using (ISilkGraphicsSubmission submission = SubmitAndCommitUploads(commands))
+        {
+            hdrColor = captureRequest?.ReadbackDisplayTransformHdrColor(
+                displayTransformActive ? colorTarget : null);
+        }
+        if (streamMaterials)
+        {
+            frameCommands.ReleaseCurrent();
+        }
+        completion?.Complete(this, _device, displayTarget, depthTarget,
+            new SilkMeshRenderResult(drawCount, uniformUploads, GpuResources.Statistics), hdrColor);
+        using PreparedPicking? picking = output is not null && pickBinding is { } preparedBinding &&
+            _pickingDevice is not null ? new PreparedPicking(this, preparedBinding) : null;
+        if (picking is not null)
+        {
+            ProcessPicking(displayTarget, pickBinding!.Value, deferCompletion: true);
+        }
+        using ISilkGraphicsSubmission? publication = output?.Publish();
+        uniforms?.Commit();
+        display?.Commit();
+        selectedResources?.Commit();
+        selectedGeometry?.Commit();
+        picking?.Commit();
         // Safe: Wait() returning means no unsubmitted or in-flight execution referencing these
         // textures remains, so completing this submission's lease makes disposing them safe even
         // though `commands` itself is still alive in this `using` scope. See
@@ -1346,12 +1457,16 @@ public sealed class SilkMeshRenderer :
         GpuResources.TrimTextureResidency();
         if (pickBinding is { } binding)
         {
-            ProcessPicking(displayTarget, binding);
+            if (picking is null)
+            {
+                ProcessPicking(displayTarget, binding);
+            }
+            else
+            {
+                ResolveCompletedReadbacks(binding,
+                    new ViewportDimensions(checked((int)displayTarget.Width), checked((int)displayTarget.Height)));
+            }
         }
-        // Only this completed render's selected target is eligible. Read it under
-        // the capture lease and hand off owned bytes, never the pass's cached handle.
-        hdrColor = captureRequest?.ReadbackDisplayTransformHdrColor(
-            displayTransformActive ? colorTarget : null);
         return new SilkMeshRenderResult(drawCount, uniformUploads, GpuResources.Statistics);
     }
 
@@ -1361,8 +1476,8 @@ public sealed class SilkMeshRenderer :
     /// </summary>
     /// <remarks>
     /// Recording a copy is not performing one. A submission that throws, or one
-    /// whose wait throws, leaves the target textures holding whatever they held
-    /// before -- so the recorded uploads are abandoned rather than committed, and
+    /// whose wait throws, cannot establish that every upload completed -- so the
+    /// recorded uploads are abandoned rather than committed, and
     /// the next frame records them again instead of binding memory nothing ever
     /// wrote.
     /// </remarks>
@@ -1726,13 +1841,11 @@ public sealed class SilkMeshRenderer :
             material.CreateRuntimeShaderKeyBytes(),
             _shaderFormat,
             // The salt versions the persisted program *and its binding layout*.
-            // Both were bumped when the prefiltered environment added three slots
-            // to every mesh layout: a cache entry written before that carries the
-            // narrower layout, and rebinding through it fails at the first
-            // environment slot rather than silently drawing without one.
+            // Projected programs must include the private normal value-table bindings.
+            // Generated fragments retain their independent binding-layout version.
             material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated
-                ? "MaterialXGeneratedBackendFragment.v4"
-                : "MaterialXProjectedPreviewSurface.v3");
+                ? "MaterialXGeneratedBackendFragment.v6"
+                : "MaterialXProjectedPreviewSurface.v9");
 
     private static string GetPipelineShaderIdentity(SilkMaterialShaderRequest? materialShader) =>
         materialShader?.Status == SilkMaterialShaderStatus.Ready
@@ -1758,13 +1871,19 @@ public sealed class SilkMeshRenderer :
         SilkMaterialData? material = ResolveMaterial(mesh.Mesh);
         SilkMaterialParameter alias = FindFirstMaterialTextureParameter(material, features);
         bindTexture(SilkMaterialParameter.DiffuseColor, SilkShaderFeatures.BaseColorMap);
-        if ((features & SilkShaderFeatures.NormalMap) != 0)
+        if ((features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
         {
+            SilkMaterialParameter baseNormal = material!.GetTexture(SilkMaterialParameter.Normal) is not null
+                ? SilkMaterialParameter.Normal : SilkMaterialParameter.DetailNormal;
+            SilkMaterialParameter detailNormal = material.GetTexture(SilkMaterialParameter.DetailNormal) is not null
+                ? SilkMaterialParameter.DetailNormal : baseNormal;
             GpuResources.BindMaterialTexture(
                 commands,
-                material!,
-                SilkMaterialParameter.Normal,
+                material,
+                baseNormal,
                 SilkMaterialParameter.Normal);
+            GpuResources.BindMaterialTexture(
+                commands, material, detailNormal, SilkMaterialParameter.DetailNormal);
         }
         bindTexture(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
         bindTexture(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);
@@ -1828,7 +1947,8 @@ public sealed class SilkMeshRenderer :
                 SilkMaterialParameter.SpecularColor or
                 SilkMaterialParameter.Clearcoat or
                 SilkMaterialParameter.ClearcoatRoughness or
-                SilkMaterialParameter.Ior)
+                SilkMaterialParameter.Ior or
+                SilkMaterialParameter.DetailNormal)
             {
                 return texture.Parameter;
             }
@@ -1842,6 +1962,10 @@ public sealed class SilkMeshRenderer :
         SilkMeshGpuResource mesh,
         SilkShaderFeatures features)
     {
+        if (features != SilkShaderFeatures.None)
+        {
+            GpuResources.ReportTextureCoordinateFallback(mesh);
+        }
         if ((features & SilkShaderFeatures.BaseColorMap) != 0)
         {
             GpuResources.UploadMaterialTexture(
@@ -1852,6 +1976,11 @@ public sealed class SilkMeshRenderer :
         if ((features & SilkShaderFeatures.NormalMap) != 0)
         {
             GpuResources.UploadMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!, SilkMaterialParameter.Normal);
+        }
+        if ((features & SilkShaderFeatures.DetailNormalMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.DetailNormal);
         }
         if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
         {
@@ -1955,46 +2084,346 @@ public sealed class SilkMeshRenderer :
         uint VertexStride,
         string MaterialShaderIdentity);
 
-    internal void ApplyPage(OpenUsdSilkPage page, bool useSceneMaterials = true)
+    private BatchKey CreateBatchKey(
+        SilkMeshGpuGeometryResource geometry, SilkMeshData mesh, SilkMeshRenderOptions options)
+    {
+        bool transparent = options.UseSceneMaterials && IsTransparent(mesh);
+        return new BatchKey(geometry, mesh.MaterialPath,
+            options.UseSceneMaterials ? GetMaterialFeatures(mesh) : SilkShaderFeatures.None,
+            options.UseSceneMaterials ? GetMaterialShaderIdentity(mesh) : string.Empty,
+            options.UseSceneMaterials && IsSampledVolumeMesh(mesh),
+            transparent,
+            transparent ? GetEyeDepth(mesh, Scene.Frame) : 0,
+            transparent ? mesh.StableHash : 0,
+            !options.BackfaceCulling || mesh.TopologyKind != SilkTopologyKind.TriangleList
+                ? SilkCullMode.None : GetCullMode(mesh),
+            mesh.TopologyKind,
+            Scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex));
+    }
+
+    private PreparedFrameInstances? PrepareFrameInstances(SilkMeshRenderOptions options)
+    {
+        if (!SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device))
+        {
+            return null;
+        }
+        var batches = new Dictionary<BatchKey, int>();
+        var plans = new Dictionary<SilkMeshGpuGeometryResource, InstanceCounts>();
+        foreach ((ulong id, SilkMeshData mesh) in Scene.Meshes)
+        {
+            SilkMeshGpuResource resource = GpuResources.GetPreparedMesh(id);
+            if (resource.IndexCount == 0)
+            {
+                continue;
+            }
+            BatchKey key = CreateBatchKey(resource.Geometry, mesh, options);
+            batches.TryGetValue(key, out int count);
+            batches[key] = checked(count + 1);
+        }
+        BatchKey[] keys = [.. batches.Keys];
+        Array.Sort(keys, CompareBatchKeys);
+        foreach (BatchKey key in keys)
+        {
+            if (batches[key] < 2)
+            {
+                continue;
+            }
+            getPlan(key.Geometry).Color.Add(batches[key]);
+        }
+        if (_device.Capabilities.SupportsRasterShadows)
+        {
+            var counts = new Dictionary<SilkMeshGpuGeometryResource, int>();
+            foreach (SilkShadowDescriptor descriptor in Scene.Shadows.Descriptors)
+            {
+                counts.Clear();
+                foreach ((ulong id, SilkMeshData mesh) in Scene.Meshes)
+                {
+                    SilkMeshGpuResource resource = GpuResources.GetPreparedMesh(id);
+                    if (!SilkShadowMapCache.CanCastShadow(Scene, resource, mesh, (int)descriptor.LightIndex))
+                    {
+                        continue;
+                    }
+                    counts.TryGetValue(resource.Geometry, out int count);
+                    counts[resource.Geometry] = checked(count + 1);
+                }
+                foreach ((SilkMeshGpuGeometryResource geometry, int count) in counts)
+                {
+                    InstanceCounts plan = getPlan(geometry);
+                    plan.Shadow = Math.Max(plan.Shadow, count);
+                }
+            }
+        }
+        var prepared = new PreparedFrameInstances();
+        try
+        {
+            foreach ((SilkMeshGpuGeometryResource geometry, InstanceCounts plan) in plans)
+            {
+                prepared.Prepare(_device, geometry, plan);
+            }
+            return prepared;
+        }
+        catch (Exception preparationFailure)
+        {
+            try
+            {
+                prepared.Dispose();
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException("Instance preparation failed and candidate cleanup failed.",
+                    preparationFailure, cleanupFailure);
+            }
+            throw;
+        }
+
+        InstanceCounts getPlan(SilkMeshGpuGeometryResource geometry)
+        {
+            if (!plans.TryGetValue(geometry, out InstanceCounts? plan))
+            {
+                plan = new();
+                plans.Add(geometry, plan);
+            }
+            return plan;
+        }
+    }
+
+    private sealed class InstanceCounts
+    {
+        internal List<int> Color { get; } = [];
+        internal int Shadow { get; set; }
+    }
+
+    private sealed class PreparedFrameInstances : IDisposable
+    {
+        private readonly Dictionary<SilkMeshGpuGeometryResource, SilkMeshGpuGeometryResource.PreparedInstanceCapacity>
+            _capacities = [];
+
+        internal void Prepare(ISilkGraphicsDevice device, SilkMeshGpuGeometryResource geometry, InstanceCounts counts)
+        {
+            _capacities.EnsureCapacity(checked(_capacities.Count + 1));
+            var capacity = new SilkMeshGpuGeometryResource.PreparedInstanceCapacity(geometry);
+            _capacities.Add(geometry, capacity);
+            capacity.Prepare(device, counts.Color, counts.Shadow);
+        }
+
+        internal void Activate()
+        {
+            foreach (SilkMeshGpuGeometryResource.PreparedInstanceCapacity capacity in _capacities.Values)
+            {
+                capacity.Activate();
+            }
+        }
+
+        internal void Commit()
+        {
+            foreach (SilkMeshGpuGeometryResource.PreparedInstanceCapacity capacity in _capacities.Values)
+            {
+                capacity.Commit();
+            }
+        }
+
+        internal ISilkGraphicsBuffer WriteShadow(
+            SilkMeshGpuGeometryResource geometry, IReadOnlyList<SilkShadowCaster> casters) =>
+            _capacities.TryGetValue(geometry, out var capacity) ? capacity.WriteShadow(casters) :
+                throw new InvalidOperationException("The shadow caster geometry was not admitted for this page.");
+
+        public void Dispose()
+        {
+            List<Exception>? failures = null;
+            foreach (SilkMeshGpuGeometryResource.PreparedInstanceCapacity capacity in _capacities.Values)
+            {
+                try
+                {
+                    capacity.Dispose();
+                }
+                catch (Exception error)
+                {
+                    (failures ??= []).Add(error);
+                }
+            }
+            _capacities.Clear();
+            if (failures is not null)
+            {
+                throw new AggregateException("Prepared frame instance capacities could not all be released.", failures);
+            }
+        }
+    }
+
+    internal void ApplyPage(OpenUsdSilkPage page, bool useSceneMaterials = true) =>
+        ApplyPage(page, useSceneMaterials ? SilkMeshRenderOptions.Default :
+            SilkMeshRenderOptions.Default with { UseSceneMaterials = false });
+
+    private static SilkTextureDescriptor DescribeDisplayTarget(ISilkGraphicsTexture texture) =>
+        new(texture.Width, texture.Height, texture.Format, texture.Usage);
+
+    private void PrepareColorPipelines(SilkMeshRenderOptions options, SilkTextureDescriptor target)
+    {
+        SilkTextureFormat format = options.DisplayTransform is not null &&
+            _displayTransform.Diagnostics.Status == SilkDisplayTransformStatus.Applied
+                ? SilkTextureFormat.Rgba16Float : target.Format;
+        var prepared = new HashSet<PipelineKey>();
+        foreach ((ulong id, SilkMeshData mesh) in Scene.Meshes)
+        {
+            SilkMeshGpuResource resource = GpuResources.GetPreparedMesh(id);
+            if (resource.IndexCount == 0)
+            {
+                continue;
+            }
+            BatchKey batch = CreateBatchKey(resource.Geometry, mesh, options);
+            var key = new PipelineKey(batch.Features, batch.SampledVolume, batch.CullMode, batch.TopologyKind,
+                batch.Transparent, resource.VertexLayout.Stride, batch.MaterialShaderIdentity);
+            if (!prepared.Add(key))
+            {
+                continue;
+            }
+            SilkMaterialShaderRequest? material = options.UseSceneMaterials
+                ? GetMaterialShaderRequest(mesh, batch.Features) : null;
+            ISilkGraphicsPipeline pipeline = GetPipeline(resource, batch.Features, batch.SampledVolume,
+                batch.CullMode, batch.TopologyKind, format, material, batch.Transparent);
+            DisposePipelineLease(pipeline);
+        }
+    }
+
+    private sealed record PageFrame(
+        SilkTextureDescriptor Color, SilkTextureDescriptor Depth,
+        bool RenderSelection, SilkDepthCaptureRequest? Capture, SilkFrameCapture.Completion? Completion);
+
+    private SilkMeshRenderResult RenderPage(
+        OpenUsdSilkPage page, ISilkGraphicsTexture color, ISilkGraphicsTexture depth, SilkMeshRenderOptions options,
+        SilkPickFrameBinding? pickBinding, SilkDepthCaptureRequest? capture,
+        out SilkHdrColorCaptureResult? hdrColor, bool renderSelection = true, bool retained = false,
+        SilkFrameCapture.Completion? completion = null)
+    {
+        if (!SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device))
+        {
+            ApplyPage(page, options, DescribeDisplayTarget(color), renderSelection ? depth : null);
+            return RenderCore(color, depth, options, pickBinding, capture, out hdrColor, renderSelection,
+                completion: completion);
+        }
+        SilkMeshRenderResult result = default;
+        SilkHdrColorCaptureResult? captured = null;
+        var frame = new PageFrame(DescribeDisplayTarget(color), DescribeDisplayTarget(depth), renderSelection,
+            capture?.ForReplay(), completion?.ForReplay());
+        ApplyPageCore(page, options, frame.Color, renderSelection ? depth : null,
+            output => result = RenderCore(output!.Color, output.Depth, options, pickBinding, capture,
+                out captured, renderSelection, true, output, completion), frame,
+            () => new PreparedFrameOutput(this, color, depth, privateCapture: completion is not null), retained);
+        hdrColor = captured;
+        return result with { Statistics = GpuResources.Statistics };
+    }
+
+    internal void ApplyPage(
+        OpenUsdSilkPage page, SilkMeshRenderOptions options, SilkTextureDescriptor? displayTarget = null,
+        ISilkGraphicsTexture? selectionDepth = null) =>
+        ApplyPageCore(page, options, displayTarget, selectionDepth, null, null, null);
+
+    private void ApplyPageCore(
+        OpenUsdSilkPage page, SilkMeshRenderOptions options, SilkTextureDescriptor? displayTarget,
+        ISilkGraphicsTexture? selectionDepth, Action<PreparedFrameOutput?>? render, PageFrame? frame,
+        Func<PreparedFrameOutput>? prepareOutput, bool retained = false)
     {
         ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(options);
+        ValidateOptions(options);
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_rejectedPage is { } rejected && !rejected.Matches(page))
+            if (!retained && _rejectedPage is { } rejected && !rejected.Matches(page))
             {
-                ReplayRejectedPage();
+                ReplayRejectedPage(selectionDepth);
             }
             OpenUsdSilkPage.ReplaySnapshot snapshot = page.CaptureReplay();
+            bool snapshotRetained = false;
             bool committed = false;
             bool staged = false;
             try
             {
                 using SilkSceneState.PreparedPage scene = Scene.PreparePage(page);
                 staged = true;
+                using PreparedFrameOutput? output = prepareOutput?.Invoke();
+                using SilkPhysicsDeformations.PreparedApply? physics = render is not null
+                    ? PhysicsDeformations?.PrepareApply() : null;
+                SilkSceneDelta delta = physics?.Apply(Scene, scene.Delta) ?? scene.Delta;
+                using SilkDisplayTransformPass.PreparedPage? display = retained ? _displayTransform.PrepareFrame() :
+                    displayTarget is { } target
+                    ? _displayTransform.PreparePage(options.DisplayTransform, target, options.Exposure) : null;
                 using SilkSceneGpuResources.PreparedMeshUpdate? gpu =
-                    GpuResources.Prepare(Scene, scene.Delta, useSceneMaterials);
-                using SilkShadowMapCache.PreparedCapacity? shadow = _shadowMaps.PrepareCapacity(Scene);
-                gpu?.Commit();
-                shadow?.Commit();
-                scene.Commit();
-                committed = true;
-                _rejectedPage = null;
-                if (scene.Delta.MeshUpserts != 0 || scene.Delta.MeshRemovals != 0)
+                    GpuResources.Prepare(Scene, delta, options.UseSceneMaterials && !retained,
+                        prepareUniformCapacity: true, reloadDependencies: !retained);
+                using SilkShadowMapCache.PreparedCapacity? shadow =
+                    _shadowMaps.PrepareCapacity(Scene, prepareRendering: true);
+                using PreparedFrameInstances? instances = PrepareFrameInstances(options);
+                using PreparedSelectionGeometry? selection = PrepareSelectionGeometry(gpu is not null);
+                using PreparedSelectionResources? outline = displayTarget is { } selectionColor &&
+                    selectionDepth is not null
+                        ? PrepareSelectionResources(selectionColor, output?.Depth ?? selectionDepth) :
+                        frame?.Completion is not null ? BeginCaptureSelectionResources() : null;
+                if (shadow is not null && instances is not null)
                 {
-                    _selectionResolutionDirty = true;
+                    shadow.Render(Scene, GpuResources, instances.WriteShadow);
                 }
-                GpuResources.CompleteApply(
-                    Scene, scene.Delta, gpu?.TexturesPrepared == true, gpu?.SurfacesPrepared == true);
+                if (displayTarget is { } colorTarget && SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device))
+                {
+                    PrepareColorPipelines(options, colorTarget);
+                }
+                if (render is not null)
+                {
+                    gpu?.Activate();
+                    shadow?.Activate();
+                    instances?.Activate();
+                    selection?.Activate();
+                }
+                try
+                {
+                    render?.Invoke(output);
+                }
+                finally
+                {
+                    // Once the copy completed, a cleanup failure cannot make the visible image old again.
+                    if (render is null || output?.IsPublished == true)
+                    {
+                        gpu?.Commit();
+                        shadow?.Commit();
+                        instances?.Commit();
+                        display?.Commit();
+                        outline?.Commit();
+                        scene.Commit();
+                        selection?.Commit();
+                        physics?.Commit();
+                        committed = true;
+                        if (!retained)
+                        {
+                            _rejectedPage?.Dispose();
+                            _rejectedPage = null;
+                            _rejectedDisplayTarget = null;
+                            _rejectedSelectionDepth = null;
+                            _rejectedFrame = null;
+                        }
+                        if (selection is null && (delta.MeshUpserts != 0 || delta.MeshRemovals != 0))
+                        {
+                            _selectionResolutionDirty = true;
+                        }
+                        GpuResources.CompleteApply(
+                            Scene, delta, gpu?.TexturesPrepared == true, gpu?.SurfacesPrepared == true);
+                    }
+                }
             }
             catch (Exception preparationFailure)
             {
-                if (committed || !staged)
+                if (committed || (!staged && snapshot.Storage is null) || retained)
                 {
                     throw;
                 }
+                OpenUsdSilkPage.ReplaySnapshot? previous = _rejectedPage;
                 _rejectedPage = snapshot;
-                _rejectedPageUsesMaterials = useSceneMaterials;
+                snapshotRetained = true;
+                previous?.Dispose();
+                _rejectedPageOptions = options;
+                _rejectedDisplayTarget = displayTarget;
+                _rejectedFrame = frame;
+                _rejectedSelectionDepth = selectionDepth is not null && _selectionItemCount > 0 &&
+                    _selectionOutlineSettings.Enabled && _selectionOutlineDevice is not null
+                        ? DescribeDisplayTarget(selectionDepth) : null;
                 try
                 {
                     page.RegisterReplay(_replayRejectedPage);
@@ -2007,11 +2436,20 @@ public sealed class SilkMeshRenderer :
                 }
                 throw;
             }
+            finally
+            {
+                if (!snapshotRetained)
+                {
+                    snapshot.Dispose();
+                }
+            }
         }
 
     }
 
-    private void ReplayRejectedPage()
+    private void ReplayRejectedPage() => ReplayRejectedPage(null);
+
+    private void ReplayRejectedPage(ISilkGraphicsTexture? currentDepth)
     {
         lock (_gate)
         {
@@ -2019,7 +2457,35 @@ public sealed class SilkMeshRenderer :
             if (_rejectedPage is { } rejected)
             {
                 using OpenUsdSilkPage page = rejected.CreatePage();
-                ApplyPage(page, _rejectedPageUsesMaterials);
+                if (_rejectedFrame is { } frame)
+                {
+                    if (frame.Completion is not null)
+                    {
+                        ReleaseCaptureFrameScratch();
+                    }
+                    using ISilkGraphicsTexture color = _device.CreateTexture2D(frame.Color);
+                    using ISilkGraphicsTexture depth = _device.CreateTexture2D(frame.Depth);
+                    _ = RenderPage(page, color, depth, _rejectedPageOptions, null, frame.Capture?.ForReplay(),
+                        out _, frame.RenderSelection, completion: frame.Completion?.ForReplay());
+                    return;
+                }
+                ISilkGraphicsTexture? temporaryDepth = null;
+                try
+                {
+                    if (_rejectedSelectionDepth is { } descriptor &&
+                        (currentDepth is null || currentDepth.Width != descriptor.Width ||
+                         currentDepth.Height != descriptor.Height || currentDepth.Format != descriptor.Format ||
+                         currentDepth.Usage != descriptor.Usage))
+                    {
+                        temporaryDepth = _device.CreateTexture2D(descriptor);
+                    }
+                    ApplyPage(page, _rejectedPageOptions, _rejectedDisplayTarget,
+                        _rejectedSelectionDepth.HasValue ? temporaryDepth ?? currentDepth : null);
+                }
+                finally
+                {
+                    temporaryDepth?.Dispose();
+                }
             }
         }
     }
@@ -2030,6 +2496,13 @@ public sealed class SilkMeshRenderer :
     /// bounded by the live geometry in the scene: lists are returned at the start of the frame and
     /// taken again while grouping the same frame's meshes.
     /// </remarks>
+    private int ReserveInstanceSlot(SilkMeshGpuGeometryResource geometry)
+    {
+        int slot = _instanceSlots.GetValueOrDefault(geometry);
+        _instanceSlots[geometry] = checked(slot + 1);
+        return slot;
+    }
+
     private List<SilkMeshGpuResource> RentBatch()
     {
         int last = _batchPool.Count - 1;
@@ -2151,6 +2624,13 @@ public sealed class SilkMeshRenderer :
             return false;
         }
 
+        bool admitted = SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device);
+        if (admitted && _selectionOutlineInfrastructureInitialized &&
+            outlineDevice.SelectionOutlineDeviceGeneration != _selectionOutlineDeviceGeneration)
+        {
+            DisposeSelectionOutlineInfrastructure();
+            _selectionDeviceInvalidations++;
+        }
         ResolveSelectedMeshes();
         if (_selectedMeshCount == 0)
         {
@@ -2158,21 +2638,474 @@ public sealed class SilkMeshRenderer :
             return false;
         }
 
-        EnsureSelectionOutlineInfrastructure(outlineDevice, colorTarget.Format);
-        EnsureSelectionOutlineTarget(outlineDevice, depthTarget);
-        UpdateSelectionOutlineParameters(depthTarget.Width, depthTarget.Height);
+        if (admitted)
+        {
+            PrepareAdmittedSelection(outlineDevice, DescribeDisplayTarget(colorTarget), depthTarget);
+        }
+        else
+        {
+            EnsureSelectionOutlineInfrastructure(outlineDevice, colorTarget.Format);
+            EnsureSelectionOutlineTarget(outlineDevice, depthTarget);
+            UpdateSelectionOutlineParameters(depthTarget.Width, depthTarget.Height);
+        }
         return true;
+    }
+
+    private void PrepareAdmittedSelection(
+        ISilkSelectionOutlineGraphicsDevice device, SilkTextureDescriptor color, ISilkGraphicsTexture depth)
+    {
+        var maskKey = (true, SilkSelectionMaskPrimitiveTopology.TriangleList,
+            SilkVertexLayoutDescriptor.PositionNormal.Stride, SilkSelectionMaskStage.WholeResource);
+        _selectionMaskPipelines.TryGetValue(maskKey, out ISilkSelectionMaskGraphicsPipeline? previousMask);
+        ISilkSelectionMaskGraphicsPipeline? mask = previousMask;
+        ISilkSelectionOutlineGraphicsPipeline? outline = _selectionOutlinePipeline;
+        ISilkGraphicsSampler? sampler = _selectionOutlineSampler;
+        ISilkGraphicsBuffer? parameters = _selectionOutlineParameters;
+        ISilkGraphicsTexture? target = _selectionMaskTarget;
+        ISilkSelectionOutlineBinding? binding = _selectionOutlineBinding;
+        Span<byte> bytes = stackalloc byte[SilkSelectionOutlineUniformWriter.ByteSize];
+        SilkSelectionOutlineUniformWriter.Write(_selectionOutlineSettings, depth.Width, depth.Height, bytes);
+        try
+        {
+            if (mask is null)
+            {
+                _selectionMaskPipelines.EnsureCapacity(checked(_selectionMaskPipelines.Count + 1));
+                mask = device.CreateSelectionMaskGraphicsPipeline(
+                    SilkSelectionMaskPipelineDescriptor.CreateChecked(_shaderFormat));
+                _selectionPipelineCreations++;
+            }
+            if (outline is null || _selectionOutlineColorFormat != color.Format)
+            {
+                outline = device.CreateSelectionOutlineGraphicsPipeline(
+                    SilkSelectionOutlinePipelineDescriptor.CreateChecked(_shaderFormat) with
+                    {
+                        ColorFormat = color.Format
+                    });
+                _selectionPipelineCreations++;
+            }
+            sampler ??= _device.CreateSampler(SilkSamplerDescriptor.NearestClamp);
+            if (!_selectionOutlineParametersInitialized || !bytes.SequenceEqual(_selectionOutlineParameterBytes))
+            {
+                parameters = _device.CreateBuffer(SilkSelectionOutlineUniformWriter.ByteSize,
+                    SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+                parameters.Write(bytes);
+                _selectionParameterUploads++;
+            }
+            if (target is null || target.Width != depth.Width || target.Height != depth.Height)
+            {
+                target = _device.CreateTexture2D(SilkTextureDescriptor.SelectionMask(depth.Width, depth.Height));
+                _selectionTargetCreations++;
+            }
+            if (binding is null || !ReferenceEquals(_selectionBoundDepthTarget, depth) ||
+                !ReferenceEquals(target, _selectionMaskTarget) ||
+                !ReferenceEquals(parameters, _selectionOutlineParameters))
+            {
+                var descriptor = new SilkSelectionOutlineBindingDescriptor(target, depth, sampler, parameters!);
+                descriptor.Validate();
+                binding = device.CreateSelectionOutlineBinding(descriptor);
+                _selectionBindingCreations++;
+            }
+        }
+        catch (Exception failure)
+        {
+            List<Exception>? errors = null;
+            DisposeDifferentSelection(binding, _selectionOutlineBinding, ref errors);
+            DisposeDifferentSelection(target, _selectionMaskTarget, ref errors);
+            DisposeDifferentSelection(parameters, _selectionOutlineParameters, ref errors);
+            DisposeDifferentSelection(sampler, _selectionOutlineSampler, ref errors);
+            DisposeDifferentSelection(outline, _selectionOutlinePipeline, ref errors);
+            DisposeDifferentSelection(mask, previousMask, ref errors);
+            if (errors is not null)
+            {
+                errors.Insert(0, failure);
+                throw new AggregateException("Selection preparation and candidate cleanup failed.", errors);
+            }
+            throw;
+        }
+        ISilkSelectionOutlineBinding? previousBinding = _selectionOutlineBinding;
+        ISilkGraphicsTexture? previousTarget = _selectionMaskTarget;
+        ISilkGraphicsBuffer? previousParameters = _selectionOutlineParameters;
+        ISilkGraphicsSampler? previousSampler = _selectionOutlineSampler;
+        ISilkSelectionOutlineGraphicsPipeline? previousOutline = _selectionOutlinePipeline;
+        _selectionMaskPipelines[maskKey] = mask;
+        _selectionOutlinePipeline = outline;
+        _selectionOutlineSampler = sampler;
+        _selectionOutlineParameters = parameters;
+        _selectionMaskTarget = target;
+        _selectionOutlineBinding = binding;
+        _selectionBoundDepthTarget = depth;
+        _selectionOutlineDeviceGeneration = device.SelectionOutlineDeviceGeneration;
+        _selectionOutlineColorFormat = color.Format;
+        _selectionOutlineInfrastructureInitialized = true;
+        _selectionOutlineParametersInitialized = true;
+        bytes.CopyTo(_selectionOutlineParameterBytes);
+        if (_selectionResourcePreparation)
+        {
+            return;
+        }
+        List<Exception>? retirementErrors = null;
+        DisposeDifferentSelection(previousBinding, binding, ref retirementErrors);
+        DisposeDifferentSelection(previousTarget, target, ref retirementErrors);
+        DisposeDifferentSelection(previousParameters, parameters, ref retirementErrors);
+        DisposeDifferentSelection(previousSampler, sampler, ref retirementErrors);
+        DisposeDifferentSelection(previousOutline, outline, ref retirementErrors);
+        if (retirementErrors is not null)
+        {
+            throw new AggregateException("Previous selection resources could not all be released.", retirementErrors);
+        }
+    }
+
+    private static void DisposeDifferentSelection(
+        IDisposable? resource, IDisposable? retained, ref List<Exception>? errors)
+    {
+        if (ReferenceEquals(resource, retained))
+        {
+            return;
+        }
+        try
+        {
+            resource?.Dispose();
+        }
+        catch (Exception error)
+        {
+            (errors ??= []).Add(error);
+        }
+    }
+
+    private PreparedSelectionResources? PrepareSelectionResources(
+        SilkTextureDescriptor color, ISilkGraphicsTexture depth)
+    {
+        if (!SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device) || _selectedMeshCount == 0 ||
+            !_selectionOutlineSettings.Enabled || _selectionOutlineDevice is not { } device ||
+            !device.SelectionOutlineCapabilities.SupportsVisibleOnly ||
+            (!_selectionOutlineSettings.VisibleOnly && !device.SelectionOutlineCapabilities.SupportsXRay) ||
+            (depth.Usage & SilkTextureUsage.Sampled) == 0)
+        {
+            return null;
+        }
+        var prepared = new PreparedSelectionResources(this);
+        _selectionResourcePreparation = true;
+        try
+        {
+            PrepareAdmittedSelection(device, color, depth);
+            for (int index = 0; index < _selectedMeshCount; index++)
+            {
+                SelectedMeshDraw draw = _selectedMeshes[index];
+                _ = EnsureSelectionMaskPipeline(true, draw.Topology, draw.Resource.VertexLayout, draw.Stage);
+                if (_selectionOutlineSettings.Mode == SilkSelectionOutlineMode.XRay)
+                {
+                    _ = EnsureSelectionMaskPipeline(false, draw.Topology, draw.Resource.VertexLayout, draw.Stage);
+                }
+            }
+            return prepared;
+        }
+        catch (Exception failure)
+        {
+            try
+            {
+                prepared.Dispose();
+            }
+            catch (Exception cleanup)
+            {
+                throw new AggregateException("Selection resource preparation and cleanup failed.", failure, cleanup);
+            }
+            throw;
+        }
+    }
+
+    private PreparedSelectionResources? BeginCaptureSelectionResources()
+    {
+        if (!SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device) ||
+            _selectionItemCount == 0 || !_selectionOutlineSettings.Enabled || _selectionOutlineDevice is null)
+        {
+            return null;
+        }
+        var prepared = new PreparedSelectionResources(this);
+        _selectionResourcePreparation = true;
+        return prepared;
+    }
+
+    private sealed class PreparedSelectionResources : IDisposable
+    {
+        private readonly SilkMeshRenderer _owner;
+        private readonly Dictionary<(bool, SilkSelectionMaskPrimitiveTopology, uint, SilkSelectionMaskStage),
+            ISilkSelectionMaskGraphicsPipeline> _masks;
+        private readonly ISilkSelectionOutlineGraphicsPipeline? _pipeline;
+        private readonly ISilkSelectionOutlineBinding? _binding;
+        private readonly ISilkGraphicsTexture? _target;
+        private readonly ISilkGraphicsTexture? _depth;
+        private readonly ISilkGraphicsSampler? _sampler;
+        private readonly ISilkGraphicsBuffer? _parameters;
+        private readonly byte[] _bytes;
+        private readonly SilkTextureFormat _format;
+        private readonly ulong _generation;
+        private readonly ulong _deviceGeneration;
+        private readonly bool _ready;
+        private readonly bool _parametersReady;
+        private bool _committed;
+        private bool _disposed;
+
+        internal PreparedSelectionResources(SilkMeshRenderer owner)
+        {
+            _owner = owner;
+            _masks = new(owner._selectionMaskPipelines);
+            _pipeline = owner._selectionOutlinePipeline;
+            _binding = owner._selectionOutlineBinding;
+            _target = owner._selectionMaskTarget;
+            _depth = owner._selectionBoundDepthTarget;
+            _sampler = owner._selectionOutlineSampler;
+            _parameters = owner._selectionOutlineParameters;
+            _bytes = [.. owner._selectionOutlineParameterBytes];
+            _format = owner._selectionOutlineColorFormat;
+            _generation = owner._selectionOutlineDeviceGeneration;
+            _deviceGeneration = owner.ReadDeviceGeneration();
+            _ready = owner._selectionOutlineInfrastructureInitialized;
+            _parametersReady = owner._selectionOutlineParametersInitialized;
+        }
+
+        internal void Commit()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _committed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            _owner._selectionResourcePreparation = false;
+            bool lost = _owner.ReadDeviceGeneration() != _deviceGeneration;
+            List<Exception>? errors = null;
+            if (_committed || lost)
+            {
+                Release(_binding, _owner._selectionOutlineBinding, ref errors);
+                Release(_target, _owner._selectionMaskTarget, ref errors);
+                Release(_sampler, _owner._selectionOutlineSampler, ref errors);
+                Release(_parameters, _owner._selectionOutlineParameters, ref errors);
+                Release(_pipeline, _owner._selectionOutlinePipeline, ref errors);
+                foreach (var pair in _masks)
+                {
+                    _owner._selectionMaskPipelines.TryGetValue(pair.Key, out var retained);
+                    Release(pair.Value, retained, ref errors);
+                }
+            }
+            else
+            {
+                Release(_owner._selectionOutlineBinding, _binding, ref errors);
+                Release(_owner._selectionMaskTarget, _target, ref errors);
+                Release(_owner._selectionOutlineSampler, _sampler, ref errors);
+                Release(_owner._selectionOutlineParameters, _parameters, ref errors);
+                Release(_owner._selectionOutlinePipeline, _pipeline, ref errors);
+                foreach (var pair in _owner._selectionMaskPipelines)
+                {
+                    _masks.TryGetValue(pair.Key, out var retained);
+                    Release(pair.Value, retained, ref errors);
+                }
+                _owner._selectionMaskPipelines.Clear();
+                foreach (var pair in _masks)
+                {
+                    _owner._selectionMaskPipelines.Add(pair.Key, pair.Value);
+                }
+                _owner._selectionOutlineBinding = _binding;
+                _owner._selectionMaskTarget = _target;
+                _owner._selectionBoundDepthTarget = _depth;
+                _owner._selectionOutlineSampler = _sampler;
+                _owner._selectionOutlineParameters = _parameters;
+                _owner._selectionOutlinePipeline = _pipeline;
+                _bytes.CopyTo(_owner._selectionOutlineParameterBytes, 0);
+                _owner._selectionOutlineColorFormat = _format;
+                _owner._selectionOutlineDeviceGeneration = _generation;
+                _owner._selectionOutlineInfrastructureInitialized = _ready;
+                _owner._selectionOutlineParametersInitialized = _parametersReady;
+            }
+            if (lost)
+            {
+                _owner.DisposeSelectionOutlineInfrastructure();
+            }
+            if (errors is not null)
+            {
+                throw new AggregateException("Prepared selection resources could not all be released.", errors);
+            }
+        }
+
+        private static void Release(IDisposable? resource, IDisposable? retained, ref List<Exception>? errors) =>
+            DisposeDifferentSelection(resource, retained, ref errors);
     }
 
     private void ResolveSelectedMeshes()
     {
+        bool admitted = SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device);
+        if (admitted && _selectionResolvedGpuRevision == GpuResources.Revision &&
+            _resolvedSelection?.Equals(_selection) == true)
+        {
+            _selectedMeshCount = _selectedMeshes.Length;
+            _missingSelectionPathCount = _resolvedMissingSelectionPaths;
+            _selectionResolutionDirty = false;
+            return;
+        }
         if (!_selectionResolutionDirty &&
             _selectionResolvedGpuRevision == GpuResources.Revision)
         {
             return;
         }
 
-        DisposeScopedSelectionBuffers();
+        if (!admitted)
+        {
+            DisposeScopedSelectionBuffers();
+            ResolveSelectedMeshesCore();
+            return;
+        }
+        using var prepared = new PreparedSelectionGeometry(this);
+        prepared.Prepare(prospective: false);
+        prepared.Commit();
+    }
+
+    private PreparedSelectionGeometry? PrepareSelectionGeometry(bool sceneChanged)
+    {
+        if (!SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device) ||
+            !_selectionOutlineSettings.Enabled || _selectionOutlineDevice is null ||
+            !_selectionOutlineDevice.SelectionOutlineCapabilities.SupportsVisibleOnly)
+        {
+            return null;
+        }
+        if (_selectionOutlineInfrastructureInitialized &&
+            _selectionOutlineDevice.SelectionOutlineDeviceGeneration != _selectionOutlineDeviceGeneration)
+        {
+            DisposeSelectionOutlineInfrastructure();
+            _selectionDeviceInvalidations++;
+        }
+        if (!sceneChanged && _selectionResolvedGpuRevision == GpuResources.Revision &&
+            _resolvedSelection?.Equals(_selection) == true)
+        {
+            _selectedMeshCount = _selectedMeshes.Length;
+            _missingSelectionPathCount = _resolvedMissingSelectionPaths;
+            _selectionResolutionDirty = false;
+            return null;
+        }
+        var prepared = new PreparedSelectionGeometry(this);
+        try
+        {
+            prepared.Prepare(prospective: true);
+            return prepared;
+        }
+        catch (Exception failure)
+        {
+            try
+            {
+                prepared.Dispose();
+            }
+            catch (Exception cleanup)
+            {
+                throw new AggregateException("Selection geometry preparation and cleanup failed.", failure, cleanup);
+            }
+            throw;
+        }
+    }
+
+    private sealed class PreparedSelectionGeometry : IDisposable
+    {
+        private readonly SilkMeshRenderer _owner;
+        private readonly ISilkGraphicsBuffer[] _buffers;
+        private readonly SelectedMeshDraw[] _draws;
+        private readonly int _count;
+        private readonly int _missing;
+        private readonly bool _dirty;
+        private readonly ulong _revision;
+        private readonly SelectionState? _selection;
+        private readonly int _resolvedMissing;
+        private readonly ulong _deviceGeneration;
+        private bool _committed;
+        private bool _disposed;
+
+        internal PreparedSelectionGeometry(SilkMeshRenderer owner)
+        {
+            _owner = owner;
+            _buffers = [.. owner._scopedSelectionBuffers];
+            _draws = owner._selectedMeshes;
+            _count = owner._selectedMeshCount;
+            _missing = owner._missingSelectionPathCount;
+            _dirty = owner._selectionResolutionDirty;
+            _revision = owner._selectionResolvedGpuRevision;
+            _selection = owner._resolvedSelection;
+            _resolvedMissing = owner._resolvedMissingSelectionPaths;
+            _deviceGeneration = owner.ReadDeviceGeneration();
+            owner._scopedSelectionBuffers.Clear();
+        }
+
+        internal void Prepare(bool prospective) => _owner.ResolveSelectedMeshesCore(prospective);
+
+        internal void Activate()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _owner._selectionResolvedGpuRevision = _owner.GpuResources.Revision;
+            _owner._resolvedSelection = _owner._selection;
+            _owner._resolvedMissingSelectionPaths = _owner._missingSelectionPathCount;
+            _owner._selectionResolutionDirty = false;
+        }
+
+        internal void Commit()
+        {
+            Activate();
+            _committed = true;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            List<Exception>? errors = null;
+            if (_committed)
+            {
+                foreach (ISilkGraphicsBuffer buffer in _buffers)
+                {
+                    DisposeDifferentSelection(buffer, null, ref errors);
+                }
+            }
+            else
+            {
+                foreach (ISilkGraphicsBuffer buffer in _owner._scopedSelectionBuffers)
+                {
+                    DisposeDifferentSelection(buffer, null, ref errors);
+                }
+                _owner._scopedSelectionBuffers.Clear();
+                if (_owner.ReadDeviceGeneration() == _deviceGeneration)
+                {
+                    _owner._scopedSelectionBuffers.AddRange(_buffers);
+                    _owner._selectedMeshes = _draws;
+                    _owner._selectedMeshCount = _count;
+                    _owner._missingSelectionPathCount = _missing;
+                    _owner._selectionResolutionDirty = _dirty;
+                    _owner._selectionResolvedGpuRevision = _revision;
+                    _owner._resolvedSelection = _selection;
+                    _owner._resolvedMissingSelectionPaths = _resolvedMissing;
+                }
+                else
+                {
+                    foreach (ISilkGraphicsBuffer buffer in _buffers)
+                    {
+                        DisposeDifferentSelection(buffer, null, ref errors);
+                    }
+                    _owner._selectedMeshes = [];
+                    _owner._selectedMeshCount = 0;
+                    _owner._selectionResolutionDirty = true;
+                    _owner._resolvedSelection = null;
+                }
+            }
+            if (errors is not null)
+            {
+                throw new AggregateException("Prepared selection geometry could not all be released.", errors);
+            }
+        }
+    }
+
+    private void ResolveSelectedMeshesCore(bool prospective = false)
+    {
         IReadOnlyList<SelectionItem> items = _selection.Items;
 
         // A prim or instance selected whole already contains every component of
@@ -2221,9 +3154,14 @@ public sealed class SilkMeshRenderer :
                 {
                     continue;
                 }
-                if (!GpuResources.Meshes.TryGetValue(
+                SilkMeshGpuResource? resource;
+                if (prospective)
+                {
+                    resource = GpuResources.GetPreparedMesh(mesh.Id);
+                }
+                else if (!GpuResources.Meshes.TryGetValue(
                         mesh.Id,
-                        out SilkMeshGpuResource? resource))
+                        out resource))
                 {
                     continue;
                 }
@@ -2557,6 +3495,7 @@ public sealed class SilkMeshRenderer :
         }
 
         uint[] data = [.. indices];
+        _scopedSelectionBuffers.EnsureCapacity(checked(_scopedSelectionBuffers.Count + 1));
         ISilkGraphicsBuffer buffer = _device.CreateBuffer(
             checked((nuint)data.Length * sizeof(uint)),
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
@@ -3022,6 +3961,8 @@ public sealed class SilkMeshRenderer :
         _selectionMaskPipelines.Clear();
         DisposeScopedSelectionBuffers();
         _selectedMeshes = [];
+        _resolvedSelection = null;
+        _resolvedMissingSelectionPaths = 0;
         _selectedMeshCount = 0;
         _selectionResolutionDirty = true;
         _selectionOutlineParametersInitialized = false;
@@ -3046,7 +3987,8 @@ public sealed class SilkMeshRenderer :
 
     private void ProcessPicking(
         ISilkGraphicsTexture visibleColorTarget,
-        SilkPickFrameBinding binding)
+        SilkPickFrameBinding binding,
+        bool deferCompletion = false)
     {
         var viewport = new ViewportDimensions(
             checked((int)visibleColorTarget.Width),
@@ -3093,7 +4035,6 @@ public sealed class SilkMeshRenderer :
             return;
         }
 
-        EnsurePickTargets(visibleColorTarget.Width, visibleColorTarget.Height);
         SilkPickReadbackRing readbacks = _pickReadbacks ??
             throw new InvalidOperationException(
                 "The pick-capable device has no readback ring.");
@@ -3110,6 +4051,7 @@ public sealed class SilkMeshRenderer :
         List<ISilkGraphicsBuffer>? subprimBuffers = null;
         try
         {
+            EnsurePickTargets(visibleColorTarget.Width, visibleColorTarget.Height);
             using ISilkGraphicsCommandList commands = _device.CreateCommandList();
             if (commands is not ISilkPickGraphicsCommandList pickCommands)
             {
@@ -3268,20 +4210,53 @@ public sealed class SilkMeshRenderer :
                 _inFlightPickBuffers[reservation.SlotIndex] = subprimBuffers;
             }
             subprimBuffers = null;
+            _pickPreparation?.Track(reservation);
             _pickPassesRecorded++;
             AdvancePickQueue();
         }
         catch (Exception exception)
         {
-            pickSubmission?.Dispose();
-            DisposeBuffers(subprimBuffers);
-            readbacks.Cancel(reservation);
+            List<Exception>? errors = null;
+            DisposeDifferentSelection(pickSubmission, null, ref errors);
+            if (subprimBuffers is not null)
+            {
+                foreach (ISilkGraphicsBuffer buffer in subprimBuffers)
+                {
+                    DisposeDifferentSelection(buffer, null, ref errors);
+                }
+            }
+            try
+            {
+                if (_pickPreparation is null)
+                {
+                    readbacks.Cancel(reservation);
+                }
+                else
+                {
+                    readbacks.CancelPrepared(reservation);
+                }
+            }
+            catch (Exception cleanup)
+            {
+                (errors ??= []).Add(cleanup);
+            }
+            if (errors is not null)
+            {
+                errors.Insert(0, exception);
+                var combined = new AggregateException("Pick preparation and cleanup failed.", errors);
+                active.Fail(combined);
+                AdvancePickQueue();
+                throw combined;
+            }
             active.Fail(exception);
             AdvancePickQueue();
             throw;
         }
 
-        ResolveCompletedReadbacks(binding, viewport);
+        if (!deferCompletion)
+        {
+            ResolveCompletedReadbacks(binding, viewport);
+        }
     }
 
     /// <summary>
@@ -3794,8 +4769,11 @@ public sealed class SilkMeshRenderer :
             throw;
         }
 
-        _pickDepthTarget?.Dispose();
-        _pickColorTarget?.Dispose();
+        if (_pickPreparation is null)
+        {
+            _pickDepthTarget?.Dispose();
+            _pickColorTarget?.Dispose();
+        }
         _pickColorTarget = color;
         _pickDepthTarget = depth;
         _pickTargetWidth = width;

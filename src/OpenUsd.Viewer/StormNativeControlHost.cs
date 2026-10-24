@@ -18,6 +18,8 @@ internal sealed class StormNativeControlHost : NativeControlHost
     private readonly string _pluginPath;
     private readonly UsdStageRenderSource _source;
     private readonly object _physicsGate = new();
+    private readonly object _frameGate = new();
+    private readonly ViewerPhysicsOverrideStage _physicsStage = new();
     private readonly StormPhysicsTransformOverrides _physicsOverrides = new(
         ViewerPhysicsRenderCapacities.BodyCapacity,
         ViewerPhysicsRenderCapacities.StormPathBytes);
@@ -29,8 +31,6 @@ internal sealed class StormNativeControlHost : NativeControlHost
     private IViewerStormFrameAdapter? _frameAdapter;
     private OpenUsdStormChildSession? _session;
     private TopLevel? _topLevel;
-    private ViewerPhysicsOverrideReport _physicsReport;
-    private bool _hasPhysicsReport;
     private int _destroyed;
 
     internal StormNativeControlHost(
@@ -62,7 +62,20 @@ internal sealed class StormNativeControlHost : NativeControlHost
         IViewerStormFrameAdapter adapter = GetFrameAdapter();
         ViewerFrameRequest request = ViewerFrameRequest.Capture(state);
         return Task.Run(
-            () => ViewerFrameAdapter.RenderStorm(adapter, request),
+            () =>
+            {
+                lock (_frameGate)
+                {
+                    OpenUsdStormChildSession session = GetSession();
+                    ViewerPhysicsOverrideReport? report = ApplyPendingPhysicsOverrides(session);
+                    OpenUsdStormChildDiagnostics diagnostics = ViewerFrameAdapter.RenderStorm(adapter, request);
+                    if (report is { } applied)
+                    {
+                        _physicsStage.PublishReport(applied.Revision, applied.Applied, applied.Unresolved);
+                    }
+                    return diagnostics;
+                }
+            },
             cancellationToken);
     }
 
@@ -122,10 +135,10 @@ internal sealed class StormNativeControlHost : NativeControlHost
 
     internal void SimulateContextLoss() => GetSession().SimulateContextLoss();
 
-    /// <summary>Queues one physics override batch on the native child's render thread.</summary>
+    /// <summary>Stages one physics override batch without waiting for the native child's render thread.</summary>
     /// <param name="overrides">The overrides one render update produced.</param>
     /// <param name="bindings">The table naming the prim each identity drives.</param>
-    /// <returns>The number of overrides the child accepted.</returns>
+    /// <returns>The number of overrides staged for the next frame.</returns>
     internal int SetPhysicsOverrides(
         in PhysicsRenderOverrideView overrides,
         PhysicsRenderBindingTable bindings)
@@ -136,23 +149,13 @@ internal sealed class StormNativeControlHost : NativeControlHost
             return 0;
         }
 
-        lock (_physicsGate)
-        {
-            int resolved = _physicsOverrides.Refresh(in overrides, bindings);
-            session.SetPhysicsTransformOverrides(_physicsOverrides);
-            _physicsReport = new ViewerPhysicsOverrideReport(
-                overrides.Revision,
-                resolved,
-                Math.Max(0, overrides.Count - resolved));
-            _hasPhysicsReport = true;
-            return resolved;
-        }
+        return _physicsStage.Stage(in overrides, bindings);
     }
 
-    /// <summary>Queues one deformable geometry batch on the native child's render thread.</summary>
+    /// <summary>Stages one deformable geometry batch without waiting for the native child's render thread.</summary>
     /// <param name="deformations">The geometry one render update produced.</param>
     /// <param name="bindings">The table naming the prim each identity drives.</param>
-    /// <returns>The number of regions the child accepted.</returns>
+    /// <returns>The number of regions staged for the next frame.</returns>
     /// <remarks>
     /// The regions and their shared point page are packed once and handed over in one call, so a
     /// deforming body costs one boundary crossing per frame no matter how many vertices it has.
@@ -167,13 +170,7 @@ internal sealed class StormNativeControlHost : NativeControlHost
             return 0;
         }
 
-        lock (_physicsGate)
-        {
-            int resolved = _physicsDeformations.Refresh(in deformations, bindings);
-            _physicsDeformationDiagnostics =
-                session.SetPhysicsDeformationOverrides(_physicsDeformations);
-            return resolved;
-        }
+        return _physicsStage.StageDeformations(in deformations);
     }
 
     /// <summary>Gets what the child reported about the last deformation batch it accepted.</summary>
@@ -188,30 +185,16 @@ internal sealed class StormNativeControlHost : NativeControlHost
         }
     }
 
-    /// <summary>Takes the newest report of what the child actually resolved.</summary>
+    /// <summary>Takes the newest report of what the child resolved before a successful frame.</summary>
     /// <param name="report">Receives the newest unread report.</param>
     /// <returns><see langword="true"/> when a report was taken.</returns>
     /// <remarks>
-    /// The native child resolves a batch against the binding table synchronously while it is being
-    /// queued, so the report is complete as soon as the batch has been handed over.
+    /// Delivery is asynchronous. Staging a batch is not evidence that the child rendered it.
     /// </remarks>
-    internal bool TryTakePhysicsOverrideReport(out ViewerPhysicsOverrideReport report)
-    {
-        lock (_physicsGate)
-        {
-            if (!_hasPhysicsReport)
-            {
-                report = default;
-                return false;
-            }
+    internal bool TryTakePhysicsOverrideReport(out ViewerPhysicsOverrideReport report) =>
+        _physicsStage.TryTakeReport(out report);
 
-            report = _physicsReport;
-            _hasPhysicsReport = false;
-            return true;
-        }
-    }
-
-    /// <summary>Queues an empty batch so the child restores the authored transforms.</summary>
+    /// <summary>Stages empty batches so the next frame restores the authored transforms and points.</summary>
     internal void ClearPhysicsOverrides()
     {
         OpenUsdStormChildSession? session = Volatile.Read(ref _session);
@@ -220,16 +203,34 @@ internal sealed class StormNativeControlHost : NativeControlHost
             return;
         }
 
-        lock (_physicsGate)
+        _physicsStage.Clear();
+        _physicsStage.ClearDeformations();
+    }
+
+    private ViewerPhysicsOverrideReport? ApplyPendingPhysicsOverrides(OpenUsdStormChildSession session)
+    {
+        ViewerPhysicsOverrideReport? report = null;
+        if (_physicsStage.TryTake(out ViewerPhysicsOverrideBatch batch))
         {
-            _physicsDeformations.Clear();
-            _physicsDeformationDiagnostics =
-                session.SetPhysicsDeformationOverrides(_physicsDeformations);
-            _physicsOverrides.Clear();
-            session.SetPhysicsTransformOverrides(_physicsOverrides);
-            _physicsReport = default;
-            _hasPhysicsReport = false;
+            using (batch)
+            {
+                int resolved = _physicsOverrides.Refresh(batch.Overrides, batch.Bindings);
+                session.SetPhysicsTransformOverrides(_physicsOverrides);
+                report = new ViewerPhysicsOverrideReport(
+                    batch.Overrides.Revision, resolved, Math.Max(0, batch.Overrides.Count - resolved));
+            }
         }
+        if (_physicsStage.TryTakeDeformations(out PhysicsRenderDeformationView deformations))
+        {
+            _physicsDeformations.Refresh(in deformations, _physicsStage.Bindings);
+            StormPhysicsDeformationDiagnostics diagnostics =
+                session.SetPhysicsDeformationOverrides(_physicsDeformations);
+            lock (_physicsGate)
+            {
+                _physicsDeformationDiagnostics = diagnostics;
+            }
+        }
+        return report;
     }
 
     internal OpenUsdStormChildDiagnostics GetDiagnostics() => GetSession().GetDiagnostics();

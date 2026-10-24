@@ -346,6 +346,29 @@ public sealed class UsdPhysicsTransport : IAsyncDisposable, IUsdPhysicsWorkerHos
             cancellationToken: cancellationToken));
     }
 
+    /// <summary>Advances a bounded fixed-step batch and leases that exact complete result.</summary>
+    /// <param name="steps">One to <see cref="UsdPhysicsTransportOptions.MaxCatchUpSubSteps"/> fixed steps.</param>
+    /// <param name="cancellationToken">Cancels the request before or during the advance.</param>
+    /// <remarks>
+    /// Requires paused, non-looping playback and enough remaining authored time.
+    /// Publication and lease capacity are reserved before advancing. A failed or
+    /// incomplete solver result faults the transport and returns no frame.
+    /// Dispose the returned lease after capture; later steps or resets cannot alter it.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The batch exceeds a step or timeline bound.</exception>
+    /// <exception cref="InvalidOperationException">Looping is enabled or bounded frame/lease capacity is
+    /// unavailable.</exception>
+    public async Task<UsdPhysicsFrameLease> StepAndAcquireFrameAsync(
+        int steps, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(steps);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(steps, Options.MaxCatchUpSubSteps);
+        var item = new UsdPhysicsWorkItem(
+            UsdPhysicsRequestKind.StepAndAcquireFrame, steps, cancellationToken: cancellationToken);
+        await EnqueueAsync(item).ConfigureAwait(false);
+        return item.CapturedFrame;
+    }
+
     /// <summary>Begins advancing the world at the fixed step.</summary>
     /// <param name="cancellationToken">Cancels the request before it runs.</param>
     public Task PlayAsync(CancellationToken cancellationToken = default) =>
@@ -501,6 +524,9 @@ public sealed class UsdPhysicsTransport : IAsyncDisposable, IUsdPhysicsWorkerHos
                 break;
             case UsdPhysicsRequestKind.Step:
                 ExecuteStep(item.Steps, item.CancellationToken);
+                break;
+            case UsdPhysicsRequestKind.StepAndAcquireFrame:
+                item.CapturedFrame = ExecuteStepAndAcquireFrame(item.Steps, item.CancellationToken);
                 break;
             case UsdPhysicsRequestKind.Play:
                 ExecutePlay(item.CancellationToken);
@@ -838,6 +864,95 @@ public sealed class UsdPhysicsTransport : IAsyncDisposable, IUsdPhysicsWorkerHos
         PublishDiagnostics(seekDiagnostics);
         Volatile.Write(ref _state, (int)UsdPhysicsTransportState.Paused);
         PublishCurrentFrame();
+    }
+
+    private UsdPhysicsFrameLease ExecuteStepAndAcquireFrame(int steps, CancellationToken cancellationToken)
+    {
+        if (CurrentState != UsdPhysicsTransportState.Paused ||
+            _tick is not { } scheduler || _publisher is not { } publisher)
+        {
+            throw new UsdPhysicsTransportStateException(CurrentState);
+        }
+        if (Loop)
+        {
+            throw new InvalidOperationException("Exact-step capture requires non-looping playback.");
+        }
+        UsdPhysicsTickPlan plan = scheduler.PlanExactSteps(steps);
+        if (!publisher.TryClaimLeasedWriteBuffer(out UsdPhysicsFrame? frame, out UsdPhysicsFrameLease lease) ||
+            frame is null)
+        {
+            throw new InvalidOperationException(
+                "No bounded frame or lease capacity is available; no simulation step was advanced.");
+        }
+
+        bool attempted = false;
+        bool published = false;
+        bool delivered = false;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            attempted = true;
+            if (!_world.TryStep(FixedStep.Seconds, plan.SubSteps, frame))
+            {
+                throw new UsdPhysicsTransportStateException(UsdPhysicsTransportState.Faulted);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (frame.HasOverflow || frame.BodiesTruncated || frame.DeformationsTruncated ||
+                frame.DroppedEventCount != 0)
+            {
+                throw new InvalidDataException("An exact-step capture cannot publish an incomplete simulation frame.");
+            }
+            scheduler.CommitSteps(in plan);
+            frame.StepIndex = scheduler.StepIndex;
+            frame.SimulationSeconds = scheduler.SimulationSeconds;
+            frame.TimeCode = scheduler.TimeCode;
+            frame.SubStepCount = plan.SubSteps;
+            frame.BacklogSeconds = scheduler.BacklogSeconds;
+            publisher.Publish(frame);
+            published = true;
+            if (_checkpoints is { IsEnabled: true } checkpoints && checkpoints.ShouldCapture(scheduler.StepIndex))
+            {
+                checkpoints.TryCapture(_world, scheduler.StepIndex);
+            }
+            if (plan.ReachedEnd)
+            {
+                scheduler.CompleteWithoutLoop();
+                Volatile.Write(ref _state, (int)UsdPhysicsTransportState.Ended);
+            }
+            delivered = true;
+            return lease;
+        }
+        catch (Exception operationFailure)
+        {
+            if (attempted)
+            {
+                publisher.Invalidate();
+                Volatile.Write(ref _state, (int)UsdPhysicsTransportState.Faulted);
+                PublishStatus();
+                try
+                {
+                    PublishDiagnostics(_world.DrainDiagnostics());
+                }
+                catch (Exception diagnosticFailure)
+                {
+                    throw new AggregateException(
+                        "Exact stepping failed and its diagnostics could not be collected.",
+                        operationFailure, diagnosticFailure);
+                }
+            }
+            throw;
+        }
+        finally
+        {
+            if (!delivered)
+            {
+                lease.Dispose();
+                if (!published)
+                {
+                    UsdPhysicsFramePublisher.Abandon(frame);
+                }
+            }
+        }
     }
 
     private void ExecuteStep(int steps, CancellationToken cancellationToken)
