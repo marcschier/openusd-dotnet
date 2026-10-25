@@ -3441,6 +3441,8 @@ runner. Mesa staging, stale-report cleanup and corpus verification all use that
 directory, including `bin/x64` when a Windows developer environment sets
 `Platform=x64`. `eng/test-parity-test-host-path.ps1` checks both the default and
 explicit x64 layouts without compiling or loading the native runtime.
+The Windows diagnostics upload retains both layouts, including the parity corpus
+and decoded-pixel evidence from an x64 test host.
 
 Every input that can otherwise create false parity failures is pinned by
 `ParityCaptureInput`: stage path, time code, resolution, explicit matrix camera,

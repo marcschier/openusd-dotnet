@@ -584,7 +584,7 @@ jobs:
             artifacts/viewer-workflows/windows-wgl
             artifacts/silk-probe/win-x64/shared-stage-soak.json
             artifacts/native-input/win-x64/source.json
-            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
+            tests/OpenUsd.Rendering.ConformanceTests/bin/**/TestResults
           if-no-files-found: warn
       - name: Upload adjusted IoU evidence
         if: always()

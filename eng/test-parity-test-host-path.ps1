@@ -59,3 +59,14 @@ finally
 {
     $env:Platform = $oldPlatform
 }
+
+$workflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github/workflows/render.yml'))
+$job = [regex]::Match($workflow,
+    '(?ms)^  windows-wgl:\r?\n(?<job>.*?)(?=^  [A-Za-z0-9_-]+:|\z)').Groups['job'].Value
+$upload = [regex]::Match($job,
+    '(?ms)^      - name: Upload diagnostics\r?\n(?<step>.*?)(?=^      - |\z)').Groups['step'].Value
+if (-not $upload.Contains('tests/OpenUsd.Rendering.ConformanceTests/bin/**/TestResults'))
+{
+    throw 'WindowsParityReportsAreRetained: diagnostic upload must include platform-specific test output.'
+}
+Write-Output 'PASS WindowsParityReportsAreRetained'
