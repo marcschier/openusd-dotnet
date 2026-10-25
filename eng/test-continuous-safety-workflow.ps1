@@ -56,6 +56,20 @@ $parityRunner = Get-Content (
     Join-Path $repoRoot 'eng/run-parity-capture.ps1') -Raw
 $solution = Get-Content (Join-Path $repoRoot 'OpenUsd.slnx') -Raw
 
+foreach ($name in @('ci', 'package', 'release', 'viewer-distribution'))
+{
+    $workflow = Get-Content (Join-Path $repoRoot ".github/workflows/$name.yml") -Raw
+    $versions = [regex]::Matches($workflow,
+        '(?m)^ +dotnet-version: \|\r?\n(?<versions>(?: +\d[^\r\n]*\r?\n)+)')
+    if ($versions.Count -ne 1 -or
+        (($versions[0].Groups['versions'].Value.Trim() -split '\r?\n' |
+            ForEach-Object { $_.Trim() }) -join ',') -cne '8.0.426,9.0.319,10.0.401')
+    {
+        throw "PinnedFrameworkSdkVersions($name): expected the exact released SDKs for all three target frameworks."
+    }
+    Write-Output "PASS PinnedFrameworkSdkVersions($name)"
+}
+
 Assert-Contains $ciWorkflow 'dotnet-version: 10.0.401' 'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow '10.0.x' 'Managed CI workflow'
 Assert-Contains `

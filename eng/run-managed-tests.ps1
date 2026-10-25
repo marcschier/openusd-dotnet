@@ -289,7 +289,7 @@ foreach ($projectPath in $projectPaths)
         foreach ($targetFramework in $selectedFrameworks)
         {
             # Refuse to report a count for a framework the pinned host cannot
-            # launch. Skipping is fine -- CI installs 8.0.x, 9.0.x and 10.0.401
+            # launch. Skipping is fine -- CI installs all three framework runtimes
             # and runs all three -- but it must be stated, not inferred. A
             # silent skip that still prints a total is indistinguishable from a
             # passing run and has already produced test counts that were never
@@ -474,7 +474,7 @@ if ($script:SkippedFrameworks.Count -gt 0)
         ($script:SkippedFrameworks -join ', '))
     Write-Host (
         '[managed-tests] Those target frameworks build but have no matching ' +
-        'runtime in the pinned host. CI installs 8.0.x, 9.0.x and 10.0.401 ' +
+        'runtime in the pinned host. CI installs all three framework runtimes ' +
         'and runs them there. Do not report a count for them from this run.')
 }
 if ($failures.Count -gt 0)
