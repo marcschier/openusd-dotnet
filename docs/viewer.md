@@ -1830,6 +1830,25 @@ without opening a stage or starting another render. Choose before/after independ
 Side by side, Before, or After. Images fit independently and retain their original dimension labels;
 this is a visual comparison, not a pixel-error metric or a new colour-management pipeline.
 
+**Save comparison** writes a new `.usdcompare.json` file containing the two absolute capture
+paths, their decoded RGBA SHA-256 checksums and dimensions, and the selected display mode.
+**Open comparison** reopens both captures without a stage, renderer or the originating document.
+It verifies both pixel checksums and dimensions before displaying either image. A missing or
+changed capture fails explicitly; a different PNG encoding with identical decoded pixels remains
+valid. Save records the displayed pair, not a later version of the files. Keep both captures at
+their original paths; the comparison references them rather than copying them into a bundle.
+Network/device paths are not admitted by saved comparisons.
+
+Saved comparisons are historical image evidence only. They do not certify an effective render
+request, source/review revision, authored camera, current scene, or trust/authenticity of the
+manifest. Cross-document browsing with effective-state comparisons, scene annotations and
+units-aware measurements remain separate roadmap work. The manifest is limited to 32 KiB,
+4096 characters per path, one supported version and three display modes; duplicate, unknown,
+missing or incorrectly typed fields are rejected. Publication uses a same-directory temporary
+file and never replaces an existing destination. Choose a new filename to save another version.
+Cancellation/failure removes the temporary file and preserves the displayed pair; failed or
+cancelled opening clears both images rather than showing a partial historical comparison.
+
 Comparison supports non-interlaced 8-bit RGBA PNGs with all five standard scanline filters, plus
 uncompressed 24-bit and 32-bit Windows BMPs. PNG transparency is preserved; the BMP reserved fourth
 byte is treated as opaque, not alpha. Indexed/RGB-only/grayscale/16-bit/interlaced PNG, compressed BMP,

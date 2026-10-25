@@ -1542,8 +1542,10 @@ persistence. These remain required roadmap partitions, not delivered Viewer feat
 
 Reopenable cross-document review presentations with verified historical artifacts and effective-state comparisons.
 
-**Limits:** The current completed-job gallery is document-scoped. It does not provide persistent cross-document
-presentation browsing or rerender-free reopening after process restart.
+**Limits:** Saved PNG/BMP comparisons can reopen across document/process lifetimes with verified decoded pixel
+checksums, dimensions and display mode. This historical-image slice does not establish
+source/review/camera/effective-request identity, integrated cross-document presentation browsing or effective-state
+comparisons. The complete presentation profile remains unsupported.
 
 ### `viewer-dcc`
 

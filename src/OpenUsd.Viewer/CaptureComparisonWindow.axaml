@@ -63,7 +63,8 @@
         Classes="viewer-caption"
         TextWrapping="Wrap"
         AutomationProperties.Name="Capture comparison status" />
-    <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
+    <Grid Grid.Row="4" RowDefinitions="Auto,Auto" RowSpacing="8"
+          ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
       <ComboBox
           x:Name="ComparisonMode"
           AutomationProperties.Name="Comparison display mode"
@@ -73,8 +74,11 @@
         <ComboBoxItem Content="Before (A)" />
         <ComboBoxItem Content="After (B)" />
       </ComboBox>
+      <Button x:Name="OpenPresentationButton" Grid.Row="1" Content="Open comparison..." />
+      <Button x:Name="SavePresentationButton" Grid.Row="1" Grid.Column="1"
+              Content="Save comparison..." IsEnabled="False" />
       <Button x:Name="CompareAgainButton" Grid.Column="2" Content="Compare" IsEnabled="False" />
-      <Button x:Name="CancelComparisonButton" Grid.Column="3" Content="Cancel loading" IsEnabled="False" />
+      <Button x:Name="CancelComparisonButton" Grid.Column="3" Content="Cancel" IsEnabled="False" />
       <Button x:Name="CloseComparisonButton" Grid.Column="4" Content="Close" />
     </Grid>
   </Grid>
