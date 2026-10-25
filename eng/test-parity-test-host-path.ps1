@@ -32,13 +32,21 @@ $assignment = @($ast.EndBlock.Statements | Where-Object {
         $_.Left.Extent.Text -ceq '$testHostRoot'
 })
 if ($assignment.Count -ne 1) { throw 'Expected one authoritative parity test-host root assignment.' }
+$conformance = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot 'run-platform-conformance.ps1'), [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count -ne 0) { throw 'The platform conformance script does not parse.' }
+$reportAssignment = @($conformance.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $_.Left.Extent.Text -ceq '$report'
+})
+if ($reportAssignment.Count -ne 1) { throw 'Expected one authoritative platform report assignment.' }
 $project = Join-Path $repoRoot 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
 $oldPlatform = $env:Platform
 try
 {
-    foreach ($platform in @('', 'x64'))
+    foreach ($buildPlatform in @('', 'x64'))
     {
-        $env:Platform = $platform
+        $env:Platform = $buildPlatform
         $target = @(& $dotnet msbuild $project -nologo "-p:Configuration=$Configuration" `
             '-p:TargetFramework=net10.0' '-getProperty:TargetPath')
         if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or
@@ -50,9 +58,19 @@ try
         $expected = [IO.Path]::GetDirectoryName($target[0])
         if ($testHostRoot -cne $expected)
         {
-            throw "Platform='$platform': parity host '$testHostRoot' does not match actual test host '$expected'."
+            throw "Platform='$buildPlatform': parity host '$testHostRoot' does not match actual test host '$expected'."
         }
-        Write-Output "PASS ParityHostMatchesTargetPath(Platform='$platform')"
+        Write-Output "PASS ParityHostMatchesTargetPath(Platform='$buildPlatform')"
+        $repo = $repoRoot
+        $platform = if ($IsMacOS) { 'macos' } elseif ($IsWindows) { 'windows' } else { 'linux' }
+        . ([scriptblock]::Create($reportAssignment[0].Extent.Text))
+        $expectedReport = Join-Path $expected (
+            "TestResults/OpenUsd.Rendering.ConformanceTests-$platform-net10.0.tunit-report.json")
+        if ($report -cne $expectedReport)
+        {
+            throw "Platform='$buildPlatform': conformance report '$report' does not match '$expectedReport'."
+        }
+        Write-Output "PASS PlatformConformanceReportMatchesTargetPath(Platform='$buildPlatform')"
     }
 }
 finally

@@ -3443,6 +3443,8 @@ directory, including `bin/x64` when a Windows developer environment sets
 explicit x64 layouts without compiling or loading the native runtime.
 The Windows diagnostics upload retains both layouts, including the parity corpus
 and decoded-pixel evidence from an x64 test host.
+The same regression checks `run-platform-conformance.ps1`: its fresh test report
+must sit beside the actual compiled assembly, not in a guessed default layout.
 
 Every input that can otherwise create false parity failures is pinned by
 `ParityCaptureInput`: stage path, time code, resolution, explicit matrix camera,

@@ -117,8 +117,8 @@ try
 }
 catch { $executionFailure = $_ }
 $platform = if ($IsMacOS) { 'macos' } elseif ($IsWindows) { 'windows' } else { 'linux' }
-$report = Join-Path $repo (
-    "tests/OpenUsd.Rendering.ConformanceTests/bin/$Configuration/net10.0/TestResults/" +
+$report = Join-Path ([IO.Path]::GetDirectoryName($target[0])) (
+    "TestResults/" +
     "OpenUsd.Rendering.ConformanceTests-$platform-net10.0.tunit-report.json")
 if (-not (Test-Path -LiteralPath $report -PathType Leaf) -or
     (Get-Item -LiteralPath $report).LastWriteTimeUtc -lt $started)
