@@ -25,6 +25,151 @@ public sealed class ViewerCapturePresentationTests
     private static readonly byte[] AfterRgba = [20, 40, 80, 255, 200, 100, 0, 255];
 
     [Test]
+    public async Task VersionTwoReviewNotesSurviveOpeningAndResavingTheVerifiedPair()
+    {
+        using var fixture = await Fixture.CreateAsync();
+        JsonObject manifest = ValidManifest(fixture.Before, fixture.After, PixelHash(BeforeRgba), PixelHash(AfterRgba));
+        const string notes = "Review A -> B.\n<plain text> \u00e9 \ud83d\ude80";
+        manifest["version"] = 2;
+        manifest["notes"] = notes;
+        await File.WriteAllTextAsync(fixture.Manifest, manifest.ToJsonString());
+
+        ViewerCapturePresentation reopened =
+            await ViewerCapturePresentationFile.LoadAsync(fixture.Manifest, CancellationToken.None);
+        string saved = Path.Combine(fixture.Root, "out", "reviewed.usdcompare.json");
+        await ViewerCapturePresentationFile.SaveAsync(saved, reopened, CancellationToken.None);
+
+        JsonObject resaved = JsonNode.Parse(await File.ReadAllTextAsync(saved))!.AsObject();
+        await Assert.That(resaved["notes"]!.GetValue<string>()).IsEqualTo(notes);
+        await Assert.That(resaved["before"]!["pixelSha256"]!.GetValue<string>()).IsEqualTo(PixelHash(BeforeRgba));
+        await Assert.That(resaved["after"]!["pixelSha256"]!.GetValue<string>()).IsEqualTo(PixelHash(AfterRgba));
+    }
+
+    [Test]
+    public async Task VersionOnePresentationReopensWithEmptyNotesAndUpgradesWithoutChangingPixels()
+    {
+        using var fixture = await Fixture.CreateAsync();
+        JsonObject manifest = ValidManifest(fixture.Before, fixture.After, PixelHash(BeforeRgba), PixelHash(AfterRgba));
+        await File.WriteAllTextAsync(fixture.Manifest, manifest.ToJsonString());
+
+        ViewerCapturePresentation opened =
+            await ViewerCapturePresentationFile.LoadAsync(fixture.Manifest, CancellationToken.None);
+        string upgraded = Path.Combine(fixture.Root, "out", "upgraded.usdcompare.json");
+        await ViewerCapturePresentationFile.SaveAsync(upgraded, opened, CancellationToken.None);
+        ViewerCapturePresentation reopened =
+            await ViewerCapturePresentationFile.LoadAsync(upgraded, CancellationToken.None);
+
+        await Assert.That(opened.Notes).IsEqualTo(string.Empty);
+        await Assert.That(reopened.Notes).IsEqualTo(string.Empty);
+        await Assert.That(Convert.ToHexString(reopened.Images.Before.Rgba)).IsEqualTo(Convert.ToHexString(BeforeRgba));
+        await Assert.That(Convert.ToHexString(reopened.Images.After.Rgba)).IsEqualTo(Convert.ToHexString(AfterRgba));
+        JsonObject saved = JsonNode.Parse(await File.ReadAllTextAsync(upgraded))!.AsObject();
+        await Assert.That(saved["version"]!.GetValue<int>()).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(2047)]
+    [Arguments(2048)]
+    public async Task ReviewNotesRoundTripThroughTheInclusiveLengthBoundary(int length)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        ViewerCapturePresentation presentation = await fixture.LoadPresentationAsync(1);
+        string notes = new('\u00e9', length);
+        await ViewerCapturePresentationFile.SaveAsync(
+            fixture.Manifest, presentation with { Notes = notes }, CancellationToken.None);
+        ViewerCapturePresentation reopened =
+            await ViewerCapturePresentationFile.LoadAsync(fixture.Manifest, CancellationToken.None);
+
+        await Assert.That(reopened.Notes).IsEqualTo(notes);
+        await Assert.That(reopened.Notes.Length).IsEqualTo(length);
+    }
+
+    [Test]
+    [Arguments("missing")]
+    [Arguments("null")]
+    [Arguments("number")]
+    [Arguments("oversized")]
+    [Arguments("nul")]
+    [Arguments("duplicate")]
+    [Arguments("high-surrogate")]
+    [Arguments("low-surrogate")]
+    [Arguments("legacy-with-notes")]
+    public async Task InvalidManifestNotesAreRejectedBeforeImageLoading(string defect)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        JsonObject manifest = ValidManifest(
+            Path.Combine(fixture.Root, "absent.png"), fixture.After, PixelHash(BeforeRgba), PixelHash(AfterRgba));
+        manifest["version"] = 2;
+        manifest["notes"] = "plain";
+        switch (defect)
+        {
+            case "missing":
+                manifest.Remove("notes");
+                break;
+            case "null":
+                manifest["notes"] = null;
+                break;
+            case "number":
+                manifest["notes"] = 42;
+                break;
+            case "oversized":
+                manifest["notes"] = new string('x', 2049);
+                break;
+            case "nul":
+                manifest["notes"] = "before\0after";
+                break;
+            case "legacy-with-notes":
+                manifest["version"] = 1;
+                break;
+        }
+        string json = manifest.ToJsonString();
+        if (defect == "duplicate")
+        {
+            json = json.Replace("\"notes\":\"plain\"", "\"notes\":\"plain\",\"notes\":\"duplicate\"",
+                StringComparison.Ordinal);
+        }
+        else if (defect is "high-surrogate" or "low-surrogate")
+        {
+            json = json.Replace("\"notes\":\"plain\"",
+                defect == "high-surrogate" ? "\"notes\":\"\\uD800\"" : "\"notes\":\"\\uDC00\"",
+                StringComparison.Ordinal);
+        }
+        await File.WriteAllTextAsync(fixture.Manifest, json);
+
+        await Assert.That(async () => await ViewerCapturePresentationFile.LoadAsync(
+            fixture.Manifest, CancellationToken.None)).ThrowsExactly<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments("oversized")]
+    [Arguments("nul")]
+    [Arguments("high-surrogate")]
+    [Arguments("low-surrogate")]
+    [Arguments("reversed-surrogates")]
+    [Arguments("null")]
+    public async Task InvalidInMemoryNotesPublishNoFile(string defect)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        ViewerCapturePresentation presentation = await fixture.LoadPresentationAsync(0);
+        string notes = defect switch
+        {
+            "oversized" => new string('x', 2049),
+            "nul" => "before\0after",
+            "high-surrogate" => "\ud800",
+            "low-surrogate" => "\udc00",
+            "reversed-surrogates" => "\udc00\ud800",
+            _ => null!
+        };
+
+        await Assert.That(async () => await ViewerCapturePresentationFile.SaveAsync(
+            fixture.Manifest, presentation with { Notes = notes }, CancellationToken.None))
+            .ThrowsExactly<InvalidDataException>();
+        await Assert.That(fixture.ManifestDirectoryEntries()).IsEmpty();
+    }
+
+    [Test]
     [Arguments(0)]
     [Arguments(1)]
     [Arguments(2)]
@@ -51,7 +196,8 @@ public sealed class ViewerCapturePresentationTests
         await Assert.That(Convert.ToHexString(reopened.Images.After.Rgba)).IsEqualTo(Convert.ToHexString(AfterRgba));
 
         JsonObject manifest = JsonNode.Parse(await File.ReadAllTextAsync(fixture.Manifest))!.AsObject();
-        await Assert.That(manifest["version"]!.GetValue<int>()).IsEqualTo(1);
+        await Assert.That(manifest["version"]!.GetValue<int>()).IsEqualTo(2);
+        await Assert.That(manifest["notes"]!.GetValue<string>()).IsEqualTo(string.Empty);
         await Assert.That(manifest["displayMode"]!.GetValue<int>()).IsEqualTo(mode);
         await Assert.That(manifest["before"]!["path"]!.GetValue<string>()).IsEqualTo(fixture.Before);
         await Assert.That(manifest["after"]!["width"]!.GetValue<int>()).IsEqualTo(2);
@@ -141,7 +287,7 @@ public sealed class ViewerCapturePresentationTests
     [Test]
     [Arguments("not-json")]
     [Arguments("array-root")]
-    [Arguments("version-2")]
+    [Arguments("version-3")]
     [Arguments("version-string")]
     [Arguments("mode-3")]
     [Arguments("mode-negative")]
@@ -187,8 +333,8 @@ public sealed class ViewerCapturePresentationTests
             case "array-root":
                 text = "[]";
                 break;
-            case "version-2":
-                root["version"] = 2;
+            case "version-3":
+                root["version"] = 3;
                 break;
             case "version-string":
                 root["version"] = "1";
@@ -450,10 +596,14 @@ public sealed class ViewerCapturePresentationTests
             try
             {
                 await Assert.That(Required<Button>(first, "SavePresentationButton").IsEnabled).IsFalse();
+                await Assert.That(Required<TextBox>(first, "ComparisonNotes").IsEnabled).IsFalse();
+                await Assert.That(Required<TextBox>(first, "ComparisonNotes").MaxLength).IsEqualTo(2048);
                 await Assert.That(() => first.SavePresentationAsync(fixture.Manifest))
                     .ThrowsExactly<InvalidOperationException>();
                 await first.LoadPairAsync(fixture.Before, fixture.After).WaitAsync(TimeSpan.FromSeconds(5));
                 Required<ComboBox>(first, "ComparisonMode").SelectedIndex = 2;
+                Required<TextBox>(first, "ComparisonNotes").Text =
+                    "Check the revised lighting.\nHistorical pixels only.";
                 await Assert.That(Required<Button>(first, "SavePresentationButton").IsEnabled).IsTrue();
                 await first.SavePresentationAsync(fixture.Manifest).WaitAsync(TimeSpan.FromSeconds(5));
                 await Assert.That(Required<TextBlock>(first, "ComparisonStatus").Text).StartsWith("Comparison saved.");
@@ -476,10 +626,12 @@ public sealed class ViewerCapturePresentationTests
                 await second.LoadPresentationAsync(fixture.Manifest).WaitAsync(TimeSpan.FromSeconds(5));
                 await AssertRestoredAsync(second);
 
+                const string editedNotes = "Unsaved review changes survive a failed save.";
+                Required<TextBox>(second, "ComparisonNotes").Text = editedNotes;
                 await second.SavePresentationAsync(fixture.Manifest).WaitAsync(TimeSpan.FromSeconds(5));
                 await Assert.That(Required<TextBlock>(second, "ComparisonStatus").Text)
                     .Contains("Choose a new destination");
-                await AssertRestoredAsync(second);
+                await AssertRestoredAsync(second, editedNotes);
 
                 await second.LoadPresentationAsync(malformed).WaitAsync(TimeSpan.FromSeconds(5));
                 await AssertNoPairAsync(second);
@@ -518,7 +670,8 @@ public sealed class ViewerCapturePresentationTests
             .IsEquivalentTo(["comparison.usdcompare.json", "malformed.usdcompare.json"]);
     }
 
-    private static async Task AssertRestoredAsync(CaptureComparisonWindow window)
+    private static async Task AssertRestoredAsync(
+        CaptureComparisonWindow window, string notes = "Check the revised lighting.\nHistorical pixels only.")
     {
         await Assert.That(Required<ComboBox>(window, "ComparisonMode").SelectedIndex).IsEqualTo(2);
         await Assert.That(Required<Border>(window, "BeforePane").IsVisible).IsFalse();
@@ -526,6 +679,10 @@ public sealed class ViewerCapturePresentationTests
         await Assert.That(Required<TextBlock>(window, "BeforeName").Text).IsEqualTo("before.png");
         await Assert.That(Required<TextBlock>(window, "AfterName").Text).IsEqualTo("after.bmp");
         await Assert.That(Required<Button>(window, "SavePresentationButton").IsEnabled).IsTrue();
+        await Assert.That(Required<TextBox>(window, "ComparisonNotes").Text)
+            .IsEqualTo(notes);
+        await Assert.That(Required<TextBox>(window, "ComparisonNotes").IsEnabled).IsTrue();
+        await Assert.That(Required<Expander>(window, "ComparisonNotesExpander").IsExpanded).IsTrue();
         await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
             .IsEqualTo(Convert.ToHexString(BeforeRgba));
         await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
@@ -537,6 +694,8 @@ public sealed class ViewerCapturePresentationTests
         await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
         await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
         await Assert.That(Required<Button>(window, "SavePresentationButton").IsEnabled).IsFalse();
+        await Assert.That(Required<TextBox>(window, "ComparisonNotes").Text).IsEqualTo(string.Empty);
+        await Assert.That(Required<TextBox>(window, "ComparisonNotes").IsEnabled).IsFalse();
         await Assert.That(Required<ComboBox>(window, "ComparisonMode").IsEnabled).IsFalse();
         await Assert.That(Required<Button>(window, "OpenPresentationButton").IsEnabled).IsTrue();
     }

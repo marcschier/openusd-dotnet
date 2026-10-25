@@ -6,11 +6,12 @@ using System.Text.Json;
 namespace OpenUsd.Viewer;
 
 internal sealed record ViewerCapturePresentation(
-    string BeforePath, string AfterPath, ViewerCapturePair Images, int DisplayMode);
+    string BeforePath, string AfterPath, ViewerCapturePair Images, int DisplayMode, string Notes = "");
 
 internal static class ViewerCapturePresentationFile
 {
     internal const int MaximumBytes = 32 * 1024;
+    internal const int MaximumNotesLength = 2048;
     private const int MaximumPathLength = 4096;
 
     internal static async Task SaveAsync(
@@ -19,6 +20,7 @@ internal static class ViewerCapturePresentationFile
         ArgumentNullException.ThrowIfNull(presentation);
         cancellationToken.ThrowIfCancellationRequested();
         ValidateMode(presentation.DisplayMode);
+        string notes = ValidateNotes(presentation.Notes);
         string before = ValidatePath(presentation.BeforePath);
         string after = ValidatePath(presentation.AfterPath);
         string destination = Path.GetFullPath(path);
@@ -26,8 +28,9 @@ internal static class ViewerCapturePresentationFile
         using (var writer = new Utf8JsonWriter(bytes, new JsonWriterOptions { Indented = true }))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("version", 1);
+            writer.WriteNumber("version", 2);
             writer.WriteNumber("displayMode", presentation.DisplayMode);
+            writer.WriteString("notes", notes);
             WriteCapture(writer, "before", before, presentation.Images.Before);
             WriteCapture(writer, "after", after, presentation.Images.After);
             writer.WriteEndObject();
@@ -42,10 +45,10 @@ internal static class ViewerCapturePresentationFile
         bool created = false;
         try
         {
-            created = true;
             await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
                 FileShare.None, 4096, FileOptions.Asynchronous))
             {
+                created = true;
                 bytes.Position = 0;
                 await bytes.CopyToAsync(stream, cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -84,17 +87,26 @@ internal static class ViewerCapturePresentationFile
         CaptureReceipt before;
         CaptureReceipt after;
         int mode;
+        string notes;
         try
         {
             using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 4 });
             JsonElement root = document.RootElement;
-            ValidateMembers(root, ["version", "displayMode", "before", "after"]);
-            if (!root.GetProperty("version").TryGetInt32(out int version) || version != 1 ||
-                !root.GetProperty("displayMode").TryGetInt32(out mode))
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("version", out JsonElement versionElement) ||
+                !versionElement.TryGetInt32(out int version) || version is not (1 or 2))
+            {
+                throw new InvalidDataException("The comparison presentation version is invalid.");
+            }
+            ValidateMembers(root, version == 1
+                ? ["version", "displayMode", "before", "after"]
+                : ["version", "displayMode", "before", "after", "notes"]);
+            if (!root.GetProperty("displayMode").TryGetInt32(out mode))
             {
                 throw new InvalidDataException("The comparison presentation version or display mode is invalid.");
             }
             ValidateMode(mode);
+            notes = version == 1 ? string.Empty : ValidateNotes(root.GetProperty("notes").GetString());
             before = ReadCapture(root.GetProperty("before"));
             after = ReadCapture(root.GetProperty("after"));
         }
@@ -111,7 +123,7 @@ internal static class ViewerCapturePresentationFile
         VerifyCapture(before, pair.Before);
         VerifyCapture(after, pair.After);
         cancellationToken.ThrowIfCancellationRequested();
-        return new ViewerCapturePresentation(before.Path, after.Path, pair, mode);
+        return new ViewerCapturePresentation(before.Path, after.Path, pair, mode, notes);
     }
 
     private static void WriteCapture(Utf8JsonWriter writer, string name, string path, ViewerCaptureImage image)
@@ -185,6 +197,28 @@ internal static class ViewerCapturePresentationFile
         {
             throw new InvalidDataException("The comparison display mode is invalid.");
         }
+    }
+
+    private static string ValidateNotes(string? notes)
+    {
+        if (notes is null || notes.Length > MaximumNotesLength || notes.Contains('\0'))
+        {
+            throw new InvalidDataException("Comparison review notes must be text of at most 2048 UTF-16 code units.");
+        }
+        for (int index = 0; index < notes.Length; index++)
+        {
+            if (!char.IsSurrogate(notes[index]))
+            {
+                continue;
+            }
+            if (!char.IsHighSurrogate(notes[index]) || index + 1 >= notes.Length ||
+                !char.IsLowSurrogate(notes[index + 1]))
+            {
+                throw new InvalidDataException("Comparison review notes contain invalid Unicode.");
+            }
+            index++;
+        }
+        return notes;
     }
 
     private static void ValidateMembers(JsonElement element, string[] names)

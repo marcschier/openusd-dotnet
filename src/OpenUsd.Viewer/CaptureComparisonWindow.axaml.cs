@@ -84,7 +84,11 @@ internal sealed partial class CaptureComparisonWindow : Window
         RequireAvailable();
         ViewerCapturePresentation presentation = _presentation ??
             throw new InvalidOperationException("Load a complete comparison before saving it.");
-        _loadTask = SavePresentationCoreAsync(path, presentation with { DisplayMode = ComparisonMode.SelectedIndex });
+        _loadTask = SavePresentationCoreAsync(path, presentation with
+        {
+            DisplayMode = ComparisonMode.SelectedIndex,
+            Notes = ComparisonNotes.Text ?? string.Empty
+        });
         return _loadTask;
     }
 
@@ -294,6 +298,8 @@ internal sealed partial class CaptureComparisonWindow : Window
             ToolTip.SetTip(BeforeName, _beforePath);
             ToolTip.SetTip(AfterName, _afterPath);
             ComparisonMode.SelectedIndex = presentation.DisplayMode;
+            ComparisonNotes.Text = presentation.Notes;
+            ComparisonNotesExpander.IsExpanded = presentation.Notes.Length != 0;
             BeforeImage.Source = _beforeBitmap;
             AfterImage.Source = _afterBitmap;
             SetStatus(
@@ -359,6 +365,7 @@ internal sealed partial class CaptureComparisonWindow : Window
         ChooseAfterButton.IsEnabled = available;
         OpenPresentationButton.IsEnabled = available;
         SavePresentationButton.IsEnabled = available && _presentation is not null;
+        ComparisonNotes.IsEnabled = available && _presentation is not null;
         CompareAgainButton.IsEnabled = available && _beforePath is not null && _afterPath is not null;
         ComparisonMode.IsEnabled = available && _beforeBitmap is not null && _afterBitmap is not null;
         CancelComparisonButton.IsEnabled = _loadCancellation is not null && !_closing;
@@ -419,5 +426,7 @@ internal sealed partial class CaptureComparisonWindow : Window
         _beforeBitmap = null;
         _afterBitmap = null;
         _presentation = null;
+        ComparisonNotes.Text = string.Empty;
+        ComparisonNotesExpander.IsExpanded = false;
     }
 }

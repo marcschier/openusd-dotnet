@@ -1831,7 +1831,10 @@ Side by side, Before, or After. Images fit independently and retain their origin
 this is a visual comparison, not a pixel-error metric or a new colour-management pipeline.
 
 **Save comparison** writes a new `.usdcompare.json` file containing the two absolute capture
-paths, their decoded RGBA SHA-256 checksums and dimensions, and the selected display mode.
+paths, their decoded RGBA SHA-256 checksums and dimensions, the selected display mode and
+optional plain-text **Review notes**. Notes belong to that verified historical pair, not a
+prim, camera or current scene. Opening restores them; replacing or failing to open the pair
+clears them. Save failure keeps the displayed pair and notes. Notes are not rendered as markup.
 **Open comparison** reopens both captures without a stage, renderer or the originating document.
 It verifies both pixel checksums and dimensions before displaying either image. A missing or
 changed capture fails explicitly; a different PNG encoding with identical decoded pixels remains
@@ -1843,7 +1846,10 @@ Saved comparisons are historical image evidence only. They do not certify an eff
 request, source/review revision, authored camera, current scene, or trust/authenticity of the
 manifest. Cross-document browsing with effective-state comparisons, scene annotations and
 units-aware measurements remain separate roadmap work. The manifest is limited to 32 KiB,
-4096 characters per path, one supported version and three display modes; duplicate, unknown,
+4096 characters per path, 2048 UTF-16 code units of valid Unicode notes and three display modes.
+NUL and unpaired surrogate code units are rejected. Version 2 saves notes; version 1 remains
+readable with empty notes. The 32 KiB file limit still applies after JSON escaping.
+Duplicate, unknown,
 missing or incorrectly typed fields are rejected. Publication uses a same-directory temporary
 file and never replaces an existing destination. Choose a new filename to save another version.
 Cancellation/failure removes the temporary file and preserves the displayed pair; failed or

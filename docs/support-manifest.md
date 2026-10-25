@@ -1543,9 +1543,9 @@ persistence. These remain required roadmap partitions, not delivered Viewer feat
 Reopenable cross-document review presentations with verified historical artifacts and effective-state comparisons.
 
 **Limits:** Saved PNG/BMP comparisons can reopen across document/process lifetimes with verified decoded pixel
-checksums, dimensions and display mode. This historical-image slice does not establish
-source/review/camera/effective-request identity, integrated cross-document presentation browsing or effective-state
-comparisons. The complete presentation profile remains unsupported.
+checksums, dimensions, display mode and bounded plain-text review notes. Notes are not scene annotations. This
+historical-image slice does not establish source/review/camera/effective-request identity, integrated cross-document
+presentation browsing or effective-state comparisons. The complete presentation profile remains unsupported.
 
 ### `viewer-dcc`
 

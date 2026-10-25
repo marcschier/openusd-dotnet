@@ -16,7 +16,7 @@
   <Window.Styles>
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
-  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="12">
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" RowSpacing="12">
     <TextBlock
         Text="Compare saved PNG or BMP captures. This does not render, edit a stage, or change its colour settings."
         Classes="viewer-secondary"
@@ -56,14 +56,22 @@
         <Image x:Name="AfterImage" Stretch="Uniform" AutomationProperties.Name="After capture image" />
       </Border>
     </Grid>
+    <Expander x:Name="ComparisonNotesExpander" Grid.Row="3"
+              Header="Review notes (plain text; saved with this capture pair)"
+              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+      <TextBox x:Name="ComparisonNotes" Height="68" MaxLength="2048" AcceptsReturn="True"
+               TextWrapping="Wrap" IsEnabled="False"
+               PlaceholderText="Up to 2048 UTF-16 code units. Notes are not scene annotations or metadata."
+               AutomationProperties.Name="Capture comparison review notes" />
+    </Expander>
     <TextBlock
         x:Name="ComparisonStatus"
-        Grid.Row="3"
+        Grid.Row="4"
         Text="Choose RGBA PNGs or uncompressed 24/32-bit BMPs; up to 64 MiB, 8192 pixels per side and 16 megapixels each."
         Classes="viewer-caption"
         TextWrapping="Wrap"
         AutomationProperties.Name="Capture comparison status" />
-    <Grid Grid.Row="4" RowDefinitions="Auto,Auto" RowSpacing="8"
+    <Grid Grid.Row="5" RowDefinitions="Auto,Auto" RowSpacing="8"
           ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
       <ComboBox
           x:Name="ComparisonMode"
