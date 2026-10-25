@@ -147,7 +147,7 @@
     },
     {
       "path": "eng/run-platform-conformance.ps1",
-      "sha256": "e5343e198de4529a8e77a7d66f8fde71299170782134fe5873a86813eb84f5f1"
+      "sha256": "e1bd4b9cc7aee2fe366b56451f5d4746bb472bfa4c63abd27ee3a18e49241dbe"
     },
     {
       "path": "eng/run-viewer-workflow-tests.ps1",
