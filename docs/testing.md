@@ -3435,6 +3435,13 @@ starts the same script under Xvfb. If any native dependency is unavailable, thos
 diagnostics fail the gate instead of turning parity capture into a capability
 skip.
 
+Parity capture resolves its managed test-host directory from MSBuild `TargetPath`,
+using the same configuration, framework and inherited platform as the managed
+runner. Mesa staging, stale-report cleanup and corpus verification all use that
+directory, including `bin/x64` when a Windows developer environment sets
+`Platform=x64`. `eng/test-parity-test-host-path.ps1` checks both the default and
+explicit x64 layouts without compiling or loading the native runtime.
+
 Every input that can otherwise create false parity failures is pinned by
 `ParityCaptureInput`: stage path, time code, resolution, explicit matrix camera,
 clear colour, and the published Storm headlight. The driver validates that the

@@ -47,7 +47,32 @@ $runtimeRoot = Join-Path $stageRoot 'runtime'
 $binTarget = Join-Path $runtimeRoot 'bin'
 $libTarget = Join-Path $runtimeRoot 'lib'
 $pluginPath = Join-Path $runtimeRoot 'plugin/usd'
-$testHostRoot = Join-Path $repoRoot "tests/OpenUsd.Rendering.ConformanceTests/bin/$Configuration/net10.0"
+function Resolve-ParityTestHostRoot
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][string]$BuildConfiguration
+    )
+
+    $dotnet = Join-Path $RepositoryRoot $(if ($IsWindows) { '.dotnet\dotnet.exe' } else { '.dotnet/dotnet' })
+    if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf))
+    {
+        $dotnet = (Get-Command dotnet -CommandType Application -ErrorAction Stop |
+            Select-Object -First 1).Source
+    }
+    $project = Join-Path $RepositoryRoot 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+    $target = @(& $dotnet msbuild $project -nologo "-p:Configuration=$BuildConfiguration" `
+        '-p:TargetFramework=net10.0' '-getProperty:TargetPath')
+    if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or
+        -not [IO.Path]::IsPathFullyQualified($target[0]) -or
+        [IO.Path]::GetFileName($target[0]) -cne 'OpenUsd.Rendering.ConformanceTests.dll')
+    {
+        throw 'Parity capture could not resolve the managed test host through MSBuild TargetPath.'
+    }
+    return [IO.Path]::GetDirectoryName($target[0])
+}
+
+$testHostRoot = Resolve-ParityTestHostRoot -RepositoryRoot $repoRoot -BuildConfiguration $Configuration
 foreach ($report in @(
     'parity-capture-corpus.json',
     'parity-capture-evidence.json',
