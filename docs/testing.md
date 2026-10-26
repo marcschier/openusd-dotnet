@@ -366,11 +366,18 @@ Workflow and native-input contracts are also executable without a platform build
 ```powershell
 ./eng/test-linux-native-prerequisites.ps1
 ./eng/test-native-artifact-workflow.ps1
+./eng/test-native-download.ps1
 ./eng/test-continuous-safety-workflow.ps1
 ./eng/test-render-native-archive.ps1
 ./eng/run-native-fuzz.ps1 -SelfTest
 ./eng/shaders/test-expand-verified-archive.ps1
 ```
+
+`test-native-download.ps1` executes the actual source-download function against a
+loopback-only HTTP server. It checks recovery from a truncated response, exactly
+three attempts on repeated truncation, immediate HTTP/hash refusal, verified cache
+reuse, explicit cache replacement and partial-file cleanup. It downloads no native
+sources and runs on every managed CI platform and in native archive preflight.
 
 ## Rebuilding only the project native layer
 

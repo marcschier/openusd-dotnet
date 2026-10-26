@@ -80,6 +80,9 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-native-artifact-workflow.ps1
+      - name: Validate pinned native downloads
+        shell: pwsh
+        run: ./eng/test-native-download.ps1
       - name: Validate Viewer input readiness
         if: runner.os == 'Linux'
         shell: pwsh

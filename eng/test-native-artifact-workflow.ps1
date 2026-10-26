@@ -38,6 +38,7 @@ foreach ($rid in @('win-x64', 'linux-x64', 'osx-arm64'))
 }
 foreach ($required in @(
     'runs-on: ${{ matrix.runner }}',
+    './eng/test-native-download.ps1',
     './eng/test-render-native-archive.ps1',
     './eng/native-install-metadata.ps1',
     './eng/run-native-probe.ps1',
@@ -46,6 +47,12 @@ foreach ($required in @(
     'retention-days: 30'))
 {
     Assert-Contains $nativeWorkflow $required 'Native artifact workflow'
+}
+$ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+Assert-Contains $ciWorkflow './eng/test-native-download.ps1' 'Managed CI workflow'
+if ([regex]::Matches($nativeWorkflow, "(?m)^      - 'eng/test-native-download\.ps1'$").Count -ne 2)
+{
+    throw 'Native download contract must trigger both native push and pull-request qualification.'
 }
 
 foreach ($workflow in @($packageWorkflow, $renderWorkflow))

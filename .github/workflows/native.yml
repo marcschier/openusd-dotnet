@@ -24,6 +24,7 @@ on:
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
       - 'eng/fetch-native.ps1'
+      - 'eng/test-native-download.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
       - 'eng/vhacd.lock.json'
@@ -82,6 +83,7 @@ on:
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
       - 'eng/fetch-native.ps1'
+      - 'eng/test-native-download.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
       - 'eng/vhacd.lock.json'
@@ -200,6 +202,7 @@ jobs:
       - name: Validate archive producer and consumer
         shell: pwsh
         run: |
+          ./eng/test-native-download.ps1
           ./eng/test-sdk-runtime-patch-metadata.ps1
           ./eng/test-render-native-archive.ps1
       - name: Validate native fuzz source contract

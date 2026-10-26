@@ -59,7 +59,41 @@ function Get-VerifiedDownload
     $partial = "$path.partial"
     Remove-Item $partial -Force -ErrorAction SilentlyContinue
     Write-Host "Downloading $Uri"
-    Invoke-WebRequest -Uri $Uri -OutFile $partial
+    for ($attempt = 1; $attempt -le 3; $attempt++)
+    {
+        $downloaded = $false
+        try
+        {
+            Invoke-WebRequest -Uri $Uri -OutFile $partial -TimeoutSec 300
+            $downloaded = $true
+            break
+        }
+        catch [AggregateException], [System.Net.Http.HttpIOException]
+        {
+            $failure = $_.Exception
+            if ($failure -is [AggregateException])
+            {
+                $failures = $failure.Flatten().InnerExceptions
+                if ($failures.Count -ne 1) { throw }
+                $failure = $failures[0]
+            }
+            if ($failure -isnot [System.Net.Http.HttpIOException] -or
+                $failure.HttpRequestError -ne [System.Net.Http.HttpRequestError]::ResponseEnded -or
+                $attempt -eq 3)
+            {
+                throw
+            }
+            Write-Host "Truncated response for $FileName; retrying pinned download ($attempt/3)."
+            Start-Sleep -Seconds 2
+        }
+        finally
+        {
+            if (-not $downloaded -and (Test-Path -LiteralPath $partial))
+            {
+                Remove-Item -LiteralPath $partial -Force
+            }
+        }
+    }
     $downloadHash = (Get-FileHash $partial -Algorithm SHA256).Hash
     if ($downloadHash -ne $Sha256)
     {
