@@ -1,12 +1,14 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
@@ -161,8 +163,35 @@ public sealed class ViewerCompletedJobHistoryTests
                 await Assert.That(location.Y).IsGreaterThanOrEqualTo(0);
                 await Assert.That(location.Y + output.Bounds.Height).IsLessThanOrEqualTo(window.ClientSize.Height);
                 await Assert.That(output.Text).IsEqualTo(job.OutputDirectory);
+                ScrollViewer context = output.GetVisualAncestors().OfType<ScrollViewer>().First();
+                window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                window.KeyRelease(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                await Assert.That(context.IsFocused).IsTrue();
+                await Assert.That(AutomationProperties.GetName(context))
+                    .IsEqualTo("Original completed job context");
+                await Assert.That(context.Extent.Height).IsGreaterThan(context.Viewport.Height);
+                int pages = (int)Math.Ceiling(context.Extent.Height / context.Viewport.Height) + 1;
+                for (int page = 0; page < pages; page++)
+                {
+                    context.RaiseEvent(new KeyEventArgs
+                    {
+                        RoutedEvent = InputElement.KeyDownEvent,
+                        Key = Key.PageDown
+                    });
+                    window.UpdateLayout();
+                }
+                await Assert.That(context.Offset.Y).IsEqualTo(context.Extent.Height - context.Viewport.Height);
+                for (int page = 0; page < pages; page++)
+                {
+                    context.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.PageUp });
+                    window.UpdateLayout();
+                }
+                await Assert.That(context.Offset.Y).IsEqualTo(0);
+                await Assert.That(Required<TextBlock>(window, "HistoryDescription").Text).IsEqualTo(description);
+                await Assert.That(jobs.SelectedIndex).IsEqualTo(0);
+                await Assert.That(output.Text).IsEqualTo(job.OutputDirectory);
                 await Assert.That(Required<TextBlock>(window, "HistoryStatus").Text).Contains("not the current scene");
-                output.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                context.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
                 await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
                 await Assert.That(window.IsVisible).IsFalse();
             }

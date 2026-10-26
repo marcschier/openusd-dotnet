@@ -26,7 +26,9 @@
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
-    <ScrollViewer Grid.Row="2" MaxHeight="128" HorizontalScrollBarVisibility="Disabled"
+    <ScrollViewer x:Name="HistoryContextScroll" Grid.Row="2" MaxHeight="128" Focusable="True"
+                  AutomationProperties.Name="Original completed job context"
+                  HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
       <StackPanel Spacing="6">
         <TextBlock x:Name="HistoryDescription" TextWrapping="Wrap"

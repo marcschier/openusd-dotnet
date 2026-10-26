@@ -409,6 +409,13 @@ reaches the named status area, standard PageDown/PageUp reaches both exact scrol
 Escape closes without deleting original output. These are managed headless controls, not physical
 keyboard input or screen-reader qualification.
 
+`ViewerCompletedJobHistoryTests.HistoryKeepsActionsAndFocusedOutputReachableWithLongHistoricalContext`
+checks both themes at minimum/default sizes. Shift+Tab from the copyable output directory focuses
+the named original-context scroll area; PageDown/PageUp reaches both exact boundaries without
+changing the selected job, full description or original directory. View/Close remain inside the
+client and Escape closes. This is managed headless keyboard/layout evidence, not physical OS-input,
+screen-reader or native rendering qualification.
+
 `ViewerPhysicsBakeWindowTests.OpeningBakePreservesExactAuthoredRangeWithoutRoundingOrCultureConversion`
 checks bit-exact authored start/end values in the actual dialog under en-US and de-DE cultures:
 fractions below 0.001, negative high-precision values, adjacent doubles and the ordinary
