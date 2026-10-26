@@ -28,6 +28,7 @@ public sealed class ViewerSequenceWindowLayoutTests
             ? string.Join(' ', Enumerable.Repeat("This exact requested output is unsupported.", 48))
             : "This exact requested output is unsupported.";
         int captures = 0;
+        using var files = new ViewerCompletedJobTestFiles();
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
         await session.Dispatch(async () =>
@@ -49,6 +50,7 @@ public sealed class ViewerSequenceWindowLayoutTests
                 Height = 610,
                 RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
             };
+            Required<TextBox>(window, "SequenceOutputFolder").Text = files.Root;
             window.Show();
             try
             {
@@ -105,6 +107,7 @@ public sealed class ViewerSequenceWindowLayoutTests
     [Test]
     public async Task ManagedCompletedResultsKeepJobRetryCancellationAndOwnerDrainSemantics()
     {
+        await ViewerAuthoredRenderProductTests.ExerciseLayoutAsync(longContext: false, dark: false);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
         await session.Dispatch(async () =>

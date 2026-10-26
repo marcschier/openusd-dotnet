@@ -21,7 +21,10 @@ public sealed class ViewerAuthoredRenderProductTests
     [Arguments(false, false)]
     [Arguments(true, false)]
     [Arguments(true, true)]
-    public async Task ProductActionsKeepLongDetailsAndRefusalReachableAtMinimumSize(bool longContext, bool dark)
+    public Task ProductActionsKeepLongDetailsAndRefusalReachableAtMinimumSize(bool longContext, bool dark) =>
+        ExerciseLayoutAsync(longContext, dark);
+
+    internal static async Task ExerciseLayoutAsync(bool longContext, bool dark)
     {
         string details = longContext
             ? string.Join(' ', Enumerable.Repeat("raw:original-variable/half4", 80))
@@ -578,11 +581,19 @@ public sealed class ViewerAuthoredRenderProductTests
     private static async Task RunUiAsync(Func<Task> action)
     {
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(App));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
         await session.Dispatch(async () =>
         {
             await action();
             return 0;
         }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    private static class SkiaAppEntryPoint
+    {
+        public static AppBuilder BuildAvaloniaApp() =>
+            AppBuilder.Configure<App>()
+                .UseSkia()
+                .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
     }
 }

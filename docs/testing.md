@@ -187,7 +187,12 @@ root is configured; blank, relative or missing explicit plugin directories fail,
 primary value never falls back to the alias.
 
 Fake-renderer product-dialog tests use the pinned test-only `Avalonia.Headless` package and
-an isolated `HeadlessUnitTestSession`. They do not initialize native Storm or a real display.
+an isolated, Skia-backed `HeadlessUnitTestSession` with `UseHeadlessDrawing = false`.
+Do not mix stub-drawing and Skia sessions: cached headless glyph runs cannot be drawn by Skia.
+`ManagedCompletedResultsKeepJobRetryCancellationAndOwnerDrainSemantics` opens and drains a
+product-dialog session before the completed-gallery session to cover that Linux failure.
+Layout fixtures provide an owned output directory rather than assuming `MyPictures` exists.
+These tests do not initialize native Storm or a real display.
 `DialogHostOwnsItsDispatcherAfterAnotherThreadHasUsedAvalonia` covers prior dispatcher access,
 async UI-thread continuity and repeated isolated sessions. `NotInParallel` alone does not
 establish dispatcher ownership, and software X11 rendering still needs an X server.
