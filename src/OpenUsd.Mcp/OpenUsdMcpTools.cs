@@ -175,6 +175,8 @@ internal static class OpenUsdMcpDescriptions
         "PNG, optional top-down little-endian normalized device-depth float32 (clear/far=1), " +
         "and optional raw RGBA binary16 or lossless half EXR before exposure/display, with stored alpha " +
         "and unnamed primaries; hdrColorFormat and resource MIME identify the container. " +
+        "Recorded simulation context includes its optional original host-provided review identity, " +
+        "an attestation rather than independent source verification. " +
         "The existing artifact count/byte/read quotas apply; the full sequence is never loaded into memory. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<render_sequence jobId>\",\"frameIndex\":0}}.";
@@ -211,6 +213,8 @@ internal static class OpenUsdMcpDescriptions
         "Result bounds: one artifact link, captured job revision and up to 16 ordered cell/index/time records. " +
         "Authored-product jobs retain their captured settings/product/camera paths, profile, binding purpose " +
         "and requested variables; ordinary viewport jobs have no authoredProduct. " +
+        "Per-frame simulation context retains the optional original host-provided review identity, " +
+        "an attestation rather than independent source verification. " +
         "Only original display PNGs are used, not HDR/depth conversions. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<job>\",\"frameIndices\":[0,12,24]," +

@@ -8,6 +8,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -19,6 +20,27 @@ public sealed class OpenUsdMcpToolsTests
         Generation = 2,
         StageRevision = 3,
     };
+
+    [Test]
+    [Arguments(null)]
+    [Arguments("original-review-v3")]
+    public async Task SimulationDtoRetainsTheOptionalOriginalHostReviewIdentity(string? reviewIdentity)
+    {
+        var identity = new RenderSimulationFrameIdentity(
+            new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
+            3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, reviewIdentity);
+        McpSimulationFrameDto dto = McpSimulationFrameDto.From(identity);
+        await Assert.That(dto.ReviewIdentity).IsEqualTo(reviewIdentity);
+        JsonElement json = JsonSerializer.SerializeToElement(dto, JsonSerializerOptions.Web);
+        if (reviewIdentity is null)
+        {
+            await Assert.That(json.GetProperty("reviewIdentity").ValueKind).IsEqualTo(JsonValueKind.Null);
+        }
+        else
+        {
+            await Assert.That(json.GetProperty("reviewIdentity").GetString()).IsEqualTo(reviewIdentity);
+        }
+    }
 
     [Test]
     public async Task ForwardsCancellationAndReturnsStructuredContent()
@@ -506,6 +528,20 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sequenceFrame.StructuredContent!.Value.GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
         await Assert.That(sequenceFrame.Content.Count).IsEqualTo(2);
         await Assert.That(sequenceFrame.Content[1]).IsTypeOf<ResourceLinkBlock>();
+        await Assert.That(sequenceFrame.StructuredContent.Value.GetProperty("simulation").ValueKind)
+            .IsEqualTo(JsonValueKind.Null);
+        CallToolResult recordedFrame = await client.CallToolAsync("read_sequence_frame",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["jobId"] = "recorded-job",
+                    ["frameIndex"] = 0
+                }
+            }, cancellationToken: cancellation.Token);
+        await Assert.That(recordedFrame.IsError).IsFalse();
+        await Assert.That(recordedFrame.StructuredContent!.Value.GetProperty("simulation")
+            .GetProperty("reviewIdentity").GetString()).IsEqualTo("recorded-review-v3");
 
         int[] sheetIndices = [0];
         CallToolResult sheet = await client.CallToolAsync("read_sequence_sheet",
@@ -538,6 +574,7 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheetSimulation.GetProperty("bindingRevision").GetUInt64()).IsEqualTo(4ul);
         await Assert.That(sheetSimulation.GetProperty("bodyCount").GetInt32()).IsEqualTo(2);
         await Assert.That(sheetSimulation.GetProperty("deformationCount").GetInt32()).IsEqualTo(1);
+        await Assert.That(sheetSimulation.GetProperty("reviewIdentity").GetString()).IsEqualTo("recorded-review-v3");
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -814,9 +851,9 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
             [
                 new McpSequenceSheetTileDto(0, 0, 0, 0, request.Width, request.Height)
                 {
-                    Simulation = new McpSimulationFrameDto(
+                    Simulation = McpSimulationFrameDto.From(new RenderSimulationFrameIdentity(
                         new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
-                        3, 17, 6, 0.25, 1d / 24, 4, 2, 1)
+                        3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3"))
                 }
             ],
             [descriptor])
@@ -858,7 +895,14 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
             request.FrameIndex, 0, 1, 1,
             new McpArtifactDto(descriptor.Id, descriptor.ResourceUri.AbsoluteUri,
                 descriptor.MediaType, descriptor.ByteLength, descriptor.Sha256, false),
-            Array.AsReadOnly([descriptor])));
+            Array.AsReadOnly([descriptor]))
+        {
+            Simulation = request.JobId == "recorded-job"
+                ? McpSimulationFrameDto.From(new RenderSimulationFrameIdentity(
+                    new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
+                    3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3"))
+                : null
+        });
     }
 
     public ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(

@@ -943,6 +943,9 @@ current scene and not a claim that the contact-sheet PNG contains HDR/depth plan
 Each physics-recording tile also retains its original `simulation` metadata, matching
 `read_sequence_frame`: epoch, scenario, source/publication revisions, completed step,
 simulated seconds, fixed step, binding revision and complete body/deformation counts.
+The optional `reviewIdentity` is preserved from the original host publication in both frame
+and tile metadata, or null when not supplied. It is a host attestation, not independent
+verification of source or review-layer contents.
 Frames without recorded simulation have null tile metadata; a USD time code alone is not
 treated as evidence of a physics publication.
 Only the resulting artifact consumes artifact capacity, not another render-job slot;

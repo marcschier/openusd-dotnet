@@ -107,6 +107,12 @@ exclusion, previous-output survival, successful replacement, and temporary stagi
 covered for published and source-run layouts. Commands and native prerequisites are in
 [OpenUSD MCP server](mcp.md#testing).
 
+`OpenUsdMcpToolsTests.SimulationDtoRetainsTheOptionalOriginalHostReviewIdentity` checks both
+present and absent original review identities. `OfficialProtocolDiscoversSchemasInvokesAndReadsResources`
+also round-trips recorded frame and contact-sheet identities through the official MCP client/server,
+while ordinary frame simulation metadata stays null. This is managed transport qualification,
+not native physics execution or independent verification of the host's review attestation.
+
 Interactive render paths may not use CPU readback. Headless image tests compare against pinned
 Storm references with perceptual tolerances rather than exact cross-driver pixels.
 
