@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Automation;
@@ -8,6 +9,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using OpenUsd.Rendering;
 
@@ -374,8 +376,7 @@ public sealed class ViewerImportedRenderJobTests
         }
         else
         {
-            using System.Text.Json.JsonDocument json = System.Text.Json.JsonDocument.Parse(
-                await File.ReadAllBytesAsync(path));
+            using JsonDocument json = JsonDocument.Parse(await File.ReadAllBytesAsync(path));
             await Assert.That(json.RootElement.GetProperty("frames")[0].GetRawText().Length).IsEqualTo(32768);
         }
         target[key] = new string('x', length + 1);
@@ -454,15 +455,28 @@ public sealed class ViewerImportedRenderJobTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task EmptyRestartHistoryImportsReadOnlyClaimsAndPixelsWithKeyboardContextAndCloseDrain(bool dark)
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task EmptyRestartHistoryImportsReadOnlyClaimsAndPixelsWithKeyboardContextAndCloseDrain(
+        bool dark, bool largeMetadata)
     {
         using var files = new ViewerCompletedJobTestFiles();
         var source = new Source();
         RenderDiskJobResult original = Emit(files.Root, 2, source);
         source.Closed = true;
         string path = Path.Combine(original.OutputDirectory, "manifest.json");
+        if (largeMetadata)
+        {
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            root["extra"] = new string('j', 30000);
+            foreach (JsonNode? frame in root["frames"]!.AsArray())
+            {
+                frame!["extra"] = new string('f', 30000);
+            }
+            await File.WriteAllTextAsync(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
         byte[] before = await File.ReadAllBytesAsync(path);
         var history = new ViewerCompletedJobHistory();
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -494,6 +508,7 @@ public sealed class ViewerImportedRenderJobTests
                     () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
                 gallery.Width = 520;
                 gallery.Height = 460;
+                Dispatcher.UIThread.RunJobs();
                 gallery.UpdateLayout();
                 await Assert.That(Required<TextBlock>(gallery, "ResultsDescription").Text)
                     .Contains("No scene, camera or effective renderer state has been reconstructed");
@@ -507,11 +522,43 @@ public sealed class ViewerImportedRenderJobTests
                     .AsSpan(64 * 256 * 4, 4))).IsEqualTo("FF000080");
                 TextBox context = Required<TextBox>(gallery, "ResultsRequestContext");
                 await Assert.That(context.IsReadOnly).IsTrue();
-                context.Focus();
+                await Assert.That(context.Focus()).IsTrue();
                 context.BringIntoView();
+                await AssertVisibleInMetadataAsync(gallery, context);
                 gallery.KeyPress(Key.A, RawInputModifiers.Control, PhysicalKey.A, "a");
                 gallery.KeyRelease(Key.A, RawInputModifiers.Control, PhysicalKey.A, "a");
                 await Assert.That(context.SelectedText).IsEqualTo(context.Text);
+                gallery.KeyPress(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                gallery.KeyRelease(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                await Assert.That(context.CaretIndex).IsEqualTo(context.Text!.Length);
+                await AssertVisibleInMetadataAsync(gallery, context);
+                gallery.KeyPress(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                gallery.KeyRelease(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                await Assert.That(context.CaretIndex).IsEqualTo(0);
+                await Assert.That(context.IsKeyboardFocusWithin).IsTrue();
+                await AssertVisibleInMetadataAsync(gallery, context);
+                if (largeMetadata)
+                {
+                    await Assert.That(context.Text).Contains(new string('f', 30000));
+                    await Assert.That(context.Text).Contains(new string('j', 30000));
+                }
+                TextBox camera = Required<TextBox>(gallery, "ResultsCameraContext");
+                await Assert.That(camera.Focus()).IsTrue();
+                camera.BringIntoView();
+                await AssertVisibleInMetadataAsync(gallery, camera);
+                gallery.KeyPress(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                gallery.KeyRelease(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                await Assert.That(camera.CaretIndex).IsEqualTo(camera.Text!.Length);
+                await AssertVisibleInMetadataAsync(gallery, camera);
+                gallery.KeyPress(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                gallery.KeyRelease(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                await Assert.That(camera.CaretIndex).IsEqualTo(0);
+                await Assert.That(camera.IsKeyboardFocusWithin).IsTrue();
+                await AssertVisibleInMetadataAsync(gallery, camera);
+                Button close = Required<Button>(gallery, "ResultsCloseButton");
+                Point closePoint = close.TranslatePoint(new Point(0, 0), gallery)!.Value;
+                await Assert.That(closePoint.Y >= 0 &&
+                    closePoint.Y + close.Bounds.Height <= gallery.ClientSize.Height).IsTrue();
                 frames.SelectedIndex = 1;
                 await Assert.That(context.Text).Contains("\"timeCode\": 1.25");
                 await window.ImportManifestAsync(Path.Combine(files.Root, "missing", "manifest.json"));
@@ -578,6 +625,17 @@ public sealed class ViewerImportedRenderJobTests
             }
             return 0;
         }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    private static async Task AssertVisibleInMetadataAsync(Window window, TextBox editor)
+    {
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        ScrollViewer metadata = Required<ScrollViewer>(window, "ResultsMetadataScroll");
+        Point position = editor.TranslatePoint(default, metadata) ??
+            throw new InvalidOperationException("Imported metadata has no viewport coordinates.");
+        await Assert.That(position.Y).IsGreaterThanOrEqualTo(0);
+        await Assert.That(position.Y + editor.Bounds.Height).IsLessThanOrEqualTo(metadata.Viewport.Height);
     }
 
     private static T Required<T>(Window window, string name) where T : Control =>

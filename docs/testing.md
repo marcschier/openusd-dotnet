@@ -414,8 +414,13 @@ including replacement after descriptor creation; `NonLocalOrUnboundedManifestPat
 checks nonlocal/relative/NUL paths. `MissingMetadataRemainsUnknownAndCancelledReadsDoNotTouchFiles`
 keeps absent metadata unknown and checks pre-cancelled descriptor and image loading.
 `EmptyRestartHistoryImportsReadOnlyClaimsAndPixelsWithKeyboardContextAndCloseDrain` uses real PNG files
-in light/dark headless windows, an empty process history, minimum-size import actions, actual Ctrl+A,
-selected-frame context, original alpha pixels, failed-import preservation and disposed thumbnails.
+in light/dark headless windows, an empty process history, minimum-size import actions and focused metadata
+visibility. Ordinary and near-bound 30000-character frame plus job metadata cases use actual Ctrl+A,
+Ctrl+End/Home, complete retained text, selected-frame context, reachable Close, original alpha pixels,
+failed-import preservation and disposed thumbnails. The headless platform's queued resize notification
+is settled before focusing and measuring the compact metadata viewport. Request and camera editors stay
+fully visible after each Ctrl+End and Ctrl+Home operation, with the expected caret and keyboard focus.
+Their nested caret visibility requests stay local; focusing an editor still reveals it in the outer panel.
 `ClosingDuringManifestReadCancelsAndDrainsBeforeAnyGalleryCanPublish` pauses descriptor admission and
 proves cancellation/drain before close without a late gallery. These are managed filesystem and headless
 control checks, not native OS picker, screen-reader, device rendering or installed-package qualification.
