@@ -245,6 +245,7 @@ public sealed class ViewerCompletedJobWindowTests
                     await Assert.That(context.Text).DoesNotContain("Clip plane 0");
                 }
                 await Assert.That(context.Text).DoesNotContain("999");
+                window.UpdateLayout();
                 await Assert.That(context.Focus()).IsTrue();
                 context.BringIntoView();
                 window.UpdateLayout();

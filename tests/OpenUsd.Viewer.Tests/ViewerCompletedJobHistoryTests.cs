@@ -19,6 +19,76 @@ public sealed class ViewerCompletedJobHistoryTests
     private static readonly string[] HistoryActionNames = ["HistoryViewButton", "HistoryCloseButton"];
 
     [Test]
+    [Arguments(RawInputModifiers.Control)]
+    [Arguments(RawInputModifiers.Shift)]
+    [Arguments(RawInputModifiers.Alt)]
+    [Arguments(RawInputModifiers.Meta)]
+    public async Task ModifiedHistoryEnterDoesNotOpenOrReadFilesAndPlainEnterReopensOriginalOutput(
+        RawInputModifiers modifiers)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob(1);
+        string path = Path.Combine(job.OutputDirectory, job.Frames[0].FileName);
+        byte[] original = await File.ReadAllBytesAsync(path);
+        var history = new ViewerCompletedJobHistory();
+        history.Publish(job, "Original historical output");
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            int reads = 0;
+            var window = new CompletedJobHistoryWindow(history, (captured, token) =>
+            {
+                reads++;
+                return ViewerCompletedJobPreview.LoadAsync(captured, token);
+            });
+            window.Show();
+            try
+            {
+                ListBox jobs = Required<ListBox>(window, "HistoryJobs");
+                await Assert.That(jobs.IsKeyboardFocusWithin).IsTrue();
+                object? selected = jobs.SelectedItem;
+                window.KeyPress(Key.Enter, modifiers, PhysicalKey.Enter, null);
+                window.KeyRelease(Key.Enter, modifiers, PhysicalKey.Enter, null);
+                await Assert.That(reads).IsEqualTo(0);
+                await Assert.That(window.OwnedWindows).IsEmpty();
+                await Assert.That(jobs.SelectedItem).IsSameReferenceAs(selected);
+                await Assert.That(jobs.IsKeyboardFocusWithin).IsTrue();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                CompletedRenderJobWindow preview = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(preview, "ResultsLoading").IsVisible);
+                await Assert.That(reads).IsEqualTo(1);
+                await Assert.That(Required<TextBlock>(preview, "ResultsDescription").Text)
+                    .IsEqualTo("Original historical output");
+                await Assert.That(Required<TextBox>(preview, "ResultsOutputLocation").Text)
+                    .IsEqualTo(job.OutputDirectory);
+                ListBox frames = Required<ListBox>(preview, "ResultsFrames");
+                await Assert.That(frames.ItemCount).IsEqualTo(1);
+                Bitmap image = ((CompletedRenderJobTile)frames.Items[0]!).Image;
+                await Assert.That(image.PixelSize).IsEqualTo(new PixelSize(256, 256));
+                byte[] pixels = ViewerCompletedJobPreviewJourney.ReadPixels(image);
+                await Assert.That(Convert.ToHexString(pixels.AsSpan(64 * 256 * 4, 4))).IsEqualTo("FF000080");
+                await Assert.That(Convert.ToHexString(pixels.AsSpan((64 * 256 + 255) * 4, 4)))
+                    .IsEqualTo("0000FF40");
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsVisible).IsFalse();
+                await Assert.That(preview.IsVisible).IsFalse();
+                await Assert.That(frames.ItemCount).IsEqualTo(0);
+                await Assert.That(() => ViewerCompletedJobPreviewJourney.ReadPixels(image))
+                    .Throws<ObjectDisposedException>();
+                await Assert.That((await File.ReadAllBytesAsync(path)).SequenceEqual(original)).IsTrue();
+            }
+            finally
+            {
+                await window.CloseAsync();
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task HistoricalGalleryShowsTheSelectedOriginalSimulationPublicationWithoutRendering(bool dark)

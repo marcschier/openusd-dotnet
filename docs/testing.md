@@ -485,6 +485,12 @@ Subsequent plain arrows and Enter must still invoke exactly the original selecte
 The same suite retains unavailable-action guards, live enablement and compact light/dark layouts;
 this is managed keyboard-routing evidence, not physical input or native-child focus qualification.
 
+`ViewerCompletedJobHistoryTests.ModifiedHistoryEnterDoesNotOpenOrReadFilesAndPlainEnterReopensOriginalOutput`
+sends actual Control/Shift/Alt/Meta Enter while the historical list owns focus. None may read files
+or open a preview. Plain Enter then reopens exactly the original job, preserves alpha pixels and
+source bytes, and closing drains the child and disposes its thumbnails. The existing missing,
+changed-file, replacement and pending-load cancellation journeys remain in the same suite.
+
 `CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` blocks the actual
 preview frame source, cancels while capture is active, and requires drain before the original token
 or capture failure reaches the caller. Both paths publish nothing and retry with decoded `010203FF`

@@ -1920,8 +1920,9 @@ state retained with the completed frame, not effective backend state, a camera-p
 receipt, source verification or a query of the current document. No stage is reopened or
 frame rerendered to display it.
 Keyboard focus starts in the job list; Up/Down changes the selected historical output.
-Enter uses the same verified preview and replacement/drain path as the button, and does
+Plain Enter uses the same verified preview and replacement/drain path as the button, and does
 nothing when there is no available selection or the browser is already opening or closing.
+Modified Enter does not open a preview or read historical files.
 The original description stays readable in the scrollable details area, actions remain visible
 at the minimum window size, and Escape closes and drains the browser from its focused controls.
 

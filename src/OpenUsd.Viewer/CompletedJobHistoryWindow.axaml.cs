@@ -28,7 +28,7 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         HistoryViewButton.Click += async (_, _) => await OpenSelectedPreviewAsync();
         HistoryJobs.KeyDown += async (_, args) =>
         {
-            if (args.Key == Key.Enter && HistoryViewButton.IsEnabled)
+            if (args.Key == Key.Enter && args.KeyModifiers == KeyModifiers.None && HistoryViewButton.IsEnabled)
             {
                 args.Handled = true;
                 await OpenSelectedPreviewAsync();
