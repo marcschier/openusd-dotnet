@@ -1919,6 +1919,14 @@ zero matrices as that camera. Selection and closing clear stale context. This is
 state retained with the completed frame, not effective backend state, a camera-prim/optics
 receipt, source verification or a query of the current document. No stage is reopened or
 frame rerendered to display it.
+The selected frame also exposes its recorded **display, colour and selection request**:
+purposes, visibility/draw mode, sample count, lighting/shadows/culling/material switches,
+complexity, output transform, exposure and clear RGBA; optional OCIO config/source/display/view/look,
+lattice/shaper request; and ordered selected prim, element and nested-instancer identities.
+Numbers are invariant round-trip text. Config/display defaults are labeled as requested defaults,
+not resolved values; no OCIO file or live stage is read. The bounded read-only field is copyable,
+updates with the selected frame and clears with selection or closing. It describes the retained
+request only, not effective colour processing, selection rendering or independently verified output.
 Keyboard focus starts in the job list; Up/Down changes the selected historical output.
 Plain Enter uses the same verified preview and replacement/drain path as the button, and does
 nothing when there is no available selection or the browser is already opening or closing.

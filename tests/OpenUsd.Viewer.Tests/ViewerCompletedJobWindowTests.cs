@@ -17,6 +17,137 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerCompletedJobWindowTests
 {
     [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task HistoricalRequestContextRetainsDisplayColorAndNestedSelectionWithoutReadingLiveState(
+        bool dark, bool defaultOcioNames)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult original = files.CreateJob(2);
+        var settings = new RenderSettings(7, false, true, new Vector4(0.125f, 0.25f, 0.5f, 0.75f),
+            false, false, RenderComplexity.Medium, RenderOutputTransform.Identity, -1.25f)
+        {
+            DisplayTransform = new RenderDisplayTransform(
+                Path.Combine(files.Root, "missing-config.ocio"), "linear",
+                defaultOcioNames ? null : "Display", defaultOcioNames ? null : "View", defaultOcioNames ? null : "Look",
+                32, -12.5f, 5.25f)
+        };
+        StageRenderState requested = original.Frames[0].State
+            .WithDisplay(new SceneDisplayState(
+                RenderPurpose.Guide | RenderPurpose.Proxy, RenderVisibility.RespectAuthored, RenderDrawMode.Wireframe))
+            .WithRenderSettings(settings)
+            .WithSelection(new SelectionState(
+            [
+                SelectionItem.FromInstancerContext("/Prototype",
+                    [new("/Outer", 2), new("/Inner", 7)], 3, SelectionElementKind.Face),
+                new SelectionItem("/World/Anchor")
+            ]));
+        RenderDiskFrameResult first = original.Frames[0];
+        var job = new RenderDiskJobResult(original.OutputDirectory,
+            [
+                new RenderDiskFrameResult(first.Index, requested, first.FileName, first.Bytes, first.Sha256),
+                original.Frames[1]
+            ], original.TotalBytes, []);
+        byte[] originalPng = await File.ReadAllBytesAsync(Path.Combine(job.OutputDirectory, first.FileName));
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedRenderJobWindow(job, "Original display and selection")
+            {
+                Width = 520,
+                Height = 460,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            Bitmap? bitmap = null;
+            try
+            {
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(window, "ResultsLoading").IsVisible);
+                TextBox context = Required<TextBox>(window, "ResultsRequestContext");
+                await Assert.That(context.IsReadOnly).IsTrue();
+                await Assert.That(AutomationProperties.GetName(context))
+                    .IsEqualTo("Original selected frame display, colour and selection request");
+                await Assert.That(context.Text).Contains("Recorded request; not effective backend state");
+                await Assert.That(context.Text).Contains($"Purposes: {requested.Display.Purposes}");
+                await Assert.That(context.Text).Contains("Visibility: RespectAuthored\nDraw mode: Wireframe");
+                await Assert.That(context.Text).Contains("Samples per pixel: 7");
+                await Assert.That(context.Text).Contains("Lighting: False\nShadows: True\nBackface culling: False");
+                await Assert.That(context.Text).Contains("Scene materials: False\nComplexity: Medium");
+                await Assert.That(context.Text).Contains("Output transform: Identity\nExposure: -1.25");
+                await Assert.That(context.Text).Contains("Clear RGBA: 0.125 0.25 0.5 0.75");
+                await Assert.That(context.Text)
+                    .Contains($"OCIO config request: {settings.DisplayTransform.ConfigPath}");
+                await Assert.That(context.Text).Contains(defaultOcioNames
+                    ? "Source colour space: linear\nDisplay: config default requested\nView: display default requested"
+                    : "Source colour space: linear\nDisplay: Display\nView: View");
+                await Assert.That(context.Text).Contains(defaultOcioNames
+                    ? "Look: none requested\nLattice size: 32" : "Look: Look\nLattice size: 32");
+                await Assert.That(context.Text).Contains("Shaper log2: -12.5 5.25");
+                await Assert.That(context.Text).Contains("Selection items: 2\nItem 0: /Prototype\nElement: Face 3");
+                await Assert.That(context.Text).Contains("Instancer 0: /Outer; instance 2");
+                await Assert.That(context.Text).Contains("Instancer 1: /Inner; instance 7");
+                await Assert.That(context.Text).Contains("Item 1: /World/Anchor\nElement: None");
+                window.UpdateLayout();
+                await Assert.That(context.Focus()).IsTrue();
+                context.BringIntoView();
+                window.UpdateLayout();
+                ScrollViewer metadata = Required<ScrollViewer>(window, "ResultsMetadataScroll");
+                Point origin = context.TranslatePoint(default, metadata) ??
+                    throw new InvalidOperationException("Request context has no metadata coordinates.");
+                await Assert.That(origin.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(origin.Y + context.Bounds.Height).IsLessThanOrEqualTo(metadata.Viewport.Height);
+                string? recordedText = context.Text;
+                window.KeyPress(Key.A, RawInputModifiers.Control, PhysicalKey.A, "a");
+                window.KeyRelease(Key.A, RawInputModifiers.Control, PhysicalKey.A, "a");
+                await Assert.That(context.SelectedText).IsEqualTo(recordedText);
+                window.KeyPress(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                window.KeyRelease(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                await Assert.That(context.CaretIndex).IsEqualTo(recordedText!.Length);
+                window.KeyPress(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                window.KeyRelease(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                await Assert.That(context.CaretIndex).IsEqualTo(0);
+                await Assert.That(context.Text).IsEqualTo(recordedText);
+                ListBox frames = Required<ListBox>(window, "ResultsFrames");
+                bitmap = ((CompletedRenderJobTile)frames.Items[0]!).Image;
+                await Assert.That(Convert.ToHexString(ViewerCompletedJobPreviewJourney.ReadPixels(bitmap)
+                    .AsSpan(64 * 256 * 4, 4))).IsEqualTo("FF000080");
+                frames.SelectedIndex = 1;
+                await Assert.That(context.Text).Contains("No OCIO display transform was requested.");
+                await Assert.That(context.Text).Contains("Selection items: 0");
+                await Assert.That(context.Text).DoesNotContain("/Prototype");
+                await Assert.That(context.Text).DoesNotContain("missing-config");
+                frames.SelectedIndex = -1;
+                await Assert.That(context.Text).IsEqualTo("Select a completed frame to inspect its render request.");
+                frames.SelectedIndex = 0;
+                await Assert.That(context.Text).Contains("Item 0: /Prototype");
+                await Assert.That(frames.Bounds.Height).IsGreaterThanOrEqualTo(64);
+                Button close = Required<Button>(window, "ResultsCloseButton");
+                Point closeOrigin = close.TranslatePoint(default, window) ??
+                    throw new InvalidOperationException("Close has no window coordinates.");
+                await Assert.That(closeOrigin.Y + close.Bounds.Height).IsLessThanOrEqualTo(window.ClientSize.Height);
+                window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(Required<TextBox>(window, "ResultsRequestContext").Text)
+                .IsEqualTo("Select a completed frame to inspect its render request.");
+            await Assert.That(bitmap).IsNotNull();
+            await Assert.That(() => ViewerCompletedJobPreviewJourney.ReadPixels(bitmap!))
+                .Throws<ObjectDisposedException>();
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+        await Assert.That(File.Exists(settings.DisplayTransform.ConfigPath)).IsFalse();
+        await Assert.That((await File.ReadAllBytesAsync(Path.Combine(job.OutputDirectory, first.FileName)))
+            .SequenceEqual(originalPng)).IsTrue();
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task OriginalJobDescriptionRemainsKeyboardReadableAboveHistoricalFrames(bool dark)

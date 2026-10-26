@@ -7,6 +7,7 @@ namespace OpenUsd.Viewer;
 
 internal sealed class ViewerCompletedFramePreview(RenderDiskFrameResult frame, PngRgba8Image image) : IDisposable
 {
+    internal StageRenderState RequestedState { get; } = frame.State;
     internal int Index { get; } = frame.Index;
     internal double TimeCode { get; } = frame.State.Time.TimeCode;
     internal string FileName { get; } = frame.FileName;

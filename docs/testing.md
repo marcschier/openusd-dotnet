@@ -480,6 +480,12 @@ serialized ordered retry diagnostics, exact decoded pixels and unchanged source/
 `InvalidDiagnosticSeverityRefusesBeforePublishingAnyPreviewAndAllowsCleanRetry` also checks
 the processor directly for all four modes, retaining exact valid severity on retry.
 These are managed capture/publication and protocol checks, not new native-renderer qualification.
+`ViewerCompletedJobWindowTests.HistoricalRequestContextRetainsDisplayColorAndNestedSelectionWithoutReadingLiveState`
+checks the selected frame's complete display/settings/OCIO and ordered nested-selection request.
+Light/dark minimum-size journeys cover explicit/default OCIO names, absent transform/selection,
+invariant text, actual keyboard select-all/end/home, focus visibility, exact original alpha pixels,
+unchanged PNG files, selection/close clearing and disposed thumbnails. Missing config files remain
+unread; this is retained-request presentation, not effective colour/native rendering qualification.
 `CompositionProposalTests.UnavailableCompositionNeverInventsCountsAndDiffersFromAnInspectedEmptySnapshot`
 distinguishes an unavailable census from a genuinely inspected empty detached snapshot, including
 stable distinct proposal IDs, staleness and refusal to apply diagnostic-only advice.

@@ -42,6 +42,8 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         ResultsCloseButton.Click += (_, _) => Close();
         ResultsFrames.SelectionChanged += (_, _) =>
         {
+            ResultsRequestContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.RequestContext ??
+                "Select a completed frame to inspect its render request.";
             ResultsFrameContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.RecordedContext ??
                 "Select a completed frame to inspect its recorded context.";
             ResultsCameraContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.CameraContext ??
@@ -180,8 +182,11 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
 
 internal sealed class CompletedRenderJobTile : IDisposable
 {
+    private readonly StageRenderState _requestedState;
+
     internal CompletedRenderJobTile(ViewerCompletedFramePreview frame)
     {
+        _requestedState = frame.RequestedState;
         if (frame.Width is < 1 or > ViewerCompletedJobPreview.ThumbnailSize ||
             frame.Height is < 1 or > ViewerCompletedJobPreview.ThumbnailSize ||
             frame.Pixels.Length != checked(frame.Width * frame.Height * 4))
@@ -239,10 +244,63 @@ internal sealed class CompletedRenderJobTile : IDisposable
     public string FileName { get; }
     public string RecordedContext { get; }
     public string CameraContext { get; }
+    public string RequestContext => FormatRequest(_requestedState);
     public string AccessibleName { get; }
     public Bitmap Image { get; }
 
     public void Dispose() => Image.Dispose();
+
+    private static string FormatRequest(StageRenderState state)
+    {
+        RenderSettings settings = state.RenderSettings;
+        var lines = new List<string>
+        {
+            "Recorded request; not effective backend state or independent source verification.",
+            $"Purposes: {state.Display.Purposes}",
+            $"Visibility: {state.Display.Visibility}",
+            $"Draw mode: {state.Display.DrawMode}",
+            FormattableString.Invariant($"Samples per pixel: {settings.SamplesPerPixel}"),
+            $"Lighting: {settings.EnableLighting}",
+            $"Shadows: {settings.EnableShadows}",
+            $"Backface culling: {settings.BackfaceCulling}",
+            $"Scene materials: {settings.UseSceneMaterials}",
+            $"Complexity: {settings.Complexity}",
+            $"Output transform: {settings.OutputTransform}",
+            FormattableString.Invariant($"Exposure: {settings.Exposure:R}"),
+            $"Clear RGBA: {FormatVector(settings.ClearColor)}"
+        };
+        if (settings.DisplayTransform is { } transform)
+        {
+            lines.Add($"OCIO config request: {transform.ConfigPath}");
+            lines.Add($"Source colour space: {transform.SourceColorSpace}");
+            lines.Add($"Display: {transform.Display ?? "config default requested"}");
+            lines.Add($"View: {transform.View ?? "display default requested"}");
+            lines.Add($"Look: {transform.Look ?? "none requested"}");
+            lines.Add(FormattableString.Invariant($"Lattice size: {transform.LatticeSize}"));
+            lines.Add(FormattableString.Invariant(
+                $"Shaper log2: {transform.ShaperMinimumLog2:R} {transform.ShaperMaximumLog2:R}"));
+        }
+        else
+        {
+            lines.Add("No OCIO display transform was requested.");
+        }
+        lines.Add(FormattableString.Invariant($"Selection items: {state.Selection.Items.Count}"));
+        for (int index = 0; index < state.Selection.Items.Count; index++)
+        {
+            SelectionItem item = state.Selection.Items[index];
+            lines.Add(FormattableString.Invariant($"Item {index}: {item.PrimPath}"));
+            lines.Add(item.ElementIndex is { } element
+                ? FormattableString.Invariant($"Element: {item.ElementKind} {element}")
+                : "Element: None");
+            for (int entryIndex = 0; entryIndex < item.InstancerContext.Count; entryIndex++)
+            {
+                SelectionInstancerEntry entry = item.InstancerContext[entryIndex];
+                lines.Add(FormattableString.Invariant(
+                    $"Instancer {entryIndex}: {entry.InstancerPath}; instance {entry.InstanceIndex}"));
+            }
+        }
+        return string.Join("\n", lines);
+    }
 
     private static string FormatMatrix(Matrix4x4 matrix) => string.Join("; ",
         FormatVector(new Vector4(matrix.M11, matrix.M12, matrix.M13, matrix.M14)),
