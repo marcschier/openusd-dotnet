@@ -183,15 +183,7 @@ public sealed partial class PreviewCaptureProcessor :
             ImageRgba8 image = frameSource.Capture(view, request.Width, request.Height);
             cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, request.Width, request.Height);
-            string id = request.Kind == CaptureKind.Still
-                ? string.Concat(request.RequestId, ".png")
-                : string.Concat(
-                    request.RequestId,
-                    "-",
-                    index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture),
-                    "-",
-                    SanitizeArtifactName(view.Name),
-                    ".png");
+            string id = CreateArtifactId(request, index);
             byte[] png = EncodePng(image.Width, image.Height, image.Pixels.Span,
                 maximumTotalArtifactBytes - totalBytes, cancellationToken);
             totalBytes = AddArtifactBytes(totalBytes, png.Length, maximumTotalArtifactBytes);
@@ -242,7 +234,7 @@ public sealed partial class PreviewCaptureProcessor :
         return
         [
             new EncodedArtifact(
-                string.Concat(request.RequestId, "-contact-sheet.png"),
+                CreateArtifactId(request, 0),
                 png),
         ];
     }
@@ -309,6 +301,16 @@ public sealed partial class PreviewCaptureProcessor :
         return new string(characters);
     }
 
+    private static string CreateArtifactId(PreviewCaptureRequest request, int index) =>
+        request.Kind switch
+        {
+            CaptureKind.Still => string.Concat(request.RequestId, ".png"),
+            CaptureKind.ContactSheet => string.Concat(request.RequestId, "-contact-sheet.png"),
+            _ => string.Concat(request.RequestId, "-",
+                index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture), "-",
+                SanitizeArtifactName(request.Views[index].Name), ".png")
+        };
+
     private static void ValidateCapturedDimensions(
         ImageRgba8 image,
         int expectedWidth,
@@ -350,6 +352,11 @@ public sealed partial class PreviewCaptureProcessor :
         if (!Enum.IsDefined(request.Kind))
         {
             throw new ArgumentOutOfRangeException(nameof(request));
+        }
+        int artifacts = request.Kind == CaptureKind.ContactSheet ? 1 : request.Views.Count;
+        for (int index = 0; index < artifacts; index++)
+        {
+            _ = ArtifactResourceUri.Create(CreateArtifactId(request, index));
         }
     }
 

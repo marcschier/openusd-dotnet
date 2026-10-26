@@ -5,6 +5,70 @@ namespace OpenUsd.Mcp.Tests;
 public sealed partial class ArtifactResourceStoreTests
 {
     [Test]
+    [Arguments("folder/name")]
+    [Arguments("folder\\name")]
+    [Arguments("control\nname")]
+    [Arguments(".")]
+    [Arguments("..")]
+    public async Task InvalidResourceIdentifiersCannotPublishMemoryOrFiles(string id)
+    {
+        using var files = new ResourceStoreTestFiles();
+        using var store = files.CreateStore();
+        await Assert.That(() => ArtifactResourceUri.Create(id)).Throws<ArgumentException>();
+        await Assert.That(() => store.Add(id, "text/plain", new byte[] { 1 })).Throws<ArgumentException>();
+        await Assert.That(() => store.AddRange([
+            new ArtifactResourceWrite("valid-first", "text/plain", new byte[] { 1 }),
+            new ArtifactResourceWrite(id, "text/plain", new byte[] { 2 })
+        ])).Throws<ArgumentException>();
+        await Assert.That(async () => await store.AddFileAsync(
+            id, "text/plain", Path.Combine(files.Root, "missing"))).Throws<ArgumentException>();
+        var resources = new OpenUsdMcpResources(store);
+        await Assert.That(async () => await resources.ReadArtifactAsync(id, default))
+            .Throws<ModelContextProtocol.McpException>().WithMessageContaining("invalid_argument");
+        await Assert.That(store.Count).IsEqualTo(0);
+        await Assert.That(store.TotalBytes).IsEqualTo(0L);
+        await Assert.That(Directory.Exists(files.StoreRoot)).IsFalse();
+    }
+
+    [Test]
+    [Arguments("request 1.png")]
+    [Arguments("capture-%2F-?.json")]
+    [Arguments("caf\u00e9.json")]
+    public async Task EscapedResourceIdentifiersRetainTheirExactReadableIdentity(string id)
+    {
+        using var store = new ArtifactResourceStore();
+        ArtifactResourceDescriptor descriptor = store.Add(id, "text/plain", new byte[] { 42 });
+        await Assert.That(Uri.UnescapeDataString(descriptor.ResourceUri.AbsolutePath.TrimStart('/'))).IsEqualTo(id);
+        var resources = new OpenUsdMcpResources(store);
+        ModelContextProtocol.Protocol.ResourceContents content = await resources.ReadArtifactAsync(id, default);
+        await Assert.That(content.Uri).IsEqualTo(descriptor.ResourceUri.AbsoluteUri);
+        await Assert.That(((ModelContextProtocol.Protocol.TextResourceContents)content).Text).IsEqualTo("*");
+    }
+
+    [Test]
+    [Arguments(1023)]
+    [Arguments(1024)]
+    [Arguments(1025)]
+    public async Task ResourceIdentifierLengthMatchesTheReadableProtocolBoundary(int length)
+    {
+        using var store = new ArtifactResourceStore();
+        string id = new('a', length);
+        if (length > 1024)
+        {
+            await Assert.That(() => store.Add(id, "text/plain", new byte[] { 42 })).Throws<ArgumentException>();
+            await Assert.That(store.Count).IsEqualTo(0);
+        }
+        else
+        {
+            ArtifactResourceDescriptor descriptor = store.Add(id, "text/plain", new byte[] { 42 });
+            var resources = new OpenUsdMcpResources(store);
+            ModelContextProtocol.Protocol.ResourceContents content = await resources.ReadArtifactAsync(id, default);
+            await Assert.That(content.Uri).IsEqualTo(descriptor.ResourceUri.AbsoluteUri);
+            await Assert.That(((ModelContextProtocol.Protocol.TextResourceContents)content).Text).IsEqualTo("*");
+        }
+    }
+
+    [Test]
     [Arguments(false, false)]
     [Arguments(false, true)]
     [Arguments(true, false)]

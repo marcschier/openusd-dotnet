@@ -52,10 +52,24 @@ public static class ArtifactResourceUri
     public static Uri Create(string artifactId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artifactId);
+        if (!IsValidId(artifactId))
+        {
+            throw new ArgumentException(
+                "Artifact identifiers require 1-1024 characters without controls, separators or dot segments.",
+                nameof(artifactId));
+        }
         return new Uri(
             $"openusd://artifact/{Uri.EscapeDataString(artifactId)}",
             UriKind.Absolute);
     }
+
+    internal static bool IsValidId(string? id) =>
+        !string.IsNullOrWhiteSpace(id) &&
+        id.Length <= OpenUsdMcpLimits.MaximumPathLength &&
+        id is not ("." or "..") &&
+        !id.Any(char.IsControl) &&
+        !id.Contains('/') &&
+        !id.Contains('\\');
 }
 
 public interface IArtifactResourceStore

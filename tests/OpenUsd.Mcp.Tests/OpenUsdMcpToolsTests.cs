@@ -651,6 +651,16 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(((TextResourceContents)resource.Contents[0]).Text)
             .IsEqualTo("protocol artifact");
 
+        foreach (string id in new[] { "request 1.txt", "capture-%2F-?.txt", "caf\u00e9.txt", new string('a', 1024) })
+        {
+            ArtifactResourceDescriptor descriptor = store.Add(id, "text/plain", Encoding.UTF8.GetBytes(id));
+            ReadResourceResult escaped = await client.ReadResourceAsync(
+                descriptor.ResourceUri.AbsoluteUri, cancellationToken: cancellation.Token);
+            await Assert.That(escaped.Contents).Count().IsEqualTo(1);
+            await Assert.That(escaped.Contents[0].Uri).IsEqualTo(descriptor.ResourceUri.AbsoluteUri);
+            await Assert.That(((TextResourceContents)escaped.Contents[0]).Text).IsEqualTo(id);
+        }
+
         IList<McpClientResourceTemplate> templates =
             await client.ListResourceTemplatesAsync(cancellationToken: cancellation.Token);
         McpClientResourceTemplate artifactTemplate = templates.Single();

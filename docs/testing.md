@@ -457,6 +457,13 @@ byte-identical PNGs and decoded pixels. `CancellationAfterCaptureSkipsEncodingAn
 checks bounded allocation, original cancellation token, no publication and exact decoded retry pixels.
 These are managed encoding/allocation checks, not renderer execution or aggregate process admission.
 
+`PreviewCaptureProcessorTests.UnreadableArtifactIdentitiesAreRejectedBeforeCreatingOrCapturingFrames`
+refuses overlong names and separators before any frame-source creation, capture or publication.
+`MaximumLengthPreviewArtifactRemainsReadableWithoutChangingGeneratedNames` proves all four generated
+names at exactly 1024 characters still yield the original decoded pixels through the resource provider.
+Store identity tests cover both separators, controls, dot segments, 1023/1024/1025-character boundaries
+and unchanged percent/space/Unicode escaping. Publication and protocol reads use the same predicate.
+
 `CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
 lazy source that throws if the constructor requests a tenth plane. Admission must reject at
 the ninth and dispose the enumerator, including when the first plane is nonfinite (the existing

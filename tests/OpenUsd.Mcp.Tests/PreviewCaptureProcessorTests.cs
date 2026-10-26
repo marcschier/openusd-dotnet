@@ -7,6 +7,73 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class PreviewCaptureProcessorTests
 {
     [Test]
+    [Arguments(CaptureKind.Still)]
+    [Arguments(CaptureKind.ContactSheet)]
+    [Arguments(CaptureKind.CandidateSweep)]
+    [Arguments(CaptureKind.Turntable)]
+    public async Task MaximumLengthPreviewArtifactRemainsReadableWithoutChangingGeneratedNames(CaptureKind kind)
+    {
+        string suffix = kind switch
+        {
+            CaptureKind.Still => ".png",
+            CaptureKind.ContactSheet => "-contact-sheet.png",
+            _ => "-00-front_left.png"
+        };
+        string requestId = new('a', 1024 - suffix.Length);
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(
+            new RecordingFrameSourceFactory(new RecordingFrameSource()), artifacts);
+        var request = new PreviewCaptureRequest(requestId, kind, 1, 1,
+            [new CaptureView("front left", default)]);
+        ArtifactResourceDescriptor descriptor = processor.Process(request).Artifacts.Single();
+        await Assert.That(descriptor.Id).IsEqualTo(requestId + suffix);
+        var resources = new OpenUsdMcpResources(artifacts);
+        ModelContextProtocol.Protocol.ResourceContents content =
+            await resources.ReadArtifactAsync(descriptor.Id, default);
+        await Assert.That(content.Uri).IsEqualTo(descriptor.ResourceUri.AbsoluteUri);
+        var blob = (ModelContextProtocol.Protocol.BlobResourceContents)content;
+        await Assert.That(Convert.ToHexString(PngRgba8Decoder.Decode(blob.DecodedData.Span).Pixels.Span))
+            .IsEqualTo("010203FF");
+    }
+
+    [Test]
+    [Arguments(CaptureKind.Still, "separator")]
+    [Arguments(CaptureKind.Still, "long")]
+    [Arguments(CaptureKind.ContactSheet, "separator")]
+    [Arguments(CaptureKind.ContactSheet, "long")]
+    [Arguments(CaptureKind.CandidateSweep, "separator")]
+    [Arguments(CaptureKind.CandidateSweep, "long")]
+    [Arguments(CaptureKind.CandidateSweep, "name")]
+    [Arguments(CaptureKind.CandidateSweep, "later")]
+    [Arguments(CaptureKind.Turntable, "separator")]
+    [Arguments(CaptureKind.Turntable, "long")]
+    [Arguments(CaptureKind.Turntable, "name")]
+    [Arguments(CaptureKind.Turntable, "later")]
+    public async Task UnreadableArtifactIdentitiesAreRejectedBeforeCreatingOrCapturingFrames(
+        CaptureKind kind, string invalid)
+    {
+        var source = new RecordingFrameSource();
+        var factory = new RecordingFrameSourceFactory(source);
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        string id = invalid switch
+        {
+            "separator" => "unreadable/name",
+            "long" => new string('a', 1024),
+            _ => "valid"
+        };
+        string name = invalid == "name" ? new string('a', 1024) : "front";
+        CaptureView[] views = invalid == "later"
+            ? [new CaptureView("valid-first", default), new CaptureView(new string('a', 1024), default)]
+            : [new CaptureView(name, default)];
+        var request = new PreviewCaptureRequest(id, kind, 1, 1, views);
+        await Assert.That(() => processor.Process(request)).Throws<ArgumentException>();
+        await Assert.That(factory.CreateCount).IsEqualTo(0);
+        await Assert.That(source.CaptureCount).IsEqualTo(0);
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task ExhaustedCumulativePreviewBudgetDoesNotPublishFirstFrame()
     {
         var image = new ImageRgba8(1, 1, [17, 34, 51, 255]);

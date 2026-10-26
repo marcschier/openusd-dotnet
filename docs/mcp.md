@@ -1256,7 +1256,11 @@ openusd://artifact/{id}
 ```
 
 The identifier is process-local, percent-decoded, at most 1024 characters, and cannot contain
-control characters or path separators. Text, JSON, XML, and `+json`/`+xml` media types return
+control characters or path separators, or consist of the dot segments `.` or `..`.
+Publication and resource reads share the same identifier rules. Preview capture validates the
+complete generated names before creating or invoking a frame source, including mode suffixes and
+sanitized view names; an unreadable output ID cannot consume capture work or publish a resource.
+Text, JSON, XML, and `+json`/`+xml` media types return
 strict UTF-8 text resources; other types return base64 MCP blobs. Unknown IDs return
 `artifact_not_found`; invalid text returns `artifact_invalid_text`.
 

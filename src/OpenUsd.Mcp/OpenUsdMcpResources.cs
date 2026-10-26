@@ -93,11 +93,7 @@ internal sealed class OpenUsdMcpResources(IArtifactResourceStore artifacts)
 
     private static void ValidateArtifactId(string id)
     {
-        if (string.IsNullOrWhiteSpace(id) ||
-            id.Length > OpenUsdMcpLimits.MaximumPathLength ||
-            id.Any(char.IsControl) ||
-            id.Contains('/') ||
-            id.Contains('\\'))
+        if (!ArtifactResourceUri.IsValidId(id))
         {
             throw new McpException("invalid_argument: The artifact identifier is invalid.");
         }
