@@ -311,7 +311,7 @@ internal static class ViewerCommandCatalog
         new(ViewerCommandIds.FileCompareCaptures, ViewerCommandGroup.File,
             "Compare _Captures...", "Compare two saved captures"),
         new(ViewerCommandIds.FileCompletedJobs, ViewerCommandGroup.File,
-            "Completed Render _Jobs...", "Browse completed render jobs"),
+            "Completed Render _Jobs...", "Browse or import completed render jobs"),
         new(ViewerCommandIds.FileExit, ViewerCommandGroup.File,
             "E_xit", "Exit OpenUsd Viewer"),
 

@@ -14,7 +14,7 @@
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
   <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
-    <TextBlock Text="Last eight completed jobs in this Viewer process, newest first. Original files are verified when previewed. No scene is opened or rendered; restarting Viewer clears this list."
+    <TextBlock Text="Last eight jobs from this process, newest first. Import an original manifest.json to browse an older job. Sampled PNG hashes are verified; imported metadata is unverified file content. No scene is opened or rendered."
                TextWrapping="Wrap" Classes="viewer-caption" />
     <ListBox x:Name="HistoryJobs" Grid.Row="1" MinHeight="100" Focusable="True"
              AutomationProperties.Name="Completed jobs from this Viewer process"
@@ -40,6 +40,8 @@
       </StackPanel>
     </ScrollViewer>
     <WrapPanel Grid.Row="3" HorizontalAlignment="Right" ItemSpacing="8" LineSpacing="8">
+      <Button x:Name="HistoryImportButton" Content="_Import manifest"
+              AutomationProperties.Name="Import historical render job manifest" />
       <Button x:Name="HistoryViewButton" Content="_View results" IsEnabled="False"
               AutomationProperties.Name="View selected historical job results" />
       <Button x:Name="HistoryCloseButton" Content="Close"

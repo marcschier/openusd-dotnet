@@ -14,8 +14,8 @@ namespace OpenUsd.Viewer;
 
 internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposable
 {
-    private readonly RenderDiskJobResult _job;
-    private readonly Func<RenderDiskJobResult, CancellationToken, Task<ViewerCompletedJobPreview>> _load;
+    private readonly int _frameCount;
+    private readonly Func<CancellationToken, Task<ViewerCompletedJobPreview>> _load;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<CompletedRenderJobTile> _tiles = new(ViewerCompletedJobPreview.MaximumFrames);
@@ -25,15 +25,30 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
     internal CompletedRenderJobWindow(
         RenderDiskJobResult job, string description,
         Func<RenderDiskJobResult, CancellationToken, Task<ViewerCompletedJobPreview>>? load = null)
+        : this(job?.Frames.Count ?? throw new ArgumentNullException(nameof(job)), job.OutputDirectory, description,
+            token => (load ?? ViewerCompletedJobPreview.LoadAsync)(job, token))
     {
-        ArgumentNullException.ThrowIfNull(job);
-        _job = job;
-        _load = load ?? ViewerCompletedJobPreview.LoadAsync;
+    }
+
+    internal CompletedRenderJobWindow(ViewerImportedRenderJob job)
+        : this(job.Frames.Count, job.OutputDirectory,
+            "Imported historical manifest. Sampled PNG hashes are checked; metadata is unverified file content. " +
+            "Companion planes are not opened or verified. " +
+            "No scene, camera or effective renderer state has been reconstructed.",
+            token => ViewerCompletedJobPreview.LoadImportedAsync(job, token))
+    {
+    }
+
+    private CompletedRenderJobWindow(int frameCount, string outputDirectory, string description,
+        Func<CancellationToken, Task<ViewerCompletedJobPreview>> load)
+    {
+        _frameCount = frameCount;
+        _load = load;
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
         ResultsDescription.Text = description;
-        ResultsJobIdentity.Text = Path.GetFileName(Path.TrimEndingDirectorySeparator(job.OutputDirectory));
-        ResultsOutputLocation.Text = job.OutputDirectory;
+        ResultsJobIdentity.Text = Path.GetFileName(Path.TrimEndingDirectorySeparator(outputDirectory));
+        ResultsOutputLocation.Text = outputDirectory;
         ResultsCloseButton.Click += (_, _) => Close();
         ResultsFrames.SelectionChanged += (_, _) =>
         {
@@ -96,7 +111,7 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         bool published = false;
         try
         {
-            using ViewerCompletedJobPreview preview = await _load(_job, _lifetime.Token);
+            using ViewerCompletedJobPreview preview = await _load(_lifetime.Token);
             _lifetime.Token.ThrowIfCancellationRequested();
             if (preview.Frames.Count is < 1 or > ViewerCompletedJobPreview.MaximumFrames)
             {
@@ -111,7 +126,7 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
             ResultsFrames.ItemsSource = _tiles.ToArray();
             _lifetime.Token.ThrowIfCancellationRequested();
             ResultsFrames.SelectedIndex = 0;
-            ResultsStatus.Text = $"Showing {_tiles.Count} of {_job.Frames.Count} completed frames in job order. " +
+            ResultsStatus.Text = $"Showing {_tiles.Count} of {_frameCount} completed frames in job order. " +
                 "Frame indices are zero-based; time codes are the original USD samples.";
             published = true;
         }
@@ -182,11 +197,16 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
 
 internal sealed class CompletedRenderJobTile : IDisposable
 {
-    private readonly StageRenderState _requestedState;
+    private readonly StageRenderState? _requestedState;
+    private readonly ViewerImportedRenderFrame? _importedFrame;
+    private readonly string? _importedJobClaim;
 
     internal CompletedRenderJobTile(ViewerCompletedFramePreview frame)
     {
         _requestedState = frame.RequestedState;
+        _importedFrame = frame.ImportedFrame;
+        _importedJobClaim = frame.ImportedJobClaim;
+        StageIdentifier = frame.StageIdentifier;
         if (frame.Width is < 1 or > ViewerCompletedJobPreview.ThumbnailSize ||
             frame.Height is < 1 or > ViewerCompletedJobPreview.ThumbnailSize ||
             frame.Pixels.Length != checked(frame.Width * frame.Height * 4))
@@ -199,23 +219,9 @@ internal sealed class CompletedRenderJobTile : IDisposable
         TimeLabel = $"t = {ViewerTimelineMath.Format(TimeCode)}";
         DimensionsLabel = $"{frame.SourceDimensions.Width} x {frame.SourceDimensions.Height} original";
         FileName = frame.FileName;
-        CameraContext = string.Join("\n",
-            "Recorded camera request; not effective backend state or independent source verification.",
-            $"Mode: {frame.Camera.Mode}",
-            frame.Camera.Mode == CameraMode.Matrices
-                ? $"View (row-major): {FormatMatrix(frame.Camera.View)}\n" +
-                    $"Projection (row-major): {FormatMatrix(frame.Camera.Projection)}"
-                : "The renderer-selected camera was not recorded.");
-        for (int index = 0; index < frame.Camera.ClipPlanes.Count; index++)
-        {
-            CameraContext += FormattableString.Invariant(
-                $"\nClip plane {index} (view-space): {FormatVector(frame.Camera.ClipPlanes[index])}");
-        }
-        if (frame.Camera.Mode == CameraMode.Matrices && frame.Camera.ClipPlanes.Count == 0)
-        {
-            CameraContext += "\nNo clip planes were requested.";
-        }
-        RecordedContext = frame.Simulation is { } simulation
+        CameraContext = _importedFrame?.CameraClaim ??
+            FormatCamera(frame.Camera ?? throw new InvalidDataException("The recorded camera request is missing."));
+        RecordedContext = _importedFrame?.SimulationClaim ?? (frame.Simulation is { } simulation
             ? string.Join("\n",
                 $"Epoch: {simulation.Epoch:D}",
                 $"Scenario: {simulation.ScenarioIdentity}",
@@ -230,7 +236,7 @@ internal sealed class CompletedRenderJobTile : IDisposable
                 FormattableString.Invariant($"Deformations: {simulation.DeformationCount}"),
                 $"Review: {simulation.ReviewIdentity ?? "not recorded"}",
                 "Host attestations; not independent source verification.")
-            : "No simulation publication was recorded for this frame.";
+            : "No simulation publication was recorded for this frame.");
         AccessibleName =
             $"{FrameLabel}, time code {ViewerTimelineMath.Format(TimeCode)}, {DimensionsLabel}, {FileName}";
         Image = CreateBitmap(frame);
@@ -244,12 +250,32 @@ internal sealed class CompletedRenderJobTile : IDisposable
     public string FileName { get; }
     public string RecordedContext { get; }
     public string CameraContext { get; }
-    public string StageIdentifier => _requestedState.Stage.Identifier;
-    public string RequestContext => FormatRequest(_requestedState);
+    public string StageIdentifier { get; }
+    public string RequestContext => _importedFrame is { } imported
+        ? imported.RequestClaim + "\nJob record:\n" + _importedJobClaim
+        : FormatRequest(_requestedState ?? throw new InvalidDataException("The recorded render request is missing."));
     public string AccessibleName { get; }
     public Bitmap Image { get; }
 
     public void Dispose() => Image.Dispose();
+
+    private static string FormatCamera(CameraState camera)
+    {
+        string text = string.Join("\n",
+            "Recorded camera request; not effective backend state or independent source verification.",
+            $"Mode: {camera.Mode}",
+            camera.Mode == CameraMode.Matrices
+                ? $"View (row-major): {FormatMatrix(camera.View)}\n" +
+                    $"Projection (row-major): {FormatMatrix(camera.Projection)}"
+                : "The renderer-selected camera was not recorded.");
+        for (int index = 0; index < camera.ClipPlanes.Count; index++)
+        {
+            text += FormattableString.Invariant(
+                $"\nClip plane {index} (view-space): {FormatVector(camera.ClipPlanes[index])}");
+        }
+        return camera.Mode == CameraMode.Matrices && camera.ClipPlanes.Count == 0
+            ? text + "\nNo clip planes were requested." : text;
+    }
 
     private static string FormatRequest(StageRenderState state)
     {

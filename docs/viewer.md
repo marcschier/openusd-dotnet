@@ -1936,10 +1936,32 @@ Modified Enter does not open a preview or read historical files.
 The original description stays readable in the scrollable details area, actions remain visible
 at the minimum window size, and Escape closes and drains the browser from its focused controls.
 
-This is process-local discovery, not a persistent manifest browser: restarting Viewer clears the
-list. It does not import arbitrary job directories, reopen source stages, compare effective requests
-or certify that old files are still present. Missing or modified files are reported by the gallery
-when previewed, using the same integrity rules as the original dialog.
+Restarting Viewer clears the process-local list. **Import manifest** opens an original
+`manifest.json` from an older job without adding it to that list or opening a source stage.
+This works with an empty history. Keep the PNGs beside the manifest at their generated names.
+The imported descriptor contains file metadata, not a reconstructed `StageRenderState`:
+stage, camera, simulation, source revision, render settings, authored-product details and other
+recorded JSON remain explicitly **unverified manifest claims**. Missing camera or simulation metadata
+is reported as not recorded; absent fields are unknown, not defaulted or recovered from the current scene.
+The selected frame's complete JSON and the job-level JSON can be copied from the request context.
+An imported hash only checks consistency with that manifest; it does not authenticate the producer
+or independently verify source, camera or effective render state.
+
+Import accepts version 1 `rgba8-sequence` manifests with 1-4096 ordered frames and at most 24 MiB
+of JSON. Each complete frame record and the combined job-level metadata are limited to 32768
+characters; JSON nesting is limited to 32. Duplicate properties, unsupported versions/kinds,
+invalid extents/hashes/times, unexpected generated names, relative/network/device paths and
+filesystem reparse points are refused. Before publishing any thumbnails, the same strict PNG reader
+checks the sampled files' recorded byte extents, encoded SHA-256, dimensions and PNG checksums.
+At most sixteen thumbnails are sampled in order with both endpoints; unsampled PNGs and companion
+HDR/depth planes are not opened or verified. The manifest is rechecked against its imported extent
+and hash before and after loading. A changed descriptor requires explicit reimport, not silent refresh.
+Failure publishes no partial sheet and allows retry after the files are restored. Invalid manifest
+import leaves an already open gallery and the process-local list unchanged.
+Loading runs off the UI thread, observes cancellation and is drained before the owning history window
+closes. Closing either window releases decoded thumbnails. There is no directory scan, automatic
+restart discovery, asset/config resolution, source replay, effective-request comparison or certification
+that old output is trustworthy.
 
 ### Comparing saved captures
 

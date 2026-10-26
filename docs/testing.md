@@ -400,6 +400,27 @@ journey additionally verifies successful sequence/product publication and exclud
 jobs from history. These checks do not establish persistence across Viewer restarts or native display
 qualification. Run each class with the same focused selector shown above, substituting its class name.
 
+`ViewerImportedRenderJobTests.EmittedManifestReopensAfterProducerRetirementWithoutInventingLiveState`
+uses the actual managed disk-job writer, retires its producer and imports only persisted files.
+One/16/17/20-frame cases check ordered endpoints, alpha pixels, original bytes and null live-state/camera
+objects. `ManifestByteAndFrameCountCeilingsAdmitExactBoundariesAndRejectOneBeyond` checks the exact
+24-MiB and 4096-frame ceilings plus one beyond.
+`UnsupportedOrMalformedManifestIsRefusedBeforeReadingAnyPng` covers versions, kinds, missing/malformed
+and duplicate metadata, counts, generated names, indices, times, dimensions, bytes, hashes and text limits.
+`ChangedOrMissingHistoricalFilesNeverPublishAPartialPreviewAndExplicitRetryWorks` changes the manifest,
+PNG length/pixels/dimensions or removes a PNG, then proves explicit clean retry.
+`ImportedManifestFramesAndAncestorsRefuseFilesystemAliases` checks manifest/frame/directory aliases,
+including replacement after descriptor creation; `NonLocalOrUnboundedManifestPathsAreRefusedWithoutFilesystemAccess`
+checks nonlocal/relative/NUL paths. `MissingMetadataRemainsUnknownAndCancelledReadsDoNotTouchFiles`
+keeps absent metadata unknown and checks pre-cancelled descriptor and image loading.
+`EmptyRestartHistoryImportsReadOnlyClaimsAndPixelsWithKeyboardContextAndCloseDrain` uses real PNG files
+in light/dark headless windows, an empty process history, minimum-size import actions, actual Ctrl+A,
+selected-frame context, original alpha pixels, failed-import preservation and disposed thumbnails.
+`ClosingDuringManifestReadCancelsAndDrainsBeforeAnyGalleryCanPublish` pauses descriptor admission and
+proves cancellation/drain before close without a late gallery. These are managed filesystem and headless
+control checks, not native OS picker, screen-reader, device rendering or installed-package qualification.
+Run the class with the same managed runner and `/*/*/ViewerImportedRenderJobTests/*` selector.
+
 `ViewerCompletedJobWindowTests.HistoricalFramesExposeOriginalCameraRequestsWithoutInventingAnAutomaticCamera`
 checks the historical gallery's copyable original camera request in both themes: every view/projection
 matrix element, zero/eight view-space clip planes, invariant numbers, immutable copied planes,

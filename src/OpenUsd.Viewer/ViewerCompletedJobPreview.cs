@@ -5,18 +5,51 @@ using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer;
 
-internal sealed class ViewerCompletedFramePreview(RenderDiskFrameResult frame, PngRgba8Image image) : IDisposable
+internal sealed class ViewerCompletedFramePreview : IDisposable
 {
-    internal StageRenderState RequestedState { get; } = frame.State;
-    internal int Index { get; } = frame.Index;
-    internal double TimeCode { get; } = frame.State.Time.TimeCode;
-    internal string FileName { get; } = frame.FileName;
-    internal ViewportDimensions SourceDimensions { get; } = frame.State.Viewport;
-    internal CameraState Camera { get; } = frame.State.Camera;
-    internal RenderSimulationFrameIdentity? Simulation { get; } = frame.Simulation;
-    internal int Width { get; } = image.Width;
-    internal int Height { get; } = image.Height;
-    internal byte[] Pixels { get; private set; } = image.Pixels;
+    internal ViewerCompletedFramePreview(RenderDiskFrameResult frame, PngRgba8Image image)
+    {
+        RequestedState = frame.State;
+        Index = frame.Index;
+        TimeCode = frame.State.Time.TimeCode;
+        FileName = frame.FileName;
+        SourceDimensions = frame.State.Viewport;
+        StageIdentifier = frame.State.Stage.Identifier;
+        Camera = frame.State.Camera;
+        Simulation = frame.Simulation;
+        Width = image.Width;
+        Height = image.Height;
+        Pixels = image.Pixels;
+    }
+
+    internal ViewerCompletedFramePreview(
+        ViewerImportedRenderFrame frame, string jobClaim, PngRgba8Image image)
+    {
+        ImportedFrame = frame;
+        ImportedJobClaim = jobClaim;
+        Index = frame.Index;
+        TimeCode = frame.TimeCode;
+        FileName = frame.FileName;
+        SourceDimensions = frame.Dimensions;
+        StageIdentifier = $"unverified manifest claim: {frame.StageClaim}";
+        Width = image.Width;
+        Height = image.Height;
+        Pixels = image.Pixels;
+    }
+
+    internal StageRenderState? RequestedState { get; }
+    internal ViewerImportedRenderFrame? ImportedFrame { get; }
+    internal string? ImportedJobClaim { get; }
+    internal int Index { get; }
+    internal double TimeCode { get; }
+    internal string FileName { get; }
+    internal string StageIdentifier { get; }
+    internal ViewportDimensions SourceDimensions { get; }
+    internal CameraState? Camera { get; }
+    internal RenderSimulationFrameIdentity? Simulation { get; }
+    internal int Width { get; }
+    internal int Height { get; }
+    internal byte[] Pixels { get; private set; }
 
     public void Dispose() => Pixels = [];
 }
@@ -101,7 +134,47 @@ internal sealed class ViewerCompletedJobPreview : IDisposable
         }
     }
 
-    private static void RejectReparsePoints(string path)
+    internal static Task<ViewerCompletedJobPreview> LoadImportedAsync(
+        ViewerImportedRenderJob job, CancellationToken cancellationToken) =>
+        Task.Run(() =>
+        {
+            job.VerifyManifest(cancellationToken);
+            using IDisposable? parent = OperatingSystem.IsWindows()
+                ? ViewerWindowsFiles.OpenDirectory(job.OutputDirectory) : null;
+            var preview = new ViewerCompletedJobPreview();
+            bool completed = false;
+            try
+            {
+                int total = job.Frames.Count;
+                int count = Math.Min(MaximumFrames, total);
+                for (int index = 0; index < count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    int selected = count == 1 ? 0 : index * (total - 1) / (count - 1);
+                    ViewerImportedRenderFrame frame = job.Frames[selected];
+                    string path = Path.Combine(job.OutputDirectory, frame.FileName);
+                    RejectReparsePoints(path);
+                    using FileStream input = ViewerImportedRenderJob.OpenRead(path);
+                    PngRgba8Image image = CompletedRenderFrameReader.ReadThumbnail(
+                        input, frame.Dimensions, frame.Bytes, frame.Sha256,
+                        ThumbnailSize, ThumbnailSize, cancellationToken);
+                    RejectReparsePoints(path);
+                    preview._frames.Add(new ViewerCompletedFramePreview(frame, job.MetadataClaim, image));
+                }
+                job.VerifyManifest(cancellationToken);
+                completed = true;
+                return preview;
+            }
+            finally
+            {
+                if (!completed)
+                {
+                    preview.Dispose();
+                }
+            }
+        }, cancellationToken);
+
+    internal static void RejectReparsePoints(string path)
     {
         for (string? current = path; current is not null; current = Path.GetDirectoryName(current))
         {
