@@ -39,6 +39,9 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
             ToolTip.SetTip(ResultsSource, ResultsSource.Text);
         }
         ResultsCloseButton.Click += (_, _) => Close();
+        ResultsFrames.SelectionChanged += (_, _) =>
+            ResultsFrameContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.RecordedContext ??
+                "Select a completed frame to inspect its recorded context.";
         KeyDown += (_, args) =>
         {
             if (args.Key == Key.Escape)
@@ -186,6 +189,22 @@ internal sealed class CompletedRenderJobTile : IDisposable
         TimeLabel = $"t = {ViewerTimelineMath.Format(TimeCode)}";
         DimensionsLabel = $"{frame.SourceDimensions.Width} x {frame.SourceDimensions.Height} original";
         FileName = frame.FileName;
+        RecordedContext = frame.Simulation is { } simulation
+            ? string.Join("\n",
+                $"Epoch: {simulation.Epoch:D}",
+                $"Scenario: {simulation.ScenarioIdentity}",
+                FormattableString.Invariant($"Source revision: {simulation.SourceRevision}"),
+                FormattableString.Invariant($"Publication revision: {simulation.PublicationRevision}"),
+                FormattableString.Invariant($"Step: {simulation.StepIndex}"),
+                FormattableString.Invariant($"Simulation seconds: {simulation.SimulationSeconds:R}"),
+                FormattableString.Invariant($"Time code: {simulation.TimeCode:R}"),
+                FormattableString.Invariant($"Fixed step seconds: {simulation.FixedStepSeconds:R}"),
+                FormattableString.Invariant($"Binding revision: {simulation.BindingRevision}"),
+                FormattableString.Invariant($"Bodies: {simulation.BodyCount}"),
+                FormattableString.Invariant($"Deformations: {simulation.DeformationCount}"),
+                $"Review: {simulation.ReviewIdentity ?? "not recorded"}",
+                "Host attestations; not independent source verification.")
+            : "No simulation publication was recorded for this frame.";
         AccessibleName =
             $"{FrameLabel}, time code {ViewerTimelineMath.Format(TimeCode)}, {DimensionsLabel}, {FileName}";
         Image = CreateBitmap(frame);
@@ -197,6 +216,7 @@ internal sealed class CompletedRenderJobTile : IDisposable
     public string TimeLabel { get; }
     public string DimensionsLabel { get; }
     public string FileName { get; }
+    public string RecordedContext { get; }
     public string AccessibleName { get; }
     public Bitmap Image { get; }
 

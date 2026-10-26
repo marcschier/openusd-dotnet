@@ -17,6 +17,91 @@ public sealed class ViewerCompletedJobHistoryTests
     private static readonly string[] HistoryActionNames = ["HistoryViewButton", "HistoryCloseButton"];
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task HistoricalGalleryShowsTheSelectedOriginalSimulationPublicationWithoutRendering(bool dark)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult original = files.CreateJob();
+        Guid epoch = Guid.Parse("b319e47c-33c8-4e19-9521-ed77ab669b82");
+        var first = new RenderSimulationFrameIdentity(epoch, "warehouse fixture", 7, 11, 12,
+            0.2, 0, 1d / 60, 5, 9, 2, "review-v3");
+        var second = new RenderSimulationFrameIdentity(epoch, "warehouse fixture", 7, 13, 14,
+            0.23333333333333334, 1, 1d / 60, 6, 10, 3);
+        RenderDiskFrameResult[] frames = original.Frames.Select((frame, index) =>
+            new RenderDiskFrameResult(frame.Index, frame.State, frame.FileName, frame.Bytes, frame.Sha256,
+                simulation: index == 0 ? first : index == 1 ? second : null)).ToArray();
+        var job = new RenderDiskJobResult(original.OutputDirectory, frames, original.TotalBytes, []);
+        var history = new ViewerCompletedJobHistory();
+        history.Publish(job, "Retired simulation document");
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedJobHistoryWindow(history)
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                CompletedRenderJobWindow preview = await OpenAsync(window);
+                preview.Width = 520;
+                preview.Height = 460;
+                preview.UpdateLayout();
+                TextBox context = Required<TextBox>(preview, "ResultsFrameContext");
+                await Assert.That(context.IsReadOnly).IsTrue();
+                await Assert.That(context.Text).Contains("Epoch: b319e47c-33c8-4e19-9521-ed77ab669b82");
+                await Assert.That(context.Text).Contains("Scenario: warehouse fixture");
+                await Assert.That(context.Text).Contains("Source revision: 7");
+                await Assert.That(context.Text).Contains("Publication revision: 11");
+                await Assert.That(context.Text).Contains("Step: 12");
+                await Assert.That(context.Text).Contains("Simulation seconds: 0.2");
+                await Assert.That(context.Text).Contains("Time code: 0");
+                await Assert.That(context.Text).Contains("Fixed step seconds: 0.016666666666666666");
+                await Assert.That(context.Text).Contains("Binding revision: 5");
+                await Assert.That(context.Text).Contains("Bodies: 9");
+                await Assert.That(context.Text).Contains("Deformations: 2");
+                await Assert.That(context.Text).Contains("Review: review-v3");
+                await Assert.That(context.Text).Contains("Host attestations; not independent source verification.");
+                ListBox selected = Required<ListBox>(preview, "ResultsFrames");
+                await Assert.That(selected.Bounds.Height).IsGreaterThan(0);
+                Bitmap bitmap = ((CompletedRenderJobTile)selected.Items[0]!).Image;
+                await Assert.That(Convert.ToHexString(ViewerCompletedJobPreviewJourney.ReadPixels(bitmap)
+                    .AsSpan(64 * 256 * 4, 4))).IsEqualTo("FF000080");
+                Button close = Required<Button>(preview, "ResultsCloseButton");
+                Point closeOrigin = close.TranslatePoint(default, preview) ??
+                    throw new InvalidOperationException("Completed results Close has no window coordinates.");
+                await Assert.That(closeOrigin.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(closeOrigin.Y + close.Bounds.Height).IsLessThanOrEqualTo(preview.ClientSize.Height);
+                selected.SelectedIndex = 1;
+                await Assert.That(context.Text).Contains("Publication revision: 13");
+                await Assert.That(context.Text).Contains("Step: 14");
+                await Assert.That(context.Text).Contains("Simulation seconds: 0.23333333333333334");
+                await Assert.That(context.Text).Contains("Time code: 1");
+                await Assert.That(context.Text).Contains("Binding revision: 6");
+                await Assert.That(context.Text).Contains("Bodies: 10");
+                await Assert.That(context.Text).Contains("Deformations: 3");
+                await Assert.That(context.Text).Contains("Review: not recorded");
+                await Assert.That(context.Text).DoesNotContain("review-v3");
+                selected.SelectedIndex = 2;
+                await Assert.That(context.Text).IsEqualTo("No simulation publication was recorded for this frame.");
+                selected.SelectedIndex = -1;
+                await Assert.That(context.Text).IsEqualTo("Select a completed frame to inspect its recorded context.");
+                await window.CloseAsync().WaitAsync(lifetime.Token);
+                await Assert.That(context.Text).DoesNotContain("warehouse fixture");
+                await Assert.That(() => ViewerCompletedJobPreviewJourney.ReadPixels(bitmap))
+                    .Throws<ObjectDisposedException>();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     [Arguments(520, 440, false)]
     [Arguments(520, 440, true)]
     [Arguments(740, 560, false)]

@@ -1876,6 +1876,12 @@ the job list or use **View results**
 to reopen the same verified gallery. Changing the selected job closes and drains the previous preview
 when **View results** is invoked, so the old job cannot masquerade as the newly requested output.
 Closing the history window or Viewer drains that preview too.
+Selecting a recorded physics frame shows its original simulation epoch, scenario, source and
+publication revisions, fixed-step index, seconds, USD time code, fixed step, binding revision,
+body/deformation counts and optional review identity in copyable read-only metadata.
+Ordinary frames explicitly report that no simulation publication was recorded. These are
+the recording host's attestations, not independent source verification or a query of the current
+scene; changing the selected frame replaces the context rather than retaining the prior frame.
 Keyboard focus starts in the job list; Up/Down changes the selected historical output.
 Enter uses the same verified preview and replacement/drain path as the button, and does
 nothing when there is no available selection or the browser is already opening or closing.

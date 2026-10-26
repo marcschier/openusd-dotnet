@@ -242,6 +242,11 @@ also opens the selected original output with Enter in the history list, after th
 has closed, and preserves missing/modified-file refusal. Empty-list Enter opens nothing.
 `HistoryCloseCancelsAndDrainsAnActivePreviewBeforeReleasingItsWindow` starts that preview
 with Enter, then confirms additional Enter during close cannot replace a draining child.
+`HistoricalGalleryShowsTheSelectedOriginalSimulationPublicationWithoutRendering` uses verified
+original PNGs and detached simulation records in both themes. It checks every publication field,
+invariant double precision, optional-review absence, ordinary/unselected context clearing,
+unchanged pixels, compact Close reachability and bitmap disposal after history closes. It does
+not qualify native physics recording or independently verify the host's source claims.
 
 Coverage also runs the built DLL directly:
 

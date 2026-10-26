@@ -45,6 +45,9 @@
                      AutomationProperties.Name="Original completed stage" />
           <TextBox x:Name="ResultsOutputLocation" IsReadOnly="True" TextWrapping="Wrap"
                    AutomationProperties.Name="Original completed output location" />
+          <TextBox x:Name="ResultsFrameContext" IsReadOnly="True" TextWrapping="Wrap"
+                   Text="Select a completed frame to inspect its recorded context."
+                   AutomationProperties.Name="Original selected frame simulation publication" />
         </StackPanel>
       </StackPanel>
     </ScrollViewer>

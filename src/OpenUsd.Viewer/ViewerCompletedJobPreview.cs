@@ -11,6 +11,7 @@ internal sealed class ViewerCompletedFramePreview(RenderDiskFrameResult frame, P
     internal double TimeCode { get; } = frame.State.Time.TimeCode;
     internal string FileName { get; } = frame.FileName;
     internal ViewportDimensions SourceDimensions { get; } = frame.State.Viewport;
+    internal RenderSimulationFrameIdentity? Simulation { get; } = frame.Simulation;
     internal int Width { get; } = image.Width;
     internal int Height { get; } = image.Height;
     internal byte[] Pixels { get; private set; } = image.Pixels;
