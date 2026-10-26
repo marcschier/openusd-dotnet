@@ -1867,11 +1867,14 @@ authored-product and physics-recording jobs from this Viewer process, newest fir
 available after the original job dialog closes, the document is reloaded or another stage is opened.
 It retains original completion metadata, not a live scene, renderer or decoded images. Failed and
 cancelled jobs are not added; adding a ninth success evicts only the oldest list entry, never its files.
-Select a job to see its original description and copyable output directory, then use **View results**
+Select a job to see its original description and copyable output directory, then press Enter in
+the job list or use **View results**
 to reopen the same verified gallery. Changing the selected job closes and drains the previous preview
 when **View results** is invoked, so the old job cannot masquerade as the newly requested output.
 Closing the history window or Viewer drains that preview too.
 Keyboard focus starts in the job list; Up/Down changes the selected historical output.
+Enter uses the same verified preview and replacement/drain path as the button, and does
+nothing when there is no available selection or the browser is already opening or closing.
 The original description stays readable in the scrollable details area, actions remain visible
 at the minimum window size, and Escape closes and drains the browser from its focused controls.
 

@@ -17,7 +17,8 @@
     <TextBlock Text="Last eight completed jobs in this Viewer process, newest first. Original files are verified when previewed. No scene is opened or rendered; restarting Viewer clears this list."
                TextWrapping="Wrap" Classes="viewer-caption" />
     <ListBox x:Name="HistoryJobs" Grid.Row="1" MinHeight="100" Focusable="True"
-             AutomationProperties.Name="Completed jobs from this Viewer process">
+             AutomationProperties.Name="Completed jobs from this Viewer process"
+             ToolTip.Tip="Choose a job, then press Enter or select View results to preview its original files.">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="local:ViewerCompletedJobHistoryEntry">
           <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxHeight="64"

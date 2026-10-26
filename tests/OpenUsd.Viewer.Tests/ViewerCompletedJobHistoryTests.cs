@@ -140,6 +140,10 @@ public sealed class ViewerCompletedJobHistoryTests
                 ListBox jobs = Required<ListBox>(window, "HistoryJobs");
                 await Assert.That(view.IsEnabled).IsFalse();
                 await Assert.That(jobs.ItemCount).IsEqualTo(0);
+                var emptyEnter = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter };
+                jobs.RaiseEvent(emptyEnter);
+                await Assert.That(emptyEnter.Handled).IsFalse();
+                await Assert.That(window.OwnedWindows).IsEmpty();
                 results.Publish(first, "Closed first document");
                 results.Publish(second, "Closed second document");
                 await results.ClearAsync();
@@ -164,7 +168,7 @@ public sealed class ViewerCompletedJobHistoryTests
                 await Assert.That(Required<ListBox>(newer, "ResultsFrames").ItemCount).IsEqualTo(2);
                 Bitmap image = ((CompletedRenderJobTile)Required<ListBox>(newer, "ResultsFrames").Items[0]!).Image;
                 jobs.SelectedIndex = 1;
-                CompletedRenderJobWindow older = await OpenAsync(window);
+                CompletedRenderJobWindow older = await OpenAsync(window, keyboard: true);
                 await Assert.That(newer.IsVisible).IsFalse();
                 await Assert.That(Required<ListBox>(newer, "ResultsFrames").ItemCount).IsEqualTo(0);
                 await Assert.That(() => ViewerCompletedJobPreviewJourney.ReadPixels(image))
@@ -174,7 +178,7 @@ public sealed class ViewerCompletedJobHistoryTests
                 await Assert.That(Required<ListBox>(older, "ResultsFrames").ItemCount).IsEqualTo(1);
 
                 File.Delete(Path.Combine(first.OutputDirectory, first.Frames[0].FileName));
-                CompletedRenderJobWindow missing = await OpenAsync(window);
+                CompletedRenderJobWindow missing = await OpenAsync(window, keyboard: true);
                 await Assert.That(Required<TextBlock>(missing, "ResultsStatus").Text)
                     .StartsWith("Could not preview results:");
                 await Assert.That(Required<ListBox>(missing, "ResultsFrames").ItemCount).IsEqualTo(0);
@@ -264,7 +268,10 @@ public sealed class ViewerCompletedJobHistoryTests
             window.Show();
             try
             {
-                Required<Button>(window, "HistoryViewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ListBox jobs = Required<ListBox>(window, "HistoryJobs");
+                var enter = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter };
+                jobs.RaiseEvent(enter);
+                await Assert.That(enter.Handled).IsTrue();
                 CompletedRenderJobWindow preview = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
                 Required<Button>(window, "HistoryCloseButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Task close = window.CloseAsync();
@@ -272,6 +279,11 @@ public sealed class ViewerCompletedJobHistoryTests
                 await Assert.That(captured.IsCancellationRequested).IsTrue();
                 await Assert.That(close.IsCompleted).IsFalse();
                 await Assert.That(window.IsVisible).IsTrue();
+                var closingEnter = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter };
+                jobs.RaiseEvent(closingEnter);
+                await Assert.That(closingEnter.Handled).IsFalse();
+                await Assert.That(window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single())
+                    .IsSameReferenceAs(preview);
                 release.SetResult(delayed);
                 await close.WaitAsync(TimeSpan.FromSeconds(5));
                 await Assert.That(window.IsVisible).IsFalse();
@@ -290,9 +302,20 @@ public sealed class ViewerCompletedJobHistoryTests
         }, lifetime.Token).WaitAsync(lifetime.Token);
     }
 
-    private static async Task<CompletedRenderJobWindow> OpenAsync(CompletedJobHistoryWindow window)
+    private static async Task<CompletedRenderJobWindow> OpenAsync(CompletedJobHistoryWindow window, bool keyboard = false)
     {
-        Required<Button>(window, "HistoryViewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        if (keyboard)
+        {
+            ListBox jobs = Required<ListBox>(window, "HistoryJobs");
+            await Assert.That(jobs.Focus()).IsTrue();
+            var enter = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter };
+            jobs.RaiseEvent(enter);
+            await Assert.That(enter.Handled).IsTrue();
+        }
+        else
+        {
+            Required<Button>(window, "HistoryViewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
         await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
             () => window.OwnedWindows.OfType<CompletedRenderJobWindow>().Any() &&
                 Required<Button>(window, "HistoryViewButton").IsEnabled);

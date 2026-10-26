@@ -25,23 +25,13 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
         HistoryJobs.SelectionChanged += (_, _) => UpdateSelection();
-        HistoryViewButton.Click += async (_, _) =>
+        HistoryViewButton.Click += async (_, _) => await OpenSelectedPreviewAsync();
+        HistoryJobs.KeyDown += async (_, args) =>
         {
-            if (_opening || _closing || HistoryJobs.SelectedItem is not ViewerCompletedJobHistoryEntry entry)
+            if (args.Key == Key.Enter && HistoryViewButton.IsEnabled)
             {
-                return;
-            }
-            _opening = true;
-            UpdateSelection();
-            _openTask = OpenPreviewAsync(entry);
-            try
-            {
-                await _openTask;
-            }
-            finally
-            {
-                _opening = false;
-                UpdateSelection();
+                args.Handled = true;
+                await OpenSelectedPreviewAsync();
             }
         };
         HistoryCloseButton.Click += (_, _) => Close();
@@ -57,6 +47,26 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         Closing += OnClosing;
         Closed += (_, _) => _closed.TrySetResult();
         Refresh();
+    }
+
+    private async Task OpenSelectedPreviewAsync()
+    {
+        if (_opening || _closing || HistoryJobs.SelectedItem is not ViewerCompletedJobHistoryEntry entry)
+        {
+            return;
+        }
+        _opening = true;
+        UpdateSelection();
+        _openTask = OpenPreviewAsync(entry);
+        try
+        {
+            await _openTask;
+        }
+        finally
+        {
+            _opening = false;
+            UpdateSelection();
+        }
     }
 
     internal void Refresh()

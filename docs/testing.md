@@ -227,6 +227,12 @@ the exact layer context and full refusal, disabled Save, initial Cancel focus an
 Escape preserving dirty source/review state. This is managed headless layout coverage,
 not native saving or physical keyboard qualification.
 
+`HistoryReopensTheSelectedJobAfterPublisherClosesAndRejectsChangedOrMissingFiles`
+also opens the selected original output with Enter in the history list, after the publisher
+has closed, and preserves missing/modified-file refusal. Empty-list Enter opens nothing.
+`HistoryCloseCancelsAndDrainsAnActivePreviewBeforeReleasingItsWindow` starts that preview
+with Enter, then confirms additional Enter during close cannot replace a draining child.
+
 Coverage also runs the built DLL directly:
 
 ```powershell
