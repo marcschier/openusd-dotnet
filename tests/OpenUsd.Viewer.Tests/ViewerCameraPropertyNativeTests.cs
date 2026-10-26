@@ -18,6 +18,8 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("verticalApertureOffset", "float", UsdLayerEditVariability.Varying)]
     [Arguments("focusDistance", "float", UsdLayerEditVariability.Varying)]
     [Arguments("fStop", "float", UsdLayerEditVariability.Varying)]
+    [Arguments("shutter:open", "double", UsdLayerEditVariability.Varying)]
+    [Arguments("shutter:close", "double", UsdLayerEditVariability.Varying)]
     public async Task SchemaCameraOpticsCaptureNativeDeclarationsButUndoOnlyReviewOpinions(
         string name, string typeName, UsdLayerEditVariability variability)
     {
@@ -36,10 +38,17 @@ public sealed partial class ViewerCameraPropertyNativeTests
             await Assert.That(property.Custom).IsFalse();
             await Assert.That(property.Capture.Snapshot.Opinions.Single().PropertyKind)
                 .IsEqualTo(UsdLayerPropertyKind.Absent);
-            float scalar = name == "horizontalApertureOffset" ? -2.5f : 60;
+            double scalar = name switch
+            {
+                "horizontalApertureOffset" => -2.5,
+                "shutter:open" => -0.125,
+                "shutter:close" => 0.375,
+                _ => 60
+            };
             UsdLayerEditValue value = typeName switch
             {
-                "float" => UsdLayerEditValue.FromFloat(scalar),
+                "float" => UsdLayerEditValue.FromFloat((float)scalar),
+                "double" => UsdLayerEditValue.FromDouble(scalar),
                 "float2" => UsdLayerEditValue.FromVec2f(new UsdVec2f(1, 2000)),
                 "token" => UsdLayerEditValue.FromToken("orthographic"),
                 _ => throw new InvalidOperationException("Unexpected test declaration.")
@@ -54,7 +63,8 @@ public sealed partial class ViewerCameraPropertyNativeTests
             await Assert.That(after.Variability).IsEqualTo(variability);
             await Assert.That(after.Custom).IsFalse();
             await Assert.That(after.Value).IsEqualTo(value);
-            if (name is "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop")
+            if (name is "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop" or
+                "shutter:open" or "shutter:close")
             {
                 await Assert.That(await scheduler.InvokeAsync(stage => ReadAdditionalOptic(stage, name, 0)))
                     .IsEqualTo(scalar);
@@ -82,12 +92,15 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("verticalApertureOffset")]
     [Arguments("focusDistance")]
     [Arguments("fStop")]
+    [Arguments("shutter:open")]
+    [Arguments("shutter:close")]
     public async Task CameraAdmissionDoesNotAuthorizeLookalikesOtherSchemaFieldsOrUniformSamples(string name)
     {
         string root = Directory.CreateTempSubdirectory("openusd-camera-refusal-").FullName;
         string path = Path.Combine(root, "source.usda");
+        string typeName = name.StartsWith("shutter:", StringComparison.Ordinal) ? "double" : "float";
         await File.WriteAllTextAsync(Path.Combine(root, "reference.usda"),
-            $"#usda 1.0\ndef Xform \"Source\" {{\n float {name} = 7\n}}\n");
+            $"#usda 1.0\ndef Xform \"Source\" {{\n {typeName} {name} = 7\n}}\n");
         await File.WriteAllTextAsync(path,
             "#usda 1.0\ndef Camera \"Camera\" {\n custom uniform token review:uniform = \"locked\"\n}\n" +
             "def Xform \"Pretend\" (prepend references = @reference.usda@</Source>) {}\n");
@@ -128,6 +141,8 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("verticalApertureOffset")]
     [Arguments("focusDistance")]
     [Arguments("fStop")]
+    [Arguments("shutter:open")]
+    [Arguments("shutter:close")]
     public async Task AdditionalOpticsSamplesClearExactlyAndRefuseStaleReviewCaptures(string name)
     {
         string root = Directory.CreateTempSubdirectory("openusd-camera-samples-").FullName;
@@ -143,7 +158,7 @@ public sealed partial class ViewerCameraPropertyNativeTests
                 "/Camera", name, UsdLayerEditField.TimeSample, 5);
             UsdLayerEditAddress address = absent.Capture.Snapshot.Addresses.Single();
             ViewerAuthoredEditResult first = await editor.ApplyAsync(absent.Capture,
-                [UsdLayerEdit.Set(address, UsdLayerEditValue.FromFloat(30),
+                [UsdLayerEdit.Set(address, AdditionalOpticValue(name, 30),
                     absent.TypeName, absent.Variability, absent.Custom)], "Set camera sample",
                 gestureId: Guid.NewGuid());
             await Assert.That(first.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
@@ -152,12 +167,12 @@ public sealed partial class ViewerCameraPropertyNativeTests
             ViewerPropertyEditCapture stale = await editor.CapturePropertyAsync(
                 "/Camera", name, UsdLayerEditField.TimeSample, 5);
             ViewerAuthoredEditResult newer = await editor.ApplyAsync(stale.Capture,
-                [UsdLayerEdit.Set(address, UsdLayerEditValue.FromFloat(45))], "Newer camera sample",
+                [UsdLayerEdit.Set(address, AdditionalOpticValue(name, 45))], "Newer camera sample",
                 gestureId: Guid.NewGuid());
             await Assert.That(newer.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             int depth = editor.UndoDepth;
             ViewerAuthoredEditResult refused = await editor.ApplyAsync(stale.Capture,
-                [UsdLayerEdit.Set(address, UsdLayerEditValue.FromFloat(60))], "Stale camera sample");
+                [UsdLayerEdit.Set(address, AdditionalOpticValue(name, 60))], "Stale camera sample");
             await Assert.That(refused.Outcome).IsEqualTo(UsdLayerEditOutcome.Conflict);
             await Assert.That(editor.UndoDepth).IsEqualTo(depth);
             await Assert.That(await scheduler.InvokeAsync(stage => ReadAdditionalOptic(stage, name, 5)))
@@ -185,6 +200,10 @@ public sealed partial class ViewerCameraPropertyNativeTests
 
     private static double ReadAdditionalOptic(UsdStage stage, string name, double timeCode)
     {
+        if (name is "shutter:open" or "shutter:close")
+        {
+            return stage.GetPrim("/Camera").GetDouble(name, timeCode);
+        }
         UsdGeomCameraState state = UsdGeomCamera.Wrap(stage.GetPrim("/Camera")).GetState(timeCode);
         return name switch
         {
@@ -195,4 +214,9 @@ public sealed partial class ViewerCameraPropertyNativeTests
             _ => throw new InvalidOperationException("Unexpected optics field.")
         };
     }
+
+    private static UsdLayerEditValue AdditionalOpticValue(string name, float value) =>
+        name is "shutter:open" or "shutter:close"
+            ? UsdLayerEditValue.FromDouble(value)
+            : UsdLayerEditValue.FromFloat(value);
 }

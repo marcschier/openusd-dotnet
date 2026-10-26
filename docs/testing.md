@@ -201,8 +201,10 @@ The separate native Viewer workflow smokes retain their actual desktop requireme
 `ViewerCameraPropertyNativeTests` covers exact camera declaration admission, signed offsets,
 default and time-sample edits, Clear, stale-review refusal, shared Undo/Redo and unchanged source bytes.
 `NativeCameraEditorSetsClearsAndSharesUndoWithoutChangingSource` drives the actual property-editor
-controls for offsets, focus distance and f-stop against a native stage in a Skia-backed headless
-session. It does not qualify a compositor, displayed scene or depth-of-field rendering.
+controls for offsets, focus distance, f-stop and double-precision shutter endpoints against a native
+stage in a Skia-backed headless session. Shutter values include signed and beyond-float-precision
+inputs, same-type referenced lookalike refusal and default/time-sample history semantics.
+It does not qualify a compositor, displayed scene, depth-of-field or motion-blur rendering.
 
 Coverage also runs the built DLL directly:
 

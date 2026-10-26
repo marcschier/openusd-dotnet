@@ -112,6 +112,7 @@ internal sealed partial class ViewerAuthoredEditController
                 "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop" => "float",
             "clippingRange" => "float2",
             "projection" => "token",
+            "shutter:open" or "shutter:close" => "double",
             "inputs:width" or "inputs:height" or "inputs:radius" or "inputs:length" or "inputs:angle" or
                 "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
                 "inputs:shaping:cone:softness" => "float",
@@ -125,7 +126,7 @@ internal sealed partial class ViewerAuthoredEditController
         bool supportedSchema = expectedType is not null &&
             (attributeName is "focalLength" or "horizontalAperture" or "verticalAperture" or
                 "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop" or
-                "clippingRange" or "projection"
+                "clippingRange" or "projection" or "shutter:open" or "shutter:close"
                 ? UsdGeomCamera.TryWrap(prim, out _)
                 : IsSupportedLightProperty(prim, attributeName));
         if (!supportedSchema || composedType != expectedType)
