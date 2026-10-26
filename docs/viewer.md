@@ -37,6 +37,9 @@ The output parent must be an existing local folder chosen
 by the operator; opening, refreshing, cancelling or closing the dialog does not create directories.
 Each job publishes a generated subfolder only after all frames, sidecars and the manifest are
 complete, and authored `productName` values are never treated as filesystem authority.
+Long original product/variable details remain in a scrollable body at the minimum window size.
+The fixed action area wraps when necessary so View results, Cancel job, Close and Render product
+remain reachable; focused range fields and unsupported-product reasons scroll into view.
 
 The capture uses the authored product camera, raster, variables, scene purposes and exact
 material-binding purpose rather than the current viewport camera or dimensions. PNG files are

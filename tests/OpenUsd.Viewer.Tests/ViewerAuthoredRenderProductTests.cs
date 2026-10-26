@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
@@ -13,6 +14,84 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerAuthoredRenderProductTests
 {
+    private static readonly string[] ActionNames =
+        ["ProductViewResultsButton", "ProductCancelButton", "ProductCloseButton", "ProductRenderButton"];
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task ProductActionsKeepLongDetailsAndRefusalReachableAtMinimumSize(bool longContext, bool dark)
+    {
+        string details = longContext
+            ? string.Join(' ', Enumerable.Repeat("raw:original-variable/half4", 80))
+            : "raw:color/half4";
+        const string refusal = "This exact product is unsupported; no beauty fallback.";
+        var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings",
+            [new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), details, null, refusal)]);
+        int renders = 0;
+        await RunUiAsync(async () =>
+        {
+            var window = new AuthoredRenderProductWindow(0, 1, "Original renderer",
+                (_, _, _) => ValueTask.FromResult(snapshot), (_, _, _) =>
+                {
+                    renders++;
+                    throw new InvalidOperationException("Unsupported products must not render.");
+                })
+            {
+                Width = 620,
+                Height = 680,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await WaitUntilAsync(() => Required<ComboBox>(window, "ProductSelector").ItemCount == 1);
+                window.UpdateLayout();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                await Assert.That(Required<TextBlock>(window, "ProductDetails").Text).Contains(details);
+                TextBlock status = Required<TextBlock>(window, "ProductStatus");
+                await Assert.That(status.Text).IsEqualTo(refusal);
+                foreach (string name in ActionNames)
+                {
+                    Button action = Required<Button>(window, name);
+                    Point? origin = action.TranslatePoint(default, window);
+                    await Assert.That(origin).IsNotNull();
+                    await Assert.That(origin!.Value.X).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.Y).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.X + action.Bounds.Width)
+                        .IsLessThanOrEqualTo(window.ClientSize.Width);
+                    await Assert.That(origin.Value.Y + action.Bounds.Height)
+                        .IsLessThanOrEqualTo(window.ClientSize.Height);
+                }
+                TextBox end = Required<TextBox>(window, "ProductEndTime");
+                await Assert.That(end.Focus()).IsTrue();
+                end.BringIntoView();
+                window.UpdateLayout();
+                ScrollViewer body = Required<ScrollViewer>(window, "ProductBodyScroll");
+                Point? fieldOrigin = end.TranslatePoint(default, body);
+                await Assert.That(fieldOrigin).IsNotNull();
+                await Assert.That(fieldOrigin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(fieldOrigin.Value.Y + end.Bounds.Height).IsLessThanOrEqualTo(body.Viewport.Height);
+                status.BringIntoView();
+                window.UpdateLayout();
+                Point? statusOrigin = status.TranslatePoint(default, body);
+                await Assert.That(statusOrigin).IsNotNull();
+                await Assert.That(statusOrigin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(statusOrigin.Value.Y + status.Bounds.Height)
+                    .IsLessThanOrEqualTo(body.Viewport.Height);
+                await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
+                await Assert.That(renders).IsEqualTo(0);
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
+
     [Test]
     public async Task SnapshotKeepsUnsupportedProductsVisibleWithoutAdmittingThemAsBeauty()
     {
