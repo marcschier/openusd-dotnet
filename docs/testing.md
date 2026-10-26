@@ -480,6 +480,10 @@ serialized ordered retry diagnostics, exact decoded pixels and unchanged source/
 `InvalidDiagnosticSeverityRefusesBeforePublishingAnyPreviewAndAllowsCleanRetry` also checks
 the processor directly for all four modes, retaining exact valid severity on retry.
 These are managed capture/publication and protocol checks, not new native-renderer qualification.
+`RenderDiskJobTests.UnknownDiagnosticSeverityRefusesEntireDiskJobThenRetriesWithExactManifestAndPixels`
+checks negative and unknown positive severities on first and final disk frames. Refusal removes
+all owned staging output while preserving unrelated files; retry retains all three supported
+severities, exact manifest metadata, original requested states and decoded PNG pixels.
 
 `ViewerCommandPaletteWindowTests.ModifiedPaletteSearchKeysDoNotNavigateOrDispatchWhilePlainKeysRetainTheOriginalAction`
 sends actual headless Enter/Up/Down with Control, Shift, Alt and Meta while the query owns focus.

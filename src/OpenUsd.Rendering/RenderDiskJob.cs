@@ -196,6 +196,11 @@ public static partial class RenderDiskJob
         }
         foreach (RenderDiagnostic diagnostic in image.Diagnostics.Entries)
         {
+            if (diagnostic.Severity is not (RenderDiagnosticSeverity.Information or
+                RenderDiagnosticSeverity.Warning or RenderDiagnosticSeverity.Error))
+            {
+                throw new InvalidDataException("A renderer diagnostic has an unsupported severity.");
+            }
             if (diagnostic.Code.Length > 128 || diagnostic.Message.Length > 4096)
             {
                 throw new RenderOutputQuotaExceededException("A renderer diagnostic exceeds its text limit.");

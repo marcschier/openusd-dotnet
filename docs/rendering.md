@@ -862,6 +862,9 @@ match the request. Filenames are generated from frame indexes, never scene-autho
 `manifest.json` retains camera matrices/clip planes, time, stage and renderer-state revision,
 display/purpose/draw settings, explicit colour/OCIO settings, bounded selection identity and SHA256.
 The state revision is not mislabeled as an independently observed native stage revision.
+Diagnostics retain distinct severity/code/message records across frames. Only Information,
+Warning and Error severities are accepted; unknown numeric severities refuse the entire job
+before publication, cleaning up owned staging output rather than writing an invalid manifest.
 
 Files are written into a private sibling directory. Only the completed job is moved to its new final
 directory; existing directories are refused, and cancellation/render/encoding/quota failures remove

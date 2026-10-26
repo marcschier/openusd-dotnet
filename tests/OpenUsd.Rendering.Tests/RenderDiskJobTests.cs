@@ -9,6 +9,70 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class RenderDiskJobTests
 {
     [Test]
+    [Arguments(-1, 0)]
+    [Arguments(-1, 2)]
+    [Arguments(999, 0)]
+    [Arguments(999, 2)]
+    public async Task UnknownDiagnosticSeverityRefusesEntireDiskJobThenRetriesWithExactManifestAndPixels(
+        int severity, int invalidFrame)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-job-severity-").FullName;
+        string sentinel = Path.Combine(root, "original.txt");
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        StageRenderState[] frames = Enumerable.Range(0, 3)
+            .Select(index => state.WithTime(new StageTime(index))).ToArray();
+        bool refuse = true;
+        var source = new CallbackSource(frame => new RenderJobImage(
+            1, 1, new byte[] { 1, 2, (byte)frame.Time.TimeCode, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Diagnostics = new RenderDiagnosticsState(
+            [
+                new RenderDiagnostic(refuse && frame.Time.TimeCode == invalidFrame
+                    ? (RenderDiagnosticSeverity)severity : (RenderDiagnosticSeverity)frame.Time.TimeCode,
+                    $"frame-{frame.Time.TimeCode}", "Exact renderer detail.")
+            ])
+        });
+        try
+        {
+            await File.WriteAllTextAsync(sentinel, "keep");
+            var request = new RenderDiskJobRequest(Path.Combine(root, "sequence"), frames);
+            await Assert.That(() => RenderDiskJob.Execute(request, source)).Throws<InvalidDataException>();
+            await Assert.That(source.Calls).IsEqualTo(invalidFrame + 1);
+            await Assert.That(Directory.GetFileSystemEntries(root).Single()).IsEqualTo(sentinel);
+            await Assert.That(await File.ReadAllTextAsync(sentinel)).IsEqualTo("keep");
+            refuse = false;
+            RenderDiskJobResult result = RenderDiskJob.Execute(request, source);
+            await Assert.That(source.Calls).IsEqualTo(invalidFrame + 4);
+            await Assert.That(result.Frames.Count).IsEqualTo(3);
+            await Assert.That(result.Diagnostics.Count).IsEqualTo(3);
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement entries = manifest.RootElement.GetProperty("diagnostics");
+            await Assert.That(entries.GetArrayLength()).IsEqualTo(3);
+            for (int index = 0; index < 3; index++)
+            {
+                await Assert.That(result.Diagnostics[index].Severity).IsEqualTo((RenderDiagnosticSeverity)index);
+                await Assert.That(entries[index].GetProperty("severity").GetString())
+                    .IsEqualTo(((RenderDiagnosticSeverity)index).ToString());
+                await Assert.That(entries[index].GetProperty("code").GetString()).IsEqualTo($"frame-{index}");
+                await Assert.That(entries[index].GetProperty("message").GetString())
+                    .IsEqualTo("Exact renderer detail.");
+                await Assert.That(result.Frames[index].State).IsSameReferenceAs(frames[index]);
+                PngRgba8Image image = PngRgba8Reader.Decode(await File.ReadAllBytesAsync(
+                    Path.Combine(result.OutputDirectory, result.Frames[index].FileName)));
+                await Assert.That(Convert.ToHexString(image.Pixels)).IsEqualTo($"0102{index:X2}FF");
+            }
+            await Assert.That(Directory.GetDirectories(root).Single()).IsEqualTo(result.OutputDirectory);
+            await Assert.That(await File.ReadAllTextAsync(sentinel)).IsEqualTo("keep");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task SimulationTimeMismatchCannotPublishAJob()
     {
         string root = Directory.CreateTempSubdirectory("openusd-simulation-time-").FullName;
