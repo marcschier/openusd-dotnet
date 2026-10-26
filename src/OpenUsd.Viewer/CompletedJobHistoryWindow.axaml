@@ -1,0 +1,46 @@
+<Window
+    x:Class="OpenUsd.Viewer.CompletedJobHistoryWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenUsd.Viewer"
+    Classes="openusd-viewer"
+    AutomationProperties.Name="Completed render jobs"
+    Title="Completed render jobs"
+    Width="740" Height="560" MinWidth="520" MinHeight="440"
+    ShowInTaskbar="False" ClosingBehavior="OwnerWindowOnly"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
+    <TextBlock Text="Last eight completed jobs in this Viewer process, newest first. Original files are verified when previewed. No scene is opened or rendered; restarting Viewer clears this list."
+               TextWrapping="Wrap" Classes="viewer-caption" />
+    <ListBox x:Name="HistoryJobs" Grid.Row="1" MinHeight="100"
+             AutomationProperties.Name="Completed jobs from this Viewer process">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="local:ViewerCompletedJobHistoryEntry">
+          <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxHeight="64"
+                     TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <ScrollViewer Grid.Row="2" MaxHeight="128" HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="6">
+        <TextBlock x:Name="HistoryDescription" TextWrapping="Wrap"
+                   AutomationProperties.Name="Original completed job description" />
+        <TextBox x:Name="HistoryOutput" IsReadOnly="True" TextWrapping="Wrap"
+                 AutomationProperties.Name="Original completed job directory" />
+        <TextBlock x:Name="HistoryStatus" TextWrapping="Wrap"
+                   AutomationProperties.Name="Completed job history status" />
+      </StackPanel>
+    </ScrollViewer>
+    <WrapPanel Grid.Row="3" HorizontalAlignment="Right" ItemSpacing="8" LineSpacing="8">
+      <Button x:Name="HistoryViewButton" Content="_View results" IsEnabled="False"
+              AutomationProperties.Name="View selected historical job results" />
+      <Button x:Name="HistoryCloseButton" Content="Close"
+              AutomationProperties.Name="Close completed job history" />
+    </WrapPanel>
+  </Grid>
+</Window>

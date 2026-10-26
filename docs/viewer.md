@@ -1839,8 +1839,22 @@ thumbnail raster quota. This is not a process-memory guarantee.
 Close cancels and asynchronously drains loading before releasing the window and every owned
 bitmap; it does not block the UI thread waiting for a file or decoder. Late completions cannot
 publish into a closing or replacement preview. The sheet belongs to its job dialog: closing that
-dialog, closing the stage/Viewer or reloading the stage closes and drains it too. It is not a
-persistent results browser that survives document retirement.
+dialog, closing the stage/Viewer or reloading the stage closes and drains it too.
+
+**File > Completed Render Jobs** (also in command search) lists the last eight successful sequence,
+authored-product and physics-recording jobs from this Viewer process, newest first. The list remains
+available after the original job dialog closes, the document is reloaded or another stage is opened.
+It retains original completion metadata, not a live scene, renderer or decoded images. Failed and
+cancelled jobs are not added; adding a ninth success evicts only the oldest list entry, never its files.
+Select a job to see its original description and copyable output directory, then use **View results**
+to reopen the same verified gallery. Changing the selected job closes and drains the previous preview
+when **View results** is invoked, so the old job cannot masquerade as the newly requested output.
+Closing the history window or Viewer drains that preview too.
+
+This is process-local discovery, not a persistent manifest browser: restarting Viewer clears the
+list. It does not import arbitrary job directories, reopen source stages, compare effective requests
+or certify that old files are still present. Missing or modified files are reported by the gallery
+when previewed, using the same integrity rules as the original dialog.
 
 ### Comparing saved captures
 

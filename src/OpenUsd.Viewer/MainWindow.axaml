@@ -64,6 +64,7 @@
               <MenuItem x:Name="RenderImageSequenceMenuItem" Header="Render Image _Sequence..." IsEnabled="False" />
               <MenuItem x:Name="RenderAuthoredProductMenuItem" Header="Render Authored _Product..." IsEnabled="False" />
               <MenuItem x:Name="CompareCapturesMenuItem" Header="Compare _Captures..." />
+              <MenuItem x:Name="CompletedJobsMenuItem" Header="Completed Render _Jobs..." />
               <Separator />
               <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />
               <Separator />

@@ -9,14 +9,17 @@ internal sealed class ViewerCompletedJobResults
 {
     private readonly Window _owner;
     private readonly Button _action;
+    private readonly Action<RenderDiskJobResult, string>? _completed;
     private RenderDiskJobResult? _job;
     private string _description = string.Empty;
     private CompletedRenderJobWindow? _window;
 
-    internal ViewerCompletedJobResults(Window owner, Button action)
+    internal ViewerCompletedJobResults(
+        Window owner, Button action, Action<RenderDiskJobResult, string>? completed = null)
     {
         _owner = owner;
         _action = action;
+        _completed = completed;
         _action.IsEnabled = false;
         _action.Click += (_, _) => Show();
     }
@@ -26,6 +29,7 @@ internal sealed class ViewerCompletedJobResults
         _job = job;
         _description = description;
         _action.IsEnabled = true;
+        _completed?.Invoke(job, description);
     }
 
     internal Task ClearAsync()

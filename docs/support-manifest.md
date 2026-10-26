@@ -1463,8 +1463,11 @@ length/SHA256, dimensions and valid CRC/zlib content before aspect-fit thumbnail
 RGBA;16retain at most4MiB of thumbnail pixels, not a whole-process or decoder-memory guarantee. No partial sheet
 survives a later invalid file. Close, new jobs, cancellation, stage Reload and Viewer close drain loading and release
 every Bitmap; late results cannot replace newer jobs. Windows D3D12 and real Vulkan sequence/product UI journeys, plus
-the full native Viewer workflow matrix, are executed. Other native platforms and persistent cross-document result
-browsing are not claimed.
+the full native Viewer workflow matrix, are executed. File > Completed Render Jobs adds a process-local, newest-first
+list of the last eight successful sequence/product/physics jobs, retaining original metadata across document retirement
+without retaining a renderer or deleting evicted files. Reopening uses the same verified gallery; replacement,
+missing/changed files and delayed close/drain have managed headless coverage. Other native platforms and persistent
+cross-restart result browsing are not claimed.
 
 ### `viewer-picking`
 

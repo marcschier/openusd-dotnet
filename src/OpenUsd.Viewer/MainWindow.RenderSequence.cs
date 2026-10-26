@@ -35,7 +35,8 @@ public sealed partial class MainWindow
             RenderImageSequenceAsync,
             RenderPhysicsSequenceAsync,
             GetPhysicsRecordingUnsupportedReason,
-            recordPhysics);
+            recordPhysics,
+            PublishCompletedJob);
         _renderSequenceWindow = window;
         window.Closed += (_, _) =>
         {
@@ -213,7 +214,8 @@ public sealed partial class MainWindow
             RenderAuthoredProductAsync,
             () => coordinator.SupportsRenderProductCapture
                 ? null
-                : "Wait for a completed frame from an hdSilk renderer with authored-product capture.");
+                : "Wait for a completed frame from an hdSilk renderer with authored-product capture.",
+            PublishCompletedJob);
         _authoredRenderProductWindow = window;
         window.Closed += (_, _) =>
         {

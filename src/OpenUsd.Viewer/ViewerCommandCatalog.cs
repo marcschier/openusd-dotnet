@@ -86,6 +86,7 @@ internal static class ViewerCommandIds
     internal const string FileRenderImageSequence = "file.renderImageSequence";
     internal const string FileRenderAuthoredProduct = "file.renderAuthoredProduct";
     internal const string FileCompareCaptures = "file.compareCaptures";
+    internal const string FileCompletedJobs = "file.completedJobs";
     internal const string FileExit = "file.exit";
     internal const string FileSaveReview = "file.saveReview";
     internal const string FileSaveAs = "file.saveAs";
@@ -309,6 +310,8 @@ internal static class ViewerCommandCatalog
             "Render Authored _Product...", "Render authored RenderProduct"),
         new(ViewerCommandIds.FileCompareCaptures, ViewerCommandGroup.File,
             "Compare _Captures...", "Compare two saved captures"),
+        new(ViewerCommandIds.FileCompletedJobs, ViewerCommandGroup.File,
+            "Completed Render _Jobs...", "Browse completed render jobs"),
         new(ViewerCommandIds.FileExit, ViewerCommandGroup.File,
             "E_xit", "Exit OpenUsd Viewer"),
 

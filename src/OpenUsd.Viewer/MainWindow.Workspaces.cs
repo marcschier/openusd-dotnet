@@ -15,6 +15,7 @@ public sealed partial class MainWindow
 
     private bool WorkspaceOwnsKeyboard =>
         _commandPalette is { IsActive: true } || _captureComparison is { IsActive: true } ||
+        _completedJobHistoryWindow is { IsActive: true } ||
         _propertyEditor is { IsActive: true } || _documentChanges is { IsActive: true } ||
         _documentAction is { IsActive: true } || _renderSequenceWindow is { IsActive: true } ||
         _authoredRenderProductWindow is { IsActive: true };
@@ -32,6 +33,7 @@ public sealed partial class MainWindow
         WorkspaceMenu.SubmenuOpened += (_, _) => SyncWorkspaceMenu();
         CommandPaletteMenuItem.Click += (_, _) => ShowCommandPalette();
         CompareCapturesMenuItem.Click += (_, _) => ShowCaptureComparison();
+        CompletedJobsMenuItem.Click += (_, _) => ShowCompletedJobs();
         RenderImageSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence();
         PhysicsRecordSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence(recordPhysics: true);
         RenderAuthoredProductMenuItem.Click += (_, _) => ShowAuthoredRenderProduct();

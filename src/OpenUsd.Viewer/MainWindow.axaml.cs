@@ -8669,6 +8669,10 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
         _commandPalette?.Close();
+        if (_completedJobHistoryWindow is { } history)
+        {
+            await history.CloseAsync();
+        }
         if (_captureComparison is { } comparison)
         {
             await comparison.CloseAsync();

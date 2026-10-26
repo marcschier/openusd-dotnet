@@ -37,7 +37,8 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         Func<ViewerPhysicsSequenceRequest, Action<ViewerRenderSequenceProgress>,
             CancellationToken, Task<RenderDiskJobResult>>? renderPhysics = null,
         Func<ViewerRenderSequenceOutputOptions, string?>? getPhysicsUnsupportedReason = null,
-        bool physicsMode = false)
+        bool physicsMode = false,
+        Action<RenderDiskJobResult, string>? completed = null)
     {
         ArgumentNullException.ThrowIfNull(render);
         ArgumentNullException.ThrowIfNull(getUnsupportedReason);
@@ -47,7 +48,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         _getPhysicsUnsupportedReason = getPhysicsUnsupportedReason;
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
-        _results = new ViewerCompletedJobResults(this, SequenceViewResultsButton);
+        _results = new ViewerCompletedJobResults(this, SequenceViewResultsButton, completed);
         SequenceRenderer.Text = renderer;
         SequenceStartTime.Text = ViewerTimelineMath.Format(start);
         SequenceEndTime.Text = ViewerTimelineMath.Format(end);

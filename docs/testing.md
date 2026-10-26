@@ -282,6 +282,16 @@ The shared internal completed-PNG reader also serves MCP contact sheets. Keep
 `OpenUsd.Mcp.Tests/SequenceContactSheetTests` passing when changing its verification or resampling;
 the Viewer does not depend on MCP and does not add a second contact-sheet encoder.
 
+`ViewerCompletedJobHistoryTests` covers the process-local, eight-job history: empty/singleton state,
+newest-first eviction with immutable prior snapshots and no file deletion, reopening original jobs
+after their publisher closes, selected-job replacement and bitmap disposal, missing/tampered file
+errors, compact-window actions and cancellation/drain of delayed preview loading. It uses real PNGs
+and an owned Avalonia headless session, not a native renderer. The managed
+`ViewerSequenceWindowLayoutTests/ManagedCompletedResultsKeepJobRetryCancellationAndOwnerDrainSemantics`
+journey additionally verifies successful sequence/product publication and excludes failed/cancelled
+jobs from history. These checks do not establish persistence across Viewer restarts or native display
+qualification. Run each class with the same focused selector shown above, substituting its class name.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

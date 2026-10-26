@@ -40,7 +40,8 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         Func<string?, string?, CancellationToken, ValueTask<ViewerAuthoredRenderProductSnapshot>> query,
         Func<ViewerAuthoredRenderProductRequest, Action<ViewerAuthoredRenderProductProgress>,
             CancellationToken, Task<RenderDiskJobResult>> render,
-        Func<string?>? getBackendUnsupportedReason = null)
+        Func<string?>? getBackendUnsupportedReason = null,
+        Action<RenderDiskJobResult, string>? completed = null)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(render);
@@ -49,7 +50,7 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         _getBackendUnsupportedReason = getBackendUnsupportedReason ?? (static () => null);
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
-        _results = new ViewerCompletedJobResults(this, ProductViewResultsButton);
+        _results = new ViewerCompletedJobResults(this, ProductViewResultsButton, completed);
         ProductRenderer.Text = renderer;
         ProductStartTime.Text = ViewerTimelineMath.Format(start);
         ProductEndTime.Text = ViewerTimelineMath.Format(end);
