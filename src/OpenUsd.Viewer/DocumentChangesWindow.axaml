@@ -19,6 +19,7 @@
   <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto" RowSpacing="16">
     <TextBlock x:Name="DocumentTransitionHeading" TextWrapping="Wrap" />
     <ScrollViewer x:Name="DocumentChangesBodyScroll" Grid.Row="1"
+                  Focusable="True" AutomationProperties.Name="Unsaved document details and save restriction"
                   HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
       <StackPanel Spacing="16">
         <TextBlock x:Name="UnsavedDocumentDetails" TextWrapping="Wrap"

@@ -1219,7 +1219,8 @@ reloading a session-only document preserves that mode.
 The unsaved-changes prompt keeps Save Review, Discard and Cancel visible at its minimum
 window size. Exact dirty-layer identities and the full save restriction share a scrollable
 body, so a long refusal cannot hide the decisions. Cancel receives initial keyboard focus;
-Escape cancels the transition without saving or discarding edits.
+Tab or Shift+Tab reaches the named body, and Page Down/Page Up reads the full explanation.
+Escape from the body cancels the transition without saving or discarding edits.
 
 Document-decision prompts also keep initial focus on Cancel. Their named details area is
 reachable with Tab or Shift+Tab and supports Page Down/Page Up through the full explanation

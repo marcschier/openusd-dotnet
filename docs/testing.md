@@ -239,8 +239,9 @@ do not establish physical keyboard or screen-reader qualification.
 
 `ViewerDocumentChangesWindowTests` covers minimum/default light/dark unsaved-document
 prompts with long save refusals. It checks visible decision bounds, scroll reachability of
-the exact layer context and full refusal, disabled Save, initial Cancel focus and routed
-Escape preserving dirty source/review state. This is managed headless layout coverage,
+the exact layer context and full refusal, disabled Save, initial Cancel focus, headless Tab
+navigation to the named body, keyboard paging to both endpoints and routed Escape from
+the body preserving dirty source/review state. This is managed headless layout coverage,
 not native saving or physical keyboard qualification.
 
 `ViewerDocumentActionWindowTests.DecisionDetailsSupportKeyboardPagingWithoutAcceptingTheAction`

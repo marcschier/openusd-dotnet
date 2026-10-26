@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -72,22 +73,44 @@ public sealed class ViewerDocumentChangesWindowTests
                 ScrollViewer body = Required<ScrollViewer>(window, "DocumentChangesBodyScroll");
                 await Assert.That(body.Viewport.Height).IsGreaterThan(0);
                 await Assert.That(body.Extent.Height).IsGreaterThan(body.Viewport.Height);
-                body.Offset = new Vector(0, body.Extent.Height - body.Viewport.Height);
+                Button cancel = Required<Button>(window, "CancelDocumentTransitionButton");
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                for (int stop = 0; stop < 2; stop++)
+                {
+                    window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                    window.KeyRelease(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                }
+                await Assert.That(body.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(body.Focus()).IsTrue();
+                await Assert.That(AutomationProperties.GetName(body))
+                    .IsEqualTo("Unsaved document details and save restriction");
+                await Assert.That(body.IsKeyboardFocusWithin).IsTrue();
+                body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.PageDown });
                 window.UpdateLayout();
+                await Assert.That(body.Offset.Y).IsGreaterThan(0);
+                int pages = (int)Math.Ceiling(body.Extent.Height / body.Viewport.Height) + 1;
+                for (int page = 0; page < pages; page++)
+                {
+                    body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.PageDown });
+                    window.UpdateLayout();
+                }
+                await Assert.That(body.Offset.Y).IsEqualTo(body.Extent.Height - body.Viewport.Height);
                 TextBlock refusal = Required<TextBlock>(window, "DocumentSaveRestriction");
                 Point end = refusal.TranslatePoint(default, body) ??
                     throw new InvalidOperationException("The save refusal has no scroll-body coordinates.");
                 await Assert.That(end.Y + refusal.Bounds.Height).IsGreaterThan(0);
                 await Assert.That(end.Y + refusal.Bounds.Height).IsLessThanOrEqualTo(body.Viewport.Height);
-                body.Offset = default;
-                window.UpdateLayout();
+                for (int page = 0; page < pages; page++)
+                {
+                    body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.PageUp });
+                    window.UpdateLayout();
+                }
+                await Assert.That(body.Offset.Y).IsEqualTo(0);
                 Point start = Required<TextBlock>(window, "UnsavedDocumentDetails").TranslatePoint(default, body) ??
                     throw new InvalidOperationException("Unsaved details have no scroll-body coordinates.");
                 await Assert.That(start.Y).IsGreaterThanOrEqualTo(0);
                 await Assert.That(start.Y).IsLessThan(body.Viewport.Height);
-                Button cancel = Required<Button>(window, "CancelDocumentTransitionButton");
-                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
-                cancel.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
                 await Assert.That(window.IsVisible).IsFalse();
                 await Assert.That(window.Choice).IsEqualTo(ViewerDocumentUnsavedChoice.Cancel);
                 await Assert.That(document.State).IsSameReferenceAs(state);
