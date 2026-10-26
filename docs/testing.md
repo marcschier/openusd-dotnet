@@ -489,6 +489,12 @@ time samples and decoded tile placement for ordinary and uneven grids. The offic
 journey compares both 64-square tiles of a 128-by-64 sheet against the separately captured authored
 camera still before continuing edit/rollback/finalization/drain.
 
+`OpenUsdMcpServiceTests.MismatchedPreviewCameraBatchRefusesBeforeCaptureAndPreservesRetry`
+checks empty, short and extra backend camera batches through the real tool adapter for still,
+turntable and contact-sheet requests. Refusal is `render_failure`, with no captures or artifacts
+and an unchanged stage revision; correcting the batch permits retry with exact decoded PNG bytes,
+requested dimensions, ordered times and expected artifact counts.
+
 `ViewerCameraBookmarksWindowTests.EnterOnSelectedSavedViewUsesGuardedRecallAndRestoresListFocusAfterCancellation`
 uses real Skia headless keyboard input in both themes at the minimum window size: arrow selection,
 plain Enter, exact selected bookmark identity, refusal/retry/success and focus restoration after

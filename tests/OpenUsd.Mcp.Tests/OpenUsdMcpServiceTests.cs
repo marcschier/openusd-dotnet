@@ -9,6 +9,73 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments("still", 0)]
+    [Arguments("still", 2)]
+    [Arguments("turntable", 0)]
+    [Arguments("turntable", 1)]
+    [Arguments("turntable", 3)]
+    [Arguments("contact_sheet", 0)]
+    [Arguments("contact_sheet", 1)]
+    [Arguments("contact_sheet", 3)]
+    public async Task MismatchedPreviewCameraBatchRefusesBeforeCaptureAndPreservesRetry(string kind, int cameraCount)
+    {
+        using var files = new WorkspaceTestFiles();
+        bool mismatch = true;
+        var backend = new RecordingWorkspaceBackend
+        {
+            PreparePreviewCameras = times => Enumerable.Repeat(
+                CameraState.Default, mismatch ? cameraCount : times.Count).ToArray()
+        };
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore();
+        var source = new SequenceFrameFactory();
+        using var processor = new PreviewCaptureProcessor(source, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        var request = new RenderPreviewRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Kind = kind,
+            Width = kind == "contact_sheet" ? 4 : 2,
+            Height = 1,
+            Views =
+            [
+                .. Enumerable.Range(0, kind == "still" ? 1 : 2)
+                    .Select(index => new CaptureViewDto { Name = $"view-{index}", TimeCode = (index + 1) * 1.25 })
+            ]
+        };
+        var refused = await tools.RenderPreviewAsync(request, default);
+        await Assert.That(refused.IsError).IsTrue();
+        await Assert.That(refused.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
+            .IsEqualTo(OpenUsdMcpErrorCodes.RenderFailure);
+        await Assert.That(source.Times).IsEmpty();
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That((await workspace.GetStatusAsync()).Session!.StageRevision).IsEqualTo(session.StageRevision);
+        mismatch = false;
+        McpCaptureResultDto retry = await service.RenderPreviewAsync(request, default);
+        int artifactCount = kind == "turntable" ? 2 : 1;
+        await Assert.That(retry.Artifacts).Count().IsEqualTo(artifactCount);
+        await Assert.That(source.Times.SequenceEqual(request.Views.Select(static view => view.TimeCode))).IsTrue();
+        foreach (McpArtifactDto artifact in retry.Artifacts)
+        {
+            ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(artifact.Uri));
+            ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+            await Assert.That(image.Width).IsEqualTo(request.Width);
+            await Assert.That(image.Height).IsEqualTo(request.Height);
+            await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo(kind == "contact_sheet"
+                ? "FF0000FF00FF00FFFF0000FF00FF00FF" : "FF0000FF00FF00FF");
+        }
+        await Assert.That(retry.StageRevision).IsEqualTo(session.StageRevision);
+        await Assert.That(artifacts.Count).IsEqualTo(artifactCount);
+    }
+
+    [Test]
     [Arguments(1, 0)]
     [Arguments(2, 0)]
     [Arguments(3, 0)]

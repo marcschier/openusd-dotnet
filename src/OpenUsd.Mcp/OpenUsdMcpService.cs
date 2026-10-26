@@ -345,6 +345,12 @@ internal sealed partial class OpenUsdMcpService(
                     request.Views.Select(static view => view.TimeCode).ToArray(),
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (cameras.Count != request.Views.Count)
+            {
+                throw new OpenUsdMcpFailureException(
+                    OpenUsdMcpErrorCodes.RenderFailure,
+                    "Camera preparation did not produce exactly one camera per requested preview view.");
+            }
             var captureRequest = new PreviewCaptureRequest(
                 requestId,
                 kind,
