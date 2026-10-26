@@ -108,7 +108,8 @@ internal sealed partial class ViewerAuthoredEditController
     {
         string? expectedType = attributeName switch
         {
-            "focalLength" or "horizontalAperture" or "verticalAperture" => "float",
+            "focalLength" or "horizontalAperture" or "verticalAperture" or
+                "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop" => "float",
             "clippingRange" => "float2",
             "projection" => "token",
             "inputs:width" or "inputs:height" or "inputs:radius" or "inputs:length" or "inputs:angle" or
@@ -123,6 +124,7 @@ internal sealed partial class ViewerAuthoredEditController
         UsdPrim prim = stage.GetPrim(primPath);
         bool supportedSchema = expectedType is not null &&
             (attributeName is "focalLength" or "horizontalAperture" or "verticalAperture" or
+                "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop" or
                 "clippingRange" or "projection"
                 ? UsdGeomCamera.TryWrap(prim, out _)
                 : IsSupportedLightProperty(prim, attributeName));

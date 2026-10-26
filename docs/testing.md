@@ -198,6 +198,12 @@ async UI-thread continuity and repeated isolated sessions. `NotInParallel` alone
 establish dispatcher ownership, and software X11 rendering still needs an X server.
 The separate native Viewer workflow smokes retain their actual desktop requirements.
 
+`ViewerCameraPropertyNativeTests` covers exact camera declaration admission, signed offsets,
+default and time-sample edits, Clear, stale-review refusal, shared Undo/Redo and unchanged source bytes.
+`NativeCameraEditorSetsClearsAndSharesUndoWithoutChangingSource` drives the actual property-editor
+controls for offsets, focus distance and f-stop against a native stage in a Skia-backed headless
+session. It does not qualify a compositor, displayed scene or depth-of-field rendering.
+
 Coverage also runs the built DLL directly:
 
 ```powershell

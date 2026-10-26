@@ -1092,8 +1092,9 @@ vector and colour roles. Supported aliases include `texCoord2f` and `color4f`.
 This includes camera clipping ranges, ordinary translate/scale/Euler/matrix attributes and supported
 light/material parameters, not a material graph editor.
 
-Five native camera optics fields can also be edited without an authored local declaration:
-`projection`, `focalLength`, `horizontalAperture`, `verticalAperture`, and `clippingRange`.
+Nine native camera optics fields can also be edited without an authored local declaration:
+`projection`, `focalLength`, `horizontalAperture`, `verticalAperture`, `clippingRange`,
+`horizontalApertureOffset`, `verticalApertureOffset`, `focusDistance`, and `fStop`.
 The controller validates the camera schema and exact supported type, then reads noncustom
 declaration metadata from a fresh bounded native query. It never derives creation metadata from a
 display string or Sdr hint. The query does not supply undo state: the review layer is separately
@@ -1101,6 +1102,10 @@ captured, so undo removes a newly authored opinion and reveals the original sche
 Declared variability is preserved rather than guessed; uniform declarations cannot be authored
 as time samples. Other unsupported, referenced-only, and schema-only properties remain read-only
 instead of guessing their declaration metadata.
+The four offset/focus/f-stop fields support exact default and numeric-time review edits, Clear and
+conflict-safe Undo/Redo. Signed aperture offsets are preserved; no stage-unit conversion or value
+clamping is implied. Editing these authored inputs does not enable depth-of-field rendering or
+relax an output adapter's existing refusal of unsupported optical effects.
 
 Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
 cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
