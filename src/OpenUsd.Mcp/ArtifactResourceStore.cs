@@ -179,16 +179,23 @@ public sealed partial class ArtifactResourceStore : IArtifactResourceStore, IDis
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(artifacts);
-        if (artifacts.Count == 0)
+        int count = artifacts.Count;
+        if (count == 0)
         {
             return [];
         }
 
-        var additions = new List<Entry>(artifacts.Count);
+        lock (_gate)
+        {
+            EnsureCapacity(count, 0);
+        }
+        var requests = new ArtifactResourceWrite[count];
+        var uris = new Uri[count];
         var resourceUris = new HashSet<Uri>();
         long additionalBytes = 0;
-        foreach (ArtifactResourceWrite artifact in artifacts)
+        for (int index = 0; index < count; index++)
         {
+            ArtifactResourceWrite artifact = artifacts[index];
             ArgumentNullException.ThrowIfNull(artifact);
             ArgumentException.ThrowIfNullOrWhiteSpace(artifact.MediaType);
             Uri resourceUri = ArtifactResourceUri.Create(artifact.Id);
@@ -198,11 +205,27 @@ public sealed partial class ArtifactResourceStore : IArtifactResourceStore, IDis
                     $"An artifact batch contains duplicate resource URI '{resourceUri}'.");
             }
 
+            requests[index] = artifact;
+            uris[index] = resourceUri;
+            additionalBytes = checked(additionalBytes + artifact.Content.Length);
+        }
+        lock (_gate)
+        {
+            foreach (Uri uri in uris)
+            {
+                EnsureResourceDoesNotExist(uri);
+            }
+            EnsureCapacity(count, additionalBytes);
+        }
+
+        var additions = new List<Entry>(count);
+        for (int index = 0; index < count; index++)
+        {
+            ArtifactResourceWrite artifact = requests[index];
             byte[] ownedContent = artifact.Content.ToArray();
-            additionalBytes = checked(additionalBytes + ownedContent.LongLength);
             var descriptor = new ArtifactResourceDescriptor(
                 artifact.Id,
-                resourceUri,
+                uris[index],
                 artifact.MediaType,
                 ownedContent.LongLength,
                 Convert.ToHexString(SHA256.HashData(ownedContent)).ToLowerInvariant(),

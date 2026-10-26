@@ -420,6 +420,13 @@ dialog keeps the complete refusal and both buttons inside the client, pages the 
 scroll boundaries and cancels through Escape with no request. This is headless layout/keyboard
 evidence, not native bake execution or physical OS-input qualification.
 
+`ArtifactResourceStoreTests.RejectedMemoryBatchesDoNotCopyPayloadsBeforeAdmission` measures only
+the synchronous `AddRange` call with two preallocated 4-MiB inputs. Count, bytes, existing-identity
+and within-batch duplicate refusals must allocate less than 256 KiB, publish nothing and preserve
+the original resource bytes. Before preflight, the first three cases allocated over 8 MiB each.
+The existing exact-budget, concurrent-ID and verified-file atomicity cases remain separate.
+This is managed refusal-path allocation evidence, not a total process or concurrent heap ceiling.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

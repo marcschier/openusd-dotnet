@@ -8,6 +8,54 @@ public sealed partial class ArtifactResourceStoreTests
     [Arguments("bytes")]
     [Arguments("count")]
     [Arguments("duplicate")]
+    [Arguments("batch-duplicate")]
+    public async Task RejectedMemoryBatchesDoNotCopyPayloadsBeforeAdmission(string refusal)
+    {
+        using var store = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            MaximumResourceCount: refusal == "count" ? 1 : 4,
+            MaximumTotalBytes: refusal == "bytes" ? 8 : 16 * 1024 * 1024,
+            InlineThresholdBytes: 0));
+        ArtifactResourceDescriptor existing = store.Add("existing", "application/octet-stream",
+            new byte[] { 1, 2, 3, 4 });
+        byte[] payload = new byte[4 * 1024 * 1024];
+        ArtifactResourceWrite[] batch =
+        [
+            new(refusal == "duplicate" ? "existing" : "first", "application/octet-stream", payload),
+            new(refusal == "batch-duplicate" ? "first" : "second", "application/octet-stream", payload)
+        ];
+        InvalidOperationException? observed = null;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        try
+        {
+            store.AddRange(batch);
+        }
+        catch (InvalidOperationException exception)
+        {
+            observed = exception;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        await Assert.That(observed).IsNotNull();
+        if (refusal is "bytes" or "count")
+        {
+            await Assert.That(observed is ArtifactResourceStoreCapacityException).IsTrue();
+        }
+        else
+        {
+            await Assert.That(observed is ArtifactResourceStoreCapacityException).IsFalse();
+        }
+        await Assert.That(allocated).IsLessThan(256 * 1024L);
+        await Assert.That(store.Count).IsEqualTo(1);
+        await Assert.That(store.TotalBytes).IsEqualTo(4L);
+        await Assert.That(store.TryGetDescriptor(ArtifactResourceUri.Create("first"), out _)).IsFalse();
+        await Assert.That(store.TryGetDescriptor(ArtifactResourceUri.Create("second"), out _)).IsFalse();
+        await Assert.That(Convert.ToHexString((await store.ReadAsync(existing.ResourceUri))!.Content.Span))
+            .IsEqualTo("01020304");
+    }
+
+    [Test]
+    [Arguments("bytes")]
+    [Arguments("count")]
+    [Arguments("duplicate")]
     [Arguments("changed")]
     [Arguments("missing")]
     public async Task VerifiedFileBatchFailuresLeaveNoNewDescriptorOrContent(string failure)

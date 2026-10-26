@@ -1270,6 +1270,11 @@ The store defaults to **128 resources** and **64 MiB** total logical content. Ev
 by the SDK. An oversized read returns `artifact_too_large`; a changed disk-backed cache entry
 returns `artifact_integrity_error`. `OPENUSD_MCP_MAX_ARTIFACT_STORE_BYTES` changes the total store
 budget. These limits are checked as 64-bit values before any response buffer is allocated.
+In-memory batch publication snapshots and validates descriptors, duplicate identities and available
+count/byte capacity before copying or hashing payloads. Publication rechecks capacity and identities
+atomically, so racing publishers cannot overfill the registry. This avoids payload-sized allocations
+for batches already known to be inadmissible; it is not an aggregate heap bound on simultaneous
+in-flight publishers, caller-owned payloads, inline base64 or SDK serialization.
 
 ## Error envelope
 
