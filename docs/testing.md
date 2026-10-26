@@ -212,7 +212,9 @@ source bytes. This authoring journey is not a pixel comparison or optical-render
 `ComparisonKeyboardEscapeCancelsAndDrainsBeforeDisposingTheWindow` covers compact light/dark
 comparison dialogs, initial keyboard focus and routed Escape from the focused Cancel control.
 A delayed reader confirms cancellation does not close the window before resource drain or publish
-a partial pair or comparison file. These headless keyboard cases do not qualify physical OS input.
+a partial pair or comparison file. Loading hands owned keyboard focus to Cancel, returns it to
+Compare after cancellation or completion, and retains independently decoded pixels on retry.
+These headless keyboard cases do not qualify physical OS input.
 
 Coverage also runs the built DLL directly:
 

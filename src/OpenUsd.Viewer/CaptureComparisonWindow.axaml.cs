@@ -24,6 +24,7 @@ internal sealed partial class CaptureComparisonWindow : Window
     private ViewerCapturePresentation? _presentation;
     private bool _closing;
     private bool _picking;
+    private bool _restoreOperationFocus;
 
     internal CaptureComparisonWindow()
     {
@@ -360,6 +361,8 @@ internal sealed partial class CaptureComparisonWindow : Window
 
     private void UpdateAvailability()
     {
+        bool ownsFocus = IsActive || IsKeyboardFocusWithin;
+        _restoreOperationFocus |= CancelComparisonButton.IsKeyboardFocusWithin;
         bool available = _loadCancellation is null && !_closing && !_picking;
         ChooseBeforeButton.IsEnabled = available;
         ChooseAfterButton.IsEnabled = available;
@@ -369,6 +372,18 @@ internal sealed partial class CaptureComparisonWindow : Window
         CompareAgainButton.IsEnabled = available && _beforePath is not null && _afterPath is not null;
         ComparisonMode.IsEnabled = available && _beforeBitmap is not null && _afterBitmap is not null;
         CancelComparisonButton.IsEnabled = _loadCancellation is not null && !_closing;
+        if (ownsFocus && !_closing)
+        {
+            if (CancelComparisonButton.IsEnabled)
+            {
+                CancelComparisonButton.Focus();
+            }
+            else if (available && _restoreOperationFocus)
+            {
+                (CompareAgainButton.IsEnabled ? CompareAgainButton : ChooseBeforeButton).Focus();
+                _restoreOperationFocus = false;
+            }
+        }
     }
 
     private void SetStatus(string message, bool error = false)

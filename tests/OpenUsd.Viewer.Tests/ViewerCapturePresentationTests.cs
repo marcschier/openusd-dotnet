@@ -690,8 +690,13 @@ public sealed class ViewerCapturePresentationTests
             var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var window = new CaptureComparisonWindow(async (_, _, token) =>
+            int attempt = 0;
+            var window = new CaptureComparisonWindow(async (before, after, token) =>
             {
+                if (++attempt == 2)
+                {
+                    return await ViewerCaptureComparison.LoadAsync(before, after, token);
+                }
                 entered.TrySetResult();
                 try
                 {
@@ -720,7 +725,28 @@ public sealed class ViewerCapturePresentationTests
                 await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 Button cancel = Required<Button>(window, "CancelComparisonButton");
                 await Assert.That(cancel.IsEnabled).IsTrue();
-                await Assert.That(cancel.Focus()).IsTrue();
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(load.IsCompleted).IsFalse();
+                release.TrySetResult();
+                await load.WaitAsync(TimeSpan.FromSeconds(5));
+                Button retry = Required<Button>(window, "CompareAgainButton");
+                await Assert.That(retry.IsKeyboardFocusWithin).IsTrue();
+                await AssertNoPairAsync(window);
+                await window.LoadPairAsync(fixture.Before, fixture.After).WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(retry.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+
+                entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                load = window.LoadPairAsync(fixture.Before, fixture.After);
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
                 cancel.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
                 await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 await Assert.That(window.IsVisible).IsTrue();
