@@ -1893,6 +1893,14 @@ body/deformation counts and optional review identity in copyable read-only metad
 Ordinary frames explicitly report that no simulation publication was recorded. These are
 the recording host's attestations, not independent source verification or a query of the current
 scene; changing the selected frame replaces the context rather than retaining the prior frame.
+The same gallery exposes the selected frame's original **camera request** in a separate
+copyable field: automatic or matrix mode, complete row-major view/projection matrices and
+any view-space clip planes, with invariant round-trip numbers. Automatic mode explicitly
+reports that the renderer-selected camera was not recorded; it does not present default
+zero matrices as that camera. Selection and closing clear stale context. This is requested
+state retained with the completed frame, not effective backend state, a camera-prim/optics
+receipt, source verification or a query of the current document. No stage is reopened or
+frame rerendered to display it.
 Keyboard focus starts in the job list; Up/Down changes the selected historical output.
 Enter uses the same verified preview and replacement/drain path as the button, and does
 nothing when there is no available selection or the browser is already opening or closing.

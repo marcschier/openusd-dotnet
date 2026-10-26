@@ -384,6 +384,14 @@ journey additionally verifies successful sequence/product publication and exclud
 jobs from history. These checks do not establish persistence across Viewer restarts or native display
 qualification. Run each class with the same focused selector shown above, substituting its class name.
 
+`ViewerCompletedJobWindowTests.HistoricalFramesExposeOriginalCameraRequestsWithoutInventingAnAutomaticCamera`
+checks the historical gallery's copyable original camera request in both themes: every view/projection
+matrix element, zero/eight view-space clip planes, invariant numbers, immutable copied planes,
+explicit unavailable renderer-selected camera in automatic mode and clearing on deselection/close.
+The real PNGs retain their pixels and bytes; the camera field and Close remain reachable at minimum
+size, and closing disposes the owned bitmap. This managed headless journey does not reopen a stage
+or render again, and does not qualify effective backend camera state or physical display.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

@@ -48,6 +48,10 @@
           <TextBox x:Name="ResultsFrameContext" IsReadOnly="True" TextWrapping="Wrap"
                    Text="Select a completed frame to inspect its recorded context."
                    AutomationProperties.Name="Original selected frame simulation publication" />
+          <TextBox x:Name="ResultsCameraContext" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="132"
+                   ScrollViewer.VerticalScrollBarVisibility="Auto"
+                   Text="Select a completed frame to inspect its camera request."
+                   AutomationProperties.Name="Original selected frame camera request" />
         </StackPanel>
       </StackPanel>
     </ScrollViewer>

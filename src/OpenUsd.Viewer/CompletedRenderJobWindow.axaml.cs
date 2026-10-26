@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -40,8 +41,12 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         }
         ResultsCloseButton.Click += (_, _) => Close();
         ResultsFrames.SelectionChanged += (_, _) =>
+        {
             ResultsFrameContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.RecordedContext ??
                 "Select a completed frame to inspect its recorded context.";
+            ResultsCameraContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.CameraContext ??
+                "Select a completed frame to inspect its camera request.";
+        };
         KeyDown += (_, args) =>
         {
             if (args.Key == Key.Escape)
@@ -189,6 +194,22 @@ internal sealed class CompletedRenderJobTile : IDisposable
         TimeLabel = $"t = {ViewerTimelineMath.Format(TimeCode)}";
         DimensionsLabel = $"{frame.SourceDimensions.Width} x {frame.SourceDimensions.Height} original";
         FileName = frame.FileName;
+        CameraContext = string.Join("\n",
+            "Recorded camera request; not effective backend state or independent source verification.",
+            $"Mode: {frame.Camera.Mode}",
+            frame.Camera.Mode == CameraMode.Matrices
+                ? $"View (row-major): {FormatMatrix(frame.Camera.View)}\n" +
+                    $"Projection (row-major): {FormatMatrix(frame.Camera.Projection)}"
+                : "The renderer-selected camera was not recorded.");
+        for (int index = 0; index < frame.Camera.ClipPlanes.Count; index++)
+        {
+            CameraContext += FormattableString.Invariant(
+                $"\nClip plane {index} (view-space): {FormatVector(frame.Camera.ClipPlanes[index])}");
+        }
+        if (frame.Camera.Mode == CameraMode.Matrices && frame.Camera.ClipPlanes.Count == 0)
+        {
+            CameraContext += "\nNo clip planes were requested.";
+        }
         RecordedContext = frame.Simulation is { } simulation
             ? string.Join("\n",
                 $"Epoch: {simulation.Epoch:D}",
@@ -217,15 +238,26 @@ internal sealed class CompletedRenderJobTile : IDisposable
     public string DimensionsLabel { get; }
     public string FileName { get; }
     public string RecordedContext { get; }
+    public string CameraContext { get; }
     public string AccessibleName { get; }
     public Bitmap Image { get; }
 
     public void Dispose() => Image.Dispose();
 
+    private static string FormatMatrix(Matrix4x4 matrix) => string.Join("; ",
+        FormatVector(new Vector4(matrix.M11, matrix.M12, matrix.M13, matrix.M14)),
+        FormatVector(new Vector4(matrix.M21, matrix.M22, matrix.M23, matrix.M24)),
+        FormatVector(new Vector4(matrix.M31, matrix.M32, matrix.M33, matrix.M34)),
+        FormatVector(new Vector4(matrix.M41, matrix.M42, matrix.M43, matrix.M44)));
+
+    private static string FormatVector(Vector4 vector) => FormattableString.Invariant(
+        $"{vector.X:R} {vector.Y:R} {vector.Z:R} {vector.W:R}");
+
     private static WriteableBitmap CreateBitmap(ViewerCompletedFramePreview frame)
     {
         var bitmap = new WriteableBitmap(
-            new PixelSize(frame.Width, frame.Height), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Unpremul);
+            new PixelSize(frame.Width, frame.Height), new Avalonia.Vector(96, 96),
+            PixelFormat.Rgba8888, AlphaFormat.Unpremul);
         bool copied = false;
         try
         {
