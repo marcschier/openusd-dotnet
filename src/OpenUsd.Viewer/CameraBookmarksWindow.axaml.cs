@@ -48,6 +48,14 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
         RenameSavedViewButton.Click += async (_, _) => await BeginAsync(RenameAsync);
         RemoveSavedViewButton.Click += async (_, _) => await BeginAsync(RemoveAsync);
         RecallSavedViewButton.Click += async (_, _) => await BeginAsync(RecallAsync);
+        SavedViewsList.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && RecallSavedViewButton.IsEnabled)
+            {
+                e.Handled = true;
+                await BeginAsync(RecallAsync);
+            }
+        };
         SavedViewsRefreshButton.Click += async (_, _) => await BeginAsync(token => LoadAsync(null, token));
         SavedViewsCancelButton.Click += (_, _) => Cancel();
         SavedViewsCloseButton.Click += (_, _) => Close();

@@ -614,6 +614,9 @@ bookmark IDs, not names or filesystem paths; underscores in labels remain litera
 At the minimum window size, long source descriptions and refusal messages scroll with the
 manager body rather than pushing Refresh, Cancel operation or Close out of reach.
 Keyboard-focused name fields scroll into view; source and error text are kept intact.
+Tab to the saved-view list, use the arrow keys to select a view, and press Enter to recall it.
+Enter in the name field or with a modifier does not recall a view. The same availability,
+cancellation and restoration rules apply as for the Recall button.
 
 Saved views are **review data**, not global settings or a settings sidecar. The reserved review-only
 address is `/__OpenUsdViewerReview.openusdViewer:cameraBookmarks`, a custom uniform `string[]` of

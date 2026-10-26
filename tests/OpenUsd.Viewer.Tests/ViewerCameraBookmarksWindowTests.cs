@@ -6,12 +6,138 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
+using OpenUsd.Editing;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
 
 [NotInParallel]
 public sealed class ViewerCameraBookmarksWindowTests
 {
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task EnterOnSelectedSavedViewUsesGuardedRecallAndRestoresListFocusAfterCancellation(bool dark)
+    {
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            string stamp = new('A', 64);
+            ViewerCameraBookmark[] bookmarks = [create("First"), create("Second")];
+            var capture = new ViewerCameraBookmarkCapture(
+                new ViewerAuthoredEditCapture(Guid.NewGuid(), "review",
+                    new UsdLayerAuthoredSnapshot(new(1, 2, 3), 0, [], [])), stamp, bookmarks);
+            bool available = true;
+            int recalls = 0;
+            ViewerCameraBookmark? recalled = null;
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var drain = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var window = new CameraBookmarksWindow(
+                _ => Task.FromResult(capture),
+                (_, _) => throw new InvalidOperationException("Keyboard recall must not capture."),
+                (_, _, _, _) => throw new InvalidOperationException("Keyboard recall must not edit."),
+                async (bookmark, token) =>
+                {
+                    recalled = bookmark;
+                    int attempt = ++recalls;
+                    if (attempt == 3)
+                    {
+                        return;
+                    }
+                    if (attempt == 2)
+                    {
+                        throw new IOException("The saved camera is no longer available.");
+                    }
+                    try
+                    {
+                        await Task.Delay(Timeout.Infinite, token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        cancelled.TrySetResult();
+                        await drain.Task;
+                        throw;
+                    }
+                },
+                () => new ViewerCameraBookmarkAvailability(false, false, available, "Original review", "Read only."))
+            {
+                Width = 560,
+                Height = 440,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                ListBox list = Required<ListBox>(window, "SavedViewsList");
+                await Assert.That(list.Focus()).IsTrue();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await Assert.That(recalls).IsEqualTo(0);
+                window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
+                window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
+                await Assert.That(list.SelectedIndex).IsEqualTo(1);
+                window.KeyPress(Key.Enter, RawInputModifiers.Control, PhysicalKey.Enter, null);
+                await Assert.That(recalls).IsEqualTo(0);
+                available = false;
+                window.UpdateContext();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await Assert.That(recalls).IsEqualTo(0);
+                available = true;
+                window.UpdateContext();
+                TextBox name = Required<TextBox>(window, "SavedViewName");
+                name.Focus();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await Assert.That(recalls).IsEqualTo(0);
+                list.Focus();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await Assert.That(recalls).IsEqualTo(1);
+                await Assert.That(ReferenceEquals(recalled, bookmarks[1])).IsTrue();
+                await Assert.That(window.IsRunning).IsTrue();
+                Button cancel = Required<Button>(window, "SavedViewsCancelButton");
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                list.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+                await Assert.That(recalls).IsEqualTo(1);
+                window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                await cancelled.Task.WaitAsync(lifetime.Token);
+                await Assert.That(window.IsRunning).IsTrue();
+                await Assert.That(window.IsVisible).IsTrue();
+                await Assert.That(cancel.IsEnabled).IsFalse();
+                drain.TrySetResult();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(list.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(list.SelectedIndex).IsEqualTo(1);
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text).StartsWith("Cancelled.");
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(recalls).IsEqualTo(2);
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text)
+                    .Contains("The saved camera is no longer available.");
+                await Assert.That(list.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(name.Text).IsEqualTo("Second");
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(recalls).IsEqualTo(3);
+                await Assert.That(ReferenceEquals(recalled, bookmarks[1])).IsTrue();
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text)
+                    .IsEqualTo("Saved view recalled exactly. Playback is paused; the review was not edited.");
+                await Assert.That(list.IsKeyboardFocusWithin).IsTrue();
+                window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                await window.CloseAsync().WaitAsync(lifetime.Token);
+            }
+            finally
+            {
+                drain.TrySetResult();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+
+            ViewerCameraBookmark create(string name) => ViewerCameraBookmark.CreateFree(
+                Guid.NewGuid(), name, stamp, 12.5, new ViewportDimensions(800, 600),
+                new ViewerCameraNavigationState(false, new(1, 2, 3), 5, 0.5f, 0.2f,
+                    ViewerCameraProjectionMode.Perspective, 0.7f, 3, 0.1f, 100, 800f / 600));
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
     [Test]
     [Arguments(false)]
     [Arguments(true)]

@@ -21,8 +21,9 @@
           <TextBlock x:Name="SavedViewsSource" TextWrapping="Wrap" Classes="viewer-secondary"
                      AutomationProperties.Name="Saved-view source and persistence" />
         </StackPanel>
-        <ListBox x:Name="SavedViewsList" Grid.Row="1" MinHeight="120"
-                 AutomationProperties.Name="Saved views in the current review" />
+        <ListBox x:Name="SavedViewsList" Grid.Row="1" MinHeight="120" Focusable="True"
+                 AutomationProperties.Name="Saved views in the current review"
+                 ToolTip.Tip="Select a saved view and press Enter to recall its original camera and time." />
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="8">
           <TextBlock Text="Name" VerticalAlignment="Center" />
           <TextBox x:Name="SavedViewName" Grid.Column="1" MaxLength="128"

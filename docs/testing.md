@@ -489,6 +489,13 @@ time samples and decoded tile placement for ordinary and uneven grids. The offic
 journey compares both 64-square tiles of a 128-by-64 sheet against the separately captured authored
 camera still before continuing edit/rollback/finalization/drain.
 
+`ViewerCameraBookmarksWindowTests.EnterOnSelectedSavedViewUsesGuardedRecallAndRestoresListFocusAfterCancellation`
+uses real Skia headless keyboard input in both themes at the minimum window size: arrow selection,
+plain Enter, exact selected bookmark identity, refusal/retry/success and focus restoration after
+cancellation has actually drained. It also refuses recall without selection or availability,
+from the name field, with Ctrl+Enter, or while an operation is running. This is managed dialog
+evidence, not native camera activation, physical-display input or screen-reader qualification.
+
 `AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges` checks both
 renderer identities, exact clipping arguments, observed/target metric values and units, empty
 argument/metric lists, deterministic repeat JSON and unchanged revisions without rendering or edits.
