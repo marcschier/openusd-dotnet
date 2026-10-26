@@ -1593,8 +1593,10 @@ and results to 64 entries; refine the query to find additional actions.
 Menus remain the canonical action/state sources. The palette, contextual buttons and modified shell
 shortcuts invoke those same actions, including ancestor enablement, conditional visibility and
 current checked state. Unavailable actions remain dimmed in search; conditionally hidden commands,
-such as an unconfigured bridge, are omitted. In the search/results controls, Enter runs the selected
-available action and Up/Down moves selection. Focused Run and Close buttons retain normal keyboard
+such as an unconfigured bridge, are omitted. In the search/results controls, plain Enter runs the selected
+available action and plain Up/Down moves selection. The palette does not intercept modified Enter or
+arrow gestures; modified keys in the search query cannot run commands or change the selected result.
+Focused Run and Close buttons retain normal keyboard
 activation; Enter on Close never executes the selected action. Escape closes from any control.
 The palette closes before dispatching an action that may open another
 dialog. Closing restores the prior control or the still-attached native viewport's actual focus.

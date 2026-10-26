@@ -478,6 +478,13 @@ checks actual tool `quota_exceeded` classification for still, turntable and shee
 serialized ordered retry diagnostics, exact decoded pixels and unchanged source/revision.
 These are managed capture/publication and protocol checks, not new native-renderer qualification.
 
+`ViewerCommandPaletteWindowTests.ModifiedPaletteSearchKeysDoNotNavigateOrDispatchWhilePlainKeysRetainTheOriginalAction`
+sends actual headless Enter/Up/Down with Control, Shift, Alt and Meta while the query owns focus.
+Modified keys must leave the palette open, keep the selected result and dispatch nothing.
+Subsequent plain arrows and Enter must still invoke exactly the original selected action once.
+The same suite retains unavailable-action guards, live enablement and compact light/dark layouts;
+this is managed keyboard-routing evidence, not physical input or native-child focus qualification.
+
 `CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` blocks the actual
 preview frame source, cancels while capture is active, and requires drain before the original token
 or capture failure reaches the caller. Both paths publish nothing and retry with decoded `010203FF`

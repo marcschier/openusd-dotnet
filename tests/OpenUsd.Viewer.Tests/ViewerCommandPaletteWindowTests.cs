@@ -14,6 +14,85 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerCommandPaletteWindowTests
 {
     [Test]
+    [Arguments(Key.Enter, RawInputModifiers.Control)]
+    [Arguments(Key.Enter, RawInputModifiers.Shift)]
+    [Arguments(Key.Enter, RawInputModifiers.Alt)]
+    [Arguments(Key.Enter, RawInputModifiers.Meta)]
+    [Arguments(Key.Up, RawInputModifiers.Control)]
+    [Arguments(Key.Up, RawInputModifiers.Shift)]
+    [Arguments(Key.Up, RawInputModifiers.Alt)]
+    [Arguments(Key.Up, RawInputModifiers.Meta)]
+    [Arguments(Key.Down, RawInputModifiers.Control)]
+    [Arguments(Key.Down, RawInputModifiers.Shift)]
+    [Arguments(Key.Down, RawInputModifiers.Alt)]
+    [Arguments(Key.Down, RawInputModifiers.Meta)]
+    public async Task ModifiedPaletteSearchKeysDoNotNavigateOrDispatchWhilePlainKeysRetainTheOriginalAction(
+        Key key, RawInputModifiers modifiers)
+    {
+        await RunUiAsync(async () =>
+        {
+            using var commands = new ViewerCommandDispatcher();
+            var first = new Button();
+            var selected = new Button();
+            var last = new Button();
+            int firstCalls = 0;
+            int selectedCalls = 0;
+            int lastCalls = 0;
+            first.Click += (_, _) => firstCalls++;
+            selected.Click += (_, _) => selectedCalls++;
+            last.Click += (_, _) => lastCalls++;
+            commands.Register(ViewerCommandCatalog.Get(ViewerCommandIds.FileOpenStage), first);
+            commands.Register(ViewerCommandCatalog.Get(ViewerCommandIds.FileOpenReview), selected);
+            commands.Register(ViewerCommandCatalog.Get(ViewerCommandIds.FileOpenSample), last);
+            var window = new CommandPaletteWindow(commands,
+                _ => throw new InvalidOperationException("Unexpected error."));
+            window.Show();
+            try
+            {
+                TextBox search = Required<TextBox>(window, "CommandSearch");
+                ListBox results = Required<ListBox>(window, "CommandResults");
+                await Assert.That(search.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(results.SelectedIndex).IsEqualTo(0);
+                send(Key.Down, RawInputModifiers.None);
+                await Assert.That(results.SelectedIndex).IsEqualTo(1);
+                send(key, modifiers);
+                await Assert.That(window.IsVisible).IsTrue();
+                await Assert.That(results.SelectedIndex).IsEqualTo(1);
+                await Assert.That(search.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(firstCalls + selectedCalls + lastCalls).IsEqualTo(0);
+                send(Key.Up, RawInputModifiers.None);
+                await Assert.That(results.SelectedIndex).IsEqualTo(0);
+                send(Key.Down, RawInputModifiers.None);
+                await Assert.That(results.SelectedIndex).IsEqualTo(1);
+                send(Key.Enter, RawInputModifiers.None);
+                await Assert.That(window.IsVisible).IsFalse();
+                await Assert.That(firstCalls).IsEqualTo(0);
+                await Assert.That(selectedCalls).IsEqualTo(1);
+                await Assert.That(lastCalls).IsEqualTo(0);
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            void send(Key input, RawInputModifiers inputModifiers)
+            {
+                PhysicalKey physical = input switch
+                {
+                    Key.Up => PhysicalKey.ArrowUp,
+                    Key.Down => PhysicalKey.ArrowDown,
+                    _ => PhysicalKey.Enter
+                };
+                window.KeyPress(input, inputModifiers, physical, null);
+                if (window.IsVisible)
+                {
+                    window.KeyRelease(input, inputModifiers, physical, null);
+                }
+            }
+        });
+    }
+
+    [Test]
     public async Task KeyboardSelectionSkipsUnavailableCommandsAndRunsTheOriginalAction()
     {
         await RunUiAsync(async () =>

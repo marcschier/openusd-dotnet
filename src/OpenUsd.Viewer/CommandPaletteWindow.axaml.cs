@@ -97,7 +97,8 @@ internal sealed partial class CommandPaletteWindow : Window
             e.Handled = true;
             Close();
         }
-        else if (!CommandSearch.IsKeyboardFocusWithin && !CommandResults.IsKeyboardFocusWithin)
+        else if (e.KeyModifiers != KeyModifiers.None ||
+            (!CommandSearch.IsKeyboardFocusWithin && !CommandResults.IsKeyboardFocusWithin))
         {
             return;
         }
