@@ -113,6 +113,16 @@ also round-trips recorded frame and contact-sheet identities through the officia
 while ordinary frame simulation metadata stays null. This is managed transport qualification,
 not native physics execution or independent verification of the host's review attestation.
 
+`NativeMcpIntegrationTests.OfficialProtocolEditsNativePixelsRollsBackAndRetainsOriginalArtifactsAfterClose`
+uses the official MCP client/server with the real service, native stage and retained renderer.
+It changes an emissive material from red to green through `apply_edits`, decodes resource PNGs,
+checks dominant-colour coverage and stale-revision refusal, and restores exact original pixels
+through checkpoint rollback. Finalization reports missing presentation modes until the still,
+contact sheet and turntable exist; the complete report set then succeeds. Closing drains logical
+buffer/texture/staging reservations while original immutable PNG resources remain readable.
+This is native offscreen protocol qualification, not an optimization-proposal journey, Viewer
+child launch, physical display, hardware parity or physics recording.
+
 Interactive render paths may not use CPU readback. Headless image tests compare against pinned
 Storm references with perceptual tolerances rather than exact cross-driver pixels.
 
