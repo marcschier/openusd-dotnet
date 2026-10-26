@@ -296,7 +296,10 @@ the Viewer does not depend on MCP and does not add a second contact-sheet encode
 `ViewerCompletedJobHistoryTests` covers the process-local, eight-job history: empty/singleton state,
 newest-first eviction with immutable prior snapshots and no file deletion, reopening original jobs
 after their publisher closes, selected-job replacement and bitmap disposal, missing/tampered file
-errors, compact-window actions and cancellation/drain of delayed preview loading. It uses real PNGs
+errors, compact-window actions and cancellation/drain of delayed preview loading.
+`HistoryKeepsActionsAndFocusedOutputReachableWithLongHistoricalContext` checks minimum/default
+sizes in both themes with long metadata, initial list focus, Up/Down selection, focused output
+visibility and Escape close. It uses real PNGs
 and an owned Avalonia headless session, not a native renderer. The managed
 `ViewerSequenceWindowLayoutTests/ManagedCompletedResultsKeepJobRetryCancellationAndOwnerDrainSemantics`
 journey additionally verifies successful sequence/product publication and excludes failed/cancelled

@@ -1855,6 +1855,9 @@ Select a job to see its original description and copyable output directory, then
 to reopen the same verified gallery. Changing the selected job closes and drains the previous preview
 when **View results** is invoked, so the old job cannot masquerade as the newly requested output.
 Closing the history window or Viewer drains that preview too.
+Keyboard focus starts in the job list; Up/Down changes the selected historical output.
+The original description stays readable in the scrollable details area, actions remain visible
+at the minimum window size, and Escape closes and drains the browser from its focused controls.
 
 This is process-local discovery, not a persistent manifest browser: restarting Viewer clears the
 list. It does not import arbitrary job directories, reopen source stages, compare effective requests

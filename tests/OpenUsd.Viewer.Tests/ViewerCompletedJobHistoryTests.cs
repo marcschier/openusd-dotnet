@@ -3,8 +3,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
@@ -12,6 +14,81 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerCompletedJobHistoryTests
 {
+    private static readonly string[] HistoryActionNames = ["HistoryViewButton", "HistoryCloseButton"];
+
+    [Test]
+    [Arguments(520, 440, false)]
+    [Arguments(520, 440, true)]
+    [Arguments(740, 560, false)]
+    [Arguments(740, 560, true)]
+    public async Task HistoryKeepsActionsAndFocusedOutputReachableWithLongHistoricalContext(
+        int width, int height, bool dark)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob();
+        RenderDiskJobResult older = files.CreateJob(1);
+        string description = string.Join(' ', Enumerable.Repeat("Original historical renderer context", 128));
+        var history = new ViewerCompletedJobHistory();
+        history.Publish(older, "Older historical output");
+        history.Publish(job, description);
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedJobHistoryWindow(history)
+            {
+                Width = width,
+                Height = height,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                await Assert.That(Required<TextBlock>(window, "HistoryDescription").Text).IsEqualTo(description);
+                ListBox jobs = Required<ListBox>(window, "HistoryJobs");
+                await Assert.That(jobs.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(jobs.SelectedIndex).IsEqualTo(0);
+                jobs.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Down });
+                await Assert.That(jobs.SelectedIndex).IsEqualTo(1);
+                await Assert.That(Required<TextBox>(window, "HistoryOutput").Text).IsEqualTo(older.OutputDirectory);
+                jobs.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
+                await Assert.That(jobs.SelectedIndex).IsEqualTo(0);
+                await Assert.That(jobs.Bounds.Height).IsGreaterThanOrEqualTo(100);
+                foreach (string name in HistoryActionNames)
+                {
+                    Button button = Required<Button>(window, name);
+                    Point origin = button.TranslatePoint(default, window) ??
+                        throw new InvalidOperationException($"History action {name} has no window coordinates.");
+                    await Assert.That(origin.Y).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Y + button.Bounds.Height).IsLessThanOrEqualTo(window.ClientSize.Height);
+                    await Assert.That(origin.X).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.X + button.Bounds.Width).IsLessThanOrEqualTo(window.ClientSize.Width);
+                }
+                TextBox output = Required<TextBox>(window, "HistoryOutput");
+                await Assert.That(output.Focus()).IsTrue();
+                output.BringIntoView();
+                window.UpdateLayout();
+                Point location = output.TranslatePoint(default, window) ??
+                    throw new InvalidOperationException("Historical output has no window coordinates.");
+                await Assert.That(location.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(location.Y + output.Bounds.Height).IsLessThanOrEqualTo(window.ClientSize.Height);
+                await Assert.That(output.Text).IsEqualTo(job.OutputDirectory);
+                await Assert.That(Required<TextBlock>(window, "HistoryStatus").Text).Contains("not the current scene");
+                output.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsVisible).IsFalse();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
     [Test]
     public async Task HistoryKeepsEightNewestOriginalJobsWithoutMutatingSnapshotsOrDeletingFiles()
     {
