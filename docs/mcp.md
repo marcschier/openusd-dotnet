@@ -1390,10 +1390,11 @@ dotnet build OpenUsd.slnx -c Release
   )
 ```
 
-The MCP protocol tests use the official in-memory MCP client/server transports to discover all 12
+The MCP protocol tests use the official in-memory MCP client/server transports to discover all 18
 tools and their schemas, invoke a tool, and read an artifact resource. A separate actual-process
 stdio test performs initialization, `tools/list`, `resources/list`, resource-template discovery,
-and a safe no-session invocation; the official transport rejects non-protocol stdout and captures
+and safe no-session scene and empty process-local job-history invocations. It verifies the same
+18-tool catalog, including `list_sequence_jobs`; the official transport rejects non-protocol stdout and captures
 host logs from stderr. Native overlay/checkpoint/rollback and retained-capture integration tests run
 when the repository Core/Imaging runtime layout is present and otherwise skip with the missing path
 reported explicitly. Package tests assert the tool-package identity and command plus the RID

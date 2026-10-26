@@ -58,8 +58,9 @@ public sealed class StdioProtocolTests
                 },
                 cancellationToken: cancellation.Token);
 
-            await Assert.That(tools.Count).IsEqualTo(17);
+            await Assert.That(tools.Count).IsEqualTo(18);
             await Assert.That(tools.Any(static tool => tool.Name == "render_physics_sequence")).IsTrue();
+            await Assert.That(tools.Any(static tool => tool.Name == "list_sequence_jobs")).IsTrue();
             await Assert.That(resources).IsEmpty();
             await Assert.That(templates).Count().IsEqualTo(1);
             await Assert.That(noSession.IsError).IsTrue();
@@ -70,6 +71,14 @@ public sealed class StdioProtocolTests
                     .GetProperty("code")
                     .GetString())
                 .IsEqualTo("no_session");
+            CallToolResult history = await client.CallToolAsync(
+                "list_sequence_jobs",
+                new Dictionary<string, object?>(),
+                cancellationToken: cancellation.Token);
+            await Assert.That(history.IsError).IsNotEqualTo(true)
+                .Because(string.Join(Environment.NewLine, standardError));
+            await Assert.That(history.StructuredContent.HasValue).IsTrue();
+            await Assert.That(history.StructuredContent!.Value.GetProperty("jobs").GetArrayLength()).IsEqualTo(0);
         }
         await Assert.That(standardError).IsNotEmpty()
             .Because(
