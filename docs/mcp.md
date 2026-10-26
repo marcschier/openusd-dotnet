@@ -1279,6 +1279,10 @@ count/byte capacity before copying or hashing payloads. Publication rechecks cap
 atomically, so racing publishers cannot overfill the registry. This avoids payload-sized allocations
 for batches already known to be inadmissible; it is not an aggregate heap bound on simultaneous
 in-flight publishers, caller-owned payloads, inline base64 or SDK serialization.
+File publication also rejects duplicate identities, unavailable count capacity and inadmissible
+verified lengths before opening any source. Unverified file lengths are not guessed: actual
+extents and hashes are still checked after opening, and final publication rechecks capacity and
+identity atomically. Preflight does not reserve capacity against concurrent in-memory publishers.
 
 ## Error envelope
 

@@ -434,6 +434,15 @@ the original resource bytes. Before preflight, the first three cases allocated o
 The existing exact-budget, concurrent-ID and verified-file atomicity cases remain separate.
 This is managed refusal-path allocation evidence, not a total process or concurrent heap ceiling.
 
+`ArtifactResourceStoreTests.VerifiedFileAdmissionRejectsKnownFailuresBeforeOpeningSources` holds
+the original source exclusively open while requesting exhausted byte/count capacity or duplicate
+identities. Known admission failures must win over source-open errors with no publication or
+content changes. `SingleFileAdmissionRejectsKnownIdentityOrCountBeforeOpeningSources` covers
+verified and unverified single-file entry points; the combined `long.MaxValue` length case must
+refuse capacity without integer overflow or file I/O. Existing exact-budget, changed-content,
+missing-source, concurrent-winner and cancellation cases retain actual verification and cleanup.
+These are logical registry/file-admission checks, not process-memory or concurrent reservations.
+
 `CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
 lazy source that throws if the constructor requests a tenth plane. Admission must reject at
 the ninth and dispose the enumerator, including when the first plane is nonfinite (the existing

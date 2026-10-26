@@ -5,6 +5,110 @@ namespace OpenUsd.Mcp.Tests;
 public sealed partial class ArtifactResourceStoreTests
 {
     [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task SingleFileAdmissionRejectsKnownIdentityOrCountBeforeOpeningSources(bool verified, bool duplicate)
+    {
+        using var files = new ResourceStoreTestFiles();
+        string path = files.CreateFile("locked.bin", [1, 2, 3, 4]);
+        using var store = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            MaximumResourceCount: duplicate ? 2 : 1,
+            FileStorageRoot: files.StoreRoot));
+        ArtifactResourceDescriptor existing = store.Add("existing", "application/octet-stream", new byte[] { 42 });
+        using var locked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        string id = duplicate ? "existing" : "new";
+        async Task publish()
+        {
+            if (verified)
+            {
+                await store.AddVerifiedFileAsync(id, "application/octet-stream", path, 4, Hash([1, 2, 3, 4]));
+            }
+            else
+            {
+                await store.AddFileAsync(id, "application/octet-stream", path);
+            }
+        }
+        if (duplicate)
+        {
+            await Assert.That(publish).Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(publish).Throws<ArtifactResourceStoreCapacityException>();
+        }
+        await Assert.That(store.Count).IsEqualTo(1);
+        await Assert.That(store.TotalBytes).IsEqualTo(1L);
+        await Assert.That((await store.ReadAsync(existing.ResourceUri))!.Content.Span[0]).IsEqualTo((byte)42);
+        await Assert.That(Directory.Exists(files.StoreRoot)).IsFalse();
+    }
+
+    [Test]
+    public async Task VerifiedFileLengthsBeyondInt64CombinedCapacityAreRejectedWithoutOverflowOrIo()
+    {
+        using var files = new ResourceStoreTestFiles();
+        using var store = files.CreateStore(maximumTotalBytes: long.MaxValue);
+        ArtifactResourceFileWrite[] batch =
+        [
+            new("first", "application/octet-stream", Path.Combine(files.Root, "missing-first"), long.MaxValue,
+                Hash([])),
+            new("second", "application/octet-stream", Path.Combine(files.Root, "missing-second"), long.MaxValue,
+                Hash([]))
+        ];
+        await Assert.That(async () => await store.AddVerifiedFilesAsync(batch))
+            .Throws<ArtifactResourceStoreCapacityException>();
+        await Assert.That(store.Count).IsEqualTo(0);
+        await Assert.That(store.TotalBytes).IsEqualTo(0L);
+        await Assert.That(Directory.Exists(files.StoreRoot)).IsFalse();
+    }
+
+    [Test]
+    [Arguments("bytes")]
+    [Arguments("count")]
+    [Arguments("duplicate")]
+    [Arguments("batch-duplicate")]
+    public async Task VerifiedFileAdmissionRejectsKnownFailuresBeforeOpeningSources(string refusal)
+    {
+        using var files = new ResourceStoreTestFiles();
+        string path = files.CreateFile("locked.bin", [1, 2, 3, 4]);
+        using var store = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            MaximumResourceCount: refusal == "count" ? 2 : 4,
+            MaximumTotalBytes: refusal == "bytes" ? 8 : 16,
+            FileStorageRoot: files.StoreRoot));
+        ArtifactResourceDescriptor existing = store.Add("existing", "application/octet-stream", new byte[] { 42 });
+        using var locked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        ArtifactResourceFileWrite[] batch =
+        [
+            new(refusal == "duplicate" ? "existing" : "first", "application/octet-stream",
+                path, 4, Hash([1, 2, 3, 4])),
+            new(refusal == "batch-duplicate" ? "first" : "second", "application/octet-stream",
+                path, 4, Hash([1, 2, 3, 4]))
+        ];
+        if (refusal is "bytes" or "count")
+        {
+            await Assert.That(async () => await store.AddVerifiedFilesAsync(batch))
+                .Throws<ArtifactResourceStoreCapacityException>();
+        }
+        else
+        {
+            await Assert.That(async () => await store.AddVerifiedFilesAsync(batch))
+                .Throws<InvalidOperationException>();
+        }
+        await Assert.That(store.Count).IsEqualTo(1);
+        await Assert.That(store.TotalBytes).IsEqualTo(1L);
+        await Assert.That(store.TryGetDescriptor(ArtifactResourceUri.Create("first"), out _)).IsFalse();
+        await Assert.That(store.TryGetDescriptor(ArtifactResourceUri.Create("second"), out _)).IsFalse();
+        await Assert.That((await store.ReadAsync(existing.ResourceUri))!.Content.Span[0]).IsEqualTo((byte)42);
+        await Assert.That(Directory.Exists(files.StoreRoot)
+            ? Directory.GetFiles(files.StoreRoot, "*", SearchOption.AllDirectories) : []).IsEmpty();
+        locked.Position = 0;
+        byte[] original = new byte[4];
+        locked.ReadExactly(original);
+        await Assert.That(Convert.ToHexString(original)).IsEqualTo("01020304");
+    }
+
+    [Test]
     [Arguments("bytes")]
     [Arguments("count")]
     [Arguments("duplicate")]
