@@ -155,6 +155,9 @@ public sealed partial class NativeMcpIntegrationTests
             preparedBeforeRetry = UsdPhysicsStageExtractor.GetTraversalCount();
         }
         McpRenderSequenceResultDto job = await service.RenderPhysicsSequenceAsync(physicsRequest, default);
+        McpSequenceJobsResultDto history = await service.ListSequenceJobsAsync(default);
+        await Assert.That(history.Jobs.Count).IsEqualTo(1);
+        await Assert.That(history.Jobs[0]).IsSameReferenceAs(job);
         if (preparedBeforeRetry is { } traversals)
         {
             await Assert.That(UsdPhysicsStageExtractor.GetTraversalCount()).IsEqualTo(traversals)

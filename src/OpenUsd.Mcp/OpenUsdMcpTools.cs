@@ -150,6 +150,18 @@ internal static class OpenUsdMcpDescriptions
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":0,\"stageRevision\":1," +
         "\"width\":512,\"height\":512,\"frameCount\":48,\"startTimeCode\":0,\"timeStep\":1}}.";
 
+    internal const string ListSequenceJobs =
+        "List the original completed disk-job descriptors retained by this MCP process. " +
+        "Preconditions: none; no active scene or revision is required. " +
+        "Effects: read-only metadata access; does not render, open USD or read output files. " +
+        "Includes render_sequence, render_product and render_physics_sequence jobs from closed scenes. " +
+        "Result bounds: one structured object containing at most eight original descriptors in ordinal " +
+        "job-ID order and one text summary of at most 2048 characters. " +
+        "Captured revisions, relative output paths and original product/simulation metadata remain historical. " +
+        "Listing does not verify files; read_sequence_frame/read_sequence_sheet verify selected output bytes. " +
+        "It consumes no render-job or artifact quota and does not discover jobs from earlier process runs. " +
+        "Errors: request cancellation propagates without publishing a list. Example arguments: {}.";
+
     internal const string ReadSequenceFrame =
         "Expose one completed disk-sequence PNG through the bounded immutable artifact store. " +
         "Preconditions: jobId came from render_sequence, render_product or render_physics_sequence in this " +
@@ -469,6 +481,19 @@ internal sealed class OpenUsdMcpTools(
         RenderProductCaptureRequest request,
         CancellationToken cancellationToken) =>
         InvokeAsync(token => service.RenderProductAsync(request, token), cancellationToken);
+
+    [McpServerTool(
+        Name = "list_sequence_jobs",
+        Title = "List Completed OpenUSD Sequence Jobs",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpSequenceJobsResultDto))]
+    [Description(OpenUsdMcpDescriptions.ListSequenceJobs)]
+    public ValueTask<CallToolResult> ListSequenceJobsAsync(CancellationToken cancellationToken) =>
+        InvokeAsync(service.ListSequenceJobsAsync, cancellationToken);
 
     [McpServerTool(
         Name = "read_sequence_frame",

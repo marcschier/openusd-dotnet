@@ -106,16 +106,7 @@ internal sealed partial class OpenUsdMcpService
                     }
                     throw;
                 }
-                completed = RegisterCompletedSequence(revision, id, result);
-                completed = completed with
-                {
-                    Simulation = completed.Simulation! with
-                    {
-                        MetersPerUnit = request.ExpectedMetersPerUnit,
-                        UpAxis = request.ExpectedUpAxis,
-                        FullScenePhysics = request.FullScenePhysics
-                    }
-                };
+                completed = RegisterCompletedSequence(revision, id, result, physicsRequest: request);
             }
             catch (Exception operationFailure)
             {

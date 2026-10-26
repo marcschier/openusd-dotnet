@@ -7,6 +7,62 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class SequenceContactSheetTests
 {
     [Test]
+    public async Task HistoricalJobsAreDiscoverableAcrossClosedAndNewScenesWithoutReadingOrRendering()
+    {
+        await using var fixture = new Fixture();
+        McpSequenceJobsResultDto empty = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(empty.Jobs).IsEmpty();
+        await Assert.That(fixture.Source.Calls).IsEqualTo(0);
+        McpRenderSequenceResultDto first = await fixture.RenderAsync(3);
+        McpSequenceJobsResultDto original = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(original.Jobs.Count).IsEqualTo(1);
+        await Assert.That(original.Jobs[0]).IsSameReferenceAs(first);
+        await fixture.Service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = first.SessionId,
+            Generation = first.Generation,
+            StageRevision = first.StageRevision
+        }, default);
+        File.Delete(Path.Combine(fixture.Files.OutputRoot, first.OutputDirectory, "frame-000000.png"));
+        McpSequenceJobsResultDto retired = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(retired.Jobs[0]).IsSameReferenceAs(first);
+        McpRenderSequenceResultDto second = await fixture.RenderAsync(1);
+        await Assert.That(second.SessionId).IsNotEqualTo(first.SessionId);
+        McpSequenceJobsResultDto current = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(current.Jobs.Select(static job => job.JobId)
+            .SequenceEqual(new[] { first.JobId, second.JobId }.Order(StringComparer.Ordinal))).IsTrue();
+        await Assert.That(current.Jobs.Single(job => job.JobId == first.JobId)).IsSameReferenceAs(first);
+        await Assert.That(current.Jobs.Single(job => job.JobId == second.JobId)).IsSameReferenceAs(second);
+        await Assert.That(original.Jobs.Count).IsEqualTo(1);
+        await Assert.That(empty.Jobs).IsEmpty();
+        await Assert.That(first.AuthoredProduct).IsNull();
+        await Assert.That(first.Simulation).IsNull();
+        await Assert.That(Path.IsPathRooted(first.OutputDirectory)).IsFalse();
+        await Assert.That(Path.IsPathRooted(first.ManifestPath)).IsFalse();
+        await Assert.That(async () => await fixture.Service.ReadSequenceSheetAsync(
+            new ReadSequenceSheetRequest { JobId = first.JobId, Width = 8, Height = 4 }, default))
+            .Throws<FileNotFoundException>();
+        await Assert.That(fixture.Source.Calls).IsEqualTo(4);
+        await Assert.That(fixture.Artifacts.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task CancelledJobListingLeavesTheHistoricalSnapshotAndQuotasUntouched()
+    {
+        await using var fixture = new Fixture();
+        McpRenderSequenceResultDto job = await fixture.RenderAsync(1);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.That(async () => await fixture.Service.ListSequenceJobsAsync(cancellation.Token))
+            .Throws<OperationCanceledException>();
+        McpSequenceJobsResultDto result = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(result.Jobs.Count).IsEqualTo(1);
+        await Assert.That(result.Jobs[0]).IsSameReferenceAs(job);
+        await Assert.That(fixture.Source.Calls).IsEqualTo(1);
+        await Assert.That(fixture.Artifacts.Count).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task CompletedFramesKeepOrderAspectAndCapturedRevisionWithoutRerendering()
     {
         await using var fixture = new Fixture();
@@ -138,6 +194,8 @@ public sealed class SequenceContactSheetTests
         McpRenderSequenceResultDto first = await fixture.RenderAsync(1);
         for (int index = 0; index < 8; index++)
         {
+            McpSequenceJobsResultDto jobs = await fixture.Service.ListSequenceJobsAsync(default);
+            await Assert.That(jobs.Jobs.Count).IsEqualTo(1);
             _ = await fixture.Service.ReadSequenceSheetAsync(
                 new ReadSequenceSheetRequest { JobId = first.JobId, Width = 4, Height = 4 }, default);
         }
@@ -157,6 +215,10 @@ public sealed class SequenceContactSheetTests
         await Assert.That(fixture.Source.Calls).IsEqualTo(8);
         await Assert.That(async () => await fixture.Service.RenderSequenceAsync(request, default))
             .Throws<WorkspaceQuotaExceededException>();
+        McpSequenceJobsResultDto full = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(full.Jobs.Count).IsEqualTo(8);
+        await Assert.That(full.Jobs.Select(static job => job.JobId).Distinct().Count()).IsEqualTo(8);
+        await Assert.That(full.Jobs.Single(job => job.JobId == first.JobId)).IsSameReferenceAs(first);
     }
 
     private sealed class Fixture : IAsyncDisposable

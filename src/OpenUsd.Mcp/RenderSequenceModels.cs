@@ -97,6 +97,16 @@ internal sealed record McpRenderSequenceResultDto(
     public McpSimulationRecordingDto? Simulation { get; init; }
 }
 
+internal sealed record McpSequenceJobsResultDto(
+    [property: Description(
+        "At most eight original completed-job descriptors in ordinal job-ID order, " +
+        "including retired scenes; this process only, with no file-integrity or current-scene claim.")]
+    IReadOnlyList<McpRenderSequenceResultDto> Jobs) : IOpenUsdMcpOutput
+{
+    [Description("Bounded historical job-list summary.")]
+    public string Summary => $"{Jobs.Count} completed disk jobs retained by this MCP process.";
+}
+
 internal sealed record McpSequenceFrameResultDto(
     [property: Description("Original scene session captured by this completed job.")] string SessionId,
     [property: Description("Original workspace generation, not a claim about the current scene.")] long Generation,

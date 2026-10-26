@@ -259,15 +259,27 @@ internal sealed partial class OpenUsdMcpService
         }
     }
 
+    public async ValueTask<McpSequenceJobsResultDto> ListSequenceJobsAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return new McpSequenceJobsResultDto(new OwnedReadOnlyList<McpRenderSequenceResultDto>(
+                _sequences.OrderBy(static entry => entry.Key, StringComparer.Ordinal)
+                    .Select(static entry => entry.Value.Descriptor).ToArray()));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private McpRenderSequenceResultDto RegisterCompletedSequence(
         WorkspaceSessionRevision revision, string id, RenderDiskJobResult result,
-        McpAuthoredProductDto? authoredProduct = null)
+        McpAuthoredProductDto? authoredProduct = null, RenderPhysicsSequenceRequest? physicsRequest = null)
     {
-        _publishedDiskJobs++;
-        _publishedDiskBytes += result.TotalBytes;
-        _sequences.Add(id, new CompletedSequence(revision, result, authoredProduct));
         string relative = Path.GetRelativePath(options.OutputRoot, result.OutputDirectory).Replace('\\', '/');
-        return new McpRenderSequenceResultDto(revision.SessionId, revision.Generation, revision.StageRevision,
+        var descriptor = new McpRenderSequenceResultDto(revision.SessionId, revision.Generation, revision.StageRevision,
             id, relative, relative + "/manifest.json", result.Frames.Count, result.TotalBytes,
             Array.AsReadOnly(result.Diagnostics.Select(ToDiagnostic).ToArray()))
         {
@@ -276,8 +288,25 @@ internal sealed partial class OpenUsdMcpService
                 ? new McpSimulationRecordingDto(simulation.Epoch, simulation.ScenarioIdentity, simulation.StepIndex,
                     result.Frames[^1].Simulation!.StepIndex, simulation.FixedStepSeconds) : null
         };
+        if (physicsRequest is not null)
+        {
+            descriptor = descriptor with
+            {
+                Simulation = descriptor.Simulation! with
+                {
+                    MetersPerUnit = physicsRequest.ExpectedMetersPerUnit,
+                    UpAxis = physicsRequest.ExpectedUpAxis,
+                    FullScenePhysics = physicsRequest.FullScenePhysics
+                }
+            };
+        }
+        _sequences.Add(id, new CompletedSequence(revision, result, authoredProduct, descriptor));
+        _publishedDiskJobs++;
+        _publishedDiskBytes += result.TotalBytes;
+        return descriptor;
     }
 
     private sealed record CompletedSequence(
-        WorkspaceSessionRevision Revision, RenderDiskJobResult Result, McpAuthoredProductDto? AuthoredProduct);
+        WorkspaceSessionRevision Revision, RenderDiskJobResult Result, McpAuthoredProductDto? AuthoredProduct,
+        McpRenderSequenceResultDto Descriptor);
 }

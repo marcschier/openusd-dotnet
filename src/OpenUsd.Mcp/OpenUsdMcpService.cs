@@ -52,6 +52,8 @@ internal interface IOpenUsdMcpService
     ValueTask<McpSequenceSheetResultDto> ReadSequenceSheetAsync(
         ReadSequenceSheetRequest request, CancellationToken cancellationToken);
 
+    ValueTask<McpSequenceJobsResultDto> ListSequenceJobsAsync(CancellationToken cancellationToken);
+
     ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(AnalyzeSceneRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpApplyProposalsResultDto> ApplyProposalsAsync(

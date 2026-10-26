@@ -55,6 +55,10 @@ public sealed class RenderProductServiceTests
             Generation = session.Generation,
             StageRevision = session.StageRevision
         }, default);
+        McpSequenceJobsResultDto history = await service.ListSequenceJobsAsync(default);
+        await Assert.That(history.Jobs.Count).IsEqualTo(1);
+        await Assert.That(history.Jobs[0]).IsSameReferenceAs(job);
+        await Assert.That(history.Jobs[0].AuthoredProduct).IsSameReferenceAs(job.AuthoredProduct);
         McpSequenceSheetResultDto sheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
         {
             JobId = job.JobId,
@@ -95,6 +99,7 @@ public sealed class RenderProductServiceTests
         await Assert.That(async () => await service.RenderProductAsync(Request(session, 1), default))
             .Throws<OpenUsdMcpFailureException>();
         await Assert.That(factory.Source.Times).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
         factory.Source.Refuse = false;
         _ = await service.RenderProductAsync(Request(session, 1), default);
         for (int index = 0; index < 7; index++)
@@ -113,6 +118,7 @@ public sealed class RenderProductServiceTests
         await Assert.That(async () => await service.RenderProductAsync(Request(session, 1), default))
             .Throws<WorkspaceQuotaExceededException>();
         await Assert.That(backend.Events.Count(static item => item == "prepare-product")).IsEqualTo(preparations);
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs.Count).IsEqualTo(8);
     }
 
     [Test]

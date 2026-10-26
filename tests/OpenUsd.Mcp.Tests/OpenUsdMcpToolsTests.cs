@@ -39,6 +39,20 @@ public sealed class OpenUsdMcpToolsTests
     }
 
     [Test]
+    public async Task JobListingForwardsCancellationAndReturnsOnlyHistoricalStructuredMetadata()
+    {
+        var service = new FakeOpenUsdMcpService();
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        using var cancellation = new CancellationTokenSource();
+        CallToolResult result = await tools.ListSequenceJobsAsync(cancellation.Token);
+        await Assert.That(service.LastCancellationToken).IsEqualTo(cancellation.Token);
+        await Assert.That(result.IsError).IsFalse();
+        await Assert.That(result.StructuredContent!.Value.GetProperty("jobs").GetArrayLength()).IsEqualTo(1);
+        await Assert.That(result.Content.Count).IsEqualTo(1);
+        await Assert.That(result.Content[0]).IsTypeOf<TextContentBlock>();
+    }
+
+    [Test]
     public async Task ReturnsDeterministicStructuredErrors()
     {
         (Exception Exception, string Code)[] cases =
@@ -296,6 +310,7 @@ public sealed class OpenUsdMcpToolsTests
             "finalize_scene",
             "get_scene",
             "inspect_scene",
+            "list_sequence_jobs",
             "open_scene",
             "present_scene",
             "read_sequence_frame",
@@ -455,6 +470,28 @@ public sealed class OpenUsdMcpToolsTests
             .GetProperty("outputs")[0].GetProperty("dataType").GetString()).IsEqualTo("half4");
         await Assert.That(product.StructuredContent.Value.GetProperty("frameCount").GetInt32()).IsEqualTo(3);
         await Assert.That(product.Content.Count).IsEqualTo(1);
+
+        CallToolResult jobs = await client.CallToolAsync(
+            "list_sequence_jobs", new Dictionary<string, object?>(), cancellationToken: cancellation.Token);
+        await Assert.That(jobs.IsError).IsFalse();
+        JsonElement listedJob = jobs.StructuredContent!.Value.GetProperty("jobs")[0];
+        await Assert.That(listedJob.GetProperty("jobId").GetString()).IsEqualTo("historical-1");
+        await Assert.That(listedJob.GetProperty("sessionId").GetString()).IsEqualTo("retired-session");
+        await Assert.That(listedJob.GetProperty("generation").GetInt64()).IsEqualTo(7);
+        await Assert.That(listedJob.GetProperty("stageRevision").GetUInt64()).IsEqualTo(11ul);
+        await Assert.That(listedJob.GetProperty("frameCount").GetInt32()).IsEqualTo(3);
+        await Assert.That(listedJob.GetProperty("outputDirectory").GetString())
+            .IsEqualTo("retired-session/renders/historical-1");
+        await Assert.That(listedJob.GetProperty("authoredProduct").GetProperty("productPath").GetString())
+            .IsEqualTo("/Render/Historical");
+        await Assert.That(listedJob.GetProperty("simulation").GetProperty("firstStep").GetUInt64()).IsEqualTo(6ul);
+        await Assert.That(listedJob.GetProperty("simulation").GetProperty("lastStep").GetUInt64()).IsEqualTo(8ul);
+        await Assert.That(listedJob.GetProperty("simulation").GetProperty("metersPerUnit").GetDouble())
+            .IsEqualTo(0.01);
+        await Assert.That(listedJob.GetProperty("simulation").GetProperty("upAxis").GetString()).IsEqualTo("Z");
+        await Assert.That(listedJob.GetProperty("simulation").GetProperty("fullScenePhysics").GetBoolean()).IsTrue();
+        await Assert.That(jobs.Content.Count).IsEqualTo(1);
+        await Assert.That(jobs.Content[0]).IsTypeOf<TextContentBlock>();
 
         CallToolResult sequenceFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
@@ -740,6 +777,28 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
         return ValueTask.FromResult(new McpRenderSequenceResultDto(
             request.SessionId, request.Generation, request.StageRevision, "physics-1",
             "session-1/renders/physics-1", "session-1/renders/physics-1/manifest.json", request.FrameCount, 2048, []));
+    }
+
+    public ValueTask<McpSequenceJobsResultDto> ListSequenceJobsAsync(CancellationToken cancellationToken)
+    {
+        LastCancellationToken = cancellationToken;
+        return ValueTask.FromResult(new McpSequenceJobsResultDto(
+        [
+            new McpRenderSequenceResultDto("retired-session", 7, 11, "historical-1",
+                "retired-session/renders/historical-1", "retired-session/renders/historical-1/manifest.json",
+                3, 2048, [])
+            {
+                AuthoredProduct = new McpAuthoredProductDto("/Render/Settings", "/Render/Historical", "/Camera",
+                    "test-profile", "full", []),
+                Simulation = new McpSimulationRecordingDto(
+                    new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "historical-scenario", 6, 8, 1d / 24)
+                {
+                    MetersPerUnit = 0.01,
+                    UpAxis = "Z",
+                    FullScenePhysics = true
+                }
+            }
+        ]));
     }
 
     public ValueTask<McpSequenceSheetResultDto> ReadSequenceSheetAsync(

@@ -636,6 +636,9 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 - **`read_sequence_sheet`:** makes one bounded PNG contact sheet from verified completed-job frames,
   without rendering or touching the active scene. Up to 16 ordered cells retain original frame/time
   metadata and fit images without cropping.
+- **`list_sequence_jobs`:** discovers up to eight original completed-job descriptors retained by
+  this process, including closed scenes. It needs no active scene, renders nothing and reads no
+  output files; frame/sheet retrieval still verifies selected bytes.
 - **`analyze_scene`:** requires the exact revision and bounded finite observations. It
   replaces the proposal set with at most 128 revision-bound proposals. Errors are
   `invalid_argument`, `no_session`, `stale_session`, `stale_revision`, or `native_failure`.
@@ -653,7 +656,8 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 
 ### Revision request
 
-Scene operations other than `open_scene` include the following coordinates. `read_sequence_frame`
+Scene operations other than `open_scene` include the following coordinates. `list_sequence_jobs`
+requires no arguments or active scene. `read_sequence_frame`
 and `read_sequence_sheet` instead use a completed job ID and frame selection, because their
 immutable historical outputs do not depend on the active scene revision.
 
@@ -811,7 +815,7 @@ degradation; material changes clear stale entries before the next capture.
 
 ### `render_sequence` and `read_sequence_frame`
 
-These tools are unreleased source additions. The current source exposes 17 tools; the published
+These tools are unreleased source additions. The current source exposes 18 tools; the published
 `0.14.0-alpha` tool does not include disk-sequence execution.
 
 ```json
@@ -897,6 +901,23 @@ the rest of the sequence remains on disk. All uncached planes
 are admitted and verified before their descriptors and quota charges are committed together.
 A missing/changed depth or HDR file, cancellation or insufficient capacity cannot leave only a newly
 registered PNG behind. Existing cached resources stay available and are not charged again.
+
+### `list_sequence_jobs`
+
+Call `list_sequence_jobs` with `{}` to recover job IDs without keeping an active
+scene open. The result's `jobs` array contains at most eight original completed-job
+descriptors in ordinal job-ID order, not chronological order. It includes ordinary
+sequences, authored products and physics recordings and preserves their captured
+session/generation/stage revision, output-root-relative paths, frame count, bytes,
+diagnostics and optional product/simulation metadata.
+
+Listing consumes no job or artifact slots, opens no USD stage and reads no output
+files. Descriptors describe original completion, not current file availability,
+current scene state or fresh integrity checks. Use `read_sequence_frame` or
+`read_sequence_sheet` to verify and present selected outputs. Missing or changed
+files still fail those reads even when their original descriptor is listed.
+Discovery is process-local: it does not scan arbitrary directories, accept paths,
+restore a previous server process or implement the Viewer historical-job browser.
 
 ### `read_sequence_sheet`
 
