@@ -466,9 +466,10 @@ These are managed encoding/allocation checks, not renderer execution or aggregat
 `CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` blocks the actual
 preview frame source, cancels while capture is active, and requires drain before the original token
 or capture failure reaches the caller. Both paths publish nothing and retry with decoded `010203FF`
-pixels. `CanceledPreviewKeepsSceneEditsBlockedUntilActualCaptureDrain` uses the actual MCP service
-and capture processor to prove a concurrent edit stays blocked until release, then advances the
-revision exactly once. `AdmissionTimeoutAndCancellationDoNotRunRejectedWork` separately retains
+pixels. `CanceledCaptureKeepsSceneEditsBlockedUntilActualCaptureDrain` uses the actual MCP service
+and capture processor for both previews and disk sequences to prove a concurrent edit stays blocked
+until release, then advances the revision exactly once. Cancelled disk output and history remain empty.
+`AdmissionTimeoutAndCancellationDoNotRunRejectedWork` separately retains
 prompt queued cancellation while an earlier capture is blocked. These are managed barrier journeys,
 not native renderer or hung-driver termination qualification.
 

@@ -62,7 +62,9 @@ public sealed class CaptureWorkerTests
     }
 
     [Test]
-    public async Task CanceledPreviewKeepsSceneEditsBlockedUntilActualCaptureDrain()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CanceledCaptureKeepsSceneEditsBlockedUntilActualCaptureDrain(bool disk)
     {
         using var files = new WorkspaceTestFiles();
         var backend = new RecordingWorkspaceBackend();
@@ -78,16 +80,26 @@ public sealed class CaptureWorkerTests
         McpSessionDto session = await service.OpenSceneAsync(
             new OpenSceneRequest { SourcePath = "scene.usda" }, default);
         using var cancellation = new CancellationTokenSource();
-        Task<McpCaptureResultDto> capture = service.RenderPreviewAsync(new RenderPreviewRequest
-        {
-            SessionId = session.SessionId,
-            Generation = session.Generation,
-            StageRevision = session.StageRevision,
-            Kind = "still",
-            Width = 1,
-            Height = 1,
-            Views = [new CaptureViewDto { Name = "hero" }]
-        }, cancellation.Token).AsTask();
+        Task capture = disk
+            ? service.RenderSequenceAsync(new RenderSequenceRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                Width = 1,
+                Height = 1,
+                FrameCount = 1
+            }, cancellation.Token).AsTask()
+            : service.RenderPreviewAsync(new RenderPreviewRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                Kind = "still",
+                Width = 1,
+                Height = 1,
+                Views = [new CaptureViewDto { Name = "hero" }]
+            }, cancellation.Token).AsTask();
         try
         {
             await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -111,6 +123,12 @@ public sealed class CaptureWorkerTests
             await Assert.That(result.StageRevision).IsEqualTo(session.StageRevision + 1);
             await Assert.That(backend.Events.Count(item => item == "apply")).IsEqualTo(1);
             await Assert.That(artifacts.Count).IsEqualTo(0);
+            if (disk)
+            {
+                await Assert.That(Directory.GetFileSystemEntries(
+                    Path.Combine(backend.Context!.OutputDirectory, "renders"))).IsEmpty();
+                await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+            }
         }
         finally
         {
