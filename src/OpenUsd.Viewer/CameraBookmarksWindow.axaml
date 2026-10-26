@@ -12,7 +12,9 @@
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
   <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="*,Auto" RowSpacing="12">
-    <ScrollViewer x:Name="SavedViewsBodyScroll" HorizontalScrollBarVisibility="Disabled"
+    <ScrollViewer x:Name="SavedViewsBodyScroll" Focusable="True"
+                  AutomationProperties.Name="Scrollable saved-view source, controls and results"
+                  HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
       <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" RowSpacing="12"
             MinHeight="{Binding Viewport.Height, ElementName=SavedViewsBodyScroll}">

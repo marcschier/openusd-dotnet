@@ -65,8 +65,18 @@ public sealed class ViewerBridgeConnectionWindowTests
                 await Assert.That(errorOrigin!.Value.Y).IsLessThan(window.ClientSize.Height);
                 ScrollViewer body = Required<ScrollViewer>(window, "BridgeBodyScroll");
                 await Assert.That(body.Focus()).IsTrue();
-                window.KeyPress(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
-                window.UpdateLayout();
+                for (int page = 0; page < 64 && body.Offset.Y > 0; page++)
+                {
+                    window.KeyPress(Key.PageUp, RawInputModifiers.None, PhysicalKey.PageUp, null);
+                    window.UpdateLayout();
+                }
+                await Assert.That(body.Offset.Y).IsEqualTo(0);
+                for (int page = 0; page < 64 && body.Offset.Y < body.Extent.Height - body.Viewport.Height; page++)
+                {
+                    window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, null);
+                    window.UpdateLayout();
+                }
+                await Assert.That(body.Offset.Y).IsEqualTo(body.Extent.Height - body.Viewport.Height);
                 await Assert.That(body.Offset.Y).IsGreaterThan(0);
                 Point? origin = error.TranslatePoint(default, body);
                 await Assert.That(origin).IsNotNull();

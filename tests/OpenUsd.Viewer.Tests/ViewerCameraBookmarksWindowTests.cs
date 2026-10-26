@@ -17,6 +17,84 @@ public sealed class ViewerCameraBookmarksWindowTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
+    public async Task SavedViewContextCanBeReadWithKeyboardScrollingWithoutStartingAnOperation(bool dark)
+    {
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            int reads = 0;
+            string source = string.Join(' ', Enumerable.Repeat("Original review source and persistence.", 96));
+            string refusal = string.Join(' ', Enumerable.Repeat("The original review cannot be read.", 24));
+            var window = new CameraBookmarksWindow(
+                _ =>
+                {
+                    reads++;
+                    return Task.FromException<ViewerCameraBookmarkCapture>(new IOException(refusal));
+                },
+                (_, _) => throw new InvalidOperationException("Reading context must not capture."),
+                (_, _, _, _) => throw new InvalidOperationException("Reading context must not edit."),
+                (_, _) => throw new InvalidOperationException("Reading context must not recall."),
+                () => new ViewerCameraBookmarkAvailability(false, false, false, source, "Unavailable."))
+            {
+                Width = 560,
+                Height = 440,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                ScrollViewer body = Required<ScrollViewer>(window, "SavedViewsBodyScroll");
+                await Assert.That(body.Focus()).IsTrue();
+                await Assert.That(ReferenceEquals(window.FocusManager?.GetFocusedElement(), body)).IsTrue();
+                for (int page = 0; page < 64 && body.Offset.Y > 0; page++)
+                {
+                    window.KeyPress(Key.PageUp, RawInputModifiers.None, PhysicalKey.PageUp, null);
+                    window.UpdateLayout();
+                }
+                await Assert.That(body.Offset.Y).IsEqualTo(0);
+                TextBlock context = Required<TextBlock>(window, "SavedViewsSource");
+                await Assert.That(context.Text).IsEqualTo(source);
+                Point? contextOrigin = context.TranslatePoint(default, body);
+                await Assert.That(contextOrigin).IsNotNull();
+                await Assert.That(contextOrigin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(contextOrigin.Value.Y).IsLessThan(body.Viewport.Height);
+                window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, null);
+                window.UpdateLayout();
+                await Assert.That(body.Offset.Y).IsGreaterThan(0);
+                for (int page = 0; page < 64 && body.Offset.Y < body.Extent.Height - body.Viewport.Height; page++)
+                {
+                    window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, null);
+                    window.UpdateLayout();
+                }
+                await Assert.That(body.Offset.Y).IsEqualTo(body.Extent.Height - body.Viewport.Height);
+                TextBlock status = Required<TextBlock>(window, "SavedViewsStatus");
+                await Assert.That(status.Text).Contains(refusal);
+                Point? statusOrigin = status.TranslatePoint(default, body);
+                await Assert.That(statusOrigin).IsNotNull();
+                await Assert.That(statusOrigin!.Value.Y + status.Bounds.Height).IsGreaterThan(0);
+                await Assert.That(statusOrigin.Value.Y + status.Bounds.Height)
+                    .IsLessThanOrEqualTo(body.Viewport.Height);
+                await Assert.That(reads).IsEqualTo(1);
+                await Assert.That(window.IsRunning).IsFalse();
+                await Assert.That(body.IsKeyboardFocusWithin).IsTrue();
+                await AssertInsideWindowAsync(Required<Button>(window, "SavedViewsCloseButton"), window);
+                window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                await window.CloseAsync().WaitAsync(lifetime.Token);
+                await Assert.That(window.IsVisible).IsFalse();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task EnterOnSelectedSavedViewUsesGuardedRecallAndRestoresListFocusAfterCancellation(bool dark)
     {
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));

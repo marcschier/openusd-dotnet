@@ -496,6 +496,11 @@ cancellation has actually drained. It also refuses recall without selection or a
 from the name field, with Ctrl+Enter, or while an operation is running. This is managed dialog
 evidence, not native camera activation, physical-display input or screen-reader qualification.
 
+`ViewerCameraBookmarksWindowTests.SavedViewContextCanBeReadWithKeyboardScrollingWithoutStartingAnOperation`
+checks actual Page Up/Down input in both themes at minimum size. The original
+source and refusal text are preserved, both ends remain reachable, the read count stays one,
+no operation starts, the fixed Close stays visible and Escape closes normally.
+
 `ViewerBridgeConnectionWindowTests.CompactBridgeKeepsActionsAndFullRefusalKeyboardReachable`
 reproduces a long refusal starting below the 420-by-300 window, then checks both themes, the
 default size, full status/error text, keyboard scrolling to the final line and all four footer
