@@ -837,6 +837,8 @@ codes allow 128 characters and messages 4096. Exceeding a limit returns `quota_e
 any preview artifact is published, rather than silently dropping diagnostics. An empty array means
 the renderer reported no degradation in any captured view; separate requests do not inherit
 diagnostics from previous captures.
+Unknown renderer diagnostic severities return `render_failure` before artifact publication;
+they are not mapped to a guessed severity or discovered only when serializing the response.
 
 ### `render_sequence` and `read_sequence_frame`
 

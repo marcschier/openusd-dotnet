@@ -473,9 +473,12 @@ start the next request without stale entries.
 `DiagnosticQuotaRefusesWholePreviewWithoutChangingExistingArtifactAndAllowsCleanRetry` exceeds
 per-frame, cumulative distinct, code and message limits independently, requiring no partial
 publication, unchanged existing content and a clean retry.
-`OpenUsdMcpServiceTests.PreviewDiagnosticQuotaReportsProtocolRefusalThenOrderedRetryWithoutChangingScene`
-checks actual tool `quota_exceeded` classification for still, turntable and sheet requests,
+`OpenUsdMcpServiceTests.PreviewDiagnosticContractReportsProtocolRefusalThenOrderedRetryWithoutChangingScene`
+checks actual tool `quota_exceeded` classification for oversized diagnostics and `render_failure`
+for unsupported severity in still, turntable and sheet requests, with no artifacts on refusal,
 serialized ordered retry diagnostics, exact decoded pixels and unchanged source/revision.
+`InvalidDiagnosticSeverityRefusesBeforePublishingAnyPreviewAndAllowsCleanRetry` also checks
+the processor directly for all four modes, retaining exact valid severity on retry.
 These are managed capture/publication and protocol checks, not new native-renderer qualification.
 
 `ViewerCommandPaletteWindowTests.ModifiedPaletteSearchKeysDoNotNavigateOrDispatchWhilePlainKeysRetainTheOriginalAction`

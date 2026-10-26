@@ -471,6 +471,33 @@ public sealed class PreviewCaptureProcessorTests
     }
 
     [Test]
+    [Arguments(CaptureKind.Still)]
+    [Arguments(CaptureKind.CandidateSweep)]
+    [Arguments(CaptureKind.Turntable)]
+    [Arguments(CaptureKind.ContactSheet)]
+    public async Task InvalidDiagnosticSeverityRefusesBeforePublishingAnyPreviewAndAllowsCleanRetry(CaptureKind kind)
+    {
+        int count = kind == CaptureKind.Still ? 1 : 2;
+        var source = new RecordingFrameSource(diagnosticsForCapture: capture => new RenderDiagnosticsState(
+        [
+            new RenderDiagnostic(capture == count ? (RenderDiagnosticSeverity)999 : RenderDiagnosticSeverity.Warning,
+                "diagnostic", "Renderer detail.")
+        ]));
+        using var store = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new RecordingFrameSourceFactory(source), store);
+        var request = new PreviewCaptureRequest("invalid-diagnostic-severity", kind, 2, 2,
+            Enumerable.Range(0, count).Select(index => new CaptureView($"view-{index}", default)).ToArray());
+        await Assert.That(() => processor.Process(request)).Throws<InvalidDataException>();
+        await Assert.That(source.CaptureCount).IsEqualTo(count);
+        await Assert.That(store.Count).IsEqualTo(0);
+        PreviewCaptureResult retry = processor.Process(request);
+        await Assert.That(retry.Diagnostics.Count).IsEqualTo(1);
+        await Assert.That(retry.Diagnostics[0].Severity).IsEqualTo(RenderDiagnosticSeverity.Warning);
+        await Assert.That(source.CaptureCount).IsEqualTo(count * 2);
+        await Assert.That(store.Count).IsEqualTo(kind is CaptureKind.ContactSheet or CaptureKind.Still ? 1 : 2);
+    }
+
+    [Test]
     public async Task RetainsOneLazilyCreatedFrameSourceAcrossRequests()
     {
         var source = new RecordingFrameSource();

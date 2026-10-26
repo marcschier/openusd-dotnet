@@ -9,10 +9,14 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
-    [Arguments("still")]
-    [Arguments("turntable")]
-    [Arguments("contact_sheet")]
-    public async Task PreviewDiagnosticQuotaReportsProtocolRefusalThenOrderedRetryWithoutChangingScene(string kind)
+    [Arguments("still", false)]
+    [Arguments("turntable", false)]
+    [Arguments("contact_sheet", false)]
+    [Arguments("still", true)]
+    [Arguments("turntable", true)]
+    [Arguments("contact_sheet", true)]
+    public async Task PreviewDiagnosticContractReportsProtocolRefusalThenOrderedRetryWithoutChangingScene(
+        string kind, bool invalidSeverity)
     {
         using var files = new WorkspaceTestFiles();
         byte[] original = await File.ReadAllBytesAsync(files.SourcePath);
@@ -25,8 +29,10 @@ public sealed class OpenUsdMcpServiceTests
         {
             DiagnosticSnapshot = count => new RenderDiagnosticsState(
             [
-                new RenderDiagnostic(RenderDiagnosticSeverity.Warning,
-                    refuse && count == views ? new string('c', 129) : $"view-{count}", "View warning.")
+                new RenderDiagnostic(refuse && count == views && invalidSeverity
+                    ? (RenderDiagnosticSeverity)999 : RenderDiagnosticSeverity.Warning,
+                    refuse && count == views && !invalidSeverity ? new string('c', 129) : $"view-{count}",
+                    "View warning.")
             ])
         };
         using var processor = new PreviewCaptureProcessor(source, artifacts);
@@ -49,10 +55,10 @@ public sealed class OpenUsdMcpServiceTests
         };
         var refused = await tools.RenderPreviewAsync(request, default);
         await Assert.That(refused.IsError).IsTrue();
-        await Assert.That(refused.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
-            .IsEqualTo(OpenUsdMcpErrorCodes.QuotaExceeded);
         await Assert.That(source.Times.Count).IsEqualTo(views);
         await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That(refused.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
+            .IsEqualTo(invalidSeverity ? OpenUsdMcpErrorCodes.RenderFailure : OpenUsdMcpErrorCodes.QuotaExceeded);
         await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
         await Assert.That((await workspace.GetStatusAsync()).Session!.StageRevision).IsEqualTo(session.StageRevision);
         refuse = false;
