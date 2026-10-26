@@ -2307,6 +2307,10 @@ Access keys are shown with underlined menu/button labels. Keyboard shortcuts inc
 - `X`: toggle physics gizmo snapping
 - `Z`/`Y`: undo/redo the last physics property edit
 
+Shortcut help initially focuses its scrollable catalog. Page Down/Page Up reach the
+remaining bindings without a mouse; Escape closes the dialog. The Close action stays
+visible while the catalog scrolls, including at the minimum window size.
+
 Camera and physics shortcuts are ignored while a text box or combo box is being edited, and never
 fire with a modifier held. Controls use logical markup order, automation names, and theme resources
 rather than fixed foreground colors.

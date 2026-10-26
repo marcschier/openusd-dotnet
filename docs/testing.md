@@ -226,6 +226,11 @@ manager in both themes: a focused Refresh hands focus to Cancel, routed Escape r
 cancellation, Close remains focused during delayed drain, and Refresh regains focus for
 retry after the cancellation or read refusal. Capture, edits and recall are never invoked.
 
+`ShortcutHelpSupportsKeyboardPagingAndEscapeAtMinimumSize` checks both themes with
+the real shortcut catalog: initial scroll-body focus, Page Down/Page Up reaching both
+ends, an always-visible Close action and routed Escape. These managed headless cases
+do not establish physical keyboard or screen-reader qualification.
+
 `ViewerDocumentChangesWindowTests` covers minimum/default light/dark unsaved-document
 prompts with long save refusals. It checks visible decision bounds, scroll reachability of
 the exact layer context and full refusal, disabled Save, initial Cancel focus and routed
