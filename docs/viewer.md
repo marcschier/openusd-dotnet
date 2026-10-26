@@ -1802,6 +1802,9 @@ their aspect ratio and alpha with transparent letterboxing, no crop and no colou
 The grid follows Viewer dark/light and contrast resources. Tab reaches the output location, frame
 grid and Close action; arrow keys move between frames. Escape closes the preview and restores focus
 to **View results** when its job dialog remains open.
+Long descriptions and job/output locations scroll in a separate metadata area so they do not
+collapse the frame grid or push Close outside the compact window. Focusing the read-only
+output location brings it into view without truncating its recorded value.
 
 Every selected file must remain inside the recorded job directory, with no reparse-point or
 filesystem-alias traversal. Windows reads reuse the retained physical-directory/file handles.
