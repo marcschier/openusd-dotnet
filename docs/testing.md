@@ -205,6 +205,10 @@ controls for offsets, focus distance, f-stop and double-precision shutter endpoi
 stage in a Skia-backed headless session. Shutter values include signed and beyond-float-precision
 inputs, same-type referenced lookalike refusal and default/time-sample history semantics.
 It does not qualify a compositor, displayed scene, depth-of-field or motion-blur rendering.
+The desktop `SearchAndPagingKeepLargePrimPropertiesReachableAndEditTheExactSelectedProperty`
+journey additionally selects all six controls through the real MainWindow Inspector and verifies
+Set, Clear and shared menu Undo/Redo against native camera values, retained filters and unchanged
+source bytes. This authoring journey is not a pixel comparison or optical-rendering qualification.
 
 Coverage also runs the built DLL directly:
 

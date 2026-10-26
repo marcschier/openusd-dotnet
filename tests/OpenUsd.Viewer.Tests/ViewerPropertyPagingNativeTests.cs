@@ -15,7 +15,7 @@ using OpenUsd.Shade;
 namespace OpenUsd.Viewer.Tests;
 
 [NotInParallel]
-public sealed class ViewerPropertyPagingNativeTests
+public sealed partial class ViewerPropertyPagingNativeTests
 {
     [Test]
     public async Task SearchAndPagingKeepLargePrimPropertiesReachableAndEditTheExactSelectedProperty()
@@ -329,6 +329,7 @@ public sealed class ViewerPropertyPagingNativeTests
             await Assert.That(propertyGroup.SelectedIndex).IsEqualTo((int)ViewerPropertyGroup.Camera);
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => UsdGeomCamera.Wrap(stage.GetPrim("/Camera")).FocalLength, timeout)).IsEqualTo(50f);
+            await ExerciseCameraOpticsAsync(main, session, shaderQuery, propertyGroup, timeout);
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Light" });
             await WaitAsync(() => shaderQuery.IsEnabled && !registry.IsVisible, timeout);
