@@ -427,6 +427,13 @@ the original resource bytes. Before preflight, the first three cases allocated o
 The existing exact-budget, concurrent-ID and verified-file atomicity cases remain separate.
 This is managed refusal-path allocation evidence, not a total process or concurrent heap ceiling.
 
+`CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
+lazy source that throws if the constructor requests a tenth plane. Admission must reject at
+the ninth and dispose the enumerator, including when the first plane is nonfinite (the existing
+count-before-value refusal order). `AdmittedClipPlanesRetainExactOwnedOrder` checks zero, one and
+eight planes; `ClipPlaneSourceFailureWithinAdmissionIsPreservedAndDisposed` retains the exact
+source exception. These are managed constructor/ABI-layout checks, not renderer execution.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

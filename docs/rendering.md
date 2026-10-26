@@ -1185,6 +1185,12 @@ new commands are rejected once closing begins. Native handles use a registry-bac
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
 operation lease, and backend disposal dispatches session destruction and control detachment together to the UI thread.
 
+Explicit `CameraState` requests accept at most eight finite view-space clip planes. Constructor
+admission consumes at most nine planes from a caller enumerable, rejecting the first excess
+plane without traversing its tail. Valid planes remain an owned, ordered snapshot; source
+enumeration failures within that bound propagate and the enumerator is disposed. This managed
+admission rule does not change the native camera layout or backend clip-plane support.
+
 `CameraState.FromStageCamera` creates a renderer-neutral matrix camera directly from a `UsdGeomCamera` prim. The
 overloads without viewport dimensions preserve the authored aperture aspect; pass `ViewportDimensions` or width/height
 for offscreen captures so the same shared aperture-conformance and projection path used by the Viewer is applied to the
