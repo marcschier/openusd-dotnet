@@ -251,11 +251,11 @@ internal static class OpenUsdMcpDescriptions
         "session. Preview artifacts are optional; missing previews are recorded as partial " +
         "failures rather than invented. " +
         "Effects: writes only inside the session output directory and keeps the session active. " +
-        "Result bounds: at most three report-resource descriptors, at most 16 bounded " +
+        "Result bounds: at most three report-resource descriptors, at most 23 bounded " +
         "failure messages, at most 16 additional content blocks, and one text summary of at " +
         "most 2048 characters. " +
         "Errors: invalid_argument, no_session, stale_session, stale_revision, or " +
-        "native_failure. Per-artifact export or publication failures may instead return " +
+        "native_failure. Per-artifact preview read, export or publication failures may instead return " +
         "partial=true with bounded failures. " +
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":1,\"stageRevision\":2}}.";
 

@@ -9,6 +9,112 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class FinalizationServiceTests
 {
     [Test]
+    [Arguments("cancellation")]
+    [Arguments("containment")]
+    [Arguments("unexpected")]
+    public async Task PreviewReadCancellationAndNonRecoverableFailuresStillAbortFinalization(string kind)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        WorkspaceSessionInfo session = await workspace.StartAsync("scene.usda");
+        await File.WriteAllTextAsync(session.OverlayPath, "#usda 1.0\n");
+        using ArtifactResourceStore store = CreateArtifactStore(files);
+        var previews = new FinalizationPreviewOutputs(
+            HeroStill: AddPreview(store, "hero", CaptureKind.Still, ["hero.png"]));
+        using var cancellation = new CancellationTokenSource();
+        Exception expected = kind switch
+        {
+            "cancellation" => new OperationCanceledException(cancellation.Token),
+            "containment" => new WorkspacePathContainmentException("Preview path escaped."),
+            "unexpected" => new InvalidOperationException("Unexpected reader failure."),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        var failing = new ReadFailingArtifactStore(store, () =>
+        {
+            if (kind == "cancellation")
+            {
+                cancellation.Cancel();
+            }
+            return expected;
+        });
+        var service = new FinalizationService(workspace, failing);
+        Exception? actual = null;
+        try
+        {
+            _ = await service.FinalizeAsync(CreateRequest(session, "read-abort", previews), cancellation.Token);
+        }
+        catch (Exception failure)
+        {
+            actual = failure;
+        }
+        await Assert.That(actual).IsSameReferenceAs(expected);
+        await Assert.That(Directory.GetDirectories(
+            session.OutputDirectory, ".staging-*", SearchOption.AllDirectories)).IsEmpty();
+        await Assert.That(Directory.GetFiles(
+            session.OutputDirectory, "finalization-manifest.json", SearchOption.AllDirectories)).IsEmpty();
+        await Assert.That(store.Count).IsEqualTo(1);
+        await Assert.That((await workspace.GetStatusAsync()).IsActive).IsTrue();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task UnreadablePreviewFileProducesExplicitPartialFailureAndPreservesExactRetry(bool missing)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        WorkspaceSessionInfo session = await workspace.StartAsync("scene.usda");
+        await File.WriteAllTextAsync(session.OverlayPath, "#usda 1.0\n");
+        byte[] sourceBefore = await File.ReadAllBytesAsync(files.SourcePath);
+        using ArtifactResourceStore store = CreateArtifactStore(files);
+        using var image = new MemoryStream();
+        PngRgba8Writer.Write(image, 1, 1, [17, 34, 51, 255], 1024);
+        byte[] original = image.ToArray();
+        string input = Path.Combine(files.OutputRoot, "preview.png");
+        await File.WriteAllBytesAsync(input, original);
+        ArtifactResourceDescriptor selected = await store.AddFileAsync("selected.png", "image/png", input);
+        string cached = Path.Combine(files.OutputRoot, ".artifact-resources",
+            "sha256", selected.Sha256[..2], selected.Sha256);
+        if (missing)
+        {
+            File.Delete(cached);
+        }
+        else
+        {
+            byte[] changed = original.ToArray();
+            changed[^1] ^= 1;
+            await File.WriteAllBytesAsync(cached, changed);
+        }
+        var previews = new FinalizationPreviewOutputs(
+            HeroStill: new PreviewCaptureResult("selected", CaptureKind.Still, 1, 1, [selected]));
+        var service = new FinalizationService(workspace, store);
+        FinalizationRequest request = CreateRequest(session, "read-refusal", previews);
+        FinalizationResult refused = await service.FinalizeAsync(request);
+        FinalizationFailure failure = refused.Failures.Single(item => item.Role == "hero-still");
+        await Assert.That(failure.Message).StartsWith("Preview resource could not be read:");
+        await Assert.That(refused.IsPartial).IsTrue();
+        await Assert.That(refused.FinalStagePath).IsNotNull();
+        await Assert.That(refused.ManifestResource).IsNotNull();
+        FinalizationArtifactRecord record = refused.Artifacts.Single(item => item.Role == "hero-still");
+        await Assert.That(record.Status).IsEqualTo(FinalizationArtifactStatus.Failed);
+        await Assert.That(record.ResourceUri).IsNull();
+        string refusedImage = Path.Combine(refused.OutputDirectory, "presentation", "hero-still.png");
+        await Assert.That(File.Exists(refusedImage)).IsFalse();
+        byte[] refusedManifest = await File.ReadAllBytesAsync(refused.ManifestPath);
+        await File.WriteAllBytesAsync(cached, original);
+        FinalizationResult retry = await service.FinalizeAsync(request);
+        await Assert.That(retry.Failures.Any(item => item.Role == "hero-still")).IsFalse();
+        await Assert.That(await File.ReadAllBytesAsync(
+            Path.Combine(retry.OutputDirectory, "presentation", "hero-still.png"))).IsEquivalentTo(original);
+        await Assert.That(File.Exists(refusedImage)).IsFalse();
+        await Assert.That(await File.ReadAllBytesAsync(refused.ManifestPath)).IsEquivalentTo(refusedManifest);
+        await Assert.That(await File.ReadAllBytesAsync(files.SourcePath)).IsEquivalentTo(sourceBefore);
+        await Assert.That((await workspace.GetStatusAsync()).IsActive).IsTrue();
+    }
+
+    [Test]
     [Arguments("id")]
     [Arguments("length")]
     [Arguments("hash")]
@@ -795,6 +901,27 @@ public sealed class FinalizationServiceTests
         OperatingSystem.IsWindows()
             ? "OpenUsd.Viewer.App.exe"
             : "OpenUsd.Viewer.App";
+
+    private sealed class ReadFailingArtifactStore(ArtifactResourceStore inner, Func<Exception> failure)
+        : IArtifactResourceStore
+    {
+        public ArtifactResourceDescriptor Add(string id, string mediaType, ReadOnlyMemory<byte> content) =>
+            inner.Add(id, mediaType, content);
+
+        public IReadOnlyList<ArtifactResourceDescriptor> AddRange(IReadOnlyList<ArtifactResourceWrite> artifacts) =>
+            inner.AddRange(artifacts);
+
+        public ValueTask<ArtifactResourceDescriptor> AddFileAsync(
+            string id, string mediaType, string path, CancellationToken cancellationToken = default) =>
+            inner.AddFileAsync(id, mediaType, path, cancellationToken);
+
+        public bool TryGetDescriptor(Uri uri, out ArtifactResourceDescriptor? descriptor) =>
+            inner.TryGetDescriptor(uri, out descriptor);
+
+        public ValueTask<ArtifactResourceContent?> ReadAsync(
+            Uri uri, CancellationToken cancellationToken = default) =>
+            ValueTask.FromException<ArtifactResourceContent?>(failure());
+    }
 
     private sealed class CollidingArtifactStore : IArtifactResourceStore
     {

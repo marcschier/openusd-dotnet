@@ -492,6 +492,15 @@ messages, interior offsets, empty terminal pages and negative/beyond-total/Int32
 The native SDK journey follows the continuation to the final four findings and checks
 `invalid_argument` for an invalid offset and `stale_revision` for a changed revision.
 
+`FinalizationReturnsEveryFailureAtAndBeyondThePreviewArtifactLimit` runs the actual MCP service,
+capture worker and processor with 15, 16, 17 and 23 export, missing-overlay, preview-read and report
+quota failures. Every returned failure must match the disk manifest in order, with an exact summary,
+unchanged source/revision and active session. The official SDK schema permits all 23 messages.
+`UnreadablePreviewFileProducesExplicitPartialFailureAndPreservesExactRetry` removes or corrupts the
+actual file-backed preview cache: finalization retains a failed role without claiming an image,
+still publishes reports, and later copies exact original PNG bytes after repair without changing
+the earlier partial manifest. Existing cancellation and reparse-path refusals remain separate gates.
+
 `CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
 lazy source that throws if the constructor requests a tenth plane. Admission must reject at
 the ninth and dispose the enumerator, including when the first plane is nonfinite (the existing

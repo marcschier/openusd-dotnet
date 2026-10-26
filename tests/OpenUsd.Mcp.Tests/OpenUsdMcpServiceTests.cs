@@ -9,6 +9,81 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments(8)]
+    [Arguments(9)]
+    [Arguments(10)]
+    [Arguments(16)]
+    public async Task FinalizationReturnsEveryFailureAtAndBeyondThePreviewArtifactLimit(int turntableFrames)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend { ExportError = new IOException("Export refused.") };
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            MaximumResourceCount: turntableFrames + 2,
+            MaximumReadResponseBytes: 1,
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        using var processor = new PreviewCaptureProcessor(new SequenceFrameFactory(), artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection()
+            .AddSingleton(worker)
+            .AddSingleton(new FinalizationService(workspace, artifacts))
+            .BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        byte[] sourceBefore = await File.ReadAllBytesAsync(files.SourcePath);
+        foreach (string kind in new[] { "still", "contact_sheet", "turntable" })
+        {
+            int count = kind == "turntable" ? turntableFrames : 1;
+            _ = await service.RenderPreviewAsync(new RenderPreviewRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                Kind = kind,
+                Width = 2,
+                Height = 1,
+                Views = Enumerable.Range(0, count)
+                    .Select(index => new CaptureViewDto { Name = $"view-{index}" }).ToArray()
+            }, default);
+        }
+        McpFinalizationResultDto result = await service.FinalizeSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        string manifestPath = Directory.GetFiles(
+            files.OutputRoot, "finalization-manifest.json", SearchOption.AllDirectories).Single();
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(manifestPath));
+        JsonElement failures = manifest.RootElement.GetProperty("failures");
+        string[] expected = failures.EnumerateArray().Select(item =>
+            $"{item.GetProperty("role").GetString()}: {item.GetProperty("message").GetString()}").ToArray();
+        await Assert.That(expected.Length).IsEqualTo(turntableFrames + 7);
+        await Assert.That(result.Failures.SequenceEqual(expected)).IsTrue();
+        await Assert.That(result.Summary).IsEqualTo($"Finalization completed with {expected.Length} failure(s).");
+        await Assert.That(result.Partial).IsTrue();
+        await Assert.That(result.FinalStageCreated).IsFalse();
+        await Assert.That(result.Artifacts).IsEmpty();
+        await Assert.That(result.StageRevision).IsEqualTo(session.StageRevision);
+        await Assert.That(artifacts.Count).IsEqualTo(turntableFrames + 2);
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        var protocol = await tools.FinalizeSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        await Assert.That(protocol.IsError).IsFalse();
+        await Assert.That(protocol.StructuredContent!.Value.GetProperty("failures").EnumerateArray()
+            .Select(item => item.GetString()).SequenceEqual(expected)).IsTrue();
+        await Assert.That(Directory.GetFiles(
+            files.OutputRoot, "finalization-manifest.json", SearchOption.AllDirectories).Length).IsEqualTo(1);
+        await Assert.That(await File.ReadAllBytesAsync(files.SourcePath)).IsEquivalentTo(sourceBefore);
+        await Assert.That((await workspace.GetStatusAsync()).IsActive).IsTrue();
+    }
+
+    [Test]
     [Arguments(0)]
     [Arguments(123)]
     [Arguments(124)]

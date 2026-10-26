@@ -388,6 +388,9 @@ public sealed class OpenUsdMcpToolsTests
             .ProtocolTool
             .InputSchema
             .GetRawText();
+        await Assert.That(tools.Single(static tool => tool.Name == "finalize_scene")
+            .ProtocolTool.OutputSchema!.Value.GetProperty("properties").GetProperty("failures")
+            .GetProperty("maxItems").GetInt32()).IsEqualTo(23);
         string editSchema = tools
             .Single(static tool => tool.Name == "apply_edits")
             .ProtocolTool

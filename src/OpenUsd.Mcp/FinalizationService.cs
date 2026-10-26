@@ -942,10 +942,22 @@ public sealed class FinalizationService
         }
 
         ArtifactResourceDescriptor expected = preview.Artifacts[artifactIndex];
-        ArtifactResourceContent? resource = await _artifactStore.ReadAsync(
-                expected.ResourceUri,
-                cancellationToken)
-            .ConfigureAwait(false);
+        ArtifactResourceContent? resource;
+        try
+        {
+            resource = await _artifactStore.ReadAsync(
+                    expected.ResourceUri,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArtifactResourceReadLimitException ||
+            exception is IOException and not WorkspacePathContainmentException)
+        {
+            AddFailure(artifacts, failures, role, relativePath, expected.MediaType,
+                $"Preview resource could not be read: {exception.Message}");
+            return;
+        }
         if (resource is null)
         {
             AddFailure(

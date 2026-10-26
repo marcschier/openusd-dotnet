@@ -1018,7 +1018,6 @@ internal sealed partial class OpenUsdMcpService(
             result.FinalStagePath is not null,
             Array.AsReadOnly(resources.Select(ToArtifact).ToArray()),
             Array.AsReadOnly(result.Failures
-                .Take(OpenUsdMcpLimits.MaximumArtifactCount)
                 .Select(failure => BoundString(
                     string.Concat(failure.Role, ": ", failure.Message),
                     OpenUsdMcpLimits.MaximumTextLength))

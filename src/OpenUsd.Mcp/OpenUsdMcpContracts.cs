@@ -9,6 +9,7 @@ namespace OpenUsd.Mcp;
 internal static class OpenUsdMcpLimits
 {
     internal const int MaximumArtifactCount = 16;
+    internal const int MaximumFinalizationFailureCount = MaximumViewCount + 7;
     internal const int MaximumEditCount = 128;
     internal const int MaximumIdentifierLength = 128;
     internal const int MaximumIssueCount = 128;
@@ -860,8 +861,10 @@ internal sealed record McpFinalizationResultDto(
     [property: Description("Published read-only report-resource descriptors; at most three.")]
     IReadOnlyList<McpArtifactDto> Artifacts,
     [property: JsonPropertyName("failures")]
-    [property: MaxLength(OpenUsdMcpLimits.MaximumArtifactCount)]
-    [property: Description("Bounded role-prefixed failure messages; at most 16. Empty on complete success.")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumFinalizationFailureCount)]
+    [property: Description(
+        "Every role-prefixed finalization failure; at most 23: 16 turntable frames, " +
+        "hero, sheet, stage, overlay and three report publications. Empty on complete success.")]
     IReadOnlyList<string> Failures,
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput

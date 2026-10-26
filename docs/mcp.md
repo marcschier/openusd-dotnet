@@ -648,7 +648,7 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
   `stale_revision`, `quota_exceeded`, or `native_failure`.
 - **`finalize_scene`:** requires the exact revision; previews are optional. It publishes
   overlay, flattened stage, reports, manifest, and media with at most three report resources
-  and 16 returned failures. Errors are `invalid_argument`, `no_session`, `stale_session`,
+  and 23 returned failures. Errors are `invalid_argument`, `no_session`, `stale_session`,
   `stale_revision`, `native_failure`, or an explicitly reported partial success.
 - **`present_scene`:** requires the exact revision and a successful final stage for that
   revision. It launches the configured Viewer with renderer and optional camera. Errors are
@@ -1241,8 +1241,11 @@ different selected metadata is an explicit partial failure: no preview file or r
 claimed for that role. A later exact selection may succeed without modifying the refused output.
 
 Previews are optional: absent hero/contact-sheet/turntable inputs are explicit partial failures,
-not fabricated media. Export/publication failures can also return `partial: true` with at most
-16 bounded messages while reports and manifest are still produced. The tool publishes at most
+not fabricated media. Preview read-limit or I/O refusals and export/publication failures return
+`partial: true` while reports and manifest are still produced. Every failure is returned, bounded to
+23 messages: 16 turntable frames, hero, sheet, stage, overlay and three report publications.
+Cancellation and path-containment refusals still abort instead of being converted to partial success.
+The tool publishes at most
 three MCP resources: manifest, JSON report, and Markdown report. Their bytes are streamed into the
 artifact store's SHA-256-addressed disk cache; overlay and flattened-stage bytes are never loaded
 into or published through the in-memory resource store. Overlay, flattened stage, and media remain
