@@ -236,6 +236,12 @@ in both themes using a real native string property. The exact composed snapshot 
 the five decisions stay within the window, focused typed input scrolls into view and body
 Page Down/Page Up reaches both endpoints. Escape closes without adding history or changing
 source bytes. This is native-property plus headless-layout evidence, not physical OS input.
+`NativePropertyRefreshKeepsOwnedFocusAndEscapeDrainsPendingCapture` blocks the native scheduler
+while Refresh is pending in both themes. Owned focus moves to Close, returns to the initiating
+control after completion or invalid-input retry, and stays with the body if the user moves there.
+Raw headless Escape cancels the pending capture but keeps the window alive until the native
+scheduler work drains. Closing adds no history; a successful retry changes only the review value,
+and original source bytes remain unchanged. This does not qualify physical keyboard input.
 The desktop `SearchAndPagingKeepLargePrimPropertiesReachableAndEditTheExactSelectedProperty`
 journey additionally selects all six controls through the real MainWindow Inspector and verifies
 Set, Clear and shared menu Undo/Redo against native camera values, retained filters and unchanged

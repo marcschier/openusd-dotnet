@@ -142,8 +142,13 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
 
     private async Task RunAsync(Func<Task> operation)
     {
+        Control? operationFocus = IsKeyboardFocusWithin ? FocusManager?.GetFocusedElement() as Control : null;
         _busy = true;
         UpdateAvailability();
+        if (operationFocus is not null)
+        {
+            ClosePropertyButton.Focus();
+        }
         try
         {
             await operation();
@@ -161,8 +166,20 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         }
         finally
         {
+            bool restoreFocus = ClosePropertyButton.IsKeyboardFocusWithin && (IsActive || IsKeyboardFocusWithin);
             _busy = false;
             UpdateAvailability();
+            if (restoreFocus && !_closing)
+            {
+                if (operationFocus is { IsEnabled: true, IsVisible: true })
+                {
+                    operationFocus.Focus();
+                }
+                else
+                {
+                    RefreshPropertyButton.Focus();
+                }
+            }
         }
     }
 
