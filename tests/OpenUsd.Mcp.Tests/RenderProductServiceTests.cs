@@ -1,7 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using OpenUsd.Geom;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
