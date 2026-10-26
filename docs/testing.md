@@ -421,6 +421,10 @@ failed-import preservation and disposed thumbnails. The headless platform's queu
 is settled before focusing and measuring the compact metadata viewport. Request and camera editors stay
 fully visible after each Ctrl+End and Ctrl+Home operation, with the expected caret and keyboard focus.
 Their nested caret visibility requests stay local; focusing an editor still reveals it in the outer panel.
+`FailedManifestImportRestoresKeyboardRetryWithoutStealingMovedFocus` pauses real manifest reads in
+both themes at minimum size. A focused Import action hands focus to Close while unavailable, then
+recovers retry focus after refusal. Moving to another field or window prevents focus restoration.
+Retry opens the original output with gallery focus intact; closing returns to Import without adding history.
 `ClosingDuringManifestReadCancelsAndDrainsBeforeAnyGalleryCanPublish` pauses descriptor admission and
 proves cancellation/drain before close without a late gallery. These are managed filesystem and headless
 control checks, not native OS picker, screen-reader, device rendering or installed-package qualification.

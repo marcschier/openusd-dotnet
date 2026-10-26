@@ -585,6 +585,96 @@ public sealed class ViewerImportedRenderJobTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FailedManifestImportRestoresKeyboardRetryWithoutStealingMovedFocus(bool dark)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult original = Emit(files.Root, 1, new Source());
+        string path = Path.Combine(original.OutputDirectory, "manifest.json");
+        string missing = Path.Combine(files.Root, "missing", "manifest.json");
+        var history = new ViewerCompletedJobHistory();
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var window = new CompletedJobHistoryWindow(history, readManifest: async (manifest, token) =>
+            {
+                await release.Task.WaitAsync(token);
+                return await ViewerImportedRenderJob.ReadAsync(manifest, token);
+            })
+            {
+                Width = 520,
+                Height = 440,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                Button import = Required<Button>(window, "HistoryImportButton");
+                Button close = Required<Button>(window, "HistoryCloseButton");
+                await Assert.That(import.Focus()).IsTrue();
+                Task importing = window.ImportManifestAsync(missing);
+                await Assert.That(import.IsEnabled).IsFalse();
+                await Assert.That(close.IsEnabled).IsTrue();
+                await Assert.That(close.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(importing.IsCompleted).IsFalse();
+                release.TrySetResult();
+                await importing;
+                await Assert.That(import.IsEnabled).IsTrue();
+                await Assert.That(Required<TextBlock>(window, "HistoryStatus").Text)
+                    .Contains("Could not import render manifest");
+                await Assert.That(import.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(window.OwnedWindows).IsEmpty();
+                release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                importing = window.ImportManifestAsync(missing);
+                TextBox output = Required<TextBox>(window, "HistoryOutput");
+                await Assert.That(output.Focus()).IsTrue();
+                release.TrySetResult();
+                await importing;
+                await Assert.That(output.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(import.Focus()).IsTrue();
+                release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                importing = window.ImportManifestAsync(missing);
+                var otherEditor = new TextBox();
+                var otherWindow = new Window { Content = otherEditor };
+                otherWindow.Show();
+                try
+                {
+                    await Assert.That(otherEditor.Focus()).IsTrue();
+                    release.TrySetResult();
+                    await importing;
+                    await Assert.That(otherEditor.IsKeyboardFocusWithin).IsTrue();
+                    await Assert.That(window.IsKeyboardFocusWithin).IsFalse();
+                }
+                finally
+                {
+                    otherWindow.Close();
+                }
+                await Assert.That(import.Focus()).IsTrue();
+                await window.ImportManifestAsync(path);
+                CompletedRenderJobWindow gallery = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
+                await Assert.That(Required<ListBox>(gallery, "ResultsFrames").ItemCount).IsEqualTo(1);
+                await Assert.That(Required<Button>(gallery, "ResultsCloseButton").IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(Required<TextBox>(gallery, "ResultsOutputLocation").Text)
+                    .IsEqualTo(original.OutputDirectory);
+                await gallery.CloseAsync();
+                await Assert.That(import.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(history.Snapshot()).IsEmpty();
+            }
+            finally
+            {
+                release.TrySetResult();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     public async Task ClosingDuringManifestReadCancelsAndDrainsBeforeAnyGalleryCanPublish()
     {
         using var files = new ViewerCompletedJobTestFiles();

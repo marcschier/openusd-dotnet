@@ -112,8 +112,13 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         {
             return;
         }
+        bool restoreImportFocus = HistoryImportButton.IsKeyboardFocusWithin;
         _opening = true;
         UpdateSelection();
+        if (restoreImportFocus)
+        {
+            HistoryCloseButton.Focus();
+        }
         var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _openTask = drained.Task;
         string? status = null;
@@ -160,6 +165,11 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
             {
                 UpdateSelection();
                 HistoryStatus.Text = status;
+                if (restoreImportFocus && HistoryCloseButton.IsKeyboardFocusWithin &&
+                    (IsActive || IsKeyboardFocusWithin))
+                {
+                    HistoryImportButton.Focus();
+                }
             }
             drained.TrySetResult();
         }
