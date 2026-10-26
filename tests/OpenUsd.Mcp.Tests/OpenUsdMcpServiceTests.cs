@@ -9,6 +9,81 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments("still")]
+    [Arguments("turntable")]
+    [Arguments("contact_sheet")]
+    public async Task PreviewDiagnosticQuotaReportsProtocolRefusalThenOrderedRetryWithoutChangingScene(string kind)
+    {
+        using var files = new WorkspaceTestFiles();
+        byte[] original = await File.ReadAllBytesAsync(files.SourcePath);
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore();
+        bool refuse = true;
+        int views = kind == "still" ? 1 : 2;
+        var source = new SequenceFrameFactory
+        {
+            DiagnosticSnapshot = count => new RenderDiagnosticsState(
+            [
+                new RenderDiagnostic(RenderDiagnosticSeverity.Warning,
+                    refuse && count == views ? new string('c', 129) : $"view-{count}", "View warning.")
+            ])
+        };
+        using var processor = new PreviewCaptureProcessor(source, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        var request = new RenderPreviewRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Kind = kind,
+            Width = kind == "contact_sheet" ? 4 : 2,
+            Height = 1,
+            Views = Enumerable.Range(0, views)
+                .Select(index => new CaptureViewDto { Name = $"view-{index}", TimeCode = index }).ToArray()
+        };
+        var refused = await tools.RenderPreviewAsync(request, default);
+        await Assert.That(refused.IsError).IsTrue();
+        await Assert.That(refused.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
+            .IsEqualTo(OpenUsdMcpErrorCodes.QuotaExceeded);
+        await Assert.That(source.Times.Count).IsEqualTo(views);
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That((await workspace.GetStatusAsync()).Session!.StageRevision).IsEqualTo(session.StageRevision);
+        refuse = false;
+        var retry = await tools.RenderPreviewAsync(request, default);
+        await Assert.That(retry.IsError is true).IsFalse();
+        JsonElement result = retry.StructuredContent!.Value;
+        JsonElement diagnostics = result.GetProperty("diagnostics");
+        await Assert.That(diagnostics.GetArrayLength()).IsEqualTo(views);
+        for (int index = 0; index < views; index++)
+        {
+            await Assert.That(diagnostics[index].GetProperty("code").GetString())
+                .IsEqualTo($"view-{views + index + 1}");
+            await Assert.That(diagnostics[index].GetProperty("severity").GetString()).IsEqualTo("warning");
+            await Assert.That(diagnostics[index].GetProperty("message").GetString()).IsEqualTo("View warning.");
+        }
+        await Assert.That(source.Times.Count).IsEqualTo(views * 2);
+        await Assert.That(result.GetProperty("stageRevision").GetUInt64()).IsEqualTo(session.StageRevision);
+        foreach (JsonElement artifact in result.GetProperty("artifacts").EnumerateArray())
+        {
+            ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(artifact.GetProperty("uri").GetString()!));
+            ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+            await Assert.That(image.Width).IsEqualTo(request.Width);
+            await Assert.That(image.Height).IsEqualTo(request.Height);
+            await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo(kind == "contact_sheet"
+                ? "FF0000FF00FF00FFFF0000FF00FF00FF" : "FF0000FF00FF00FF");
+        }
+        await Assert.That(artifacts.Count).IsEqualTo(kind == "turntable" ? 2 : 1);
+        await Assert.That((await File.ReadAllBytesAsync(files.SourcePath)).SequenceEqual(original)).IsTrue();
+    }
+
+    [Test]
     [Arguments(1, 0, -1)]
     [Arguments(1, 0, 1)]
     [Arguments(16, 0, -16)]
@@ -867,11 +942,14 @@ public sealed class OpenUsdMcpServiceTests
     }
 
     private sealed class SequenceFrameFactory
-        : IPreviewFrameSourceFactory, IPreviewFrameSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource
+        : IPreviewFrameSourceFactory, IPreviewFrameSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource,
+            IPreviewDiagnosticSource
     {
         internal List<double> Times { get; } = [];
         internal List<int> Threads { get; } = [];
         internal Action<int>? OnCapture { get; init; }
+        internal Func<int, RenderDiagnosticsState>? DiagnosticSnapshot { get; init; }
+        public RenderDiagnosticsState Diagnostics { get; private set; } = RenderDiagnosticsState.Empty;
 
         public IPreviewFrameSource Create(PreviewCaptureRequest request, CancellationToken cancellationToken = default)
         {
@@ -884,6 +962,7 @@ public sealed class OpenUsdMcpServiceTests
             Times.Add(view.TimeCode);
             Threads.Add(Environment.CurrentManagedThreadId);
             OnCapture?.Invoke(Times.Count);
+            Diagnostics = DiagnosticSnapshot?.Invoke(Times.Count) ?? RenderDiagnosticsState.Empty;
             return new ImageRgba8(2, 1, [255, 0, 0, 255, 0, 255, 0, 255]);
         }
 

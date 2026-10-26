@@ -463,6 +463,21 @@ byte-identical PNGs and decoded pixels. `CancellationAfterCaptureSkipsEncodingAn
 checks bounded allocation, original cancellation token, no publication and exact decoded retry pixels.
 These are managed encoding/allocation checks, not renderer execution or aggregate process admission.
 
+`PreviewCaptureProcessorTests.MultiViewDiagnosticsRetainEveryCaptureInFirstOccurrenceOrderWithoutStaleRetryEntries`
+changes the source diagnostic snapshot after every view. Turntables, candidate sweeps and sheets
+must retain early errors and intermediate warnings even when the final view is clean, deduplicate
+exact repeats without merging different messages or severities, preserve exact decoded pixels and
+start the next request without stale entries.
+`DiagnosticsAtCountAndTextBoundariesArePreservedAcrossViews` checks 127/128 distinct entries,
+127/128-character codes and 4095/4096-character messages.
+`DiagnosticQuotaRefusesWholePreviewWithoutChangingExistingArtifactAndAllowsCleanRetry` exceeds
+per-frame, cumulative distinct, code and message limits independently, requiring no partial
+publication, unchanged existing content and a clean retry.
+`OpenUsdMcpServiceTests.PreviewDiagnosticQuotaReportsProtocolRefusalThenOrderedRetryWithoutChangingScene`
+checks actual tool `quota_exceeded` classification for still, turntable and sheet requests,
+serialized ordered retry diagnostics, exact decoded pixels and unchanged source/revision.
+These are managed capture/publication and protocol checks, not new native-renderer qualification.
+
 `CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` blocks the actual
 preview frame source, cancels while capture is active, and requires drain before the original token
 or capture failure reaches the caller. Both paths publish nothing and retry with decoded `010203FF`

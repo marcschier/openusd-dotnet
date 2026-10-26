@@ -830,8 +830,13 @@ There is no tool input for choosing a preview backend. Preview output uses the r
 presentation preset with a `-6` stop exposure; strict Storm/hdSilk parity captures continue to use
 identity output instead. The result's bounded `diagnostics` array reports unresolved or unsupported
 materials, missing or invalid texture assets, and authored fallback use with stable machine-readable
-codes. An empty array means the retained preview renderer reported no current material or texture
-degradation; material changes clear stale entries before the next capture.
+codes. Still, turntable, candidate-sweep and contact-sheet results retain diagnostics from every
+captured view, deduplicated by severity, code and message in first-occurrence order. Each frame
+and the complete capture allow at most 128 entries (distinct entries for the complete capture);
+codes allow 128 characters and messages 4096. Exceeding a limit returns `quota_exceeded` before
+any preview artifact is published, rather than silently dropping diagnostics. An empty array means
+the renderer reported no degradation in any captured view; separate requests do not inherit
+diagnostics from previous captures.
 
 ### `render_sequence` and `read_sequence_frame`
 

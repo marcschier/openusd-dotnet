@@ -92,16 +92,19 @@ public sealed partial class PreviewCaptureProcessor :
             ??= _frameSourceFactory.Create(request, cancellationToken)
                 ?? throw new InvalidOperationException("The preview frame source factory returned null.");
 
+        var diagnostics = new List<RenderDiagnostic>();
         List<EncodedArtifact> encoded = request.Kind == CaptureKind.ContactSheet
             ? EncodeContactSheet(
                 frameSource,
                 request,
                 _limits.MaximumTotalArtifactBytes,
+                diagnostics,
                 cancellationToken)
             : EncodeSeparateFrames(
                 frameSource,
                 request,
                 _limits.MaximumTotalArtifactBytes,
+                diagnostics,
                 cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -119,9 +122,7 @@ public sealed partial class PreviewCaptureProcessor :
             request.Width,
             request.Height,
             artifacts,
-            frameSource is IPreviewDiagnosticSource diagnosticSource
-                ? diagnosticSource.Diagnostics.Entries
-                : []);
+            diagnostics);
     }
 
     internal void Reset()
@@ -172,6 +173,7 @@ public sealed partial class PreviewCaptureProcessor :
         IPreviewFrameSource frameSource,
         PreviewCaptureRequest request,
         long maximumTotalArtifactBytes,
+        List<RenderDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
         var encoded = new List<EncodedArtifact>(request.Views.Count);
@@ -183,6 +185,7 @@ public sealed partial class PreviewCaptureProcessor :
             ImageRgba8 image = frameSource.Capture(view, request.Width, request.Height);
             cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, request.Width, request.Height);
+            CollectDiagnostics(frameSource, diagnostics);
             string id = CreateArtifactId(request, index);
             byte[] png = EncodePng(image.Width, image.Height, image.Pixels.Span,
                 maximumTotalArtifactBytes - totalBytes, cancellationToken);
@@ -197,6 +200,7 @@ public sealed partial class PreviewCaptureProcessor :
         IPreviewFrameSource frameSource,
         PreviewCaptureRequest request,
         long maximumTotalArtifactBytes,
+        List<RenderDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
         (int columns, int rows) = GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
@@ -213,6 +217,7 @@ public sealed partial class PreviewCaptureProcessor :
                 cellHeight);
             cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, cellWidth, cellHeight);
+            CollectDiagnostics(frameSource, diagnostics);
             CopyTile(
                 image,
                 sheet,
@@ -230,6 +235,34 @@ public sealed partial class PreviewCaptureProcessor :
                 CreateArtifactId(request, 0),
                 png),
         ];
+    }
+
+    private static void CollectDiagnostics(IPreviewFrameSource frameSource, List<RenderDiagnostic> diagnostics)
+    {
+        if (frameSource is not IPreviewDiagnosticSource source)
+        {
+            return;
+        }
+        IReadOnlyList<RenderDiagnostic> entries = source.Diagnostics.Entries;
+        if (entries.Count > 128)
+        {
+            throw new RenderOutputQuotaExceededException("A preview frame exceeds the diagnostic count limit.");
+        }
+        foreach (RenderDiagnostic diagnostic in entries)
+        {
+            if (diagnostic.Code.Length > 128 || diagnostic.Message.Length > 4096)
+            {
+                throw new RenderOutputQuotaExceededException("A renderer diagnostic exceeds its text limit.");
+            }
+            if (!diagnostics.Contains(diagnostic))
+            {
+                if (diagnostics.Count == 128)
+                {
+                    throw new RenderOutputQuotaExceededException("The preview exceeds its distinct diagnostic limit.");
+                }
+                diagnostics.Add(diagnostic);
+            }
+        }
     }
 
     private static byte[] EncodePng(

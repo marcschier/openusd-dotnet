@@ -375,7 +375,8 @@ internal sealed partial class OpenUsdMcpService(
                 exception is not OperationCanceledException and
                 not CaptureQueueFullException and
                 not CaptureAdmissionTimeoutException and
-                not ArtifactResourceStoreCapacityException)
+                not ArtifactResourceStoreCapacityException and
+                not RenderOutputQuotaExceededException)
             {
                 throw new OpenUsdMcpFailureException(
                     OpenUsdMcpErrorCodes.RenderFailure,

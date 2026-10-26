@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
@@ -342,6 +343,134 @@ public sealed class PreviewCaptureProcessorTests
     }
 
     [Test]
+    [Arguments(CaptureKind.CandidateSweep, false)]
+    [Arguments(CaptureKind.CandidateSweep, true)]
+    [Arguments(CaptureKind.Turntable, false)]
+    [Arguments(CaptureKind.Turntable, true)]
+    [Arguments(CaptureKind.ContactSheet, false)]
+    [Arguments(CaptureKind.ContactSheet, true)]
+    public async Task MultiViewDiagnosticsRetainEveryCaptureInFirstOccurrenceOrderWithoutStaleRetryEntries(
+        CaptureKind kind, bool finalEmpty)
+    {
+        var common = new RenderDiagnostic(RenderDiagnosticSeverity.Warning, "shared", "Repeated warning.");
+        var first = new RenderDiagnostic(RenderDiagnosticSeverity.Error, "first", "Only the first view degraded.");
+        var middle = new RenderDiagnostic(RenderDiagnosticSeverity.Warning, "shared", "Different warning text.");
+        var final = new RenderDiagnostic(RenderDiagnosticSeverity.Information, "shared", "Repeated warning.");
+        RenderDiagnosticsState[] snapshots =
+        [
+            new([first, common]),
+            new([common, middle]),
+            finalEmpty ? RenderDiagnosticsState.Empty : new([final]),
+            RenderDiagnosticsState.Empty
+        ];
+        var source = new RecordingFrameSource(diagnosticsForCapture: count => snapshots[count - 1]);
+        using var store = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new RecordingFrameSourceFactory(source), store);
+        var request = new PreviewCaptureRequest("all-view-diagnostics", kind, 4, 4,
+            Enumerable.Range(0, 3).Select(index => new CaptureView($"view-{index}", CameraState.Default)).ToArray());
+        PreviewCaptureResult result = processor.Process(request);
+        RenderDiagnostic[] expected = finalEmpty ? [first, common, middle] : [first, common, middle, final];
+        await Assert.That(result.Diagnostics.SequenceEqual(expected)).IsTrue();
+        await Assert.That(source.CaptureCount).IsEqualTo(3);
+        await Assert.That(result.Artifacts.Count).IsEqualTo(kind == CaptureKind.ContactSheet ? 1 : 3);
+        for (int index = 0; index < result.Artifacts.Count; index++)
+        {
+            ArtifactResourceContent? png = await store.ReadAsync(result.Artifacts[index].ResourceUri);
+            ImageRgba8 decoded = PngRgba8Decoder.Decode(png!.Content.Span);
+            await Assert.That(decoded.Width).IsEqualTo(4);
+            await Assert.That(decoded.Height).IsEqualTo(4);
+            string expectedPixels = kind == CaptureKind.ContactSheet
+                ? "010203FF010203FF020304FF020304FF010203FF010203FF020304FF020304FF" +
+                    "030405FF030405FF0000000000000000030405FF030405FF0000000000000000"
+                : string.Concat(Enumerable.Repeat($"{index + 1:X2}{index + 2:X2}{index + 3:X2}FF", 16));
+            await Assert.That(Convert.ToHexString(decoded.Pixels.Span)).IsEqualTo(expectedPixels);
+        }
+        PreviewCaptureResult retry = processor.Process(new PreviewCaptureRequest("clean-diagnostics", 1, 1));
+        await Assert.That(retry.Diagnostics).IsEmpty();
+        await Assert.That(source.CaptureCount).IsEqualTo(4);
+    }
+
+    [Test]
+    [Arguments(CaptureKind.CandidateSweep, 127, 127, 4095)]
+    [Arguments(CaptureKind.CandidateSweep, 128, 128, 4096)]
+    [Arguments(CaptureKind.Turntable, 127, 127, 4095)]
+    [Arguments(CaptureKind.Turntable, 128, 128, 4096)]
+    [Arguments(CaptureKind.ContactSheet, 127, 127, 4095)]
+    [Arguments(CaptureKind.ContactSheet, 128, 128, 4096)]
+    public async Task DiagnosticsAtCountAndTextBoundariesArePreservedAcrossViews(
+        CaptureKind kind, int count, int codeLength, int messageLength)
+    {
+        RenderDiagnostic[] expected = Enumerable.Range(0, count)
+            .Select(index => new RenderDiagnostic(RenderDiagnosticSeverity.Warning,
+                new string('c', codeLength - 3) + index.ToString("D3", CultureInfo.InvariantCulture),
+                new string('m', messageLength)))
+            .ToArray();
+        var source = new RecordingFrameSource(diagnosticsForCapture: capture =>
+            new RenderDiagnosticsState(capture == 1 ? expected.Take(64) : expected.Skip(63)));
+        using var store = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new RecordingFrameSourceFactory(source), store);
+        PreviewCaptureResult result = processor.Process(new PreviewCaptureRequest("diagnostic-boundary", kind, 2, 2,
+            [new CaptureView("first", default), new CaptureView("second", default)]));
+        await Assert.That(result.Diagnostics.SequenceEqual(expected)).IsTrue();
+        await Assert.That(source.CaptureCount).IsEqualTo(2);
+        await Assert.That(store.Count).IsEqualTo(kind == CaptureKind.ContactSheet ? 1 : 2);
+    }
+
+    [Test]
+    [Arguments(CaptureKind.CandidateSweep, "frame-count")]
+    [Arguments(CaptureKind.CandidateSweep, "distinct-count")]
+    [Arguments(CaptureKind.CandidateSweep, "code")]
+    [Arguments(CaptureKind.CandidateSweep, "message")]
+    [Arguments(CaptureKind.Turntable, "frame-count")]
+    [Arguments(CaptureKind.Turntable, "distinct-count")]
+    [Arguments(CaptureKind.Turntable, "code")]
+    [Arguments(CaptureKind.Turntable, "message")]
+    [Arguments(CaptureKind.ContactSheet, "frame-count")]
+    [Arguments(CaptureKind.ContactSheet, "distinct-count")]
+    [Arguments(CaptureKind.ContactSheet, "code")]
+    [Arguments(CaptureKind.ContactSheet, "message")]
+    public async Task DiagnosticQuotaRefusesWholePreviewWithoutChangingExistingArtifactAndAllowsCleanRetry(
+        CaptureKind kind, string quota)
+    {
+        var valid = new RenderDiagnostic(RenderDiagnosticSeverity.Warning, "valid", "Valid first view warning.");
+        RenderDiagnostic[] distinct = Enumerable.Range(0, 129)
+            .Select(index => new RenderDiagnostic(RenderDiagnosticSeverity.Warning, $"warning-{index}", "Warning."))
+            .ToArray();
+        RenderDiagnostic[] invalid = quota switch
+        {
+            "frame-count" => Enumerable.Repeat(valid, 129).ToArray(),
+            "distinct-count" => distinct[64..],
+            "code" => [new RenderDiagnostic(RenderDiagnosticSeverity.Warning, new string('c', 129), "Warning.")],
+            _ => [new RenderDiagnostic(RenderDiagnosticSeverity.Warning, "valid", new string('m', 4097))]
+        };
+        var source = new RecordingFrameSource(diagnosticsForCapture: capture => capture switch
+        {
+            1 => new RenderDiagnosticsState(quota == "distinct-count" ? distinct[..64] : [valid]),
+            2 => new RenderDiagnosticsState(invalid),
+            _ => RenderDiagnosticsState.Empty
+        });
+        using var store = new ArtifactResourceStore();
+        byte[] original = PngRgba8Encoder.Encode(new ImageRgba8(1, 1, [17, 34, 51, 255]));
+        ArtifactResourceDescriptor existing = store.Add("existing", "image/png", original);
+        using var processor = new PreviewCaptureProcessor(new RecordingFrameSourceFactory(source), store);
+        var request = new PreviewCaptureRequest("diagnostic-refusal", kind, 2, 2,
+            [new CaptureView("first", default), new CaptureView("second", default)]);
+        await Assert.That(() => processor.Process(request)).Throws<RenderOutputQuotaExceededException>();
+        await Assert.That(store.Count).IsEqualTo(1);
+        await Assert.That(source.CaptureCount).IsEqualTo(2);
+        ArtifactResourceContent? unchanged = await store.ReadAsync(existing.ResourceUri);
+        await Assert.That(unchanged!.Content.Span.SequenceEqual(original)).IsTrue();
+        await Assert.That(unchanged.Descriptor).IsEqualTo(existing);
+        PreviewCaptureResult retry = processor.Process(request);
+        await Assert.That(retry.Diagnostics).IsEmpty();
+        await Assert.That(source.CaptureCount).IsEqualTo(4);
+        await Assert.That(store.Count).IsEqualTo(kind == CaptureKind.ContactSheet ? 2 : 3);
+        ArtifactResourceContent? recovered = await store.ReadAsync(retry.Artifacts[0].ResourceUri);
+        ImageRgba8 image = PngRgba8Decoder.Decode(recovered!.Content.Span);
+        await Assert.That(Convert.ToHexString(image.Pixels.Span[..4])).IsEqualTo("030405FF");
+    }
+
+    [Test]
     public async Task RetainsOneLazilyCreatedFrameSourceAcrossRequests()
     {
         var source = new RecordingFrameSource();
@@ -620,7 +749,8 @@ public sealed class PreviewCaptureProcessorTests
     private sealed class RecordingFrameSource(
         Action<int>? captureCallback = null,
         int disposeFailuresRemaining = 0,
-        RenderDiagnosticsState? diagnostics = null)
+        RenderDiagnosticsState? diagnostics = null,
+        Func<int, RenderDiagnosticsState>? diagnosticsForCapture = null)
         : IPreviewFrameSource, IPreviewDiagnosticSource
     {
         internal int CaptureCount { get; private set; }
@@ -629,13 +759,17 @@ public sealed class PreviewCaptureProcessorTests
 
         internal bool Disposed { get; private set; }
 
-        public RenderDiagnosticsState Diagnostics { get; } =
+        public RenderDiagnosticsState Diagnostics { get; private set; } =
             diagnostics ?? RenderDiagnosticsState.Empty;
 
         public ImageRgba8 Capture(CaptureView view, int width, int height)
         {
             CaptureCount++;
             captureCallback?.Invoke(CaptureCount);
+            if (diagnosticsForCapture is not null)
+            {
+                Diagnostics = diagnosticsForCapture(CaptureCount);
+            }
             byte first = checked((byte)CaptureCount);
             byte[] pixels = new byte[ImageRgba8.GetByteCount(width, height)];
             for (int offset = 0; offset < pixels.Length; offset += 4)

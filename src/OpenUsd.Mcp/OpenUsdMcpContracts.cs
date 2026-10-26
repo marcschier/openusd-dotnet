@@ -699,7 +699,7 @@ internal sealed record McpCaptureResultDto(
     [property: JsonPropertyName("diagnostics")]
     [property: MaxLength(128)]
     [property: Description(
-        "Current bounded hdSilk material and texture degradation diagnostics; at most 128.")]
+        "Distinct hdSilk degradation diagnostics across all captured views in first-occurrence order; at most 128.")]
     IReadOnlyList<McpRenderDiagnosticDto> Diagnostics,
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
