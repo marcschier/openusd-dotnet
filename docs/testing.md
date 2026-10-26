@@ -221,6 +221,11 @@ a partial pair or comparison file. Loading hands owned keyboard focus to Cancel,
 Compare after cancellation or completion, and retains independently decoded pixels on retry.
 These headless keyboard cases do not qualify physical OS input.
 
+`RefreshHandsKeyboardFocusToCancellationAndRestoresItAfterDrain` exercises the saved-view
+manager in both themes: a focused Refresh hands focus to Cancel, routed Escape requests
+cancellation, Close remains focused during delayed drain, and Refresh regains focus for
+retry after the cancellation or read refusal. Capture, edits and recall are never invoked.
+
 `ViewerDocumentChangesWindowTests` covers minimum/default light/dark unsaved-document
 prompts with long save refusals. It checks visible decision bounds, scroll reachability of
 the exact layer context and full refusal, disabled Save, initial Cancel focus and routed

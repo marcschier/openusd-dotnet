@@ -649,6 +649,10 @@ Add/rename/remove are single exact whole-list transactions in the shared review 
 Disjoint review edits are preserved; competing changes to the catalog produce a conflict rather
 than a merge or overwrite. Cancelling a name edit makes no opinion/history change. An added or
 changed view remains **unsaved** until **Save Review Document** or **Save Review As...** succeeds.
+When a saved-view operation starts from a focused control, keyboard focus moves to
+**Cancel operation**. Cancellation keeps the window open until the operation and any view
+restoration drain, with Close reachable during that wait; focus then returns to the initiating
+control. Escape cancels active work and closes the manager only when idle.
 The existing native URD, source/dependency verification, late-edit acknowledgement, recovery,
 reopen/revert and Save/Discard/Cancel protocols apply. Reopening restores the catalog with fresh
 history, but does not automatically recall a view. Verified Windows text-USD review sources are the

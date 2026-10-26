@@ -3,6 +3,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
 
@@ -11,6 +12,84 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerCameraBookmarksWindowTests
 {
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task RefreshHandsKeyboardFocusToCancellationAndRestoresItAfterDrain(bool dark)
+    {
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            int reads = 0;
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var drain = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var window = new CameraBookmarksWindow(
+                async token =>
+                {
+                    if (++reads == 2)
+                    {
+                        try
+                        {
+                            await Task.Delay(Timeout.Infinite, token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            cancelled.TrySetResult();
+                            await drain.Task;
+                            throw;
+                        }
+                    }
+                    throw new IOException("The original review cannot be read.");
+                },
+                (_, _) => throw new InvalidOperationException("Capture must not run."),
+                (_, _, _, _) => throw new InvalidOperationException("Editing must not run."),
+                (_, _) => throw new InvalidOperationException("Recall must not run."),
+                () => new ViewerCameraBookmarkAvailability(false, false, false, "Original review", "Read refused."))
+            {
+                Width = 560,
+                Height = 440,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                TextBox name = Required<TextBox>(window, "SavedViewName");
+                await Assert.That(name.IsKeyboardFocusWithin).IsTrue();
+                Button refresh = Required<Button>(window, "SavedViewsRefreshButton");
+                await Assert.That(refresh.Focus()).IsTrue();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Button cancel = Required<Button>(window, "SavedViewsCancelButton");
+                await Assert.That(window.IsRunning).IsTrue();
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                cancel.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                await cancelled.Task.WaitAsync(lifetime.Token);
+                await Assert.That(cancel.IsEnabled).IsFalse();
+                await Assert.That(Required<Button>(window, "SavedViewsCloseButton").IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(window.IsVisible).IsTrue();
+                await Assert.That(window.IsRunning).IsTrue();
+                drain.TrySetResult();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(refresh.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text).StartsWith("Cancelled.");
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Assert.That(reads).IsEqualTo(3);
+                await Assert.That(refresh.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text)
+                    .Contains("The original review cannot be read.");
+                refresh.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                await window.CloseAsync().WaitAsync(lifetime.Token);
+                await Assert.That(window.IsVisible).IsFalse();
+            }
+            finally
+            {
+                drain.TrySetResult();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
     [Test]
     [Arguments(560, 440, false, false)]
     [Arguments(560, 440, true, false)]

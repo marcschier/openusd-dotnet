@@ -20,6 +20,7 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
     private CancellationTokenSource? _operation;
     private Task _runTask = Task.CompletedTask;
     private bool _closing;
+    private bool _restoreOperationFocus;
 
     internal CameraBookmarksWindow(
         Func<CancellationToken, Task<ViewerCameraBookmarkCapture>> read,
@@ -113,11 +114,17 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
 
     internal void Cancel()
     {
-        _operation?.Cancel();
-        if (IsRunning)
+        if (_operation is { } operation)
         {
+            bool ownsFocus = SavedViewsCancelButton.IsKeyboardFocusWithin;
+            _restoreOperationFocus |= ownsFocus;
             SavedViewsStatus.Text = "Cancelling; waiting for the operation and any view restoration.";
             SavedViewsCancelButton.IsEnabled = false;
+            if (ownsFocus)
+            {
+                SavedViewsCloseButton.Focus();
+            }
+            operation.Cancel();
         }
     }
 
@@ -144,9 +151,14 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
 
     private async Task RunAsync(Func<CancellationToken, Task> operation)
     {
+        Control? operationFocus = IsKeyboardFocusWithin ? FocusManager?.GetFocusedElement() as Control : null;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _operation = cancellation;
         UpdateContext();
+        if (operationFocus is not null)
+        {
+            SavedViewsCancelButton.Focus();
+        }
         try
         {
             await operation(cancellation.Token);
@@ -164,8 +176,22 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
         }
         finally
         {
+            bool restoreFocus = (_restoreOperationFocus || SavedViewsCancelButton.IsKeyboardFocusWithin) &&
+                (IsActive || IsKeyboardFocusWithin);
+            _restoreOperationFocus = false;
             _operation = null;
             UpdateContext();
+            if (restoreFocus && !_closing)
+            {
+                if (operationFocus is { IsEnabled: true, IsVisible: true })
+                {
+                    operationFocus.Focus();
+                }
+                else
+                {
+                    SavedViewsRefreshButton.Focus();
+                }
+            }
         }
     }
 
