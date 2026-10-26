@@ -1829,6 +1829,9 @@ persistent results browser that survives document retirement.
 without opening a stage or starting another render. Choose before/after independently, then use
 Side by side, Before, or After. Images fit independently and retain their original dimension labels;
 this is a visual comparison, not a pixel-error metric or a new colour-management pipeline.
+At the compact 600-by-360 minimum, the capture/notes area scrolls while the status and
+comparison/file/close actions stay visible. Keyboard focus brings an expanded notes editor
+into view. At the default size, the preview fills the available area without extra scrolling.
 
 **Save comparison** writes a new `.usdcompare.json` file containing the two absolute capture
 paths, their decoded RGBA SHA-256 checksums and dimensions, the selected display mode and

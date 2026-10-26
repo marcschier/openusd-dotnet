@@ -23,6 +23,11 @@ public sealed class ViewerCapturePresentationTests
     ];
 
     private static readonly byte[] AfterRgba = [20, 40, 80, 255, 200, 100, 0, 255];
+    private static readonly string[] ComparisonActionNames =
+    [
+        "ComparisonMode", "OpenPresentationButton", "SavePresentationButton",
+        "CompareAgainButton", "CancelComparisonButton", "CloseComparisonButton"
+    ];
 
     [Test]
     public async Task VersionTwoReviewNotesSurviveOpeningAndResavingTheVerifiedPair()
@@ -584,6 +589,7 @@ public sealed class ViewerCapturePresentationTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task ComparisonWindowSavesAndReopensHistoricalPairWithoutPublishingPartialState()
     {
         using var fixture = await Fixture.CreateAsync();
@@ -668,6 +674,73 @@ public sealed class ViewerCapturePresentationTests
         await Assert.That(
             Directory.GetFiles(Path.Combine(fixture.Root, "out")).Select(Path.GetFileName).OfType<string>())
             .IsEquivalentTo(["comparison.usdcompare.json", "malformed.usdcompare.json"]);
+    }
+
+    [Test]
+    [NotInParallel]
+    [Arguments(600, 360, false)]
+    [Arguments(600, 360, true)]
+    [Arguments(1040, 700, false)]
+    [Arguments(1040, 700, true)]
+    public async Task ComparisonActionsRemainVisibleAtMinimumSizeWithReviewNotes(
+        int width, int height, bool expanded)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        await RunUiAsync(async () =>
+        {
+            var window = new CaptureComparisonWindow { Width = width, Height = height };
+            window.Show();
+            try
+            {
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                Required<TextBox>(window, "ComparisonNotes").Text = new string('x', 2048);
+                Required<Expander>(window, "ComparisonNotesExpander").IsExpanded = expanded;
+                window.UpdateLayout();
+
+                foreach (string name in ComparisonActionNames)
+                {
+                    Control control = Required<Control>(window, name);
+                    Point? origin = control.TranslatePoint(default, window);
+                    await Assert.That(origin).IsNotNull();
+                    await Assert.That(control.IsVisible).IsTrue();
+                    await Assert.That(control.Bounds.Width).IsGreaterThan(0);
+                    await Assert.That(control.Bounds.Height).IsGreaterThan(0);
+                    await Assert.That(origin!.Value.X).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.Y).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.X + control.Bounds.Width)
+                        .IsLessThanOrEqualTo(window.ClientSize.Width);
+                    await Assert.That(origin.Value.Y + control.Bounds.Height)
+                        .IsLessThanOrEqualTo(window.ClientSize.Height);
+                }
+                ScrollViewer body = Required<ScrollViewer>(window, "ComparisonBodyScroll");
+                if (expanded)
+                {
+                    TextBox notes = Required<TextBox>(window, "ComparisonNotes");
+                    await Assert.That(notes.Focus()).IsTrue();
+                    notes.BringIntoView();
+                    window.UpdateLayout();
+                    Point? origin = notes.TranslatePoint(default, body);
+                    await Assert.That(origin).IsNotNull();
+                    await Assert.That(origin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.Y + notes.Bounds.Height)
+                        .IsLessThanOrEqualTo(body.Viewport.Height);
+                    await Assert.That(notes.IsKeyboardFocusWithin).IsTrue();
+                }
+                if (height == 700)
+                {
+                    await Assert.That(body.Extent.Height).IsEqualTo(body.Viewport.Height);
+                }
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+                await Assert.That(Required<TextBox>(window, "ComparisonNotes").Text!.Length).IsEqualTo(2048);
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
     }
 
     private static async Task AssertRestoredAsync(
