@@ -52,7 +52,8 @@ public sealed class ViewerShortcutsWindowTests
                 await Assert.That(body.Offset.Y).IsEqualTo(0);
                 ItemsControl items = window.FindControl<ItemsControl>("ShortcutItems") ??
                     throw new InvalidOperationException("The shortcut catalog is missing.");
-                await Assert.That(items.ItemsSource ?? throw new InvalidOperationException("The shortcut catalog is empty."))
+                await Assert.That(items.ItemsSource ??
+                    throw new InvalidOperationException("The shortcut catalog is empty."))
                     .IsSameReferenceAs(ViewerShortcutCatalog.All);
                 Button close = window.FindControl<Button>("CloseButton") ??
                     throw new InvalidOperationException("Shortcut Close is missing.");

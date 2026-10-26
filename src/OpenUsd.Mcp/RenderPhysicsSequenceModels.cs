@@ -89,7 +89,8 @@ internal sealed record McpSimulationFrameDto(
     [property: Description("Complete number of body overrides.")] int BodyCount,
     [property: Description("Complete number of deformation regions.")] int DeformationCount)
 {
-    [Description("Optional original host-provided review identity; an attestation, not independent source verification.")]
+    [Description(
+        "Optional original host-provided review identity; an attestation, not independent source verification.")]
     public string? ReviewIdentity { get; init; }
 
     internal static McpSimulationFrameDto From(RenderSimulationFrameIdentity identity) =>

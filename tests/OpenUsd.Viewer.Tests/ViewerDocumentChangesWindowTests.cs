@@ -25,7 +25,8 @@ public sealed class ViewerDocumentChangesWindowTests
     public async Task LongSaveRefusalsKeepDocumentDecisionsVisibleAndEscapeSafelyCancels(
         int width, int height, bool dark)
     {
-        string restriction = string.Join(' ', Enumerable.Repeat("Exact source save refusal remains authoritative.", 80));
+        string restriction = string.Join(' ',
+            Enumerable.Repeat("Exact source save refusal remains authoritative.", 80));
         var state = new ViewerDocumentState(Guid.NewGuid(),
             new("source", ViewerDocumentLayerRole.Source, "original-source.usda", 2, true, true),
             new("review", ViewerDocumentLayerRole.Review, null, 3, true, true), "review")

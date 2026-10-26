@@ -387,7 +387,8 @@ public sealed class ViewerCompletedJobHistoryTests
         }, lifetime.Token).WaitAsync(lifetime.Token);
     }
 
-    private static async Task<CompletedRenderJobWindow> OpenAsync(CompletedJobHistoryWindow window, bool keyboard = false)
+    private static async Task<CompletedRenderJobWindow> OpenAsync(
+        CompletedJobHistoryWindow window, bool keyboard = false)
     {
         if (keyboard)
         {
