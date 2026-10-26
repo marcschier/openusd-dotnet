@@ -181,6 +181,7 @@ public sealed partial class PreviewCaptureProcessor :
             cancellationToken.ThrowIfCancellationRequested();
             CaptureView view = request.Views[index];
             ImageRgba8 image = frameSource.Capture(view, request.Width, request.Height);
+            cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, request.Width, request.Height);
             string id = request.Kind == CaptureKind.Still
                 ? string.Concat(request.RequestId, ".png")
@@ -191,7 +192,8 @@ public sealed partial class PreviewCaptureProcessor :
                     "-",
                     SanitizeArtifactName(view.Name),
                     ".png");
-            byte[] png = PngRgba8Encoder.Encode(image);
+            byte[] png = EncodePng(image.Width, image.Height, image.Pixels.Span,
+                maximumTotalArtifactBytes - totalBytes, cancellationToken);
             totalBytes = AddArtifactBytes(totalBytes, png.Length, maximumTotalArtifactBytes);
             encoded.Add(new EncodedArtifact(id, png));
         }
@@ -224,6 +226,7 @@ public sealed partial class PreviewCaptureProcessor :
                 request.Views[index],
                 cellWidth,
                 cellHeight);
+            cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, cellWidth, cellHeight);
             CopyTile(
                 image,
@@ -233,8 +236,8 @@ public sealed partial class PreviewCaptureProcessor :
                 (index / columns) * cellHeight);
         }
 
-        var contactSheet = new ImageRgba8(request.Width, request.Height, sheet);
-        byte[] png = PngRgba8Encoder.Encode(contactSheet);
+        byte[] png = EncodePng(request.Width, request.Height, sheet,
+            maximumTotalArtifactBytes, cancellationToken);
         _ = AddArtifactBytes(0, png.Length, maximumTotalArtifactBytes);
         return
         [
@@ -242,6 +245,19 @@ public sealed partial class PreviewCaptureProcessor :
                 string.Concat(request.RequestId, "-contact-sheet.png"),
                 png),
         ];
+    }
+
+    private static byte[] EncodePng(
+        int width, int height, ReadOnlySpan<byte> pixels, long maximumBytes, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (maximumBytes <= 0)
+        {
+            throw new RenderOutputQuotaExceededException("Capture artifacts exceed the output byte budget.");
+        }
+        using var output = new MemoryStream();
+        _ = PngRgba8Writer.Write(output, width, height, pixels, maximumBytes, cancellationToken);
+        return output.ToArray();
     }
 
     private static long AddArtifactBytes(

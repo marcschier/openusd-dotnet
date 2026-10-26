@@ -1284,6 +1284,13 @@ verified lengths before opening any source. Unverified file lengths are not gues
 extents and hashes are still checked after opening, and final publication rechecks capacity and
 identity atomically. Preflight does not reserve capacity against concurrent in-memory publishers.
 
+Preview PNG encoding enforces the remaining request-wide encoded-byte budget while streaming
+compression, rather than encoding a full oversized image before refusing it. Separate views share
+that budget; contact sheets encode directly from their owned canvas without another full-canvas
+copy. Cancellation is checked after capture and during encoding. No partial artifact batch is
+published on quota refusal or cancellation, and the retained source remains available for retry.
+These bounds do not include caller/source pixels, the contact-sheet canvas or total process RAM.
+
 ## Error envelope
 
 Tool execution failures set MCP `isError: true` and return:

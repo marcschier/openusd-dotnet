@@ -7,6 +7,165 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class PreviewCaptureProcessorTests
 {
     [Test]
+    public async Task ExhaustedCumulativePreviewBudgetDoesNotPublishFirstFrame()
+    {
+        var image = new ImageRgba8(1, 1, [17, 34, 51, 255]);
+        int firstBytes = PngRgba8Encoder.Encode(image).Length;
+        using var artifacts = new ArtifactResourceStore();
+        using var source = new FixedFrameSource(image);
+        using var processor = new PreviewCaptureProcessor(source, artifacts,
+            new PreviewCaptureLimits(1, 1, 2, firstBytes));
+        var request = new PreviewCaptureRequest("exhausted", CaptureKind.Turntable, 1, 1,
+            [new CaptureView("first", default), new CaptureView("second", default)]);
+        await Assert.That(() => processor.Process(request)).Throws<RenderOutputQuotaExceededException>();
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That(artifacts.TotalBytes).IsEqualTo(0L);
+        await Assert.That(source.CaptureCount).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(CaptureKind.Still, -1)]
+    [Arguments(CaptureKind.Still, 0)]
+    [Arguments(CaptureKind.Still, 1)]
+    [Arguments(CaptureKind.ContactSheet, -1)]
+    [Arguments(CaptureKind.ContactSheet, 0)]
+    [Arguments(CaptureKind.ContactSheet, 1)]
+    [Arguments(CaptureKind.CandidateSweep, -1)]
+    [Arguments(CaptureKind.CandidateSweep, 0)]
+    [Arguments(CaptureKind.CandidateSweep, 1)]
+    [Arguments(CaptureKind.Turntable, -1)]
+    [Arguments(CaptureKind.Turntable, 0)]
+    [Arguments(CaptureKind.Turntable, 1)]
+    public async Task PreviewEncodingHonorsExactRemainingBudgetAcrossAllModes(CaptureKind kind, int margin)
+    {
+        var image = new ImageRgba8(1, 1, [17, 34, 51, 255]);
+        byte[] png = PngRgba8Encoder.Encode(image);
+        bool separate = kind is CaptureKind.CandidateSweep or CaptureKind.Turntable;
+        CaptureView[] views = separate
+            ? [new CaptureView("first", default), new CaptureView("second", default)]
+            : [new CaptureView("first", default)];
+        long exact = png.Length * (separate ? 2L : 1L);
+        using var artifacts = new ArtifactResourceStore();
+        using var source = new FixedFrameSource(image);
+        using var processor = new PreviewCaptureProcessor(source, artifacts,
+            new PreviewCaptureLimits(1, 1, 2, exact + margin));
+        var request = new PreviewCaptureRequest("boundary", kind, 1, 1, views);
+        if (margin < 0)
+        {
+            await Assert.That(() => processor.Process(request)).Throws<RenderOutputQuotaExceededException>();
+            await Assert.That(artifacts.Count).IsEqualTo(0);
+            await Assert.That(artifacts.TotalBytes).IsEqualTo(0L);
+        }
+        else
+        {
+            PreviewCaptureResult result = processor.Process(request);
+            await Assert.That(result.Artifacts.Count).IsEqualTo(separate ? 2 : 1);
+            await Assert.That(artifacts.TotalBytes).IsEqualTo(exact);
+            foreach (ArtifactResourceDescriptor descriptor in result.Artifacts)
+            {
+                ArtifactResourceContent content = (await artifacts.ReadAsync(descriptor.ResourceUri))!;
+                await Assert.That(Convert.ToHexString(content.Content.Span)).IsEqualTo(Convert.ToHexString(png));
+                await Assert.That(Convert.ToHexString(PngRgba8Decoder.Decode(content.Content.Span).Pixels.Span))
+                    .IsEqualTo("112233FF");
+            }
+        }
+        await Assert.That(source.CaptureCount).IsEqualTo(views.Length);
+    }
+
+    [Test]
+    [Arguments(CaptureKind.Still)]
+    [Arguments(CaptureKind.ContactSheet)]
+    public async Task CancellationAfterCaptureSkipsEncodingAndRetainsSourceForExactRetry(CaptureKind kind)
+    {
+        byte[] pixels = new byte[1024 * 1024 * 4];
+        new Random(419).NextBytes(pixels);
+        var image = new ImageRgba8(1024, 1024, pixels);
+        using var cancellation = new CancellationTokenSource();
+        using var artifacts = new ArtifactResourceStore();
+        using var source = new FixedFrameSource(image, () => cancellation.Cancel());
+        using var processor = new PreviewCaptureProcessor(source, artifacts,
+            new PreviewCaptureLimits(1024, 1024, 1, 16 * 1024 * 1024));
+        var request = new PreviewCaptureRequest("cancel-encoding", kind, 1024, 1024,
+            [new CaptureView("original", default)]);
+        OperationCanceledException? observed = null;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        try
+        {
+            processor.Process(request, cancellation.Token);
+        }
+        catch (OperationCanceledException exception)
+        {
+            observed = exception;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        await Assert.That(observed).IsNotNull();
+        await Assert.That(observed!.CancellationToken).IsEqualTo(cancellation.Token);
+        long sheetBytes = kind == CaptureKind.ContactSheet ? pixels.Length : 0;
+        await Assert.That(allocated - sheetBytes).IsLessThan(1024 * 1024L);
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That(source.CaptureCount).IsEqualTo(1);
+        PreviewCaptureResult retry = processor.Process(request);
+        ArtifactResourceContent content = (await artifacts.ReadAsync(retry.Artifacts.Single().ResourceUri))!;
+        await Assert.That(Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(PngRgba8Decoder.Decode(content.Content.Span).Pixels.Span)))
+            .IsEqualTo(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(pixels)));
+        await Assert.That(artifacts.Count).IsEqualTo(1);
+        await Assert.That(source.CaptureCount).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(CaptureKind.Still)]
+    [Arguments(CaptureKind.ContactSheet)]
+    public async Task PreviewByteQuotaRejectsBeforeAllocatingTheCompleteEncodedImage(CaptureKind kind)
+    {
+        byte[] pixels = new byte[1024 * 1024 * 4];
+        new Random(173).NextBytes(pixels);
+        var image = new ImageRgba8(1024, 1024, pixels);
+        using var artifacts = new ArtifactResourceStore();
+        using var source = new FixedFrameSource(image);
+        using var processor = new PreviewCaptureProcessor(source, artifacts,
+            new PreviewCaptureLimits(1024, 1024, 1, 1024));
+        var request = new PreviewCaptureRequest("bounded", kind, 1024, 1024,
+            [new CaptureView("original", default)]);
+        InvalidOperationException? observed = null;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        try
+        {
+            processor.Process(request);
+        }
+        catch (InvalidOperationException exception)
+        {
+            observed = exception;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        await Assert.That(observed).IsNotNull();
+        long sheetBytes = kind == CaptureKind.ContactSheet ? pixels.Length : 0;
+        await Assert.That(allocated - sheetBytes).IsLessThan(1024 * 1024L);
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That(artifacts.TotalBytes).IsEqualTo(0L);
+        await Assert.That(source.CaptureCount).IsEqualTo(1);
+    }
+
+    private sealed class FixedFrameSource(ImageRgba8 image, Action? captured = null)
+        : IPreviewFrameSourceFactory, IPreviewFrameSource
+    {
+        internal int CaptureCount { get; private set; }
+
+        public IPreviewFrameSource Create(PreviewCaptureRequest request, CancellationToken cancellationToken) => this;
+
+        public ImageRgba8 Capture(CaptureView view, int width, int height)
+        {
+            CaptureCount++;
+            captured?.Invoke();
+            return image;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    [Test]
     public async Task StillCaptureEncodesPngAndPublishesArtifact()
     {
         var source = new RecordingFrameSource();

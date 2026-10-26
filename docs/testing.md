@@ -449,6 +449,14 @@ refuse capacity without integer overflow or file I/O. Existing exact-budget, cha
 missing-source, concurrent-winner and cancellation cases retain actual verification and cleanup.
 These are logical registry/file-admission checks, not process-memory or concurrent reservations.
 
+`PreviewCaptureProcessorTests.PreviewByteQuotaRejectsBeforeAllocatingTheCompleteEncodedImage`
+uses preallocated 1024-square noisy pixels and a 1-KiB output quota. Refusal must allocate less than
+1 MiB beyond the contact-sheet canvas, publishing nothing. `PreviewEncodingHonorsExactRemainingBudgetAcrossAllModes`
+checks one byte below, exactly at and one byte above the encoded total for all four modes, including
+byte-identical PNGs and decoded pixels. `CancellationAfterCaptureSkipsEncodingAndRetainsSourceForExactRetry`
+checks bounded allocation, original cancellation token, no publication and exact decoded retry pixels.
+These are managed encoding/allocation checks, not renderer execution or aggregate process admission.
+
 `CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
 lazy source that throws if the constructor requests a tenth plane. Admission must reject at
 the ninth and dispose the enumerator, including when the first plane is nonfinite (the existing
