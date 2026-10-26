@@ -2066,6 +2066,9 @@ would turn the Viewer into a place secrets are typed and, eventually, persisted.
 bridge is written to the settings store. Any endpoint the Viewer displays has its userinfo, query,
 and fragment removed first, and the same redaction is applied to every provider-supplied message, so
 a failure that quotes a URL back cannot leak a token into a status bar or an exported diagnostic.
+At the minimum dialog size, connection details and full refusal text scroll independently of the
+wrapping action footer. Tab to the details area and use the scroll keys to read long messages;
+Close remains reachable even while provider commands are unavailable.
 
 The status-bar indicator is hidden until a session is configured or active, and hides again after a
 successful disconnect, so a Viewer that is only opening local files never grows a bridge field. A
@@ -2085,8 +2088,9 @@ independently tested:
   state, so a second click cannot overlap a command in flight.
 - A provider that throws, faults, is cancelled, or misbehaves in its own properties produces an
   explicit redacted message in the dialog rather than an exception crossing into UI code.
-- Closing the window disposes the model: the subscription is dropped, in-flight commands are
+- Closing the Viewer shell disposes the model: the subscription is dropped, in-flight commands are
   cancelled, and every later command is refused, so a provider cannot keep a closed window alive.
+  Closing only the Bridge dialog leaves the host-owned connection and in-flight commands intact.
 - The subscription itself never throws back at the provider. A failed hand-off to the UI thread -
   a dispatcher that is shutting down, for example - is counted as a dropped notification and
   reported as an error, because a Viewer-side defect that escaped into a transport's observer

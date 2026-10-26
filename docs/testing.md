@@ -496,6 +496,13 @@ cancellation has actually drained. It also refuses recall without selection or a
 from the name field, with Ctrl+Enter, or while an operation is running. This is managed dialog
 evidence, not native camera activation, physical-display input or screen-reader qualification.
 
+`ViewerBridgeConnectionWindowTests.CompactBridgeKeepsActionsAndFullRefusalKeyboardReachable`
+reproduces a long refusal starting below the 420-by-300 window, then checks both themes, the
+default size, full status/error text, keyboard scrolling to the final line and all four footer
+actions inside the window. Busy state disables connection controls without hiding Close; Escape
+closes the dialog without mutating its model. Provider lifetime and redaction remain covered by
+`ViewerBridgeConnectionTests`; this headless layout case does not qualify a live transport.
+
 `AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges` checks both
 renderer identities, exact clipping arguments, observed/target metric values and units, empty
 argument/metric lists, deterministic repeat JSON and unchanged revisions without rendering or edits.
