@@ -531,6 +531,10 @@ completes before that barrier is released, without running or creating output; r
 `CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` separately checks
 both preview and disk jobs remain pending while actual capture runs, preserve real failures after
 cancellation, remove partial output and retain exact retry pixels.
+Both queued and active caller cancellation must retain the exact original caller token.
+`CaptureWorkerTests.ShutdownCancelsQueuedDiskWithAnActuallyCancelledTokenAndStillDrainsActiveWork`
+separately checks shutdown-only cancellation reports a cancelled token even without caller cancellation,
+skips the queued source/output and still joins/drains the active capture and worker.
 
 `ViewerBridgeConnectionWindowTests.CompactBridgeKeepsActionsAndFullRefusalKeyboardReachable`
 reproduces a long refusal starting below the 420-by-300 window, then checks both themes, the

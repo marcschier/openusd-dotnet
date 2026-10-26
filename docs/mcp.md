@@ -814,7 +814,9 @@ retain their queue slot until dequeued, so repeated cancellation cannot bypass q
 Once capture starts, cancellation
 keeps the scene-operation gate until the actual capture drains, so edits cannot race the retained
 scene. Canceled captures publish no new artifacts; capture failures remain visible even when
-cancellation was requested. Native rendering still requires cooperative completion, not forced
+cancellation was requested. Caller-cancelled disk tasks retain the original caller token; worker
+shutdown uses its cancelled internal token when the caller did not request cancellation.
+Native rendering still requires cooperative completion, not forced
 termination of a hung driver.
 Windows preview selects D3D12 WARP by default. Set the host environment variable
 `OPENUSD_MCP_USE_WARP=false` to request the first enumerated D3D12 adapter instead;

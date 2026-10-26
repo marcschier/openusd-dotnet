@@ -134,7 +134,7 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
             {
                 throw new CaptureQueueFullException(_capacity);
             }
-            var item = new DiskWorkItem(request, recording, context, stepsPerFrame, linked.Token);
+            var item = new DiskWorkItem(request, recording, context, stepsPerFrame, linked.Token, cancellationToken);
             lock (_stateGate)
             {
                 if (_state != CaptureWorkerState.Running)
@@ -604,9 +604,12 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
     private sealed class DiskWorkItem(
         RenderDiskJobRequest request, WorkspacePhysicsRecording? recording,
         OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext? context, int stepsPerFrame,
-        CancellationToken cancellationToken) : IWorkItem
+        CancellationToken cancellationToken, CancellationToken callerCancellationToken) : IWorkItem
     {
         private int _executionState;
+
+        private CancellationToken CompletionCancellationToken =>
+            callerCancellationToken.IsCancellationRequested ? callerCancellationToken : cancellationToken;
 
         internal TaskCompletionSource<RenderDiskJobResult> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -617,7 +620,7 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
         {
             if (Interlocked.CompareExchange(ref _executionState, 2, 0) == 0)
             {
-                Completion.TrySetCanceled(cancellationToken);
+                Completion.TrySetCanceled(CompletionCancellationToken);
             }
         }
 
@@ -648,7 +651,7 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                Completion.TrySetCanceled(cancellationToken);
+                Completion.TrySetCanceled(CompletionCancellationToken);
             }
             catch (Exception exception)
             {

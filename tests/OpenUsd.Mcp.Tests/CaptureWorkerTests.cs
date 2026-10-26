@@ -9,6 +9,52 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class CaptureWorkerTests
 {
     [Test]
+    public async Task ShutdownCancelsQueuedDiskWithAnActuallyCancelledTokenAndStillDrainsActiveWork()
+    {
+        using var files = new WorkspaceTestFiles();
+        var source = new DrainFrameSource();
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new ThrowingFrameSourceFactory(source), artifacts);
+        await using var worker = new CaptureWorker(processor);
+        string output = Path.Combine(files.OutputRoot, "shutdown-disk");
+        var request = new RenderDiskJobRequest(output,
+        [
+            StageRenderState.Create(new StageIdentity("shutdown-disk"))
+                .WithViewport(new ViewportDimensions(1, 1))
+                .WithRenderSettings(RenderSettings.PresentationDefault)
+        ]);
+        Task<PreviewCaptureResult> active = worker.CaptureAsync(Request("active-at-shutdown")).AsTask();
+        try
+        {
+            await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task<RenderDiskJobResult> queued = worker.CaptureDiskAsync(request).AsTask();
+            Task shutdown = worker.DisposeAsync().AsTask();
+            Exception failure = await CaptureExceptionAsync(() => queued.WaitAsync(TimeSpan.FromSeconds(1)));
+            await Assert.That(failure).IsTypeOf<TaskCanceledException>();
+            var cancellation = (OperationCanceledException)failure;
+            await Assert.That(cancellation.CancellationToken.CanBeCanceled).IsTrue();
+            await Assert.That(cancellation.CancellationToken.IsCancellationRequested).IsTrue();
+            await Assert.That(shutdown.IsCompleted).IsFalse();
+            await Assert.That(active.IsCompleted).IsFalse();
+            await Assert.That(source.Calls).IsEqualTo(1);
+            await Assert.That(Directory.Exists(output)).IsFalse();
+            source.Release.Set();
+            await active.WaitAsync(TimeSpan.FromSeconds(5));
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(source.Exited).IsTrue();
+            await Assert.That(source.Calls).IsEqualTo(1);
+            await Assert.That(worker.ShutdownResult!.Succeeded).IsTrue();
+            await Assert.That(worker.IsWorkerThreadAlive).IsFalse();
+        }
+        finally
+        {
+            source.Release.Set();
+            await worker.DisposeAsync();
+            source.Release.Dispose();
+        }
+    }
+
+    [Test]
     public async Task QueuedDiskCancellationCompletesWithoutWaitingForUnrelatedActiveCaptureAndPreservesRetry()
     {
         using var files = new WorkspaceTestFiles();
@@ -33,7 +79,10 @@ public sealed class CaptureWorkerTests
             cancellation.Cancel();
             Task barrier = Task.Delay(1000);
             await Assert.That(ReferenceEquals(await Task.WhenAny(queued, barrier), queued)).IsTrue();
-            await Assert.That(async () => await queued).Throws<OperationCanceledException>();
+            Exception queuedFailure = await CaptureExceptionAsync(() => queued);
+            await Assert.That(queuedFailure).IsTypeOf<TaskCanceledException>();
+            await Assert.That(((OperationCanceledException)queuedFailure).CancellationToken == cancellation.Token)
+                .IsTrue();
             await Assert.That(active.IsCompleted).IsFalse();
             await Assert.That(source.Exited).IsFalse();
             await Assert.That(source.Calls).IsEqualTo(1);
@@ -179,16 +228,8 @@ public sealed class CaptureWorkerTests
             else
             {
                 await Assert.That(failure).IsTypeOf<TaskCanceledException>();
-                if (disk)
-                {
-                    await Assert.That(((OperationCanceledException)failure).CancellationToken.IsCancellationRequested)
-                        .IsTrue();
-                }
-                else
-                {
-                    await Assert.That(((OperationCanceledException)failure).CancellationToken)
-                        .IsEqualTo(cancellation.Token);
-                }
+                await Assert.That(((OperationCanceledException)failure).CancellationToken == cancellation.Token)
+                    .IsTrue();
             }
             await Assert.That(source.Exited).IsTrue();
             await Assert.That(artifacts.Count).IsEqualTo(0);
