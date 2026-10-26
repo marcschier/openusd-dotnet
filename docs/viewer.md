@@ -1574,6 +1574,13 @@ reload and inspection workflow rather than returning to welcome. Welcome is hidd
 surface creation and never overlaid over a live Storm child. Palette and comparison use separate
 owned windows; the viewport frame still contains only the renderer host.
 
+Command search initially focuses its query. Up/Down skip unavailable actions; Enter invokes
+the original enabled Viewer command, not a duplicate handler. Unavailable results retain
+their accessible names and an unavailable hint. Changing availability is refreshed while the
+palette stays open, and execution rechecks the live command state. Escape closes without
+executing the selection. Compact 400-by-280 layout and both light/dark themes have managed
+headless coverage; this does not qualify native-child focus, device DPI or a screen reader.
+
 ### Capturing the current viewport
 
 **File > Capture Frame** saves a PNG by default, or an uncompressed 24-bit BMP when chosen in the
