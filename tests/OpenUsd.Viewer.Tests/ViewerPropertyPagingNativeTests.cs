@@ -25,7 +25,13 @@ public sealed class ViewerPropertyPagingNativeTests
         {
             Skip.Test("Run alone with OPENUSD_VIEWER_PROPERTY_PAGING_SMOKE=1 on a Windows desktop.");
         }
-        string root = Directory.CreateTempSubdirectory("openusd-property-paging-").FullName;
+        string parent = Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ?? Path.GetTempPath();
+        if (!Path.IsPathFullyQualified(parent))
+        {
+            throw new InvalidOperationException("The property-page test root must be an absolute physical path.");
+        }
+        string root = Directory.CreateDirectory(
+            Path.Combine(parent, $"openusd-property-paging-{Guid.NewGuid():N}")).FullName;
         string path = Path.Combine(root, "source.usda");
         await File.WriteAllTextAsync(Path.Combine(root, "reference.usda"),
             "#usda 1.0\ndef Xform \"Source\"\n{\n custom double details:reference = 42\n" +

@@ -246,6 +246,12 @@ The gate builds the current Viewer test project, restoring only after a missing-
 workflows, or `-Scenario asset-relink` for a focused run. Partial runs are identified as partial
 in the evidence rather than presented as the full registered set.
 
+The property-paging Inspector fixture honors `OPENUSD_TEST_WORK_ROOT`, including the
+runner's physical Windows path spelling. Verified review opening intentionally rejects
+filesystem aliases that would change the SDK's source anchor; a differently cased temporary
+directory can therefore refuse stage opening before the Inspector becomes ready. Configure
+the physical scratch root rather than weakening source admission or extending the deadline.
+
 The registered `physics-recording` scenario additionally requires a matching
 `PhysicsRuntimeRoot\bin\openusd_physx.dll`; if that root is omitted, the runner checks the
 repository's `native\install\shim\win-x64-physx` prefix. The Windows render workflow builds the
