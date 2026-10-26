@@ -608,6 +608,9 @@ camera/time, renaming, removing and recalling named views. The manager is also s
 command palette using “saved views”, “add”, “rename” or “remove”. **Camera > Recall Saved View**
 and palette searches for a view's name recall that view directly. Dynamic commands use stable
 bookmark IDs, not names or filesystem paths; underscores in labels remain literal.
+At the minimum window size, long source descriptions and refusal messages scroll with the
+manager body rather than pushing Refresh, Cancel operation or Close out of reach.
+Keyboard-focused name fields scroll into view; source and error text are kept intact.
 
 Saved views are **review data**, not global settings or a settings sidecar. The reserved review-only
 address is `/__OpenUsdViewerReview.openusdViewer:cameraBookmarks`, a custom uniform `string[]` of
