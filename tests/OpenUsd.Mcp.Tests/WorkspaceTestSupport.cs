@@ -114,6 +114,8 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
 
     internal Func<IReadOnlyList<double>, RenderProductJobPlan>? PrepareProduct { get; set; }
     internal Func<IReadOnlyList<double>, IReadOnlyList<CameraState>>? PreparePreviewCameras { get; set; }
+    internal int LastPreviewWidth { get; private set; }
+    internal int LastPreviewHeight { get; private set; }
     internal string? LastProductPath { get; private set; }
     internal string? LastSettingsPath { get; private set; }
 
@@ -252,6 +254,8 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
     {
         cancellationToken.ThrowIfCancellationRequested();
         Events.Add("create-preview-cameras");
+        LastPreviewWidth = width;
+        LastPreviewHeight = height;
         return ValueTask.FromResult<IReadOnlyList<CameraState>>(
             PreparePreviewCameras?.Invoke(timeCodes) ??
             Enumerable.Repeat(CameraState.Default, timeCodes.Count).ToArray());

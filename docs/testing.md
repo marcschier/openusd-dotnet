@@ -479,6 +479,16 @@ names at exactly 1024 characters still yield the original decoded pixels through
 Store identity tests cover both separators, controls, dot segments, 1023/1024/1025-character boundaries
 and unchanged percent/space/Unicode escaping. Publication and protocol reads use the same predicate.
 
+`UndersizedContactSheetIsRefusedBeforeCreatingItsFrameSource` and
+`InvalidContactSheetGridRefusesBeforeCameraPreparation` check narrow/short grids up to 16 views,
+zero source construction/camera sampling/publication and the actual tool `invalid_argument` result.
+`ContactSheetAtMinimumGridExtentRetainsEveryTileAndUnusedPixel` decodes exact minimum-size grids
+with 1, 2, 3, 4, 5, 9 and 16 views plus an uneven raster, verifying all pixels and transparent gaps.
+`ContactSheetCamerasUseTheActualTileRasterInsteadOfTheWholeSheet` checks exact camera dimensions,
+time samples and decoded tile placement for ordinary and uneven grids. The official native SDK
+journey compares both 64-square tiles of a 128-by-64 sheet against the separately captured authored
+camera still before continuing edit/rollback/finalization/drain.
+
 `AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges` checks both
 renderer identities, exact clipping arguments, observed/target metric values and units, empty
 argument/metric lists, deterministic repeat JSON and unchanged revisions without rendering or edits.

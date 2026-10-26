@@ -326,13 +326,22 @@ internal sealed partial class OpenUsdMcpService(
                 "-",
                 Guid.NewGuid().ToString("N"));
             CaptureKind kind = ParseCaptureKind(request.Kind);
+            int cameraWidth = request.Width;
+            int cameraHeight = request.Height;
+            if (kind == CaptureKind.ContactSheet)
+            {
+                (int columns, int rows) = PreviewCaptureProcessor.GetContactSheetGrid(
+                    request.Width, request.Height, request.Views.Count);
+                cameraWidth /= columns;
+                cameraHeight /= rows;
+            }
             IReadOnlyList<CameraState> cameras = await workspace
                 .CreatePreviewCamerasAsync(
                     revision,
                     request.CameraPath,
                     kind == CaptureKind.Turntable && request.CameraPath is null,
-                    request.Width,
-                    request.Height,
+                    cameraWidth,
+                    cameraHeight,
                     request.Views.Select(static view => view.TimeCode).ToArray(),
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -807,6 +816,10 @@ internal sealed partial class OpenUsdMcpService(
         if (request.Kind == "still" && request.Views.Count != 1)
         {
             throw new ArgumentException("Still previews require exactly one view.", nameof(request));
+        }
+        if (request.Kind == "contact_sheet")
+        {
+            _ = PreviewCaptureProcessor.GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
         }
 
         foreach (CaptureViewDto view in request.Views)

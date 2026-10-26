@@ -9,6 +9,102 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments(1, 0)]
+    [Arguments(2, 0)]
+    [Arguments(3, 0)]
+    [Arguments(5, 1)]
+    [Arguments(16, 1)]
+    public async Task ContactSheetCamerasUseTheActualTileRasterInsteadOfTheWholeSheet(int count, int padding)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore();
+        var source = new SequenceFrameFactory();
+        using var processor = new PreviewCaptureProcessor(source, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        int columns = (int)Math.Ceiling(Math.Sqrt(count));
+        int rows = (count + columns - 1) / columns;
+        int width = columns * 2 + padding;
+        McpCaptureResultDto result = await service.RenderPreviewAsync(new RenderPreviewRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Kind = "contact_sheet",
+            CameraPath = "/World/Camera",
+            Width = width,
+            Height = rows,
+            Views = Enumerable.Range(0, count)
+                .Select(index => new CaptureViewDto { Name = $"view-{index}", TimeCode = index + 0.25 }).ToArray()
+        }, default);
+        await Assert.That(backend.LastPreviewWidth).IsEqualTo(2);
+        await Assert.That(backend.LastPreviewHeight).IsEqualTo(1);
+        await Assert.That(source.Times.SequenceEqual(
+            Enumerable.Range(0, count).Select(index => index + 0.25))).IsTrue();
+        ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(result.Artifacts.Single().Uri));
+        ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+        byte[] expected = new byte[width * rows * 4];
+        for (int index = 0; index < count; index++)
+        {
+            byte[] tile = [255, 0, 0, 255, 0, 255, 0, 255];
+            tile.CopyTo(expected, (index / columns * width + index % columns * 2) * 4);
+        }
+        await Assert.That(image.Pixels.ToArray().SequenceEqual(expected)).IsTrue();
+        await Assert.That(result.Width).IsEqualTo(width);
+        await Assert.That(result.Height).IsEqualTo(rows);
+        await Assert.That(result.StageRevision).IsEqualTo(session.StageRevision);
+        await Assert.That(artifacts.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    [Arguments(2, true)]
+    [Arguments(4, false)]
+    [Arguments(5, true)]
+    [Arguments(5, false)]
+    [Arguments(16, true)]
+    [Arguments(16, false)]
+    public async Task InvalidContactSheetGridRefusesBeforeCameraPreparation(int count, bool narrow)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend
+        {
+            PreparePreviewCameras = _ => throw new InvalidOperationException("Invalid grid reached scene sampling.")
+        };
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        int columns = (int)Math.Ceiling(Math.Sqrt(count));
+        int rows = (count + columns - 1) / columns;
+        var request = new RenderPreviewRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Kind = "contact_sheet",
+            Width = narrow ? columns - 1 : columns,
+            Height = narrow ? rows : rows - 1,
+            Views = Enumerable.Range(0, count)
+                .Select(index => new CaptureViewDto { Name = $"view-{index}" }).ToArray()
+        };
+        await Assert.That(async () => await service.RenderPreviewAsync(request, default)).Throws<ArgumentException>();
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        var protocol = await tools.RenderPreviewAsync(request, default);
+        await Assert.That(protocol.IsError).IsTrue();
+        await Assert.That(protocol.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
+            .IsEqualTo("invalid_argument");
+        await Assert.That(backend.Events).DoesNotContain("create-preview-cameras");
+        await Assert.That(backend.AcquireRenderSourceCount).IsEqualTo(0);
+        await Assert.That((await workspace.GetStatusAsync()).Session!.StageRevision).IsEqualTo(session.StageRevision);
+    }
+
+    [Test]
     [Arguments(8)]
     [Arguments(9)]
     [Arguments(10)]

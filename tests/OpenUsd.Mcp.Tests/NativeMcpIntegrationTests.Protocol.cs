@@ -75,6 +75,33 @@ public sealed partial class NativeMcpIntegrationTests
             JsonElement checkpoint = await invoke("checkpoint_scene", revision(opened));
             (string originalUri, byte[] originalPixels) = await capture(opened);
             await assertCenter(originalPixels, red: true);
+            Dictionary<string, object?> sheetRequest = previewRequest(opened);
+            sheetRequest["kind"] = "contact_sheet";
+            sheetRequest["width"] = 128;
+            sheetRequest["views"] = new[]
+            {
+                new CaptureViewDto { Name = "first", TimeCode = 0 },
+                new CaptureViewDto { Name = "second", TimeCode = 0 }
+            };
+            JsonElement sheetResult = await invoke("render_preview", sheetRequest);
+            await Assert.That(sheetResult.GetProperty("stageRevision").GetUInt64())
+                .IsEqualTo(opened.GetProperty("stageRevision").GetUInt64());
+            ReadResourceResult sheetResource = await client.ReadResourceAsync(
+                sheetResult.GetProperty("artifacts")[0].GetProperty("uri").GetString()!,
+                cancellationToken: lifetime.Token);
+            ImageRgba8 sheetImage = PngRgba8Decoder.Decode(
+                ((BlobResourceContents)sheetResource.Contents.Single()).DecodedData.Span);
+            await Assert.That(sheetImage.Width).IsEqualTo(128);
+            await Assert.That(sheetImage.Height).IsEqualTo(64);
+            for (int row = 0; row < 64; row++)
+            {
+                byte[] expectedRow = originalPixels.AsSpan(row * 64 * 4, 64 * 4).ToArray();
+                for (int tile = 0; tile < 2; tile++)
+                {
+                    await Assert.That(sheetImage.Pixels.Span.Slice((row * 128 + tile * 64) * 4, 64 * 4)
+                        .SequenceEqual(expectedRow)).IsTrue();
+                }
+            }
             var analysisRequest = revision(opened);
             analysisRequest["observations"] = new AnalysisObservationsDto
             {

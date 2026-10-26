@@ -56,8 +56,8 @@ internal sealed partial class OpenUsdMcpService
                 throw new ArgumentOutOfRangeException(
                     nameof(request), "A selected frame is outside this completed job.");
             }
-            int columns = (int)Math.Ceiling(Math.Sqrt(indices.Length));
-            int rows = (indices.Length + columns - 1) / columns;
+            (int columns, int rows) = PreviewCaptureProcessor.GetContactSheetGrid(
+                request.Width, request.Height, indices.Length);
             int width = request.Width / columns;
             int height = request.Height / rows;
             var views = new CaptureView[indices.Length];

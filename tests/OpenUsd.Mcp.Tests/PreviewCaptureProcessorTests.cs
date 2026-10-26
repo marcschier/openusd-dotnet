@@ -7,6 +7,73 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class PreviewCaptureProcessorTests
 {
     [Test]
+    [Arguments(2, true)]
+    [Arguments(3, true)]
+    [Arguments(4, false)]
+    [Arguments(5, true)]
+    [Arguments(5, false)]
+    [Arguments(16, true)]
+    [Arguments(16, false)]
+    public async Task UndersizedContactSheetIsRefusedBeforeCreatingItsFrameSource(int count, bool narrow)
+    {
+        int columns = (int)Math.Ceiling(Math.Sqrt(count));
+        int rows = (count + columns - 1) / columns;
+        var source = new RecordingFrameSource();
+        var factory = new RecordingFrameSourceFactory(source);
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        CaptureView[] views = Enumerable.Range(0, count)
+            .Select(index => new CaptureView($"view-{index}", default)).ToArray();
+        var request = new PreviewCaptureRequest("small-sheet", CaptureKind.ContactSheet,
+            narrow ? columns - 1 : columns, narrow ? rows : rows - 1, views);
+        await Assert.That(() => processor.Process(request)).Throws<ArgumentException>();
+        await Assert.That(factory.CreateCount).IsEqualTo(0);
+        await Assert.That(source.CaptureCount).IsEqualTo(0);
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(1, 0)]
+    [Arguments(2, 0)]
+    [Arguments(3, 0)]
+    [Arguments(4, 0)]
+    [Arguments(5, 0)]
+    [Arguments(9, 0)]
+    [Arguments(16, 0)]
+    [Arguments(5, 1)]
+    public async Task ContactSheetAtMinimumGridExtentRetainsEveryTileAndUnusedPixel(int count, int padding)
+    {
+        int columns = (int)Math.Ceiling(Math.Sqrt(count));
+        int rows = (count + columns - 1) / columns;
+        int width = columns + padding;
+        int height = rows + padding;
+        var source = new RecordingFrameSource();
+        var factory = new RecordingFrameSourceFactory(source);
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        PreviewCaptureResult result = processor.Process(new PreviewCaptureRequest(
+            "minimum-sheet", CaptureKind.ContactSheet, width, height,
+            Enumerable.Range(0, count).Select(index => new CaptureView($"view-{index}", default)).ToArray()));
+        ArtifactResourceContent? png = await artifacts.ReadAsync(result.Artifacts.Single().ResourceUri);
+        ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+        byte[] expected = new byte[width * height * 4];
+        for (int index = 0; index < count; index++)
+        {
+            int offset = (index / columns * width + index % columns) * 4;
+            expected[offset] = (byte)(index + 1);
+            expected[offset + 1] = (byte)(index + 2);
+            expected[offset + 2] = (byte)(index + 3);
+            expected[offset + 3] = 255;
+        }
+        await Assert.That(image.Pixels.ToArray().SequenceEqual(expected)).IsTrue();
+        await Assert.That(image.Width).IsEqualTo(width);
+        await Assert.That(image.Height).IsEqualTo(height);
+        await Assert.That(factory.CreateCount).IsEqualTo(1);
+        await Assert.That(source.CaptureCount).IsEqualTo(count);
+        await Assert.That(artifacts.Count).IsEqualTo(1);
+    }
+
+    [Test]
     [Arguments(CaptureKind.Still)]
     [Arguments(CaptureKind.ContactSheet)]
     [Arguments(CaptureKind.CandidateSweep)]

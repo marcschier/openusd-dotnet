@@ -199,16 +199,9 @@ public sealed partial class PreviewCaptureProcessor :
         long maximumTotalArtifactBytes,
         CancellationToken cancellationToken)
     {
-        int columns = checked((int)Math.Ceiling(Math.Sqrt(request.Views.Count)));
-        int rows = checked((request.Views.Count + columns - 1) / columns);
+        (int columns, int rows) = GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
         int cellWidth = request.Width / columns;
         int cellHeight = request.Height / rows;
-        if (cellWidth == 0 || cellHeight == 0)
-        {
-            throw new ArgumentException(
-                "Contact sheet dimensions are too small for the requested views.",
-                nameof(request));
-        }
 
         byte[] sheet = new byte[ImageRgba8.GetByteCount(request.Width, request.Height)];
         for (int index = 0; index < request.Views.Count; index++)
@@ -311,6 +304,18 @@ public sealed partial class PreviewCaptureProcessor :
                 SanitizeArtifactName(request.Views[index].Name), ".png")
         };
 
+    internal static (int Columns, int Rows) GetContactSheetGrid(int width, int height, int viewCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(viewCount);
+        int columns = checked((int)Math.Ceiling(Math.Sqrt(viewCount)));
+        int rows = checked((viewCount + columns - 1) / columns);
+        if (width < columns || height < rows)
+        {
+            throw new ArgumentException("Contact sheet dimensions are too small for the requested views.");
+        }
+        return (columns, rows);
+    }
+
     private static void ValidateCapturedDimensions(
         ImageRgba8 image,
         int expectedWidth,
@@ -352,6 +357,10 @@ public sealed partial class PreviewCaptureProcessor :
         if (!Enum.IsDefined(request.Kind))
         {
             throw new ArgumentOutOfRangeException(nameof(request));
+        }
+        if (request.Kind == CaptureKind.ContactSheet)
+        {
+            _ = GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
         }
         int artifacts = request.Kind == CaptureKind.ContactSheet ? 1 : request.Views.Count;
         for (int index = 0; index < artifacts; index++)
