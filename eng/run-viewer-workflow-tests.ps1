@@ -95,9 +95,9 @@ if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf))
     $dotnet = $hostCommand.Source
 }
 $sdk = & $dotnet --version
-if ($LASTEXITCODE -ne 0 -or $sdk.Trim() -ne '10.0.401')
+if ($LASTEXITCODE -ne 0 -or $sdk.Trim() -ne '10.0.403')
 {
-    throw 'Viewer workflows require the repository-pinned .NET SDK 10.0.401.'
+    throw 'Viewer workflows require the repository-pinned .NET SDK 10.0.403.'
 }
 
 function Get-FileRecords

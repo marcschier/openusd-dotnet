@@ -6,10 +6,10 @@ param()
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $installDir = Join-Path $repoRoot '.dotnet'
-$version = '10.0.401'
+$version = '10.0.403'
 $installScript = Join-Path $env:TEMP "dotnet-install-$([guid]::NewGuid()).ps1"
 $errorMessage = (
-    'Required .NET SDK 10.0.401 not found. Run ./eng/install-dotnet.ps1 ' +
+    'Required .NET SDK 10.0.403 not found. Run ./eng/install-dotnet.ps1 ' +
     'or ./eng/install-dotnet.sh.')
 
 Push-Location $repoRoot
