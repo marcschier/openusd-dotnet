@@ -2,11 +2,65 @@
 
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class CaptureWorkerTests
 {
+    [Test]
+    public async Task QueuedDiskCancellationCompletesWithoutWaitingForUnrelatedActiveCaptureAndPreservesRetry()
+    {
+        using var files = new WorkspaceTestFiles();
+        var source = new DrainFrameSource();
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new ThrowingFrameSourceFactory(source), artifacts);
+        await using var worker = new CaptureWorker(processor, capacity: 1);
+        using var cancellation = new CancellationTokenSource();
+        string output = Path.Combine(files.OutputRoot, "cancelled-disk");
+        var request = new RenderDiskJobRequest(output,
+        [
+            StageRenderState.Create(new StageIdentity("queued-disk"))
+                .WithViewport(new ViewportDimensions(1, 1))
+                .WithRenderSettings(RenderSettings.PresentationDefault)
+        ]);
+        Task<PreviewCaptureResult> active = worker.CaptureAsync(Request("active-preview")).AsTask();
+        try
+        {
+            await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task<RenderDiskJobResult> queued = worker.CaptureDiskAsync(request, cancellation.Token).AsTask();
+            await Assert.That(worker.PendingCount).IsEqualTo(1);
+            cancellation.Cancel();
+            Task barrier = Task.Delay(1000);
+            await Assert.That(ReferenceEquals(await Task.WhenAny(queued, barrier), queued)).IsTrue();
+            await Assert.That(async () => await queued).Throws<OperationCanceledException>();
+            await Assert.That(active.IsCompleted).IsFalse();
+            await Assert.That(source.Exited).IsFalse();
+            await Assert.That(source.Calls).IsEqualTo(1);
+            await Assert.That(Directory.Exists(output)).IsFalse();
+            await Assert.That(artifacts.Count).IsEqualTo(0);
+            await Assert.That(async () => await worker.CaptureDiskAsync(request))
+                .Throws<CaptureQueueFullException>();
+            source.Release.Set();
+            await active.WaitAsync(TimeSpan.FromSeconds(5));
+            await worker.ResetAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            RenderDiskJobResult retry = await worker.CaptureDiskAsync(request).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(source.Calls).IsEqualTo(2);
+            await Assert.That(retry.Frames.Count).IsEqualTo(1);
+            ImageRgba8 image = PngRgba8Decoder.Decode(
+                await File.ReadAllBytesAsync(Path.Combine(output, retry.Frames[0].FileName)));
+            await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo("010203FF");
+            await Assert.That(artifacts.Count).IsEqualTo(1);
+        }
+        finally
+        {
+            source.Release.Set();
+            await worker.DisposeAsync();
+            source.Release.Dispose();
+        }
+    }
+
     [Test]
     public async Task CanceledPreviewKeepsSceneEditsBlockedUntilActualCaptureDrain()
     {
@@ -67,16 +121,29 @@ public sealed class CaptureWorkerTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry(bool failCapture)
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry(
+        bool failCapture, bool disk)
     {
+        using var files = new WorkspaceTestFiles();
         var source = new DrainFrameSource(failCapture);
         using var artifacts = new ArtifactResourceStore();
         using var processor = new PreviewCaptureProcessor(new ThrowingFrameSourceFactory(source), artifacts);
         await using var worker = new CaptureWorker(processor);
         using var cancellation = new CancellationTokenSource();
-        Task<PreviewCaptureResult> capture = worker.CaptureAsync(Request("cancel-active"), cancellation.Token).AsTask();
+        string output = Path.Combine(files.OutputRoot, "active-disk");
+        var diskRequest = new RenderDiskJobRequest(output,
+        [
+            StageRenderState.Create(new StageIdentity("active-disk"))
+                .WithViewport(new ViewportDimensions(1, 1))
+                .WithRenderSettings(RenderSettings.PresentationDefault)
+        ]);
+        Task capture = disk
+            ? worker.CaptureDiskAsync(diskRequest, cancellation.Token).AsTask()
+            : worker.CaptureAsync(Request("cancel-active"), cancellation.Token).AsTask();
         try
         {
             await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -94,16 +161,37 @@ public sealed class CaptureWorkerTests
             else
             {
                 await Assert.That(failure).IsTypeOf<TaskCanceledException>();
-                await Assert.That(((OperationCanceledException)failure).CancellationToken)
-                    .IsEqualTo(cancellation.Token);
+                if (disk)
+                {
+                    await Assert.That(((OperationCanceledException)failure).CancellationToken.IsCancellationRequested)
+                        .IsTrue();
+                }
+                else
+                {
+                    await Assert.That(((OperationCanceledException)failure).CancellationToken)
+                        .IsEqualTo(cancellation.Token);
+                }
             }
             await Assert.That(source.Exited).IsTrue();
             await Assert.That(artifacts.Count).IsEqualTo(0);
-            PreviewCaptureResult retry = await worker.CaptureAsync(Request("retry"));
-            await Assert.That(retry.Artifacts.Count).IsEqualTo(1);
-            ArtifactResourceContent? content = await artifacts.ReadAsync(retry.Artifacts[0].ResourceUri);
-            await Assert.That(Convert.ToHexString(PngRgba8Decoder.Decode(content!.Content.Span).Pixels.Span))
-                .IsEqualTo("010203FF");
+            if (disk)
+            {
+                await Assert.That(Directory.Exists(output)).IsFalse();
+                RenderDiskJobResult retry = await worker.CaptureDiskAsync(diskRequest);
+                await Assert.That(retry.Frames.Count).IsEqualTo(1);
+                ImageRgba8 image = PngRgba8Decoder.Decode(
+                    await File.ReadAllBytesAsync(Path.Combine(output, retry.Frames[0].FileName)));
+                await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo("010203FF");
+                await Assert.That(artifacts.Count).IsEqualTo(0);
+            }
+            else
+            {
+                PreviewCaptureResult retry = await worker.CaptureAsync(Request("retry"));
+                await Assert.That(retry.Artifacts.Count).IsEqualTo(1);
+                ArtifactResourceContent? content = await artifacts.ReadAsync(retry.Artifacts[0].ResourceUri);
+                await Assert.That(Convert.ToHexString(PngRgba8Decoder.Decode(content!.Content.Span).Pixels.Span))
+                    .IsEqualTo("010203FF");
+            }
         }
         finally
         {
@@ -121,9 +209,11 @@ public sealed class CaptureWorkerTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal ManualResetEventSlim Release { get; } = new();
         internal bool Exited { get; private set; }
+        internal int Calls { get; private set; }
 
         public ImageRgba8 Capture(CaptureView view, int width, int height)
         {
+            Calls++;
             Entered.TrySetResult();
             if (!Release.Wait(TimeSpan.FromSeconds(5)))
             {

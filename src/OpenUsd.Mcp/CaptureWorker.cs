@@ -144,6 +144,8 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
                 }
                 _requests.Enqueue(item);
             }
+            using CancellationTokenRegistration registration = linked.Token.UnsafeRegister(
+                static state => ((DiskWorkItem)state!).CancelPending(), item);
             _itemsAvailable.Release();
             // Do not release the caller's scene gate until cancellation has drained the actual disk job.
             return await item.Completion.Task.ConfigureAwait(false);
@@ -604,13 +606,27 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
         OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext? context, int stepsPerFrame,
         CancellationToken cancellationToken) : IWorkItem
     {
+        private int _executionState;
+
         internal TaskCompletionSource<RenderDiskJobResult> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool UsesCaptureSlot => true;
 
+        internal void CancelPending()
+        {
+            if (Interlocked.CompareExchange(ref _executionState, 2, 0) == 0)
+            {
+                Completion.TrySetCanceled(cancellationToken);
+            }
+        }
+
         public void Execute(IPreviewCaptureProcessor processor)
         {
+            if (Interlocked.CompareExchange(ref _executionState, 1, 0) != 0)
+            {
+                return;
+            }
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();

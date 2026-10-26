@@ -524,6 +524,13 @@ all action bounds, reverse Tab into the bounded status viewport, real Page Up/Do
 endpoints and page-size bounds, complete refusal text and no partial pair. Retry restores exact
 decoded images and clears the error/scroll offset; Escape clears both images without writing output.
 
+`CaptureWorkerTests.QueuedDiskCancellationCompletesWithoutWaitingForUnrelatedActiveCaptureAndPreservesRetry`
+holds a real preview capture behind a barrier and cancels its queued disk successor. The disk request
+completes before that barrier is released, without running or creating output; retry decodes exact pixels.
+`CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` separately checks
+both preview and disk jobs remain pending while actual capture runs, preserve real failures after
+cancellation, remove partial output and retain exact retry pixels.
+
 `ViewerBridgeConnectionWindowTests.CompactBridgeKeepsActionsAndFullRefusalKeyboardReachable`
 reproduces a long refusal starting below the 420-by-300 window, then checks both themes, the
 default size, full status/error text, keyboard scrolling to the final line and all four footer
