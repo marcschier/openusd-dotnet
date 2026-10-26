@@ -463,6 +463,15 @@ byte-identical PNGs and decoded pixels. `CancellationAfterCaptureSkipsEncodingAn
 checks bounded allocation, original cancellation token, no publication and exact decoded retry pixels.
 These are managed encoding/allocation checks, not renderer execution or aggregate process admission.
 
+`CaptureWorkerTests.ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry` blocks the actual
+preview frame source, cancels while capture is active, and requires drain before the original token
+or capture failure reaches the caller. Both paths publish nothing and retry with decoded `010203FF`
+pixels. `CanceledPreviewKeepsSceneEditsBlockedUntilActualCaptureDrain` uses the actual MCP service
+and capture processor to prove a concurrent edit stays blocked until release, then advances the
+revision exactly once. `AdmissionTimeoutAndCancellationDoNotRunRejectedWork` separately retains
+prompt queued cancellation while an earlier capture is blocked. These are managed barrier journeys,
+not native renderer or hung-driver termination qualification.
+
 `PreviewCaptureProcessorTests.UnreadableArtifactIdentitiesAreRejectedBeforeCreatingOrCapturingFrames`
 refuses overlong names and separators before any frame-source creation, capture or publication.
 `MaximumLengthPreviewArtifactRemainsReadableWithoutChangingGeneratedNames` proves all four generated

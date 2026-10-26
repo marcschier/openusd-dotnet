@@ -208,10 +208,10 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
                 _requests.Enqueue(item);
             }
 
+            using CancellationTokenRegistration registration = cancellationToken.UnsafeRegister(
+                static state => ((WorkItem)state!).CancelPending(), item);
             _itemsAvailable.Release();
-            return cancellationToken.CanBeCanceled
-                ? await item.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false)
-                : await item.Completion.Task.ConfigureAwait(false);
+            return await item.Completion.Task.ConfigureAwait(false);
         }
         finally
         {
@@ -522,6 +522,8 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
         PreviewCaptureRequest request,
         CancellationToken cancellationToken) : IWorkItem
     {
+        private int _executionState;
+
         internal CancellationToken CancellationToken { get; } = cancellationToken;
 
         internal PreviewCaptureRequest Request { get; } = request;
@@ -531,8 +533,21 @@ public sealed class CaptureWorker : IDisposable, IAsyncDisposable
 
         public bool UsesCaptureSlot => true;
 
+        internal void CancelPending()
+        {
+            // Only queued work can complete early; a running capture still owns its caller's scene lease.
+            if (Interlocked.CompareExchange(ref _executionState, 2, 0) == 0)
+            {
+                Completion.TrySetCanceled(CancellationToken);
+            }
+        }
+
         public void Execute(IPreviewCaptureProcessor processor)
         {
+            if (Interlocked.CompareExchange(ref _executionState, 1, 0) != 0)
+            {
+                return;
+            }
             try
             {
                 CancellationToken.ThrowIfCancellationRequested();

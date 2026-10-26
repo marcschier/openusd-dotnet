@@ -1,11 +1,146 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class CaptureWorkerTests
 {
+    [Test]
+    public async Task CanceledPreviewKeepsSceneEditsBlockedUntilActualCaptureDrain()
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        var source = new DrainFrameSource();
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new ThrowingFrameSourceFactory(source), artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, new OpenUsdMcpApplicationOptions(
+            files.SourceRoot, files.OutputRoot, files.SourceRoot, files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer")));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        using var cancellation = new CancellationTokenSource();
+        Task<McpCaptureResultDto> capture = service.RenderPreviewAsync(new RenderPreviewRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Kind = "still",
+            Width = 1,
+            Height = 1,
+            Views = [new CaptureViewDto { Name = "hero" }]
+        }, cancellation.Token).AsTask();
+        try
+        {
+            await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+            Task<McpEditResultDto> edit = service.ApplyEditsAsync(new ApplyEditsRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                Edits = [new WorkspaceEditDto { Kind = "define_prim", PrimPath = "/World", TypeName = "Xform" }]
+            }, default).AsTask();
+            Task barrier = Task.Delay(100);
+            await Assert.That(await Task.WhenAny(edit, barrier)).IsEqualTo(barrier);
+            await Assert.That(backend.Events).DoesNotContain("apply");
+            await Assert.That(capture.IsCompleted).IsFalse();
+            source.Release.Set();
+            await Assert.That(async () => await capture.WaitAsync(TimeSpan.FromSeconds(5)))
+                .Throws<OperationCanceledException>();
+            McpEditResultDto result = await edit.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(source.Exited).IsTrue();
+            await Assert.That(result.StageRevision).IsEqualTo(session.StageRevision + 1);
+            await Assert.That(backend.Events.Count(item => item == "apply")).IsEqualTo(1);
+            await Assert.That(artifacts.Count).IsEqualTo(0);
+        }
+        finally
+        {
+            source.Release.Set();
+            await worker.DisposeAsync();
+            source.Release.Dispose();
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ActiveCancellationWaitsForActualCaptureDrainAndPreservesRetry(bool failCapture)
+    {
+        var source = new DrainFrameSource(failCapture);
+        using var artifacts = new ArtifactResourceStore();
+        using var processor = new PreviewCaptureProcessor(new ThrowingFrameSourceFactory(source), artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using var cancellation = new CancellationTokenSource();
+        Task<PreviewCaptureResult> capture = worker.CaptureAsync(Request("cancel-active"), cancellation.Token).AsTask();
+        try
+        {
+            await source.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+            Task barrier = Task.Delay(100);
+            await Assert.That(await Task.WhenAny(capture, barrier)).IsEqualTo(barrier);
+            await Assert.That(artifacts.Count).IsEqualTo(0);
+            source.Release.Set();
+            Exception failure = await CaptureExceptionAsync(() => capture.WaitAsync(TimeSpan.FromSeconds(5)));
+            if (failCapture)
+            {
+                await Assert.That(failure).IsTypeOf<InvalidOperationException>();
+                await Assert.That(failure.Message).IsEqualTo("Capture failed after cancellation.");
+            }
+            else
+            {
+                await Assert.That(failure).IsTypeOf<TaskCanceledException>();
+                await Assert.That(((OperationCanceledException)failure).CancellationToken)
+                    .IsEqualTo(cancellation.Token);
+            }
+            await Assert.That(source.Exited).IsTrue();
+            await Assert.That(artifacts.Count).IsEqualTo(0);
+            PreviewCaptureResult retry = await worker.CaptureAsync(Request("retry"));
+            await Assert.That(retry.Artifacts.Count).IsEqualTo(1);
+            ArtifactResourceContent? content = await artifacts.ReadAsync(retry.Artifacts[0].ResourceUri);
+            await Assert.That(Convert.ToHexString(PngRgba8Decoder.Decode(content!.Content.Span).Pixels.Span))
+                .IsEqualTo("010203FF");
+        }
+        finally
+        {
+            source.Release.Set();
+            await worker.DisposeAsync();
+            source.Release.Dispose();
+        }
+    }
+
+    private sealed class DrainFrameSource(bool failFirstCapture = false) : IPreviewFrameSource
+    {
+        private bool _failFirstCapture = failFirstCapture;
+
+        internal TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ManualResetEventSlim Release { get; } = new();
+        internal bool Exited { get; private set; }
+
+        public ImageRgba8 Capture(CaptureView view, int width, int height)
+        {
+            Entered.TrySetResult();
+            if (!Release.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("The test did not release its capture barrier.");
+            }
+            Exited = true;
+            if (_failFirstCapture)
+            {
+                _failFirstCapture = false;
+                throw new InvalidOperationException("Capture failed after cancellation.");
+            }
+            return new ImageRgba8(width, height, new byte[] { 1, 2, 3, 255 });
+        }
+
+        public void Dispose() { }
+    }
+
     [Test]
     public async Task ExecutesCapturesSeriallyOnOneDedicatedThread()
     {
