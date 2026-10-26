@@ -4,8 +4,8 @@ Use this guide to choose the smallest local gate for a change and to understand 
 workflows combine managed, native, shader, package, render, and performance evidence for release.
 
 Managed CI, package execution, release packing and Viewer distribution install exact
-SDKs `8.0.426`, `9.0.319` and `10.0.401`. The first two supply the .NET 8 and .NET 9
-test runtimes; `global.json` still selects SDK `10.0.401` for repository builds.
+SDKs `8.0.426`, `9.0.319` and `10.0.403`. The first two supply the .NET 8 and .NET 9
+test runtimes; `global.json` still selects SDK `10.0.403` for repository builds.
 Keep these installation lists aligned when updating the runtime patches.
 Floating channels can select a download before it is publicly usable: the `8.0.x`
 link selected `8.0.427` through a private origin returning HTTP 409, while Microsoft's
@@ -694,7 +694,7 @@ timings:
   -ArtifactsPath artifacts/performance
 ```
 
-The suite requires .NET SDK 10.0.401 but no native OpenUSD installation. Results include
+The suite requires .NET SDK 10.0.403 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
 The curated Storm/hdSilk parity capture remains the render gate for the 25 scene set. In addition to

@@ -53,7 +53,7 @@ hot paths do not perform per-element P/Invoke.
 ## Prerequisites
 
 - The **.NET 10 SDK or runtime** for the `OpenUsd.Mcp.Tool` package. Repository source builds
-  require the pinned **.NET SDK 10.0.401**; `global.json` disables roll-forward.
+  require the pinned **.NET SDK 10.0.403**; `global.json` disables roll-forward.
 - One supported host/RID: `win-x64`, `linux-x64`, or `osx-arm64`.
 - For actual scene operations, a matching Core and Imaging native runtime. The .NET tool package
   does not embed Core, Imaging, hdSilk, or OpenUSD plugin assets. A repository source run uses
@@ -67,7 +67,7 @@ hot paths do not perform per-element P/Invoke.
 
 Install .NET 10 from the official .NET distribution for tool-package use. For repository work,
 run `./eng/install-dotnet.ps1` on Windows or `bash ./eng/install-dotnet.sh` on Linux/macOS if
-`dotnet --version` is not `10.0.401`.
+`dotnet --version` is not `10.0.403`.
 
 Restore and build before using the source command:
 
@@ -1412,7 +1412,7 @@ or contact sheet, then call `finalize_scene` and `present_scene` for the same re
   by Copilot. For a local manifest run `dotnet tool restore` and configure
   `dotnet tool run openusd-mcp` instead of the bare command.
 - **The tool cannot start:** run `dotnet --list-runtimes` and install a .NET 10 runtime. Repository
-  source builds specifically require SDK 10.0.401.
+  source builds specifically require SDK 10.0.403.
 - **Copilot lists no `openusd` server:** run `copilot mcp list` and
   `copilot mcp get openusd`. For project configuration, confirm folder trust and the
   `.mcp.json` or `.github/mcp.json` precedence.
@@ -1464,7 +1464,7 @@ security boundary.
 
 ## Testing
 
-Use SDK 10.0.401 and the repository's Microsoft.Testing.Platform runner:
+Use SDK 10.0.403 and the repository's Microsoft.Testing.Platform runner:
 
 ```powershell
 dotnet build OpenUsd.slnx -c Release

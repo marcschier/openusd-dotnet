@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "b02a245610824d59e1b3f2e2eb3c7f7075f1e7dea906eaceb88c528fcaa9ba67"
+        "value": "d497c413d09b1950222278a2749fd972b1607af1a46f7a5c54e93df41aa4d695"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -115,7 +115,7 @@
       },
       {
         "name": "openusd:input:global.json:sha256",
-        "value": "b5c918f4ada3b34583ff5c442038f433712346c2ccd496b660e4f53560377559"
+        "value": "5ef38ae01755c757028ab3d3c96d09cc867836d3c7977843d772749b9dab4b79"
       },
       {
         "name": "openusd:input:version.json:sha256",
@@ -143,7 +143,7 @@
         },
         {
           "name": "openusd:unresolved",
-          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.401 but does not record the restored runtime pack version."
+          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.403 but does not record the restored runtime pack version."
         }
       ]
     },
@@ -1417,8 +1417,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Grpc.Tools",
       "name": "Grpc.Tools",
-      "version": "2.84.0",
-      "purl": "pkg:nuget/Grpc.Tools@2.84.0",
+      "version": "2.85.0",
+      "purl": "pkg:nuget/Grpc.Tools@2.85.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1456,8 +1456,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.Extensions.Hosting",
       "name": "Microsoft.Extensions.Hosting",
-      "version": "10.0.12",
-      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.12",
+      "version": "10.0.14",
+      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.14",
       "properties": [
         {
           "name": "openusd:source",
@@ -1469,8 +1469,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
       "name": "Microsoft.SourceLink.GitHub",
-      "version": "10.0.401",
-      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.401",
+      "version": "10.0.403",
+      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.403",
       "properties": [
         {
           "name": "openusd:source",
@@ -1495,8 +1495,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:ModelContextProtocol",
       "name": "ModelContextProtocol",
-      "version": "2.2.0",
-      "purl": "pkg:nuget/ModelContextProtocol@2.2.0",
+      "version": "2.3.0",
+      "purl": "pkg:nuget/ModelContextProtocol@2.3.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1664,8 +1664,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:System.IO.Hashing",
       "name": "System.IO.Hashing",
-      "version": "10.0.12",
-      "purl": "pkg:nuget/System.IO.Hashing@10.0.12",
+      "version": "10.0.14",
+      "purl": "pkg:nuget/System.IO.Hashing@10.0.14",
       "properties": [
         {
           "name": "openusd:source",
@@ -1677,8 +1677,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:TUnit",
       "name": "TUnit",
-      "version": "1.73.19",
-      "purl": "pkg:nuget/TUnit@1.73.19",
+      "version": "1.76.28",
+      "purl": "pkg:nuget/TUnit@1.76.28",
       "properties": [
         {
           "name": "openusd:source",
