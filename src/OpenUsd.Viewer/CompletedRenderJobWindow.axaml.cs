@@ -49,8 +49,8 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         ResultsDescription.Text = description;
         ResultsJobIdentity.Text = Path.GetFileName(Path.TrimEndingDirectorySeparator(outputDirectory));
         ResultsOutputLocation.Text = outputDirectory;
-        KeepCaretRequestsLocal(ResultsRequestContext);
-        KeepCaretRequestsLocal(ResultsCameraContext);
+        ViewerTextBoxScrolling.ContainCaretRequests(ResultsRequestContext);
+        ViewerTextBoxScrolling.ContainCaretRequests(ResultsCameraContext);
         ResultsCloseButton.Click += (_, _) => Close();
         ResultsFrames.SelectionChanged += (_, _) =>
         {
@@ -107,18 +107,6 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
     }
 
     public ValueTask DisposeAsync() => new(CloseAsync());
-
-    private static void KeepCaretRequestsLocal(TextBox editor)
-    {
-        editor.AddHandler(RequestBringIntoViewEvent, (_, args) =>
-        {
-            // Inner caret requests must not scroll the outer metadata panel.
-            if (args.TargetObject is not null && !ReferenceEquals(args.TargetObject, editor))
-            {
-                args.Handled = true;
-            }
-        });
-    }
 
     private async Task LoadAsync()
     {

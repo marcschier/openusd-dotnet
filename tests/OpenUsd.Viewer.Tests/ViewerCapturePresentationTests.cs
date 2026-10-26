@@ -12,6 +12,8 @@ using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Styling;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
@@ -928,6 +930,89 @@ public sealed class ViewerCapturePresentationTests
                 await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
             }
         });
+    }
+
+    [Test]
+    [NotInParallel]
+    [Arguments(600, 360, false)]
+    [Arguments(600, 360, true)]
+    [Arguments(1040, 700, false)]
+    [Arguments(1040, 700, true)]
+    public async Task ReviewNotesKeyboardEndpointsStayVisibleAndEditsReopenWithoutChangingPixels(
+        int width, int height, bool dark)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        string original = string.Join('\n', Enumerable.Range(0, 40)
+            .Select(index => $"Review line {index:D2}: historical pixels only."));
+        await RunUiAsync(async () =>
+        {
+            var window = new CaptureComparisonWindow
+            {
+                Width = width,
+                Height = height,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                TextBox notes = Required<TextBox>(window, "ComparisonNotes");
+                notes.Text = original;
+                Required<Expander>(window, "ComparisonNotesExpander").IsExpanded = true;
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                await Assert.That(notes.Focus()).IsTrue();
+                notes.BringIntoView();
+                await AssertNotesVisibleAsync(window, notes);
+                window.KeyPress(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                window.KeyRelease(Key.End, RawInputModifiers.Control, PhysicalKey.End, null);
+                await Assert.That(notes.CaretIndex).IsEqualTo(original.Length);
+                await AssertNotesVisibleAsync(window, notes);
+                ScrollViewer editorScroll = notes.GetVisualDescendants().OfType<ScrollViewer>().Single();
+                await Assert.That(editorScroll.Extent.Height).IsGreaterThan(editorScroll.Viewport.Height);
+                await Assert.That(editorScroll.Offset.Y).IsGreaterThan(0);
+                window.KeyTextInput(" END");
+                await Assert.That(notes.Text).IsEqualTo(original + " END");
+                window.KeyPress(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                window.KeyRelease(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
+                await Assert.That(notes.CaretIndex).IsEqualTo(0);
+                await AssertNotesVisibleAsync(window, notes);
+                await Assert.That(editorScroll.Offset.Y).IsEqualTo(0);
+                window.KeyTextInput("START ");
+                string edited = "START " + original + " END";
+                await Assert.That(notes.Text).IsEqualTo(edited);
+                window.KeyPress(Key.A, RawInputModifiers.Control, PhysicalKey.A, "a");
+                window.KeyRelease(Key.A, RawInputModifiers.Control, PhysicalKey.A, "a");
+                await Assert.That(notes.SelectedText).IsEqualTo(edited);
+                await AssertNotesVisibleAsync(window, notes);
+                await Assert.That(notes.IsKeyboardFocusWithin).IsTrue();
+                await window.SavePresentationAsync(fixture.Manifest);
+                await window.LoadPresentationAsync(fixture.Manifest);
+                await Assert.That(notes.Text).IsEqualTo(edited);
+                await Assert.That(Required<Expander>(window, "ComparisonNotesExpander").IsExpanded).IsTrue();
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+            await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+        });
+    }
+
+    private static async Task AssertNotesVisibleAsync(CaptureComparisonWindow window, TextBox notes)
+    {
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        ScrollViewer body = Required<ScrollViewer>(window, "ComparisonBodyScroll");
+        Point position = notes.TranslatePoint(default, body) ??
+            throw new InvalidOperationException("Comparison notes have no viewport coordinates.");
+        await Assert.That(position.Y).IsGreaterThanOrEqualTo(0);
+        await Assert.That(position.Y + notes.Bounds.Height).IsLessThanOrEqualTo(body.Viewport.Height);
     }
 
     private static async Task AssertRestoredAsync(

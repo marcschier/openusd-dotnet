@@ -1971,7 +1971,8 @@ Side by side, Before, or After. Images fit independently and retain their origin
 this is a visual comparison, not a pixel-error metric or a new colour-management pipeline.
 At the compact 600-by-360 minimum, the capture/notes area scrolls while the status and
 comparison/file/close actions stay visible. Keyboard focus brings an expanded notes editor
-into view. At the default size, the preview fills the available area without extra scrolling.
+into view. Ctrl+Home/End navigates within the notes without scrolling the editor out of view.
+At the default size, the preview fills the available area without extra scrolling.
 Long status/refusal details have their own named keyboard focus stop and bounded scrolling
 area, so errors cannot push the actions offscreen. Use Page Up/Down to read the entire message;
 reverse Tab from **Open comparison** reaches those details when the display-mode control is disabled.

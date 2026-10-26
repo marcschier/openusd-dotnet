@@ -601,6 +601,13 @@ all action bounds, reverse Tab into the bounded status viewport, real Page Up/Do
 endpoints and page-size bounds, complete refusal text and no partial pair. Retry restores exact
 decoded images and clears the error/scroll offset; Escape clears both images without writing output.
 
+`ViewerCapturePresentationTests.ReviewNotesKeyboardEndpointsStayVisibleAndEditsReopenWithoutChangingPixels`
+checks compact and normal windows in both themes with multiline notes. Actual Ctrl+End/Home moves
+the caret and scrolls the inner editor to each endpoint without hiding it in the outer viewport.
+Text input at both endpoints and Ctrl+A retain the complete edited text; saving and reopening keep
+those notes and the exact decoded historical pixels. Closing clears both image sources.
+These are managed headless control/filesystem checks, not native OS-input or screen-reader qualification.
+
 `CaptureWorkerTests.QueuedDiskCancellationCompletesWithoutWaitingForUnrelatedActiveCaptureAndPreservesRetry`
 holds a real preview capture behind a barrier and cancels its queued disk successor. The disk request
 completes before that barrier is released, without running or creating output; retry decodes exact pixels.

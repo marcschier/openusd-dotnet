@@ -30,6 +30,7 @@ internal sealed partial class CaptureComparisonWindow : Window
     {
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
+        ViewerTextBoxScrolling.ContainCaretRequests(ComparisonNotes);
         ChooseBeforeButton.Click += async (_, _) => await ChooseAsync(before: true);
         ChooseAfterButton.Click += async (_, _) => await ChooseAsync(before: false);
         CompareAgainButton.Click += async (_, _) => await LoadSelectedPairAsync();
