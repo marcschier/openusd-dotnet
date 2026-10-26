@@ -915,7 +915,11 @@ is queried, and no HDR/depth plane is relabeled as a display image.
 
 The result returns one immutable PNG resource plus the original session/revision and at most 16
 cell rectangles with frame indices and time codes. It remains usable after the source session
-closes. Only the resulting artifact consumes artifact capacity, not another render-job slot;
+closes. For authored-product jobs, `authoredProduct` retains the original settings/product/camera
+paths, execution profile, material-binding purpose and requested variable metadata, matching `read_sequence_frame`;
+it is null for ordinary viewport sequences. This is captured job context, not a query of the
+current scene and not a claim that the contact-sheet PNG contains HDR/depth planes.
+Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input
 decoding is separately bounded by the original 64-MiB-per-frame PNG/raster limits; those limits

@@ -45,6 +45,9 @@ internal sealed record McpSequenceSheetResultDto(
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
 {
+    [Description("Original completed authored-product binding; null for ordinary viewport sequences.")]
+    public McpAuthoredProductDto? AuthoredProduct { get; init; }
+
     [Description("Bounded contact-sheet completion summary.")]
     public string Summary =>
         $"Contact sheet of {Tiles.Count} completed frames from job {JobId}; no scene was rendered.";

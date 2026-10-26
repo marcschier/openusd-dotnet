@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using OpenUsd.Geom;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
@@ -9,6 +10,8 @@ namespace OpenUsd.Mcp.Tests;
 
 public sealed class RenderProductServiceTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [Test]
     public async Task ProductJobsCarryAuthoredBindingsAndShareTheExistingCompletedFrameStore()
     {
@@ -46,6 +49,30 @@ public sealed class RenderProductServiceTests
         await Assert.That(backend.Events).DoesNotContain("apply");
         await Assert.That(backend.Events).DoesNotContain("checkpoint");
         await Assert.That(File.Exists(Path.Combine(files.SourceRoot, "not-authorized.exr"))).IsFalse();
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        McpSequenceSheetResultDto sheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
+        {
+            JobId = job.JobId,
+            FrameIndices = [2, 0],
+            Width = 8,
+            Height = 4
+        }, default);
+        JsonElement json = JsonSerializer.SerializeToElement(sheet, JsonOptions);
+        await Assert.That(json.TryGetProperty("authoredProduct", out JsonElement product)).IsTrue();
+        await Assert.That(product.GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
+        await Assert.That(product.GetProperty("materialBindingPurpose").GetString()).IsEqualTo("full");
+        await Assert.That(sheet.AuthoredProduct).IsSameReferenceAs(job.AuthoredProduct);
+        await Assert.That(sheet.AuthoredProduct!.Outputs.Select(static item => item.SourceName)
+            .SequenceEqual(["depth", "color"])).IsTrue();
+        await Assert.That(sheet.SessionId).IsEqualTo(job.SessionId);
+        await Assert.That(sheet.StageRevision).IsEqualTo(job.StageRevision);
+        await Assert.That(sheet.Tiles.Select(static tile => tile.TimeCode).SequenceEqual([3d, 2d])).IsTrue();
+        await Assert.That(factory.Source.Times.SequenceEqual([2d, 2.5, 3d])).IsTrue();
     }
 
     [Test]

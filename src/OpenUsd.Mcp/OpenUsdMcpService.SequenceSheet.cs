@@ -87,7 +87,10 @@ internal sealed partial class OpenUsdMcpService
                 sequence.Revision.SessionId, sequence.Revision.Generation, sequence.Revision.StageRevision,
                 request.JobId, request.Width, request.Height, ToArtifact(artifact),
                 new OwnedReadOnlyList<McpSequenceSheetTileDto>(tiles),
-                new OwnedReadOnlyList<ArtifactResourceDescriptor>(result.Artifacts.ToArray()));
+                new OwnedReadOnlyList<ArtifactResourceDescriptor>(result.Artifacts.ToArray()))
+            {
+                AuthoredProduct = sequence.AuthoredProduct
+            };
         }
         finally
         {

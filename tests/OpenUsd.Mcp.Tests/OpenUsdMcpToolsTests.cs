@@ -485,6 +485,8 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheet.StructuredContent!.Value.GetProperty("width").GetInt32()).IsEqualTo(32);
         await Assert.That(sheet.StructuredContent.Value.GetProperty("tiles")[0]
             .GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
+        await Assert.That(sheet.StructuredContent.Value.GetProperty("authoredProduct")
+            .GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -737,7 +739,11 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
             new McpArtifactDto(descriptor.Id, descriptor.ResourceUri.AbsoluteUri,
                 descriptor.MediaType, descriptor.ByteLength, descriptor.Sha256, false),
             [new McpSequenceSheetTileDto(0, 0, 0, 0, request.Width, request.Height)],
-            [descriptor]));
+            [descriptor])
+        {
+            AuthoredProduct = new McpAuthoredProductDto("/Render/Settings", "/Render/Product", "/Camera",
+                "test-profile", "full", [new McpProductVariableDto("/Render/Color", "color", "half4", "hdrColor")])
+        });
     }
 
     public ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(

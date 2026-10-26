@@ -197,6 +197,8 @@ internal static class OpenUsdMcpDescriptions
         "Effects: registers one new bounded PNG resource under existing artifact quotas; repeated calls consume " +
         "new resource capacity but never a render-job slot, and do not touch USD or require an active scene. " +
         "Result bounds: one artifact link, captured job revision and up to 16 ordered cell/index/time records. " +
+        "Authored-product jobs retain their captured settings/product/camera paths, profile, binding purpose " +
+        "and requested variables; ordinary viewport jobs have no authoredProduct. " +
         "Only original display PNGs are used, not HDR/depth conversions. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<job>\",\"frameIndices\":[0,12,24]," +
