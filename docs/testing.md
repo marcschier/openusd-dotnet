@@ -414,6 +414,11 @@ checks bit-exact authored start/end values in the actual dialog under en-US and 
 fractions below 0.001, negative high-precision values, adjacent doubles and the ordinary
 integer range. It also retains stride, conflict/save policy, destination and destination bytes,
 without executing a native bake. The dialog reuses the timeline's invariant round-trip formatter.
+`MinimumBakeDialogKeepsValidationAndActionsInsideClient` reproduces the invalid-destination
+footer overflowing the 480-pixel client to 507 pixels in both themes. The repaired actual modal
+dialog keeps the complete refusal and both buttons inside the client, pages the form to both exact
+scroll boundaries and cancels through Escape with no request. This is headless layout/keyboard
+evidence, not native bake execution or physical OS-input qualification.
 
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
