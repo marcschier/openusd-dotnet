@@ -1221,6 +1221,11 @@ window size. Exact dirty-layer identities and the full save restriction share a 
 body, so a long refusal cannot hide the decisions. Cancel receives initial keyboard focus;
 Escape cancels the transition without saving or discarding edits.
 
+Document-decision prompts also keep initial focus on Cancel. Their named details area is
+reachable with Tab or Shift+Tab and supports Page Down/Page Up through the full explanation
+without choosing an action. Escape from the details cancels, including when a session-only
+alternative is offered.
+
 **File > Save Review Document** (`Ctrl+S`) and **Save Review As...** (`Ctrl+Shift+S`) write native
 `.urd` source-linked review documents. They capture the exact native review and its private
 same-session receipt on the stage scheduler, bound the portable file to 24 MiB, and acknowledge

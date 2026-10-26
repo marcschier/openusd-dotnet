@@ -243,6 +243,12 @@ the exact layer context and full refusal, disabled Save, initial Cancel focus an
 Escape preserving dirty source/review state. This is managed headless layout coverage,
 not native saving or physical keyboard qualification.
 
+`ViewerDocumentActionWindowTests.DecisionDetailsSupportKeyboardPagingWithoutAcceptingTheAction`
+checks both themes at minimum size, with and without an alternate action. Headless Tab input
+reaches the named details area from initial Cancel focus; Page Down/Page Up reach both ends
+without losing any original text. Visible decisions remain in bounds, and Escape leaves the
+choice Cancel. These cases do not establish native source verification or physical OS input.
+
 `HistoryReopensTheSelectedJobAfterPublisherClosesAndRejectsChangedOrMissingFiles`
 also opens the selected original output with Enter in the history list, after the publisher
 has closed, and preserves missing/modified-file refusal. Empty-list Enter opens nothing.
