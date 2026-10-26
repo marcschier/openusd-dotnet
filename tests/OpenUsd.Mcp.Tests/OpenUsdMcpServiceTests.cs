@@ -9,6 +9,85 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments(0)]
+    [Arguments(123)]
+    [Arguments(124)]
+    [Arguments(125)]
+    [Arguments(128)]
+    public async Task AnalysisPagesExposeEveryFindingAtAndAroundTheProtocolLimitWithoutMutation(int issueCount)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        string[] issues = Enumerable.Range(0, issueCount).Select(index => $"finding-{index:D3}").ToArray();
+        var observations = new AnalysisObservationsDto { ValidationIssues = issues };
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var orderedIds = new List<string>();
+        var findings = new List<string>();
+        int offset = 0;
+        int total = issueCount + 4;
+        do
+        {
+            McpAnalysisResultDto page = await service.AnalyzeSceneAsync(request(offset), default);
+            JsonElement json = JsonSerializer.SerializeToElement(page);
+            await Assert.That(json.GetProperty("totalProposalCount").GetInt32()).IsEqualTo(total);
+            await Assert.That(json.GetProperty("proposalOffset").GetInt32()).IsEqualTo(offset);
+            await Assert.That(page.Proposals.Count).IsEqualTo(Math.Min(128, total - offset));
+            await Assert.That(page.Generation).IsEqualTo(session.Generation);
+            await Assert.That(page.StageRevision).IsEqualTo(session.StageRevision);
+            foreach (McpProposalDto proposal in page.Proposals)
+            {
+                await Assert.That(ids.Add(proposal.Id)).IsTrue();
+                orderedIds.Add(proposal.Id);
+                if (proposal.Category == "validation")
+                {
+                    findings.Add(proposal.Explanation);
+                }
+            }
+            offset += page.Proposals.Count;
+            JsonElement next = json.GetProperty("nextProposalOffset");
+            if (offset == total)
+            {
+                await Assert.That(next.ValueKind).IsEqualTo(JsonValueKind.Null);
+                break;
+            }
+            await Assert.That(next.GetInt32()).IsEqualTo(offset);
+        }
+        while (offset < total);
+        await Assert.That(ids.Count).IsEqualTo(total);
+        await Assert.That(findings.SequenceEqual(issues)).IsTrue();
+        McpAnalysisResultDto interior = await service.AnalyzeSceneAsync(request(1), default);
+        await Assert.That(interior.Proposals.Select(static proposal => proposal.Id)
+            .SequenceEqual(orderedIds.Skip(1).Take(128))).IsTrue();
+        McpAnalysisResultDto end = await service.AnalyzeSceneAsync(request(total), default);
+        await Assert.That(end.Proposals.Count).IsEqualTo(0);
+        await Assert.That(JsonSerializer.SerializeToElement(end).GetProperty("nextProposalOffset").ValueKind)
+            .IsEqualTo(JsonValueKind.Null);
+        await Assert.That(async () => await service.AnalyzeSceneAsync(request(total + 1), default))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(async () => await service.AnalyzeSceneAsync(request(-1), default))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(async () => await service.AnalyzeSceneAsync(request(int.MaxValue), default))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(backend.Events).DoesNotContain("checkpoint");
+        await Assert.That(backend.Events).DoesNotContain("apply");
+        await Assert.That(backend.AcquireRenderSourceCount).IsEqualTo(0);
+
+        AnalyzeSceneRequest request(int start) => new()
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Observations = observations,
+            ProposalOffset = start
+        };
+    }
+
+    [Test]
     [Arguments("silk")]
     [Arguments("storm")]
     public async Task AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges(string renderer)

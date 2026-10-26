@@ -120,6 +120,8 @@ internal static class OpenUsdMcpDescriptions
         "ranges and cross-field rules. " +
         "Effects: read-only; replaces the prior proposal set and binds every new proposal to " +
         "this generation and stageRevision. " +
+        "proposalOffset defaults to 0; follow nextProposalOffset with identical observations " +
+        "and revision to read all findings. Offsets beyond totalProposalCount are rejected. " +
         "Result bounds: at most 128 deterministically ordered proposal objects with exact recommendation " +
         "arguments, evidence and metric targets (at most 16 each), advisory and renderer identity, and one text " +
         "summary of at most 2048 characters. " +

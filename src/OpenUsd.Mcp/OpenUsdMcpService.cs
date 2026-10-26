@@ -405,16 +405,19 @@ internal sealed partial class OpenUsdMcpService(
                 .ConfigureAwait(false);
             AnalysisInput input = CreateAnalysisInput(revision, request.Observations);
             var analysisService = new AnalysisProposalService(AnalysisDefaults.CreateAnalyzers());
-            _analysisProposals = analysisService.Analyze(input);
+            IReadOnlyList<AnalysisProposal> proposals = analysisService.Analyze(input);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(request.ProposalOffset, proposals.Count);
+            McpProposalDto[] page = proposals.Skip(request.ProposalOffset)
+                .Take(OpenUsdMcpLimits.MaximumProposalCount).Select(ToProposal).ToArray();
+            _analysisProposals = proposals;
             _lastAnalysisInput = input;
             return new McpAnalysisResultDto(
                 revision.SessionId,
                 revision.Generation,
                 revision.StageRevision,
-                Array.AsReadOnly(_analysisProposals
-                    .Take(OpenUsdMcpLimits.MaximumProposalCount)
-                    .Select(ToProposal)
-                    .ToArray()));
+                Array.AsReadOnly(page),
+                request.ProposalOffset,
+                proposals.Count);
         }
         finally
         {
@@ -835,6 +838,7 @@ internal sealed partial class OpenUsdMcpService(
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Observations);
+        ArgumentOutOfRangeException.ThrowIfNegative(request.ProposalOffset);
         AnalysisObservationsDto value = request.Observations;
         if (value.ViewportWidth is < 1 or > 4096 ||
             value.ViewportHeight is < 1 or > 4096)

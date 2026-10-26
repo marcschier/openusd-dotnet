@@ -1140,7 +1140,17 @@ Numeric observations must be finite and satisfy their schema ranges. `qualityPre
 128 messages of at most 4096 characters each. Omitted observation properties use schema
 defaults.
 
-Each of at most 128 proposals has a deterministic ID, category, code, title, applicability,
+The result includes `proposalOffset`, `totalProposalCount` and nullable `nextProposalOffset`.
+Each response contains at most 128 proposals; the total may be higher when validation findings
+and technical recommendations coexist. To read every finding, repeat `analyze_scene` with the same
+revision and observations, setting `proposalOffset` to `nextProposalOffset` until it is null.
+The default offset is zero. An offset equal to the total returns an empty terminal page;
+negative offsets and offsets beyond the total are rejected. Arbitrary interior offsets are allowed.
+Each call revalidates the active revision, recomputes the deterministic complete set and replaces
+the prior analysis only after successful page admission. Changing observations starts a different
+analysis, not a continuation; offsets alone are not persisted cursors.
+
+Each proposal has a deterministic ID, category, code, title, applicability,
 risk, and explanation. It also retains the analyzer's `operation`, `arguments` and `evidence`
 (ordered `{ "name": "...", "value": "..." }` pairs), `expectedMetrics`
 (`name`, `current`, `expected`, `unit`), `advisory` and nullable `rendererId`.

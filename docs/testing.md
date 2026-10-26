@@ -477,6 +477,11 @@ The official native protocol journey additionally reads these details through th
 refuses applying a diagnostic recommendation, and retains exact original pixels before continuing
 the edit/rollback/finalization/drain path. These observations are supplied by the caller; the tests
 do not establish automatic optimization, achieved performance gains or native composition analysis.
+`AnalysisPagesExposeEveryFindingAtAndAroundTheProtocolLimitWithoutMutation` checks complete sets of
+4, 127, 128, 129 and 132 findings, exact page counts, unique ordered IDs, no omitted validation
+messages, interior offsets, empty terminal pages and negative/beyond-total/Int32-max refusal.
+The native SDK journey follows the continuation to the final four findings and checks
+`invalid_argument` for an invalid offset and `stale_revision` for a changed revision.
 
 `CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
 lazy source that throws if the constructor requests a tenth plane. Admission must reject at

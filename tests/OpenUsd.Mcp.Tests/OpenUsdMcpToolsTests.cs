@@ -956,7 +956,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
     public ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(
         AnalyzeSceneRequest request,
         CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new McpAnalysisResultDto("session-1", 2, 3, []));
+        ValueTask.FromResult(new McpAnalysisResultDto("session-1", 2, 3, [], request.ProposalOffset, 0));
 
     public ValueTask<McpApplyProposalsResultDto> ApplyProposalsAsync(
         ApplyProposalsRequest request,

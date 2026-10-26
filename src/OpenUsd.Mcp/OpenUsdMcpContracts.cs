@@ -182,6 +182,14 @@ internal sealed class RenderPreviewRequest : SceneRevisionRequestBase
 
 internal sealed class AnalyzeSceneRequest : SceneRevisionRequestBase
 {
+    [JsonPropertyName("proposalOffset")]
+    [Range(0, int.MaxValue)]
+    [DefaultValue(0)]
+    [Description(
+        "Zero-based offset into the deterministic proposal list; defaults to 0. " +
+        "Use the returned nextProposalOffset with identical observations and revision to read another page.")]
+    public int ProposalOffset { get; init; }
+
     [JsonPropertyName("observations")]
     [Required]
     [Description(
@@ -785,12 +793,25 @@ internal sealed record McpAnalysisResultDto(
     ulong StageRevision,
     [property: JsonPropertyName("proposals")]
     [property: MaxLength(OpenUsdMcpLimits.MaximumProposalCount)]
-    [property: Description("Deterministically ordered proposal list, containing at most 128 items.")]
-    IReadOnlyList<McpProposalDto> Proposals)
+    [property: Description("One deterministically ordered proposal page, containing at most 128 items.")]
+    IReadOnlyList<McpProposalDto> Proposals,
+    [property: JsonPropertyName("proposalOffset")]
+    [property: Description("Zero-based starting offset of this page within the complete proposal list.")]
+    int ProposalOffset,
+    [property: JsonPropertyName("totalProposalCount")]
+    [property: Description("Complete count before paging; may exceed the 128-item page limit.")]
+    int TotalProposalCount)
     : IOpenUsdMcpOutput
 {
     [JsonIgnore]
-    public string Summary => $"Analysis produced {Proposals.Count} deterministic proposal(s).";
+    public string Summary =>
+        $"Analysis returned {Proposals.Count} of {TotalProposalCount} deterministic proposal(s) " +
+        $"at offset {ProposalOffset}.";
+
+    [JsonPropertyName("nextProposalOffset")]
+    [Description("Offset for the next page with identical observations and revision; null when no findings remain.")]
+    public int? NextProposalOffset =>
+        ProposalOffset + Proposals.Count < TotalProposalCount ? ProposalOffset + Proposals.Count : null;
 }
 
 internal sealed record McpApplyProposalsResultDto(

@@ -81,7 +81,8 @@ public sealed partial class NativeMcpIntegrationTests
                 RendererId = "silk",
                 SubjectCoverage = 0.1,
                 SamplesPerPixel = 1,
-                ShadowsEnabled = false
+                ShadowsEnabled = false,
+                ValidationIssues = Enumerable.Range(0, 128).Select(index => $"finding-{index:D3}").ToArray()
             };
             JsonElement analysis = await invoke("analyze_scene", analysisRequest);
             JsonElement framing = analysis.GetProperty("proposals").EnumerateArray()
@@ -99,6 +100,32 @@ public sealed partial class NativeMcpIntegrationTests
             await Assert.That(quality.GetProperty("evidence").EnumerateArray()
                 .Single(static item => item.GetProperty("name").GetString() == "currentSamplesPerPixel")
                 .GetProperty("value").GetString()).IsEqualTo("1");
+            await Assert.That(analysis.GetProperty("totalProposalCount").GetInt32()).IsEqualTo(132);
+            await Assert.That(analysis.GetProperty("proposals").GetArrayLength()).IsEqualTo(128);
+            analysisRequest["proposalOffset"] = analysis.GetProperty("nextProposalOffset").GetInt32();
+            JsonElement remaining = await invoke("analyze_scene", analysisRequest);
+            await Assert.That(remaining.GetProperty("proposalOffset").GetInt32()).IsEqualTo(128);
+            await Assert.That(remaining.GetProperty("proposals").GetArrayLength()).IsEqualTo(4);
+            await Assert.That(remaining.GetProperty("proposals")[3].GetProperty("explanation").GetString())
+                .IsEqualTo("finding-127");
+            await Assert.That(remaining.GetProperty("nextProposalOffset").ValueKind).IsEqualTo(JsonValueKind.Null);
+            var invalidPage = new Dictionary<string, object?>(analysisRequest) { ["proposalOffset"] = 133 };
+            CallToolResult invalidOffset = await client.CallToolAsync("analyze_scene",
+                new Dictionary<string, object?> { ["request"] = invalidPage }, cancellationToken: lifetime.Token);
+            await Assert.That(invalidOffset.IsError).IsTrue();
+            await Assert.That(invalidOffset.StructuredContent!.Value.GetProperty("error")
+                .GetProperty("code").GetString())
+                .IsEqualTo("invalid_argument");
+            var stalePage = new Dictionary<string, object?>(analysisRequest)
+            {
+                ["stageRevision"] = opened.GetProperty("stageRevision").GetUInt64() + 1
+            };
+            CallToolResult staleAnalysis = await client.CallToolAsync("analyze_scene",
+                new Dictionary<string, object?> { ["request"] = stalePage }, cancellationToken: lifetime.Token);
+            await Assert.That(staleAnalysis.IsError).IsTrue();
+            await Assert.That(staleAnalysis.StructuredContent!.Value.GetProperty("error")
+                .GetProperty("code").GetString())
+                .IsEqualTo("stale_revision");
             var diagnosticApply = revision(opened);
             diagnosticApply["proposalIds"] = new[] { framing.GetProperty("id").GetString()! };
             CallToolResult diagnosticRefusal = await client.CallToolAsync("apply_proposals",
