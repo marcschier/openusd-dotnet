@@ -1212,6 +1212,11 @@ verification failure requires an explicit **Open session-only** decision or Canc
 opened unverified session is never silently rebound, reloaded or discarded to manufacture proof;
 reloading a session-only document preserves that mode.
 
+The unsaved-changes prompt keeps Save Review, Discard and Cancel visible at its minimum
+window size. Exact dirty-layer identities and the full save restriction share a scrollable
+body, so a long refusal cannot hide the decisions. Cancel receives initial keyboard focus;
+Escape cancels the transition without saving or discarding edits.
+
 **File > Save Review Document** (`Ctrl+S`) and **Save Review As...** (`Ctrl+Shift+S`) write native
 `.urd` source-linked review documents. They capture the exact native review and its private
 same-session receipt on the stage scheduler, bound the portable file to 24 MiB, and acknowledge

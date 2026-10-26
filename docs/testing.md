@@ -221,6 +221,12 @@ a partial pair or comparison file. Loading hands owned keyboard focus to Cancel,
 Compare after cancellation or completion, and retains independently decoded pixels on retry.
 These headless keyboard cases do not qualify physical OS input.
 
+`ViewerDocumentChangesWindowTests` covers minimum/default light/dark unsaved-document
+prompts with long save refusals. It checks visible decision bounds, scroll reachability of
+the exact layer context and full refusal, disabled Save, initial Cancel focus and routed
+Escape preserving dirty source/review state. This is managed headless layout coverage,
+not native saving or physical keyboard qualification.
+
 Coverage also runs the built DLL directly:
 
 ```powershell

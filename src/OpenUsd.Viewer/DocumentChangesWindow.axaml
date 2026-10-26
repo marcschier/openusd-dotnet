@@ -16,14 +16,17 @@
   <Window.Styles>
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
-  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="16">
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto" RowSpacing="16">
     <TextBlock x:Name="DocumentTransitionHeading" TextWrapping="Wrap" />
-    <ScrollViewer Grid.Row="1">
-      <TextBlock x:Name="UnsavedDocumentDetails" TextWrapping="Wrap"
-                 AutomationProperties.Name="Exact unsaved layer identities" />
+    <ScrollViewer x:Name="DocumentChangesBodyScroll" Grid.Row="1"
+                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="16">
+        <TextBlock x:Name="UnsavedDocumentDetails" TextWrapping="Wrap"
+                   AutomationProperties.Name="Exact unsaved layer identities" />
+        <TextBlock x:Name="DocumentSaveRestriction" TextWrapping="Wrap" Classes="viewer-secondary" />
+      </StackPanel>
     </ScrollViewer>
-    <TextBlock x:Name="DocumentSaveRestriction" Grid.Row="2" TextWrapping="Wrap" Classes="viewer-secondary" />
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
       <Button x:Name="SaveDocumentReviewButton" Content="Save Review" IsEnabled="False"
               AutomationProperties.Name="Save review before continuing" />
       <Button x:Name="DiscardDocumentChangesButton" Content="Discard and continue"
