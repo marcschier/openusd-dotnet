@@ -416,6 +416,12 @@ changing the selected job, full description or original directory. View/Close re
 client and Escape closes. This is managed headless keyboard/layout evidence, not physical OS-input,
 screen-reader or native rendering qualification.
 
+`ViewerAboutWindowTests.AboutCompatibilityGuidanceSupportsKeyboardPagingAndModalEscape`
+opens the actual modal About dialog in both themes at minimum/default sizes. Reverse Tab from
+Close must reach the compatibility guidance, PageDown/PageUp reaches exact scroll boundaries,
+version/profile text stays intact, Close remains visible and Escape dismisses only the dialog.
+This is headless keyboard/layout evidence, not physical input or screen-reader qualification.
+
 `ViewerPhysicsBakeWindowTests.OpeningBakePreservesExactAuthoredRangeWithoutRoundingOrCultureConversion`
 checks bit-exact authored start/end values in the actual dialog under en-US and de-DE cultures:
 fractions below 0.001, negative high-precision values, adjacent doubles and the ordinary
