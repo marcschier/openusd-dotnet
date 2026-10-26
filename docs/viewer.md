@@ -1616,6 +1616,9 @@ and lets the operator choose an existing local output folder. The end is include
 falls on the stepped range. These are explicit time codes, not repeated captures of the current
 frame or timeline-snap requests. The current physical viewport size is used; resizing cancels
 the running job rather than changing its camera window partway through.
+At minimum window size, the settings, full renderer/refusal text and completed output location
+scroll independently of the View results, Cancel job, Close and Render actions.
+The same layout applies to fixed-step physics recording; focused input fields scroll into view.
 
 PNG is always included. Two unchecked-by-default choices add raw data beside each PNG:
 
