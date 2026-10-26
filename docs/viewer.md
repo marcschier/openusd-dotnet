@@ -1937,6 +1937,9 @@ this is a visual comparison, not a pixel-error metric or a new colour-management
 At the compact 600-by-360 minimum, the capture/notes area scrolls while the status and
 comparison/file/close actions stay visible. Keyboard focus brings an expanded notes editor
 into view. At the default size, the preview fills the available area without extra scrolling.
+Long status/refusal details have their own named keyboard focus stop and bounded scrolling
+area, so errors cannot push the actions offscreen. Use Page Up/Down to read the entire message;
+reverse Tab from **Open comparison** reaches those details when the display-mode control is disabled.
 
 **Save comparison** writes a new `.usdcompare.json` file containing the two absolute capture
 paths, their decoded RGBA SHA-256 checksums and dimensions, the selected display mode and

@@ -32,6 +32,101 @@ public sealed class ViewerCapturePresentationTests
     ];
 
     [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task LongComparisonRefusalKeepsActionsAndFullContextKeyboardReachableThenRetries(bool dark)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        string refusal = string.Join("\n", Enumerable.Range(0, 40)
+            .Select(index => $"Capture reader refusal line {index:D2}; original files are unchanged."));
+        int calls = 0;
+        await RunUiAsync(async () =>
+        {
+            var window = new CaptureComparisonWindow((before, after, token) =>
+                ++calls == 1
+                    ? Task.FromException<ViewerCapturePair>(new IOException(refusal))
+                    : ViewerCaptureComparison.LoadAsync(before, after, token))
+            {
+                Width = 600,
+                Height = 360,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                window.UpdateLayout();
+                TextBlock status = Required<TextBlock>(window, "ComparisonStatus");
+                await Assert.That(status.Text).IsEqualTo($"Could not compare captures: {refusal}");
+                foreach (string name in ComparisonActionNames)
+                {
+                    Control action = Required<Control>(window, name);
+                    Point? origin = action.TranslatePoint(default, window);
+                    await Assert.That(origin).IsNotNull();
+                    await Assert.That(origin!.Value.X).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.X + action.Bounds.Width)
+                        .IsLessThanOrEqualTo(window.ClientSize.Width);
+                    await Assert.That(origin.Value.Y).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.Y + action.Bounds.Height)
+                        .IsLessThanOrEqualTo(window.ClientSize.Height);
+                }
+                ScrollViewer details = Required<ScrollViewer>(window, "ComparisonStatusScroll");
+                await Assert.That(Required<Button>(window, "OpenPresentationButton").Focus()).IsTrue();
+                window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                window.KeyRelease(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                await Assert.That(ReferenceEquals(window.FocusManager?.GetFocusedElement(), details)).IsTrue();
+                await Assert.That(details.Viewport.Height).IsGreaterThan(0);
+                await Assert.That(details.Viewport.Height).IsLessThanOrEqualTo(80);
+                int pages = (int)Math.Ceiling(details.Extent.Height / details.Viewport.Height) + 1;
+                for (int page = 0; page < pages; page++)
+                {
+                    window.KeyPress(Key.PageUp, RawInputModifiers.None, PhysicalKey.PageUp, null);
+                    window.UpdateLayout();
+                }
+                await Assert.That(details.Offset.Y).IsEqualTo(0);
+                double previous = details.Offset.Y;
+                for (int page = 0; page < pages; page++)
+                {
+                    window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, null);
+                    window.UpdateLayout();
+                    await Assert.That(details.Offset.Y).IsGreaterThanOrEqualTo(previous);
+                    await Assert.That(details.Offset.Y - previous).IsLessThanOrEqualTo(details.Viewport.Height);
+                    previous = details.Offset.Y;
+                }
+                await Assert.That(details.Offset.Y).IsEqualTo(details.Extent.Height - details.Viewport.Height);
+                await Assert.That(status.Text).IsEqualTo($"Could not compare captures: {refusal}");
+                await AssertNoPairAsync(window);
+                await Assert.That(calls).IsEqualTo(1);
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                window.UpdateLayout();
+                await Assert.That(details.Offset.Y).IsEqualTo(0);
+                await Assert.That(status.Classes.Contains("viewer-error")).IsFalse();
+                await Assert.That(calls).IsEqualTo(2);
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+                await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+                await Assert.That(Directory.GetFiles(Path.Combine(fixture.Root, "out"))).IsEmpty();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+        ViewerCapturePair retained = await ViewerCaptureComparison.LoadAsync(
+            fixture.Before, fixture.After, CancellationToken.None);
+        await Assert.That(retained.Before.Rgba.SequenceEqual(BeforeRgba)).IsTrue();
+        await Assert.That(retained.After.Rgba.SequenceEqual(AfterRgba)).IsTrue();
+    }
+
+    [Test]
     public async Task VersionTwoReviewNotesSurviveOpeningAndResavingTheVerifiedPair()
     {
         using var fixture = await Fixture.CreateAsync();

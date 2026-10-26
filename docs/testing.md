@@ -518,6 +518,12 @@ through the complete description in both themes at minimum size. Exact scroll en
 monotonic page-sized movement are checked alongside unchanged selection, original PNG bytes,
 decoded alpha pixels, a usable frame grid, visible Close and disposed thumbnail after Escape.
 
+`ViewerCapturePresentationTests.LongComparisonRefusalKeepsActionsAndFullContextKeyboardReachableThenRetries`
+reproduces a long reader refusal pushing controls below the compact window. Both themes now check
+all action bounds, reverse Tab into the bounded status viewport, real Page Up/Down with exact
+endpoints and page-size bounds, complete refusal text and no partial pair. Retry restores exact
+decoded images and clears the error/scroll offset; Escape clears both images without writing output.
+
 `ViewerBridgeConnectionWindowTests.CompactBridgeKeepsActionsAndFullRefusalKeyboardReachable`
 reproduces a long refusal starting below the 420-by-300 window, then checks both themes, the
 default size, full status/error text, keyboard scrolling to the final line and all four footer
