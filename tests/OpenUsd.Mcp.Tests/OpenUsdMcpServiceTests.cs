@@ -523,7 +523,12 @@ public sealed class OpenUsdMcpServiceTests
             }
         };
         McpAnalysisResultDto analysis = await service.AnalyzeSceneAsync(request, default);
-        JsonElement result = JsonSerializer.SerializeToElement(analysis);
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        var response = await tools.AnalyzeSceneAsync(request, default);
+        await Assert.That(response.IsError).IsFalse();
+        await Assert.That(response.StructuredContent.HasValue).IsTrue();
+        JsonElement result = response.StructuredContent!.Value;
+        await Assert.That(result.GetRawText()).IsEqualTo(JsonSerializer.Serialize(analysis));
         JsonElement[] proposals = result.GetProperty("proposals").EnumerateArray().ToArray();
         JsonElement clipping = proposals.Single(item => item.GetProperty("code").GetString() == "camera.clipping");
         await Assert.That(clipping.GetProperty("operation").GetString()).IsEqualTo("inspect-camera-clipping");
@@ -557,12 +562,17 @@ public sealed class OpenUsdMcpServiceTests
         await Assert.That(validation.GetProperty("evidence")[0].GetProperty("value").GetString())
             .IsEqualTo("review this finding");
         JsonElement composition = proposals.Single(item =>
-            item.GetProperty("code").GetString() == "composition.summary");
+            item.GetProperty("code").GetString() == "composition.unavailable");
+        await Assert.That(composition.GetProperty("operation").GetString()).IsEqualTo("inspect-composition-summary");
         await Assert.That(composition.GetProperty("arguments").GetArrayLength()).IsEqualTo(0);
         await Assert.That(composition.GetProperty("expectedMetrics").GetArrayLength()).IsEqualTo(0);
-        await Assert.That(composition.GetProperty("evidence").EnumerateArray()
-            .Single(item => item.GetProperty("name").GetString() == "layers").GetProperty("value").GetString())
-            .IsEqualTo("0");
+        await Assert.That(composition.GetProperty("evidence").GetArrayLength()).IsEqualTo(1);
+        await Assert.That(composition.GetProperty("evidence")[0].GetProperty("name").GetString())
+            .IsEqualTo("availability");
+        await Assert.That(composition.GetProperty("evidence")[0].GetProperty("value").GetString())
+            .IsEqualTo("not-collected");
+        await Assert.That(proposals.Any(item => item.GetProperty("code").GetString() is
+            "composition.summary" or "composition.muted-layers" or "composition.deep-graph")).IsFalse();
         await Assert.That(proposals.All(item => item.GetProperty("applicability").GetString() == "diagnostic_only"))
             .IsTrue();
         await Assert.That(JsonSerializer.Serialize(analysis))

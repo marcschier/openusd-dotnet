@@ -13,6 +13,20 @@ internal sealed class CompositionProposalAnalyzer : IProposalAnalyzer
         ArgumentNullException.ThrowIfNull(input);
 
         CompositionSnapshot snapshot = input.Composition;
+        if (!snapshot.IsAvailable)
+        {
+            yield return new ProposalDraft(
+                AnalysisCategory.Composition,
+                "composition.unavailable",
+                "Composition data was not collected",
+                ProposalApplicability.DiagnosticOnly,
+                ProposalRisk.Low,
+                "No layer or Pcp census was collected. Missing data does not establish zero counts, " +
+                "a shallow graph or the absence of muted layers.",
+                new ProposalPayload("inspect-composition-summary"),
+                [new("availability", "not-collected")]);
+            yield break;
+        }
         int mutedLayers = snapshot.Layers.Count(static layer => layer.IsMuted);
         int anonymousLayers = snapshot.Layers.Count(static layer => layer.IsAnonymous);
         int maxDepth = snapshot.PcpNodes.Count == 0

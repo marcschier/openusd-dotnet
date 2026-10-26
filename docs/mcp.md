@@ -1188,7 +1188,9 @@ arguments, while `camera.framing` reports the submitted coverage and proposed co
 
 These details preserve the submitted observations and analyzer thresholds, not independently
 verified native measurements or achieved improvements. The composition analyzer currently receives
-an empty detached snapshot through this tool; its zero counts are not a native composition census.
+an explicitly unavailable snapshot through this tool. It returns diagnostic-only
+`composition.unavailable` with `availability=not-collected`, without layer/node/depth counts or
+flattening/muting recommendations. Missing data is not an inspected empty stage or a native census.
 The operation and arguments are guidance, not an executable command or permission to apply an edit.
 Applicability remains authoritative:
 

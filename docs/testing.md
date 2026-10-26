@@ -480,6 +480,12 @@ serialized ordered retry diagnostics, exact decoded pixels and unchanged source/
 `InvalidDiagnosticSeverityRefusesBeforePublishingAnyPreviewAndAllowsCleanRetry` also checks
 the processor directly for all four modes, retaining exact valid severity on retry.
 These are managed capture/publication and protocol checks, not new native-renderer qualification.
+`CompositionProposalTests.UnavailableCompositionNeverInventsCountsAndDiffersFromAnInspectedEmptySnapshot`
+distinguishes an unavailable census from a genuinely inspected empty detached snapshot, including
+stable distinct proposal IDs, staleness and refusal to apply diagnostic-only advice.
+`AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges` checks the real
+tool adapter for Silk and Storm: unavailable composition has no invented counts or graph advice,
+retains `availability=not-collected`, and performs no capture or scene edits.
 `RenderDiskJobTests.UnknownDiagnosticSeverityRefusesEntireDiskJobThenRetriesWithExactManifestAndPixels`
 checks negative and unknown positive severities on first and final disk frames. Refusal removes
 all owned staging output while preserving unrelated files; retry retains all three supported

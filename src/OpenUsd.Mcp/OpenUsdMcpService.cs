@@ -638,7 +638,7 @@ internal sealed partial class OpenUsdMcpService(
                 observations.TriangleCount,
                 observations.ResourceCount,
                 observations.ResidentBytes),
-            new CompositionSnapshot(),
+            CompositionSnapshot.Unavailable,
             observations.RendererId);
 
     internal static void EnsureAppliedProposalCapacity(
