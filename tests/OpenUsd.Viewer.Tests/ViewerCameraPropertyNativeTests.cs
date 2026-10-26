@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using OpenUsd.Editing;
 using OpenUsd.Geom;
 
@@ -20,6 +21,11 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("fStop", "float", UsdLayerEditVariability.Varying)]
     [Arguments("shutter:open", "double", UsdLayerEditVariability.Varying)]
     [Arguments("shutter:close", "double", UsdLayerEditVariability.Varying)]
+    [Arguments("exposure", "float", UsdLayerEditVariability.Varying)]
+    [Arguments("exposure:iso", "float", UsdLayerEditVariability.Varying)]
+    [Arguments("exposure:time", "float", UsdLayerEditVariability.Varying)]
+    [Arguments("exposure:fStop", "float", UsdLayerEditVariability.Varying)]
+    [Arguments("exposure:responsivity", "float", UsdLayerEditVariability.Varying)]
     public async Task SchemaCameraOpticsCaptureNativeDeclarationsButUndoOnlyReviewOpinions(
         string name, string typeName, UsdLayerEditVariability variability)
     {
@@ -41,6 +47,7 @@ public sealed partial class ViewerCameraPropertyNativeTests
             double scalar = name switch
             {
                 "horizontalApertureOffset" => -2.5,
+                "exposure" => -2.5,
                 "shutter:open" => -0.125,
                 "shutter:close" => 0.375,
                 _ => 60
@@ -64,7 +71,8 @@ public sealed partial class ViewerCameraPropertyNativeTests
             await Assert.That(after.Custom).IsFalse();
             await Assert.That(after.Value).IsEqualTo(value);
             if (name is "horizontalApertureOffset" or "verticalApertureOffset" or "focusDistance" or "fStop" or
-                "shutter:open" or "shutter:close")
+                "shutter:open" or "shutter:close" or "exposure" or "exposure:iso" or
+                "exposure:time" or "exposure:fStop" or "exposure:responsivity")
             {
                 await Assert.That(await scheduler.InvokeAsync(stage => ReadAdditionalOptic(stage, name, 0)))
                     .IsEqualTo(scalar);
@@ -94,6 +102,11 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("fStop")]
     [Arguments("shutter:open")]
     [Arguments("shutter:close")]
+    [Arguments("exposure")]
+    [Arguments("exposure:iso")]
+    [Arguments("exposure:time")]
+    [Arguments("exposure:fStop")]
+    [Arguments("exposure:responsivity")]
     public async Task CameraAdmissionDoesNotAuthorizeLookalikesOtherSchemaFieldsOrUniformSamples(string name)
     {
         string root = Directory.CreateTempSubdirectory("openusd-camera-refusal-").FullName;
@@ -143,6 +156,11 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("fStop")]
     [Arguments("shutter:open")]
     [Arguments("shutter:close")]
+    [Arguments("exposure")]
+    [Arguments("exposure:iso")]
+    [Arguments("exposure:time")]
+    [Arguments("exposure:fStop")]
+    [Arguments("exposure:responsivity")]
     public async Task AdditionalOpticsSamplesClearExactlyAndRefuseStaleReviewCaptures(string name)
     {
         string root = Directory.CreateTempSubdirectory("openusd-camera-samples-").FullName;
@@ -198,8 +216,24 @@ public sealed partial class ViewerCameraPropertyNativeTests
         }
     }
 
-    private static double ReadAdditionalOptic(UsdStage stage, string name, double timeCode)
+    internal static double ReadAdditionalOptic(UsdStage stage, string name, double timeCode)
     {
+        if (name is "exposure" or "exposure:iso" or "exposure:time" or
+            "exposure:fStop" or "exposure:responsivity")
+        {
+            UsdAttributePropertySnapshot property = stage.GetPrimPropertySnapshot("/Camera", timeCode)
+                .Properties.OfType<UsdAttributePropertySnapshot>().Single(attribute => attribute.Name == name);
+            if (property.TypeName != "float" || property.ValueState != UsdPropertyValueState.Value ||
+                property.Value is not
+                {
+                    IsArray: false, Status: UsdPropertyPreviewStatus.Complete, ElementCount: 1,
+                    Elements: [string text]
+                })
+            {
+                throw new InvalidDataException("Expected a complete native camera exposure float value.");
+            }
+            return float.Parse(text, CultureInfo.InvariantCulture);
+        }
         if (name is "shutter:open" or "shutter:close")
         {
             return stage.GetPrim("/Camera").GetDouble(name, timeCode);

@@ -155,6 +155,7 @@ internal sealed class ViewerPropertyPage
         if (isCamera && name is "projection" or "horizontalAperture" or "verticalAperture" or
             "horizontalApertureOffset" or "verticalApertureOffset" or "focalLength" or
             "clippingRange" or "clippingPlanes" or "fStop" or "focusDistance" or "exposure" or
+            "exposure:iso" or "exposure:time" or "exposure:fStop" or "exposure:responsivity" or
             "shutter:open" or "shutter:close" or "stereoRole")
         {
             return ViewerPropertyGroup.Camera;

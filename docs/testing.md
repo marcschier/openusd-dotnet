@@ -209,6 +209,11 @@ The desktop `SearchAndPagingKeepLargePrimPropertiesReachableAndEditTheExactSelec
 journey additionally selects all six controls through the real MainWindow Inspector and verifies
 Set, Clear and shared menu Undo/Redo against native camera values, retained filters and unchanged
 source bytes. This authoring journey is not a pixel comparison or optical-rendering qualification.
+The same native controller/editor and desktop journeys include camera `exposure`, `exposure:iso`,
+`exposure:time`, `exposure:fStop` and `exposure:responsivity`: signed float values, exact schema
+admission, sampled Clear/CAS/history and original fallbacks. `CameraExposureGroupingRequiresExactNamesAndACamera`
+keeps similarly prefixed properties and noncamera lookalikes outside the Camera group.
+This coverage does not establish rendered exposure, display transforms or physical input.
 `ComparisonKeyboardEscapeCancelsAndDrainsBeforeDisposingTheWindow` covers compact light/dark
 comparison dialogs, initial keyboard focus and routed Escape from the focused Cancel control.
 A delayed reader confirms cancellation does not close the window before resource drain or publish

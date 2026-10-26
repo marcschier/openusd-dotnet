@@ -18,6 +18,11 @@ public sealed partial class ViewerCameraPropertyNativeTests
     [Arguments("fStop", 2.5, "float")]
     [Arguments("shutter:open", -0.12500000000000003, "double")]
     [Arguments("shutter:close", 0.37500000000000006, "double")]
+    [Arguments("exposure", -2.5, "float")]
+    [Arguments("exposure:iso", 200, "float")]
+    [Arguments("exposure:time", 0.125, "float")]
+    [Arguments("exposure:fStop", 2.5, "float")]
+    [Arguments("exposure:responsivity", 0.5, "float")]
     public async Task NativeCameraEditorSetsClearsAndSharesUndoWithoutChangingSource(
         string name, double value, string typeName)
     {

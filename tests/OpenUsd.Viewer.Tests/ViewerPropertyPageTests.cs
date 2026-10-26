@@ -84,6 +84,31 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    [Arguments("exposure")]
+    [Arguments("exposure:iso")]
+    [Arguments("exposure:time")]
+    [Arguments("exposure:fStop")]
+    [Arguments("exposure:responsivity")]
+    public async Task CameraExposureGroupingRequiresExactNamesAndACamera(string name)
+    {
+        var exposure = new ViewerAttributeSnapshot(name, "float", false, false, 0, "<none>", "0");
+        var lookalike = new ViewerAttributeSnapshot($"{name}:extra", "float", true, false, 0, "<none>", "7");
+        ViewerAttributeSnapshot[] attributes = [exposure, lookalike];
+        ViewerPropertyPage camera = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Camera, isCamera: true);
+        await Assert.That(camera.Attributes.Count).IsEqualTo(1);
+        await Assert.That(camera.Attributes.Single()).IsSameReferenceAs(exposure);
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Other, isCamera: true);
+        await Assert.That(other.Attributes.Count).IsEqualTo(1);
+        await Assert.That(other.Attributes.Single()).IsSameReferenceAs(lookalike);
+        ViewerPropertyPage nonCamera = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Camera, isCamera: false);
+        await Assert.That(nonCamera.Attributes).IsEmpty();
+        await Assert.That(nonCamera.MatchCount).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task CommonLightControlsHaveAnExplicitSchemaGroupWithoutHidingOtherShaderInputs()
     {
         string[] attributeNames =

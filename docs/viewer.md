@@ -1092,10 +1092,11 @@ vector and colour roles. Supported aliases include `texCoord2f` and `color4f`.
 This includes camera clipping ranges, ordinary translate/scale/Euler/matrix attributes and supported
 light/material parameters, not a material graph editor.
 
-Eleven native camera optics fields can also be edited without an authored local declaration:
+Sixteen native camera fields can also be edited without an authored local declaration:
 `projection`, `focalLength`, `horizontalAperture`, `verticalAperture`, `clippingRange`,
 `horizontalApertureOffset`, `verticalApertureOffset`, `focusDistance`, `fStop`,
-`shutter:open`, and `shutter:close`.
+`shutter:open`, `shutter:close`, `exposure`, `exposure:iso`, `exposure:time`,
+`exposure:fStop`, and `exposure:responsivity`.
 The controller validates the camera schema and exact supported type, then reads noncustom
 declaration metadata from a fresh bounded native query. It never derives creation metadata from a
 display string or Sdr hint. The query does not supply undo state: the review layer is separately
@@ -1111,6 +1112,11 @@ Shutter fields preserve native double precision, signed values and authored time
 default and numeric-time review opinions. They use the same Clear, conflict and Undo semantics.
 The editor does not convert shutter intervals to seconds, clamp or reorder endpoints, or enable
 motion blur; effective temporal rendering and backend shutter admission remain separate.
+The five exposure fields retain their native float declarations, including signed exposure
+compensation. They appear in the Camera group, not a prefix-matched catch-all namespace.
+Exposure time remains in seconds; exposure f-stop is distinct from the optics' depth-of-field
+`fStop`. Review editing does not apply an exposure multiplier to the viewport, change display
+exposure, convert units, or bypass an output adapter's physical-value checks.
 
 Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
 cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
