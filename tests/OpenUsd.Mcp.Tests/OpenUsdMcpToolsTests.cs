@@ -2,6 +2,7 @@
 
 using System.IO.Pipelines;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -487,6 +488,19 @@ public sealed class OpenUsdMcpToolsTests
             .GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
         await Assert.That(sheet.StructuredContent.Value.GetProperty("authoredProduct")
             .GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
+        JsonElement sheetSimulation = sheet.StructuredContent.Value.GetProperty("tiles")[0]
+            .GetProperty("simulation");
+        await Assert.That(sheetSimulation.GetProperty("epoch").GetGuid())
+            .IsEqualTo(new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"));
+        await Assert.That(sheetSimulation.GetProperty("scenarioIdentity").GetString()).IsEqualTo("recorded-scene");
+        await Assert.That(sheetSimulation.GetProperty("sourceRevision").GetUInt64()).IsEqualTo(3ul);
+        await Assert.That(sheetSimulation.GetProperty("publicationRevision").GetUInt64()).IsEqualTo(17ul);
+        await Assert.That(sheetSimulation.GetProperty("stepIndex").GetUInt64()).IsEqualTo(6ul);
+        await Assert.That(sheetSimulation.GetProperty("simulationSeconds").GetDouble()).IsEqualTo(0.25);
+        await Assert.That(sheetSimulation.GetProperty("fixedStepSeconds").GetDouble()).IsEqualTo(1d / 24);
+        await Assert.That(sheetSimulation.GetProperty("bindingRevision").GetUInt64()).IsEqualTo(4ul);
+        await Assert.That(sheetSimulation.GetProperty("bodyCount").GetInt32()).IsEqualTo(2);
+        await Assert.That(sheetSimulation.GetProperty("deformationCount").GetInt32()).IsEqualTo(1);
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -738,7 +752,14 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
             "session-1", 2, 3, request.JobId, request.Width, request.Height,
             new McpArtifactDto(descriptor.Id, descriptor.ResourceUri.AbsoluteUri,
                 descriptor.MediaType, descriptor.ByteLength, descriptor.Sha256, false),
-            [new McpSequenceSheetTileDto(0, 0, 0, 0, request.Width, request.Height)],
+            [
+                new McpSequenceSheetTileDto(0, 0, 0, 0, request.Width, request.Height)
+                {
+                    Simulation = new McpSimulationFrameDto(
+                        new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
+                        3, 17, 6, 0.25, 1d / 24, 4, 2, 1)
+                }
+            ],
             [descriptor])
         {
             AuthoredProduct = new McpAuthoredProductDto("/Render/Settings", "/Render/Product", "/Camera",

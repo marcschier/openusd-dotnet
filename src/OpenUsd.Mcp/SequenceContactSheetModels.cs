@@ -31,7 +31,11 @@ internal sealed record McpSequenceSheetTileDto(
     [property: Description("Left edge of the tile cell in the top-down sheet.")] int X,
     [property: Description("Top edge of the tile cell.")] int Y,
     [property: Description("Cell width, including transparent letterboxing.")] int Width,
-    [property: Description("Cell height, including transparent letterboxing.")] int Height);
+    [property: Description("Cell height, including transparent letterboxing.")] int Height)
+{
+    [Description("Original recorded physics publication; null for frames without simulation.")]
+    public McpSimulationFrameDto? Simulation { get; init; }
+}
 
 internal sealed record McpSequenceSheetResultDto(
     [property: Description("Original job session.")] string SessionId,

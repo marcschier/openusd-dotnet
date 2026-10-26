@@ -70,7 +70,10 @@ internal sealed partial class OpenUsdMcpService
                 frames.Add(name, frame);
                 views[index] = new CaptureView(name, CameraState.Default, frame.State.Time.TimeCode);
                 tiles[index] = new McpSequenceSheetTileDto(frame.Index, frame.State.Time.TimeCode,
-                    index % columns * width, index / columns * height, width, height);
+                    index % columns * width, index / columns * height, width, height)
+                {
+                    Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null
+                };
             }
             IArtifactResourceStore store = services.GetRequiredService<IArtifactResourceStore>();
             var factory = new CompletedFrameSheetSource(

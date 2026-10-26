@@ -919,6 +919,11 @@ closes. For authored-product jobs, `authoredProduct` retains the original settin
 paths, execution profile, material-binding purpose and requested variable metadata, matching `read_sequence_frame`;
 it is null for ordinary viewport sequences. This is captured job context, not a query of the
 current scene and not a claim that the contact-sheet PNG contains HDR/depth planes.
+Each physics-recording tile also retains its original `simulation` metadata, matching
+`read_sequence_frame`: epoch, scenario, source/publication revisions, completed step,
+simulated seconds, fixed step, binding revision and complete body/deformation counts.
+Frames without recorded simulation have null tile metadata; a USD time code alone is not
+treated as evidence of a physics publication.
 Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input

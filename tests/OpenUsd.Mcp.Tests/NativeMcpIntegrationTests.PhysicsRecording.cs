@@ -191,6 +191,12 @@ public sealed partial class NativeMcpIntegrationTests
             Height = 64
         }, default);
         await Assert.That(sheet.Tiles.Count).IsEqualTo(3);
+        for (int index = 0; index < sheet.Tiles.Count; index++)
+        {
+            McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+                new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = index }, default);
+            await Assert.That(sheet.Tiles[index].Simulation).IsEqualTo(frame.Simulation);
+        }
         if (Environment.GetEnvironmentVariable("OPENUSD_MCP_PHYSICS_EVIDENCE_ROOT") is { Length: > 0 } evidenceRoot)
         {
             string destination = Path.Combine(evidenceRoot,

@@ -28,6 +28,7 @@ public sealed class SequenceContactSheetTests
         await Assert.That(sheet.SessionId).IsEqualTo(job.SessionId);
         await Assert.That(sheet.StageRevision).IsEqualTo(job.StageRevision);
         await Assert.That(sheet.AuthoredProduct).IsNull();
+        await Assert.That(sheet.Tiles.All(static tile => tile.Simulation is null)).IsTrue();
         await Assert.That(sheet.Tiles.Select(static tile => tile.FrameIndex).SequenceEqual([19, 0])).IsTrue();
         await Assert.That(sheet.Tiles[0].TimeCode).IsEqualTo(19d);
         await Assert.That(sheet.Tiles[1].X).IsEqualTo(4);
