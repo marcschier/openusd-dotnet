@@ -8,8 +8,10 @@ using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using OpenUsd.Rendering;
 
 namespace OpenUsd.Viewer.Tests;
@@ -674,6 +676,70 @@ public sealed class ViewerCapturePresentationTests
         await Assert.That(
             Directory.GetFiles(Path.Combine(fixture.Root, "out")).Select(Path.GetFileName).OfType<string>())
             .IsEquivalentTo(["comparison.usdcompare.json", "malformed.usdcompare.json"]);
+    }
+
+    [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ComparisonKeyboardEscapeCancelsAndDrainsBeforeDisposingTheWindow(bool dark)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        await RunUiAsync(async () =>
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var window = new CaptureComparisonWindow(async (_, _, token) =>
+            {
+                entered.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token);
+                    throw new InvalidOperationException("The blocked reader cannot finish normally.");
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    cancelled.TrySetResult();
+                    await release.Task;
+                    throw;
+                }
+            })
+            {
+                Width = 600,
+                Height = 360,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await Assert.That(Required<Button>(window, "ChooseBeforeButton").IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                Task load = window.LoadPairAsync(fixture.Before, fixture.After);
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Button cancel = Required<Button>(window, "CancelComparisonButton");
+                await Assert.That(cancel.IsEnabled).IsTrue();
+                await Assert.That(cancel.Focus()).IsTrue();
+                cancel.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsVisible).IsTrue();
+                await Assert.That(load.IsCompleted).IsFalse();
+                await Assert.That(Required<Button>(window, "SavePresentationButton").IsEnabled).IsFalse();
+                release.TrySetResult();
+                await load.WaitAsync(TimeSpan.FromSeconds(5));
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsVisible).IsFalse();
+                await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+                await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+                await Assert.That(Directory.GetFiles(Path.Combine(fixture.Root, "out"))).IsEmpty();
+            }
+            finally
+            {
+                release.TrySetResult();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
     }
 
     [Test]

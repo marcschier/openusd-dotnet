@@ -209,6 +209,10 @@ The desktop `SearchAndPagingKeepLargePrimPropertiesReachableAndEditTheExactSelec
 journey additionally selects all six controls through the real MainWindow Inspector and verifies
 Set, Clear and shared menu Undo/Redo against native camera values, retained filters and unchanged
 source bytes. This authoring journey is not a pixel comparison or optical-rendering qualification.
+`ComparisonKeyboardEscapeCancelsAndDrainsBeforeDisposingTheWindow` covers compact light/dark
+comparison dialogs, initial keyboard focus and routed Escape from the focused Cancel control.
+A delayed reader confirms cancellation does not close the window before resource drain or publish
+a partial pair or comparison file. These headless keyboard cases do not qualify physical OS input.
 
 Coverage also runs the built DLL directly:
 
