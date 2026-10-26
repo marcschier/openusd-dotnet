@@ -9,6 +9,89 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments("silk")]
+    [Arguments("storm")]
+    public async Task AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges(string renderer)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        var request = new AnalyzeSceneRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Observations = new AnalysisObservationsDto
+            {
+                RendererId = renderer,
+                SubjectCoverage = 0.1,
+                NearClip = 10,
+                FarClip = 100,
+                NearestGeometryDistance = 1,
+                FarthestGeometryDistance = 120,
+                SamplesPerPixel = 1,
+                ShadowsEnabled = false,
+                FrameMilliseconds = 50,
+                ValidationIssues = ["review this finding"]
+            }
+        };
+        McpAnalysisResultDto analysis = await service.AnalyzeSceneAsync(request, default);
+        JsonElement result = JsonSerializer.SerializeToElement(analysis);
+        JsonElement[] proposals = result.GetProperty("proposals").EnumerateArray().ToArray();
+        JsonElement clipping = proposals.Single(item => item.GetProperty("code").GetString() == "camera.clipping");
+        await Assert.That(clipping.GetProperty("operation").GetString()).IsEqualTo("inspect-camera-clipping");
+        JsonElement[] arguments = clipping.GetProperty("arguments").EnumerateArray().ToArray();
+        await Assert.That(arguments.Length).IsEqualTo(2);
+        await Assert.That(arguments[0].GetProperty("name").GetString()).IsEqualTo("far");
+        await Assert.That(arguments[1].GetProperty("name").GetString()).IsEqualTo("near");
+        await Assert.That(arguments[0].GetProperty("value").GetString()).IsEqualTo("132");
+        await Assert.That(arguments[1].GetProperty("value").GetString()).IsEqualTo("0.5");
+        JsonElement near = clipping.GetProperty("evidence").EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == "nearClip");
+        await Assert.That(near.GetProperty("value").GetString()).IsEqualTo("10");
+        await Assert.That(clipping.GetProperty("advisory").GetBoolean()).IsFalse();
+        await Assert.That(clipping.GetProperty("rendererId").ValueKind).IsEqualTo(JsonValueKind.Null);
+        JsonElement framing = proposals.Single(item => item.GetProperty("code").GetString() == "camera.framing");
+        JsonElement metric = framing.GetProperty("expectedMetrics")[0];
+        await Assert.That(metric.GetProperty("name").GetString()).IsEqualTo("subjectCoverage");
+        await Assert.That(metric.GetProperty("current").GetDouble()).IsEqualTo(0.1);
+        await Assert.That(metric.GetProperty("expected").GetDouble()).IsEqualTo(0.65);
+        await Assert.That(metric.GetProperty("unit").GetString()).IsEqualTo("ratio");
+        JsonElement quality = proposals.Single(item =>
+            item.GetProperty("code").GetString() == "render.quality-alternative");
+        await Assert.That(quality.GetProperty("advisory").GetBoolean()).IsTrue();
+        await Assert.That(quality.GetProperty("rendererId").GetString()).IsEqualTo(renderer);
+        await Assert.That(quality.GetProperty("arguments").EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == "samplesPerPixel")
+            .GetProperty("value").GetString()).IsEqualTo("8");
+        JsonElement validation = proposals.Single(item =>
+            item.GetProperty("code").GetString() == "validation.issue.0000");
+        await Assert.That(validation.GetProperty("expectedMetrics").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(validation.GetProperty("evidence")[0].GetProperty("value").GetString())
+            .IsEqualTo("review this finding");
+        JsonElement composition = proposals.Single(item =>
+            item.GetProperty("code").GetString() == "composition.summary");
+        await Assert.That(composition.GetProperty("arguments").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(composition.GetProperty("expectedMetrics").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(composition.GetProperty("evidence").EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == "layers").GetProperty("value").GetString())
+            .IsEqualTo("0");
+        await Assert.That(proposals.All(item => item.GetProperty("applicability").GetString() == "diagnostic_only"))
+            .IsTrue();
+        await Assert.That(JsonSerializer.Serialize(analysis))
+            .IsEqualTo(JsonSerializer.Serialize(await service.AnalyzeSceneAsync(request, default)));
+        await Assert.That(analysis.Generation).IsEqualTo(session.Generation);
+        await Assert.That(analysis.StageRevision).IsEqualTo(session.StageRevision);
+        await Assert.That(backend.Events).DoesNotContain("checkpoint");
+        await Assert.That(backend.Events).DoesNotContain("apply");
+        await Assert.That(backend.AcquireRenderSourceCount).IsEqualTo(0);
+    }
+
+    [Test]
     [Arguments("changed", "none")]
     [Arguments("missing", "none")]
     [Arguments("cached-color", "none")]

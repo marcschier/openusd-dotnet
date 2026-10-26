@@ -120,8 +120,11 @@ internal static class OpenUsdMcpDescriptions
         "ranges and cross-field rules. " +
         "Effects: read-only; replaces the prior proposal set and binds every new proposal to " +
         "this generation and stageRevision. " +
-        "Result bounds: at most 128 deterministically ordered proposal objects and one text " +
+        "Result bounds: at most 128 deterministically ordered proposal objects with exact recommendation " +
+        "arguments, evidence and metric targets (at most 16 each), advisory and renderer identity, and one text " +
         "summary of at most 2048 characters. " +
+        "Evidence derives from submitted observations, not independently verified measurements; " +
+        "metric targets are not achieved improvements. Diagnostic recommendations remain non-executable. " +
         "Errors: invalid_argument, no_session, stale_session, stale_revision, or native_failure. " +
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":0,\"stageRevi" +
         "sion\":1,\"observations\":{\"rendererId\":\"silk\",\"qualityPreset\":\"balanced\"}}}" +

@@ -1141,7 +1141,19 @@ Numeric observations must be finite and satisfy their schema ranges. `qualityPre
 defaults.
 
 Each of at most 128 proposals has a deterministic ID, category, code, title, applicability,
-risk, and explanation. Applicability is:
+risk, and explanation. It also retains the analyzer's `operation`, `arguments` and `evidence`
+(ordered `{ "name": "...", "value": "..." }` pairs), `expectedMetrics`
+(`name`, `current`, `expected`, `unit`), `advisory` and nullable `rendererId`.
+Each argument, evidence and metric list has at most 16 entries; empty lists remain empty.
+Arguments are sorted by name, evidence by name/value and metrics by name/unit.
+For example, `camera.clipping` can recommend `inspect-camera-clipping` with `near`/`far`
+arguments, while `camera.framing` reports the submitted coverage and proposed coverage target.
+
+These details preserve the submitted observations and analyzer thresholds, not independently
+verified native measurements or achieved improvements. The composition analyzer currently receives
+an empty detached snapshot through this tool; its zero counts are not a native composition census.
+The operation and arguments are guidance, not an executable command or permission to apply an edit.
+Applicability remains authoritative:
 
 - `overlay_applicable`: may be selected by `apply_proposals`;
 - `flatten_only`: informs final output but cannot be represented safely as a typed overlay edit;

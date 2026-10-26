@@ -75,6 +75,40 @@ public sealed partial class NativeMcpIntegrationTests
             JsonElement checkpoint = await invoke("checkpoint_scene", revision(opened));
             (string originalUri, byte[] originalPixels) = await capture(opened);
             await assertCenter(originalPixels, red: true);
+            var analysisRequest = revision(opened);
+            analysisRequest["observations"] = new AnalysisObservationsDto
+            {
+                RendererId = "silk",
+                SubjectCoverage = 0.1,
+                SamplesPerPixel = 1,
+                ShadowsEnabled = false
+            };
+            JsonElement analysis = await invoke("analyze_scene", analysisRequest);
+            JsonElement framing = analysis.GetProperty("proposals").EnumerateArray()
+                .Single(static proposal => proposal.GetProperty("code").GetString() == "camera.framing");
+            await Assert.That(framing.GetProperty("operation").GetString()).IsEqualTo("inspect-camera-framing");
+            await Assert.That(framing.GetProperty("arguments")[0].GetProperty("value").GetString()).IsEqualTo("0.65");
+            await Assert.That(framing.GetProperty("expectedMetrics")[0].GetProperty("current").GetDouble())
+                .IsEqualTo(0.1);
+            await Assert.That(framing.GetProperty("expectedMetrics")[0].GetProperty("expected").GetDouble())
+                .IsEqualTo(0.65);
+            JsonElement quality = analysis.GetProperty("proposals").EnumerateArray()
+                .Single(static proposal => proposal.GetProperty("code").GetString() == "render.quality-alternative");
+            await Assert.That(quality.GetProperty("advisory").GetBoolean()).IsTrue();
+            await Assert.That(quality.GetProperty("rendererId").GetString()).IsEqualTo("silk");
+            await Assert.That(quality.GetProperty("evidence").EnumerateArray()
+                .Single(static item => item.GetProperty("name").GetString() == "currentSamplesPerPixel")
+                .GetProperty("value").GetString()).IsEqualTo("1");
+            var diagnosticApply = revision(opened);
+            diagnosticApply["proposalIds"] = new[] { framing.GetProperty("id").GetString()! };
+            CallToolResult diagnosticRefusal = await client.CallToolAsync("apply_proposals",
+                new Dictionary<string, object?> { ["request"] = diagnosticApply },
+                cancellationToken: lifetime.Token);
+            await Assert.That(diagnosticRefusal.IsError).IsTrue();
+            await Assert.That(diagnosticRefusal.StructuredContent!.Value.GetProperty("error")
+                .GetProperty("code").GetString()).IsEqualTo("proposal_stale");
+            (_, byte[] analyzedPixels) = await capture(opened);
+            await Assert.That(analyzedPixels.SequenceEqual(originalPixels)).IsTrue();
             var edits = revision(opened);
             edits["edits"] = new[]
             {

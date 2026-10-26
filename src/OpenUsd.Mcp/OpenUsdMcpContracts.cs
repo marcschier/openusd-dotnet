@@ -14,6 +14,7 @@ internal static class OpenUsdMcpLimits
     internal const int MaximumIssueCount = 128;
     internal const int MaximumPathLength = 1024;
     internal const int MaximumProposalCount = 128;
+    internal const int MaximumProposalDetailCount = 16;
     internal const int MaximumTextLength = 4096;
     internal const int MaximumViewCount = 16;
 }
@@ -699,6 +700,28 @@ internal sealed record McpCaptureResultDto(
         $"Created {Artifacts.Count} {Kind} preview artifact(s) with {Diagnostics.Count} diagnostic(s).";
 }
 
+internal sealed record McpProposalValueDto(
+    [property: JsonPropertyName("name")]
+    [property: Description("Stable argument or evidence name from the analyzer.")]
+    string Name,
+    [property: JsonPropertyName("value")]
+    [property: Description("Exact analyzer value; numeric strings use invariant culture.")]
+    string Value);
+
+internal sealed record McpProposalMetricDto(
+    [property: JsonPropertyName("name")]
+    [property: Description("Stable metric name from the analyzer.")]
+    string Name,
+    [property: JsonPropertyName("current")]
+    [property: Description("Finite current value derived from the submitted observations.")]
+    double Current,
+    [property: JsonPropertyName("expected")]
+    [property: Description("Finite proposed target or threshold, not a measured improvement.")]
+    double Expected,
+    [property: JsonPropertyName("unit")]
+    [property: Description("Analyzer metric unit, for example ratio, ms, samples, or bytes.")]
+    string Unit);
+
 internal sealed record McpProposalDto(
     [property: JsonPropertyName("id")]
     [property: Description("Deterministic revision-bound proposal identifier accepted by apply_proposals.")]
@@ -724,7 +747,31 @@ internal sealed record McpProposalDto(
     string Risk,
     [property: JsonPropertyName("explanation")]
     [property: Description("Bounded explanation of the evidence and recommended action.")]
-    string Explanation);
+    string Explanation,
+    [property: JsonPropertyName("operation")]
+    [property: Description(
+        "Analyzer recommendation operation. This is guidance, not permission to execute a diagnostic proposal.")]
+    string Operation,
+    [property: JsonPropertyName("arguments")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumProposalDetailCount)]
+    [property: Description("Exact recommendation arguments sorted by name; at most 16.")]
+    IReadOnlyList<McpProposalValueDto> Arguments,
+    [property: JsonPropertyName("evidence")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumProposalDetailCount)]
+    [property: Description(
+        "Analyzer evidence sorted by name and value; at most 16. " +
+        "Submitted observations are not independently verified.")]
+    IReadOnlyList<McpProposalValueDto> Evidence,
+    [property: JsonPropertyName("expectedMetrics")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumProposalDetailCount)]
+    [property: Description("Proposed metric targets sorted by name and unit; at most 16. Not achieved measurements.")]
+    IReadOnlyList<McpProposalMetricDto> ExpectedMetrics,
+    [property: JsonPropertyName("advisory")]
+    [property: Description("Whether the recommendation is specific to the named renderer rather than universal.")]
+    bool Advisory,
+    [property: JsonPropertyName("rendererId")]
+    [property: Description("Observed renderer identity for advisory proposals; null for other proposals.")]
+    string? RendererId);
 
 internal sealed record McpAnalysisResultDto(
     [property: JsonPropertyName("sessionId")]

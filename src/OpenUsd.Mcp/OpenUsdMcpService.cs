@@ -962,8 +962,15 @@ internal sealed partial class OpenUsdMcpService(
             diagnostic.Code,
             diagnostic.Message);
 
-    private static McpProposalDto ToProposal(AnalysisProposal proposal) =>
-        new(
+    private static McpProposalDto ToProposal(AnalysisProposal proposal)
+    {
+        if (proposal.Payload.Arguments.Count > OpenUsdMcpLimits.MaximumProposalDetailCount ||
+            proposal.Evidence.Count > OpenUsdMcpLimits.MaximumProposalDetailCount ||
+            proposal.ExpectedMetrics.Count > OpenUsdMcpLimits.MaximumProposalDetailCount)
+        {
+            throw new InvalidOperationException("Analyzer proposal details exceed the protocol output bound.");
+        }
+        return new(
             proposal.Id,
             proposal.Category.ToString().ToLowerInvariant(),
             proposal.Code,
@@ -976,7 +983,17 @@ internal sealed partial class OpenUsdMcpService(
                 _ => throw new InvalidOperationException("Unsupported proposal applicability."),
             },
             proposal.Risk.ToString().ToLowerInvariant(),
-            proposal.Explanation);
+            proposal.Explanation,
+            proposal.Payload.Operation,
+            Array.AsReadOnly(proposal.Payload.Arguments.Select(static argument =>
+                new McpProposalValueDto(argument.Key, argument.Value)).ToArray()),
+            Array.AsReadOnly(proposal.Evidence.Select(static evidence =>
+                new McpProposalValueDto(evidence.Name, evidence.Value)).ToArray()),
+            Array.AsReadOnly(proposal.ExpectedMetrics.Select(static metric =>
+                new McpProposalMetricDto(metric.Name, metric.Current, metric.Expected, metric.Unit)).ToArray()),
+            proposal.Advisory,
+            proposal.RendererId);
+    }
 
     private static McpFinalizationResultDto ToFinalization(FinalizationResult result)
     {

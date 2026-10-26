@@ -470,6 +470,14 @@ names at exactly 1024 characters still yield the original decoded pixels through
 Store identity tests cover both separators, controls, dot segments, 1023/1024/1025-character boundaries
 and unchanged percent/space/Unicode escaping. Publication and protocol reads use the same predicate.
 
+`AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges` checks both
+renderer identities, exact clipping arguments, observed/target metric values and units, empty
+argument/metric lists, deterministic repeat JSON and unchanged revisions without rendering or edits.
+The official native protocol journey additionally reads these details through the SDK client,
+refuses applying a diagnostic recommendation, and retains exact original pixels before continuing
+the edit/rollback/finalization/drain path. These observations are supplied by the caller; the tests
+do not establish automatic optimization, achieved performance gains or native composition analysis.
+
 `CameraAbiTests.ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator` supplies a
 lazy source that throws if the constructor requests a tenth plane. Admission must reject at
 the ninth and dispose the enumerator, including when the first plane is nonfinite (the existing
