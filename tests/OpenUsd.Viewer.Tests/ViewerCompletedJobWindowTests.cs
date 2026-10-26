@@ -17,6 +17,97 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerCompletedJobWindowTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task OriginalJobDescriptionRemainsKeyboardReadableAboveHistoricalFrames(bool dark)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob(1);
+        byte[] original = await File.ReadAllBytesAsync(Path.Combine(job.OutputDirectory, job.Frames[0].FileName));
+        string description = string.Join("\n", Enumerable.Range(0, 40)
+            .Select(index => $"Original job context line {index:D2}; historical evidence, not the current scene."));
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedRenderJobWindow(job, description)
+            {
+                Width = 520,
+                Height = 460,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            Bitmap? bitmap = null;
+            try
+            {
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(window, "ResultsLoading").IsVisible);
+                window.UpdateLayout();
+                ScrollViewer metadata = Required<ScrollViewer>(window, "ResultsMetadataScroll");
+                await Assert.That(Required<TextBox>(window, "ResultsOutputLocation").Focus()).IsTrue();
+                window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                window.KeyRelease(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                await Assert.That(ReferenceEquals(window.FocusManager?.GetFocusedElement(), metadata)).IsTrue();
+                int pages = (int)Math.Ceiling(metadata.Extent.Height / metadata.Viewport.Height) + 1;
+                for (int page = 0; page < pages; page++)
+                {
+                    window.KeyPress(Key.PageUp, RawInputModifiers.None, PhysicalKey.PageUp, null);
+                    window.UpdateLayout();
+                }
+                await Assert.That(metadata.Offset.Y).IsEqualTo(0);
+                TextBlock context = Required<TextBlock>(window, "ResultsDescription");
+                await Assert.That(context.Text).IsEqualTo(description);
+                Point? origin = context.TranslatePoint(default, metadata);
+                await Assert.That(origin).IsNotNull();
+                await Assert.That(origin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(origin.Value.Y).IsLessThan(metadata.Viewport.Height);
+                double previous = metadata.Offset.Y;
+                for (int page = 0; page < pages; page++)
+                {
+                    window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, null);
+                    window.UpdateLayout();
+                    await Assert.That(metadata.Offset.Y).IsGreaterThanOrEqualTo(previous);
+                    await Assert.That(metadata.Offset.Y - previous).IsLessThanOrEqualTo(metadata.Viewport.Height);
+                    previous = metadata.Offset.Y;
+                }
+                await Assert.That(metadata.Offset.Y).IsEqualTo(metadata.Extent.Height - metadata.Viewport.Height);
+                TextBox camera = Required<TextBox>(window, "ResultsCameraContext");
+                Point? cameraOrigin = camera.TranslatePoint(default, metadata);
+                await Assert.That(cameraOrigin).IsNotNull();
+                await Assert.That(cameraOrigin!.Value.Y + camera.Bounds.Height)
+                    .IsLessThanOrEqualTo(metadata.Viewport.Height);
+                await Assert.That(context.Text).IsEqualTo(description);
+                ListBox frames = Required<ListBox>(window, "ResultsFrames");
+                await Assert.That(frames.ItemCount).IsEqualTo(1);
+                await Assert.That(frames.SelectedIndex).IsEqualTo(0);
+                await Assert.That(frames.Bounds.Height).IsGreaterThanOrEqualTo(64);
+                bitmap = ((CompletedRenderJobTile)frames.Items[0]!).Image;
+                await Assert.That(Convert.ToHexString(ViewerCompletedJobPreviewJourney.ReadPixels(bitmap)
+                    .AsSpan(64 * 256 * 4, 4))).IsEqualTo("FF000080");
+                Button close = Required<Button>(window, "ResultsCloseButton");
+                Point? closeOrigin = close.TranslatePoint(default, window);
+                await Assert.That(closeOrigin).IsNotNull();
+                await Assert.That(closeOrigin!.Value.Y + close.Bounds.Height)
+                    .IsLessThanOrEqualTo(window.ClientSize.Height);
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                await window.CloseAsync().WaitAsync(lifetime.Token);
+                await Assert.That(frames.ItemCount).IsEqualTo(0);
+                await Assert.That(() => ViewerCompletedJobPreviewJourney.ReadPixels(bitmap))
+                    .Throws<ObjectDisposedException>();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+        await Assert.That((await File.ReadAllBytesAsync(Path.Combine(job.OutputDirectory, job.Frames[0].FileName)))
+            .SequenceEqual(original)).IsTrue();
+    }
+
+    [Test]
     [Arguments(520, 460, false)]
     [Arguments(520, 460, true)]
     [Arguments(940, 780, false)]

@@ -1867,6 +1867,8 @@ to **View results** when its job dialog remains open.
 Long descriptions and job/output locations scroll in a separate metadata area so they do not
 collapse the frame grid or push Close outside the compact window. Focusing the read-only
 output location brings it into view without truncating its recorded value.
+The metadata area is a named keyboard focus stop before the output location. Use Page Up/Down
+there to read the entire original description and context without changing the selected frame.
 
 Every selected file must remain inside the recorded job directory, with no reparse-point or
 filesystem-alias traversal. Windows reads reuse the retained physical-directory/file handles.

@@ -23,7 +23,7 @@
     </Style>
   </Window.Styles>
   <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
-    <ScrollViewer x:Name="ResultsMetadataScroll" MaxHeight="180"
+    <ScrollViewer x:Name="ResultsMetadataScroll" MaxHeight="180" Focusable="True"
                   HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
                   AutomationProperties.Name="Completed job description and original output">
       <StackPanel Spacing="12">
