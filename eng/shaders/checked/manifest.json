@@ -35,11 +35,11 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "11325a6f6243ed3d2aeffd8273208e2ca5354dfcb14e711e5df2fe5fb0d96445"
+      "sha256": "eb722f8eae68b4005d00009e01af48cf2e1dfada2f3c4a9695658fc74612ab59"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "3cd1f33cdd2365fbdb5ad9fbd96d9b3ff0239ca1b34f14c2db099f9bcc8c5bd1"
+      "sha256": "1df94d6762331778b6bf1e73e2aeb2218de3ac3f91f744e0c83d40896010f014"
     },
     {
       "path": ".github/workflows/package.yml",
