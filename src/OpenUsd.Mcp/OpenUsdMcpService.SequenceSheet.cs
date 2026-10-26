@@ -72,7 +72,8 @@ internal sealed partial class OpenUsdMcpService
                 tiles[index] = new McpSequenceSheetTileDto(frame.Index, frame.State.Time.TimeCode,
                     index % columns * width, index / columns * height, width, height)
                 {
-                    Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null
+                    Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null,
+                    CameraRequest = McpCameraRequestDto.From(frame.State.Camera)
                 };
             }
             IArtifactResourceStore store = services.GetRequiredService<IArtifactResourceStore>();

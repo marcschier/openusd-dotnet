@@ -891,6 +891,15 @@ The response contains one PNG resource link accepted by the existing `openusd://
 Existing resource-count, byte and response quotas apply. A cached resource remains immutable even if
 an external process later changes the output file. No caller-supplied path is accepted.
 
+`cameraRequest` retains the selected frame's original submitted camera: `mode` is
+`"matrices"` or `"automatic"`. Matrix mode includes sixteen row-major `view` and
+`projection` floats and zero to eight `clipPlanes`, each a view-space `(x,y,z,w)`
+equation. Automatic mode returns null matrices and an empty plane list because
+the renderer-selected camera was not recorded; it does not invent one from default
+matrices. These are original request values, not effective backend state, a camera-prim/
+optics receipt or independent source verification. Reading them does not query the
+current scene, including after the producing scene has closed or another scene opens.
+
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
 return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
@@ -948,6 +957,10 @@ and tile metadata, or null when not supplied. It is a host attestation, not inde
 verification of source or review-layer contents.
 Frames without recorded simulation have null tile metadata; a USD time code alone is not
 treated as evidence of a physics publication.
+Each tile's `cameraRequest` retains the same original submitted camera metadata as
+`read_sequence_frame`, in the selected source-frame order. Matrices describe that
+original source raster, not the resized/letterboxed contact-sheet cell. No camera
+is sampled or reconstructed to create this metadata.
 Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input

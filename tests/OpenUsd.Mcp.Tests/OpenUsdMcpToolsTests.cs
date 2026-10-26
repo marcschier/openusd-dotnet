@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.IO.Pipelines;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,28 @@ public sealed class OpenUsdMcpToolsTests
         Generation = 2,
         StageRevision = 3,
     };
+
+    [Test]
+    public async Task CameraRequestDtoRetainsEveryMatrixElementAndCopiesClipPlanes()
+    {
+        var view = new Matrix4x4(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+        var projection = new Matrix4x4(17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
+        Vector4[] planes = [new(0.125f, -0.25f, 0.5f, 1.75f)];
+        var camera = new CameraState(view, projection, planes);
+        McpCameraRequestDto dto = McpCameraRequestDto.From(camera);
+        planes[0] = new Vector4(999);
+        await Assert.That(dto.View!.SequenceEqual(Enumerable.Range(1, 16).Select(static value => (float)value)))
+            .IsTrue();
+        await Assert.That(dto.Projection!.SequenceEqual(Enumerable.Range(17, 16).Select(static value => (float)value)))
+            .IsTrue();
+        await Assert.That(dto.ClipPlanes.Count).IsEqualTo(1);
+        await Assert.That(dto.ClipPlanes[0].SequenceEqual([0.125f, -0.25f, 0.5f, 1.75f])).IsTrue();
+        JsonElement json = JsonSerializer.SerializeToElement(dto, JsonSerializerOptions.Web);
+        await Assert.That(json.GetProperty("mode").GetString()).IsEqualTo("matrices");
+        await Assert.That(json.GetProperty("view").GetArrayLength()).IsEqualTo(16);
+        await Assert.That(json.GetProperty("projection")[15].GetSingle()).IsEqualTo(32f);
+        await Assert.That(json.GetProperty("clipPlanes")[0][1].GetSingle()).IsEqualTo(-0.25f);
+    }
 
     [Test]
     [Arguments(null)]
@@ -530,6 +553,11 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sequenceFrame.Content[1]).IsTypeOf<ResourceLinkBlock>();
         await Assert.That(sequenceFrame.StructuredContent.Value.GetProperty("simulation").ValueKind)
             .IsEqualTo(JsonValueKind.Null);
+        JsonElement frameCamera = sequenceFrame.StructuredContent.Value.GetProperty("cameraRequest");
+        await Assert.That(frameCamera.GetProperty("mode").GetString()).IsEqualTo("automatic");
+        await Assert.That(frameCamera.GetProperty("view").ValueKind).IsEqualTo(JsonValueKind.Null);
+        await Assert.That(frameCamera.GetProperty("projection").ValueKind).IsEqualTo(JsonValueKind.Null);
+        await Assert.That(frameCamera.GetProperty("clipPlanes").GetArrayLength()).IsEqualTo(0);
         CallToolResult recordedFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
             {
@@ -575,6 +603,12 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheetSimulation.GetProperty("bodyCount").GetInt32()).IsEqualTo(2);
         await Assert.That(sheetSimulation.GetProperty("deformationCount").GetInt32()).IsEqualTo(1);
         await Assert.That(sheetSimulation.GetProperty("reviewIdentity").GetString()).IsEqualTo("recorded-review-v3");
+        JsonElement sheetCamera = sheet.StructuredContent.Value.GetProperty("tiles")[0].GetProperty("cameraRequest");
+        await Assert.That(sheetCamera.GetProperty("mode").GetString()).IsEqualTo("matrices");
+        await Assert.That(sheetCamera.GetProperty("view").GetArrayLength()).IsEqualTo(16);
+        await Assert.That(sheetCamera.GetProperty("view")[12].GetSingle()).IsEqualTo(1.25f);
+        await Assert.That(sheetCamera.GetProperty("projection")[5].GetSingle()).IsEqualTo(2.5f);
+        await Assert.That(sheetCamera.GetProperty("clipPlanes")[0][3].GetSingle()).IsEqualTo(-4f);
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -853,7 +887,10 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 {
                     Simulation = McpSimulationFrameDto.From(new RenderSimulationFrameIdentity(
                         new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
-                        3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3"))
+                        3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3")),
+                    CameraRequest = McpCameraRequestDto.From(new CameraState(
+                        Matrix4x4.CreateTranslation(1.25f, 2, 3), Matrix4x4.CreateScale(2.5f),
+                        [new Vector4(0, 0, 1, -4)]))
                 }
             ],
             [descriptor])
@@ -901,7 +938,8 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 ? McpSimulationFrameDto.From(new RenderSimulationFrameIdentity(
                     new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
                     3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3"))
-                : null
+                : null,
+            CameraRequest = McpCameraRequestDto.From(CameraState.Default)
         });
     }
 

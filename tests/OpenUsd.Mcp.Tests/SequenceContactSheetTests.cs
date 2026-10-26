@@ -1,11 +1,88 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class SequenceContactSheetTests
 {
+    [Test]
+    [Arguments("automatic")]
+    [Arguments("matrices")]
+    [Arguments("clip-planes")]
+    public async Task HistoricalFrameAndSheetRetainRequestedCamerasAfterSceneRetirement(string mode)
+    {
+        await using var fixture = new Fixture();
+        int planeCount = mode == "clip-planes" ? CameraState.MaxClipPlanes : 0;
+        fixture.Backend.PreparePreviewCameras = times => times.Select(time => mode == "automatic"
+            ? CameraState.Default
+            : new CameraState(
+                Matrix4x4.CreateTranslation((float)time + 0.125f, -0.25f, 3.5f),
+                Matrix4x4.CreateScale(1.25f, 2.5f, 3.75f),
+                Enumerable.Range(0, planeCount).Select(index => new Vector4(index, 0.5f, -1.25f, 2.75f))))
+            .ToArray();
+        McpRenderSequenceResultDto job = await fixture.RenderAsync(3);
+        await fixture.Service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = job.SessionId,
+            Generation = job.Generation,
+            StageRevision = job.StageRevision
+        }, default);
+        fixture.Backend.PreparePreviewCameras = _ =>
+            throw new InvalidOperationException("Historical reads must not sample the current scene.");
+        McpSessionDto replacement = await fixture.Service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        await Assert.That(replacement.SessionId).IsNotEqualTo(job.SessionId);
+        McpSequenceFrameResultDto frame = await fixture.Service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 2 }, default);
+        McpSequenceSheetResultDto sheet = await fixture.Service.ReadSequenceSheetAsync(
+            new ReadSequenceSheetRequest { JobId = job.JobId, FrameIndices = [2, 0], Width = 8, Height = 4 }, default);
+        JsonElement frameJson = JsonSerializer.SerializeToElement(frame, JsonSerializerOptions.Web);
+        JsonElement sheetJson = JsonSerializer.SerializeToElement(sheet, JsonSerializerOptions.Web);
+        JsonElement camera = frameJson.GetProperty("cameraRequest");
+        await Assert.That(camera.GetProperty("mode").GetString())
+            .IsEqualTo(mode == "automatic" ? "automatic" : "matrices");
+        await Assert.That(camera.GetProperty("clipPlanes").GetArrayLength()).IsEqualTo(planeCount);
+        JsonElement tiles = sheetJson.GetProperty("tiles");
+        await Assert.That(tiles[0].GetProperty("frameIndex").GetInt32()).IsEqualTo(2);
+        await Assert.That(tiles[1].GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
+        if (mode == "automatic")
+        {
+            await Assert.That(camera.GetProperty("view").ValueKind).IsEqualTo(JsonValueKind.Null);
+            await Assert.That(camera.GetProperty("projection").ValueKind).IsEqualTo(JsonValueKind.Null);
+            await Assert.That(tiles[1].GetProperty("cameraRequest").GetProperty("view").ValueKind)
+                .IsEqualTo(JsonValueKind.Null);
+        }
+        else
+        {
+            float[] expectedView = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.125f, -0.25f, 3.5f, 1];
+            float[] expectedProjection = [1.25f, 0, 0, 0, 0, 2.5f, 0, 0, 0, 0, 3.75f, 0, 0, 0, 0, 1];
+            await Assert.That(camera.GetProperty("view").EnumerateArray().Select(static item => item.GetSingle())
+                .SequenceEqual(expectedView)).IsTrue();
+            await Assert.That(camera.GetProperty("projection").EnumerateArray()
+                .Select(static item => item.GetSingle()).SequenceEqual(expectedProjection)).IsTrue();
+            await Assert.That(tiles[0].GetProperty("cameraRequest").GetRawText()).IsEqualTo(camera.GetRawText());
+            await Assert.That(tiles[1].GetProperty("cameraRequest").GetProperty("view")[12].GetSingle())
+                .IsEqualTo(0.125f);
+            for (int index = 0; index < planeCount; index++)
+            {
+                await Assert.That(camera.GetProperty("clipPlanes")[index].EnumerateArray()
+                    .Select(static value => value.GetSingle()).SequenceEqual([index, 0.5f, -1.25f, 2.75f])).IsTrue();
+            }
+        }
+        ArtifactResourceContent png = await fixture.Artifacts.ReadAsync(new Uri(frame.Artifact.Uri)) ??
+            throw new InvalidOperationException("The original PNG resource is absent.");
+        await Assert.That(PngRgba8Decoder.Decode(png.Content.Span).Pixels.Span[0]).IsEqualTo((byte)3);
+        await Assert.That(fixture.Source.Calls).IsEqualTo(3);
+        await Assert.That(fixture.Artifacts.Count).IsEqualTo(2);
+        await Assert.That(frame.SessionId).IsEqualTo(job.SessionId);
+        await Assert.That(sheet.Generation).IsEqualTo(job.Generation);
+        await Assert.That(sheet.StageRevision).IsEqualTo(job.StageRevision);
+    }
+
     [Test]
     public async Task HistoricalJobsAreDiscoverableAcrossClosedAndNewScenesWithoutReadingOrRendering()
     {
@@ -227,6 +304,7 @@ public sealed class SequenceContactSheetTests
         internal SourceFactory Source { get; } = new();
         internal ArtifactResourceStore Artifacts { get; }
         internal OpenUsdMcpService Service { get; }
+        internal RecordingWorkspaceBackend Backend { get; } = new();
         private readonly McpSessionWorkspace _workspace;
         private readonly CaptureWorker _worker;
         private readonly PreviewCaptureProcessor _processor;
@@ -234,8 +312,9 @@ public sealed class SequenceContactSheetTests
 
         internal Fixture(int maximumResources = 128)
         {
-            _workspace = Files.CreateWorkspace(new RecordingWorkspaceBackend());
-            Artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(maximumResources));
+            _workspace = Files.CreateWorkspace(Backend);
+            Artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+                maximumResources, FileStorageRoot: Path.Combine(Files.OutputRoot, "artifacts")));
             _processor = new PreviewCaptureProcessor(Source, Artifacts);
             _worker = new CaptureWorker(_processor);
             _provider = new ServiceCollection().AddSingleton(_worker)

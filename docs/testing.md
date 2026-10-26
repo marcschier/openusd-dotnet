@@ -113,6 +113,16 @@ also round-trips recorded frame and contact-sheet identities through the officia
 while ordinary frame simulation metadata stays null. This is managed transport qualification,
 not native physics execution or independent verification of the host's review attestation.
 
+`SequenceContactSheetTests.HistoricalFrameAndSheetRetainRequestedCamerasAfterSceneRetirement`
+checks original camera requests through real service frame/sheet reads after scene retirement
+and replacement: automatic mode, matrix mode without clipping, and all eight view-space planes.
+It checks exact row-major arrays, source-frame ordering, null automatic matrices, original revision,
+decoded PNG pixels and unchanged render/resource counts. A backend camera callback throws if
+historical reads try to resample it. `OpenUsdMcpToolsTests.CameraRequestDtoRetainsEveryMatrixElementAndCopiesClipPlanes`
+checks all thirty-two distinct matrix elements and immutable copied planes. The official SDK
+protocol journey round-trips matrix sheet metadata and automatic frame metadata with schema
+descriptions. These are requested-state and transport checks, not effective-camera qualification.
+
 `NativeMcpIntegrationTests.OfficialProtocolEditsNativePixelsRollsBackAndRetainsOriginalArtifactsAfterClose`
 uses the official MCP client/server with the real service, native stage and retained renderer.
 It changes an emissive material from red to green through `apply_edits`, decodes resource PNGs,

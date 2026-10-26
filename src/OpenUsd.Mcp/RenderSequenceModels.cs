@@ -2,7 +2,9 @@
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Numerics;
 using System.Text.Json.Serialization;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp;
 
@@ -140,4 +142,37 @@ internal sealed record McpSequenceFrameResultDto(
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
     [Description("Exact simulation publication captured by this frame; null for authored-time rendering.")]
     public McpSimulationFrameDto? Simulation { get; init; }
+
+    [Description(
+        "Original submitted camera request, not effective backend state or source verification. " +
+        "Automatic mode has no recorded renderer-selected matrices; null means no request metadata supplied.")]
+    public McpCameraRequestDto? CameraRequest { get; init; }
+}
+
+internal sealed record McpCameraRequestDto(
+    [property: Description("Requested mode: automatic or matrices; not an effective-camera claim.")] string Mode,
+    [property: Description("Sixteen row-major world-to-view floats; null for automatic mode.")]
+    IReadOnlyList<float>? View,
+    [property: Description("Sixteen row-major view-to-clip floats; null for automatic mode.")]
+    IReadOnlyList<float>? Projection,
+    [property: Description("Zero to eight view-space plane equations, each four floats (x,y,z,w).")]
+    IReadOnlyList<IReadOnlyList<float>> ClipPlanes)
+{
+    internal static McpCameraRequestDto From(CameraState camera) => new(
+        camera.Mode == CameraMode.Matrices ? "matrices" : "automatic",
+        camera.Mode == CameraMode.Matrices ? CopyMatrix(camera.View) : null,
+        camera.Mode == CameraMode.Matrices ? CopyMatrix(camera.Projection) : null,
+        new OwnedReadOnlyList<IReadOnlyList<float>>(camera.ClipPlanes.Select(static plane =>
+            CopyPlane(plane)).ToArray()));
+
+    private static OwnedReadOnlyList<float> CopyPlane(Vector4 plane) =>
+        new OwnedReadOnlyList<float>([plane.X, plane.Y, plane.Z, plane.W]);
+
+    private static OwnedReadOnlyList<float> CopyMatrix(Matrix4x4 matrix) => new(
+        [
+            matrix.M11, matrix.M12, matrix.M13, matrix.M14,
+            matrix.M21, matrix.M22, matrix.M23, matrix.M24,
+            matrix.M31, matrix.M32, matrix.M33, matrix.M34,
+            matrix.M41, matrix.M42, matrix.M43, matrix.M44
+        ]);
 }

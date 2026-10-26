@@ -35,6 +35,11 @@ internal sealed record McpSequenceSheetTileDto(
 {
     [Description("Original recorded physics publication; null for frames without simulation.")]
     public McpSimulationFrameDto? Simulation { get; init; }
+
+    [Description(
+        "Original submitted camera request for this source frame, not a camera for the resized sheet cell " +
+        "or effective backend state. Null means no request metadata supplied.")]
+    public McpCameraRequestDto? CameraRequest { get; init; }
 }
 
 internal sealed record McpSequenceSheetResultDto(

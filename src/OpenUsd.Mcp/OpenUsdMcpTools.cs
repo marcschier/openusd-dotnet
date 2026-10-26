@@ -177,6 +177,8 @@ internal static class OpenUsdMcpDescriptions
         "and unnamed primaries; hdrColorFormat and resource MIME identify the container. " +
         "Recorded simulation context includes its optional original host-provided review identity, " +
         "an attestation rather than independent source verification. " +
+        "cameraRequest retains the original submitted mode, row-major view/projection and view-space clip planes, " +
+        "not effective backend state; automatic mode has null matrices, not an invented renderer camera. " +
         "The existing artifact count/byte/read quotas apply; the full sequence is never loaded into memory. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<render_sequence jobId>\",\"frameIndex\":0}}.";
@@ -215,6 +217,8 @@ internal static class OpenUsdMcpDescriptions
         "and requested variables; ordinary viewport jobs have no authoredProduct. " +
         "Per-frame simulation context retains the optional original host-provided review identity, " +
         "an attestation rather than independent source verification. " +
+        "Each tile's cameraRequest is the source frame's original submitted camera, not a resized-cell camera " +
+        "or effective backend state; automatic mode has null matrices. " +
         "Only original display PNGs are used, not HDR/depth conversions. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<job>\",\"frameIndices\":[0,12,24]," +
