@@ -409,6 +409,12 @@ reaches the named status area, standard PageDown/PageUp reaches both exact scrol
 Escape closes without deleting original output. These are managed headless controls, not physical
 keyboard input or screen-reader qualification.
 
+`ViewerPhysicsBakeWindowTests.OpeningBakePreservesExactAuthoredRangeWithoutRoundingOrCultureConversion`
+checks bit-exact authored start/end values in the actual dialog under en-US and de-DE cultures:
+fractions below 0.001, negative high-precision values, adjacent doubles and the ordinary
+integer range. It also retains stride, conflict/save policy, destination and destination bytes,
+without executing a native bake. The dialog reuses the timeline's invariant round-trip formatter.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

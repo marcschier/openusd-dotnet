@@ -993,6 +993,9 @@ Baking is explicit and never implicit. The dialog requires a file-backed `.usd`,
 `.usdc` destination, an authored start/end range, a positive sample stride, and a policy for
 existing authored samples (overwrite, skip, or reject the whole bake). Progress is reported while
 the bake runs, cancellation rolls the destination back, and saving the destination layer is opt-in.
+Opening the dialog preserves both authored range endpoints with invariant round-trip precision,
+including fractions below 0.001 and adjacent-double time codes; it does not round them to three decimals
+or convert them to seconds. Collecting or cancelling the request does not write the destination.
 
 A running bake shows a progress bar and an enabled **Cancel Bake** button next to it. The bake holds
 the transport command gate for its whole duration, so cancelling deliberately does not go through
