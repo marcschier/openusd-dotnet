@@ -1161,6 +1161,11 @@ govern portable save/reopen. Relinking a texture keeps the existing shader nodes
 shared Undo/Redo restores the earlier review opinion rather than modifying the source material.
 Closing the property window cancels a pending choice without applying its eventual result.
 
+Property context, typed input and status share a keyboard-focusable scrolling body, so long
+authored values cannot push Set, Clear, Block, Refresh or Close outside the minimum-size window.
+Focusing the value input scrolls it into view; Page Down/Page Up on the body reaches the full
+context and status. Escape retains the existing cancel-and-drain behavior.
+
 The window distinguishes the read-only composed display snapshot from the exact target-layer
 opinion. **Set**, **Clear** and **Block** affect only the selected default or individual current-time
 sample. Uniform attributes reject sample editing. Other samples and list opinions are not cleared

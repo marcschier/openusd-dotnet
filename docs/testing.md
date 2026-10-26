@@ -211,6 +211,11 @@ controls for offsets, focus distance, f-stop and double-precision shutter endpoi
 stage in a Skia-backed headless session. Shutter values include signed and beyond-float-precision
 inputs, same-type referenced lookalike refusal and default/time-sample history semantics.
 It does not qualify a compositor, displayed scene, depth-of-field or motion-blur rendering.
+`NativePropertyEditorKeepsActionsReachableWithLongAuthoredText` checks minimum/default sizes
+in both themes using a real native string property. The exact composed snapshot is preserved,
+the five decisions stay within the window, focused typed input scrolls into view and body
+Page Down/Page Up reaches both endpoints. Escape closes without adding history or changing
+source bytes. This is native-property plus headless-layout evidence, not physical OS input.
 The desktop `SearchAndPagingKeepLargePrimPropertiesReachableAndEditTheExactSelectedProperty`
 journey additionally selects all six controls through the real MainWindow Inspector and verifies
 Set, Clear and shared menu Undo/Redo against native camera values, retained filters and unchanged
