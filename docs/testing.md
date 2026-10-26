@@ -434,6 +434,12 @@ count-before-value refusal order). `AdmittedClipPlanesRetainExactOwnedOrder` che
 eight planes; `ClipPlaneSourceFailureWithinAdmissionIsPreservedAndDisposed` retains the exact
 source exception. These are managed constructor/ABI-layout checks, not renderer execution.
 
+`FinalizationServiceTests.FinalizationRejectsPreviewThatDoesNotMatchSelectedDescriptor` uses a
+real stored one-pixel PNG and independently mismatches the selected ID, length, SHA-256 and media
+type. Each previously accepted mismatch must now produce a persisted role-specific refusal and
+no preview file/link, while an exact-descriptor retry preserves the original PNG and source stage
+bytes. This managed service test does not certify the capture's scene or effective render state.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

@@ -1208,6 +1208,10 @@ artifact/failure inventory. Preview files are copied only from verified artifact
 created by the latest captures retained for the current revision. Any edit, proposal application,
 or rollback invalidates the preview selections used by finalization; the older immutable resources
 remain readable until the server exits.
+Finalization matches each returned preview's ID, URI, media type, length and SHA-256 against the
+selected descriptor as well as verifying the returned bytes. A self-consistent resource with
+different selected metadata is an explicit partial failure: no preview file or resource link is
+claimed for that role. A later exact selection may succeed without modifying the refused output.
 
 Previews are optional: absent hero/contact-sheet/turntable inputs are explicit partial failures,
 not fabricated media. Export/publication failures can also return `partial: true` with at most

@@ -961,7 +961,10 @@ public sealed class FinalizationService
         ArtifactResourceDescriptor actual = resource.Descriptor;
         ReadOnlyMemory<byte> content = resource.Content;
         string hash = Hash(content.Span);
-        if (actual.ByteLength != content.Length ||
+        if (!string.Equals(actual.Id, expected.Id, StringComparison.Ordinal) ||
+            !MatchesDescriptor(expected.ResourceUri, expected.MediaType, actual,
+                expected.ByteLength, expected.Sha256) ||
+            actual.ByteLength != content.Length ||
             !string.Equals(actual.Sha256, hash, StringComparison.Ordinal) ||
             !string.Equals(actual.MediaType, "image/png", StringComparison.Ordinal))
         {

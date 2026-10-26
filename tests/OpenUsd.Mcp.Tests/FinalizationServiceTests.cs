@@ -2,11 +2,65 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class FinalizationServiceTests
 {
+    [Test]
+    [Arguments("id")]
+    [Arguments("length")]
+    [Arguments("hash")]
+    [Arguments("media-type")]
+    public async Task FinalizationRejectsPreviewThatDoesNotMatchSelectedDescriptor(string mismatch)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        WorkspaceSessionInfo session = await workspace.StartAsync("scene.usda");
+        await File.WriteAllTextAsync(session.OverlayPath, "#usda 1.0\n");
+        byte[] sourceBefore = await File.ReadAllBytesAsync(files.SourcePath);
+        using ArtifactResourceStore store = CreateArtifactStore(files);
+        using var image = new MemoryStream();
+        PngRgba8Writer.Write(image, 1, 1, [17, 34, 51, 255], 1024);
+        byte[] original = image.ToArray();
+        ArtifactResourceDescriptor actual = store.Add("selected.png", "image/png", original);
+        ArtifactResourceDescriptor selected = mismatch switch
+        {
+            "id" => actual with { Id = "other.png" },
+            "length" => actual with { ByteLength = actual.ByteLength + 1 },
+            "hash" => actual with { Sha256 = new string('0', 64) },
+            "media-type" => actual with { MediaType = "application/octet-stream" },
+            _ => throw new ArgumentOutOfRangeException(nameof(mismatch))
+        };
+        var still = new PreviewCaptureResult("selected", CaptureKind.Still, 1, 1, [selected]);
+        var service = new FinalizationService(workspace, store);
+        FinalizationResult refused = await service.FinalizeAsync(
+            CreateRequest(session, "descriptor-refusal", new FinalizationPreviewOutputs(HeroStill: still)));
+        await Assert.That(refused.IsPartial).IsTrue();
+        await Assert.That(refused.Failures.Any(static item => item.Role == "hero-still")).IsTrue();
+        FinalizationArtifactRecord refusal = refused.Artifacts.Single(static item => item.Role == "hero-still");
+        await Assert.That(refusal.Status).IsEqualTo(FinalizationArtifactStatus.Failed);
+        await Assert.That(refusal.ResourceUri).IsNull();
+        await Assert.That(File.Exists(Path.Combine(refused.OutputDirectory, "presentation", "hero-still.png")))
+            .IsFalse();
+        await Assert.That(await File.ReadAllTextAsync(refused.ManifestPath))
+            .Contains("The preview resource metadata or content hash is inconsistent.");
+        var exact = new PreviewCaptureResult("selected", CaptureKind.Still, 1, 1, [actual]);
+        FinalizationResult accepted = await service.FinalizeAsync(
+            CreateRequest(session, "descriptor-accepted", new FinalizationPreviewOutputs(HeroStill: exact)));
+        await Assert.That(accepted.Failures.Any(static item => item.Role == "hero-still")).IsFalse();
+        await Assert.That(File.Exists(Path.Combine(refused.OutputDirectory, "presentation", "hero-still.png")))
+            .IsFalse();
+        await Assert.That(await File.ReadAllBytesAsync(
+            Path.Combine(accepted.OutputDirectory, "presentation", "hero-still.png"))).IsEquivalentTo(original);
+        await Assert.That(Convert.ToHexString((await store.ReadAsync(actual.ResourceUri))!.Content.Span))
+            .IsEqualTo(Convert.ToHexString(original));
+        await Assert.That(await File.ReadAllBytesAsync(files.SourcePath)).IsEquivalentTo(sourceBefore);
+        await Assert.That((await workspace.GetStatusAsync()).IsActive).IsTrue();
+    }
+
     [Test]
     public async Task FinalizationPersistsPresentationAndKeepsSessionActive()
     {
