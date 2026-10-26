@@ -1919,6 +1919,8 @@ zero matrices as that camera. Selection and closing clear stale context. This is
 state retained with the completed frame, not effective backend state, a camera-prim/optics
 receipt, source verification or a query of the current document. No stage is reopened or
 frame rerendered to display it.
+The original stage label and tooltip follow the selected frame, not the job's first frame,
+and clear when there is no selection. They name recorded request identity, not a verified file.
 The selected frame also exposes its recorded **display, colour and selection request**:
 purposes, visibility/draw mode, sample count, lighting/shadows/culling/material switches,
 complexity, output transform, exposure and clear RGBA; optional OCIO config/source/display/view/look,

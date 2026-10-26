@@ -334,11 +334,14 @@ public sealed class ViewerCompletedJobWindowTests
             planes[0] = new Vector4(999);
         }
         RenderDiskFrameResult first = original.Frames[0];
+        RenderDiskFrameResult second = original.Frames[1];
         var job = new RenderDiskJobResult(original.OutputDirectory,
             [
                 new RenderDiskFrameResult(first.Index, first.State.WithCamera(camera),
                     first.FileName, first.Bytes, first.Sha256),
-                original.Frames[1]
+                new RenderDiskFrameResult(second.Index,
+                    second.State.WithStage(new StageIdentity("different-original-frame-stage")),
+                    second.FileName, second.Bytes, second.Sha256)
             ], original.TotalBytes, []);
         byte[] originalPng = await File.ReadAllBytesAsync(Path.Combine(job.OutputDirectory, first.FileName));
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -395,13 +398,19 @@ public sealed class ViewerCompletedJobWindowTests
                 await Assert.That(Convert.ToHexString(ViewerCompletedJobPreviewJourney.ReadPixels(bitmap)
                     .AsSpan(64 * 256 * 4, 4))).IsEqualTo("FF000080");
                 frames.SelectedIndex = 1;
+                TextBlock source = Required<TextBlock>(window, "ResultsSource");
+                await Assert.That(source.Text).IsEqualTo("Stage: different-original-frame-stage");
+                await Assert.That(ToolTip.GetTip(source)).IsEqualTo(source.Text);
                 await Assert.That(context.Text).Contains("Mode: Automatic");
                 await Assert.That(context.Text).Contains("The renderer-selected camera was not recorded.");
                 await Assert.That(context.Text).DoesNotContain("View (row-major)");
                 await Assert.That(context.Text).DoesNotContain("Clip plane");
                 frames.SelectedIndex = -1;
+                await Assert.That(source.Text).IsEqualTo("Select a completed frame to inspect its original stage.");
+                await Assert.That(ToolTip.GetTip(source)).IsNull();
                 await Assert.That(context.Text).IsEqualTo("Select a completed frame to inspect its camera request.");
                 frames.SelectedIndex = 0;
+                await Assert.That(source.Text).IsEqualTo("Stage: original-completed-stage");
                 await Assert.That(context.Text).Contains("Mode: Matrices");
                 await Assert.That(window.ActualThemeVariant)
                     .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);

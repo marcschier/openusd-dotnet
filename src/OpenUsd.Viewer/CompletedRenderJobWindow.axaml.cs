@@ -34,14 +34,14 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         ResultsDescription.Text = description;
         ResultsJobIdentity.Text = Path.GetFileName(Path.TrimEndingDirectorySeparator(job.OutputDirectory));
         ResultsOutputLocation.Text = job.OutputDirectory;
-        if (job.Frames.Count > 0)
-        {
-            ResultsSource.Text = $"Stage: {job.Frames[0].State.Stage.Identifier}";
-            ToolTip.SetTip(ResultsSource, ResultsSource.Text);
-        }
         ResultsCloseButton.Click += (_, _) => Close();
         ResultsFrames.SelectionChanged += (_, _) =>
         {
+            var selected = ResultsFrames.SelectedItem as CompletedRenderJobTile;
+            ResultsSource.Text = selected is null
+                ? "Select a completed frame to inspect its original stage."
+                : $"Stage: {selected.StageIdentifier}";
+            ToolTip.SetTip(ResultsSource, selected is null ? null : ResultsSource.Text);
             ResultsRequestContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.RequestContext ??
                 "Select a completed frame to inspect its render request.";
             ResultsFrameContext.Text = (ResultsFrames.SelectedItem as CompletedRenderJobTile)?.RecordedContext ??
@@ -244,6 +244,7 @@ internal sealed class CompletedRenderJobTile : IDisposable
     public string FileName { get; }
     public string RecordedContext { get; }
     public string CameraContext { get; }
+    public string StageIdentifier => _requestedState.Stage.Identifier;
     public string RequestContext => FormatRequest(_requestedState);
     public string AccessibleName { get; }
     public Bitmap Image { get; }
