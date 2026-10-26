@@ -2,8 +2,10 @@
 
 using System.Numerics;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
@@ -14,6 +16,80 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerCompletedJobWindowTests
 {
+    [Test]
+    [Arguments(520, 460, false)]
+    [Arguments(520, 460, true)]
+    [Arguments(940, 780, false)]
+    [Arguments(940, 780, true)]
+    public async Task LongPreviewRefusalsRemainKeyboardReadableWithoutHidingClose(int width, int height, bool dark)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob(1);
+        string refusal = string.Join("\n", Enumerable.Range(0, 40).Select(index =>
+            $"Original PNG refusal {index}: the recorded image is unavailable; retain this full path and reason."));
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedRenderJobWindow(job, "Original unavailable recording",
+                (_, _) => Task.FromException<ViewerCompletedJobPreview>(new IOException(refusal)))
+            {
+                Width = width,
+                Height = height,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(window, "ResultsLoading").IsVisible);
+                window.UpdateLayout();
+                Button close = Required<Button>(window, "ResultsCloseButton");
+                Point origin = close.TranslatePoint(default, window) ??
+                    throw new InvalidOperationException("Completed results Close has no window coordinates.");
+                await Assert.That(origin.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(origin.Y + close.Bounds.Height).IsLessThanOrEqualTo(window.ClientSize.Height);
+                await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text)
+                    .IsEqualTo($"Could not preview results: {refusal}");
+                await Assert.That(Required<ListBox>(window, "ResultsFrames").ItemCount).IsEqualTo(0);
+                ScrollViewer status = Required<ScrollViewer>(window, "ResultsStatusScroll");
+                await Assert.That(AutomationProperties.GetName(status))
+                    .IsEqualTo("Completed preview status and errors");
+                await Assert.That(close.IsKeyboardFocusWithin).IsTrue();
+                window.KeyPress(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                window.KeyRelease(Key.Tab, RawInputModifiers.Shift, PhysicalKey.Tab, "\t");
+                await Assert.That(status.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(status.Extent.Height).IsGreaterThan(status.Viewport.Height);
+                int pages = (int)Math.Ceiling(status.Extent.Height / status.Viewport.Height) + 1;
+                for (int page = 0; page < pages; page++)
+                {
+                    status.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.PageDown });
+                    window.UpdateLayout();
+                }
+                await Assert.That(status.Offset.Y).IsEqualTo(status.Extent.Height - status.Viewport.Height);
+                for (int page = 0; page < pages; page++)
+                {
+                    status.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.PageUp });
+                    window.UpdateLayout();
+                }
+                await Assert.That(status.Offset.Y).IsEqualTo(0);
+                await Assert.That(Required<TextBlock>(window, "ResultsStatus").Text)
+                    .IsEqualTo($"Could not preview results: {refusal}");
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                status.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                await window.CloseAsync().WaitAsync(lifetime.Token);
+                await Assert.That(window.IsVisible).IsFalse();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+        await Assert.That(File.Exists(Path.Combine(job.OutputDirectory, job.Frames[0].FileName))).IsTrue();
+    }
+
     [Test]
     [Arguments(false, false)]
     [Arguments(true, false)]

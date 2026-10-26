@@ -402,6 +402,13 @@ The real PNGs retain their pixels and bytes; the camera field and Close remain r
 size, and closing disposes the owned bitmap. This managed headless journey does not reopen a stage
 or render again, and does not qualify effective backend camera state or physical display.
 
+`ViewerCompletedJobWindowTests.LongPreviewRefusalsRemainKeyboardReadableWithoutHidingClose`
+checks minimum/default sizes in both themes after an actual failed preview-loader task. The full
+original refusal remains intact, Close stays within the client, no thumbnails publish, Shift+Tab
+reaches the named status area, standard PageDown/PageUp reaches both exact scroll boundaries and
+Escape closes without deleting original output. These are managed headless controls, not physical
+keyboard input or screen-reader qualification.
+
 Workspace, document editing, save/reopen/recovery, transition cancellation, retirement, Physics
 history, property pages, hierarchy pages, and visible texture relinking run with their own
 explicit smoke flags. The gate rejects missing execution summaries, skipped tests, failures, and

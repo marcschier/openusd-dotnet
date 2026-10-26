@@ -85,14 +85,18 @@
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
-    <StackPanel Grid.Row="2" Spacing="6">
-      <ProgressBar x:Name="ResultsLoading" IsIndeterminate="True" Height="4"
-                   AutomationProperties.Name="Verifying completed PNG files" />
-      <TextBlock x:Name="ResultsStatus" TextWrapping="Wrap" AutomationProperties.Name="Completed results status"
-                 Text="Verifying completed PNGs, one file at a time. No rendering is started." />
-      <TextBlock Classes="viewer-caption" TextWrapping="Wrap"
-                 Text="Up to 16 samples, including endpoints. Aspect and alpha are preserved; no crop or colour conversion. Close or Escape cancels loading." />
-    </StackPanel>
+    <ScrollViewer x:Name="ResultsStatusScroll" Grid.Row="2" MaxHeight="120" Focusable="True"
+                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.Name="Completed preview status and errors">
+      <StackPanel Spacing="6">
+        <ProgressBar x:Name="ResultsLoading" IsIndeterminate="True" Height="4"
+                     AutomationProperties.Name="Verifying completed PNG files" />
+        <TextBlock x:Name="ResultsStatus" TextWrapping="Wrap" AutomationProperties.Name="Completed results status"
+                   Text="Verifying completed PNGs, one file at a time. No rendering is started." />
+        <TextBlock Classes="viewer-caption" TextWrapping="Wrap"
+                   Text="Up to 16 samples, including endpoints. Aspect and alpha are preserved; no crop or colour conversion. Close or Escape cancels loading." />
+      </StackPanel>
+    </ScrollViewer>
     <Button x:Name="ResultsCloseButton" Grid.Row="3" HorizontalAlignment="Right" Content="_Close"
             AutomationProperties.Name="Close completed results" />
   </Grid>

@@ -1876,6 +1876,10 @@ Close cancels and asynchronously drains loading before releasing the window and 
 bitmap; it does not block the UI thread waiting for a file or decoder. Late completions cannot
 publish into a closing or replacement preview. The sheet belongs to its job dialog: closing that
 dialog, closing the stage/Viewer or reloading the stage closes and drains it too.
+Long verification refusals remain complete in a bounded, keyboard-focusable status area rather
+than pushing Close outside the window. Shift+Tab from Close reaches that area; PageDown/PageUp
+reads the full message and Escape closes. The initial focus remains on Close, and failed loads
+publish no thumbnails or successful-completion status.
 
 **File > Completed Render Jobs** (also in command search) lists the last eight successful sequence,
 authored-product and physics-recording jobs from this Viewer process, newest first. The list remains
