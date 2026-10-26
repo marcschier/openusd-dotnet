@@ -75,8 +75,9 @@ internal sealed partial class OpenUsdMcpService
                     .ConfigureAwait(false);
                 if (cameras.Count != count)
                 {
-                    throw new InvalidDataException(
-                        "Camera preparation did not produce every requested sequence sample.");
+                    throw new OpenUsdMcpFailureException(
+                        OpenUsdMcpErrorCodes.RenderFailure,
+                        "Camera preparation did not produce exactly one camera per requested sequence sample.");
                 }
                 for (int index = 0; index < count; index++)
                 {

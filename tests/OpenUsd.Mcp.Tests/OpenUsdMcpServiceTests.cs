@@ -9,6 +9,91 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    [Arguments(1, 0, -1)]
+    [Arguments(1, 0, 1)]
+    [Arguments(16, 0, -16)]
+    [Arguments(16, 0, -1)]
+    [Arguments(16, 0, 1)]
+    [Arguments(17, 1, -1)]
+    [Arguments(17, 1, 1)]
+    public async Task MismatchedSequenceCameraBatchReportsRenderFailureBeforeDiskOutputAndAllowsRetry(
+        int frameCount, int failedBatch, int countDelta)
+    {
+        using var files = new WorkspaceTestFiles();
+        byte[] original = await File.ReadAllBytesAsync(files.SourcePath);
+        bool mismatch = true;
+        var samples = new List<double[]>();
+        var backend = new RecordingWorkspaceBackend
+        {
+            PreparePreviewCameras = times =>
+            {
+                int batch = samples.Count;
+                samples.Add(times.ToArray());
+                return Enumerable.Repeat(CameraState.Default,
+                    times.Count + (mismatch && batch == failedBatch ? countDelta : 0)).ToArray();
+            }
+        };
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore();
+        var source = new SequenceFrameFactory();
+        using var processor = new PreviewCaptureProcessor(source, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        var request = new RenderSequenceRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 2,
+            Height = 1,
+            StartTimeCode = 2,
+            TimeStep = 0.5,
+            FrameCount = frameCount
+        };
+        double[] expectedTimes = Enumerable.Range(0, frameCount).Select(index => 2 + index * 0.5).ToArray();
+        string renderDirectory = Path.Combine(backend.Context!.OutputDirectory, "renders");
+        var refused = await tools.RenderSequenceAsync(request, default);
+        await Assert.That(refused.IsError).IsTrue();
+        await Assert.That(refused.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
+            .IsEqualTo(OpenUsdMcpErrorCodes.RenderFailure);
+        await Assert.That(samples.Count).IsEqualTo(failedBatch + 1);
+        await Assert.That(samples.SelectMany(static batch => batch)
+            .SequenceEqual(expectedTimes.Take((failedBatch + 1) * 16))).IsTrue();
+        await Assert.That(source.Times).IsEmpty();
+        await Assert.That(Directory.Exists(renderDirectory)).IsFalse();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That((await workspace.GetStatusAsync()).Session!.StageRevision).IsEqualTo(session.StageRevision);
+
+        mismatch = false;
+        samples.Clear();
+        McpRenderSequenceResultDto retry = await service.RenderSequenceAsync(request, default);
+        await Assert.That(Directory.Exists(renderDirectory)).IsTrue();
+        await Assert.That(samples.SelectMany(static batch => batch).SequenceEqual(expectedTimes)).IsTrue();
+        await Assert.That(samples.All(static batch => batch.Length is > 0 and <= 16)).IsTrue();
+        await Assert.That(source.Times.SequenceEqual(expectedTimes)).IsTrue();
+        await Assert.That(retry.FrameCount).IsEqualTo(frameCount);
+        await Assert.That(retry.StageRevision).IsEqualTo(session.StageRevision);
+        string output = Path.Combine(files.OutputRoot, retry.OutputDirectory);
+        for (int index = 0; index < frameCount; index++)
+        {
+            ImageRgba8 image = PngRgba8Decoder.Decode(
+                await File.ReadAllBytesAsync(Path.Combine(output, $"frame-{index:D6}.png")));
+            await Assert.That(image.Width).IsEqualTo(2);
+            await Assert.That(image.Height).IsEqualTo(1);
+            await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo("FF0000FF00FF00FF");
+        }
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs)
+            .Count().IsEqualTo(1);
+        await Assert.That(artifacts.Count).IsEqualTo(0);
+        await Assert.That((await File.ReadAllBytesAsync(files.SourcePath)).SequenceEqual(original)).IsTrue();
+    }
+
+    [Test]
     [Arguments("still", 0)]
     [Arguments("still", 2)]
     [Arguments("turntable", 0)]

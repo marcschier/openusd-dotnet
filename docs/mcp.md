@@ -623,6 +623,9 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 - **`render_sequence`:** current unreleased source adds disk-backed PNG sequences with exact revision,
   sampled camera/time, up to 4096 frames and generated session-confined paths. Only completed jobs
   are published. Errors include malformed/stale requests, path, render and quota failures.
+  Each camera batch must match its requested samples exactly; empty, short or extra batches return
+  `render_failure` before frame capture, disk-output creation or history publication, including
+  failures in the final partial batch. Correcting camera preparation permits an unchanged request retry.
 - **`render_product`:** a bounded authored-product execution route using the shared job planner. It
   preserves selected settings, variable order, camera samples and scene filters rather than treating
   a viewport capture as a product. It requires a matching ingestion-capable native runtime.

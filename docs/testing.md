@@ -495,6 +495,11 @@ turntable and contact-sheet requests. Refusal is `render_failure`, with no captu
 and an unchanged stage revision; correcting the batch permits retry with exact decoded PNG bytes,
 requested dimensions, ordered times and expected artifact counts.
 
+`OpenUsdMcpServiceTests.MismatchedSequenceCameraBatchReportsRenderFailureBeforeDiskOutputAndAllowsRetry`
+checks empty, short and extra batches at one frame, the 16-sample boundary and a 17-frame final batch.
+The real adapter returns `render_failure` without disk output, captures, history or artifact publication.
+A corrected retry preserves source bytes and revision, exact sample order and decoded PNG pixels.
+
 `ViewerCameraBookmarksWindowTests.EnterOnSelectedSavedViewUsesGuardedRecallAndRestoresListFocusAfterCancellation`
 uses real Skia headless keyboard input in both themes at the minimum window size: arrow selection,
 plain Enter, exact selected bookmark identity, refusal/retry/success and focus restoration after
