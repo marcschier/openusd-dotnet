@@ -311,6 +311,13 @@ async UI-thread continuity and repeated isolated sessions. `NotInParallel` alone
 establish dispatcher ownership, and software X11 rendering still needs an X server.
 The separate native Viewer workflow smokes retain their actual desktop requirements.
 
+`LightTextureGroupingPreservesExactPropertiesAndGenericShaderAccess` checks existing
+light texture asset and format attributes. Only the exact names on light snapshots
+enter the light group; case variants, longer names and relationships remain outside it.
+Search and time-sample filtering retain the original snapshot objects and values, and
+the generic Inputs group still exposes both properties. These managed checks do not
+qualify native edits or texture rendering.
+
 `ClosingWorkspaceDialogRestoresOnlyItsOwnedKeyboardFocus` opens the actual MainWindow
 without a stage or attached renderer. In both themes, it closes completed-job history,
 capture comparison and command-palette windows with focus in the dialog, another MainWindow

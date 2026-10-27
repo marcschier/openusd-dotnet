@@ -326,8 +326,11 @@ only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The s
 native shape inputs (`inputs:width`, `inputs:height`, `inputs:radius`, `inputs:length`, and
 `inputs:angle`) only on their matching light schemas, and `inputs:shaping:focus`,
 `inputs:shaping:cone:angle`, and `inputs:shaping:cone:softness` only when `ShapingAPI` is applied.
-These inputs remain available in
-the **Inputs** group as well. Inputs and outputs group attribute namespaces
+Existing `inputs:texture:file` and `inputs:texture:format` attributes also appear in this
+group on light snapshots. This browsing change does not add texture editing or rendering
+support; absent declarations and similarly prefixed names are not synthesized.
+These inputs remain available in the **Inputs** group as well. Inputs and outputs group
+attribute namespaces
 (`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
 group only `material:binding` relationships and its nested namespace, not similarly named attributes.
 **Other properties** retains everything outside those groups; **All property groups** restores

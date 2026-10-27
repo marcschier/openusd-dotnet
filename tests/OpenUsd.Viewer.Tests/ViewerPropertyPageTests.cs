@@ -163,6 +163,57 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    [Arguments("inputs:texture:file", "asset", true)]
+    [Arguments("inputs:texture:file", "asset", false)]
+    [Arguments("inputs:texture:format", "token", true)]
+    [Arguments("inputs:texture:format", "token", false)]
+    public async Task LightTextureGroupingPreservesExactPropertiesAndGenericShaderAccess(
+        string name, string typeName, bool isLight)
+    {
+        var texture = new ViewerAttributeSnapshot(name, typeName, true, false, 1, "5", "@original.hdr@");
+        ViewerAttributeSnapshot[] attributes =
+        [
+            texture,
+            new($"{name}:extra", typeName, true, false, 0, "<none>", "lookalike"),
+            new(name.ToUpperInvariant(), typeName, true, false, 0, "<none>", "lookalike"),
+            new("inputs:roughness", "float", true, false, 0, "<none>", "0.5")
+        ];
+        var relationship = new ViewerRelationshipSnapshot(name, "/World/Texture");
+        ViewerPropertyPage lights = ViewerPropertyPage.Create(
+            attributes, [relationship], "texture", int.MaxValue,
+            ViewerPropertyFilter.TimeSampledAttributes, ViewerPropertyGroup.Light, isLight: isLight);
+        await Assert.That(lights.TotalCount).IsEqualTo(5);
+        await Assert.That(lights.MatchCount).IsEqualTo(isLight ? 1 : 0);
+        await Assert.That(lights.PageIndex).IsEqualTo(0);
+        await Assert.That(lights.Relationships).IsEmpty();
+        if (isLight)
+        {
+            await Assert.That(lights.Attributes.Single()).IsSameReferenceAs(texture);
+        }
+        else
+        {
+            await Assert.That(lights.Attributes).IsEmpty();
+        }
+        ViewerPropertyPage unfiltered = ViewerPropertyPage.Create(
+            attributes, [relationship], null, 0, group: ViewerPropertyGroup.Light, isLight: isLight);
+        await Assert.That(unfiltered.MatchCount).IsEqualTo(isLight ? 1 : 0);
+        await Assert.That(unfiltered.Relationships).IsEmpty();
+        ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
+            attributes, [relationship], null, 0, group: ViewerPropertyGroup.ShaderInputs, isLight: isLight);
+        await Assert.That(shaderInputs.MatchCount).IsEqualTo(3);
+        await Assert.That(shaderInputs.Attributes[0]).IsSameReferenceAs(texture);
+        await Assert.That(shaderInputs.Attributes[1]).IsSameReferenceAs(attributes[1]);
+        await Assert.That(shaderInputs.Attributes[2]).IsSameReferenceAs(attributes[3]);
+        await Assert.That(shaderInputs.Relationships).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [relationship], null, 0, group: ViewerPropertyGroup.Other, isLight: isLight);
+        await Assert.That(other.Attributes.Single()).IsSameReferenceAs(attributes[2]);
+        await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationship);
+        await Assert.That(texture.TimeSampleCount).IsEqualTo(1);
+        await Assert.That(texture.Value).IsEqualTo("@original.hdr@");
+    }
+
+    [Test]
     public async Task GroupStateAndSearchIntersectBeforeClampingAndBoundedPaging()
     {
         ViewerAttributeSnapshot[] attributes = Enumerable.Range(0, 200)

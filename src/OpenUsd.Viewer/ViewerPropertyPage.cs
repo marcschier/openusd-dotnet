@@ -166,7 +166,8 @@ internal sealed class ViewerPropertyPage
             "inputs:shaping:cone:softness" or
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
             "inputs:specular" or "inputs:colorTemperature" or "inputs:enableColorTemperature" or
-            "inputs:normalize" or "inputs:color")
+            "inputs:normalize" or "inputs:color" or
+            "inputs:texture:file" or "inputs:texture:format")
         {
             return ViewerPropertyGroup.Light;
         }
