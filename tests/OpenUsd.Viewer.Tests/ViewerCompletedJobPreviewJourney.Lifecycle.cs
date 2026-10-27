@@ -173,6 +173,14 @@ internal static partial class ViewerCompletedJobPreviewJourney
                 Key = Key.Tab,
                 KeyModifiers = KeyModifiers.Shift
             });
+            ScrollViewer statusScroll = Required<ScrollViewer>(current, "ResultsStatusScroll");
+            await WaitUntilAsync(() => statusScroll.IsKeyboardFocusWithin);
+            statusScroll.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Tab,
+                KeyModifiers = KeyModifiers.Shift
+            });
             await WaitUntilAsync(() => list.IsKeyboardFocusWithin);
             Control firstTile = list.ContainerFromIndex(0) ??
                 throw new InvalidOperationException("The first completed frame must have a keyboard container.");

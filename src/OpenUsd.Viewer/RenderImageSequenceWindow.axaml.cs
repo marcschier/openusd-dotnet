@@ -28,6 +28,7 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
     private bool _closing;
     private bool _picking;
     private bool _requestValid;
+    private bool _restoreOperationFocus;
 
     internal RenderImageSequenceWindow(
         double start, double end, string renderer,
@@ -140,8 +141,14 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         _cancellation?.Cancel();
         if (IsRunning)
         {
+            bool ownsFocus = SequenceCancelButton.IsKeyboardFocusWithin;
+            _restoreOperationFocus |= ownsFocus;
             SequenceStatus.Text = "Cancelling... waiting for the in-flight frame and view restoration.";
             SequenceCancelButton.IsEnabled = false;
+            if (ownsFocus)
+            {
+                SequenceCloseButton.Focus();
+            }
         }
     }
 
@@ -259,10 +266,16 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         ViewerRenderSequenceOutputOptions outputs = ReadOutputs();
         bool physicsMode = IsPhysicsMode;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_windowLifetime.Token);
+        Control? operationFocus = IsKeyboardFocusWithin ? FocusManager?.GetFocusedElement() as Control : null;
+        _restoreOperationFocus = false;
         _cancellation = cancellation;
         SequenceOutputLocation.Text = string.Empty;
         SequenceStatus.Classes.Set("viewer-warning", false);
         SetRunningControls();
+        if (operationFocus is not null)
+        {
+            SequenceCancelButton.Focus();
+        }
         try
         {
             await _results.ClearAsync();
@@ -316,9 +329,17 @@ internal sealed partial class RenderImageSequenceWindow : Window, IAsyncDisposab
         }
         finally
         {
+            bool restoreFocus = (SequenceCancelButton.IsKeyboardFocusWithin ||
+                (_restoreOperationFocus && SequenceCloseButton.IsKeyboardFocusWithin)) &&
+                (IsActive || IsKeyboardFocusWithin);
+            _restoreOperationFocus = false;
             _cancellation = null;
             ValidateRequest(preserveStatus: true);
             SetRunningControls();
+            if (restoreFocus && !_closing && operationFocus is { IsEnabled: true, IsVisible: true })
+            {
+                operationFocus.Focus();
+            }
         }
     }
 

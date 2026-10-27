@@ -311,6 +311,15 @@ async UI-thread continuity and repeated isolated sessions. `NotInParallel` alone
 establish dispatcher ownership, and software X11 rendering still needs an X server.
 The separate native Viewer workflow smokes retain their actual desktop requirements.
 
+`SequenceRenderHandsFocusToCancelAndRestoresOnlyOwnedFocusAfterDrain` checks authored-time
+and physics recording dialogs in both themes. Render hands keyboard focus to Cancel;
+Escape requests cancellation and moves owned focus to Close while the callback drains.
+Completion returns owned focus to Render but preserves focus deliberately moved to Close
+or another window. Success, render refusal and cancellation each allow a successful retry;
+only successful callbacks publish results. The completed-gallery lifecycle journey also
+checks Shift+Tab through the named status area before reaching frame selection.
+These managed callbacks do not qualify native rendering, physics stepping or physical input.
+
 `LightTextureGroupingPreservesExactPropertiesAndGenericShaderAccess` checks existing
 light texture asset and format attributes. Only the exact names on light snapshots
 enter the light group; case variants, longer names and relationships remain outside it.
