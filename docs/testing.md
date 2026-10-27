@@ -373,6 +373,15 @@ retry after the cancellation or read refusal. Capture, edits and recall are neve
 If focus moves to the scroll body during delayed cancellation drain, completion leaves it there.
 The original action regains focus only while the temporary Cancel/Close focus is still owned.
 
+`InitialSavedViewReadRestoresOnlyOwnedFocusAndPreservesMovedFocus` checks the initial
+saved-view read in both themes. The name field hands focus to Cancel while discovery runs;
+completion returns to Name only while the operation still owns focus. Delayed success or
+read refusal preserves a deliberately focused Close, and success, refusal and cancellation
+preserve focus moved to the scroll body or another window. A subsequent Refresh retains
+its own focus and loads the original bookmark object without capture, edits or recall.
+This fixes the unconditional post-read Name focus; physical window-manager input remains
+separate qualification.
+
 `RefreshButtonRetainsOnlyTheSelectedBookmarkIdentityAndUsesItsNewSnapshot` checks both themes
 with reordered, renamed, removed and same-name replacement records. The actual Refresh button
 keeps only a surviving bookmark ID and uses the new record for an explicit Enter recall.

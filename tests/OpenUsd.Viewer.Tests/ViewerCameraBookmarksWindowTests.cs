@@ -20,6 +20,139 @@ public sealed class ViewerCameraBookmarksWindowTests
     ];
 
     [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "body")]
+    [Arguments(true, "success", "body")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "body")]
+    [Arguments(true, "failure", "body")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "cancelled", "owned")]
+    [Arguments(true, "cancelled", "owned")]
+    [Arguments(false, "cancelled", "body")]
+    [Arguments(true, "cancelled", "body")]
+    [Arguments(false, "cancelled", "other")]
+    [Arguments(true, "cancelled", "other")]
+    public async Task InitialSavedViewReadRestoresOnlyOwnedFocusAndPreservesMovedFocus(
+        bool dark, string outcome, string destination)
+    {
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            string stamp = new('A', 64);
+            ViewerCameraBookmark bookmark = ViewerCameraBookmark.CreateFree(
+                Guid.NewGuid(), "Original saved view", stamp, 12.5, new ViewportDimensions(800, 600),
+                new ViewerCameraNavigationState(false, new(1, 2, 3), 5, 0.5f, 0.2f,
+                    ViewerCameraProjectionMode.Perspective, 0.7f, 3, 0.1f, 100, 800f / 600));
+            var capture = new ViewerCameraBookmarkCapture(
+                new ViewerAuthoredEditCapture(Guid.NewGuid(), "review",
+                    new UsdLayerAuthoredSnapshot(new(1, 2, 3), 0, [], [])), stamp, [bookmark]);
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            int reads = 0;
+            var window = new CameraBookmarksWindow(
+                async token =>
+                {
+                    if (++reads == 1)
+                    {
+                        entered.TrySetResult();
+                        await release.Task;
+                        token.ThrowIfCancellationRequested();
+                        if (outcome == "failure")
+                        {
+                            throw new IOException("Controlled initial saved-view refusal.");
+                        }
+                    }
+                    return capture;
+                },
+                (_, _) => throw new InvalidOperationException("Initial discovery must not capture."),
+                (_, _, _, _) => throw new InvalidOperationException("Initial discovery must not edit."),
+                (_, _) => throw new InvalidOperationException("Initial discovery must not recall."),
+                () => new ViewerCameraBookmarkAvailability(true, true, true, "Original review", "Ready."))
+            {
+                Width = 560,
+                Height = 440,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsRunning).IsTrue();
+                await Assert.That(Required<TextBox>(window, "SavedViewName").IsEnabled).IsFalse();
+                await Assert.That(Required<ListBox>(window, "SavedViewsList").IsEnabled).IsFalse();
+                await Assert.That(Required<Button>(window, "SavedViewsCancelButton").IsKeyboardFocusWithin).IsTrue();
+                if (outcome == "cancelled")
+                {
+                    Required<Button>(window, "SavedViewsCancelButton")
+                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    await Assert.That(window.IsRunning).IsTrue();
+                }
+                Control expectedFocus = destination switch
+                {
+                    "owned" => Required<TextBox>(window, "SavedViewName"),
+                    "close" => Required<Button>(window, "SavedViewsCloseButton"),
+                    "body" => Required<ScrollViewer>(window, "SavedViewsBodyScroll"),
+                    "other" => otherAction,
+                    _ => throw new ArgumentOutOfRangeException(nameof(destination))
+                };
+                if (destination == "other")
+                {
+                    other.Show();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                else if (destination != "owned")
+                {
+                    await Assert.That(expectedFocus.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(reads).IsEqualTo(1);
+                ListBox list = Required<ListBox>(window, "SavedViewsList");
+                await Assert.That(list.ItemCount).IsEqualTo(outcome == "success" ? 1 : 0);
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text).Contains(outcome switch
+                {
+                    "success" => "Ready.",
+                    "cancelled" => "Cancelled.",
+                    _ => "Controlled initial saved-view refusal."
+                });
+                other.Close();
+                Button refresh = Required<Button>(window, "SavedViewsRefreshButton");
+                await Assert.That(refresh.Focus()).IsTrue();
+                await window.RefreshAsync();
+                await Assert.That(reads).IsEqualTo(2);
+                await Assert.That(refresh.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(list.ItemCount).IsEqualTo(1);
+                await Assert.That(((ListBoxItem)list.Items[0]!).Tag).IsSameReferenceAs(bookmark);
+                await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text).IsEqualTo("Ready.");
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(window.IsVisible).IsFalse();
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     [Arguments(false, "reordered")]
     [Arguments(true, "reordered")]
     [Arguments(false, "renamed")]

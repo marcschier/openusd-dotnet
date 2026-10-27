@@ -61,11 +61,8 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
         SavedViewsCloseButton.Click += (_, _) => Close();
         Opened += async (_, _) =>
         {
+            SavedViewName.Focus();
             await BeginAsync(token => LoadAsync(null, token));
-            if (!_closing)
-            {
-                SavedViewName.Focus();
-            }
         };
         KeyDown += (_, e) =>
         {
