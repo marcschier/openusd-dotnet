@@ -50,6 +50,13 @@ The server serializes service operations and keeps OpenUSD C++ objects behind th
 project-owned C ABI and scheduler. Tool results are detached, bounded DTOs; scene or render
 hot paths do not perform per-element P/Invoke.
 
+The stdio host loads ordinary .NET JSON configuration at startup but does not watch
+configuration files by default. File watching can scan a large working tree before
+protocol initialization. Startup configuration and command-line content-root selection
+remain available. Set `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=true` only when the host
+needs live configuration reload; MCP scene/render options and quotas are still startup
+snapshots and do not become reloadable.
+
 ## Prerequisites
 
 - The **.NET 10 SDK or runtime** for the `OpenUsd.Mcp.Tool` package. Repository source builds

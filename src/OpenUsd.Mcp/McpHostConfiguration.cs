@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenUsd.Rendering.Silk;
 
@@ -28,6 +30,21 @@ internal sealed record OpenUsdMcpApplicationOptions(
 
 internal static class McpHostConfiguration
 {
+    internal static HostApplicationBuilder CreateHostBuilder(string[] args)
+    {
+        var configuration = new ConfigurationManager();
+        // A source-backed default survives the host's file-provider initialization.
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["hostBuilder:reloadConfigOnChange"] = "false"
+        });
+        return Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            Args = args,
+            Configuration = configuration
+        });
+    }
+
     internal static void ConfigureLogging(ILoggingBuilder logging)
     {
         ArgumentNullException.ThrowIfNull(logging);

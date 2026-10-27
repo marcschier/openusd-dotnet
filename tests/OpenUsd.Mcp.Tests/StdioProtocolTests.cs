@@ -31,6 +31,7 @@ public sealed class StdioProtocolTests
                     {
                         ["OPENUSD_MCP_SOURCE_ROOT"] = files.SourceRoot,
                         ["OPENUSD_MCP_OUTPUT_ROOT"] = files.OutputRoot,
+                        ["DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE"] = null,
                     },
                     StandardErrorLines = line => standardError.Enqueue(line),
                 });

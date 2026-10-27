@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenUsd.Mcp.Tests;
@@ -7,6 +8,37 @@ namespace OpenUsd.Mcp.Tests;
 [NotInParallel]
 public sealed class McpHostConfigurationTests
 {
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task HostDoesNotWatchTheWorkingTreeUnlessExplicitlyRequested(bool watch)
+    {
+        const string variable = "DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, watch ? "true" : null);
+            using var files = new WorkspaceTestFiles();
+            await File.WriteAllTextAsync(Path.Combine(files.SourceRoot, "appsettings.json"),
+                """{"McpProbe":{"Entry":"original"}}""");
+            var builder = McpHostConfiguration.CreateHostBuilder(["--contentRoot", files.SourceRoot]);
+            using var host = builder.Build();
+            var configuration = builder.Configuration;
+            JsonConfigurationSource[] sources = configuration.Sources.OfType<JsonConfigurationSource>().ToArray();
+            await Assert.That(sources).IsNotEmpty();
+            await Assert.That(configuration["hostBuilder:reloadConfigOnChange"])
+                .IsEqualTo(watch ? "true" : "false");
+            await Assert.That(sources.All(source => source.ReloadOnChange == watch)).IsTrue()
+                .Because(string.Join(", ", sources.Select(source => $"{source.Path}: {source.ReloadOnChange}")));
+            await Assert.That(configuration["McpProbe:Entry"]).IsEqualTo("original");
+            await Assert.That(builder.Environment.ContentRootPath).IsEqualTo(files.SourceRoot);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
     [Test]
     public async Task GpuUploadConfigurationRequiresExplicitHardwareAndBufferAdmission()
     {

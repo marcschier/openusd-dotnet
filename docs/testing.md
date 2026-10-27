@@ -107,6 +107,13 @@ exclusion, previous-output survival, successful replacement, and temporary stagi
 covered for published and source-run layouts. Commands and native prerequisites are in
 [OpenUSD MCP server](mcp.md#testing).
 
+`HostDoesNotWatchTheWorkingTreeUnlessExplicitlyRequested` checks that every default JSON
+source disables configuration-file watching, while startup JSON values and command-line
+content-root selection remain intact. Its explicit opt-in case enables watching.
+`ActualStdioHostUsesProtocolOnlyStdoutAndLogsToStderr` removes any inherited reload override
+from the child and initializes the real host in the repository working directory.
+The same journey checks discovery, no-scene errors and empty completed-job history.
+
 `RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain`
 uses the official protocol for sequence, authored-product and physics-recording requests.
 It checks frame-count notifications below completion, successful result readiness, refusal,
