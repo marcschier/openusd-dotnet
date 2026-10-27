@@ -18,6 +18,7 @@
   </Window.Styles>
   <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="*,Auto" RowSpacing="12">
     <ScrollViewer x:Name="ProductBodyScroll" Focusable="True" IsTabStop="False"
+                  AutomationProperties.Name="Authored render product details"
                   HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
       <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12"

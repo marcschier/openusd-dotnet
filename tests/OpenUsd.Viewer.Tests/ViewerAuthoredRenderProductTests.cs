@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
@@ -89,6 +90,8 @@ public sealed class ViewerAuthoredRenderProductTests
                 await Assert.That(refresh.IsEnabled).IsFalse();
                 await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
                 await Assert.That(Required<ScrollViewer>(window, "ProductBodyScroll").IsFocused).IsTrue();
+                await Assert.That(AutomationProperties.GetName(Required<ScrollViewer>(window, "ProductBodyScroll")))
+                    .IsEqualTo("Authored render product details");
                 Control expectedFocus = destination switch
                 {
                     "owned" => selector,

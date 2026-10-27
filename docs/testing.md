@@ -390,7 +390,7 @@ This fixes the unconditional post-read Name focus; physical window-manager input
 separate qualification.
 
 `InitialProductDiscoveryHandsOffOnlyItsOwnedFocus` checks delayed authored-product
-discovery in both themes, including read refusal and an empty catalog. The scroll body
+discovery in both themes, including read refusal and an empty catalog. The named scroll body
 holds initial loading focus without adding a Tab stop; completion focuses the product
 selector only while the body still owns focus. Focus moved to Close or another window
 stays there. A subsequent Refresh loads the original product object without rendering
