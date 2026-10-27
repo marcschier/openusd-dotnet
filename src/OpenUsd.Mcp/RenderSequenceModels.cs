@@ -146,6 +146,11 @@ internal sealed record McpSequenceFrameResultDto(
         "Null for non-product jobs or producers that supply no raster metadata.")]
     public McpProductRasterDto? ProductRaster { get; init; }
 
+    [Description(
+        "Original sampled product camera inputs and effect-disable flags; not verified effective backend state. " +
+        "Null for non-product jobs or producers that supply no camera samples.")]
+    public McpProductCameraDto? ProductCamera { get; init; }
+
     [Description("Exact simulation publication captured by this frame; null for authored-time rendering.")]
     public McpSimulationFrameDto? Simulation { get; init; }
 

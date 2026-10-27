@@ -113,3 +113,40 @@ internal sealed record McpProductRasterDto(
             request.Overrides.AspectRatioConformPolicy ?? request.Product.AspectRatioConformPolicy);
     }
 }
+
+internal sealed record McpProductCameraDto(
+    [property: Description("Sampled shutter open offset in USD time codes; not evidence of applied motion blur.")]
+    double ShutterOpen,
+    [property: Description("Original sampled shutter close offset in USD time codes.")]
+    double ShutterClose,
+    [property: Description("Original sampled camera compensation in stops, separate from display exposure.")]
+    double Exposure,
+    [property: Description("Original sampled camera exposure ISO.")]
+    double ExposureIso,
+    [property: Description("Original sampled exposure time in seconds, separate from the shutter interval.")]
+    double ExposureTime,
+    [property: Description("Original sampled exposure f-stop, separate from the optics' depth-of-field aperture.")]
+    double ExposureFStop,
+    [property: Description("Original sampled camera exposure responsivity.")]
+    double ExposureResponsivity,
+    [property: Description("Sampled camera-model exposure multiplier; this reader does not apply it again.")]
+    double LinearExposureScale,
+    [property: Description("Original sampled focus distance; not a verified effective backend focus setting.")]
+    double FocusDistance,
+    [property: Description("Original sampled optics f-stop, separate from exposureFStop.")]
+    double FStop,
+    [property: Description("Whether the original product disables motion blur despite its sampled shutter interval.")]
+    bool DisableMotionBlur,
+    [property: Description("Whether the product disables depth of field despite its sampled focus and aperture.")]
+    bool DisableDepthOfField)
+{
+    internal static McpProductCameraDto From(RenderPreparedFrame frame)
+    {
+        RenderCameraFrameSettings camera = frame.CameraSettings ??
+            throw new InvalidOperationException("The admitted product frame has no sampled camera settings.");
+        return new(camera.ShutterOpen, camera.ShutterClose, camera.Exposure, camera.ExposureIso,
+            camera.ExposureTime, camera.ExposureFStop, camera.ExposureResponsivity, camera.LinearExposureScale,
+            frame.SampledCamera.FocusDistance, frame.SampledCamera.FStop,
+            frame.Request.Product.DisableMotionBlur, frame.Request.Product.DisableDepthOfField);
+    }
+}

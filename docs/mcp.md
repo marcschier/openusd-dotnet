@@ -984,6 +984,17 @@ coordinates. It can differ between sampled cameras within one job and remains av
 after scene close without sampling a camera or reading the manifest again. It is not
 verified effective backend state. Viewport jobs and producers without this metadata return null.
 
+`productCamera` retains sampled shutter offsets (`shutterOpen`, `shutterClose`) in USD time
+codes, camera `exposure` in stops, `exposureIso`, `exposureTime` in seconds,
+`exposureFStop`, `exposureResponsivity` and the computed `linearExposureScale`.
+Its sampled optics `focusDistance` and `fStop` are separate from exposure settings.
+`disableMotionBlur` and `disableDepthOfField` retain the product's effect-disable flags:
+a nonzero shutter interval or aperture does not imply the corresponding effect was active.
+These are copied per-frame inputs, not verified effective backend state or a complete camera
+identity. Historical reads query no scene or manifest and do not apply exposure again.
+Viewport jobs and producers without camera samples return null. The existing execution
+profile still requires unit camera exposure and no active motion blur or depth of field.
+
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
 return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
@@ -1050,6 +1061,8 @@ rather than the resized cell dimensions. Display/output values and unresolved OC
 remain historical requests; generating a sheet does not apply those transforms again.
 Each tile's `productRaster` retains the corresponding source frame's prepared product
 metadata, not the resized cell dimensions or origin. Reordering frames preserves that association.
+Each tile also retains its source frame's `productCamera`, including the sampled settings
+and effect-disable flags. Creating a sheet does not activate disabled effects or render another frame.
 Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input

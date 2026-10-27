@@ -113,8 +113,9 @@ internal sealed partial class OpenUsdMcpService
                     "Authored-product rendering failed.", exception);
             }
             return RegisterCompletedSequence(revision, id, result, ToAuthoredProduct(plan),
-                productRasters: new OwnedReadOnlyList<McpProductRasterDto>(
-                    plan.Frames.Select(McpProductRasterDto.From).ToArray()));
+                productFrames: new OwnedReadOnlyList<CompletedProductFrame>(
+                    plan.Frames.Select(static frame => new CompletedProductFrame(
+                        McpProductRasterDto.From(frame), McpProductCameraDto.From(frame))).ToArray()));
         }
         finally
         {
@@ -128,4 +129,6 @@ internal sealed partial class OpenUsdMcpService
         new OwnedReadOnlyList<McpProductVariableDto>(plan.Outputs.Select(static output => new McpProductVariableDto(
             output.Variable.Path, output.Variable.SourceName, output.Variable.DataType,
             output.Plane == RenderProductPlane.HdrColor ? "hdrColor" : "deviceDepth")).ToArray()));
+
+    private readonly record struct CompletedProductFrame(McpProductRasterDto Raster, McpProductCameraDto Camera);
 }

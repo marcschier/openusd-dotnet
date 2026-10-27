@@ -51,6 +51,11 @@ internal sealed record McpSequenceSheetTileDto(
         "or verified effective backend state. " +
         "Null for non-product jobs or producers that supply no raster metadata.")]
     public McpProductRasterDto? ProductRaster { get; init; }
+
+    [Description(
+        "Original sampled product camera inputs for this source frame, not resized sheet-cell or backend settings. " +
+        "Null for non-product jobs or producers that supply no camera samples.")]
+    public McpProductCameraDto? ProductCamera { get; init; }
 }
 
 internal sealed record McpSequenceSheetResultDto(

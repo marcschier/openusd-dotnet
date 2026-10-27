@@ -214,6 +214,15 @@ uses two sampled camera windows to produce different conformed pixel aspects, cl
 scene, then reads both frames and a reversed sheet without another preparation or capture.
 Viewport frames and tiles retain null product metadata. The official SDK protocol journey
 checks populated fields and null metadata from an older producer.
+`HistoricalProductCameraKeepsPerFrameSamplesAndEffectFlagsAfterSceneClose` covers all four
+motion-blur/depth-of-field disable-flag pairs with two distinct shutter, exposure and optics
+samples. Compensating exposure inputs retain the admitted unit multiplier; enabled-effect
+flags use neutral shutter/aperture values, so no execution restriction is relaxed.
+After close, replacing the manifest cannot change retained frame or reversed-sheet samples.
+Every sampled field matches the original manifest, raw HDR and companion PNG hashes remain
+unchanged between these managed samples, and the source is preserved. The protocol journey
+checks exact camera JSON and null metadata from a legacy producer; viewport frames and tiles
+also retain null camera metadata. This does not qualify rendered exposure, motion blur or depth of field.
 `InvalidProductDataWindowLengthIsRejectedBeforeWorkspaceWork` and
 `InvalidProductDataWindowBoundsAreRejectedBeforeWorkspaceWork` reject wrong lengths,
 nonfinite coordinates and nonincreasing bounds without workspace work or output creation.

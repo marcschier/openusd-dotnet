@@ -194,6 +194,90 @@ public sealed class RenderProductServiceTests
     }
 
     [Test]
+    [Arguments(true, true)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(false, false)]
+    public async Task HistoricalProductCameraKeepsPerFrameSamplesAndEffectFlagsAfterSceneClose(
+        bool disableMotionBlur, bool disableDepthOfField)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times => Plan(backend.Context!.SessionId, backend.StageRevision, times,
+            cameraAtTime: time => new UsdGeomCameraState(UsdGeomCameraProjection.Orthographic,
+                -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, time == 2 ? 10 : 20,
+                disableDepthOfField ? time == 2 ? 3 : 6 : 0),
+            cameraSettingsAtTime: time => time == 2
+                ? new RenderCameraFrameSettings(disableMotionBlur ? -0.25 : 0, disableMotionBlur ? 0.25 : 0,
+                    -1, 200, 4, 2, 1)
+                : new RenderCameraFrameSettings(disableMotionBlur ? -0.5 : 0, disableMotionBlur ? 0.75 : 0,
+                    -2, 400, 8, 4, 2),
+            disableMotionBlur: disableMotionBlur, disableDepthOfField: disableDepthOfField);
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto product = await service.RenderProductAsync(Request(session, 2), default);
+        string manifestPath = Path.Combine(backend.Context!.OutputDirectory, "renders", product.JobId, "manifest.json");
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        backend.PrepareProduct = _ =>
+            throw new InvalidOperationException("Historical reads must not prepare a product.");
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        await File.WriteAllTextAsync(manifestPath, "{}");
+        McpSequenceFrameResultDto first = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = product.JobId, FrameIndex = 0 }, default);
+        McpSequenceFrameResultDto second = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = product.JobId, FrameIndex = 1 }, default);
+        await Assert.That(first.ProductCamera)
+            .IsEqualTo(new McpProductCameraDto(disableMotionBlur ? -0.25 : 0, disableMotionBlur ? 0.25 : 0,
+                -1, 200, 4, 2, 1, 1, 10, disableDepthOfField ? 3 : 0, disableMotionBlur, disableDepthOfField));
+        await Assert.That(second.ProductCamera)
+            .IsEqualTo(new McpProductCameraDto(disableMotionBlur ? -0.5 : 0, disableMotionBlur ? 0.75 : 0,
+                -2, 400, 8, 4, 2, 1, 20, disableDepthOfField ? 6 : 0, disableMotionBlur, disableDepthOfField));
+        McpSequenceFrameResultDto[] frames = [first, second];
+        foreach (McpSequenceFrameResultDto frame in frames)
+        {
+            JsonElement metadata = JsonSerializer.SerializeToElement(frame.ProductCamera, JsonOptions);
+            JsonElement saved = manifest.RootElement.GetProperty("frames")[frame.FrameIndex]
+                .GetProperty("productCamera");
+            foreach (JsonProperty property in saved.EnumerateObject())
+            {
+                await Assert.That(JsonElement.DeepEquals(metadata.GetProperty(property.Name), property.Value)).IsTrue();
+            }
+            JsonElement authored = manifest.RootElement.GetProperty("authoredProduct");
+            await Assert.That(metadata.GetProperty("disableMotionBlur").GetBoolean())
+                .IsEqualTo(authored.GetProperty("disableMotionBlur").GetBoolean());
+            await Assert.That(metadata.GetProperty("disableDepthOfField").GetBoolean())
+                .IsEqualTo(authored.GetProperty("disableDepthOfField").GetBoolean());
+        }
+        McpSequenceSheetResultDto sheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
+        {
+            JobId = product.JobId,
+            FrameIndices = [1, 0],
+            Width = 8,
+            Height = 4
+        }, default);
+        await Assert.That(sheet.Tiles[0].ProductCamera).IsEqualTo(second.ProductCamera);
+        await Assert.That(sheet.Tiles[1].ProductCamera).IsEqualTo(first.ProductCamera);
+        await Assert.That(first.HdrColor!.Sha256).IsEqualTo(second.HdrColor!.Sha256);
+        await Assert.That(first.Artifact.Sha256).IsEqualTo(second.Artifact.Sha256);
+        await Assert.That(factory.Source.Times.Count).IsEqualTo(2);
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo("#usda 1.0");
+    }
+
+    [Test]
     public async Task HistoricalProductRasterKeepsPerFrameConformanceAndRequestedSheetOrderAfterSceneClose()
     {
         using var files = new WorkspaceTestFiles();
@@ -258,6 +342,8 @@ public sealed class RenderProductServiceTests
         }, default);
         await Assert.That(plain.ProductRaster).IsNull();
         await Assert.That(plainSheet.Tiles[0].ProductRaster).IsNull();
+        await Assert.That(plain.ProductCamera).IsNull();
+        await Assert.That(plainSheet.Tiles[0].ProductCamera).IsNull();
         await Assert.That(factory.Source.Times.Count).IsEqualTo(2);
         await Assert.That(factory.Source.ViewportTimes.Count).IsEqualTo(1);
         await Assert.That(backend.Events.Count(static value => value == "prepare-product")).IsEqualTo(preparations);
@@ -931,13 +1017,15 @@ public sealed class RenderProductServiceTests
     private static RenderProductJobPlan Plan(
         string sessionId, ulong revision, IReadOnlyList<double> times, RenderProductOverrides? overrides = null,
         UsdVec4f? dataWindow = null, float authoredPixelAspectRatio = 1,
-        string authoredConformPolicy = "expandAperture", Func<double, UsdGeomCameraState>? cameraAtTime = null)
+        string authoredConformPolicy = "expandAperture", Func<double, UsdGeomCameraState>? cameraAtTime = null,
+        Func<double, RenderCameraFrameSettings>? cameraSettingsAtTime = null,
+        bool disableMotionBlur = true, bool disableDepthOfField = true)
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
                 2, 2, authoredPixelAspectRatio, authoredConformPolicy, new UsdVec2f(20, 20),
                 dataWindow ?? new UsdVec4f(0, 0, 1, 1),
-                true, true, [1, 0], [])],
+                disableMotionBlur, disableDepthOfField, [1, 0], [])],
             [new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []),
                 new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", [])],
             ["default", "render"], ["full"], "", []);
@@ -946,7 +1034,7 @@ public sealed class RenderProductServiceTests
             UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 0, 0);
         RenderPreparedFrame[] frames = [.. times.Select(time =>
             request.PrepareFrame(UsdMatrix4d.Identity, cameraAtTime?.Invoke(time) ?? optics, time,
-                RenderCameraFrameSettings.Default))];
+                cameraSettingsAtTime?.Invoke(time) ?? RenderCameraFrameSettings.Default))];
         return new RenderProductJobPlan(new StageIdentity($"session:{sessionId}"), frames,
             RenderSettings.PresentationDefault, revision);
     }

@@ -894,6 +894,15 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(frameRaster.GetProperty("pixelAspectRatio").GetDouble()).IsEqualTo(1.5);
         await Assert.That(frameRaster.GetProperty("aspectRatioConformPolicy").GetString()).IsEqualTo("cropAperture");
         await Assert.That(frameRaster.GetProperty("dataWindowOriginConvention").GetString()).IsEqualTo("bottom-left");
+        using JsonDocument expectedFrameCamera = JsonDocument.Parse("""
+            {
+                "shutterOpen": -0.125, "shutterClose": 0.375, "exposure": -2, "exposureIso": 400,
+                "exposureTime": 2, "exposureFStop": 2, "exposureResponsivity": 2, "linearExposureScale": 1,
+                "focusDistance": 25, "fStop": 5.6, "disableMotionBlur": true, "disableDepthOfField": true
+            }
+            """);
+        await Assert.That(JsonElement.DeepEquals(sequenceFrame.StructuredContent.Value.GetProperty("productCamera"),
+            expectedFrameCamera.RootElement)).IsTrue();
         CallToolResult recordedFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
             {
@@ -960,6 +969,15 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheetRaster.GetProperty("aspectRatioConformPolicy").GetString())
             .IsEqualTo("adjustPixelAspectRatio");
         await Assert.That(sheetRaster.GetProperty("dataWindowOriginConvention").GetString()).IsEqualTo("bottom-left");
+        using JsonDocument expectedSheetCamera = JsonDocument.Parse("""
+            {
+                "shutterOpen": 0, "shutterClose": 0, "exposure": -3, "exposureIso": 800,
+                "exposureTime": 4, "exposureFStop": 4, "exposureResponsivity": 4, "linearExposureScale": 1,
+                "focusDistance": 0, "fStop": 0, "disableMotionBlur": false, "disableDepthOfField": false
+            }
+            """);
+        await Assert.That(JsonElement.DeepEquals(sheet.StructuredContent.Value.GetProperty("tiles")[0]
+            .GetProperty("productCamera"), expectedSheetCamera.RootElement)).IsTrue();
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -983,6 +1001,8 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("renderRequest").ValueKind)
             .IsEqualTo(JsonValueKind.Null);
         await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("productRaster").ValueKind)
+            .IsEqualTo(JsonValueKind.Null);
+        await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("productCamera").ValueKind)
             .IsEqualTo(JsonValueKind.Null);
 
         CallToolResult exrFrame = await client.CallToolAsync("read_sequence_frame",
@@ -1345,7 +1365,8 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                         .WithViewport(new ViewportDimensions(257, 129))
                         .WithDisplay(new SceneDisplayState(
                             RenderPurpose.Guide, RenderVisibility.IncludeInvisible, RenderDrawMode.Wireframe))),
-                    ProductRaster = new McpProductRasterDto(640, 360, 80, -24, 0.75, "adjustPixelAspectRatio")
+                    ProductRaster = new McpProductRasterDto(640, 360, 80, -24, 0.75, "adjustPixelAspectRatio"),
+                    ProductCamera = new McpProductCameraDto(0, 0, -3, 800, 4, 4, 4, 1, 0, 0, false, false)
                 }
             ],
             [descriptor])
@@ -1398,7 +1419,8 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
             RenderRequest = McpRenderRequestDto.From(StageRenderState.Default
                 .WithViewport(new ViewportDimensions(1, 1))
                 .WithRenderSettings(RenderSettings.PresentationDefault)),
-            ProductRaster = new McpProductRasterDto(720, 480, -16, 24, 1.5, "cropAperture")
+            ProductRaster = new McpProductRasterDto(720, 480, -16, 24, 1.5, "cropAperture"),
+            ProductCamera = new McpProductCameraDto(-0.125, 0.375, -2, 400, 2, 2, 2, 1, 25, 5.6, true, true)
         });
     }
 
