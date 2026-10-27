@@ -120,7 +120,7 @@ internal sealed partial class OpenUsdMcpService
             {
                 PngRgba8Image image = CompletedRenderFrameReader.ReadThumbnail(
                     input, frame, width, height, cancellationToken);
-                return new ImageRgba8(image.Width, image.Height, image.Pixels);
+                return new ImageRgba8(image);
             }
             catch (InvalidDataException exception)
             {

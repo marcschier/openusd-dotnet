@@ -42,7 +42,7 @@ public sealed class PngRgba8Tests
     }
 
     [Test]
-    public async Task DecodingDoesNotAllocateConcatenatedIdatOrFilteredImageBuffers()
+    public async Task DecodingOwnsOnePixelBufferWithoutConcatenatedIdatOrFilteredImageBuffers()
     {
         byte[] pixels = new byte[1024 * 1024 * 4];
         new Random(782).NextBytes(pixels);
@@ -53,7 +53,24 @@ public sealed class PngRgba8Tests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         await Assert.That(decoded.Pixels.Span.SequenceEqual(pixels)).IsTrue();
-        await Assert.That(allocated).IsLessThan(png.Length + (2L * pixels.Length) + (128 * 1024));
+        await Assert.That(allocated).IsLessThan(png.Length + (long)pixels.Length + (128 * 1024));
+    }
+
+    [Test]
+    public async Task PublicImageAndDecodedImageRemainIndependentOfCallerOwnedBuffers()
+    {
+        byte[] pixels = [17, 29, 41, 53];
+        var image = new ImageRgba8(1, 1, pixels);
+        Array.Clear(pixels);
+        await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo("111D2935");
+
+        byte[] png = PngRgba8Encoder.Encode(image);
+        ImageRgba8 decoded = PngRgba8Decoder.Decode(png);
+        Array.Clear(png);
+        await Assert.That(decoded.Width).IsEqualTo(1);
+        await Assert.That(decoded.Height).IsEqualTo(1);
+        await Assert.That(Convert.ToHexString(decoded.Pixels.Span)).IsEqualTo("111D2935");
+        await Assert.That(Convert.ToHexString(image.Pixels.Span)).IsEqualTo("111D2935");
     }
 
     [Test]

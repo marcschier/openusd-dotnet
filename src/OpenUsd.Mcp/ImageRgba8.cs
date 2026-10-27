@@ -11,6 +11,14 @@ public sealed class ImageRgba8
 
     private readonly byte[] _pixels;
 
+    /// <summary>Transfers a decoded pixel buffer; the caller must relinquish writable access.</summary>
+    internal ImageRgba8(PngRgba8Image decoded)
+    {
+        Width = decoded.Width;
+        Height = decoded.Height;
+        _pixels = decoded.Pixels;
+    }
+
     public ImageRgba8(int width, int height, ReadOnlySpan<byte> pixels)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);

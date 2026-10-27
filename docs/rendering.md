@@ -1250,6 +1250,11 @@ MCP decoding and Viewer comparison share the bounded RGBA PNG reader. It validat
 chunks before allocating pixels, supports the five standard scanline filters, and reconstructs rows
 in-place without concatenating IDAT payloads or retaining a full filtered image. PNG pixels and alpha
 are not transformed. The Viewer applies its stricter 64-MiB/8192-side/16-megapixel input policy.
+MCP decoding and historical contact-sheet input transfer the reader's freshly allocated pixels
+into the image wrapper without a second pixel-buffer copy. Public `ImageRgba8` construction
+still copies caller-owned pixels; native capture inputs retain that defensive boundary.
+The decoder allocation regression permits one decoded pixel buffer plus the encoded input copy
+and 128 KiB of overhead. This is a managed allocation bound, not a process or native-memory cap.
 
 ### CPU capture with OpenColorIO
 
