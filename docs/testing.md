@@ -329,6 +329,14 @@ actual headless windows; native window-manager focus remains separate qualificat
 Closing from a frame first moves focus to Close before disposing the frame containers,
 so removing a focused tile does not discard the gallery's return-focus ownership.
 
+`ProductRenderHandsFocusToCancelAndRestoresOnlyOwnedFocusAfterDrain` checks the same
+render-focus handoff for authored products in both themes. Render hands focus to
+Cancel, and Escape transfers owned focus to Close while the callback drains.
+Success, refusal and cancellation restore Render only while operation-owned focus
+remains; deliberately moved Close or other-window focus is preserved. A late result
+from a callback that ignored cancellation is not published. Each case retries with
+the original settings and product, without another discovery query or native render.
+
 `LightTextureGroupingPreservesExactPropertiesAndGenericShaderAccess` checks existing
 light texture asset and format attributes. Only the exact names on light snapshots
 enter the light group; case variants, longer names and relationships remain outside it.

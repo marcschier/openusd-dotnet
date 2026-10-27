@@ -30,6 +30,7 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
     private bool _requestValid;
     private bool _updatingSettingsPath;
     private bool _refreshing;
+    private bool _restoreOperationFocus;
     private ViewerAuthoredRenderProductSnapshot _snapshot =
         ViewerAuthoredRenderProductSnapshot.Empty("Render products have not been queried.");
 
@@ -387,11 +388,17 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
     private async Task RunAsync()
     {
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_windowLifetime.Token);
+        Control? operationFocus = IsKeyboardFocusWithin ? FocusManager?.GetFocusedElement() as Control : null;
+        _restoreOperationFocus = false;
         _cancellation = cancellation;
         ProductOutputLocation.Text = string.Empty;
         ProductStatus.Text = "Preparing authored product...";
         ProductStatus.Classes.Set("viewer-warning", false);
         SetRunningControls();
+        if (operationFocus is not null)
+        {
+            ProductCancelButton.Focus();
+        }
         try
         {
             await _results.ClearAsync();
@@ -433,11 +440,19 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         }
         finally
         {
+            bool restoreFocus = (ProductCancelButton.IsKeyboardFocusWithin ||
+                (_restoreOperationFocus && ProductCloseButton.IsKeyboardFocusWithin)) &&
+                (IsActive || IsKeyboardFocusWithin);
+            _restoreOperationFocus = false;
             _cancellation = null;
             if (!_closing)
             {
                 ValidateRequest(preserveStatus: true);
                 SetRunningControls();
+                if (restoreFocus && operationFocus is { IsEnabled: true, IsVisible: true })
+                {
+                    operationFocus.Focus();
+                }
             }
         }
     }
@@ -505,8 +520,14 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         _cancellation?.Cancel();
         if (IsRunning)
         {
+            bool ownsFocus = ProductCancelButton.IsKeyboardFocusWithin;
+            _restoreOperationFocus |= ownsFocus;
             ProductStatus.Text = "Cancelling... waiting for the in-flight product frame and Viewer restoration.";
             ProductCancelButton.IsEnabled = false;
+            if (ownsFocus)
+            {
+                ProductCloseButton.Focus();
+            }
         }
     }
 

@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -17,6 +18,146 @@ public sealed class ViewerAuthoredRenderProductTests
 {
     private static readonly string[] ActionNames =
         ["ProductViewResultsButton", "ProductCancelButton", "ProductCloseButton", "ProductRenderButton"];
+
+    [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "cancel", "owned")]
+    [Arguments(true, "cancel", "owned")]
+    [Arguments(false, "cancel", "close")]
+    [Arguments(true, "cancel", "close")]
+    [Arguments(false, "cancel", "other")]
+    [Arguments(true, "cancel", "other")]
+    public async Task ProductRenderHandsFocusToCancelAndRestoresOnlyOwnedFocusAfterDrain(
+        bool dark, string outcome, string destination)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob(count: 1);
+        await RunUiAsync(async () =>
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var product = new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), "raw:color/half4", null, null);
+            var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings", [product]);
+            int renders = 0;
+            int published = 0;
+            int queries = 0;
+            CancellationToken observedToken = default;
+            var window = new AuthoredRenderProductWindow(0, 0, "Original renderer",
+                (_, _, _) =>
+                {
+                    queries++;
+                    return ValueTask.FromResult(snapshot);
+                },
+                async (request, _, token) =>
+                {
+                    await Assert.That(request.SettingsPath).IsEqualTo("/Render/Settings");
+                    await Assert.That(request.ProductPath).IsEqualTo("/Render/Product");
+                    renders++;
+                    if (renders == 1)
+                    {
+                        observedToken = token;
+                        entered.TrySetResult();
+                        await release.Task;
+                        if (outcome == "failure")
+                        {
+                            throw new IOException("Controlled product render refusal.");
+                        }
+                    }
+                    return job;
+                }, completed: (_, _) => published++)
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            Required<TextBox>(window, "ProductOutputFolder").Text = files.Root;
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                Button render = Required<Button>(window, "ProductRenderButton");
+                Button cancel = Required<Button>(window, "ProductCancelButton");
+                Button close = Required<Button>(window, "ProductCloseButton");
+                await WaitUntilAsync(() => render.IsEnabled);
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                await Assert.That(render.Focus()).IsTrue();
+                render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsRunning).IsTrue();
+                await Assert.That(render.IsEnabled).IsFalse();
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                if (outcome == "cancel")
+                {
+                    Control escapeTarget = cancel;
+                    if (destination == "close")
+                    {
+                        await Assert.That(close.Focus()).IsTrue();
+                        escapeTarget = close;
+                    }
+                    escapeTarget.RaiseEvent(new KeyEventArgs
+                    {
+                        RoutedEvent = InputElement.KeyDownEvent,
+                        Key = Key.Escape
+                    });
+                    await Assert.That(observedToken.IsCancellationRequested).IsTrue();
+                    await Assert.That(cancel.IsEnabled).IsFalse();
+                    await Assert.That(close.IsKeyboardFocusWithin).IsTrue();
+                    await Assert.That(window.IsVisible).IsTrue();
+                    await Assert.That(window.IsRunning).IsTrue();
+                }
+                Control expectedFocus = destination == "owned" ? render :
+                    destination == "close" ? close : otherAction;
+                if (destination == "close")
+                {
+                    await Assert.That(close.Focus()).IsTrue();
+                }
+                else if (destination == "other")
+                {
+                    other.Show();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(published).IsEqualTo(outcome == "success" ? 1 : 0);
+                await Assert.That(Required<Button>(window, "ProductViewResultsButton").IsEnabled)
+                    .IsEqualTo(outcome == "success");
+                await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
+                    .Contains(outcome == "success" ? "Completed" :
+                        outcome == "failure" ? "Controlled product render refusal." : "Cancelled.");
+                await Assert.That(renders).IsEqualTo(1);
+                await Assert.That(Required<ComboBox>(window, "ProductSelector").SelectedItem)
+                    .IsSameReferenceAs(product);
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                other.Close();
+                await Assert.That(render.Focus()).IsTrue();
+                render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(render.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(published).IsEqualTo(outcome == "success" ? 2 : 1);
+                await Assert.That(renders).IsEqualTo(2);
+                await Assert.That(queries).IsEqualTo(1);
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
 
     [Test]
     [Arguments(false, "success", "owned")]
