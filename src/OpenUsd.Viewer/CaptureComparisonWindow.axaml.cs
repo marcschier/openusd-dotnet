@@ -23,6 +23,7 @@ internal sealed partial class CaptureComparisonWindow : Window
     private string? _beforePath;
     private string? _afterPath;
     private ViewerCapturePresentation? _presentation;
+    private CaptureReviewDraft? _pendingReview;
     private bool _closing;
     private bool _picking;
     private bool _restoreOperationFocus;
@@ -46,6 +47,7 @@ internal sealed partial class CaptureComparisonWindow : Window
         Closed += (_, _) =>
         {
             DisposeImages();
+            _pendingReview = null;
             _closed.TrySetResult();
         };
     }
@@ -276,13 +278,13 @@ internal sealed partial class CaptureComparisonWindow : Window
     {
         using var cancellation = new CancellationTokenSource();
         _loadCancellation = cancellation;
-        CaptureReviewIdentity? previousBefore = null;
-        CaptureReviewIdentity? previousAfter = null;
         string previousNotes = ComparisonNotes.Text ?? string.Empty;
-        if (!presentationFile && previousNotes.Length != 0 && _presentation is { } previous)
+        if (_presentation is { } previous)
         {
-            previousBefore = CaptureReviewIdentity.From(previous.BeforePath, previous.Images.Before);
-            previousAfter = CaptureReviewIdentity.From(previous.AfterPath, previous.Images.After);
+            _pendingReview = previousNotes.Length == 0 ? null : new CaptureReviewDraft(
+                CaptureReviewIdentity.From(previous.BeforePath, previous.Images.Before),
+                CaptureReviewIdentity.From(previous.AfterPath, previous.Images.After),
+                previousNotes);
         }
         DisposeImages();
         UpdateAvailability();
@@ -299,11 +301,11 @@ internal sealed partial class CaptureComparisonWindow : Window
                     await _loadPair(beforePath, afterPath, cancellation.Token), ComparisonMode.SelectedIndex);
             ViewerCapturePair pair = presentation.Images;
             cancellation.Token.ThrowIfCancellationRequested();
-            if (previousBefore is not null &&
-                previousBefore == CaptureReviewIdentity.From(presentation.BeforePath, pair.Before) &&
-                previousAfter == CaptureReviewIdentity.From(presentation.AfterPath, pair.After))
+            if (!presentationFile && _pendingReview is { } draft &&
+                draft.Before == CaptureReviewIdentity.From(presentation.BeforePath, pair.Before) &&
+                draft.After == CaptureReviewIdentity.From(presentation.AfterPath, pair.After))
             {
-                presentation = presentation with { Notes = previousNotes };
+                presentation = presentation with { Notes = draft.Notes };
             }
             _beforeBitmap = CreateBitmap(pair.Before);
             _afterBitmap = CreateBitmap(pair.After);
@@ -319,6 +321,7 @@ internal sealed partial class CaptureComparisonWindow : Window
             ComparisonNotesExpander.IsExpanded = presentation.Notes.Length != 0;
             BeforeImage.Source = _beforeBitmap;
             AfterImage.Source = _afterBitmap;
+            _pendingReview = null;
             SetStatus(
                 $"A: {pair.Before.Width} x {pair.Before.Height}; B: {pair.After.Width} x {pair.After.Height}. " +
                 "Historical pixels only; no current scene/camera identity is asserted. " +
@@ -351,6 +354,8 @@ internal sealed partial class CaptureComparisonWindow : Window
             UpdateAvailability();
         }
     }
+
+    private sealed record CaptureReviewDraft(CaptureReviewIdentity Before, CaptureReviewIdentity After, string Notes);
 
     private sealed record CaptureReviewIdentity(string Path, int Width, int Height, string PixelSha256)
     {

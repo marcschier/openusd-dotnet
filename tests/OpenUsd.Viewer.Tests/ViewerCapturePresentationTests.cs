@@ -936,6 +936,154 @@ public sealed class ViewerCapturePresentationTests
 
     [Test]
     [NotInParallel]
+    [Arguments(false, "failure", "same")]
+    [Arguments(true, "failure", "same")]
+    [Arguments(false, "cancelled", "same")]
+    [Arguments(true, "cancelled", "same")]
+    [Arguments(false, "saved-file", "same")]
+    [Arguments(true, "saved-file", "same")]
+    [Arguments(false, "failure", "changed")]
+    [Arguments(true, "failure", "changed")]
+    [Arguments(false, "cancelled", "changed")]
+    [Arguments(true, "cancelled", "changed")]
+    [Arguments(false, "saved-file", "changed")]
+    [Arguments(true, "saved-file", "changed")]
+    [Arguments(false, "failure", "presentation")]
+    [Arguments(true, "failure", "presentation")]
+    [Arguments(false, "cancelled", "presentation")]
+    [Arguments(true, "cancelled", "presentation")]
+    [Arguments(false, "saved-file", "presentation")]
+    [Arguments(true, "saved-file", "presentation")]
+    public async Task FailedReloadRetainsNotesOnlyUntilASuccessfulVerifiedReplacement(
+        bool dark, string failure, string recovery)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        byte[] beforeFile = await File.ReadAllBytesAsync(fixture.Before);
+        byte[] afterFile = await File.ReadAllBytesAsync(fixture.After);
+        const string savedNotes = "Saved review is authoritative.";
+        const string draft = "Unsaved exact-pixel review.\nKeep after repeated read failures.";
+        await ViewerCapturePresentationFile.SaveAsync(fixture.Manifest,
+            (await fixture.LoadPresentationAsync(1)) with { Notes = savedNotes }, CancellationToken.None);
+        byte[] manifestFile = await File.ReadAllBytesAsync(fixture.Manifest);
+        string malformed = Path.Combine(fixture.Root, "malformed.usdcompare.json");
+        await File.WriteAllTextAsync(malformed, "{\"version\":1}");
+        await RunUiAsync(async () =>
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool refuse = false;
+            var window = new CaptureComparisonWindow(async (before, after, token) =>
+            {
+                if (refuse)
+                {
+                    entered.TrySetResult();
+                    await release.Task;
+                    token.ThrowIfCancellationRequested();
+                    throw new IOException("Controlled comparison retry refusal.");
+                }
+                return await ViewerCaptureComparison.LoadAsync(before, after, token);
+            })
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            Task? pending = null;
+            try
+            {
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                TextBox notes = Required<TextBox>(window, "ComparisonNotes");
+                notes.Text = draft;
+                refuse = true;
+                for (int attempt = 0; attempt < 2; attempt++)
+                {
+                    entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    pending = failure == "saved-file"
+                        ? window.LoadPresentationAsync(malformed)
+                        : window.LoadPairAsync(fixture.Before, fixture.After);
+                    if (failure != "saved-file")
+                    {
+                        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+                        await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+                        await Assert.That(notes.IsEnabled).IsFalse();
+                        await Assert.That(Required<Button>(window, "SavePresentationButton").IsEnabled).IsFalse();
+                        if (failure == "cancelled")
+                        {
+                            Required<Button>(window, "CancelComparisonButton")
+                                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                            await Assert.That(pending.IsCompleted).IsFalse();
+                        }
+                        release.TrySetResult();
+                    }
+                    await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                    await AssertNoPairAsync(window);
+                    await Assert.That(Required<TextBlock>(window, "ComparisonStatus").Text)
+                        .Contains(failure == "cancelled" ? "cancelled" : "Could not compare captures:");
+                    await Assert.That(fixture.ManifestDirectoryEntries())
+                        .IsEquivalentTo(["comparison.usdcompare.json"]);
+                    await Assert.That((await File.ReadAllBytesAsync(fixture.Manifest)).SequenceEqual(manifestFile))
+                        .IsTrue();
+                }
+                refuse = false;
+                if (recovery == "changed")
+                {
+                    byte[] changed = [.. BeforeRgba];
+                    changed[7] = 127;
+                    WritePng(fixture.Before, 3, 2, changed);
+                }
+                await (recovery == "presentation"
+                    ? window.LoadPresentationAsync(fixture.Manifest)
+                    : window.LoadPairAsync(fixture.Before, fixture.After));
+                string expectedNotes = recovery switch
+                {
+                    "same" => draft,
+                    "presentation" => savedNotes,
+                    _ => string.Empty
+                };
+                await Assert.That(notes.Text).IsEqualTo(expectedNotes);
+                await Assert.That(notes.IsEnabled).IsTrue();
+                await Assert.That(Required<Expander>(window, "ComparisonNotesExpander").IsExpanded)
+                    .IsEqualTo(expectedNotes.Length != 0);
+                if (recovery == "changed")
+                {
+                    await File.WriteAllBytesAsync(fixture.Before, beforeFile);
+                }
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                await Assert.That(notes.Text).IsEqualTo(expectedNotes);
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+                string saved = Path.Combine(fixture.Root, "out", "retry.usdcompare.json");
+                await window.SavePresentationAsync(saved);
+                ViewerCapturePresentation reopened =
+                    await ViewerCapturePresentationFile.LoadAsync(saved, CancellationToken.None);
+                await Assert.That(reopened.Notes).IsEqualTo(expectedNotes);
+                await Assert.That(reopened.Images.Before.Rgba.SequenceEqual(BeforeRgba)).IsTrue();
+                await Assert.That(reopened.Images.After.Rgba.SequenceEqual(AfterRgba)).IsTrue();
+                notes.Text = string.Empty;
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                await Assert.That(notes.Text).IsEqualTo(string.Empty);
+            }
+            finally
+            {
+                release.TrySetResult();
+                if (pending is not null)
+                {
+                    await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+            await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+        });
+        await Assert.That((await File.ReadAllBytesAsync(fixture.Before)).SequenceEqual(beforeFile)).IsTrue();
+        await Assert.That((await File.ReadAllBytesAsync(fixture.After)).SequenceEqual(afterFile)).IsTrue();
+    }
+
+    [Test]
+    [NotInParallel]
     public async Task ComparisonWindowSavesAndReopensHistoricalPairWithoutPublishingPartialState()
     {
         using var fixture = await Fixture.CreateAsync();

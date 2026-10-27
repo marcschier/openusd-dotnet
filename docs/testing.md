@@ -770,6 +770,14 @@ dimensions with the same RGBA bytes, another path and reversed capture order cle
 Opening a saved comparison uses its stored notes instead of the editor's unsaved changes.
 Each case checks displayed pixels, display mode, saved/reopened notes and pixels, and close cleanup.
 The existing failed/cancelled-load cases still require an empty pair and disabled notes editor.
+`FailedReloadRetainsNotesOnlyUntilASuccessfulVerifiedReplacement` checks two consecutive
+cancelled loads, reader refusals or malformed saved-file opens in both themes. The window
+retains only note text and ordered capture identities while no pair is displayed. A verified
+same-pair retry restores the exact draft; a changed pair clears it, and a successfully opened
+saved comparison supplies its own notes. Returning to the original captures cannot resurrect
+a retired draft. Explicitly clearing notes remains effective across the next reload.
+The cases verify saved/reopened notes and original pixels, unchanged source files, no partial
+publication and image disposal on close.
 These are historical-image association checks, not scene or source-authenticity qualification.
 
 `CaptureWorkerTests.QueuedDiskCancellationCompletesWithoutWaitingForUnrelatedActiveCaptureAndPreservesRetry`

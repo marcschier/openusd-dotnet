@@ -2005,8 +2005,13 @@ prim, camera or current scene. Compare keeps edited notes only when both ordered
 dimensions and decoded pixel checksums still match the displayed pair. Re-encoding a PNG
 without changing its decoded pixels keeps the notes; changing either capture or its path
 clears them. Opening a saved comparison restores that file's notes rather than the unsaved
-editor text. Failed or cancelled loading clears the pair and notes. Save failure keeps the
-displayed pair and notes. Notes are not rendered as markup.
+editor text. Failed or cancelled loading clears the displayed pair and disables the notes
+editor, but retains the note text and capture identities in this window. A successful Compare
+restores those notes only after both ordered paths, dimensions and decoded pixel checksums
+match again. A successful replacement pair or saved comparison retires that draft; returning
+to the earlier captures does not resurrect it. Closing the window discards the draft without
+retaining decoded images. Save failure keeps the displayed pair and notes.
+Notes are not rendered as markup.
 **Open comparison** reopens both captures without a stage, renderer or the originating document.
 It verifies both pixel checksums and dimensions before displaying either image. A missing or
 changed capture fails explicitly; a different PNG encoding with identical decoded pixels remains
