@@ -443,11 +443,11 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.CameraBookmarks.cs",
-      "sha256": "8b444f37cfec412c6c8dc1a4b7676f5186e2be41d2b03edef3410b6be096d43d"
+      "sha256": "f67ab908198b840ca59063e3d43dd4a45d33afc31b3f3ddc695a1219cfee3033"
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
-      "sha256": "689fe2d6626f66e453ec7b3eab984beeef009ae0c9be7fe21e5e34a826e14dc5"
+      "sha256": "c936438d880d1272c8b23bc66cf51afd109b44eca6c973497f1c9fff61cc3f06"
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",
