@@ -123,6 +123,11 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     public RenderDiskJobRequest CreateJob(
         string outputDirectory, RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float,
         RenderDiskJobLimits? limits = null)
+        => CreateJob(outputDirectory, hdrColorFormat, limits, frameEncoded: null);
+
+    internal RenderDiskJobRequest CreateJob(
+        string outputDirectory, RenderHdrColorFormat hdrColorFormat, RenderDiskJobLimits? limits,
+        Action<int, int>? frameEncoded)
     {
         if (hdrColorFormat == RenderHdrColorFormat.Exr)
         {
@@ -136,7 +141,10 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             }
         }
         return new RenderDiskJobRequest(outputDirectory, _states, IncludeDeviceDepth, IncludeHdrColor,
-            hdrColorFormat, limits, this);
+            hdrColorFormat, limits, this)
+        {
+            FrameEncoded = frameEncoded
+        };
     }
 
     internal static (RenderPurpose IncludedPurposes, IReadOnlyList<RenderProductOutputBinding> Outputs)

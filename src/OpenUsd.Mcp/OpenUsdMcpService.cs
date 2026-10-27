@@ -36,14 +36,15 @@ internal interface IOpenUsdMcpService
 
     ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
         RenderSequenceRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Action<int, int>? frameEncoded = null);
 
     ValueTask<McpRenderSequenceResultDto> RenderPhysicsSequenceAsync(
-        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken);
+        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken,
+        Action<int, int>? frameEncoded = null);
 
     ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
         RenderProductCaptureRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Action<int, int>? frameEncoded = null);
 
     ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(
         ReadSequenceFrameRequest request,

@@ -9,7 +9,8 @@ namespace OpenUsd.Mcp;
 internal sealed partial class OpenUsdMcpService
 {
     public async ValueTask<McpRenderSequenceResultDto> RenderPhysicsSequenceAsync(
-        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken)
+        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken,
+        Action<int, int>? frameEncoded = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ValidateString(request.ScenarioIdentity, 256, nameof(request.ScenarioIdentity));
@@ -84,7 +85,10 @@ internal sealed partial class OpenUsdMcpService
                 string id = Guid.NewGuid().ToString("N");
                 var job = new RenderDiskJobRequest(Path.Combine(parent, id), frames,
                     request.IncludeDeviceDepth, request.IncludeHdrColor,
-                    new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes));
+                    new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes))
+                {
+                    FrameEncoded = frameEncoded
+                };
                 _captureWorker ??= services.GetRequiredService<CaptureWorker>();
                 RenderDiskJobResult result;
                 try

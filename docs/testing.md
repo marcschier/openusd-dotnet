@@ -107,6 +107,19 @@ exclusion, previous-output survival, successful replacement, and temporary stagi
 covered for published and source-run layouts. Commands and native prerequisites are in
 [OpenUSD MCP server](mcp.md#testing).
 
+`RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain`
+uses the official protocol for sequence, authored-product and physics-recording requests.
+It checks frame-count notifications below completion, successful result readiness, refusal,
+and cancellation with delayed cleanup. `McpRenderProgressTests` holds a slow notification
+while 4,096 frames are reported: only the newest pending count survives, and the result
+waits for delivery. Transport failure cancels rendering but still waits for cleanup;
+simultaneous rendering and delivery failures retain both causes.
+`FrameProgressFollowsClosedEncodedFilesButNeverClaimsPublication` exclusively opens and
+decodes each real staged PNG during its callback, checks exact counts, and verifies that
+cancellation removes staging without publishing a job. The real sequence/product service
+tests check every encoded-frame callback. These are managed encoding, ownership and protocol
+checks; they do not qualify native physics execution or elapsed-time estimates.
+
 `OpenUsdMcpToolsTests.SimulationDtoRetainsTheOptionalOriginalHostReviewIdentity` checks both
 present and absent original review identities. `OfficialProtocolDiscoversSchemasInvokesAndReadsResources`
 also round-trips recorded frame and contact-sheet identities through the official MCP client/server,

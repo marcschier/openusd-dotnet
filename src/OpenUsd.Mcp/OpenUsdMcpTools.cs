@@ -451,7 +451,8 @@ internal sealed class OpenUsdMcpTools(
         RenderSequenceRequest request,
         CancellationToken cancellationToken,
         RequestContext<CallToolRequestParams>? context = null) =>
-        InvokeAsync(token => service.RenderSequenceAsync(request, token), cancellationToken, context);
+        InvokeRenderAsync((progress, token) => service.RenderSequenceAsync(request, token, progress),
+            context, cancellationToken);
 
     [McpServerTool(
         Name = "render_physics_sequence",
@@ -481,7 +482,8 @@ internal sealed class OpenUsdMcpTools(
         RenderPhysicsSequenceRequest request,
         CancellationToken cancellationToken,
         RequestContext<CallToolRequestParams>? context = null) =>
-        InvokeAsync(token => service.RenderPhysicsSequenceAsync(request, token), cancellationToken, context);
+        InvokeRenderAsync((progress, token) => service.RenderPhysicsSequenceAsync(request, token, progress),
+            context, cancellationToken);
 
     [McpServerTool(
         Name = "render_product",
@@ -498,7 +500,8 @@ internal sealed class OpenUsdMcpTools(
         RenderProductCaptureRequest request,
         CancellationToken cancellationToken,
         RequestContext<CallToolRequestParams>? context = null) =>
-        InvokeAsync(token => service.RenderProductAsync(request, token), cancellationToken, context);
+        InvokeRenderAsync((progress, token) => service.RenderProductAsync(request, token, progress),
+            context, cancellationToken);
 
     [McpServerTool(
         Name = "list_sequence_jobs",
@@ -610,6 +613,22 @@ internal sealed class OpenUsdMcpTools(
             "path.")] PresentSceneRequest request,
         CancellationToken cancellationToken) =>
         InvokeAsync(token => service.PresentSceneAsync(request, token), cancellationToken);
+
+    private ValueTask<CallToolResult> InvokeRenderAsync(
+        Func<Action<int, int>?, CancellationToken, ValueTask<McpRenderSequenceResultDto>> operation,
+        RequestContext<CallToolRequestParams>? context, CancellationToken cancellationToken)
+        => InvokeAsync(token => context?.Params.ProgressToken is { } progressToken
+            ? McpRenderProgress.RunAsync(
+                (progress, innerToken) => operation(progress, innerToken),
+                async (completed, total, innerToken) =>
+                    await context.Server.NotifyProgressAsync(progressToken, new ProgressNotificationValue
+                    {
+                        Progress = (float)completed / (total + 1),
+                        Total = 1,
+                        Message = $"{completed}/{total} frames encoded in staging; publication not confirmed."
+                    }, cancellationToken: innerToken).ConfigureAwait(false),
+                token)
+            : operation(null, token), cancellationToken, context);
 
     private async ValueTask<CallToolResult> InvokeAsync<T>(
         Func<CancellationToken, ValueTask<T>> operation,

@@ -47,6 +47,7 @@ public sealed class RenderDiskJobLimits
 public sealed class RenderDiskJobRequest
 {
     internal const int ExpandedCaptureManagedBytesPerPixel = 20;
+    internal Action<int, int>? FrameEncoded { get; init; }
 
     internal RenderDiskJobRequest(
         string outputDirectory, IReadOnlyList<StageRenderState> frames,

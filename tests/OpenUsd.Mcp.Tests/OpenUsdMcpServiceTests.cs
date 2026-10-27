@@ -799,6 +799,7 @@ public sealed class OpenUsdMcpServiceTests
         using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
         McpSessionDto session = await service.OpenSceneAsync(
             new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        var progress = new List<(int, int)>();
         McpRenderSequenceResultDto result = await service.RenderSequenceAsync(new RenderSequenceRequest
         {
             SessionId = session.SessionId,
@@ -809,8 +810,9 @@ public sealed class OpenUsdMcpServiceTests
             StartTimeCode = 2,
             TimeStep = 0.5,
             FrameCount = 20
-        }, default);
+        }, default, (completed, total) => progress.Add((completed, total)));
 
+        await Assert.That(progress.SequenceEqual(Enumerable.Range(1, 20).Select(index => (index, 20)))).IsTrue();
         await Assert.That(result.FrameCount).IsEqualTo(20);
         await Assert.That(result.Generation).IsEqualTo(session.Generation);
         await Assert.That(result.StageRevision).IsEqualTo(session.StageRevision);

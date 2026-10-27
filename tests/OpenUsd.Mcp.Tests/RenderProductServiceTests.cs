@@ -29,7 +29,10 @@ public sealed class RenderProductServiceTests
         using var service = new OpenUsdMcpService(workspace, provider, Options(files));
         McpSessionDto session = await service.OpenSceneAsync(
             new OpenSceneRequest { SourcePath = "scene.usda" }, default);
-        McpRenderSequenceResultDto job = await service.RenderProductAsync(Request(session, 3), default);
+        var progress = new List<(int, int)>();
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(
+            Request(session, 3), default, (completed, total) => progress.Add((completed, total)));
+        await Assert.That(progress.SequenceEqual([(1, 3), (2, 3), (3, 3)])).IsTrue();
         await Assert.That(job.AuthoredProduct!.ProductPath).IsEqualTo("/Render/Product");
         await Assert.That(job.AuthoredProduct.MaterialBindingPurpose).IsEqualTo("full");
         await Assert.That(job.AuthoredProduct.Outputs.Select(static item => item.SourceName)

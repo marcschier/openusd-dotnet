@@ -9,6 +9,66 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class RenderDiskJobTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FrameProgressFollowsClosedEncodedFilesButNeverClaimsPublication(bool cancelAfterFirst)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-frame-progress-").FullName;
+        string destination = Path.Combine(root, "sequence");
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        using var cancellation = new CancellationTokenSource();
+        var counts = new List<int>();
+        var pixels = new List<string>();
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 1, 2, 3, 255 }, Rgba8RowOrder.TopDown));
+        var request = new RenderDiskJobRequest(destination, [state, state, state])
+        {
+            FrameEncoded = (completed, total) =>
+            {
+                if (Directory.Exists(destination) || total != 3)
+                {
+                    throw new InvalidOperationException("Progress claimed an incorrect extent or published job.");
+                }
+                string staging = Directory.GetDirectories(root).Single();
+                string file = Path.Combine(staging, $"frame-{completed - 1:D6}.png");
+                using var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+                byte[] encoded = new byte[checked((int)input.Length)];
+                input.ReadExactly(encoded);
+                pixels.Add(Convert.ToHexString(PngRgba8Reader.Decode(encoded).Pixels));
+                counts.Add(completed);
+                if (cancelAfterFirst)
+                {
+                    cancellation.Cancel();
+                }
+            }
+        };
+        try
+        {
+            if (cancelAfterFirst)
+            {
+                await Assert.That(() => RenderDiskJob.Execute(request, source, cancellation.Token))
+                    .Throws<OperationCanceledException>();
+                await Assert.That(counts.SequenceEqual([1])).IsTrue();
+                await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+            }
+            else
+            {
+                RenderDiskJobResult result = RenderDiskJob.Execute(request, source);
+                await Assert.That(counts.SequenceEqual([1, 2, 3])).IsTrue();
+                await Assert.That(result.Frames.Count).IsEqualTo(3);
+                await Assert.That(File.Exists(Path.Combine(destination, "manifest.json"))).IsTrue();
+            }
+            await Assert.That(pixels.All(pixel => pixel == "010203FF")).IsTrue();
+            await Assert.That(source.Calls).IsEqualTo(cancelAfterFirst ? 1 : 3);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments(-1, 0)]
     [Arguments(-1, 2)]
     [Arguments(999, 0)]

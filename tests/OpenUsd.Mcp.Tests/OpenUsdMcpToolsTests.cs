@@ -23,11 +23,21 @@ public sealed class OpenUsdMcpToolsTests
     };
 
     [Test]
-    [Arguments("success")]
-    [Arguments("refused")]
-    [Arguments("cancelled")]
-    [Arguments("pre-cancelled")]
-    public async Task RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain(string outcome)
+    [Arguments("success", false, "render_sequence")]
+    [Arguments("success", true, "render_sequence")]
+    [Arguments("refused", false, "render_sequence")]
+    [Arguments("refused", true, "render_sequence")]
+    [Arguments("cancelled", false, "render_sequence")]
+    [Arguments("cancelled", true, "render_sequence")]
+    [Arguments("pre-cancelled", false, "render_sequence")]
+    [Arguments("success", true, "render_product")]
+    [Arguments("refused", true, "render_product")]
+    [Arguments("cancelled", true, "render_product")]
+    [Arguments("success", true, "render_physics_sequence")]
+    [Arguments("refused", true, "render_physics_sequence")]
+    [Arguments("cancelled", true, "render_physics_sequence")]
+    public async Task RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain(
+        string outcome, bool encodedFrame, string toolName)
     {
         using var cancellation = new CancellationTokenSource();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -37,7 +47,7 @@ public sealed class OpenUsdMcpToolsTests
         var progress = new RecordedProgress();
         var service = new FakeOpenUsdMcpService
         {
-            SequenceOperation = async (_, token) =>
+            RenderOperation = async token =>
             {
                 try
                 {
@@ -92,12 +102,22 @@ public sealed class OpenUsdMcpToolsTests
         Task<CallToolResult> pending = client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
             RequestMethods.ToolsCall, new CallToolRequestParams
             {
-                Name = "render_sequence",
+                Name = toolName,
                 Meta = new System.Text.Json.Nodes.JsonObject { ["progressToken"] = "render" },
                 Arguments = new Dictionary<string, JsonElement>
                 {
-                    ["request"] = JsonSerializer.SerializeToElement(
-                        new { sessionId = "session-1", generation = 2, stageRevision = 3 })
+                    ["request"] = toolName == "render_physics_sequence"
+                        ? JsonSerializer.SerializeToElement(new
+                        {
+                            sessionId = "session-1",
+                            generation = 2,
+                            stageRevision = 3,
+                            scenarioIdentity = "progress-test",
+                            expectedMetersPerUnit = 1,
+                            expectedUpAxis = "Y"
+                        })
+                        : JsonSerializer.SerializeToElement(
+                            new { sessionId = "session-1", generation = 2, stageRevision = 3 })
                 }
             }, requestId: new RequestId("render"),
             cancellationToken: outcome == "pre-cancelled" ? cancellation.Token : lifetime.Token).AsTask();
@@ -117,6 +137,19 @@ public sealed class OpenUsdMcpToolsTests
             await Assert.That(progress.Values[0].Progress).IsEqualTo(0f);
             await Assert.That(progress.Values[0].Message).Contains("checks pending");
             await Assert.That(service.LastCancellationToken.CanBeCanceled).IsTrue();
+            if (encodedFrame)
+            {
+                Action<int, int> report = service.FrameEncoded ??
+                    throw new InvalidOperationException("The frame progress observer was not supplied.");
+                report(1, 2);
+                await progress.FrameReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(progress.Values[1].Progress).IsEqualTo(1f / 3);
+                await Assert.That(progress.Values[1].Total).IsEqualTo(1f);
+                await Assert.That(progress.Values[1].Message)
+                    .IsEqualTo("1/2 frames encoded in staging; publication not confirmed.");
+                await Assert.That(pending.IsCompleted).IsFalse();
+            }
+            int priorReports = encodedFrame ? 2 : 1;
             if (outcome == "cancelled")
             {
                 await client.SendMessageAsync(new JsonRpcNotification
@@ -127,11 +160,11 @@ public sealed class OpenUsdMcpToolsTests
                 }, lifetime.Token);
                 await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 await Assert.That(drained.Task.IsCompleted).IsFalse();
-                await Assert.That(progress.Values.Length).IsEqualTo(1);
+                await Assert.That(progress.Values.Length).IsEqualTo(priorReports);
                 release.TrySetResult();
                 await Assert.That(async () => await pending).Throws<OperationCanceledException>();
                 await drained.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                await Assert.That(progress.Values.Length).IsEqualTo(1);
+                await Assert.That(progress.Values.Length).IsEqualTo(priorReports);
                 return;
             }
             release.TrySetResult();
@@ -141,12 +174,12 @@ public sealed class OpenUsdMcpToolsTests
             {
                 await progress.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             }
-            await Assert.That(progress.Values.Length).IsEqualTo(outcome == "success" ? 2 : 1);
+            await Assert.That(progress.Values.Length).IsEqualTo(priorReports + (outcome == "success" ? 1 : 0));
             if (outcome == "success")
             {
-                await Assert.That(progress.Values[1].Progress).IsEqualTo(1f);
-                await Assert.That(progress.Values[1].Total).IsEqualTo(1f);
-                await Assert.That(progress.Values[1].Message).IsEqualTo("Result ready.");
+                await Assert.That(progress.Values[^1].Progress).IsEqualTo(1f);
+                await Assert.That(progress.Values[^1].Total).IsEqualTo(1f);
+                await Assert.That(progress.Values[^1].Message).IsEqualTo("Result ready.");
                 await Assert.That(result.StructuredContent!.Value.GetProperty("jobId").GetString()).IsEqualTo("job-1");
             }
             else
@@ -979,11 +1012,13 @@ public sealed class OpenUsdMcpToolsTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Started { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource FrameReported { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal ProgressNotificationValue[] Values => _values.ToArray();
 
         internal async Task AssertSuccessfulLifecycleAsync()
         {
-            await Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.WhenAll(Started.Task, Completed.Task).WaitAsync(TimeSpan.FromSeconds(5));
             // The SDK dispatches notification callbacks concurrently, independently of wire order.
             ProgressNotificationValue[] values = Values.OrderBy(static value => value.Progress).ToArray();
             await Assert.That(values.Select(static value => value.Progress).SequenceEqual([0f, 1f])).IsTrue();
@@ -1006,8 +1041,15 @@ public sealed class OpenUsdMcpToolsTests
         public void Report(ProgressNotificationValue value)
         {
             _values.Enqueue(value);
-            Started.TrySetResult();
-            if (_values.Count == 2)
+            if (value.Progress == 0)
+            {
+                Started.TrySetResult();
+            }
+            if (value.Progress is > 0 and < 1)
+            {
+                FrameReported.TrySetResult();
+            }
+            if (value.Progress == 1)
             {
                 Completed.TrySetResult();
             }
@@ -1062,10 +1104,11 @@ public sealed class OpenUsdMcpToolsTests
 
 internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
 {
-    internal Func<RenderSequenceRequest, CancellationToken, ValueTask<McpRenderSequenceResultDto>>?
-        SequenceOperation
+    internal Func<CancellationToken, ValueTask<McpRenderSequenceResultDto>>?
+        RenderOperation
     { get; init; }
     internal McpCaptureResultDto? CaptureResult { get; init; }
+    internal Action<int, int>? FrameEncoded { get; private set; }
 
     internal Exception? GetSceneException { get; init; }
 
@@ -1150,13 +1193,14 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
 
     public ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
         RenderSequenceRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Action<int, int>? frameEncoded = null)
     {
         LastCancellationToken = cancellationToken;
         LastSequenceRequest = request;
-        if (SequenceOperation is { } operation)
+        FrameEncoded = frameEncoded;
+        if (RenderOperation is { } operation)
         {
-            return operation(request, cancellationToken);
+            return operation(cancellationToken);
         }
         return ValueTask.FromResult(new McpRenderSequenceResultDto(
             request.SessionId, request.Generation, request.StageRevision, "job-1",
@@ -1164,9 +1208,14 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
     }
 
     public ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
-        RenderProductCaptureRequest request, CancellationToken cancellationToken)
+        RenderProductCaptureRequest request, CancellationToken cancellationToken, Action<int, int>? frameEncoded = null)
     {
         LastCancellationToken = cancellationToken;
+        FrameEncoded = frameEncoded;
+        if (RenderOperation is { } operation)
+        {
+            return operation(cancellationToken);
+        }
         return ValueTask.FromResult(new McpRenderSequenceResultDto(
             request.SessionId, request.Generation, request.StageRevision, "product-1",
             "session-1/renders/product-1", "session-1/renders/product-1/manifest.json", request.FrameCount, 2048, [])
@@ -1179,10 +1228,16 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
     }
 
     public ValueTask<McpRenderSequenceResultDto> RenderPhysicsSequenceAsync(
-        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken)
+        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken,
+        Action<int, int>? frameEncoded = null)
     {
         LastCancellationToken = cancellationToken;
         LastPhysicsRequest = request;
+        FrameEncoded = frameEncoded;
+        if (RenderOperation is { } operation)
+        {
+            return operation(cancellationToken);
+        }
         return ValueTask.FromResult(new McpRenderSequenceResultDto(
             request.SessionId, request.Generation, request.StageRevision, "physics-1",
             "session-1/renders/physics-1", "session-1/renders/physics-1/manifest.json", request.FrameCount, 2048, []));

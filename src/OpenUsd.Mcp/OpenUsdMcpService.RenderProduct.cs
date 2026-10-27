@@ -8,7 +8,7 @@ namespace OpenUsd.Mcp;
 internal sealed partial class OpenUsdMcpService
 {
     public async ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
-        RenderProductCaptureRequest request, CancellationToken cancellationToken)
+        RenderProductCaptureRequest request, CancellationToken cancellationToken, Action<int, int>? frameEncoded = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.FrameCount is < 1 or > 4096 || !double.IsFinite(request.StartTimeCode) ||
@@ -67,7 +67,8 @@ internal sealed partial class OpenUsdMcpService
             try
             {
                 job = plan.CreateJob(Path.Combine(parent, id), format,
-                    new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes));
+                    new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes),
+                    frameEncoded);
             }
             catch (NotSupportedException exception)
             {

@@ -14,7 +14,7 @@ internal sealed partial class OpenUsdMcpService
     private readonly Dictionary<string, CompletedSequence> _sequences = new(StringComparer.Ordinal);
 
     public async ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
-        RenderSequenceRequest request, CancellationToken cancellationToken)
+        RenderSequenceRequest request, CancellationToken cancellationToken, Action<int, int>? frameEncoded = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         RenderHdrColorFormat hdrColorFormat = request.HdrColorFormat switch
@@ -90,7 +90,10 @@ internal sealed partial class OpenUsdMcpService
             string output = Path.Combine(parent, id);
             var job = new RenderDiskJobRequest(output, frames, request.IncludeDeviceDepth, request.IncludeHdrColor,
                 hdrColorFormat,
-                new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes));
+                new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes))
+            {
+                FrameEncoded = frameEncoded
+            };
             _captureWorker ??= services.GetRequiredService<CaptureWorker>();
             RenderDiskJobResult result;
             try
