@@ -193,12 +193,14 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         }
         CompletedRenderJobWindow window = create();
         _preview = window;
+        bool restoreFocus = false;
+        window.Closing += (_, _) => restoreFocus = window.IsKeyboardFocusWithin;
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_preview, window))
             {
                 _preview = null;
-                if (!_closing && IsVisible)
+                if (restoreFocus && !_closing && IsVisible)
                 {
                     Activate();
                     (returnFocus.IsEnabled ? returnFocus : HistoryCloseButton).Focus();

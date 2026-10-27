@@ -655,6 +655,65 @@ public sealed class ViewerImportedRenderJobTests
     }
 
     [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task GalleryClosePreservesFocusMovedToHistoryOrAnotherWindow(bool dark, bool external)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult original = Emit(files.Root, 1, new Source());
+        var history = new ViewerCompletedJobHistory();
+        history.Publish(original, "Original process-local result");
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedJobHistoryWindow(history)
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            var otherEditor = new TextBox();
+            var otherWindow = new Window { Content = otherEditor };
+            window.Show();
+            try
+            {
+                await Assert.That(Required<Button>(window, "HistoryImportButton").Focus()).IsTrue();
+                await window.ImportManifestAsync(Path.Combine(original.OutputDirectory, "manifest.json"));
+                CompletedRenderJobWindow gallery = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
+                await Assert.That(Required<Button>(gallery, "ResultsCloseButton").IsKeyboardFocusWithin).IsTrue();
+                TextBox target = external ? otherEditor : Required<TextBox>(window, "HistoryOutput");
+                if (external)
+                {
+                    otherWindow.Show();
+                }
+                else
+                {
+                    window.Activate();
+                }
+                await Assert.That(target.Focus()).IsTrue();
+                await Assert.That(gallery.IsKeyboardFocusWithin).IsFalse();
+
+                await gallery.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+                await Assert.That(target.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(gallery.IsVisible).IsFalse();
+                await Assert.That(window.OwnedWindows.OfType<CompletedRenderJobWindow>()).IsEmpty();
+                await Assert.That(history.Snapshot().Count).IsEqualTo(1);
+                await Assert.That(Required<Button>(window, "HistoryImportButton").IsEnabled).IsTrue();
+            }
+            finally
+            {
+                otherWindow.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task FailedManifestImportRestoresKeyboardRetryWithoutStealingMovedFocus(bool dark)

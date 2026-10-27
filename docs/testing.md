@@ -637,6 +637,13 @@ Text input at both endpoints and Ctrl+A retain the complete edited text; saving 
 those notes and the exact decoded historical pixels. Closing clears both image sources.
 These are managed headless control/filesystem checks, not native OS-input or screen-reader qualification.
 
+`ViewerImportedRenderJobTests.GalleryClosePreservesFocusMovedToHistoryOrAnotherWindow`
+checks both themes with focus moved to the original output field or a separate editor window
+before the gallery closes. Neither is replaced by Import/View focus. Existing gallery-return
+cases still require the originating Import/View action, or Close when View is unavailable,
+when the closing gallery owns keyboard focus. These are headless ownership checks, not
+physical window-manager qualification.
+
 `ViewerCapturePresentationTests.RecompareKeepsEditedNotesOnlyForTheSameVerifiedCapturePair`
 checks the actual Compare action in both themes. Unsaved edits survive an unchanged reload
 or a PNG re-encoding with identical decoded pixels. Changed before/after pixels, changed

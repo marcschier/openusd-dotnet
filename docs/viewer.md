@@ -1962,7 +1962,9 @@ and hash before and after loading. A changed descriptor requires explicit reimpo
 Failure publishes no partial sheet and allows retry after the files are restored. Invalid manifest
 import leaves an already open gallery and the process-local list unchanged.
 Keyboard import moves focus to Close while reading and restores Import after refusal, unless
-focus has moved elsewhere. A successful import focuses its gallery; closing it returns to the history actions.
+focus has moved elsewhere. A successful import focuses its gallery; closing it returns to its
+originating history action only while the gallery still owns keyboard focus. Focus moved to
+another history control or another window is kept.
 Loading runs off the UI thread, observes cancellation and is drained before the owning history window
 closes. Closing either window releases decoded thumbnails. There is no directory scan, automatic
 restart discovery, asset/config resolution, source replay, effective-request comparison or certification
