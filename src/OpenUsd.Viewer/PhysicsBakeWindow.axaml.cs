@@ -45,6 +45,7 @@ internal sealed partial class PhysicsBakeWindow : Window
         BakeStartInput.TextChanged += (_, _) => Revalidate();
         BakeEndInput.TextChanged += (_, _) => Revalidate();
         BakeStrideInput.TextChanged += (_, _) => Revalidate();
+        Opened += (_, _) => BakeDestinationInput.Focus();
         Revalidate();
     }
 

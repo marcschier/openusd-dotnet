@@ -1009,6 +1009,8 @@ including fractions below 0.001 and adjacent-double time codes; it does not roun
 or convert them to seconds. Collecting or cancelling the request does not write the destination.
 At the minimum window size, the form scrolls independently of the wrapping validation message
 and fixed Cancel/Bake buttons. The form supports standard keyboard paging; Escape cancels.
+The destination field owns initial keyboard focus. An invalid range keeps Bake disabled
+and the dialog open when Enter is pressed; focused Cancel and Escape return no request.
 
 A running bake shows a progress bar and an enabled **Cancel Bake** button next to it. The bake holds
 the transport command gate for its whole duration, so cancelling deliberately does not go through

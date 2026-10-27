@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Styling;
+using Avalonia.Threading;
 
 namespace OpenUsd.Viewer.Tests;
 
@@ -13,6 +14,101 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerPhysicsBakeWindowTests
 {
     private static readonly string[] FooterNames = ["BakeValidationText", "BakeCancelButton", "BakeConfirmButton"];
+
+    [Test]
+    [Arguments(false, "bake")]
+    [Arguments(true, "bake")]
+    [Arguments(false, "cancel")]
+    [Arguments(true, "cancel")]
+    [Arguments(false, "escape")]
+    [Arguments(true, "escape")]
+    public async Task ModalKeyboardWorkflowFocusesDestinationAndRefusesInvalidRequestsWithoutWritingFiles(
+        bool dark, string action)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        string destination = Path.Combine(files.Root, "destination.usda");
+        const string original = "#usda 1.0\n# Collecting a bake request must leave this file untouched.\n";
+        await File.WriteAllTextAsync(destination, original);
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var owner = new Window { RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light };
+            var window = new PhysicsBakeWindow(0, 48, destination)
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            owner.Show();
+            Task<ViewerPhysicsBakeRequest?> completion = window.ShowDialog<ViewerPhysicsBakeRequest?>(owner);
+            try
+            {
+                window.UpdateLayout();
+                TextBox path = Required<TextBox>(window, "BakeDestinationInput");
+                TextBox start = Required<TextBox>(window, "BakeStartInput");
+                TextBox end = Required<TextBox>(window, "BakeEndInput");
+                TextBox stride = Required<TextBox>(window, "BakeStrideInput");
+                Button bake = Required<Button>(window, "BakeConfirmButton");
+                await Assert.That(path.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                start.Text = "4";
+                end.Text = "3";
+                stride.Text = "2";
+                Required<ComboBox>(window, "BakePolicySelector").SelectedIndex = 2;
+                Required<CheckBox>(window, "BakeSaveCheckBox").IsChecked = false;
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                await Assert.That(end.Focus()).IsTrue();
+                await Assert.That(bake.IsEnabled).IsFalse();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await Assert.That(window.IsVisible).IsTrue();
+                await Assert.That(completion.IsCompleted).IsFalse();
+                await Assert.That(end.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(Required<TextBlock>(window, "BakeValidationText").Text)
+                    .IsEqualTo("The bake end time code must not precede the start time code.");
+                end.Text = "12";
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                await Assert.That(bake.IsEnabled).IsTrue();
+                Control finalTarget = action switch
+                {
+                    "bake" => bake,
+                    "cancel" => Required<Button>(window, "BakeCancelButton"),
+                    _ => start
+                };
+                await Assert.That(finalTarget.Focus()).IsTrue();
+                Key key = action == "escape" ? Key.Escape : Key.Enter;
+                PhysicalKey physical = action == "escape" ? PhysicalKey.Escape : PhysicalKey.Enter;
+                window.KeyPress(key, RawInputModifiers.None, physical, null);
+                if (window.IsVisible)
+                {
+                    window.KeyRelease(key, RawInputModifiers.None, physical, null);
+                }
+                await Assert.That(window.IsVisible).IsFalse();
+                ViewerPhysicsBakeRequest? request = await completion;
+                if (action == "bake")
+                {
+                    await Assert.That(request).IsNotNull();
+                    await Assert.That(request!.DestinationLayerIdentifier).IsEqualTo(destination);
+                    await Assert.That(request.StartTimeCode).IsEqualTo(4d);
+                    await Assert.That(request.EndTimeCode).IsEqualTo(12d);
+                    await Assert.That(request.SampleStride).IsEqualTo(2d);
+                    await Assert.That(request.Policy).IsEqualTo(ViewerPhysicsBakePolicy.Skip);
+                    await Assert.That(request.Save).IsFalse();
+                }
+                else
+                {
+                    await Assert.That(request).IsNull();
+                }
+            }
+            finally
+            {
+                window.Close();
+                owner.Close();
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+        await Assert.That(await File.ReadAllTextAsync(destination)).IsEqualTo(original);
+    }
 
     [Test]
     [Arguments(false)]

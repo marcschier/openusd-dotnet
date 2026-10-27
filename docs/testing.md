@@ -705,6 +705,13 @@ dialog keeps the complete refusal and both buttons inside the client, pages the 
 scroll boundaries and cancels through Escape with no request. This is headless layout/keyboard
 evidence, not native bake execution or physical OS-input qualification.
 
+`ViewerPhysicsBakeWindowTests.ModalKeyboardWorkflowFocusesDestinationAndRefusesInvalidRequestsWithoutWritingFiles`
+checks initial destination focus in the real modal dialog under both themes. An invalid
+range refuses Enter without closing or losing the edited field's focus. After correction,
+keyboard Bake returns the exact destination, range, stride, conflict policy and save flag;
+focused Cancel or Escape returns no request. Every path preserves existing destination bytes.
+This tests request collection, not native simulation or destination-layer authoring.
+
 `ArtifactResourceStoreTests.RejectedMemoryBatchesDoNotCopyPayloadsBeforeAdmission` measures only
 the synchronous `AddRange` call with two preallocated 4-MiB inputs. Count, bytes, existing-identity
 and within-batch duplicate refusals must allocate less than 256 KiB, publish nothing and preserve
