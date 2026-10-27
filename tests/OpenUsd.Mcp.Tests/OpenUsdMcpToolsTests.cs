@@ -36,6 +36,11 @@ public sealed class OpenUsdMcpToolsTests
     [Arguments("success", true, "render_physics_sequence")]
     [Arguments("refused", true, "render_physics_sequence")]
     [Arguments("cancelled", true, "render_physics_sequence")]
+    [Arguments("success", false, "render_preview")]
+    [Arguments("success", true, "render_preview")]
+    [Arguments("refused", true, "render_preview")]
+    [Arguments("cancelled", true, "render_preview")]
+    [Arguments("pre-cancelled", true, "render_preview")]
     public async Task RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain(
         string outcome, bool encodedFrame, string toolName)
     {
@@ -99,6 +104,27 @@ public sealed class OpenUsdMcpToolsTests
         {
             cancellation.Cancel();
         }
+        object request = toolName switch
+        {
+            "render_physics_sequence" => new
+            {
+                sessionId = "session-1",
+                generation = 2,
+                stageRevision = 3,
+                scenarioIdentity = "progress-test",
+                expectedMetersPerUnit = 1,
+                expectedUpAxis = "Y"
+            },
+            "render_preview" => new
+            {
+                sessionId = "session-1",
+                generation = 2,
+                stageRevision = 3,
+                kind = "turntable",
+                views = new[] { new { name = "first" }, new { name = "second" } }
+            },
+            _ => new { sessionId = "session-1", generation = 2, stageRevision = 3 }
+        };
         Task<CallToolResult> pending = client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
             RequestMethods.ToolsCall, new CallToolRequestParams
             {
@@ -106,18 +132,7 @@ public sealed class OpenUsdMcpToolsTests
                 Meta = new System.Text.Json.Nodes.JsonObject { ["progressToken"] = "render" },
                 Arguments = new Dictionary<string, JsonElement>
                 {
-                    ["request"] = toolName == "render_physics_sequence"
-                        ? JsonSerializer.SerializeToElement(new
-                        {
-                            sessionId = "session-1",
-                            generation = 2,
-                            stageRevision = 3,
-                            scenarioIdentity = "progress-test",
-                            expectedMetersPerUnit = 1,
-                            expectedUpAxis = "Y"
-                        })
-                        : JsonSerializer.SerializeToElement(
-                            new { sessionId = "session-1", generation = 2, stageRevision = 3 })
+                    ["request"] = JsonSerializer.SerializeToElement(request)
                 }
             }, requestId: new RequestId("render"),
             cancellationToken: outcome == "pre-cancelled" ? cancellation.Token : lifetime.Token).AsTask();
@@ -146,7 +161,9 @@ public sealed class OpenUsdMcpToolsTests
                 await Assert.That(progress.Values[1].Progress).IsEqualTo(1f / 3);
                 await Assert.That(progress.Values[1].Total).IsEqualTo(1f);
                 await Assert.That(progress.Values[1].Message)
-                    .IsEqualTo("1/2 frames encoded in staging; publication not confirmed.");
+                    .IsEqualTo(toolName == "render_preview"
+                        ? "1/2 views captured; artifact registration not confirmed."
+                        : "1/2 frames encoded in staging; publication not confirmed.");
                 await Assert.That(pending.IsCompleted).IsFalse();
             }
             int priorReports = encodedFrame ? 2 : 1;
@@ -180,7 +197,9 @@ public sealed class OpenUsdMcpToolsTests
                 await Assert.That(progress.Values[^1].Progress).IsEqualTo(1f);
                 await Assert.That(progress.Values[^1].Total).IsEqualTo(1f);
                 await Assert.That(progress.Values[^1].Message).IsEqualTo("Result ready.");
-                await Assert.That(result.StructuredContent!.Value.GetProperty("jobId").GetString()).IsEqualTo("job-1");
+                await Assert.That(result.StructuredContent!.Value
+                    .GetProperty(toolName == "render_preview" ? "requestId" : "jobId").GetString())
+                    .IsEqualTo(toolName == "render_preview" ? "capture" : "job-1");
             }
             else
             {
@@ -1174,11 +1193,17 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new McpRollbackResultDto("session-1", 3, 4, request.CheckpointId));
 
-    public ValueTask<McpCaptureResultDto> RenderPreviewAsync(
+    public async ValueTask<McpCaptureResultDto> RenderPreviewAsync(
         RenderPreviewRequest request,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(
-            CaptureResult ??
+        CancellationToken cancellationToken, Action<int, int>? viewCaptured = null)
+    {
+        LastCancellationToken = cancellationToken;
+        FrameEncoded = viewCaptured;
+        if (RenderOperation is { } operation)
+        {
+            _ = await operation(cancellationToken);
+        }
+        return CaptureResult ??
             new McpCaptureResultDto(
                 "session-1",
                 2,
@@ -1189,7 +1214,8 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 1,
                 [],
                 [],
-                []));
+                []);
+    }
 
     public ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
         RenderSequenceRequest request,

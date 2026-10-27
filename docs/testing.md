@@ -115,8 +115,8 @@ from the child and initializes the real host in the repository working directory
 The same journey checks discovery, no-scene errors and empty completed-job history.
 
 `RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain`
-uses the official protocol for sequence, authored-product and physics-recording requests.
-It checks frame-count notifications below completion, successful result readiness, refusal,
+uses the official protocol for preview, sequence, authored-product and physics-recording requests.
+It checks intermediate counts below completion, successful result readiness, refusal,
 and cancellation with delayed cleanup. `McpRenderProgressTests` holds a slow notification
 while 4,096 frames are reported: only the newest pending count survives, and the result
 waits for delivery. Transport failure cancels rendering but still waits for cleanup;
@@ -126,6 +126,16 @@ decodes each real staged PNG during its callback, checks exact counts, and verif
 cancellation removes staging without publishing a job. The real sequence/product service
 tests check every encoded-frame callback. These are managed encoding, ownership and protocol
 checks; they do not qualify native physics execution or elapsed-time estimates.
+
+`CapturedViewProgressPrecedesAtomicArtifactRegistrationAndPreservesFailureCleanup`
+checks still, contact-sheet and turntable captures through the real preview processor.
+Each callback follows a validated capture while the artifact store remains empty.
+Successful outputs are decoded; first/last-view cancellation and observer failure leave
+no registered artifacts. Real service retry cases verify every view callback after a
+camera-batch refusal. Captured-view progress does not assert PNG encoding or resource
+availability; contact-sheet encoding still follows the last captured view.
+Dimension and diagnostic refusals report only preceding validated views; a retry starts
+its count again at one.
 
 `OpenUsdMcpToolsTests.SimulationDtoRetainsTheOptionalOriginalHostReviewIdentity` checks both
 present and absent original review identities. `OfficialProtocolDiscoversSchemasInvokesAndReadsResources`

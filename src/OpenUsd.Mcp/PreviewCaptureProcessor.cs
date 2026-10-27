@@ -186,6 +186,7 @@ public sealed partial class PreviewCaptureProcessor :
             cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, request.Width, request.Height);
             CollectDiagnostics(frameSource, diagnostics);
+            request.ViewCaptured?.Invoke(index + 1, request.Views.Count);
             string id = CreateArtifactId(request, index);
             byte[] png = EncodePng(image.Width, image.Height, image.Pixels.Span,
                 maximumTotalArtifactBytes - totalBytes, cancellationToken);
@@ -218,6 +219,7 @@ public sealed partial class PreviewCaptureProcessor :
             cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, cellWidth, cellHeight);
             CollectDiagnostics(frameSource, diagnostics);
+            request.ViewCaptured?.Invoke(index + 1, request.Views.Count);
             CopyTile(
                 image,
                 sheet,

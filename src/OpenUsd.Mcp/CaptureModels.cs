@@ -45,6 +45,8 @@ public sealed record CaptureView
 
 public sealed record PreviewCaptureRequest
 {
+    internal Action<int, int>? ViewCaptured { get; init; }
+
     public PreviewCaptureRequest(
         string requestId,
         int width,

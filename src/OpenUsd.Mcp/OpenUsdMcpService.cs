@@ -32,7 +32,7 @@ internal interface IOpenUsdMcpService
 
     ValueTask<McpCaptureResultDto> RenderPreviewAsync(
         RenderPreviewRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Action<int, int>? viewCaptured = null);
 
     ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
         RenderSequenceRequest request,
@@ -312,7 +312,7 @@ internal sealed partial class OpenUsdMcpService(
 
     public async ValueTask<McpCaptureResultDto> RenderPreviewAsync(
         RenderPreviewRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Action<int, int>? viewCaptured = null)
     {
         ValidateRenderRequest(request);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -363,7 +363,10 @@ internal sealed partial class OpenUsdMcpService(
                                 view.Name,
                                 cameras[index],
                                 view.TimeCode))
-                        .ToArray()));
+                        .ToArray()))
+            {
+                ViewCaptured = viewCaptured
+            };
             PreviewCaptureResult result;
             try
             {

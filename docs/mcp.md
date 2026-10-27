@@ -601,8 +601,13 @@ The four render tools accept an optional MCP `_meta.progressToken`, outside the 
 object. With a token, the server sends request-level progress `0/1` before admission and
 revision checks, then `1/1` after constructing a successful result. The messages are
 `Request started; admission and revision checks pending.` and `Result ready.` A refused or
-cancelled request does not report completion. `render_preview` reports only these two
-request-level events; the final tool response remains authoritative.
+cancelled request does not report completion. The final tool response remains authoritative.
+
+`render_preview` also reports validated captured views with progress
+`completedViews / (totalViews + 1)` and total `1`. Its message states that artifact
+registration is not confirmed. For a contact sheet, all views must still be assembled
+and PNG-encoded before the artifact can be registered; a captured view is not a
+completed PNG or an available resource.
 
 `render_sequence`, `render_product` and `render_physics_sequence` also report completed
 encoded frames. A frame counts only after its PNG and all requested depth/HDR planes have
@@ -612,8 +617,8 @@ result. The message carries the exact frame count and states that publication is
 confirmed. These events do not measure elapsed time or native preparation, and even the
 last encoded frame does not establish that the job manifest has been published.
 
-Start and result-ready writes are awaited directly. Frame notifications use one owned
-delivery task with at most one pending frame count; a slow transport replaces that pending
+Start and result-ready writes are awaited directly. Intermediate notifications use one owned
+delivery task with at most one pending count; a slow transport replaces that pending
 count with the newest count rather than blocking the renderer. Delivery drains before
 result readiness. A transport failure requests cancellation and waits for active rendering
 cleanup before returning an error; already-published output is not rolled back.

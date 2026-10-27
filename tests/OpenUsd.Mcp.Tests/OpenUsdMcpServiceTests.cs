@@ -224,7 +224,11 @@ public sealed class OpenUsdMcpServiceTests
         await Assert.That(artifacts.Count).IsEqualTo(0);
         await Assert.That((await workspace.GetStatusAsync()).Session!.StageRevision).IsEqualTo(session.StageRevision);
         mismatch = false;
-        McpCaptureResultDto retry = await service.RenderPreviewAsync(request, default);
+        var progress = new List<(int, int)>();
+        McpCaptureResultDto retry = await service.RenderPreviewAsync(
+            request, default, (completed, total) => progress.Add((completed, total)));
+        await Assert.That(progress.SequenceEqual(
+            Enumerable.Range(1, request.Views.Count).Select(index => (index, request.Views.Count)))).IsTrue();
         int artifactCount = kind == "turntable" ? 2 : 1;
         await Assert.That(retry.Artifacts).Count().IsEqualTo(artifactCount);
         await Assert.That(source.Times.SequenceEqual(request.Views.Select(static view => view.TimeCode))).IsTrue();

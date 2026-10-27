@@ -434,7 +434,8 @@ internal sealed class OpenUsdMcpTools(
         RenderPreviewRequest request,
         CancellationToken cancellationToken,
         RequestContext<CallToolRequestParams>? context = null) =>
-        InvokeAsync(token => service.RenderPreviewAsync(request, token), cancellationToken, context);
+        InvokeRenderAsync((progress, token) => service.RenderPreviewAsync(request, token, progress),
+            context, cancellationToken, "views captured; artifact registration not confirmed.");
 
     [McpServerTool(
         Name = "render_sequence",
@@ -614,9 +615,11 @@ internal sealed class OpenUsdMcpTools(
         CancellationToken cancellationToken) =>
         InvokeAsync(token => service.PresentSceneAsync(request, token), cancellationToken);
 
-    private ValueTask<CallToolResult> InvokeRenderAsync(
-        Func<Action<int, int>?, CancellationToken, ValueTask<McpRenderSequenceResultDto>> operation,
-        RequestContext<CallToolRequestParams>? context, CancellationToken cancellationToken)
+    private ValueTask<CallToolResult> InvokeRenderAsync<T>(
+        Func<Action<int, int>?, CancellationToken, ValueTask<T>> operation,
+        RequestContext<CallToolRequestParams>? context, CancellationToken cancellationToken,
+        string progressDescription = "frames encoded in staging; publication not confirmed.")
+        where T : IOpenUsdMcpOutput
         => InvokeAsync(token => context?.Params.ProgressToken is { } progressToken
             ? McpRenderProgress.RunAsync(
                 (progress, innerToken) => operation(progress, innerToken),
@@ -625,7 +628,7 @@ internal sealed class OpenUsdMcpTools(
                     {
                         Progress = (float)completed / (total + 1),
                         Total = 1,
-                        Message = $"{completed}/{total} frames encoded in staging; publication not confirmed."
+                        Message = $"{completed}/{total} {progressDescription}"
                     }, cancellationToken: innerToken).ConfigureAwait(false),
                 token)
             : operation(null, token), cancellationToken, context);
