@@ -168,6 +168,10 @@ internal sealed partial class CompletedRenderJobWindow : Window, IAsyncDisposabl
         bool wasClosing = _closing;
         _closing = true;
         _lifetime.Cancel();
+        if (ResultsFrames.IsKeyboardFocusWithin)
+        {
+            ResultsCloseButton.Focus();
+        }
         DisposeTiles();
         if (_loadTask.IsCompleted)
         {

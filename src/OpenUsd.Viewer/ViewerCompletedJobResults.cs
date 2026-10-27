@@ -52,10 +52,12 @@ internal sealed class ViewerCompletedJobResults
         }
         var window = new CompletedRenderJobWindow(job, _description);
         _window = window;
+        bool restoreFocus = false;
+        window.Closing += (_, _) => restoreFocus = window.IsKeyboardFocusWithin;
         window.Closed += (_, _) =>
         {
             _window = null;
-            if (_job is not null && _owner.IsVisible && _action.IsEnabled)
+            if (restoreFocus && _job is not null && _owner.IsVisible && _action.IsEnabled)
             {
                 _owner.Activate();
                 _action.Focus();

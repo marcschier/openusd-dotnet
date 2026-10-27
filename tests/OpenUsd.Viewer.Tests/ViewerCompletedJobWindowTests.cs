@@ -17,6 +17,91 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerCompletedJobWindowTests
 {
     [Test]
+    [Arguments(false, "gallery")]
+    [Arguments(true, "gallery")]
+    [Arguments(false, "frame")]
+    [Arguments(true, "frame")]
+    [Arguments(false, "owner")]
+    [Arguments(true, "owner")]
+    [Arguments(false, "other")]
+    [Arguments(true, "other")]
+    public async Task RenderResultsGalleryCloseRestoresOnlyItsOwnedOriginFocus(bool dark, string destination)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob(count: 1);
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var action = new Button { Content = "View results" };
+            var moved = new Button { Content = "Other owner action" };
+            var owner = new Window
+            {
+                Content = new StackPanel { Children = { action, moved } },
+                Width = 400,
+                Height = 300,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            int publications = 0;
+            var results = new ViewerCompletedJobResults(owner, action, (_, _) => publications++);
+            results.Publish(job, "Original completed job");
+            owner.Show();
+            try
+            {
+                await Assert.That(action.Focus()).IsTrue();
+                action.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                CompletedRenderJobWindow gallery = owner.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
+                await Assert.That(Required<Button>(gallery, "ResultsCloseButton").IsKeyboardFocusWithin).IsTrue();
+                Control expectedFocus = destination is "gallery" or "frame" ? action :
+                    destination == "owner" ? moved : otherAction;
+                if (destination == "frame")
+                {
+                    ListBox frames = Required<ListBox>(gallery, "ResultsFrames");
+                    gallery.UpdateLayout();
+                    Control first = frames.ContainerFromIndex(0) ??
+                        throw new InvalidOperationException("The completed frame has no focus container.");
+                    await Assert.That(first.Focus()).IsTrue();
+                }
+                else if (destination == "owner")
+                {
+                    await Assert.That(moved.Focus()).IsTrue();
+                }
+                else if (destination == "other")
+                {
+                    other.Show();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                await gallery.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(Required<ListBox>(gallery, "ResultsFrames").ItemCount).IsEqualTo(0);
+                await Assert.That(action.IsEnabled).IsTrue();
+                other.Close();
+                action.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                CompletedRenderJobWindow reopened = owner.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await Assert.That(reopened).IsNotSameReferenceAs(gallery);
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(reopened, "ResultsLoading").IsVisible);
+                await Assert.That(reopened.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                await reopened.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(action.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(publications).IsEqualTo(1);
+            }
+            finally
+            {
+                other.Close();
+                await results.ClearAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                owner.Close();
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     [Arguments(false, false)]
     [Arguments(true, false)]
     [Arguments(false, true)]

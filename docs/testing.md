@@ -320,6 +320,15 @@ only successful callbacks publish results. The completed-gallery lifecycle journ
 checks Shift+Tab through the named status area before reaching frame selection.
 These managed callbacks do not qualify native rendering, physics stepping or physical input.
 
+`RenderResultsGalleryCloseRestoresOnlyItsOwnedOriginFocus` checks the shared results
+host used by sequence and authored-product dialogs. Closing a gallery returns focus
+to View Results only if the gallery owned keyboard focus when closing. Focus moved to
+another owner control or window remains there. Reopening retains the completed job
+without another publication, and closing releases its image tiles. Both themes use
+actual headless windows; native window-manager focus remains separate qualification.
+Closing from a frame first moves focus to Close before disposing the frame containers,
+so removing a focused tile does not discard the gallery's return-focus ownership.
+
 `LightTextureGroupingPreservesExactPropertiesAndGenericShaderAccess` checks existing
 light texture asset and format attributes. Only the exact names on light snapshots
 enter the light group; case variants, longer names and relationships remain outside it.
