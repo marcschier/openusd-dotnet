@@ -140,6 +140,12 @@ internal sealed record McpSequenceFrameResultDto(
 
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
+
+    [Description(
+        "Original prepared product raster, independent of later scene edits; not verified effective backend state. " +
+        "Null for non-product jobs or producers that supply no raster metadata.")]
+    public McpProductRasterDto? ProductRaster { get; init; }
+
     [Description("Exact simulation publication captured by this frame; null for authored-time rendering.")]
     public McpSimulationFrameDto? Simulation { get; init; }
 

@@ -3,6 +3,7 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp;
 
@@ -85,3 +86,30 @@ internal sealed record McpProductVariableDto(
     [property: Description("Exact requested source name, not a substituted beauty output.")] string SourceName,
     [property: Description("Exact requested data type.")] string DataType,
     [property: Description("Returned plane name: hdrColor or deviceDepth.")] string Plane);
+
+internal sealed record McpProductRasterDto(
+    [property: Description("Original prepared full-raster width before crop or overscan, not sheet-cell width.")]
+    int FullWidth,
+    [property: Description("Original prepared full-raster height before crop or overscan.")]
+    int FullHeight,
+    [property: Description("Inclusive output X origin in the original full raster; negative values retain overscan.")]
+    int DataWindowMinX,
+    [property: Description("Inclusive output Y origin measured from the bottom of the original full raster.")]
+    int DataWindowMinY,
+    [property: Description("Original prepared pixel width-to-height ratio after camera conformance.")]
+    double PixelAspectRatio,
+    [property: Description("Original requested OpenUSD conform-policy token after explicit overrides.")]
+    string AspectRatioConformPolicy)
+{
+    [Description("Raster-origin convention; independent of the top-down PNG and sheet-cell coordinates.")]
+    public string DataWindowOriginConvention { get; } = "bottom-left";
+
+    internal static McpProductRasterDto From(RenderPreparedFrame frame)
+    {
+        RenderProductRequest request = frame.Request;
+        ViewportDimensions full = request.Overrides.Resolution ??
+            new ViewportDimensions(request.Product.Width, request.Product.Height);
+        return new(full.Width, full.Height, frame.DataWindowMinX, frame.DataWindowMinY, frame.PixelAspectRatio,
+            request.Overrides.AspectRatioConformPolicy ?? request.Product.AspectRatioConformPolicy);
+    }
+}

@@ -219,6 +219,7 @@ internal sealed partial class OpenUsdMcpService
                 HdrColor = hdr is null ? null : ToArtifact(hdr),
                 HdrColorFormat = hdr is null ? null : frame.HdrColorFormat == RenderHdrColorFormat.Exr ? "exr" : "raw",
                 AuthoredProduct = sequence.AuthoredProduct,
+                ProductRaster = sequence.ProductRasters?[frame.Index],
                 Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null,
                 CameraRequest = McpCameraRequestDto.From(frame.State.Camera),
                 RenderRequest = McpRenderRequestDto.From(frame.State)
@@ -289,7 +290,8 @@ internal sealed partial class OpenUsdMcpService
 
     private McpRenderSequenceResultDto RegisterCompletedSequence(
         WorkspaceSessionRevision revision, string id, RenderDiskJobResult result,
-        McpAuthoredProductDto? authoredProduct = null, RenderPhysicsSequenceRequest? physicsRequest = null)
+        McpAuthoredProductDto? authoredProduct = null, RenderPhysicsSequenceRequest? physicsRequest = null,
+        IReadOnlyList<McpProductRasterDto>? productRasters = null)
     {
         string relative = Path.GetRelativePath(options.OutputRoot, result.OutputDirectory).Replace('\\', '/');
         var descriptor = new McpRenderSequenceResultDto(revision.SessionId, revision.Generation, revision.StageRevision,
@@ -313,7 +315,10 @@ internal sealed partial class OpenUsdMcpService
                 }
             };
         }
-        _sequences.Add(id, new CompletedSequence(revision, result, authoredProduct, descriptor));
+        _sequences.Add(id, new CompletedSequence(revision, result, authoredProduct, descriptor)
+        {
+            ProductRasters = productRasters
+        });
         _publishedDiskJobs++;
         _publishedDiskBytes += result.TotalBytes;
         return descriptor;
@@ -321,5 +326,8 @@ internal sealed partial class OpenUsdMcpService
 
     private sealed record CompletedSequence(
         WorkspaceSessionRevision Revision, RenderDiskJobResult Result, McpAuthoredProductDto? AuthoredProduct,
-        McpRenderSequenceResultDto Descriptor);
+        McpRenderSequenceResultDto Descriptor)
+    {
+        internal IReadOnlyList<McpProductRasterDto>? ProductRasters { get; init; }
+    }
 }

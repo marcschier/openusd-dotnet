@@ -74,7 +74,8 @@ internal sealed partial class OpenUsdMcpService
                 {
                     Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null,
                     CameraRequest = McpCameraRequestDto.From(frame.State.Camera),
-                    RenderRequest = McpRenderRequestDto.From(frame.State)
+                    RenderRequest = McpRenderRequestDto.From(frame.State),
+                    ProductRaster = sequence.ProductRasters?[frame.Index]
                 };
             }
             IArtifactResourceStore store = services.GetRequiredService<IArtifactResourceStore>();

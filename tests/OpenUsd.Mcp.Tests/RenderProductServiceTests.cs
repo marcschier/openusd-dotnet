@@ -194,6 +194,76 @@ public sealed class RenderProductServiceTests
     }
 
     [Test]
+    public async Task HistoricalProductRasterKeepsPerFrameConformanceAndRequestedSheetOrderAfterSceneClose()
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times => Plan(backend.Context!.SessionId, backend.StageRevision, times,
+            authoredPixelAspectRatio: 3, authoredConformPolicy: "adjustPixelAspectRatio",
+            cameraAtTime: time => new UsdGeomCameraState(UsdGeomCameraProjection.Orthographic,
+                time == 2 ? -1 : -2, time == 2 ? 1 : 2, -1, 1, 1, 11, 0, 20, 20, 0, 0, 0, 0));
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto product = await service.RenderProductAsync(Request(session, 2), default);
+        McpRenderSequenceResultDto viewport = await service.RenderSequenceAsync(new RenderSequenceRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 2,
+            Height = 2,
+            FrameCount = 1
+        }, default);
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        int preparations = backend.Events.Count(static value => value == "prepare-product");
+        McpSequenceFrameResultDto first = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = product.JobId, FrameIndex = 0 }, default);
+        McpSequenceFrameResultDto second = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = product.JobId, FrameIndex = 1 }, default);
+        await Assert.That(first.ProductRaster)
+            .IsEqualTo(new McpProductRasterDto(2, 2, 0, 0, 1, "adjustPixelAspectRatio"));
+        await Assert.That(second.ProductRaster)
+            .IsEqualTo(new McpProductRasterDto(2, 2, 0, 0, 2, "adjustPixelAspectRatio"));
+        McpSequenceSheetResultDto sheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
+        {
+            JobId = product.JobId,
+            FrameIndices = [1, 0],
+            Width = 8,
+            Height = 4
+        }, default);
+        await Assert.That(sheet.Tiles[0].ProductRaster).IsEqualTo(second.ProductRaster);
+        await Assert.That(sheet.Tiles[1].ProductRaster).IsEqualTo(first.ProductRaster);
+        await Assert.That(sheet.Tiles.Select(static tile => tile.FrameIndex).SequenceEqual([1, 0])).IsTrue();
+        McpSequenceFrameResultDto plain = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = viewport.JobId, FrameIndex = 0 }, default);
+        McpSequenceSheetResultDto plainSheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
+        {
+            JobId = viewport.JobId,
+            Width = 4,
+            Height = 4
+        }, default);
+        await Assert.That(plain.ProductRaster).IsNull();
+        await Assert.That(plainSheet.Tiles[0].ProductRaster).IsNull();
+        await Assert.That(factory.Source.Times.Count).IsEqualTo(2);
+        await Assert.That(factory.Source.ViewportTimes.Count).IsEqualTo(1);
+        await Assert.That(backend.Events.Count(static value => value == "prepare-product")).IsEqualTo(preparations);
+    }
+
+    [Test]
     [Arguments("omitted", 4, 4, 2, 2, 2f, 2f, 0f, 0f)]
     [Arguments("full", 8, 8, 0, 0, 1f, 1f, 0f, 0f)]
     [Arguments("center", 4, 4, 2, 2, 2f, 2f, 0f, 0f)]
@@ -285,6 +355,26 @@ public sealed class RenderProductServiceTests
         await Assert.That(frame.Height).IsEqualTo(height);
         await Assert.That(frame.RenderRequest!.Width).IsEqualTo(width);
         await Assert.That(frame.RenderRequest.Height).IsEqualTo(height);
+        await Assert.That(frame.ProductRaster).IsNotNull();
+        await Assert.That(frame.ProductRaster!.FullWidth).IsEqualTo(8);
+        await Assert.That(frame.ProductRaster.FullHeight).IsEqualTo(8);
+        await Assert.That(frame.ProductRaster.DataWindowMinX).IsEqualTo(minX);
+        await Assert.That(frame.ProductRaster.DataWindowMinY).IsEqualTo(minY);
+        await Assert.That(frame.ProductRaster.PixelAspectRatio).IsEqualTo(sample.PixelAspectRatio);
+        await Assert.That(frame.ProductRaster.AspectRatioConformPolicy).IsEqualTo("expandAperture");
+        await Assert.That(frame.ProductRaster.DataWindowOriginConvention).IsEqualTo("bottom-left");
+        await Assert.That(JsonElement.DeepEquals(raster,
+            JsonSerializer.SerializeToElement(frame.ProductRaster, JsonOptions))).IsTrue();
+        McpSequenceSheetResultDto sheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
+        {
+            JobId = job.JobId,
+            FrameIndices = [0],
+            Width = 8,
+            Height = 4
+        }, default);
+        await Assert.That(sheet.Tiles[0].ProductRaster).IsEqualTo(frame.ProductRaster);
+        await Assert.That(sheet.Tiles[0].Width).IsEqualTo(8);
+        await Assert.That(sheet.Tiles[0].Height).IsEqualTo(4);
         ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(frame.Artifact.Uri));
         ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
         await Assert.That(image.Width).IsEqualTo(width);
@@ -510,6 +600,10 @@ public sealed class RenderProductServiceTests
             new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
         await Assert.That(frame.Width).IsEqualTo(6);
         await Assert.That(frame.Height).IsEqualTo(4);
+        await Assert.That(frame.ProductRaster)
+            .IsEqualTo(new McpProductRasterDto(6, 4, 0, 0, effectiveAspect, conformPolicy ?? "cropAperture"));
+        await Assert.That(JsonElement.DeepEquals(raster,
+            JsonSerializer.SerializeToElement(frame.ProductRaster, JsonOptions))).IsTrue();
         ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(frame.Artifact.Uri));
         ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
         await Assert.That(image.Width).IsEqualTo(6);
@@ -837,7 +931,7 @@ public sealed class RenderProductServiceTests
     private static RenderProductJobPlan Plan(
         string sessionId, ulong revision, IReadOnlyList<double> times, RenderProductOverrides? overrides = null,
         UsdVec4f? dataWindow = null, float authoredPixelAspectRatio = 1,
-        string authoredConformPolicy = "expandAperture")
+        string authoredConformPolicy = "expandAperture", Func<double, UsdGeomCameraState>? cameraAtTime = null)
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
@@ -851,7 +945,8 @@ public sealed class RenderProductServiceTests
         var optics = new UsdGeomCameraState(
             UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 0, 0);
         RenderPreparedFrame[] frames = [.. times.Select(time =>
-            request.PrepareFrame(UsdMatrix4d.Identity, optics, time, RenderCameraFrameSettings.Default))];
+            request.PrepareFrame(UsdMatrix4d.Identity, cameraAtTime?.Invoke(time) ?? optics, time,
+                RenderCameraFrameSettings.Default))];
         return new RenderProductJobPlan(new StageIdentity($"session:{sessionId}"), frames,
             RenderSettings.PresentationDefault, revision);
     }

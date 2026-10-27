@@ -206,6 +206,14 @@ It admits an output axis at the existing 4096-pixel MCP capture limit through ov
 It verifies pixel-centre boundaries, projection and raster origin, then reads PNG/HDR and the
 manifest after close. Mutating the input array during backend preparation cannot change the
 copied override or the authored window.
+Historical frame and sheet metadata must match every `productRaster` manifest field,
+including negative overscan origins. The framing-override cases also check all conform
+policies and nondefault pixel aspects.
+`HistoricalProductRasterKeepsPerFrameConformanceAndRequestedSheetOrderAfterSceneClose`
+uses two sampled camera windows to produce different conformed pixel aspects, closes the
+scene, then reads both frames and a reversed sheet without another preparation or capture.
+Viewport frames and tiles retain null product metadata. The official SDK protocol journey
+checks populated fields and null metadata from an older producer.
 `InvalidProductDataWindowLengthIsRejectedBeforeWorkspaceWork` and
 `InvalidProductDataWindowBoundsAreRejectedBeforeWorkspaceWork` reject wrong lengths,
 nonfinite coordinates and nonincreasing bounds without workspace work or output creation.

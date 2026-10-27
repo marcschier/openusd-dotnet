@@ -45,6 +45,12 @@ internal sealed record McpSequenceSheetTileDto(
         "Original source-frame display and render settings, not settings for the resized sheet cell, " +
         "effective backend state or a complete request identity. Null means no request metadata supplied.")]
     public McpRenderRequestDto? RenderRequest { get; init; }
+
+    [Description(
+        "Original prepared source product raster, not resized sheet-cell geometry " +
+        "or verified effective backend state. " +
+        "Null for non-product jobs or producers that supply no raster metadata.")]
+    public McpProductRasterDto? ProductRaster { get; init; }
 }
 
 internal sealed record McpSequenceSheetResultDto(

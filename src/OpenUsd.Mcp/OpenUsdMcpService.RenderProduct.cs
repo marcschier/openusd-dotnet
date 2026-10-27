@@ -112,7 +112,9 @@ internal sealed partial class OpenUsdMcpService
                 throw new OpenUsdMcpFailureException(OpenUsdMcpErrorCodes.RenderFailure,
                     "Authored-product rendering failed.", exception);
             }
-            return RegisterCompletedSequence(revision, id, result, ToAuthoredProduct(plan));
+            return RegisterCompletedSequence(revision, id, result, ToAuthoredProduct(plan),
+                productRasters: new OwnedReadOnlyList<McpProductRasterDto>(
+                    plan.Frames.Select(McpProductRasterDto.From).ToArray()));
         }
         finally
         {

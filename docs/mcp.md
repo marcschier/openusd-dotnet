@@ -975,6 +975,15 @@ requested; a null `renderRequest` means the producer supplied no request metadat
 Reading these values opens no config or source file. They describe the recorded request,
 not effective backend settings, authenticated source content or a complete request identity.
 
+For authored products, `productRaster` retains each frame's prepared `fullWidth` and
+`fullHeight` before crop or overscan, integer `dataWindowMinX` and `dataWindowMinY`,
+conformed `pixelAspectRatio` and `aspectRatioConformPolicy` after explicit overrides.
+`dataWindowOriginConvention` is `"bottom-left"`; negative origins preserve overscan.
+This metadata describes the original product raster, independently of top-down PNG
+coordinates. It can differ between sampled cameras within one job and remains available
+after scene close without sampling a camera or reading the manifest again. It is not
+verified effective backend state. Viewport jobs and producers without this metadata return null.
+
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
 return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
@@ -1039,6 +1048,8 @@ is sampled or reconstructed to create this metadata.
 Each tile also retains its source frame's `renderRequest`, including the original dimensions
 rather than the resized cell dimensions. Display/output values and unresolved OCIO defaults
 remain historical requests; generating a sheet does not apply those transforms again.
+Each tile's `productRaster` retains the corresponding source frame's prepared product
+metadata, not the resized cell dimensions or origin. Reordering frames preserves that association.
 Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input

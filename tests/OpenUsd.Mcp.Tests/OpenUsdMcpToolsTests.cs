@@ -886,6 +886,14 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(frameRender.GetProperty("width").GetInt32()).IsEqualTo(1);
         await Assert.That(frameRender.GetProperty("outputTransform").GetString()).IsEqualTo("Reinhard");
         await Assert.That(frameRender.GetProperty("exposure").GetSingle()).IsEqualTo(-6);
+        JsonElement frameRaster = sequenceFrame.StructuredContent.Value.GetProperty("productRaster");
+        await Assert.That(frameRaster.GetProperty("fullWidth").GetInt32()).IsEqualTo(720);
+        await Assert.That(frameRaster.GetProperty("fullHeight").GetInt32()).IsEqualTo(480);
+        await Assert.That(frameRaster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(-16);
+        await Assert.That(frameRaster.GetProperty("dataWindowMinY").GetInt32()).IsEqualTo(24);
+        await Assert.That(frameRaster.GetProperty("pixelAspectRatio").GetDouble()).IsEqualTo(1.5);
+        await Assert.That(frameRaster.GetProperty("aspectRatioConformPolicy").GetString()).IsEqualTo("cropAperture");
+        await Assert.That(frameRaster.GetProperty("dataWindowOriginConvention").GetString()).IsEqualTo("bottom-left");
         CallToolResult recordedFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
             {
@@ -943,6 +951,15 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheetRender.GetProperty("drawMode").GetString()).IsEqualTo("Wireframe");
         await Assert.That(sheetRender.GetProperty("outputTransform").GetString()).IsEqualTo("Identity");
         await Assert.That(sheetRender.GetProperty("exposure").GetSingle()).IsEqualTo(0);
+        JsonElement sheetRaster = sheet.StructuredContent.Value.GetProperty("tiles")[0].GetProperty("productRaster");
+        await Assert.That(sheetRaster.GetProperty("fullWidth").GetInt32()).IsEqualTo(640);
+        await Assert.That(sheetRaster.GetProperty("fullHeight").GetInt32()).IsEqualTo(360);
+        await Assert.That(sheetRaster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(80);
+        await Assert.That(sheetRaster.GetProperty("dataWindowMinY").GetInt32()).IsEqualTo(-24);
+        await Assert.That(sheetRaster.GetProperty("pixelAspectRatio").GetDouble()).IsEqualTo(0.75);
+        await Assert.That(sheetRaster.GetProperty("aspectRatioConformPolicy").GetString())
+            .IsEqualTo("adjustPixelAspectRatio");
+        await Assert.That(sheetRaster.GetProperty("dataWindowOriginConvention").GetString()).IsEqualTo("bottom-left");
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -964,6 +981,8 @@ public sealed class OpenUsdMcpToolsTests
             .IsEqualTo("openusd://artifact/hdr-0");
         await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("hdrColorFormat").GetString()).IsEqualTo("raw");
         await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("renderRequest").ValueKind)
+            .IsEqualTo(JsonValueKind.Null);
+        await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("productRaster").ValueKind)
             .IsEqualTo(JsonValueKind.Null);
 
         CallToolResult exrFrame = await client.CallToolAsync("read_sequence_frame",
@@ -1325,7 +1344,8 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                     RenderRequest = McpRenderRequestDto.From(StageRenderState.Default
                         .WithViewport(new ViewportDimensions(257, 129))
                         .WithDisplay(new SceneDisplayState(
-                            RenderPurpose.Guide, RenderVisibility.IncludeInvisible, RenderDrawMode.Wireframe)))
+                            RenderPurpose.Guide, RenderVisibility.IncludeInvisible, RenderDrawMode.Wireframe))),
+                    ProductRaster = new McpProductRasterDto(640, 360, 80, -24, 0.75, "adjustPixelAspectRatio")
                 }
             ],
             [descriptor])
@@ -1377,7 +1397,8 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
             CameraRequest = McpCameraRequestDto.From(CameraState.Default),
             RenderRequest = McpRenderRequestDto.From(StageRenderState.Default
                 .WithViewport(new ViewportDimensions(1, 1))
-                .WithRenderSettings(RenderSettings.PresentationDefault))
+                .WithRenderSettings(RenderSettings.PresentationDefault)),
+            ProductRaster = new McpProductRasterDto(720, 480, -16, 24, 1.5, "cropAperture")
         });
     }
 
