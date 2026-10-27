@@ -16,7 +16,7 @@ using OpenUsd.Rendering;
 namespace OpenUsd.Viewer.Tests;
 
 [NotInParallel]
-public sealed class ViewerImportedRenderJobTests
+public sealed partial class ViewerImportedRenderJobTests
 {
     [Test]
     [Arguments(1)]

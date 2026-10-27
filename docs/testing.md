@@ -435,6 +435,27 @@ journey additionally verifies successful sequence/product publication and exclud
 jobs from history. These checks do not establish persistence across Viewer restarts or native display
 qualification. Run each class with the same focused selector shown above, substituting its class name.
 
+`ViewerRecentRenderManifestStoreTests` covers the separate bounded restart index.
+`RestartRetainsExactlyEightNewestDistinctPathsAndRepeatedPathsMoveToFront` checks ordering, eviction
+and reimport deduplication through a fresh store instance; no render files are deleted.
+`MissingIndexDoesNotCreateDirectoriesOrReadReferencedArtifacts` retains a nonexistent manifest path
+without opening it. `EightMaximumLengthEscapedUnicodePathsRoundTripWithoutOpeningArtifacts` checks
+eight 4096-character paths against the independent 256-KiB index bound.
+`InvalidIndexIsExplicitlyRefusedAndNeverOverwrittenByANewCompletion` covers malformed schema,
+duplicates, invalid path types and excess counts. Byte-limit, cancellation and competing-writer cases
+preserve the previous index and permit subsequent clean writes.
+`ViewerImportedRenderJobTests.RememberedPathsWaitForPlainEnterAndOpenOnlyUnverifiedOriginalOutput`
+checks both compact themes, untouched files until plain Enter, original alpha pixels and unverified
+metadata. `MissingRememberedManifestStaysListedAndReportsFailureWithoutReplacingAGallery` preserves
+the failed path and existing gallery.
+`MainWindowDrainsCompletedOrImportedPathPersistenceBeforeRestart` uses two actual MainWindow
+instances with an owned profile directory. Both successful-job publication and explicit import persist
+their path before close; the second instance has an empty process list, one remembered path and no
+renderer attachment or automatic preview.
+`RememberedIndexFailureKeepsCompletedOutputAndReportsARecoverableStorageWarning`
+covers malformed and busy index warnings, unchanged original output and successful retry after repair.
+These managed headless checks do not qualify native desktop rendering or physical keyboard input.
+
 `ViewerImportedRenderJobTests.EmittedManifestReopensAfterProducerRetirementWithoutInventingLiveState`
 uses the actual managed disk-job writer, retires its producer and imports only persisted files.
 One/16/17/20-frame cases check ordered endpoints, alpha pixels, original bytes and null live-state/camera

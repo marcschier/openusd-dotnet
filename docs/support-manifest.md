@@ -1466,8 +1466,11 @@ every Bitmap; late results cannot replace newer jobs. Windows D3D12 and real Vul
 the full native Viewer workflow matrix, are executed. File > Completed Render Jobs adds a process-local, newest-first
 list of the last eight successful sequence/product/physics jobs, retaining original metadata across document retirement
 without retaining a renderer or deleting evicted files. Reopening uses the same verified gallery; replacement,
-missing/changed files and delayed close/drain have managed headless coverage. Other native platforms and persistent
-cross-restart result browsing are not claimed.
+missing/changed files and delayed close/drain have managed headless coverage. A separate bounded index remembers eight
+completed or explicitly imported manifest paths across restarts without scanning directories or opening artifacts at
+startup. Remembered paths reopen through the strict importer with unverified metadata; they never become trusted
+process-history entries. Atomic persistence, queued shutdown drain, unavailable paths and recoverable storage warnings
+have managed headless coverage. Other native-platform desktop galleries remain unqualified.
 
 ### `viewer-picking`
 

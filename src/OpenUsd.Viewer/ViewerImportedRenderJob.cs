@@ -39,18 +39,7 @@ internal sealed class ViewerImportedRenderJob
     private static ViewerImportedRenderJob Read(string path, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) || path.Length > 4096 ||
-            path.Contains('\0') || path.StartsWith(@"\\", StringComparison.Ordinal) ||
-            path.StartsWith("//", StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("Choose a bounded absolute local render manifest path.");
-        }
-        string canonical = OperatingSystem.IsWindows()
-            ? ViewerWindowsFiles.NormalizePath(path) : Path.GetFullPath(path);
-        if (!string.Equals(Path.GetFileName(canonical), "manifest.json", StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("Choose the original manifest.json inside its completed job directory.");
-        }
+        string canonical = NormalizeManifestPath(path);
         ViewerCompletedJobPreview.RejectReparsePoints(canonical);
         using IDisposable? parent = OperatingSystem.IsWindows()
             ? ViewerWindowsFiles.OpenDirectory(Path.GetDirectoryName(canonical)!) : null;
@@ -71,6 +60,29 @@ internal sealed class ViewerImportedRenderJob
         {
             throw new InvalidDataException("The manifest changed while being imported.");
         }
+        return Parse(canonical, bytes, cancellationToken);
+    }
+
+    internal static string NormalizeManifestPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) || path.Length > 4096 ||
+            path.Contains('\0') || path.StartsWith(@"\\", StringComparison.Ordinal) ||
+            path.StartsWith("//", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Choose a bounded absolute local render manifest path.");
+        }
+        string canonical = OperatingSystem.IsWindows()
+            ? ViewerWindowsFiles.NormalizePath(path) : Path.GetFullPath(path);
+        if (!string.Equals(Path.GetFileName(canonical), "manifest.json", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Choose the original manifest.json inside its completed job directory.");
+        }
+        return canonical;
+    }
+
+    private static ViewerImportedRenderJob Parse(
+        string canonical, byte[] bytes, CancellationToken cancellationToken)
+    {
         try
         {
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });

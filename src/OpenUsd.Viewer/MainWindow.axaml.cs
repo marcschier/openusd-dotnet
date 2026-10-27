@@ -175,6 +175,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(settingsStore);
         _recentStageStore = recentStageStore;
         _settingsStore = settingsStore;
+        _recentRenderManifests = new ViewerRecentRenderManifestStore(settingsStore.RootPath);
         _documentFilePicker = documentFilePicker ?? ViewerDocumentFilePicker.Default;
         _assetFilePicker = assetFilePicker ?? ViewerAssetFilePicker.Default;
         _frameFilePicker = frameFilePicker ?? ViewerFrameFilePicker.Default;
@@ -378,6 +379,8 @@ public sealed partial class MainWindow : Window, IDisposable
         WorkspaceMenu.IsEnabled = false;
         try
         {
+            _rememberRenderManifestTask = RememberRenderManifestAsync(_rememberRenderManifestTask, path: null);
+            await _rememberRenderManifestTask;
             ViewerSettingsLoadResult result =
                 await _settingsStore.LoadAsync(cancellationToken);
             ApplySettings(result.Settings);
@@ -8673,6 +8676,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             await history.CloseAsync();
         }
+        await _rememberRenderManifestTask;
         if (_captureComparison is { } comparison)
         {
             await comparison.CloseAsync();
@@ -8800,6 +8804,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _viewerLifetime.Dispose();
             _documentGate.Dispose();
             _settingsStore.Dispose();
+            _recentRenderManifests.Dispose();
             DisposeReviewRecovery();
             _physicsBakeLifetime.Dispose();
             DisposeBridgeConnection();

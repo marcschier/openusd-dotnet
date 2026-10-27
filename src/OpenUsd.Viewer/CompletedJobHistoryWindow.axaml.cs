@@ -12,6 +12,7 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
     private readonly ViewerCompletedJobHistory _history;
     private readonly Func<RenderDiskJobResult, CancellationToken, Task<ViewerCompletedJobPreview>>? _load;
     private readonly Func<string, CancellationToken, Task<ViewerImportedRenderJob>> _readManifest;
+    private readonly Action<string>? _rememberManifest;
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _lifetime = new();
     private CompletedRenderJobWindow? _preview;
@@ -21,18 +22,31 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
 
     internal CompletedJobHistoryWindow(ViewerCompletedJobHistory history,
         Func<RenderDiskJobResult, CancellationToken, Task<ViewerCompletedJobPreview>>? load = null,
-        Func<string, CancellationToken, Task<ViewerImportedRenderJob>>? readManifest = null)
+        Func<string, CancellationToken, Task<ViewerImportedRenderJob>>? readManifest = null,
+        IReadOnlyList<string>? rememberedPaths = null,
+        Action<string>? rememberManifest = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         _history = history;
         _load = load;
         _readManifest = readManifest ?? ViewerImportedRenderJob.ReadAsync;
+        _rememberManifest = rememberManifest;
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
         HistoryJobs.SelectionChanged += (_, _) => UpdateSelection();
+        HistoryRememberedJobs.SelectionChanged += (_, _) => UpdateSelection();
+        HistoryTabs.SelectionChanged += (_, _) => UpdateSelection();
         HistoryViewButton.Click += async (_, _) => await OpenSelectedPreviewAsync();
         HistoryImportButton.Click += async (_, _) => await ImportManifestAsync();
         HistoryJobs.KeyDown += async (_, args) =>
+        {
+            if (args.Key == Key.Enter && args.KeyModifiers == KeyModifiers.None && HistoryViewButton.IsEnabled)
+            {
+                args.Handled = true;
+                await OpenSelectedPreviewAsync();
+            }
+        };
+        HistoryRememberedJobs.KeyDown += async (_, args) =>
         {
             if (args.Key == Key.Enter && args.KeyModifiers == KeyModifiers.None && HistoryViewButton.IsEnabled)
             {
@@ -56,12 +70,25 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
             _lifetime.Dispose();
             _closed.TrySetResult();
         };
+        SetRememberedPaths(rememberedPaths ?? []);
         Refresh();
     }
 
     private async Task OpenSelectedPreviewAsync()
     {
-        if (_opening || _closing || HistoryJobs.SelectedItem is not ViewerCompletedJobHistoryEntry entry)
+        if (_opening || _closing)
+        {
+            return;
+        }
+        if (HistoryTabs.SelectedIndex == 1)
+        {
+            if (HistoryRememberedJobs.SelectedItem is string path)
+            {
+                await ImportManifestAsync(path, remembered: true);
+            }
+            return;
+        }
+        if (HistoryJobs.SelectedItem is not ViewerCompletedJobHistoryEntry entry)
         {
             return;
         }
@@ -95,6 +122,20 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
 
     private void UpdateSelection()
     {
+        if (HistoryTabs.SelectedIndex == 1)
+        {
+            string? path = HistoryRememberedJobs.SelectedItem as string;
+            HistoryDescription.Text = path is null
+                ? "No completed or explicitly imported manifest paths have been remembered."
+                : "Remembered path only. This manifest and its sampled PNGs will be checked when opened.";
+            HistoryOutput.Text = path ?? string.Empty;
+            HistoryStatus.Text = path is null
+                ? "Import an original manifest or complete a render job to remember its path."
+                : "Metadata remains unverified. Missing or changed files are reported without removing this path.";
+            HistoryViewButton.IsEnabled = path is not null && !_opening && !_closing;
+            HistoryImportButton.IsEnabled = !_opening && !_closing;
+            return;
+        }
         var selected = HistoryJobs.SelectedItem as ViewerCompletedJobHistoryEntry;
         HistoryDescription.Text = selected?.Description ?? "No jobs have completed in this Viewer process.";
         HistoryOutput.Text = selected?.Job.OutputDirectory ?? string.Empty;
@@ -106,13 +147,29 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         HistoryImportButton.IsEnabled = !_opening && !_closing;
     }
 
-    internal async Task ImportManifestAsync(string? path = null)
+    internal void SetRememberedPaths(IReadOnlyList<string> paths, string? diagnostic = null)
+    {
+        if (_closing)
+        {
+            return;
+        }
+        object? previous = HistoryRememberedJobs.SelectedItem;
+        HistoryRememberedJobs.ItemsSource = paths;
+        HistoryRememberedJobs.SelectedItem = paths.FirstOrDefault(path => Equals(path, previous)) ??
+            (paths.Count == 0 ? null : paths[0]);
+        HistoryRememberedStatus.Text = diagnostic;
+        HistoryRememberedStatus.IsVisible = diagnostic is not null;
+        UpdateSelection();
+    }
+
+    internal async Task ImportManifestAsync(string? path = null, bool remembered = false)
     {
         if (_opening || _closing)
         {
             return;
         }
-        bool restoreImportFocus = HistoryImportButton.IsKeyboardFocusWithin;
+        Button returnFocus = remembered ? HistoryViewButton : HistoryImportButton;
+        bool restoreImportFocus = returnFocus.IsKeyboardFocusWithin;
         _opening = true;
         UpdateSelection();
         if (restoreImportFocus)
@@ -146,7 +203,8 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
             }
             ViewerImportedRenderJob job = await _readManifest(path, _lifetime.Token);
             _lifetime.Token.ThrowIfCancellationRequested();
-            await ShowPreviewAsync(() => new CompletedRenderJobWindow(job), HistoryImportButton);
+            _rememberManifest?.Invoke(job.ManifestPath);
+            await ShowPreviewAsync(() => new CompletedRenderJobWindow(job), returnFocus);
             status = "Imported manifest opened separately. Process history was not changed.";
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
@@ -168,7 +226,7 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
                 if (restoreImportFocus && HistoryCloseButton.IsKeyboardFocusWithin &&
                     (IsActive || IsKeyboardFocusWithin))
                 {
-                    HistoryImportButton.Focus();
+                    returnFocus.Focus();
                 }
             }
             drained.TrySetResult();

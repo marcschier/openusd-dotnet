@@ -1939,7 +1939,12 @@ Modified Enter does not open a preview or read historical files.
 The original description stays readable in the scrollable details area, actions remain visible
 at the minimum window size, and Escape closes and drains the browser from its focused controls.
 
-Restarting Viewer clears the process-local list. **Import manifest** opens an original
+Restarting Viewer clears the **This process** list. A separate **Remembered paths** tab retains
+the last eight completed or explicitly imported original manifest paths, newest first.
+Opening a remembered path imports its files again; it does not restore a trusted process-history entry.
+Startup reads only the bounded path index, without opening referenced manifests, decoding images
+or scanning output directories. Missing paths remain listed and report an error when opened.
+**Import manifest** opens an original
 `manifest.json` from an older job without adding it to that list or opening a source stage.
 This works with an empty history. Keep the PNGs beside the manifest at their generated names.
 The imported descriptor contains file metadata, not a reconstructed `StageRenderState`:
@@ -1966,8 +1971,17 @@ focus has moved elsewhere. A successful import focuses its gallery; closing it r
 originating history action only while the gallery still owns keyboard focus. Focus moved to
 another history control or another window is kept.
 Loading runs off the UI thread, observes cancellation and is drained before the owning history window
-closes. Closing either window releases decoded thumbnails. There is no directory scan, automatic
-restart discovery, asset/config resolution, source replay, effective-request comparison or certification
+closes. Closing either window releases decoded thumbnails. Remembered paths use the same import,
+verification and preview lifecycle; a remembered path grants no additional trust.
+The Viewer stores paths only in `recent-render-manifests.json` beside its settings. The versioned index
+is limited to eight distinct absolute local paths of at most 4096 characters and 256 KiB of JSON;
+it does not increase the settings file's separate 16-KiB limit. Reopening or reimporting a path moves
+it to the front, and eviction never deletes render files. Updates replace the index atomically.
+Viewer owns and drains queued updates before closing. Automated smoke runs do not persist these paths.
+An unreadable, malformed or busy index reports a storage warning without failing a completed render,
+removing its files or replacing the previous index. A malformed index requires explicit repair or removal
+before new paths can be saved; existing process history and manual import remain usable.
+There is no asset/config resolution, source replay, effective-request comparison or certification
 that old output is trustworthy.
 
 ### Comparing saved captures
