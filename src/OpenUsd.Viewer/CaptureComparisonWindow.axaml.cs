@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -275,6 +276,14 @@ internal sealed partial class CaptureComparisonWindow : Window
     {
         using var cancellation = new CancellationTokenSource();
         _loadCancellation = cancellation;
+        CaptureReviewIdentity? previousBefore = null;
+        CaptureReviewIdentity? previousAfter = null;
+        string previousNotes = ComparisonNotes.Text ?? string.Empty;
+        if (!presentationFile && previousNotes.Length != 0 && _presentation is { } previous)
+        {
+            previousBefore = CaptureReviewIdentity.From(previous.BeforePath, previous.Images.Before);
+            previousAfter = CaptureReviewIdentity.From(previous.AfterPath, previous.Images.After);
+        }
         DisposeImages();
         UpdateAvailability();
         BeforeName.Text = Path.GetFileName(beforePath);
@@ -290,6 +299,12 @@ internal sealed partial class CaptureComparisonWindow : Window
                     await _loadPair(beforePath, afterPath, cancellation.Token), ComparisonMode.SelectedIndex);
             ViewerCapturePair pair = presentation.Images;
             cancellation.Token.ThrowIfCancellationRequested();
+            if (previousBefore is not null &&
+                previousBefore == CaptureReviewIdentity.From(presentation.BeforePath, pair.Before) &&
+                previousAfter == CaptureReviewIdentity.From(presentation.AfterPath, pair.After))
+            {
+                presentation = presentation with { Notes = previousNotes };
+            }
             _beforeBitmap = CreateBitmap(pair.Before);
             _afterBitmap = CreateBitmap(pair.After);
             _presentation = presentation;
@@ -335,6 +350,12 @@ internal sealed partial class CaptureComparisonWindow : Window
             _loadCancellation = null;
             UpdateAvailability();
         }
+    }
+
+    private sealed record CaptureReviewIdentity(string Path, int Width, int Height, string PixelSha256)
+    {
+        internal static CaptureReviewIdentity From(string path, ViewerCaptureImage image) =>
+            new(path, image.Width, image.Height, Convert.ToHexString(SHA256.HashData(image.Rgba)));
     }
 
     private static WriteableBitmap CreateBitmap(ViewerCaptureImage image)

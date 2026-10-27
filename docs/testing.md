@@ -627,6 +627,15 @@ Text input at both endpoints and Ctrl+A retain the complete edited text; saving 
 those notes and the exact decoded historical pixels. Closing clears both image sources.
 These are managed headless control/filesystem checks, not native OS-input or screen-reader qualification.
 
+`ViewerCapturePresentationTests.RecompareKeepsEditedNotesOnlyForTheSameVerifiedCapturePair`
+checks the actual Compare action in both themes. Unsaved edits survive an unchanged reload
+or a PNG re-encoding with identical decoded pixels. Changed before/after pixels, changed
+dimensions with the same RGBA bytes, another path and reversed capture order clear the notes.
+Opening a saved comparison uses its stored notes instead of the editor's unsaved changes.
+Each case checks displayed pixels, display mode, saved/reopened notes and pixels, and close cleanup.
+The existing failed/cancelled-load cases still require an empty pair and disabled notes editor.
+These are historical-image association checks, not scene or source-authenticity qualification.
+
 `CaptureWorkerTests.QueuedDiskCancellationCompletesWithoutWaitingForUnrelatedActiveCaptureAndPreservesRetry`
 holds a real preview capture behind a barrier and cancels its queued disk successor. The disk request
 completes before that barrier is released, without running or creating output; retry decodes exact pixels.

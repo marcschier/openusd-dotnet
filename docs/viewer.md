@@ -1982,8 +1982,12 @@ reverse Tab from **Open comparison** reaches those details when the display-mode
 **Save comparison** writes a new `.usdcompare.json` file containing the two absolute capture
 paths, their decoded RGBA SHA-256 checksums and dimensions, the selected display mode and
 optional plain-text **Review notes**. Notes belong to that verified historical pair, not a
-prim, camera or current scene. Opening restores them; replacing or failing to open the pair
-clears them. Save failure keeps the displayed pair and notes. Notes are not rendered as markup.
+prim, camera or current scene. Compare keeps edited notes only when both ordered paths,
+dimensions and decoded pixel checksums still match the displayed pair. Re-encoding a PNG
+without changing its decoded pixels keeps the notes; changing either capture or its path
+clears them. Opening a saved comparison restores that file's notes rather than the unsaved
+editor text. Failed or cancelled loading clears the pair and notes. Save failure keeps the
+displayed pair and notes. Notes are not rendered as markup.
 **Open comparison** reopens both captures without a stage, renderer or the originating document.
 It verifies both pixel checksums and dimensions before displaying either image. A missing or
 changed capture fails explicitly; a different PNG encoding with identical decoded pixels remains

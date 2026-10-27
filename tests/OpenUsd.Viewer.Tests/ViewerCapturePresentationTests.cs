@@ -689,6 +689,123 @@ public sealed class ViewerCapturePresentationTests
 
     [Test]
     [NotInParallel]
+    [Arguments("unchanged", false)]
+    [Arguments("reencoded", false)]
+    [Arguments("before-pixels", false)]
+    [Arguments("after-pixels", false)]
+    [Arguments("dimensions", false)]
+    [Arguments("path", false)]
+    [Arguments("swapped", false)]
+    [Arguments("presentation", false)]
+    [Arguments("unchanged", true)]
+    [Arguments("reencoded", true)]
+    [Arguments("before-pixels", true)]
+    [Arguments("after-pixels", true)]
+    [Arguments("dimensions", true)]
+    [Arguments("path", true)]
+    [Arguments("swapped", true)]
+    [Arguments("presentation", true)]
+    public async Task RecompareKeepsEditedNotesOnlyForTheSameVerifiedCapturePair(string change, bool dark)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        await RunUiAsync(async () =>
+        {
+            var window = new CaptureComparisonWindow
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                TextBox notes = Required<TextBox>(window, "ComparisonNotes");
+                notes.Text = "Unsaved review of these exact pixels.\nKeep the alpha evidence.";
+                Required<Expander>(window, "ComparisonNotesExpander").IsExpanded = true;
+                Required<ComboBox>(window, "ComparisonMode").SelectedIndex = 2;
+                await window.SavePresentationAsync(fixture.Manifest);
+                notes.Text += "\nEdited after saving.";
+                string edited = notes.Text!;
+                string before = fixture.Before;
+                string after = fixture.After;
+                if (change == "reencoded")
+                {
+                    byte[] original = await File.ReadAllBytesAsync(before);
+                    byte[] reencoded = SplitIdatIntoSingleByteChunks(original);
+                    await Assert.That(reencoded.SequenceEqual(original)).IsFalse();
+                    await File.WriteAllBytesAsync(before, reencoded);
+                }
+                else if (change == "before-pixels")
+                {
+                    byte[] changed = [.. BeforeRgba];
+                    changed[7] = 127;
+                    WritePng(before, 3, 2, changed);
+                }
+                else if (change == "after-pixels")
+                {
+                    WritePng(after, 2, 1, [20, 40, 81, 255, 200, 100, 0, 255]);
+                }
+                else if (change == "dimensions")
+                {
+                    WritePng(before, 2, 3, BeforeRgba);
+                }
+                else if (change == "path")
+                {
+                    before = Path.Combine(fixture.Root, "a", "identical.png");
+                    File.Copy(fixture.Before, before);
+                }
+                else if (change == "swapped")
+                {
+                    (before, after) = (after, before);
+                }
+                if (change == "presentation")
+                {
+                    await window.LoadPresentationAsync(fixture.Manifest);
+                    await Assert.That(notes.Text).IsEqualTo(
+                        "Unsaved review of these exact pixels.\nKeep the alpha evidence.");
+                }
+                else
+                {
+                    Required<Button>(window, "CompareAgainButton")
+                        .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                        () => Required<Button>(window, "CompareAgainButton").IsEnabled);
+                    if (change is "path" or "swapped")
+                    {
+                        await Assert.That(notes.Text).IsEqualTo(edited);
+                        await window.LoadPairAsync(before, after);
+                    }
+                    await Assert.That(notes.Text)
+                        .IsEqualTo(change is "unchanged" or "reencoded" ? edited : string.Empty);
+                }
+                await Assert.That(Required<Expander>(window, "ComparisonNotesExpander").IsExpanded)
+                    .IsEqualTo(change is "unchanged" or "reencoded" or "presentation");
+                ViewerCapturePair expected = await ViewerCaptureComparison.LoadAsync(
+                    before, after, CancellationToken.None);
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"),
+                    expected.Before.Width, expected.Before.Height))
+                    .IsEqualTo(Convert.ToHexString(expected.Before.Rgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"),
+                    expected.After.Width, expected.After.Height)).IsEqualTo(Convert.ToHexString(expected.After.Rgba));
+                await Assert.That(Required<ComboBox>(window, "ComparisonMode").SelectedIndex).IsEqualTo(2);
+                string saved = Path.Combine(fixture.Root, "out", "recompared.usdcompare.json");
+                await window.SavePresentationAsync(saved);
+                ViewerCapturePresentation reopened = await ViewerCapturePresentationFile.LoadAsync(
+                    saved, CancellationToken.None);
+                await Assert.That(reopened.Notes).IsEqualTo(notes.Text);
+                await Assert.That(reopened.Images.Before.Rgba.SequenceEqual(expected.Before.Rgba)).IsTrue();
+                await Assert.That(reopened.Images.After.Rgba.SequenceEqual(expected.After.Rgba)).IsTrue();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+            await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+        });
+    }
+
+    [Test]
+    [NotInParallel]
     public async Task ComparisonWindowSavesAndReopensHistoricalPairWithoutPublishingPartialState()
     {
         using var fixture = await Fixture.CreateAsync();
