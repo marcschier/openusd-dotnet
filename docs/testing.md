@@ -173,6 +173,14 @@ zero steps and genuinely overflowing final samples before workspace work or publ
 These managed request and disk-output checks do not qualify extreme time codes in OpenUSD
 or a native renderer.
 
+Viewer range checks cover the separate `end - start` overflow boundary through
+`FiniteRangeSamplesSurviveSpanOverflowWithoutChangingTheirRequestedStep` and
+`WidestFiniteRangeRetainsBothEndpointsAndItsZeroSample`. Scaling the span calculation
+preserves bounded finite samples without changing the existing fused frame calculation.
+`OverflowingSpansStillRefuseTooManyFramesRatherThanTruncating` retains the 4096-frame
+limit, including a subnormal step; existing fractional endpoints and indistinguishable-step
+refusals remain covered. These are range-model checks, not native execution.
+
 `ProductRasterOverridesReachPreparedFramesAndHistoricalOutputsWithoutChangingAuthoredSize`
 checks paired MCP raster overrides through real shared framing, disk encoding and historical
 resource reads after scene close. It decodes the PNG, checks HDR length and manifest raster

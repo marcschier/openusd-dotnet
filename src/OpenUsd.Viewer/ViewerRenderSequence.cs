@@ -14,7 +14,8 @@ internal sealed class ViewerRenderSequenceRange
         {
             throw new ArgumentException("Use finite time codes, an end at or after the start, and a positive step.");
         }
-        double intervals = (end - start) / step;
+        double span = end - start;
+        double intervals = double.IsFinite(span) ? span / step : (end / 2 - start / 2) / (step / 2);
         double count = Math.Floor(Math.BitIncrement(intervals)) + 1;
         if (!double.IsFinite(count) || count > RenderDiskJobLimits.Default.MaximumFrames)
         {
