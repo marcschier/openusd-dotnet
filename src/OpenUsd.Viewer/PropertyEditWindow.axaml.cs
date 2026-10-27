@@ -65,6 +65,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         }
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
+        ViewerTextBoxScrolling.ContainCaretRequests(PropertyValue);
+        PropertyValue.GotFocus += (_, _) => PropertyValue.BringIntoView();
         PropertyPrimPath.Text = primPath;
         PropertySelector.ItemsSource = _attributes.Select(static attribute =>
             $"{attribute.Name} ({attribute.TypeName})").ToArray();

@@ -254,6 +254,13 @@ in both themes using a real native string property. The exact composed snapshot 
 the five decisions stay within the window, focused typed input scrolls into view and body
 Page Down/Page Up reaches both endpoints. Escape closes without adding history or changing
 source bytes. This is native-property plus headless-layout evidence, not physical OS input.
+`NativePropertyEditorCanKeyboardEditBothEndsOfLongTextAndUndoExactly` enters a 3,900-character
+draft at minimum/default sizes in both themes. Headless Ctrl+End/Ctrl+Home reaches each end
+of the input and scrolls its text viewport; keyboard input adds distinct suffix/prefix markers.
+Focus brings the whole input into view; inner caret requests stay within its text viewport.
+Set preserves the complete text in the native review opinion and target display, and the input
+remains reachable after that longer opinion expands the body. Shared Undo removes the newly
+authored review property; Redo restores the exact text. Source bytes remain unchanged.
 `NativePropertyRefreshKeepsOwnedFocusAndEscapeDrainsPendingCapture` blocks the native scheduler
 while Refresh is pending in both themes. Owned focus moves to Close, returns to the initiating
 control after completion or invalid-input retry, and stays with the body if the user moves there.
