@@ -337,9 +337,12 @@ public sealed class ViewerCameraBookmarksWindowTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task RefreshHandsKeyboardFocusToCancellationAndRestoresItAfterDrain(bool dark)
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task RefreshHandsKeyboardFocusToCancellationAndRestoresItAfterDrain(
+        bool dark, bool moveFocus)
     {
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
@@ -392,10 +395,16 @@ public sealed class ViewerCameraBookmarksWindowTests
                 await Assert.That(Required<Button>(window, "SavedViewsCloseButton").IsKeyboardFocusWithin).IsTrue();
                 await Assert.That(window.IsVisible).IsTrue();
                 await Assert.That(window.IsRunning).IsTrue();
+                ScrollViewer body = Required<ScrollViewer>(window, "SavedViewsBodyScroll");
+                if (moveFocus)
+                {
+                    await Assert.That(body.Focus()).IsTrue();
+                }
                 drain.TrySetResult();
                 await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
-                await Assert.That(refresh.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That((moveFocus ? (Control)body : refresh).IsKeyboardFocusWithin).IsTrue();
                 await Assert.That(Required<TextBlock>(window, "SavedViewsStatus").Text).StartsWith("Cancelled.");
+                await Assert.That(refresh.Focus()).IsTrue();
                 refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Assert.That(reads).IsEqualTo(3);
                 await Assert.That(refresh.IsKeyboardFocusWithin).IsTrue();

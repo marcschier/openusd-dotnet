@@ -184,7 +184,8 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
         }
         finally
         {
-            bool restoreFocus = (_restoreOperationFocus || SavedViewsCancelButton.IsKeyboardFocusWithin) &&
+            bool restoreFocus = ((_restoreOperationFocus && SavedViewsCloseButton.IsKeyboardFocusWithin) ||
+                SavedViewsCancelButton.IsKeyboardFocusWithin) &&
                 (IsActive || IsKeyboardFocusWithin);
             _restoreOperationFocus = false;
             _operation = null;

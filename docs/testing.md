@@ -272,6 +272,8 @@ These headless keyboard cases do not qualify physical OS input.
 manager in both themes: a focused Refresh hands focus to Cancel, routed Escape requests
 cancellation, Close remains focused during delayed drain, and Refresh regains focus for
 retry after the cancellation or read refusal. Capture, edits and recall are never invoked.
+If focus moves to the scroll body during delayed cancellation drain, completion leaves it there.
+The original action regains focus only while the temporary Cancel/Close focus is still owned.
 
 `RefreshButtonRetainsOnlyTheSelectedBookmarkIdentityAndUsesItsNewSnapshot` checks both themes
 with reordered, renamed, removed and same-name replacement records. The actual Refresh button
