@@ -1641,6 +1641,12 @@ palette stays open, and execution rechecks the live command state. Escape closes
 executing the selection. Compact 400-by-280 layout and both light/dark themes have managed
 headless coverage; this does not qualify native-child focus, device DPI or a screen reader.
 
+Availability refresh preserves keyboard ownership when it replaces result controls.
+A focused result returns to the same enabled command, or the first enabled result if
+that command becomes unavailable. Focused Run remains on Run when execution is still
+available. If no command can run, either path moves focus to the query. Refresh does
+not move focus from the query, Close or another window, and never executes a command.
+
 ### Capturing the current viewport
 
 **File > Capture Frame** saves a PNG by default, or an uncompressed 24-bit BMP when chosen in the

@@ -773,6 +773,14 @@ Subsequent plain arrows and Enter must still invoke exactly the original selecte
 The same suite retains unavailable-action guards, live enablement and compact light/dark layouts;
 this is managed keyboard-routing evidence, not physical input or native-child focus qualification.
 
+`ViewerCommandPaletteWindowTests.PeriodicAvailabilityRefreshPreservesOwnedKeyboardNavigationWithoutStealingFocus`
+waits for the actual availability timer to replace result controls in both themes.
+Cases disable an unrelated command, the selected command or every command while focus
+belongs to a result, query, Run, Close or another window. Assertions check selected
+command identity, Run availability and retained or fallback keyboard focus before
+actual headless Enter/Escape input. Refresh must dispatch nothing; Enter must invoke
+exactly the surviving original command. These cases do not qualify physical input.
+
 `ViewerCompletedJobHistoryTests.ModifiedHistoryEnterDoesNotOpenOrReadFilesAndPlainEnterReopensOriginalOutput`
 sends actual Control/Shift/Alt/Meta Enter while the historical list owns focus. None may read files
 or open a preview. Plain Enter then reopens exactly the original job, preserves alpha pixels and

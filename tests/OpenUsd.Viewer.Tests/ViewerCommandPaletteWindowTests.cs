@@ -13,6 +13,135 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerCommandPaletteWindowTests
 {
+    private static readonly string[] RefreshFocusTargets = ["item", "search", "run", "close", "other"];
+
+    [Test]
+    [Arguments(false, "unrelated")]
+    [Arguments(true, "unrelated")]
+    [Arguments(false, "selected")]
+    [Arguments(true, "selected")]
+    [Arguments(false, "all")]
+    [Arguments(true, "all")]
+    public async Task PeriodicAvailabilityRefreshPreservesOwnedKeyboardNavigationWithoutStealingFocus(
+        bool dark, string change)
+    {
+        await RunUiAsync(async () =>
+        {
+            foreach (string destination in RefreshFocusTargets)
+            {
+                using var commands = new ViewerCommandDispatcher();
+                var first = new Button();
+                var selected = new Button();
+                var last = new Button();
+                int firstCalls = 0;
+                int selectedCalls = 0;
+                int lastCalls = 0;
+                first.Click += (_, _) => firstCalls++;
+                selected.Click += (_, _) => selectedCalls++;
+                last.Click += (_, _) => lastCalls++;
+                commands.Register(ViewerCommandCatalog.Get(ViewerCommandIds.FileOpenStage), first);
+                commands.Register(ViewerCommandCatalog.Get(ViewerCommandIds.FileOpenReview), selected);
+                commands.Register(ViewerCommandCatalog.Get(ViewerCommandIds.FileOpenSample), last);
+                var window = new CommandPaletteWindow(commands,
+                    _ => throw new InvalidOperationException("Unexpected dispatch error."))
+                {
+                    RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+                };
+                var otherAction = new Button { Content = "Other window action" };
+                var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+                window.Show();
+                try
+                {
+                    TextBox search = Required<TextBox>(window, "CommandSearch");
+                    ListBox results = Required<ListBox>(window, "CommandResults");
+                    Button run = Required<Button>(window, "RunCommandButton");
+                    Button close = Required<Button>(window, "ClosePaletteButton");
+                    results.SelectedIndex = 1;
+                    window.UpdateLayout();
+                    var original = (ListBoxItem)results.SelectedItem!;
+                    Control focused = destination switch
+                    {
+                        "item" => original,
+                        "search" => search,
+                        "run" => run,
+                        "close" => close,
+                        _ => otherAction
+                    };
+                    if (destination == "other")
+                    {
+                        other.Show();
+                    }
+                    await Assert.That(focused.Focus()).IsTrue();
+                    await Assert.That(focused.IsKeyboardFocusWithin).IsTrue();
+                    if (change == "unrelated")
+                    {
+                        first.IsEnabled = false;
+                    }
+                    else
+                    {
+                        selected.IsEnabled = false;
+                        if (change == "all")
+                        {
+                            first.IsEnabled = false;
+                            last.IsEnabled = false;
+                        }
+                    }
+                    await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                        () => !ReferenceEquals(results.Items[1], original));
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                    await Assert.That(results.ItemCount).IsEqualTo(3);
+                    await Assert.That(run.IsEnabled).IsEqualTo(change != "all");
+                    await Assert.That(window.ActualThemeVariant)
+                        .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                    if (change == "all")
+                    {
+                        await Assert.That(results.SelectedItem).IsNull();
+                        await Assert.That(Required<TextBlock>(window, "CommandSearchStatus").Text)
+                            .Contains("3 matches");
+                    }
+                    else
+                    {
+                        string expectedId = change == "selected"
+                            ? ViewerCommandIds.FileOpenStage : ViewerCommandIds.FileOpenReview;
+                        await Assert.That(((ListBoxItem)results.SelectedItem!).Tag).IsEqualTo(expectedId);
+                    }
+                    Control expectedFocus = destination == "item"
+                        ? change == "all" ? search : (ListBoxItem)results.SelectedItem!
+                        : destination == "run" && change == "all" ? search : focused;
+                    await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue()
+                        .Because($"refresh={change}, focus={destination}");
+                    await Assert.That(firstCalls + selectedCalls + lastCalls).IsEqualTo(0);
+                    if (destination is "close" or "other" || change == "all")
+                    {
+                        if (destination == "other")
+                        {
+                            await Assert.That(search.Focus()).IsTrue();
+                        }
+                        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+                        await Assert.That(firstCalls + selectedCalls + lastCalls).IsEqualTo(0);
+                    }
+                    else
+                    {
+                        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                        if (window.IsVisible)
+                        {
+                            window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                        }
+                        await Assert.That(firstCalls).IsEqualTo(change == "selected" ? 1 : 0);
+                        await Assert.That(selectedCalls).IsEqualTo(change == "unrelated" ? 1 : 0);
+                        await Assert.That(lastCalls).IsEqualTo(0);
+                    }
+                    await Assert.That(window.IsVisible).IsFalse();
+                }
+                finally
+                {
+                    other.Close();
+                    window.Close();
+                }
+            }
+        });
+    }
+
     [Test]
     [Arguments(Key.Enter, RawInputModifiers.Control)]
     [Arguments(Key.Enter, RawInputModifiers.Shift)]
