@@ -35,6 +35,136 @@ public sealed class ViewerCapturePresentationTests
 
     [Test]
     [NotInParallel]
+    [Arguments(false, "success", "cancel")]
+    [Arguments(true, "success", "cancel")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "status")]
+    [Arguments(true, "success", "status")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "cancelled", "cancel")]
+    [Arguments(true, "cancelled", "cancel")]
+    [Arguments(false, "cancelled", "close")]
+    [Arguments(true, "cancelled", "close")]
+    [Arguments(false, "cancelled", "status")]
+    [Arguments(true, "cancelled", "status")]
+    [Arguments(false, "cancelled", "other")]
+    [Arguments(true, "cancelled", "other")]
+    [Arguments(false, "failure", "cancel")]
+    [Arguments(true, "failure", "cancel")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "status")]
+    [Arguments(true, "failure", "status")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    public async Task ComparisonCompletionPreservesMovedFocusAndRestoresOnlyOwnedCancelFocus(
+        bool dark, string outcome, string destination)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        await RunUiAsync(async () =>
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            int calls = 0;
+            var window = new CaptureComparisonWindow(async (before, after, token) =>
+            {
+                if (++calls == 1)
+                {
+                    entered.TrySetResult();
+                    await release.Task;
+                    token.ThrowIfCancellationRequested();
+                    if (outcome == "failure")
+                    {
+                        throw new IOException("Controlled delayed comparison refusal.");
+                    }
+                }
+                return await ViewerCaptureComparison.LoadAsync(before, after, token);
+            })
+            {
+                Width = 600,
+                Height = 360,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            var otherButton = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherButton, Width = 240, Height = 160 };
+            window.Show();
+            Task? pending = null;
+            try
+            {
+                pending = window.LoadPairAsync(fixture.Before, fixture.After);
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Button cancel = Required<Button>(window, "CancelComparisonButton");
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                if (outcome == "cancelled")
+                {
+                    cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    await Assert.That(pending.IsCompleted).IsFalse();
+                }
+                Control expectedFocus = destination switch
+                {
+                    "cancel" => Required<Button>(window, "CompareAgainButton"),
+                    "close" => Required<Button>(window, "CloseComparisonButton"),
+                    "status" => Required<ScrollViewer>(window, "ComparisonStatusScroll"),
+                    "other" => otherButton,
+                    _ => throw new ArgumentOutOfRangeException(nameof(destination))
+                };
+                if (destination == "other")
+                {
+                    other.Show();
+                    await Assert.That(otherButton.Focus()).IsTrue();
+                }
+                else if (destination != "cancel")
+                {
+                    await Assert.That(expectedFocus.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                window.UpdateLayout();
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(cancel.IsEnabled).IsFalse();
+                if (outcome == "success")
+                {
+                    await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                        .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                }
+                else
+                {
+                    await AssertNoPairAsync(window);
+                    await Assert.That(Required<TextBlock>(window, "ComparisonStatus").Text)
+                        .Contains(outcome == "cancelled" ? "cancelled" : "Controlled delayed comparison refusal.");
+                }
+                other.Close();
+                await Assert.That(Required<Button>(window, "CompareAgainButton").Focus()).IsTrue();
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                await Assert.That(Required<Button>(window, "CompareAgainButton").IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(calls).IsEqualTo(2);
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                await Assert.That(Directory.GetFiles(Path.Combine(fixture.Root, "out"))).IsEmpty();
+            }
+            finally
+            {
+                release.TrySetResult();
+                if (pending is not null)
+                {
+                    await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(Required<Image>(window, "BeforeImage").Source).IsNull();
+            await Assert.That(Required<Image>(window, "AfterImage").Source).IsNull();
+        });
+    }
+
+    [Test]
+    [NotInParallel]
     [Arguments(false)]
     [Arguments(true)]
     public async Task LongComparisonRefusalKeepsActionsAndFullContextKeyboardReachableThenRetries(bool dark)

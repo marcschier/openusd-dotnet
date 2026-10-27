@@ -357,7 +357,13 @@ This coverage does not establish rendered exposure, display transforms or physic
 comparison dialogs, initial keyboard focus and routed Escape from the focused Cancel control.
 A delayed reader confirms cancellation does not close the window before resource drain or publish
 a partial pair or comparison file. Loading hands owned keyboard focus to Cancel, returns it to
-Compare after cancellation or completion, and retains independently decoded pixels on retry.
+Compare after cancellation or completion while Cancel still owns focus, and retains
+independently decoded pixels on retry.
+`ComparisonCompletionPreservesMovedFocusAndRestoresOnlyOwnedCancelFocus` checks delayed
+success, cancellation and read refusal in both themes. Completion preserves focus deliberately
+moved to Close, status details or another window; the next attempt still restores owned Cancel
+focus to Compare. The repeated load checks original decoded pixels, empty output and image
+disposal after close. These cases qualify the existing behavior; no focus repair was required.
 These headless keyboard cases do not qualify physical OS input.
 
 `RefreshHandsKeyboardFocusToCancellationAndRestoresItAfterDrain` exercises the saved-view
