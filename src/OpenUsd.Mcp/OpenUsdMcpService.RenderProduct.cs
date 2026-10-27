@@ -24,6 +24,12 @@ internal sealed partial class OpenUsdMcpService
                 "Product raster width and height must be supplied together, each within 1-4096 pixels.",
                 nameof(request));
         }
+        if (request.DataWindowNdc is { Length: not 4 })
+        {
+            throw new ArgumentException(
+                "Product data window must contain four NDC bounds: minX, minY, maxX, maxY.",
+                nameof(request));
+        }
         foreach (string? path in new[] { request.SettingsPath, request.ProductPath, request.CameraPath })
         {
             if (path is not null)
@@ -49,7 +55,10 @@ internal sealed partial class OpenUsdMcpService
                 ? new ViewportDimensions(width, height)
                 : null,
             pixelAspectRatio: request.PixelAspectRatio,
-            aspectRatioConformPolicy: request.AspectRatioConformPolicy);
+            aspectRatioConformPolicy: request.AspectRatioConformPolicy,
+            dataWindowNdc: request.DataWindowNdc is { } dataWindow
+                ? new UsdVec4f(dataWindow[0], dataWindow[1], dataWindow[2], dataWindow[3])
+                : null);
         var times = new double[request.FrameCount];
         for (int index = 0; index < times.Length; index++)
         {

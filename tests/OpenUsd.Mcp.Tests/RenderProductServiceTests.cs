@@ -13,6 +13,258 @@ public sealed class RenderProductServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Test]
+    [Arguments("omitted", 4, 4, 2, 2, 2f, 2f, 0f, 0f)]
+    [Arguments("full", 8, 8, 0, 0, 1f, 1f, 0f, 0f)]
+    [Arguments("center", 4, 4, 2, 2, 2f, 2f, 0f, 0f)]
+    [Arguments("left", 4, 8, 0, 0, 2f, 1f, 1f, 0f)]
+    [Arguments("overscan", 12, 12, -2, -2, 2f / 3f, 2f / 3f, 0f, 0f)]
+    [Arguments("onePixel", 1, 1, 2, 2, 8f, 8f, 3f, 3f)]
+    [Arguments("outside", 4, 4, 8, 8, 2f, 2f, -3f, -3f)]
+    [Arguments("pixelCenters", 1, 1, 0, 0, 8f, 8f, 7f, 7f)]
+    [Arguments("dimensionLimit", 4096, 8, 0, 0, 1f / 512f, 1f, -511f / 512f, 0f)]
+    public async Task ProductDataWindowOverridesPreserveCropOverscanAndHistoricalFramesWithoutAliasingInput(
+        string kind, int width, int height, int minX, int minY,
+        float projectionX, float projectionY, float offsetX, float offsetY)
+    {
+        float[]? coordinates = kind switch
+        {
+            "omitted" => null,
+            "full" => [0, 0, 1, 1],
+            "center" => [0.25f, 0.25f, 0.75f, 0.75f],
+            "left" => [0, 0, 0.5f, 1],
+            "overscan" => [-0.25f, -0.25f, 1.25f, 1.25f],
+            "onePixel" => [0.25f, 0.25f, 0.375f, 0.375f],
+            "outside" => [1, 1, 1.5f, 1.5f],
+            "pixelCenters" => [0.0625f, 0.0625f, 0.1875f, 0.1875f],
+            "dimensionLimit" => [0, 0, 512, 1],
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        UsdVec4f? expected = coordinates is null ? null :
+            new UsdVec4f(coordinates[0], coordinates[1], coordinates[2], coordinates[3]);
+        var authored = new UsdVec4f(0.25f, 0.25f, 0.75f, 0.75f);
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        RenderProductJobPlan? prepared = null;
+        backend.PrepareProduct = times =>
+        {
+            if (coordinates is not null)
+            {
+                Array.Fill(coordinates, float.NaN);
+            }
+            return prepared = Plan(
+                backend.Context!.SessionId, backend.StageRevision, times, backend.LastProductOverrides, authored);
+        };
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 8,
+            Height = 8,
+            DataWindowNdc = coordinates
+        }, default);
+        await Assert.That(prepared!.Request.Product.DataWindowNdc).IsEqualTo(authored);
+        await Assert.That(prepared.Request.Overrides.DataWindowNdc).IsEqualTo(expected);
+        RenderPreparedFrame sample = prepared.Frames[0];
+        await Assert.That(sample.OutputDimensions.Width).IsEqualTo(width);
+        await Assert.That(sample.OutputDimensions.Height).IsEqualTo(height);
+        await Assert.That(sample.DataWindowMinX).IsEqualTo(minX);
+        await Assert.That(sample.DataWindowMinY).IsEqualTo(minY);
+        await Assert.That(sample.Camera.Projection.M11).IsEqualTo(projectionX);
+        await Assert.That(sample.Camera.Projection.M22).IsEqualTo(projectionY);
+        await Assert.That(sample.Camera.Projection.M41).IsEqualTo(offsetX);
+        await Assert.That(sample.Camera.Projection.M42).IsEqualTo(offsetY);
+        string manifestPath = Path.Combine(backend.Context!.OutputDirectory, "renders", job.JobId, "manifest.json");
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        JsonElement raster = manifest.RootElement.GetProperty("frames")[0].GetProperty("productRaster");
+        await Assert.That(raster.GetProperty("fullWidth").GetInt32()).IsEqualTo(8);
+        await Assert.That(raster.GetProperty("fullHeight").GetInt32()).IsEqualTo(8);
+        await Assert.That(raster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(minX);
+        await Assert.That(raster.GetProperty("dataWindowMinY").GetInt32()).IsEqualTo(minY);
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.Width).IsEqualTo(width);
+        await Assert.That(frame.Height).IsEqualTo(height);
+        await Assert.That(frame.RenderRequest!.Width).IsEqualTo(width);
+        await Assert.That(frame.RenderRequest.Height).IsEqualTo(height);
+        ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(frame.Artifact.Uri));
+        ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+        await Assert.That(image.Width).IsEqualTo(width);
+        await Assert.That(image.Height).IsEqualTo(height);
+        ArtifactResourceContent? hdr = await artifacts.ReadAsync(new Uri(frame.HdrColor!.Uri));
+        await Assert.That(hdr!.Content.Length).IsEqualTo(width * height * 8);
+        await Assert.That(backend.Events).DoesNotContain("apply");
+        await Assert.That(backend.Events).DoesNotContain("checkpoint");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo("#usda 1.0");
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(3)]
+    [Arguments(5)]
+    public async Task InvalidProductDataWindowLengthIsRejectedBeforeWorkspaceWork(int length)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = "unused",
+            DataWindowNdc = new float[length]
+        }, default)).Throws<ArgumentException>();
+        await Assert.That(backend.Events).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.EnumerateDirectories(files.OutputRoot)).IsEmpty();
+    }
+
+    [Test]
+    [Arguments("minXNaN")]
+    [Arguments("minYNaN")]
+    [Arguments("maxXNaN")]
+    [Arguments("maxYNaN")]
+    [Arguments("minXInfinity")]
+    [Arguments("minYInfinity")]
+    [Arguments("maxXInfinity")]
+    [Arguments("maxYInfinity")]
+    [Arguments("zeroWidth")]
+    [Arguments("zeroHeight")]
+    [Arguments("reversedWidth")]
+    [Arguments("reversedHeight")]
+    [Arguments("reversedBoth")]
+    public async Task InvalidProductDataWindowBoundsAreRejectedBeforeWorkspaceWork(string kind)
+    {
+        float[] coordinates = kind switch
+        {
+            "minXNaN" => [float.NaN, 0, 1, 1],
+            "minYNaN" => [0, float.NaN, 1, 1],
+            "maxXNaN" => [0, 0, float.NaN, 1],
+            "maxYNaN" => [0, 0, 1, float.NaN],
+            "minXInfinity" => [float.NegativeInfinity, 0, 1, 1],
+            "minYInfinity" => [0, float.NegativeInfinity, 1, 1],
+            "maxXInfinity" => [0, 0, float.PositiveInfinity, 1],
+            "maxYInfinity" => [0, 0, 1, float.PositiveInfinity],
+            "zeroWidth" => [0.5f, 0, 0.5f, 1],
+            "zeroHeight" => [0, 0.5f, 1, 0.5f],
+            "reversedWidth" => [1, 0, 0, 1],
+            "reversedHeight" => [0, 1, 1, 0],
+            "reversedBoth" => [1, 1, 0, 0],
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = "unused",
+            DataWindowNdc = coordinates
+        }, default)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(backend.Events).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.EnumerateDirectories(files.OutputRoot)).IsEmpty();
+    }
+
+    [Test]
+    [Arguments(0.01f, 1f)]
+    [Arguments(float.MaxValue, 1f)]
+    [Arguments(256f, 256f)]
+    [Arguments(1024.125f, 1f)]
+    public async Task UnrenderableProductDataWindowsCreateNoOutputOrHistory(float maxX, float maxY)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times => Plan(
+            backend.Context!.SessionId, backend.StageRevision, times, backend.LastProductOverrides);
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 8,
+            Height = 8,
+            DataWindowNdc = [0, 0, maxX, maxY]
+        }, default)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(backend.Events).Contains("prepare-product");
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.Exists(Path.Combine(backend.Context!.OutputDirectory, "renders"))).IsFalse();
+    }
+
+    [Test]
+    public async Task CaptureLimitedProductDataWindowsRefuseBeforeSourceAndAllowRetry()
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times => Plan(
+            backend.Context!.SessionId, backend.StageRevision, times, backend.LastProductOverrides);
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore();
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 8,
+            Height = 8,
+            DataWindowNdc = [0, 0, 512.125f, 1]
+        }, default)).Throws<OpenUsdMcpFailureException>();
+        await Assert.That(factory.Creations).IsEqualTo(0);
+        await Assert.That(factory.Source.Validations).IsEqualTo(0);
+        await Assert.That(factory.Source.Times).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        string renders = Path.Combine(backend.Context!.OutputDirectory, "renders");
+        await Assert.That(Directory.EnumerateFileSystemEntries(renders)).IsEmpty();
+        McpRenderSequenceResultDto retry = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 8,
+            Height = 8,
+            DataWindowNdc = [0, 0, 1, 1]
+        }, default);
+        await Assert.That(retry.FrameCount).IsEqualTo(1);
+        await Assert.That(factory.Creations).IsEqualTo(1);
+        await Assert.That(factory.Source.Validations).IsEqualTo(1);
+        await Assert.That(factory.Source.Times.SequenceEqual([0d])).IsTrue();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).Count().IsEqualTo(1);
+        await Assert.That(Directory.EnumerateDirectories(renders)).Count().IsEqualTo(1);
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo("#usda 1.0");
+    }
+
+    [Test]
     [Arguments(null, null, 1.5d, 1f, 2.25f)]
     [Arguments(0.5d, null, 0.5d, 1f / 0.75f, 1f)]
     [Arguments(1d, null, 1d, 1f, 1.5f)]
@@ -430,8 +682,14 @@ public sealed class RenderProductServiceTests
     private sealed class ProductFactory : IPreviewFrameSourceFactory
     {
         internal ProductSource Source { get; } = new();
+        internal int Creations { get; private set; }
+
         public IPreviewFrameSource Create(
-            PreviewCaptureRequest request, CancellationToken cancellationToken = default) => Source;
+            PreviewCaptureRequest request, CancellationToken cancellationToken = default)
+        {
+            Creations++;
+            return Source;
+        }
     }
 
     private sealed class ProductSource : IPreviewFrameSource, IPreviewProductFrameSource

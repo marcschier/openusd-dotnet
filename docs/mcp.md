@@ -1148,7 +1148,7 @@ default; stage-root metadata is not implicitly inherited from its source sublaye
 
 Optional `width` and `height` override the full raster through the shared product planner.
 Supply both within 1-4096 pixels, or omit both to retain the authored resolution. This does
-not edit the product. The authored data window still applies, so cropping or overscan
+not edit the product. The effective data window applies, so cropping or overscan
 can change the resulting PNG dimensions. Existing frame/job quotas and
 encoding restrictions remain unchanged; an over-budget result is refused, not resized.
 
@@ -1159,6 +1159,16 @@ retains its authored value. The shared planner applies these before cropping;
 `adjustPixelAspectRatio` derives the effective ratio from the camera aperture and full
 raster instead of using the requested ratio. The manifest records the effective ratio
 and policy without editing the product. Non-square pixels do not bypass EXR restrictions.
+
+`dataWindowNdc` optionally overrides the data window as `[minX, minY, maxX, maxY]`,
+with bottom-left and top-right coordinates in the full raster's normalized space. Supply
+exactly four finite values with increasing bounds on each axis, or omit the field to retain
+the authored window. Coordinates outside 0-1 preserve overscan; they are not clamped.
+The shared planner selects pixels by their centres, including the minimum and excluding
+the maximum. A window containing no pixel centres is refused before output creation.
+The manifest retains the effective raster origin, including negative origins, and frame
+dimensions describe the actual crop or overscan. Existing MCP capture-dimension and
+output-byte quotas still apply.
 
 ```json
 {
@@ -1172,6 +1182,7 @@ and policy without editing the product. Non-square pixels do not bypass EXR rest
     "height": 512,
     "pixelAspectRatio": 1,
     "aspectRatioConformPolicy": "expandAperture",
+    "dataWindowNdc": [0.25, 0, 0.75, 1],
     "frameCount": 3,
     "startTimeCode": 0,
     "timeStep": 1,

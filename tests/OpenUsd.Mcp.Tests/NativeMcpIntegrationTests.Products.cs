@@ -154,10 +154,11 @@ public sealed partial class NativeMcpIntegrationTests
                 rasterOverride ? "int2 resolution = (64, 32)" : "int2 resolution = (32, 16)",
                 StringComparison.Ordinal)
             .Replace("token productName = \"../must-not-be-used.exr\"",
-                "token productName = \"../must-not-be-used.exr\"\n    float4 dataWindowNDC = (0.25, 0, 0.75, 1)" +
+                "token productName = \"../must-not-be-used.exr\"\n    float4 dataWindowNDC = " +
                 (rasterOverride
-                    ? "\n    float pixelAspectRatio = 2\n    token aspectRatioConformPolicy = \"adjustApertureHeight\""
-                    : ""),
+                    ? "(-0.25, -0.25, 1.25, 1.25)\n    float pixelAspectRatio = 2\n" +
+                        "    token aspectRatioConformPolicy = \"adjustApertureHeight\""
+                    : "(0.25, 0, 0.75, 1)"),
                 StringComparison.Ordinal)
             .Replace("double3 xformOp:translate = (-1, 1, -4)",
                 "double3 xformOp:translate.timeSamples = { 0: (-1, 1, -4), 2: (1, 1, -4) }",
@@ -188,6 +189,7 @@ public sealed partial class NativeMcpIntegrationTests
             Height = rasterOverride ? 16 : null,
             PixelAspectRatio = rasterOverride ? 1 : null,
             AspectRatioConformPolicy = rasterOverride ? "expandAperture" : null,
+            DataWindowNdc = rasterOverride ? [0.25f, 0, 0.75f, 1] : null,
             FrameCount = 2,
             TimeStep = 2
         };

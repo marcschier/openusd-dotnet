@@ -44,6 +44,12 @@ internal sealed class RenderProductCaptureRequest : SceneRevisionRequestBase
         "adjustApertureHeight or adjustPixelAspectRatio. Omission preserves the authored policy.")]
     public string? AspectRatioConformPolicy { get; init; }
 
+    [JsonPropertyName("dataWindowNdc"), MinLength(4), MaxLength(4)]
+    [Description(
+        "Optional normalized [minX, minY, maxX, maxY] data window; four finite values with increasing bounds. " +
+        "Coordinates outside 0-1 retain overscan. Omission preserves the authored window; output quotas still apply.")]
+    public float[]? DataWindowNdc { get; init; }
+
     [JsonPropertyName("frameCount"), Range(1, 4096), DefaultValue(1)]
     [Description(
         "Number of explicit time samples, 1-4096. Product variables, not viewport output toggles, choose data planes.")]

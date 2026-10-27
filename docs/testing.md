@@ -182,11 +182,27 @@ and verifies effective manifest metadata and historical PNG retrieval after clos
 and unknown, case-mismatched or padded tokens before workspace work or output creation.
 The official protocol journey round-trips both optional fields.
 
+`ProductDataWindowOverridesPreserveCropOverscanAndHistoricalFramesWithoutAliasingInput`
+checks omission, a full window, asymmetric and one-pixel crops, overscan and outside windows.
+It admits an output axis at the existing 4096-pixel MCP capture limit through overscan.
+It verifies pixel-centre boundaries, projection and raster origin, then reads PNG/HDR and the
+manifest after close. Mutating the input array during backend preparation cannot change the
+copied override or the authored window.
+`InvalidProductDataWindowLengthIsRejectedBeforeWorkspaceWork` and
+`InvalidProductDataWindowBoundsAreRejectedBeforeWorkspaceWork` reject wrong lengths,
+nonfinite coordinates and nonincreasing bounds without workspace work or output creation.
+`UnrenderableProductDataWindowsCreateNoOutputOrHistory` refuses zero-pixel windows,
+unrepresentable pixel coordinates and overscan exceeding the existing frame-byte or
+8192-pixel dimension limits. The official protocol journey round-trips all four coordinates.
+`CaptureLimitedProductDataWindowsRefuseBeforeSourceAndAllowRetry` rejects the adjacent
+4097-pixel output before source validation or capture, then completes a valid retry with
+one job and no partial directory. Neither the core nor MCP capture limits are relaxed.
+
 Windows native `AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport`
 also covers omitted and explicit raster sizes, with default and bounded preparation.
 An authored 64x32 raster is overridden to 32x16, then cropped to 16x16 without changing
-the source. Explicit sizing cases also override an authored pixel ratio of 2 and
-`adjustApertureHeight` policy with ratio 1 and `expandAperture`. It checks animated raw HDR
+the source. Explicit sizing cases also override authored overscan with the crop and replace
+pixel ratio 2 and `adjustApertureHeight` with ratio 1 and `expandAperture`. It checks animated raw HDR
 pixels and PNG contact-sheet cells, EXR refusal and texture-budget drain.
 This is D3D12 WARP evidence, not non-Windows or hardware
 qualification.
