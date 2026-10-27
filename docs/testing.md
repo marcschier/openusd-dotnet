@@ -435,6 +435,11 @@ Their nested caret visibility requests stay local; focusing an editor still reve
 both themes at minimum size. A focused Import action hands focus to Close while unavailable, then
 recovers retry focus after refusal. Moving to another field or window prevents focus restoration.
 Retry opens the original output with gallery focus intact; closing returns to Import without adding history.
+`GalleriesRestoreTheirOriginatingHistoryActionsOrCloseWhenUnavailable` checks both themes with
+an existing process-history job. Closing an imported gallery returns to Import rather than the
+unrelated job's View action. Opening that job with Enter returns to View on close, or Close if
+the selection was removed while its gallery was open. Import does not change the process history
+or its selected entry.
 `ClosingDuringManifestReadCancelsAndDrainsBeforeAnyGalleryCanPublish` pauses descriptor admission and
 proves cancellation/drain before close without a late gallery. These are managed filesystem and headless
 control checks, not native OS picker, screen-reader, device rendering or installed-package qualification.

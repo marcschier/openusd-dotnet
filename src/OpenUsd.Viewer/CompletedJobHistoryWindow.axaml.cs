@@ -146,7 +146,7 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
             }
             ViewerImportedRenderJob job = await _readManifest(path, _lifetime.Token);
             _lifetime.Token.ThrowIfCancellationRequested();
-            await ShowPreviewAsync(() => new CompletedRenderJobWindow(job));
+            await ShowPreviewAsync(() => new CompletedRenderJobWindow(job), HistoryImportButton);
             status = "Imported manifest opened separately. Process history was not changed.";
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
@@ -177,10 +177,11 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
 
     private async Task OpenPreviewAsync(ViewerCompletedJobHistoryEntry entry)
     {
-        await ShowPreviewAsync(() => new CompletedRenderJobWindow(entry.Job, entry.Description, _load));
+        await ShowPreviewAsync(
+            () => new CompletedRenderJobWindow(entry.Job, entry.Description, _load), HistoryViewButton);
     }
 
-    private async Task ShowPreviewAsync(Func<CompletedRenderJobWindow> create)
+    private async Task ShowPreviewAsync(Func<CompletedRenderJobWindow> create, Button returnFocus)
     {
         if (_preview is { } previous)
         {
@@ -200,14 +201,7 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
                 if (!_closing && IsVisible)
                 {
                     Activate();
-                    if (HistoryViewButton.IsEnabled)
-                    {
-                        HistoryViewButton.Focus();
-                    }
-                    else
-                    {
-                        HistoryImportButton.Focus();
-                    }
+                    (returnFocus.IsEnabled ? returnFocus : HistoryCloseButton).Focus();
                 }
             }
         };

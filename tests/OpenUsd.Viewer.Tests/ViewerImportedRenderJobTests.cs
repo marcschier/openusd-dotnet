@@ -585,6 +585,76 @@ public sealed class ViewerImportedRenderJobTests
     }
 
     [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task GalleriesRestoreTheirOriginatingHistoryActionsOrCloseWhenUnavailable(bool dark, bool deselect)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult original = Emit(files.Root, 1, new Source());
+        var history = new ViewerCompletedJobHistory();
+        history.Publish(original, "Original process-local result");
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            var window = new CompletedJobHistoryWindow(history)
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                ListBox jobs = Required<ListBox>(window, "HistoryJobs");
+                object? selected = jobs.SelectedItem;
+                Button import = Required<Button>(window, "HistoryImportButton");
+                Button view = Required<Button>(window, "HistoryViewButton");
+                await Assert.That(import.Focus()).IsTrue();
+                await window.ImportManifestAsync(Path.Combine(original.OutputDirectory, "manifest.json"));
+                CompletedRenderJobWindow gallery = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
+                await Assert.That(Required<TextBlock>(gallery, "ResultsDescription").Text)
+                    .Contains("Imported historical manifest");
+                await gallery.CloseAsync();
+                await Assert.That(import.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(jobs.SelectedItem).IsSameReferenceAs(selected);
+                await Assert.That(jobs.Focus()).IsTrue();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                gallery = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
+                await Assert.That(Required<TextBlock>(gallery, "ResultsDescription").Text)
+                    .IsEqualTo("Original process-local result");
+                if (deselect)
+                {
+                    jobs.SelectedIndex = -1;
+                    await Assert.That(view.IsEnabled).IsFalse();
+                }
+                await gallery.CloseAsync();
+                await Assert.That((deselect ? Required<Button>(window, "HistoryCloseButton") : view)
+                    .IsKeyboardFocusWithin).IsTrue();
+                if (deselect)
+                {
+                    await Assert.That(jobs.SelectedItem).IsNull();
+                }
+                else
+                {
+                    await Assert.That(jobs.SelectedItem).IsSameReferenceAs(selected);
+                }
+                await Assert.That(history.Snapshot().Count).IsEqualTo(1);
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            return 0;
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task FailedManifestImportRestoresKeyboardRetryWithoutStealingMovedFocus(bool dark)
