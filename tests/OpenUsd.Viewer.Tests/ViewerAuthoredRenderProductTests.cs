@@ -143,6 +143,128 @@ public sealed class ViewerAuthoredRenderProductTests
     }
 
     [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "cancel", "owned")]
+    [Arguments(true, "cancel", "owned")]
+    [Arguments(false, "cancel", "close")]
+    [Arguments(true, "cancel", "close")]
+    [Arguments(false, "cancel", "other")]
+    [Arguments(true, "cancel", "other")]
+    public async Task ProductRefreshRestoresOnlyOwnedFocusAfterSuccessRefusalOrStaleQuery(
+        bool dark, string outcome, string destination)
+    {
+        await RunUiAsync(async () =>
+        {
+            string output = Directory.CreateTempSubdirectory("viewer-product-refresh-").FullName;
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var product = new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), "raw:color/half4", null, null);
+            var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings", [product]);
+            int queries = 0;
+            int renders = 0;
+            bool queryCancelled = false;
+            var window = new AuthoredRenderProductWindow(0, 1, "Original renderer",
+                async (_, _, token) =>
+                {
+                    if (++queries == 2)
+                    {
+                        entered.TrySetResult();
+                        await release.Task;
+                        queryCancelled = token.IsCancellationRequested;
+                        if (outcome == "cancel")
+                        {
+                            return new ViewerAuthoredRenderProductSnapshot("/Render/Retired",
+                                [new ViewerAuthoredRenderProductItem("/Render/RetiredProduct", "Stale product",
+                                    "/World/RetiredCamera", new ViewportDimensions(32, 16),
+                                    "raw:color/half4", null, null)]);
+                        }
+                        token.ThrowIfCancellationRequested();
+                        if (outcome == "failure")
+                        {
+                            throw new InvalidOperationException("Controlled refresh refusal.");
+                        }
+                    }
+                    return snapshot;
+                },
+                (_, _, _) =>
+                {
+                    renders++;
+                    throw new InvalidOperationException("Refresh must not render.");
+                })
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            Required<TextBox>(window, "ProductOutputFolder").Text = output;
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                Button refresh = Required<Button>(window, "ProductRefreshButton");
+                ComboBox selector = Required<ComboBox>(window, "ProductSelector");
+                await WaitUntilAsync(() => queries == 1 && refresh.IsEnabled);
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                await Assert.That(refresh.Focus()).IsTrue();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(refresh.IsEnabled).IsFalse();
+                await Assert.That(selector.IsEnabled).IsFalse();
+                await Assert.That(Required<ScrollViewer>(window, "ProductBodyScroll").IsFocused).IsTrue();
+                if (outcome == "cancel")
+                {
+                    Required<TextBox>(window, "ProductSettingsPath").Text = "/Render/Replaced";
+                }
+                Control expectedFocus = destination == "owned"
+                    ? refresh
+                    : destination == "close" ? Required<Button>(window, "ProductCloseButton") : otherAction;
+                if (destination == "other")
+                {
+                    other.Show();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                else if (destination == "close")
+                {
+                    await Assert.That(expectedFocus.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await WaitUntilAsync(() => refresh.IsEnabled);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(queryCancelled).IsEqualTo(outcome == "cancel");
+                await Assert.That(selector.ItemCount).IsEqualTo(outcome == "failure" ? 0 : 1);
+                if (outcome != "failure")
+                {
+                    await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                }
+                other.Close();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => queries == 3 && refresh.IsEnabled);
+                await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                await Assert.That(renders).IsEqualTo(0);
+                await Assert.That(Directory.GetFileSystemEntries(output)).IsEmpty();
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Directory.Delete(output, recursive: true);
+            }
+        });
+    }
+
+    [Test]
     [Arguments(false, false)]
     [Arguments(true, false)]
     [Arguments(true, true)]

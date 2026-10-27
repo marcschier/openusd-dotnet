@@ -397,6 +397,13 @@ stays there. A subsequent Refresh loads the original product object without rend
 or creating output. These headless cases fix unconditional post-discovery focus;
 they do not qualify physical window-manager input.
 
+`ProductRefreshRestoresOnlyOwnedFocusAfterSuccessRefusalOrStaleQuery` checks both
+themes after initial discovery has drained. A focused Refresh hands focus to the
+scroll body while its query runs, then regains it after success, read refusal or
+settings-path invalidation only if the body still owns focus. Focus moved to Close
+or another window remains untouched. The stale query cannot replace the catalog;
+a subsequent Refresh loads the original product without rendering or creating output.
+
 `RefreshButtonRetainsOnlyTheSelectedBookmarkIdentityAndUsesItsNewSnapshot` checks both themes
 with reordered, renamed, removed and same-name replacement records. The actual Refresh button
 keeps only a surviving bookmark ID and uses the new record for an explicit Enter recall.

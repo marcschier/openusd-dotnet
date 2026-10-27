@@ -178,9 +178,14 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         _refreshCancellation?.Dispose();
         _refreshCancellation = CancellationTokenSource.CreateLinkedTokenSource(_windowLifetime.Token);
         CancellationToken token = _refreshCancellation.Token;
+        bool restoreRefreshFocus = ProductRefreshButton.IsKeyboardFocusWithin;
         _refreshing = true;
         ProductStatus.Text = "Reading authored render settings...";
         SetRunningControls();
+        if (restoreRefreshFocus)
+        {
+            ProductBodyScroll.Focus();
+        }
         try
         {
             ViewerAuthoredRenderProductSnapshot snapshot =
@@ -227,6 +232,10 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
             if (!_closing)
             {
                 ValidateRequest();
+                if (restoreRefreshFocus && ProductBodyScroll.IsFocused && (IsActive || IsKeyboardFocusWithin))
+                {
+                    ProductRefreshButton.Focus();
+                }
             }
         }
     }
