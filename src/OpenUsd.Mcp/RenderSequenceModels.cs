@@ -147,6 +147,11 @@ internal sealed record McpSequenceFrameResultDto(
         "Original submitted camera request, not effective backend state or source verification. " +
         "Automatic mode has no recorded renderer-selected matrices; null means no request metadata supplied.")]
     public McpCameraRequestDto? CameraRequest { get; init; }
+
+    [Description(
+        "Original submitted source-frame display and render settings, not effective backend state, " +
+        "source verification or a complete request identity. Null means no request metadata supplied.")]
+    public McpRenderRequestDto? RenderRequest { get; init; }
 }
 
 internal sealed record McpCameraRequestDto(

@@ -23,6 +23,76 @@ public sealed class OpenUsdMcpToolsTests
     };
 
     [Test]
+    [Arguments("none")]
+    [Arguments("defaults")]
+    [Arguments("named")]
+    public async Task RenderRequestDtoRetainsDisplayQualityAndUnresolvedOcioRequestsWithoutOpeningFiles(string mode)
+    {
+        using var files = new WorkspaceTestFiles();
+        string config = Path.Combine(files.SourceRoot, "unopened.ocio");
+        RenderDisplayTransform? transform = mode == "none" ? null : new RenderDisplayTransform(
+            config, "scene-linear", mode == "named" ? "Display A" : null,
+            mode == "named" ? "View B" : null, mode == "named" ? "Look C" : null,
+            latticeSize: 8, shaperMinimumLog2: -12.5f, shaperMaximumLog2: 3.25f);
+        StageRenderState state = StageRenderState.Create(new StageIdentity("original"))
+            .WithViewport(new ViewportDimensions(257, 129))
+            .WithDisplay(new SceneDisplayState(
+                RenderPurpose.Proxy | RenderPurpose.Guide, RenderVisibility.IncludeInvisible,
+                RenderDrawMode.HiddenSurfaceWireframe))
+            .WithRenderSettings(new RenderSettings(7, false, false, new Vector4(0.125f, -0.25f, 2.5f, 0.75f),
+                false, false, RenderComplexity.VeryHigh, RenderOutputTransform.Identity, 1.75f)
+            {
+                DisplayTransform = transform
+            });
+        McpRenderRequestDto dto = McpRenderRequestDto.From(state);
+        state = state.WithDisplay(SceneDisplayState.Default).WithRenderSettings(RenderSettings.PresentationDefault);
+        await Assert.That(state.RenderSettings.Exposure).IsEqualTo(-6);
+        JsonElement json = JsonSerializer.SerializeToElement(dto, JsonSerializerOptions.Web);
+        await Assert.That(json.GetProperty("width").GetInt32()).IsEqualTo(257);
+        await Assert.That(json.GetProperty("height").GetInt32()).IsEqualTo(129);
+        await Assert.That(json.GetProperty("purposes").GetString()).IsEqualTo("Proxy, Guide");
+        await Assert.That(json.GetProperty("visibility").GetString()).IsEqualTo("IncludeInvisible");
+        await Assert.That(json.GetProperty("drawMode").GetString()).IsEqualTo("HiddenSurfaceWireframe");
+        await Assert.That(json.GetProperty("samplesPerPixel").GetInt32()).IsEqualTo(7);
+        await Assert.That(json.GetProperty("enableLighting").GetBoolean()).IsFalse();
+        await Assert.That(json.GetProperty("enableShadows").GetBoolean()).IsFalse();
+        await Assert.That(json.GetProperty("backfaceCulling").GetBoolean()).IsFalse();
+        await Assert.That(json.GetProperty("useSceneMaterials").GetBoolean()).IsFalse();
+        await Assert.That(json.GetProperty("complexity").GetString()).IsEqualTo("VeryHigh");
+        await Assert.That(json.GetProperty("outputTransform").GetString()).IsEqualTo("Identity");
+        await Assert.That(json.GetProperty("exposure").GetSingle()).IsEqualTo(1.75f);
+        await Assert.That(json.GetProperty("clearColor").EnumerateArray()
+            .Select(static item => item.GetSingle()).SequenceEqual([0.125f, -0.25f, 2.5f, 0.75f])).IsTrue();
+        JsonElement ocio = json.GetProperty("displayTransform");
+        if (mode == "none")
+        {
+            await Assert.That(ocio.ValueKind).IsEqualTo(JsonValueKind.Null);
+        }
+        else
+        {
+            await Assert.That(ocio.GetProperty("configPath").GetString()).IsEqualTo(config);
+            await Assert.That(ocio.GetProperty("sourceColorSpace").GetString()).IsEqualTo("scene-linear");
+            await Assert.That(ocio.GetProperty("latticeSize").GetInt32()).IsEqualTo(8);
+            await Assert.That(ocio.GetProperty("shaperMinimumLog2").GetSingle()).IsEqualTo(-12.5f);
+            await Assert.That(ocio.GetProperty("shaperMaximumLog2").GetSingle()).IsEqualTo(3.25f);
+            if (mode == "named")
+            {
+                await Assert.That(ocio.GetProperty("display").GetString()).IsEqualTo("Display A");
+                await Assert.That(ocio.GetProperty("view").GetString()).IsEqualTo("View B");
+                await Assert.That(ocio.GetProperty("look").GetString()).IsEqualTo("Look C");
+            }
+            else
+            {
+                await Assert.That(ocio.GetProperty("display").ValueKind).IsEqualTo(JsonValueKind.Null);
+                await Assert.That(ocio.GetProperty("view").ValueKind).IsEqualTo(JsonValueKind.Null);
+                await Assert.That(ocio.GetProperty("look").ValueKind).IsEqualTo(JsonValueKind.Null);
+            }
+        }
+        await Assert.That(File.Exists(config)).IsFalse();
+        await Assert.That(dto.ClearColor is IList<float>).IsFalse();
+    }
+
+    [Test]
     public async Task CameraRequestDtoRetainsEveryMatrixElementAndCopiesClipPlanes()
     {
         var view = new Matrix4x4(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
@@ -561,6 +631,10 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(frameCamera.GetProperty("view").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(frameCamera.GetProperty("projection").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(frameCamera.GetProperty("clipPlanes").GetArrayLength()).IsEqualTo(0);
+        JsonElement frameRender = sequenceFrame.StructuredContent.Value.GetProperty("renderRequest");
+        await Assert.That(frameRender.GetProperty("width").GetInt32()).IsEqualTo(1);
+        await Assert.That(frameRender.GetProperty("outputTransform").GetString()).IsEqualTo("Reinhard");
+        await Assert.That(frameRender.GetProperty("exposure").GetSingle()).IsEqualTo(-6);
         CallToolResult recordedFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
             {
@@ -612,6 +686,12 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(sheetCamera.GetProperty("view")[12].GetSingle()).IsEqualTo(1.25f);
         await Assert.That(sheetCamera.GetProperty("projection")[5].GetSingle()).IsEqualTo(2.5f);
         await Assert.That(sheetCamera.GetProperty("clipPlanes")[0][3].GetSingle()).IsEqualTo(-4f);
+        JsonElement sheetRender = sheet.StructuredContent.Value.GetProperty("tiles")[0].GetProperty("renderRequest");
+        await Assert.That(sheetRender.GetProperty("width").GetInt32()).IsEqualTo(257);
+        await Assert.That(sheetRender.GetProperty("height").GetInt32()).IsEqualTo(129);
+        await Assert.That(sheetRender.GetProperty("drawMode").GetString()).IsEqualTo("Wireframe");
+        await Assert.That(sheetRender.GetProperty("outputTransform").GetString()).IsEqualTo("Identity");
+        await Assert.That(sheetRender.GetProperty("exposure").GetSingle()).IsEqualTo(0);
         await Assert.That(sheet.Content.Count).IsEqualTo(2);
         await Assert.That(sheet.Content.OfType<ResourceLinkBlock>().Single().Uri)
             .IsEqualTo("openusd://artifact/sheet-0");
@@ -632,6 +712,8 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(hdrFrame.StructuredContent!.Value.GetProperty("hdrColor").GetProperty("uri").GetString())
             .IsEqualTo("openusd://artifact/hdr-0");
         await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("hdrColorFormat").GetString()).IsEqualTo("raw");
+        await Assert.That(hdrFrame.StructuredContent.Value.GetProperty("renderRequest").ValueKind)
+            .IsEqualTo(JsonValueKind.Null);
 
         CallToolResult exrFrame = await client.CallToolAsync("read_sequence_frame",
             new Dictionary<string, object?>
@@ -903,7 +985,11 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                         3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3")),
                     CameraRequest = McpCameraRequestDto.From(new CameraState(
                         Matrix4x4.CreateTranslation(1.25f, 2, 3), Matrix4x4.CreateScale(2.5f),
-                        [new Vector4(0, 0, 1, -4)]))
+                        [new Vector4(0, 0, 1, -4)])),
+                    RenderRequest = McpRenderRequestDto.From(StageRenderState.Default
+                        .WithViewport(new ViewportDimensions(257, 129))
+                        .WithDisplay(new SceneDisplayState(
+                            RenderPurpose.Guide, RenderVisibility.IncludeInvisible, RenderDrawMode.Wireframe)))
                 }
             ],
             [descriptor])
@@ -952,7 +1038,10 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                     new Guid("969b9c7d-509e-44d3-8ee8-da48796c880c"), "recorded-scene",
                     3, 17, 6, 0.25, 0, 1d / 24, 4, 2, 1, "recorded-review-v3"))
                 : null,
-            CameraRequest = McpCameraRequestDto.From(CameraState.Default)
+            CameraRequest = McpCameraRequestDto.From(CameraState.Default),
+            RenderRequest = McpRenderRequestDto.From(StageRenderState.Default
+                .WithViewport(new ViewportDimensions(1, 1))
+                .WithRenderSettings(RenderSettings.PresentationDefault))
         });
     }
 

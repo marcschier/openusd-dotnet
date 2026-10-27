@@ -123,6 +123,16 @@ checks all thirty-two distinct matrix elements and immutable copied planes. The 
 protocol journey round-trips matrix sheet metadata and automatic frame metadata with schema
 descriptions. These are requested-state and transport checks, not effective-camera qualification.
 
+The same historical service journey checks `renderRequest` on both frames and ordered sheet
+tiles after scene replacement, including original dimensions, display filters and presentation
+settings. `OpenUsdMcpToolsTests.RenderRequestDtoRetainsDisplayQualityAndUnresolvedOcioRequestsWithoutOpeningFiles`
+checks nondefault quality/filter/clear-colour values, absent OCIO and explicit versus unresolved
+display/view/look requests against a nonexistent config file. The official SDK protocol journey
+preserves distinct frame/tile requests and null metadata from producers that supply none.
+`RenderProductServiceTests.ProductJobsCarryAuthoredBindingsAndShareTheExistingCompletedFrameStore`
+checks authored product purposes and source dimensions survive frame/sheet reads after scene close.
+These checks do not qualify effective renderer settings, OCIO execution or independent source identity.
+
 `NativeMcpIntegrationTests.OfficialProtocolEditsNativePixelsRollsBackAndRetainsOriginalArtifactsAfterClose`
 uses the official MCP client/server with the real service, native stage and retained renderer.
 It changes an emissive material from red to green through `apply_edits`, decodes resource PNGs,

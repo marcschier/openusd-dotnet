@@ -40,6 +40,11 @@ internal sealed record McpSequenceSheetTileDto(
         "Original submitted camera request for this source frame, not a camera for the resized sheet cell " +
         "or effective backend state. Null means no request metadata supplied.")]
     public McpCameraRequestDto? CameraRequest { get; init; }
+
+    [Description(
+        "Original source-frame display and render settings, not settings for the resized sheet cell, " +
+        "effective backend state or a complete request identity. Null means no request metadata supplied.")]
+    public McpRenderRequestDto? RenderRequest { get; init; }
 }
 
 internal sealed record McpSequenceSheetResultDto(

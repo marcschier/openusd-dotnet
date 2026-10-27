@@ -44,6 +44,11 @@ public sealed class RenderProductServiceTests
         await Assert.That(frame.AuthoredProduct).IsSameReferenceAs(job.AuthoredProduct);
         await Assert.That(frame.TimeCode).IsEqualTo(2.5);
         await Assert.That(frame.ArtifactResources.Count).IsEqualTo(3);
+        await Assert.That(frame.RenderRequest!.Purposes).IsEqualTo("Default, Render");
+        await Assert.That(frame.RenderRequest.Width).IsEqualTo(2);
+        await Assert.That(frame.RenderRequest.Height).IsEqualTo(2);
+        await Assert.That(frame.RenderRequest.OutputTransform).IsEqualTo("Reinhard");
+        await Assert.That(frame.RenderRequest.Exposure).IsEqualTo(-6);
         ArtifactResourceContent? hdr = await artifacts.ReadAsync(new Uri(frame.HdrColor!.Uri));
         await Assert.That(hdr!.Content.Length).IsEqualTo(32);
         await Assert.That(backend.Events).DoesNotContain("apply");
@@ -76,6 +81,13 @@ public sealed class RenderProductServiceTests
         await Assert.That(sheet.SessionId).IsEqualTo(job.SessionId);
         await Assert.That(sheet.StageRevision).IsEqualTo(job.StageRevision);
         await Assert.That(sheet.Tiles.Select(static tile => tile.TimeCode).SequenceEqual([3d, 2d])).IsTrue();
+        foreach (McpSequenceSheetTileDto tile in sheet.Tiles)
+        {
+            await Assert.That(tile.RenderRequest!.Purposes).IsEqualTo("Default, Render");
+            await Assert.That(tile.RenderRequest.Width).IsEqualTo(2);
+            await Assert.That(tile.RenderRequest.Height).IsEqualTo(2);
+            await Assert.That(tile.RenderRequest.Exposure).IsEqualTo(-6);
+        }
         await Assert.That(factory.Source.Times.SequenceEqual([2d, 2.5, 3d])).IsTrue();
     }
 

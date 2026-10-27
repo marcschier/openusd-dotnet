@@ -42,11 +42,30 @@ public sealed class SequenceContactSheetTests
             new ReadSequenceSheetRequest { JobId = job.JobId, FrameIndices = [2, 0], Width = 8, Height = 4 }, default);
         JsonElement frameJson = JsonSerializer.SerializeToElement(frame, JsonSerializerOptions.Web);
         JsonElement sheetJson = JsonSerializer.SerializeToElement(sheet, JsonSerializerOptions.Web);
+        JsonElement renderRequest = frameJson.GetProperty("renderRequest");
+        await Assert.That(renderRequest.GetProperty("width").GetInt32()).IsEqualTo(2);
+        await Assert.That(renderRequest.GetProperty("height").GetInt32()).IsEqualTo(1);
+        await Assert.That(renderRequest.GetProperty("purposes").GetString()).IsEqualTo("Default, Proxy, Render");
+        await Assert.That(renderRequest.GetProperty("visibility").GetString()).IsEqualTo("RespectAuthored");
+        await Assert.That(renderRequest.GetProperty("drawMode").GetString()).IsEqualTo("SmoothShaded");
+        await Assert.That(renderRequest.GetProperty("samplesPerPixel").GetInt32()).IsEqualTo(1);
+        await Assert.That(renderRequest.GetProperty("enableLighting").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("enableShadows").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("backfaceCulling").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("useSceneMaterials").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("complexity").GetString()).IsEqualTo("Low");
+        await Assert.That(renderRequest.GetProperty("outputTransform").GetString()).IsEqualTo("Reinhard");
+        await Assert.That(renderRequest.GetProperty("exposure").GetSingle()).IsEqualTo(-6);
+        await Assert.That(renderRequest.GetProperty("clearColor").EnumerateArray()
+            .Select(static value => value.GetSingle()).SequenceEqual([0, 0, 0, 1])).IsTrue();
+        await Assert.That(renderRequest.GetProperty("displayTransform").ValueKind).IsEqualTo(JsonValueKind.Null);
         JsonElement camera = frameJson.GetProperty("cameraRequest");
         await Assert.That(camera.GetProperty("mode").GetString())
             .IsEqualTo(mode == "automatic" ? "automatic" : "matrices");
         await Assert.That(camera.GetProperty("clipPlanes").GetArrayLength()).IsEqualTo(planeCount);
         JsonElement tiles = sheetJson.GetProperty("tiles");
+        await Assert.That(tiles[0].GetProperty("renderRequest").GetRawText()).IsEqualTo(renderRequest.GetRawText());
+        await Assert.That(tiles[1].GetProperty("renderRequest").GetRawText()).IsEqualTo(renderRequest.GetRawText());
         await Assert.That(tiles[0].GetProperty("frameIndex").GetInt32()).IsEqualTo(2);
         await Assert.That(tiles[1].GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
         if (mode == "automatic")

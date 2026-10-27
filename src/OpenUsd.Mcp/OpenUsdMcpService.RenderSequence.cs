@@ -217,7 +217,8 @@ internal sealed partial class OpenUsdMcpService
                 HdrColorFormat = hdr is null ? null : frame.HdrColorFormat == RenderHdrColorFormat.Exr ? "exr" : "raw",
                 AuthoredProduct = sequence.AuthoredProduct,
                 Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null,
-                CameraRequest = McpCameraRequestDto.From(frame.State.Camera)
+                CameraRequest = McpCameraRequestDto.From(frame.State.Camera),
+                RenderRequest = McpRenderRequestDto.From(frame.State)
             };
         }
         finally

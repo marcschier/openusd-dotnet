@@ -927,6 +927,17 @@ matrices. These are original request values, not effective backend state, a came
 optics receipt or independent source verification. Reading them does not query the
 current scene, including after the producing scene has closed or another scene opens.
 
+`renderRequest` retains the source frame's submitted dimensions, purpose flags, visibility,
+draw mode and render settings: samples per pixel, lighting, shadows, backface culling, scene
+materials, complexity, output transform, exposure and linear clear RGBA. Enum values use the
+renderer-neutral names, such as `"Default, Proxy, Render"`, `"SmoothShaded"` and `"Reinhard"`.
+An optional `displayTransform` records the OCIO config path, source colour space, display,
+view, look, lattice size and log2 shaper bounds. Null display/view names request defaults;
+they do not record which defaults the backend resolved. A null transform means none was
+requested; a null `renderRequest` means the producer supplied no request metadata.
+Reading these values opens no config or source file. They describe the recorded request,
+not effective backend settings, authenticated source content or a complete request identity.
+
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
 return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
@@ -988,6 +999,9 @@ Each tile's `cameraRequest` retains the same original submitted camera metadata 
 `read_sequence_frame`, in the selected source-frame order. Matrices describe that
 original source raster, not the resized/letterboxed contact-sheet cell. No camera
 is sampled or reconstructed to create this metadata.
+Each tile also retains its source frame's `renderRequest`, including the original dimensions
+rather than the resized cell dimensions. Display/output values and unresolved OCIO defaults
+remain historical requests; generating a sheet does not apply those transforms again.
 Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input
