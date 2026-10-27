@@ -382,6 +382,14 @@ its own focus and loads the original bookmark object without capture, edits or r
 This fixes the unconditional post-read Name focus; physical window-manager input remains
 separate qualification.
 
+`InitialProductDiscoveryHandsOffOnlyItsOwnedFocus` checks delayed authored-product
+discovery in both themes, including read refusal and an empty catalog. The scroll body
+holds initial loading focus without adding a Tab stop; completion focuses the product
+selector only while the body still owns focus. Focus moved to Close or another window
+stays there. A subsequent Refresh loads the original product object without rendering
+or creating output. These headless cases fix unconditional post-discovery focus;
+they do not qualify physical window-manager input.
+
 `RefreshButtonRetainsOnlyTheSelectedBookmarkIdentityAndUsesItsNewSnapshot` checks both themes
 with reordered, renamed, removed and same-name replacement records. The actual Refresh button
 keeps only a surviving bookmark ID and uses the new record for an explicit Enter recall.

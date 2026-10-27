@@ -17,7 +17,8 @@
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
   <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="*,Auto" RowSpacing="12">
-    <ScrollViewer x:Name="ProductBodyScroll" HorizontalScrollBarVisibility="Disabled"
+    <ScrollViewer x:Name="ProductBodyScroll" Focusable="True" IsTabStop="False"
+                  HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
       <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12"
             MinHeight="{Binding Viewport.Height, ElementName=ProductBodyScroll}">

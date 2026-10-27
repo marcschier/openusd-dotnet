@@ -18,6 +18,131 @@ public sealed class ViewerAuthoredRenderProductTests
         ["ProductViewResultsButton", "ProductCancelButton", "ProductCloseButton", "ProductRenderButton"];
 
     [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "empty", "owned")]
+    [Arguments(true, "empty", "owned")]
+    [Arguments(false, "empty", "close")]
+    [Arguments(true, "empty", "close")]
+    [Arguments(false, "empty", "other")]
+    [Arguments(true, "empty", "other")]
+    public async Task InitialProductDiscoveryHandsOffOnlyItsOwnedFocus(bool dark, string outcome, string destination)
+    {
+        await RunUiAsync(async () =>
+        {
+            string output = Directory.CreateTempSubdirectory("viewer-product-discovery-").FullName;
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var product = new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), "raw:color/half4", null, null);
+            var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings", [product]);
+            int queries = 0;
+            int renders = 0;
+            var window = new AuthoredRenderProductWindow(0, 1, "Original renderer",
+                async (_, _, token) =>
+                {
+                    if (++queries == 1)
+                    {
+                        entered.TrySetResult();
+                        await release.Task.WaitAsync(token);
+                        if (outcome == "failure")
+                        {
+                            throw new InvalidOperationException("Controlled product discovery refusal.");
+                        }
+                        if (outcome == "empty")
+                        {
+                            return ViewerAuthoredRenderProductSnapshot.Empty("No authored products.");
+                        }
+                    }
+                    return snapshot;
+                },
+                (_, _, _) =>
+                {
+                    renders++;
+                    throw new InvalidOperationException("Discovery must not render.");
+                })
+            {
+                Width = 620,
+                Height = 680,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            Required<TextBox>(window, "ProductOutputFolder").Text = output;
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                ComboBox selector = Required<ComboBox>(window, "ProductSelector");
+                Button refresh = Required<Button>(window, "ProductRefreshButton");
+                await Assert.That(selector.IsEnabled).IsFalse();
+                await Assert.That(refresh.IsEnabled).IsFalse();
+                await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
+                await Assert.That(Required<ScrollViewer>(window, "ProductBodyScroll").IsFocused).IsTrue();
+                Control expectedFocus = destination switch
+                {
+                    "owned" => selector,
+                    "close" => Required<Button>(window, "ProductCloseButton"),
+                    "other" => otherAction,
+                    _ => throw new ArgumentOutOfRangeException(nameof(destination))
+                };
+                if (destination == "other")
+                {
+                    other.Show();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                else if (destination == "close")
+                {
+                    await Assert.That(expectedFocus.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await WaitUntilAsync(() => refresh.IsEnabled);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(selector.ItemCount).IsEqualTo(outcome == "success" ? 1 : 0);
+                if (outcome == "success")
+                {
+                    await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                }
+                else
+                {
+                    string expectedStatus = outcome == "empty"
+                        ? "No authored products."
+                        : "Controlled product discovery refusal.";
+                    await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
+                        .Contains(expectedStatus);
+                }
+                other.Close();
+                await Assert.That(refresh.Focus()).IsTrue();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => queries == 2 && refresh.IsEnabled);
+                await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsTrue();
+                await Assert.That(renders).IsEqualTo(0);
+                await Assert.That(Directory.GetFileSystemEntries(output)).IsEmpty();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Directory.Delete(output, recursive: true);
+            }
+        });
+    }
+
+    [Test]
     [Arguments(false, false)]
     [Arguments(true, false)]
     [Arguments(true, true)]

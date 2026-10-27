@@ -108,9 +108,11 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         ProductCloseButton.Click += (_, _) => Close();
         Opened += async (_, _) =>
         {
+            ProductBodyScroll.Focus();
             _refreshTask = StartRefreshProductsAsync();
             await _refreshTask;
-            if (!_closing && !_closed.Task.IsCompleted)
+            if (!_closing && !_closed.Task.IsCompleted && ProductBodyScroll.IsFocused &&
+                (IsActive || IsKeyboardFocusWithin))
             {
                 ProductSelector.Focus();
             }
