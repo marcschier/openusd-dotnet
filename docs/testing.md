@@ -187,6 +187,9 @@ checks dominant-colour coverage and stale-revision refusal, and restores exact o
 through checkpoint rollback. Finalization reports missing presentation modes until the still,
 contact sheet and turntable exist; the complete report set then succeeds. Closing drains logical
 buffer/texture/staging reservations while original immutable PNG resources remain readable.
+Each successful preview uses a distinct progress token and checks start, at least one valid
+captured-view count below completion, and result-ready. The count message and fraction match
+the requested views; coalesced intermediate counts do not confirm resource registration.
 This is native offscreen protocol qualification, not an optimization-proposal journey, Viewer
 child launch, physical display, hardware parity or physics recording.
 

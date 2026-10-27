@@ -1028,7 +1028,7 @@ public sealed class OpenUsdMcpToolsTests
         }
     }
 
-    private sealed class RecordedProgress : IProgress<ProgressNotificationValue>
+    internal sealed class RecordedProgress : IProgress<ProgressNotificationValue>
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<ProgressNotificationValue> _values = new();
         internal TaskCompletionSource Completed { get; } =

@@ -3,6 +3,7 @@
 using System.IO.Pipelines;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -228,9 +229,37 @@ public sealed partial class NativeMcpIntegrationTests
 
             async Task<JsonElement> invoke(string tool, Dictionary<string, object?> request)
             {
+                var progress = tool == "render_preview" ? new OpenUsdMcpToolsTests.RecordedProgress() : null;
+                var token = new ProgressToken(Guid.NewGuid().ToString("N"));
+                await using IAsyncDisposable? registration = progress?.Register(client, token);
                 CallToolResult result = await client.CallToolAsync(tool,
-                    new Dictionary<string, object?> { ["request"] = request }, cancellationToken: lifetime.Token);
+                    new Dictionary<string, object?> { ["request"] = request },
+                    options: progress is null ? null : new RequestOptions { ProgressToken = token },
+                    cancellationToken: lifetime.Token);
                 await Assert.That(result.IsError).IsFalse();
+                if (progress is not null)
+                {
+                    await Task.WhenAll(progress.Started.Task, progress.FrameReported.Task, progress.Completed.Task)
+                        .WaitAsync(TimeSpan.FromSeconds(5));
+                    ProgressNotificationValue[] values = progress.Values
+                        .OrderBy(static value => value.Progress).ToArray();
+                    await Assert.That(values.Length).IsGreaterThanOrEqualTo(3);
+                    await Assert.That(values[0].Progress).IsEqualTo(0f);
+                    await Assert.That(values[^1].Progress).IsEqualTo(1f);
+                    await Assert.That(values.All(static value => value.Total == 1)).IsTrue();
+                    await Assert.That(values[0].Message)
+                        .IsEqualTo("Request started; admission and revision checks pending.");
+                    await Assert.That(values[^1].Message).IsEqualTo("Result ready.");
+                    int count = ((CaptureViewDto[])request["views"]!).Length;
+                    foreach (ProgressNotificationValue value in values[1..^1])
+                    {
+                        await Assert.That(Enumerable.Range(1, count).Any(completed =>
+                            value.Progress == (float)completed / (count + 1) &&
+                            value.Message ==
+                                $"{completed}/{count} views captured; artifact registration not confirmed."))
+                            .IsTrue();
+                    }
+                }
                 return result.StructuredContent ?? throw new InvalidDataException("Missing native protocol result.");
             }
 
