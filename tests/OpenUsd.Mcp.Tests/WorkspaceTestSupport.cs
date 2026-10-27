@@ -118,6 +118,7 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
     internal int LastPreviewHeight { get; private set; }
     internal string? LastProductPath { get; private set; }
     internal string? LastSettingsPath { get; private set; }
+    internal RenderProductOverrides? LastProductOverrides { get; private set; }
 
     public ValueTask<RenderProductJobPlan> PrepareRenderProductAsync(
         IReadOnlyList<double> timeCodes, string? settingsPath, string? productPath,
@@ -127,6 +128,7 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
         Events.Add("prepare-product");
         LastProductPath = productPath;
         LastSettingsPath = settingsPath;
+        LastProductOverrides = rasterOverrides;
         if (expectedStageRevision != StageRevision)
         {
             throw new InvalidOperationException("The test stage revision changed.");

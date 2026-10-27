@@ -163,6 +163,23 @@ preserves distinct frame/tile requests and null metadata from producers that sup
 checks authored product purposes and source dimensions survive frame/sheet reads after scene close.
 These checks do not qualify effective renderer settings, OCIO execution or independent source identity.
 
+`ProductRasterOverridesReachPreparedFramesAndHistoricalOutputsWithoutChangingAuthoredSize`
+checks paired MCP raster overrides through real shared framing, disk encoding and historical
+resource reads after scene close. It decodes the PNG, checks HDR length and manifest raster
+origin, and preserves authored dimensions, camera, crop and source bytes. Cases include
+omitted overrides, one-pixel and 4096-pixel axes, a nonsquare raster and cropping.
+`InvalidProductRasterPairsAreRejectedBeforeWorkspaceWork` rejects missing mates, zero,
+negative and over-limit dimensions without backend work, output directories or job history.
+The official protocol journey round-trips both optional dimensions. These are managed
+adapter checks.
+
+Windows native `AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport`
+also covers omitted and explicit raster sizes, with default and bounded preparation.
+An authored 64x32 raster is overridden to 32x16, then cropped to 16x16 without changing
+the source. It checks animated raw HDR pixels and PNG contact-sheet cells, EXR refusal
+and texture-budget drain. This is D3D12 WARP evidence, not non-Windows or hardware
+qualification.
+
 `NativeMcpIntegrationTests.OfficialProtocolEditsNativePixelsRollsBackAndRetainsOriginalArtifactsAfterClose`
 uses the official MCP client/server with the real service, native stage and retained renderer.
 It changes an emissive material from red to green through `apply_edits`, decodes resource PNGs,

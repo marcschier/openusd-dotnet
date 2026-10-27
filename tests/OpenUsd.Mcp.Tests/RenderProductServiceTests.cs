@@ -13,6 +13,111 @@ public sealed class RenderProductServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Test]
+    [Arguments(null, null, false)]
+    [Arguments(1, 3, false)]
+    [Arguments(3, 1, false)]
+    [Arguments(7, 5, false)]
+    [Arguments(4096, 1, false)]
+    [Arguments(1, 4096, false)]
+    [Arguments(8, 6, true)]
+    public async Task ProductRasterOverridesReachPreparedFramesAndHistoricalOutputsWithoutChangingAuthoredSize(
+        int? width, int? height, bool cropped)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        RenderProductJobPlan? prepared = null;
+        var window = cropped ? new UsdVec4f(0.25f, 0, 0.75f, 1) : new UsdVec4f(0, 0, 1, 1);
+        backend.PrepareProduct = times => prepared = Plan(
+            backend.Context!.SessionId, backend.StageRevision, times, backend.LastProductOverrides, window);
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            CameraPath = "/AlternateCamera",
+            Width = width,
+            Height = height
+        }, default);
+        await Assert.That(prepared!.Request.Product.Width).IsEqualTo(2);
+        await Assert.That(prepared.Request.Product.Height).IsEqualTo(2);
+        await Assert.That(prepared.Request.Product.DataWindowNdc).IsEqualTo(window);
+        await Assert.That(prepared.Request.CameraPath).IsEqualTo("/AlternateCamera");
+        await Assert.That(prepared.Request.Product.CameraPath).IsEqualTo("/Camera");
+        await Assert.That(prepared.Request.Overrides.Resolution is null).IsEqualTo(width is null);
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(backend.Context!.OutputDirectory, "renders", job.JobId, "manifest.json")));
+        JsonElement raster = manifest.RootElement.GetProperty("frames")[0].GetProperty("productRaster");
+        await Assert.That(raster.GetProperty("fullWidth").GetInt32()).IsEqualTo(width ?? 2);
+        await Assert.That(raster.GetProperty("fullHeight").GetInt32()).IsEqualTo(height ?? 2);
+        await Assert.That(raster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(cropped ? 2 : 0);
+        await Assert.That(raster.GetProperty("dataWindowMinY").GetInt32()).IsEqualTo(0);
+        await Assert.That(raster.GetProperty("pixelAspectRatio").GetDouble()).IsEqualTo(1d);
+        await Assert.That(raster.GetProperty("aspectRatioConformPolicy").GetString()).IsEqualTo("expandAperture");
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        int expectedWidth = cropped ? 4 : width ?? 2;
+        int expectedHeight = height ?? 2;
+        await Assert.That(frame.Width).IsEqualTo(expectedWidth);
+        await Assert.That(frame.Height).IsEqualTo(expectedHeight);
+        await Assert.That(frame.RenderRequest!.Width).IsEqualTo(expectedWidth);
+        await Assert.That(frame.RenderRequest.Height).IsEqualTo(expectedHeight);
+        ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(frame.Artifact.Uri));
+        ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+        await Assert.That(image.Width).IsEqualTo(expectedWidth);
+        await Assert.That(image.Height).IsEqualTo(expectedHeight);
+        ArtifactResourceContent? hdr = await artifacts.ReadAsync(new Uri(frame.HdrColor!.Uri));
+        await Assert.That(hdr!.Content.Length).IsEqualTo(expectedWidth * expectedHeight * 8);
+        await Assert.That(factory.Source.Times.SequenceEqual([0d])).IsTrue();
+        await Assert.That(backend.Events).DoesNotContain("apply");
+        await Assert.That(backend.Events).DoesNotContain("checkpoint");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo("#usda 1.0");
+    }
+
+    [Test]
+    [Arguments(1, null)]
+    [Arguments(null, 1)]
+    [Arguments(0, 1)]
+    [Arguments(1, 0)]
+    [Arguments(-1, 1)]
+    [Arguments(1, -1)]
+    [Arguments(4097, 1)]
+    [Arguments(1, 4097)]
+    public async Task InvalidProductRasterPairsAreRejectedBeforeWorkspaceWork(int? width, int? height)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = "unused",
+            Width = width,
+            Height = height
+        }, default)).Throws<ArgumentException>();
+        await Assert.That(backend.Events).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.EnumerateDirectories(files.OutputRoot)).IsEmpty();
+    }
+
+    [Test]
     public async Task ProductJobsCarryAuthoredBindingsAndShareTheExistingCompletedFrameStore()
     {
         using var files = new WorkspaceTestFiles();
@@ -176,16 +281,18 @@ public sealed class RenderProductServiceTests
         TimeStep = 0.5
     };
 
-    private static RenderProductJobPlan Plan(string sessionId, ulong revision, IReadOnlyList<double> times)
+    private static RenderProductJobPlan Plan(
+        string sessionId, ulong revision, IReadOnlyList<double> times, RenderProductOverrides? overrides = null,
+        UsdVec4f? dataWindow = null)
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
-                2, 2, 1, "expandAperture", new UsdVec2f(20, 20), new UsdVec4f(0, 0, 1, 1),
+                2, 2, 1, "expandAperture", new UsdVec2f(20, 20), dataWindow ?? new UsdVec4f(0, 0, 1, 1),
                 true, true, [1, 0], [])],
             [new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []),
                 new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", [])],
             ["default", "render"], ["full"], "", []);
-        var request = new RenderProductRequest(specification, 0);
+        var request = new RenderProductRequest(specification, 0, overrides);
         var optics = new UsdGeomCameraState(
             UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 0, 0);
         RenderPreparedFrame[] frames = [.. times.Select(time =>

@@ -817,12 +817,16 @@ public sealed class OpenUsdMcpToolsTests
                     ["stageRevision"] = 3,
                     ["settingsPath"] = "/Render/Settings",
                     ["productPath"] = "/Render/Product",
+                    ["width"] = 7,
+                    ["height"] = 5,
                     ["frameCount"] = 3
                 }
             }, options: new RequestOptions { ProgressToken = new ProgressToken("product") },
             cancellationToken: cancellation.Token);
         await productProgress.AssertSuccessfulLifecycleAsync();
         await Assert.That(product.IsError).IsFalse();
+        await Assert.That(service.LastProductRequest!.Width).IsEqualTo(7);
+        await Assert.That(service.LastProductRequest.Height).IsEqualTo(5);
         await Assert.That(product.StructuredContent!.Value.GetProperty("authoredProduct")
             .GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
         await Assert.That(product.StructuredContent.Value.GetProperty("authoredProduct")
@@ -1133,6 +1137,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
 
     internal CancellationToken LastCancellationToken { get; private set; }
     internal RenderSequenceRequest? LastSequenceRequest { get; private set; }
+    internal RenderProductCaptureRequest? LastProductRequest { get; private set; }
     internal RenderPhysicsSequenceRequest? LastPhysicsRequest { get; private set; }
     internal OpenSceneRequest? LastOpenRequest { get; private set; }
 
@@ -1236,6 +1241,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
     public ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
         RenderProductCaptureRequest request, CancellationToken cancellationToken, Action<int, int>? frameEncoded = null)
     {
+        LastProductRequest = request;
         LastCancellationToken = cancellationToken;
         FrameEncoded = frameEncoded;
         if (RenderOperation is { } operation)

@@ -17,6 +17,13 @@ internal sealed partial class OpenUsdMcpService
         {
             throw new ArgumentOutOfRangeException(nameof(request), "Product frame count or time samples are invalid.");
         }
+        if (request.Width.HasValue != request.Height.HasValue ||
+            request.Width is < 1 or > 4096 || request.Height is < 1 or > 4096)
+        {
+            throw new ArgumentException(
+                "Product raster width and height must be supplied together, each within 1-4096 pixels.",
+                nameof(request));
+        }
         foreach (string? path in new[] { request.SettingsPath, request.ProductPath, request.CameraPath })
         {
             if (path is not null)
@@ -36,6 +43,11 @@ internal sealed partial class OpenUsdMcpService
             throw new OpenUsdMcpFailureException(OpenUsdMcpErrorCodes.RenderFailure,
                 "EXR output currently requires Windows x64.");
         }
+        var rasterOverrides = new RenderProductOverrides(
+            cameraPath: request.CameraPath,
+            resolution: request.Width is { } width && request.Height is { } height
+                ? new ViewportDimensions(width, height)
+                : null);
         var times = new double[request.FrameCount];
         for (int index = 0; index < times.Length; index++)
         {
@@ -53,7 +65,7 @@ internal sealed partial class OpenUsdMcpService
             {
                 plan = await workspace.PrepareRenderProductAsync(
                     revision, times, request.SettingsPath, request.ProductPath,
-                    new RenderProductOverrides(cameraPath: request.CameraPath),
+                    rasterOverrides,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (NotSupportedException exception)

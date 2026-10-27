@@ -20,6 +20,18 @@ internal sealed class RenderProductCaptureRequest : SceneRevisionRequestBase
     [Description("Optional explicit camera override; the unchanged authored camera is retained in the manifest.")]
     public string? CameraPath { get; init; }
 
+    [JsonPropertyName("width"), Range(1, 4096)]
+    [Description(
+        "Optional full-raster width before product cropping, 1-4096 pixels. " +
+        "Supply width and height together; omit both to preserve the authored resolution.")]
+    public int? Width { get; init; }
+
+    [JsonPropertyName("height"), Range(1, 4096)]
+    [Description(
+        "Optional full-raster height before product cropping, 1-4096 pixels. " +
+        "Supply width and height together; omit both to preserve the authored resolution.")]
+    public int? Height { get; init; }
+
     [JsonPropertyName("frameCount"), Range(1, 4096), DefaultValue(1)]
     [Description(
         "Number of explicit time samples, 1-4096. Product variables, not viewport output toggles, choose data planes.")]

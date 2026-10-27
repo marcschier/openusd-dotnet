@@ -193,6 +193,8 @@ internal static class OpenUsdMcpDescriptions
         "Render one admitted authored UsdRender product into a bounded generated split-plane job. " +
         "Preconditions: exact active sessionId/generation/stageRevision; finite time samples, 1-4096 frames; " +
         "optional settingsPath selects authored settings, and productPath is required unless there is one product. " +
+        "Optional width and height override the full raster before cropping; supply both within 1-4096 pixels, " +
+        "or omit both to retain authored resolution. " +
         "The initial profile accepts raw half4 color and/or float normalized depth, one material-binding purpose, " +
         "standard scene purposes, unit camera exposure and no active motion blur or depth of field. " +
         "Unsupported variables, named rendering color spaces and unevaluated settings are refused, " +
@@ -497,7 +499,7 @@ internal sealed class OpenUsdMcpTools(
         OutputSchemaType = typeof(McpRenderSequenceResultDto))]
     [Description(OpenUsdMcpDescriptions.RenderProduct)]
     public ValueTask<CallToolResult> RenderProductAsync(
-        [Description("Exact revision, authored settings/product selection, time samples and explicit output encoding.")]
+        [Description("Exact revision, authored settings/product, optional raster size, time samples and encoding.")]
         RenderProductCaptureRequest request,
         CancellationToken cancellationToken,
         RequestContext<CallToolRequestParams>? context = null) =>

@@ -1146,6 +1146,12 @@ RenderPass commands. Supply `settingsPath` explicitly when the workspace overlay
 default; stage-root metadata is not implicitly inherited from its source sublayer. Omitting
 `productPath` is accepted only when the selected settings contain exactly one product.
 
+Optional `width` and `height` override the full raster through the shared product planner.
+Supply both within 1-4096 pixels, or omit both to retain the authored resolution. This does
+not edit the product. Its data window, pixel aspect and conform policy still apply, so a
+crop or overscan can change the resulting PNG dimensions. Existing frame/job quotas and
+encoding restrictions remain unchanged; an over-budget result is refused, not resized.
+
 ```json
 {
   "request": {
@@ -1154,6 +1160,8 @@ default; stage-root metadata is not implicitly inherited from its source sublaye
     "stageRevision": 1,
     "settingsPath": "/Render/Settings",
     "productPath": "/Render/Product",
+    "width": 512,
+    "height": 512,
     "frameCount": 3,
     "startTimeCode": 0,
     "timeStep": 1,

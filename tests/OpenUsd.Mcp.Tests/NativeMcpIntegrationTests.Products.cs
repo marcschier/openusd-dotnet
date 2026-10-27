@@ -135,9 +135,12 @@ public sealed partial class NativeMcpIntegrationTests
 
     [Test]
     [NotInParallel]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport(bool bounded)
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport(
+        bool bounded, bool rasterOverride)
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
         {
@@ -147,7 +150,9 @@ public sealed partial class NativeMcpIntegrationTests
         NativeLayout layout = RequireNativeLayout(requireImaging: true);
         using var files = new WorkspaceTestFiles();
         string scene = ProductScene
-            .Replace("int2 resolution = (16, 16)", "int2 resolution = (32, 16)", StringComparison.Ordinal)
+            .Replace("int2 resolution = (16, 16)",
+                rasterOverride ? "int2 resolution = (64, 32)" : "int2 resolution = (32, 16)",
+                StringComparison.Ordinal)
             .Replace("token productName = \"../must-not-be-used.exr\"",
                 "token productName = \"../must-not-be-used.exr\"\n    float4 dataWindowNDC = (0.25, 0, 0.75, 1)",
                 StringComparison.Ordinal)
@@ -176,6 +181,8 @@ public sealed partial class NativeMcpIntegrationTests
             StageRevision = session.StageRevision,
             SettingsPath = "/SettingsFull",
             ProductPath = "/Product",
+            Width = rasterOverride ? 32 : null,
+            Height = rasterOverride ? 16 : null,
             FrameCount = 2,
             TimeStep = 2
         };
