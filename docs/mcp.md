@@ -590,6 +590,18 @@ All tools take one top-level `request` object. Every successful result contains 
 content plus one summary text block bounded to 2048 characters. Artifact-producing tools add
 at most 16 image/resource-link blocks, with at most 17 content blocks total.
 
+The four render tools accept an optional MCP `_meta.progressToken`, outside the `request`
+object. With a token, the server sends request-level progress `0/1` before admission and
+revision checks, then `1/1` after constructing a successful result. The messages are
+`Request started; admission and revision checks pending.` and `Result ready.` A refused or
+cancelled request does not report completion. These notifications do not measure rendered
+frames, elapsed time or native preparation; the final tool response remains authoritative.
+
+The server awaits each progress write before continuing. Clients must retain their notification
+handler while consuming progress and send MCP cancellation notifications to cancel server work;
+cancelling only a local wait does not establish that rendering has stopped. Once cancellation
+reaches an active capture, the existing service cleanup still drains before releasing its resources.
+
 - **`open_scene`:** requires no active session and one confined relative USD `sourcePath`.
   It creates one overlay session. Optional `stageSettings` explicitly authors root-layer
   units, axis and timeline without converting source coordinates. Errors are `invalid_argument`, `path_denied`, or
@@ -1499,11 +1511,16 @@ dotnet build OpenUsd.slnx -c Release
 ```
 
 The MCP protocol tests use the official in-memory MCP client/server transports to discover all 18
-tools and their schemas, invoke a tool, and read an artifact resource. A separate actual-process
-stdio test performs initialization, `tools/list`, `resources/list`, resource-template discovery,
-and safe no-session scene and empty process-local job-history invocations. It verifies the same
-18-tool catalog, including `list_sequence_jobs`; the official transport rejects non-protocol stdout and captures
-host logs from stderr. Native overlay/checkpoint/rollback and retained-capture integration tests run
+tools and their schemas, invoke a tool, and read an artifact resource. The suite also checks
+token-correlated lifecycle notifications for all four render tools, including immediate results,
+refusal, cancellation during a blocked capture cleanup and cancellation before dispatch. It uses
+persistent notification handlers because SDK callbacks can run concurrently with response processing,
+and sends an explicit MCP cancellation notification to prove server drain.
+A separate actual-process stdio test performs initialization, `tools/list`, `resources/list`,
+resource-template discovery, and safe no-session scene and empty process-local job-history invocations.
+It verifies the same 18-tool catalog, including `list_sequence_jobs`; the official transport rejects
+non-protocol stdout and captures host logs from stderr. Native overlay/checkpoint/rollback and
+retained-capture integration tests run
 when the repository Core/Imaging runtime layout is present and otherwise skip with the missing path
 reported explicitly. Package tests assert the tool-package identity and command plus the RID
 script's Core/Imaging/plugin/exclusion and fail-before-mutation contracts. Creating a real bundle

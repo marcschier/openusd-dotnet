@@ -3,6 +3,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OpenUsd.Interop;
@@ -431,8 +432,9 @@ internal sealed class OpenUsdMcpTools(
         [Description(
             "Exact optimistic revision, capture mode, bounded dimensions, and 1-16 ordered views.")]
         RenderPreviewRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderPreviewAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeAsync(token => service.RenderPreviewAsync(request, token), cancellationToken, context);
 
     [McpServerTool(
         Name = "render_sequence",
@@ -447,8 +449,9 @@ internal sealed class OpenUsdMcpTools(
     public ValueTask<CallToolResult> RenderSequenceAsync(
         [Description("Exact scene revision, finite time range and bounded disk-sequence dimensions.")]
         RenderSequenceRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderSequenceAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeAsync(token => service.RenderSequenceAsync(request, token), cancellationToken, context);
 
     [McpServerTool(
         Name = "render_physics_sequence",
@@ -476,8 +479,9 @@ internal sealed class OpenUsdMcpTools(
     public ValueTask<CallToolResult> RenderPhysicsSequenceAsync(
         [Description("Exact scene revision, scenario identity, fixed-step count and bounded output dimensions.")]
         RenderPhysicsSequenceRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderPhysicsSequenceAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeAsync(token => service.RenderPhysicsSequenceAsync(request, token), cancellationToken, context);
 
     [McpServerTool(
         Name = "render_product",
@@ -492,8 +496,9 @@ internal sealed class OpenUsdMcpTools(
     public ValueTask<CallToolResult> RenderProductAsync(
         [Description("Exact revision, authored settings/product selection, time samples and explicit output encoding.")]
         RenderProductCaptureRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderProductAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeAsync(token => service.RenderProductAsync(request, token), cancellationToken, context);
 
     [McpServerTool(
         Name = "list_sequence_jobs",
@@ -608,11 +613,22 @@ internal sealed class OpenUsdMcpTools(
 
     private async ValueTask<CallToolResult> InvokeAsync<T>(
         Func<CancellationToken, ValueTask<T>> operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null)
         where T : IOpenUsdMcpOutput
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (context?.Params.ProgressToken is { } startToken)
+            {
+                await context.Server.NotifyProgressAsync(startToken, new ProgressNotificationValue
+                {
+                    Progress = 0,
+                    Total = 1,
+                    Message = "Request started; admission and revision checks pending."
+                }, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
             T output = await operation(cancellationToken).ConfigureAwait(false);
             JsonElement structured = JsonSerializer.SerializeToElement(output, JsonOptions);
             var content = new List<ContentBlock>
@@ -627,12 +643,19 @@ internal sealed class OpenUsdMcpTools(
                 AddArtifactBlocks(content, artifacts.ArtifactResources);
             }
 
-            return new CallToolResult
+            var result = new CallToolResult
             {
                 Content = content,
                 StructuredContent = structured,
                 IsError = false,
             };
+            if (context?.Params.ProgressToken is { } endToken)
+            {
+                await context.Server.NotifyProgressAsync(endToken,
+                    new ProgressNotificationValue { Progress = 1, Total = 1, Message = "Result ready." },
+                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

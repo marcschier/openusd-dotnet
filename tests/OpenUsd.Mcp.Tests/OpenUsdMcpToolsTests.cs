@@ -23,6 +23,154 @@ public sealed class OpenUsdMcpToolsTests
     };
 
     [Test]
+    [Arguments("success")]
+    [Arguments("refused")]
+    [Arguments("cancelled")]
+    [Arguments("pre-cancelled")]
+    public async Task RenderRequestProgressReportsReadinessOnlyAfterSuccessAndPreservesCancellationDrain(string outcome)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var progress = new RecordedProgress();
+        var service = new FakeOpenUsdMcpService
+        {
+            SequenceOperation = async (_, token) =>
+            {
+                try
+                {
+                    entered.TrySetResult();
+                    if (outcome == "cancelled")
+                    {
+                        try
+                        {
+                            await Task.Delay(Timeout.Infinite, token);
+                        }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                            cancelling.TrySetResult();
+                            await release.Task;
+                            throw;
+                        }
+                    }
+                    await release.Task;
+                    if (outcome == "refused")
+                    {
+                        throw new ArgumentException("The raster was refused.");
+                    }
+                    return new McpRenderSequenceResultDto(
+                        "session-1", 2, 3, "job-1", "renders/job-1", "renders/job-1/manifest.json", 1, 100, []);
+                }
+                finally
+                {
+                    drained.TrySetResult();
+                }
+            }
+        };
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IOpenUsdMcpService>(service);
+        services.AddSingleton(new OpenUsdMcpProtocolOptions());
+        services.AddSingleton<IArtifactResourceStore>(new ArtifactResourceStore());
+        services.AddMcpServer().WithStreamServerTransport(
+            clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()).WithOpenUsdTools();
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        McpServer server = provider.GetRequiredService<McpServer>();
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        Task serverTask = server.RunAsync(lifetime.Token);
+        await using McpClient client = await McpClient.CreateAsync(new StreamClientTransport(
+            clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()), cancellationToken: lifetime.Token);
+        await using IAsyncDisposable progressRegistration = progress.Register(client, new ProgressToken("render"));
+        if (outcome == "pre-cancelled")
+        {
+            cancellation.Cancel();
+        }
+        Task<CallToolResult> pending = client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
+            RequestMethods.ToolsCall, new CallToolRequestParams
+            {
+                Name = "render_sequence",
+                Meta = new System.Text.Json.Nodes.JsonObject { ["progressToken"] = "render" },
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["request"] = JsonSerializer.SerializeToElement(
+                        new { sessionId = "session-1", generation = 2, stageRevision = 3 })
+                }
+            }, requestId: new RequestId("render"),
+            cancellationToken: outcome == "pre-cancelled" ? cancellation.Token : lifetime.Token).AsTask();
+        try
+        {
+            if (outcome == "pre-cancelled")
+            {
+                await Assert.That(async () => await pending).Throws<OperationCanceledException>();
+                await Assert.That(entered.Task.IsCompleted).IsFalse();
+                await Assert.That(progress.Values).IsEmpty();
+                return;
+            }
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await progress.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(pending.IsCompleted).IsFalse();
+            await Assert.That(progress.Values.Length).IsEqualTo(1);
+            await Assert.That(progress.Values[0].Progress).IsEqualTo(0f);
+            await Assert.That(progress.Values[0].Message).Contains("checks pending");
+            await Assert.That(service.LastCancellationToken.CanBeCanceled).IsTrue();
+            if (outcome == "cancelled")
+            {
+                await client.SendMessageAsync(new JsonRpcNotification
+                {
+                    Method = NotificationMethods.CancelledNotification,
+                    Params = JsonSerializer.SerializeToNode(
+                        new CancelledNotificationParams { RequestId = new RequestId("render") })
+                }, lifetime.Token);
+                await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(drained.Task.IsCompleted).IsFalse();
+                await Assert.That(progress.Values.Length).IsEqualTo(1);
+                release.TrySetResult();
+                await Assert.That(async () => await pending).Throws<OperationCanceledException>();
+                await drained.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(progress.Values.Length).IsEqualTo(1);
+                return;
+            }
+            release.TrySetResult();
+            CallToolResult result = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(result.IsError).IsEqualTo(outcome == "refused");
+            if (outcome == "success")
+            {
+                await progress.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(progress.Values.Length).IsEqualTo(outcome == "success" ? 2 : 1);
+            if (outcome == "success")
+            {
+                await Assert.That(progress.Values[1].Progress).IsEqualTo(1f);
+                await Assert.That(progress.Values[1].Total).IsEqualTo(1f);
+                await Assert.That(progress.Values[1].Message).IsEqualTo("Result ready.");
+                await Assert.That(result.StructuredContent!.Value.GetProperty("jobId").GetString()).IsEqualTo("job-1");
+            }
+            else
+            {
+                await Assert.That(result.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString())
+                    .IsEqualTo("invalid_argument");
+            }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            release.TrySetResult();
+            lifetime.Cancel();
+            try
+            {
+                await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+            {
+            }
+        }
+    }
+
+    [Test]
     [Arguments("none")]
     [Arguments("defaults")]
     [Arguments("named")]
@@ -467,6 +615,13 @@ public sealed class OpenUsdMcpToolsTests
             .InputSchema
             .GetRawText();
         await Assert.That(renderSchema).Contains("\"cameraPath\"");
+        string[] renderTools = ["render_preview", "render_sequence", "render_product", "render_physics_sequence"];
+        foreach (string name in renderTools)
+        {
+            await Assert.That(tools.Single(tool => tool.Name == name).ProtocolTool.InputSchema
+                .GetProperty("properties").EnumerateObject().Select(static property => property.Name))
+                .IsEquivalentTo(["request"]);
+        }
         await Assert.That(tools.Single(static tool => tool.Name == "render_sequence")
             .ProtocolTool.InputSchema.GetRawText()).Contains("\"hdrColorFormat\"");
         await Assert.That(tools.Single(static tool => tool.Name == "render_physics_sequence")
@@ -522,6 +677,28 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(service.LastOpenRequest!.StageSettings!.ToSettings())
             .IsEqualTo(new WorkspaceStageSettings(1, 2, "Z", 12, 252, 60, 30));
 
+        var previewProgress = new RecordedProgress();
+        await using IAsyncDisposable previewProgressRegistration =
+            previewProgress.Register(client, new ProgressToken("preview"));
+        CallToolResult preview = await client.CallToolAsync("render_preview",
+            new Dictionary<string, object?>
+            {
+                ["request"] = new
+                {
+                    sessionId = "session-1",
+                    generation = 2,
+                    stageRevision = 3,
+                    kind = "still",
+                    views = new[] { new { name = "main", timeCode = 0 } }
+                }
+            }, options: new RequestOptions { ProgressToken = new ProgressToken("preview") },
+            cancellationToken: cancellation.Token);
+        await Assert.That(preview.IsError).IsFalse();
+        await previewProgress.AssertSuccessfulLifecycleAsync();
+
+        var physicsProgress = new RecordedProgress();
+        await using IAsyncDisposable physicsProgressRegistration =
+            physicsProgress.Register(client, new ProgressToken("physics"));
         CallToolResult physics = await client.CallToolAsync("render_physics_sequence",
             new Dictionary<string, object?>
             {
@@ -536,13 +713,18 @@ public sealed class OpenUsdMcpToolsTests
                     ["stepsPerFrame"] = 4,
                     ["frameCount"] = 3
                 }
-            }, cancellationToken: cancellation.Token);
+            }, options: new RequestOptions { ProgressToken = new ProgressToken("physics") },
+            cancellationToken: cancellation.Token);
+        await physicsProgress.AssertSuccessfulLifecycleAsync();
         await Assert.That(physics.IsError).IsFalse();
         await Assert.That(physics.StructuredContent!.Value.GetProperty("jobId").GetString()).IsEqualTo("physics-1");
         await Assert.That(service.LastPhysicsRequest!.ScenarioIdentity).IsEqualTo("rigid-test");
         await Assert.That(service.LastPhysicsRequest.StepsPerFrame).IsEqualTo(4);
         await Assert.That(service.LastPhysicsRequest.ExpectedMetersPerUnit).IsEqualTo(0.01);
 
+        var renderProgress = new RecordedProgress();
+        await using IAsyncDisposable progressRegistration =
+            renderProgress.Register(client, new ProgressToken("sequence"));
         CallToolResult sequence = await client.CallToolAsync("render_sequence",
             new Dictionary<string, object?>
             {
@@ -559,8 +741,10 @@ public sealed class OpenUsdMcpToolsTests
                     ["includeHdrColor"] = true,
                     ["hdrColorFormat"] = "exr"
                 }
-            }, cancellationToken: cancellation.Token);
+            }, options: new RequestOptions { ProgressToken = new ProgressToken("sequence") },
+            cancellationToken: cancellation.Token);
         await Assert.That(sequence.IsError).IsFalse();
+        await renderProgress.AssertSuccessfulLifecycleAsync();
         await Assert.That(sequence.StructuredContent!.Value.GetProperty("frameCount").GetInt32()).IsEqualTo(20);
         await Assert.That(sequence.StructuredContent!.Value.GetProperty("outputDirectory").GetString())
             .IsEqualTo("session-1/renders/job-1");
@@ -568,6 +752,9 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(service.LastSequenceRequest!.IncludeHdrColor).IsTrue();
         await Assert.That(service.LastSequenceRequest.HdrColorFormat).IsEqualTo("exr");
 
+        var productProgress = new RecordedProgress();
+        await using IAsyncDisposable productProgressRegistration =
+            productProgress.Register(client, new ProgressToken("product"));
         CallToolResult product = await client.CallToolAsync("render_product",
             new Dictionary<string, object?>
             {
@@ -580,7 +767,9 @@ public sealed class OpenUsdMcpToolsTests
                     ["productPath"] = "/Render/Product",
                     ["frameCount"] = 3
                 }
-            }, cancellationToken: cancellation.Token);
+            }, options: new RequestOptions { ProgressToken = new ProgressToken("product") },
+            cancellationToken: cancellation.Token);
+        await productProgress.AssertSuccessfulLifecycleAsync();
         await Assert.That(product.IsError).IsFalse();
         await Assert.That(product.StructuredContent!.Value.GetProperty("authoredProduct")
             .GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
@@ -758,6 +947,11 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(artifactTemplate.ProtocolResourceTemplate.Description)
             .Contains("Example URI:");
 
+        RecordedProgress[] renderNotifications = [previewProgress, physicsProgress, renderProgress, productProgress];
+        foreach (RecordedProgress recorded in renderNotifications)
+        {
+            await recorded.AssertSuccessfulLifecycleAsync();
+        }
         await cancellation.CancelAsync();
         await Assert.That(async () => await serverTask).ThrowsNothing();
     }
@@ -775,6 +969,48 @@ public sealed class OpenUsdMcpToolsTests
         {
             string content = await File.ReadAllTextAsync(source);
             await Assert.That(content).DoesNotContain("Console.Write");
+        }
+    }
+
+    private sealed class RecordedProgress : IProgress<ProgressNotificationValue>
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<ProgressNotificationValue> _values = new();
+        internal TaskCompletionSource Completed { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ProgressNotificationValue[] Values => _values.ToArray();
+
+        internal async Task AssertSuccessfulLifecycleAsync()
+        {
+            await Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            // The SDK dispatches notification callbacks concurrently, independently of wire order.
+            ProgressNotificationValue[] values = Values.OrderBy(static value => value.Progress).ToArray();
+            await Assert.That(values.Select(static value => value.Progress).SequenceEqual([0f, 1f])).IsTrue();
+            await Assert.That(values.All(static value => value.Total == 1)).IsTrue();
+            await Assert.That(values[0].Message).IsEqualTo("Request started; admission and revision checks pending.");
+            await Assert.That(values[1].Message).IsEqualTo("Result ready.");
+        }
+
+        internal IAsyncDisposable Register(McpClient client, ProgressToken token) =>
+            client.RegisterNotificationHandler(NotificationMethods.ProgressNotification, (notification, _) =>
+            {
+                if (notification.Params?.Deserialize<ProgressNotificationParams>() is { } value &&
+                    value.ProgressToken == token)
+                {
+                    Report(value.Progress);
+                }
+                return ValueTask.CompletedTask;
+            });
+
+        public void Report(ProgressNotificationValue value)
+        {
+            _values.Enqueue(value);
+            Started.TrySetResult();
+            if (_values.Count == 2)
+            {
+                Completed.TrySetResult();
+            }
         }
     }
 
@@ -826,6 +1062,9 @@ public sealed class OpenUsdMcpToolsTests
 
 internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
 {
+    internal Func<RenderSequenceRequest, CancellationToken, ValueTask<McpRenderSequenceResultDto>>?
+        SequenceOperation
+    { get; init; }
     internal McpCaptureResultDto? CaptureResult { get; init; }
 
     internal Exception? GetSceneException { get; init; }
@@ -915,6 +1154,10 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
     {
         LastCancellationToken = cancellationToken;
         LastSequenceRequest = request;
+        if (SequenceOperation is { } operation)
+        {
+            return operation(request, cancellationToken);
+        }
         return ValueTask.FromResult(new McpRenderSequenceResultDto(
             request.SessionId, request.Generation, request.StageRevision, "job-1",
             "session-1/renders/job-1", "session-1/renders/job-1/manifest.json", request.FrameCount, 2048, []));
