@@ -880,6 +880,15 @@ default size, full status/error text, keyboard scrolling to the final line and a
 actions inside the window. Busy state disables connection controls without hiding Close; Escape
 closes the dialog without mutating its model. Provider lifetime and redaction remain covered by
 `ViewerBridgeConnectionTests`; this headless layout case does not qualify a live transport.
+`DeferredBridgeCommandsKeepCloseReachableAndRestoreOnlyOwnedFocus` executes all three
+commands through real controls and a deferred provider in both themes. It checks success,
+refusal and cancellation, session selection, retries and Close focus before controls disable.
+Focus moved to details or another window remains there; closing during a command does not
+cancel it or regain focus on completion. `BridgeBusyUpdatesPreserveUnownedFocusAndDoNotCancelOnClose`
+also covers initial unowned focus.
+`ImmediatelyCompletedBridgeCommandsKeepAnEnabledActionFocused` covers providers that
+finish before a busy-state publication reaches the dialog. These are managed/headless
+ownership checks, not physical input, screen-reader or live-transport qualification.
 
 `AnalysisRetainsRecommendationEvidenceAndAdvisoryIdentityWithoutApplyingChanges` checks both
 renderer identities, exact clipping arguments, observed/target metric values and units, empty

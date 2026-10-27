@@ -26,6 +26,7 @@ namespace OpenUsd.Viewer;
 internal sealed partial class BridgeConnectionWindow : Window
 {
     private readonly ViewerBridgeConnectionModel _model;
+    private Control? _operationFocus;
 
     /// <summary>Creates a dialog with no provider. Used by the Avalonia designer.</summary>
     public BridgeConnectionWindow()
@@ -69,6 +70,14 @@ internal sealed partial class BridgeConnectionWindow : Window
     /// <param name="state">The state the model computed.</param>
     internal void Apply(ViewerBridgeViewState state)
     {
+        Control? displaced = BridgeConnectButton.IsKeyboardFocusWithin && !state.CanConnect ? BridgeConnectButton :
+            BridgeDisconnectButton.IsKeyboardFocusWithin && !state.CanDisconnect ? BridgeDisconnectButton :
+            BridgeResyncButton.IsKeyboardFocusWithin && !state.CanResync ? BridgeResyncButton :
+            BridgeSessionSelector.IsKeyboardFocusWithin && state.Busy ? BridgeSessionSelector : null;
+        if (IsVisible && displaced is not null && BridgeCloseButton.Focus())
+        {
+            _operationFocus = displaced;
+        }
         BridgeStatusText.Text = state.StatusText.Length == 0
             ? "Bridge: disconnected"
             : state.StatusText;
@@ -85,6 +94,19 @@ internal sealed partial class BridgeConnectionWindow : Window
         BridgeDisconnectButton.IsEnabled = state.CanDisconnect;
         BridgeResyncButton.IsEnabled = state.CanResync;
         BridgeSessionSelector.IsEnabled = !state.Busy;
+        if (!state.Busy)
+        {
+            Control? restore = _operationFocus;
+            _operationFocus = null;
+            if (restore is not null && IsVisible && BridgeCloseButton.IsKeyboardFocusWithin)
+            {
+                Control target = restore.IsEnabled ? restore :
+                    state.CanConnect ? BridgeConnectButton :
+                    state.CanDisconnect ? BridgeDisconnectButton :
+                    state.CanResync ? BridgeResyncButton : BridgeCloseButton;
+                target.Focus();
+            }
+        }
     }
 
     /// <summary>Shows the provider name in the dialog header.</summary>

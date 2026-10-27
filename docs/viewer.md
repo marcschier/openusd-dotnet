@@ -2145,6 +2145,11 @@ a failure that quotes a URL back cannot leak a token into a status bar or an exp
 At the minimum dialog size, connection details and full refusal text scroll independently of the
 wrapping action footer. Tab to the details area and use the scroll keys to read long messages;
 Close remains reachable even while provider commands are unavailable.
+When a focused connection control becomes disabled, focus moves to Close first.
+After the command finishes, focus returns to the original control if enabled, or to the
+next enabled connection action, only while Close still owns keyboard focus. Moving focus
+to the details area or another window prevents that handoff. Closing the dialog leaves
+the command with its existing model owner; later completion does not reactivate the dialog.
 
 The status-bar indicator is hidden until a session is configured or active, and hides again after a
 successful disconnect, so a Viewer that is only opening local files never grows a bridge field. A
