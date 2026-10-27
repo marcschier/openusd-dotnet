@@ -817,6 +817,15 @@ one bounded native property snapshot with complete, typed invariant scalar value
 blocked, missing or incompatible inputs are refused rather than replaced with camera defaults.
 The query admits at most 128 camera properties and 64 KiB of text.
 
+`RenderCameraFrameSettings` composes ISO, exposure time, responsivity, exposure stops and squared
+f-stop without losing a representable scale to an overflowing or underflowing intermediate.
+Ordinary normal intermediates retain the existing arithmetic; other inputs use normalized binary
+significands and a combined exponent before final rounding. A zero ISO, exposure time or
+responsivity produces zero scale even at an extreme finite exposure. A combined scale above
+double range is still refused, and attenuation below the smallest double rounds to zero.
+`RenderProductJobPlanTests` covers these boundaries and preserves the original sampled values.
+This calculation does not enable rendered exposure or relax the non-unit-exposure admission rule.
+
 `RenderProductJobPlan.PrepareAsync` selects an explicit product (or a sole product), copies finite
 time samples, and samples in scheduler batches of at most sixteen. It checks the observed stage
 revision before and after each batch. The caller must continue excluding or detecting writers

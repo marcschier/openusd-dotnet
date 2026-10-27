@@ -107,6 +107,68 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
+    [Arguments(1023, 0, 0, 1, 1021)]
+    [Arguments(1024, 0, 0, 1, 1022)]
+    [Arguments(1025, 0, 0, 1, 1023)]
+    [Arguments(-1075, 0, 1, 0, -1074)]
+    [Arguments(0, 600, 600, 600, 0)]
+    [Arguments(0, -600, -600, -600, 0)]
+    [Arguments(1200, -200, 0, 0, 1000)]
+    [Arguments(-1200, 200, 0, 0, -1000)]
+    [Arguments(0, 1023, 0, 512, -1)]
+    public async Task CameraExposurePreservesRepresentableScaleAcrossIntermediateExponentLimits(
+        int exposure, int responsivityExponent, int timeExponent, int fStopExponent, int expectedExponent)
+    {
+        var settings = new RenderCameraFrameSettings(
+            exposure: exposure,
+            exposureResponsivity: Math.ScaleB(1d, responsivityExponent),
+            exposureTime: Math.ScaleB(1d, timeExponent),
+            exposureFStop: Math.ScaleB(1d, fStopExponent));
+        await Assert.That(settings.LinearExposureScale).IsEqualTo(Math.ScaleB(1d, expectedExponent));
+        await Assert.That(settings.Exposure).IsEqualTo((double)exposure);
+        await Assert.That(settings.ExposureResponsivity).IsEqualTo(Math.ScaleB(1d, responsivityExponent));
+        await Assert.That(settings.ExposureTime).IsEqualTo(Math.ScaleB(1d, timeExponent));
+        await Assert.That(settings.ExposureFStop).IsEqualTo(Math.ScaleB(1d, fStopExponent));
+    }
+
+    [Test]
+    public async Task CameraExposureStillRefusesAnUnrepresentableCombinedScale()
+    {
+        await Assert.That(() => new RenderCameraFrameSettings(exposure: 1026, exposureFStop: 2))
+            .Throws<ArgumentException>();
+        await Assert.That(() => new RenderCameraFrameSettings(exposure: double.MaxValue))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task CameraExposureRetainsSubnormalIsoBeforeCompensatingGain()
+    {
+        var settings = new RenderCameraFrameSettings(exposure: 100, exposureIso: double.Epsilon);
+        await Assert.That(settings.LinearExposureScale).IsEqualTo(Math.ScaleB(1d, -974) / 100);
+        await Assert.That(settings.ExposureIso).IsEqualTo(double.Epsilon);
+    }
+
+    [Test]
+    [Arguments("iso")]
+    [Arguments("time")]
+    [Arguments("responsivity")]
+    public async Task CameraExposureZeroFactorsRemainBlackAtAnExtremeFiniteGain(string zeroFactor)
+    {
+        var settings = new RenderCameraFrameSettings(
+            exposure: double.MaxValue,
+            exposureIso: zeroFactor == "iso" ? 0 : 100,
+            exposureTime: zeroFactor == "time" ? 0 : 1,
+            exposureResponsivity: zeroFactor == "responsivity" ? 0 : 1);
+        await Assert.That(settings.LinearExposureScale).IsEqualTo(0d);
+    }
+
+    [Test]
+    public async Task CameraExposureFiniteAttenuationBelowTheSmallestDoubleStillRoundsToBlack()
+    {
+        await Assert.That(new RenderCameraFrameSettings(exposure: -double.MaxValue).LinearExposureScale).IsEqualTo(0d);
+    }
+
+    [Test]
     public async Task DifferentProductRequestsAndUnboundedSampleCountsAreRefused()
     {
         RenderProductRequest first = Request();

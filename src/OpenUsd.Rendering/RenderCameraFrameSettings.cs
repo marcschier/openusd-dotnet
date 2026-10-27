@@ -28,8 +28,8 @@ public sealed class RenderCameraFrameSettings : IUsdDetachedResult
         {
             throw new ArgumentException("Camera shutter and exposure inputs must be finite and physically valid.");
         }
-        double scale = exposureResponsivity * exposureTime * (exposureIso / 100) *
-            Math.Pow(2, exposure) / (exposureFStop * exposureFStop);
+        double scale = CalculateExposureScale(
+            exposure, exposureIso, exposureTime, exposureFStop, exposureResponsivity);
         if (!double.IsFinite(scale) || scale < 0)
         {
             throw new ArgumentException("The camera exposure scale is not representable.");
@@ -42,6 +42,47 @@ public sealed class RenderCameraFrameSettings : IUsdDetachedResult
         ExposureFStop = exposureFStop;
         ExposureResponsivity = exposureResponsivity;
         LinearExposureScale = scale;
+    }
+
+    private static double CalculateExposureScale(
+        double exposure, double iso, double time, double fStop, double responsivity)
+    {
+        if (iso == 0 || time == 0 || responsivity == 0)
+        {
+            return 0;
+        }
+        double relativeIso = iso / 100;
+        double response = responsivity * time;
+        double responseIso = response * relativeIso;
+        double gain = Math.Pow(2, exposure);
+        double numerator = responseIso * gain;
+        double denominator = fStop * fStop;
+        if (double.IsNormal(relativeIso) && double.IsNormal(response) && double.IsNormal(responseIso) &&
+            double.IsNormal(gain) && double.IsNormal(numerator) && double.IsNormal(denominator))
+        {
+            return numerator / denominator;
+        }
+
+        // Keep compensating exponents separate until the final rounding, including subnormal inputs.
+        int isoExponent = Math.ILogB(iso);
+        int timeExponent = Math.ILogB(time);
+        int fStopExponent = Math.ILogB(fStop);
+        int responsivityExponent = Math.ILogB(responsivity);
+        double significand = Math.ScaleB(responsivity, -responsivityExponent) *
+            Math.ScaleB(time, -timeExponent) * (Math.ScaleB(iso, -isoExponent) / 100);
+        double normalizedFStop = Math.ScaleB(fStop, -fStopExponent);
+        significand /= normalizedFStop * normalizedFStop;
+        double exponent = exposure + (responsivityExponent + timeExponent + isoExponent - 2 * fStopExponent);
+        if (exponent > int.MaxValue)
+        {
+            return double.PositiveInfinity;
+        }
+        if (exponent < int.MinValue)
+        {
+            return 0;
+        }
+        int integralExponent = (int)Math.Floor(exponent);
+        return Math.ScaleB(significand * Math.Pow(2, exponent - integralExponent), integralExponent);
     }
 
     /// <summary>Gets the frame-relative shutter open time in USD time codes.</summary>
