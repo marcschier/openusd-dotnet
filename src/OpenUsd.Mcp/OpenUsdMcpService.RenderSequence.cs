@@ -39,7 +39,7 @@ internal sealed partial class OpenUsdMcpService
             request.IncludeDeviceDepth, request.IncludeHdrColor);
         if (!double.IsFinite(request.StartTimeCode) ||
             !double.IsFinite(request.TimeStep) || request.TimeStep == 0 ||
-            !double.IsFinite(request.StartTimeCode + ((request.FrameCount - 1) * request.TimeStep)))
+            !double.IsFinite(SequenceTimeCode(request.StartTimeCode, request.TimeStep, request.FrameCount - 1)))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(request), "Sequence dimensions, frame count or times are invalid.");
@@ -68,7 +68,7 @@ internal sealed partial class OpenUsdMcpService
                 var times = new double[count];
                 for (int index = 0; index < count; index++)
                 {
-                    times[index] = request.StartTimeCode + ((offset + index) * request.TimeStep);
+                    times[index] = SequenceTimeCode(request.StartTimeCode, request.TimeStep, offset + index);
                 }
                 IReadOnlyList<CameraState> cameras = await workspace.CreatePreviewCamerasAsync(
                     revision, request.CameraPath, false, request.Width, request.Height, times, cancellationToken)
@@ -248,6 +248,13 @@ internal sealed partial class OpenUsdMcpService
         {
             throw new WorkspaceQuotaExceededException("The MCP process has exhausted its 8-job/4-GiB disk quota.");
         }
+    }
+
+    private static double SequenceTimeCode(double start, double step, int index)
+    {
+        double time = start + index * step;
+        // Preserve ordinary two-rounding samples; fuse only an otherwise overflowing intermediate.
+        return double.IsFinite(time) ? time : Math.FusedMultiplyAdd(index, step, start);
     }
 
     private static void ValidateSequenceRaster(int width, int height, int frameCount, bool depth, bool hdr)

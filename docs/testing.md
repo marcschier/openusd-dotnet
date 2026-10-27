@@ -163,6 +163,16 @@ preserves distinct frame/tile requests and null metadata from producers that sup
 checks authored product purposes and source dimensions survive frame/sheet reads after scene close.
 These checks do not qualify effective renderer settings, OCIO execution or independent source identity.
 
+`FiniteSequenceSamplesSurviveIntermediateOverflowAndKeepOrdinaryRounding` checks product
+and viewport sampling before, at and after intermediate multiplication overflow, including
+forward/reverse sampling and a 40-frame camera batch. Exact binary inputs give independently
+computed finite samples; preparation, capture, manifest and historical frame reads retain
+them. Ordinary and subnormal samples keep their existing two-rounding results.
+`NonfiniteSequenceSamplesStillRefuseBeforeWorkspaceOutputOrHistory` rejects nonfinite inputs,
+zero steps and genuinely overflowing final samples before workspace work or publication.
+These managed request and disk-output checks do not qualify extreme time codes in OpenUSD
+or a native renderer.
+
 `ProductRasterOverridesReachPreparedFramesAndHistoricalOutputsWithoutChangingAuthoredSize`
 checks paired MCP raster overrides through real shared framing, disk encoding and historical
 resource reads after scene close. It decodes the PNG, checks HDR length and manifest raster

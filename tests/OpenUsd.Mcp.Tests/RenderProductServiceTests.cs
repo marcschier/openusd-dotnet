@@ -13,6 +13,187 @@ public sealed class RenderProductServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Test]
+    [Arguments(false, "before", 1)]
+    [Arguments(true, "before", 1)]
+    [Arguments(false, "overflow", 1)]
+    [Arguments(true, "overflow", 1)]
+    [Arguments(false, "after", 1)]
+    [Arguments(true, "after", 1)]
+    [Arguments(false, "batched", 1)]
+    [Arguments(true, "batched", 1)]
+    [Arguments(false, "overflow", -1)]
+    [Arguments(true, "overflow", -1)]
+    [Arguments(false, "batched", -1)]
+    [Arguments(true, "batched", -1)]
+    [Arguments(false, "ordinary", 1)]
+    [Arguments(true, "ordinary", 1)]
+    [Arguments(false, "subnormal", 1)]
+    [Arguments(true, "subnormal", 1)]
+    public async Task FiniteSequenceSamplesSurviveIntermediateOverflowAndKeepOrdinaryRounding(
+        bool product, string kind, int direction)
+    {
+        int count = kind switch
+        {
+            "before" => 4,
+            "overflow" => 5,
+            "after" => 6,
+            "batched" => 40,
+            "ordinary" => 12,
+            "subnormal" => 9,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        double start = kind switch
+        {
+            "ordinary" => -1,
+            "subnormal" => 4 * double.Epsilon,
+            _ => direction * Math.ScaleB(1, 1023)
+        };
+        double step = kind switch
+        {
+            "ordinary" => 0.1,
+            "subnormal" => -double.Epsilon,
+            "batched" => -direction * Math.ScaleB(1, 1019),
+            _ => -direction * Math.ScaleB(1, 1022)
+        };
+        double[] expected = Enumerable.Range(0, count).Select(index => kind switch
+        {
+            "ordinary" or "subnormal" => start + index * step,
+            "batched" => Math.ScaleB(direction * (16 - index), 1019),
+            _ => Math.ScaleB(direction * (2 - index), 1022)
+        }).ToArray();
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        var prepared = new List<double>();
+        backend.PrepareProduct = times =>
+        {
+            prepared.AddRange(times);
+            return Plan(backend.Context!.SessionId, backend.StageRevision, times);
+        };
+        backend.PreparePreviewCameras = times =>
+        {
+            prepared.AddRange(times);
+            return Enumerable.Repeat(CameraState.Default, times.Count).ToArray();
+        };
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = product
+            ? await service.RenderProductAsync(new RenderProductCaptureRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                FrameCount = count,
+                StartTimeCode = start,
+                TimeStep = step
+            }, default)
+            : await service.RenderSequenceAsync(new RenderSequenceRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                FrameCount = count,
+                StartTimeCode = start,
+                TimeStep = step,
+                Width = 2,
+                Height = 2
+            }, default);
+        await Assert.That(job.FrameCount).IsEqualTo(count);
+        await Assert.That(prepared.SequenceEqual(expected)).IsTrue();
+        await Assert.That((product ? factory.Source.Times : factory.Source.ViewportTimes).SequenceEqual(expected))
+            .IsTrue();
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(backend.Context!.OutputDirectory, "renders", job.JobId, "manifest.json")));
+        JsonElement frames = manifest.RootElement.GetProperty("frames");
+        await Assert.That(frames.GetArrayLength()).IsEqualTo(count);
+        for (int index = 0; index < count; index++)
+        {
+            McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+                new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = index }, default);
+            await Assert.That(BitConverter.DoubleToInt64Bits(frame.TimeCode))
+                .IsEqualTo(BitConverter.DoubleToInt64Bits(expected[index]));
+            await Assert.That(BitConverter.DoubleToInt64Bits(frames[index].GetProperty("timeCode").GetDouble()))
+                .IsEqualTo(BitConverter.DoubleToInt64Bits(expected[index]));
+        }
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs.Count).IsEqualTo(1);
+        await Assert.That(backend.Events).DoesNotContain("apply");
+        await Assert.That(backend.Events).DoesNotContain("checkpoint");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo("#usda 1.0");
+    }
+
+    [Test]
+    [Arguments(false, "negativeEndpoint")]
+    [Arguments(true, "negativeEndpoint")]
+    [Arguments(false, "positiveEndpoint")]
+    [Arguments(true, "positiveEndpoint")]
+    [Arguments(false, "startNaN")]
+    [Arguments(true, "startNaN")]
+    [Arguments(false, "startInfinity")]
+    [Arguments(true, "startInfinity")]
+    [Arguments(false, "stepNaN")]
+    [Arguments(true, "stepNaN")]
+    [Arguments(false, "stepInfinity")]
+    [Arguments(true, "stepInfinity")]
+    [Arguments(false, "zeroStep")]
+    [Arguments(true, "zeroStep")]
+    public async Task NonfiniteSequenceSamplesStillRefuseBeforeWorkspaceOutputOrHistory(bool product, string kind)
+    {
+        double start = kind switch
+        {
+            "startNaN" => double.NaN,
+            "startInfinity" => double.PositiveInfinity,
+            _ => Math.ScaleB(1, 1023)
+        };
+        double step = kind switch
+        {
+            "stepNaN" => double.NaN,
+            "stepInfinity" => double.NegativeInfinity,
+            "zeroStep" => 0,
+            "negativeEndpoint" => -Math.ScaleB(1, 1022),
+            _ => Math.ScaleB(1, 1022)
+        };
+        int count = kind == "negativeEndpoint" ? 7 : 3;
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        if (product)
+        {
+            await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+            {
+                SessionId = "unused",
+                FrameCount = count,
+                StartTimeCode = start,
+                TimeStep = step
+            }, default)).Throws<ArgumentOutOfRangeException>();
+        }
+        else
+        {
+            await Assert.That(async () => await service.RenderSequenceAsync(new RenderSequenceRequest
+            {
+                SessionId = "unused",
+                FrameCount = count,
+                StartTimeCode = start,
+                TimeStep = step,
+                Width = 2,
+                Height = 2
+            }, default)).Throws<ArgumentOutOfRangeException>();
+        }
+        await Assert.That(backend.Events).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.EnumerateFileSystemEntries(files.OutputRoot)).IsEmpty();
+    }
+
+    [Test]
     [Arguments("omitted", 4, 4, 2, 2, 2f, 2f, 0f, 0f)]
     [Arguments("full", 8, 8, 0, 0, 1f, 1f, 0f, 0f)]
     [Arguments("center", 4, 4, 2, 2, 2f, 2f, 0f, 0f)]
@@ -697,6 +878,7 @@ public sealed class RenderProductServiceTests
         internal bool Refuse { get; set; }
         internal int Validations { get; private set; }
         internal List<double> Times { get; } = [];
+        internal List<double> ViewportTimes { get; } = [];
         internal RenderPurpose Purposes { get; private set; }
 
         public void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken)
@@ -725,8 +907,11 @@ public sealed class RenderProductServiceTests
             };
         }
 
-        public ImageRgba8 Capture(CaptureView view, int width, int height) =>
-            new(width, height, new byte[width * height * 4]);
+        public ImageRgba8 Capture(CaptureView view, int width, int height)
+        {
+            ViewportTimes.Add(view.TimeCode);
+            return new(width, height, new byte[width * height * 4]);
+        }
         public void Dispose() { }
     }
 }

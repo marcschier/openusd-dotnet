@@ -13,7 +13,7 @@ internal sealed partial class OpenUsdMcpService
         ArgumentNullException.ThrowIfNull(request);
         if (request.FrameCount is < 1 or > 4096 || !double.IsFinite(request.StartTimeCode) ||
             !double.IsFinite(request.TimeStep) || request.TimeStep == 0 ||
-            !double.IsFinite(request.StartTimeCode + (request.FrameCount - 1) * request.TimeStep))
+            !double.IsFinite(SequenceTimeCode(request.StartTimeCode, request.TimeStep, request.FrameCount - 1)))
         {
             throw new ArgumentOutOfRangeException(nameof(request), "Product frame count or time samples are invalid.");
         }
@@ -62,7 +62,7 @@ internal sealed partial class OpenUsdMcpService
         var times = new double[request.FrameCount];
         for (int index = 0; index < times.Length; index++)
         {
-            times[index] = request.StartTimeCode + index * request.TimeStep;
+            times[index] = SequenceTimeCode(request.StartTimeCode, request.TimeStep, index);
         }
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
