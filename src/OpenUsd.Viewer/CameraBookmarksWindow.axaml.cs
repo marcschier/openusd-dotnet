@@ -56,7 +56,7 @@ internal sealed partial class CameraBookmarksWindow : Window, IAsyncDisposable
                 await BeginAsync(RecallAsync);
             }
         };
-        SavedViewsRefreshButton.Click += async (_, _) => await BeginAsync(token => LoadAsync(null, token));
+        SavedViewsRefreshButton.Click += async (_, _) => await RefreshAsync();
         SavedViewsCancelButton.Click += (_, _) => Cancel();
         SavedViewsCloseButton.Click += (_, _) => Close();
         Opened += async (_, _) =>

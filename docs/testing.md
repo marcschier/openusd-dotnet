@@ -273,6 +273,14 @@ manager in both themes: a focused Refresh hands focus to Cancel, routed Escape r
 cancellation, Close remains focused during delayed drain, and Refresh regains focus for
 retry after the cancellation or read refusal. Capture, edits and recall are never invoked.
 
+`RefreshButtonRetainsOnlyTheSelectedBookmarkIdentityAndUsesItsNewSnapshot` checks both themes
+with reordered, renamed, removed and same-name replacement records. The actual Refresh button
+keeps only a surviving bookmark ID and uses the new record for an explicit Enter recall.
+Removed IDs leave selection-dependent actions disabled. While the read is paused, actions
+remain disabled and another refresh cannot start a second read. Completion returns focus to
+Refresh; a subsequent host refresh preserves the same identity rules. Capture and edit
+callbacks throw if invoked. These are managed dialog checks, not native camera qualification.
+
 `ShortcutHelpSupportsKeyboardPagingAndEscapeAtMinimumSize` checks both themes with
 the real shortcut catalog: initial scroll-body focus, Page Down/Page Up reaching both
 ends, an always-visible Close action and routed Escape. These managed headless cases

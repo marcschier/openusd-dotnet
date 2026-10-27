@@ -14,6 +14,126 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerCameraBookmarksWindowTests
 {
+    private static readonly string[] BookmarkActionNames =
+    [
+        "SaveCurrentViewButton", "RenameSavedViewButton", "RemoveSavedViewButton", "RecallSavedViewButton"
+    ];
+
+    [Test]
+    [Arguments(false, "reordered")]
+    [Arguments(true, "reordered")]
+    [Arguments(false, "renamed")]
+    [Arguments(true, "renamed")]
+    [Arguments(false, "removed")]
+    [Arguments(true, "removed")]
+    [Arguments(false, "same-name-replacement")]
+    [Arguments(true, "same-name-replacement")]
+    public async Task RefreshButtonRetainsOnlyTheSelectedBookmarkIdentityAndUsesItsNewSnapshot(bool dark, string change)
+    {
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
+        await session.Dispatch(async () =>
+        {
+            string stamp = new('A', 64);
+            ViewerCameraBookmark first = create("First");
+            ViewerCameraBookmark selected = create("Selected");
+            ViewerCameraBookmark updated = selected.Rename(change == "renamed" ? "Updated name" : selected.Name);
+            ViewerCameraBookmark[] refreshed = change switch
+            {
+                "removed" => [first],
+                "same-name-replacement" => [create(selected.Name), first],
+                _ => [updated, first]
+            };
+            bool retained = change is "reordered" or "renamed";
+            var edit = new ViewerAuthoredEditCapture(Guid.NewGuid(), "review",
+                new UsdLayerAuthoredSnapshot(new(1, 2, 3), 0, [], []));
+            int reads = 0;
+            int recalls = 0;
+            ViewerCameraBookmark? recalled = null;
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var window = new CameraBookmarksWindow(
+                async token =>
+                {
+                    if (++reads == 1)
+                    {
+                        return new ViewerCameraBookmarkCapture(edit, stamp, [first, selected]);
+                    }
+                    await release.Task.WaitAsync(token);
+                    return new ViewerCameraBookmarkCapture(edit, stamp, refreshed);
+                },
+                (_, _) => throw new InvalidOperationException("Refresh must not capture."),
+                (_, _, _, _) => throw new InvalidOperationException("Refresh must not edit."),
+                (bookmark, _) =>
+                {
+                    recalls++;
+                    recalled = bookmark;
+                    return Task.CompletedTask;
+                },
+                () => new ViewerCameraBookmarkAvailability(true, true, true, "Original review", "Ready."))
+            {
+                Width = 560,
+                Height = 440,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                ListBox list = Required<ListBox>(window, "SavedViewsList");
+                list.SelectedIndex = 1;
+                await Assert.That(Required<TextBox>(window, "SavedViewName").Text).IsEqualTo(selected.Name);
+                Button refresh = Required<Button>(window, "SavedViewsRefreshButton");
+                await Assert.That(refresh.Focus()).IsTrue();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Assert.That(window.IsRunning).IsTrue();
+                await Assert.That(Required<Button>(window, "SavedViewsCancelButton").IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(list.IsEnabled).IsFalse();
+                foreach (string action in BookmarkActionNames)
+                {
+                    await Assert.That(Required<Button>(window, action).IsEnabled).IsFalse();
+                }
+                await window.RefreshAsync();
+                await Assert.That(reads).IsEqualTo(2);
+                release.TrySetResult();
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(refresh.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(list.SelectedIndex).IsEqualTo(retained ? 0 : -1);
+                await Assert.That((list.SelectedItem as ListBoxItem)?.Tag)
+                    .IsSameReferenceAs(retained ? updated : null);
+                await Assert.That(recalls).IsEqualTo(0);
+                foreach (string action in BookmarkActionNames.Skip(1))
+                {
+                    await Assert.That(Required<Button>(window, action).IsEnabled).IsEqualTo(retained);
+                }
+                if (retained)
+                {
+                    await Assert.That(Required<TextBox>(window, "SavedViewName").Text).IsEqualTo(updated.Name);
+                }
+                await Assert.That(list.Focus()).IsTrue();
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(recalls).IsEqualTo(retained ? 1 : 0);
+                await Assert.That(recalled).IsSameReferenceAs(retained ? updated : null);
+                await window.RefreshAsync();
+                await Assert.That(reads).IsEqualTo(3);
+                await Assert.That((list.SelectedItem as ListBoxItem)?.Tag)
+                    .IsSameReferenceAs(retained ? updated : null);
+            }
+            finally
+            {
+                release.TrySetResult();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            await Assert.That(window.IsVisible).IsFalse();
+            return 0;
+
+            ViewerCameraBookmark create(string name) => ViewerCameraBookmark.CreateFree(
+                Guid.NewGuid(), name, stamp, 12.5, new ViewportDimensions(800, 600),
+                new ViewerCameraNavigationState(false, new(1, 2, 3), 5, 0.5f, 0.2f,
+                    ViewerCameraProjectionMode.Perspective, 0.7f, 3, 0.1f, 100, 800f / 600));
+        }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
     [Test]
     [Arguments(false)]
     [Arguments(true)]
