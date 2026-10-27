@@ -234,6 +234,14 @@ async UI-thread continuity and repeated isolated sessions. `NotInParallel` alone
 establish dispatcher ownership, and software X11 rendering still needs an X server.
 The separate native Viewer workflow smokes retain their actual desktop requirements.
 
+`ClosingWorkspaceDialogRestoresOnlyItsOwnedKeyboardFocus` opens the actual MainWindow
+without a stage or attached renderer. In both themes, it closes completed-job history,
+capture comparison and command-palette windows with focus in the dialog, another MainWindow
+control or a separate window. Only dialog-owned focus returns to the original workspace control.
+Reopening creates a new dialog and retains normal return-focus behavior.
+All seven workspace dialog entry points share this closing-ownership check; saved-view,
+property-editor and render-job native journeys remain separate qualification.
+
 `ViewerCameraPropertyNativeTests` covers exact camera declaration admission, signed offsets,
 default and time-sample edits, Clear, stale-review refusal, shared Undo/Redo and unchanged source bytes.
 `NativeCameraEditorSetsClearsAndSharesUndoWithoutChangingSource` drives the actual property-editor

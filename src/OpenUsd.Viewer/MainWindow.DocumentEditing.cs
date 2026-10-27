@@ -156,8 +156,8 @@ public sealed partial class MainWindow
             window.Closed += (_, _) =>
             {
                 _propertyEditor = null;
-                RestoreWorkspaceFocus(focus);
             };
+            RestoreWorkspaceFocusWhenClosed(window, focus);
             window.Show(this);
         }
         catch (Exception exception) when (exception is NotSupportedException or ArgumentException)

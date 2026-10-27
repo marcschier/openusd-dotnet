@@ -41,8 +41,8 @@ public sealed partial class MainWindow
         window.Closed += (_, _) =>
         {
             _renderSequenceWindow = null;
-            RestoreWorkspaceFocus(focus);
         };
+        RestoreWorkspaceFocusWhenClosed(window, focus);
         window.Show(this);
     }
 
@@ -220,8 +220,8 @@ public sealed partial class MainWindow
         window.Closed += (_, _) =>
         {
             _authoredRenderProductWindow = null;
-            RestoreWorkspaceFocus(focus);
         };
+        RestoreWorkspaceFocusWhenClosed(window, focus);
         window.Show(this);
     }
 
