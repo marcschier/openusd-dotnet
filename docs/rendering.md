@@ -785,6 +785,10 @@ window's bottom-left raster origin, and the effective pixel aspect ratio. The fi
 OpenUSD conform policies preserve off-axis camera offsets. Pixel-center inclusion is minimum
 inclusive and maximum exclusive, so adjacent tiles of an odd-width image do not duplicate a
 boundary pixel. Empty or unrepresentable pixel extents are explicit errors, not clamped output.
+Perspective depth preparation divides the far plane by the clipping depth before multiplication,
+so a finite float projection is not refused because an intermediate double product overflowed.
+`RenderProductRequestTests` covers the multiplication boundary with `double.MaxValue` as the far
+plane and still requires refusal when the resulting depth coefficient exceeds float range.
 
 Native specification aperture metadata describes default time. Preparation uses the actual
 camera sample instead, including animated aperture and parent/world transforms. A detached
