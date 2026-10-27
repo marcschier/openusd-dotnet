@@ -32,6 +32,18 @@ internal sealed class RenderProductCaptureRequest : SceneRevisionRequestBase
         "Supply width and height together; omit both to preserve the authored resolution.")]
     public int? Height { get; init; }
 
+    [JsonPropertyName("pixelAspectRatio")]
+    [Description(
+        "Optional finite positive pixel width-to-height ratio before conformance. " +
+        "Omission preserves the authored ratio; adjustPixelAspectRatio computes the effective ratio from the camera.")]
+    public double? PixelAspectRatio { get; init; }
+
+    [JsonPropertyName("aspectRatioConformPolicy"), MaxLength(32)]
+    [Description(
+        "Optional OpenUSD policy: expandAperture, cropAperture, adjustApertureWidth, " +
+        "adjustApertureHeight or adjustPixelAspectRatio. Omission preserves the authored policy.")]
+    public string? AspectRatioConformPolicy { get; init; }
+
     [JsonPropertyName("frameCount"), Range(1, 4096), DefaultValue(1)]
     [Description(
         "Number of explicit time samples, 1-4096. Product variables, not viewport output toggles, choose data planes.")]

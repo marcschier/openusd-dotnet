@@ -819,6 +819,8 @@ public sealed class OpenUsdMcpToolsTests
                     ["productPath"] = "/Render/Product",
                     ["width"] = 7,
                     ["height"] = 5,
+                    ["pixelAspectRatio"] = 1.5,
+                    ["aspectRatioConformPolicy"] = "cropAperture",
                     ["frameCount"] = 3
                 }
             }, options: new RequestOptions { ProgressToken = new ProgressToken("product") },
@@ -827,6 +829,8 @@ public sealed class OpenUsdMcpToolsTests
         await Assert.That(product.IsError).IsFalse();
         await Assert.That(service.LastProductRequest!.Width).IsEqualTo(7);
         await Assert.That(service.LastProductRequest.Height).IsEqualTo(5);
+        await Assert.That(service.LastProductRequest.PixelAspectRatio).IsEqualTo(1.5d);
+        await Assert.That(service.LastProductRequest.AspectRatioConformPolicy).IsEqualTo("cropAperture");
         await Assert.That(product.StructuredContent!.Value.GetProperty("authoredProduct")
             .GetProperty("productPath").GetString()).IsEqualTo("/Render/Product");
         await Assert.That(product.StructuredContent.Value.GetProperty("authoredProduct")

@@ -47,7 +47,9 @@ internal sealed partial class OpenUsdMcpService
             cameraPath: request.CameraPath,
             resolution: request.Width is { } width && request.Height is { } height
                 ? new ViewportDimensions(width, height)
-                : null);
+                : null,
+            pixelAspectRatio: request.PixelAspectRatio,
+            aspectRatioConformPolicy: request.AspectRatioConformPolicy);
         var times = new double[request.FrameCount];
         for (int index = 0; index < times.Length; index++)
         {

@@ -173,11 +173,22 @@ negative and over-limit dimensions without backend work, output directories or j
 The official protocol journey round-trips both optional dimensions. These are managed
 adapter checks.
 
+`ProductFramingOverridesReachProjectionAndHistoricalManifestWithoutChangingAuthoredValues`
+checks optional pixel-aspect and conform-policy overrides through the real shared planner.
+It preserves nondefault authored values, checks projection coefficients for all five policies
+and verifies effective manifest metadata and historical PNG retrieval after close.
+`InvalidProductPixelAspectIsRejectedBeforeWorkspaceWork` and
+`InvalidProductConformPolicyIsRejectedBeforeWorkspaceWork` reject nonpositive/nonfinite ratios
+and unknown, case-mismatched or padded tokens before workspace work or output creation.
+The official protocol journey round-trips both optional fields.
+
 Windows native `AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport`
 also covers omitted and explicit raster sizes, with default and bounded preparation.
 An authored 64x32 raster is overridden to 32x16, then cropped to 16x16 without changing
-the source. It checks animated raw HDR pixels and PNG contact-sheet cells, EXR refusal
-and texture-budget drain. This is D3D12 WARP evidence, not non-Windows or hardware
+the source. Explicit sizing cases also override an authored pixel ratio of 2 and
+`adjustApertureHeight` policy with ratio 1 and `expandAperture`. It checks animated raw HDR
+pixels and PNG contact-sheet cells, EXR refusal and texture-budget drain.
+This is D3D12 WARP evidence, not non-Windows or hardware
 qualification.
 
 `NativeMcpIntegrationTests.OfficialProtocolEditsNativePixelsRollsBackAndRetainsOriginalArtifactsAfterClose`

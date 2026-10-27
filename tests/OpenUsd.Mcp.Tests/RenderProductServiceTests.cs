@@ -13,6 +13,126 @@ public sealed class RenderProductServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Test]
+    [Arguments(null, null, 1.5d, 1f, 2.25f)]
+    [Arguments(0.5d, null, 0.5d, 1f / 0.75f, 1f)]
+    [Arguments(1d, null, 1d, 1f, 1.5f)]
+    [Arguments(2d, null, 2d, 1f, 3f)]
+    [Arguments(null, "expandAperture", 1.5d, 1f / 2.25f, 1f)]
+    [Arguments(2d, "expandAperture", 2d, 1f / 3f, 1f)]
+    [Arguments(2d, "cropAperture", 2d, 1f, 3f)]
+    [Arguments(2d, "adjustApertureWidth", 2d, 1f / 3f, 1f)]
+    [Arguments(2d, "adjustApertureHeight", 2d, 1f, 3f)]
+    [Arguments(2d, "adjustPixelAspectRatio", 2d / 3d, 1f, 1f)]
+    [Arguments(null, "adjustPixelAspectRatio", 2d / 3d, 1f, 1f)]
+    public async Task ProductFramingOverridesReachProjectionAndHistoricalManifestWithoutChangingAuthoredValues(
+        double? pixelAspectRatio, string? conformPolicy, double effectiveAspect, float projectionX, float projectionY)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        RenderProductJobPlan? prepared = null;
+        backend.PrepareProduct = times => prepared = Plan(
+            backend.Context!.SessionId, backend.StageRevision, times, backend.LastProductOverrides,
+            authoredPixelAspectRatio: 1.5f, authoredConformPolicy: "cropAperture");
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 6,
+            Height = 4,
+            PixelAspectRatio = pixelAspectRatio,
+            AspectRatioConformPolicy = conformPolicy
+        }, default);
+        await Assert.That(prepared!.Request.Product.PixelAspectRatio).IsEqualTo(1.5d);
+        await Assert.That(prepared.Request.Product.AspectRatioConformPolicy).IsEqualTo("cropAperture");
+        await Assert.That(prepared.Request.Overrides.PixelAspectRatio).IsEqualTo(pixelAspectRatio);
+        await Assert.That(prepared.Request.Overrides.AspectRatioConformPolicy).IsEqualTo(conformPolicy);
+        await Assert.That(prepared.Frames[0].PixelAspectRatio).IsEqualTo(effectiveAspect);
+        await Assert.That(prepared.Frames[0].Camera.Projection.M11).IsEqualTo(projectionX);
+        await Assert.That(prepared.Frames[0].Camera.Projection.M22).IsEqualTo(projectionY);
+        string manifestPath = Path.Combine(backend.Context!.OutputDirectory, "renders", job.JobId, "manifest.json");
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        JsonElement raster = manifest.RootElement.GetProperty("frames")[0].GetProperty("productRaster");
+        await Assert.That(raster.GetProperty("pixelAspectRatio").GetDouble()).IsEqualTo(effectiveAspect);
+        await Assert.That(raster.GetProperty("aspectRatioConformPolicy").GetString())
+            .IsEqualTo(conformPolicy ?? "cropAperture");
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.Width).IsEqualTo(6);
+        await Assert.That(frame.Height).IsEqualTo(4);
+        ArtifactResourceContent? png = await artifacts.ReadAsync(new Uri(frame.Artifact.Uri));
+        ImageRgba8 image = PngRgba8Decoder.Decode(png!.Content.Span);
+        await Assert.That(image.Width).IsEqualTo(6);
+        await Assert.That(image.Height).IsEqualTo(4);
+        await Assert.That(backend.Events).DoesNotContain("apply");
+        await Assert.That(backend.Events).DoesNotContain("checkpoint");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo("#usda 1.0");
+    }
+
+    [Test]
+    [Arguments(0d)]
+    [Arguments(-1d)]
+    [Arguments(double.NaN)]
+    [Arguments(double.PositiveInfinity)]
+    [Arguments(double.NegativeInfinity)]
+    public async Task InvalidProductPixelAspectIsRejectedBeforeWorkspaceWork(double pixelAspectRatio)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = "unused",
+            PixelAspectRatio = pixelAspectRatio
+        }, default)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(backend.Events).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.EnumerateDirectories(files.OutputRoot)).IsEmpty();
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments("ExpandAperture")]
+    [Arguments("unknown")]
+    [Arguments(" cropAperture")]
+    [Arguments("cropAperture ")]
+    public async Task InvalidProductConformPolicyIsRejectedBeforeWorkspaceWork(string conformPolicy)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = "unused",
+            AspectRatioConformPolicy = conformPolicy
+        }, default)).Throws<ArgumentException>();
+        await Assert.That(backend.Events).IsEmpty();
+        await Assert.That((await service.ListSequenceJobsAsync(default)).Jobs).IsEmpty();
+        await Assert.That(Directory.EnumerateDirectories(files.OutputRoot)).IsEmpty();
+    }
+
+    [Test]
     [Arguments(null, null, false)]
     [Arguments(1, 3, false)]
     [Arguments(3, 1, false)]
@@ -283,11 +403,13 @@ public sealed class RenderProductServiceTests
 
     private static RenderProductJobPlan Plan(
         string sessionId, ulong revision, IReadOnlyList<double> times, RenderProductOverrides? overrides = null,
-        UsdVec4f? dataWindow = null)
+        UsdVec4f? dataWindow = null, float authoredPixelAspectRatio = 1,
+        string authoredConformPolicy = "expandAperture")
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
-                2, 2, 1, "expandAperture", new UsdVec2f(20, 20), dataWindow ?? new UsdVec4f(0, 0, 1, 1),
+                2, 2, authoredPixelAspectRatio, authoredConformPolicy, new UsdVec2f(20, 20),
+                dataWindow ?? new UsdVec4f(0, 0, 1, 1),
                 true, true, [1, 0], [])],
             [new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []),
                 new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", [])],

@@ -1148,9 +1148,17 @@ default; stage-root metadata is not implicitly inherited from its source sublaye
 
 Optional `width` and `height` override the full raster through the shared product planner.
 Supply both within 1-4096 pixels, or omit both to retain the authored resolution. This does
-not edit the product. Its data window, pixel aspect and conform policy still apply, so a
-crop or overscan can change the resulting PNG dimensions. Existing frame/job quotas and
+not edit the product. The authored data window still applies, so cropping or overscan
+can change the resulting PNG dimensions. Existing frame/job quotas and
 encoding restrictions remain unchanged; an over-budget result is refused, not resized.
+
+`pixelAspectRatio` optionally overrides the pixel width-to-height ratio; it must be finite
+and positive. `aspectRatioConformPolicy` accepts `expandAperture`, `cropAperture`,
+`adjustApertureWidth`, `adjustApertureHeight` or `adjustPixelAspectRatio`. Omitting either
+retains its authored value. The shared planner applies these before cropping;
+`adjustPixelAspectRatio` derives the effective ratio from the camera aperture and full
+raster instead of using the requested ratio. The manifest records the effective ratio
+and policy without editing the product. Non-square pixels do not bypass EXR restrictions.
 
 ```json
 {
@@ -1162,6 +1170,8 @@ encoding restrictions remain unchanged; an over-budget result is refused, not re
     "productPath": "/Render/Product",
     "width": 512,
     "height": 512,
+    "pixelAspectRatio": 1,
+    "aspectRatioConformPolicy": "expandAperture",
     "frameCount": 3,
     "startTimeCode": 0,
     "timeStep": 1,
