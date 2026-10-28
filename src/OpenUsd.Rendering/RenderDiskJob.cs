@@ -350,6 +350,7 @@ public static partial class RenderDiskJob
                 json.WriteStartObject();
                 json.WriteNumber("index", frame.Index);
                 json.WriteString("file", frame.FileName);
+                json.WriteString("format", "png-rgba8");
                 json.WriteString("stage", frame.State.Stage.Identifier);
                 json.WriteNumber("stateRevision", frame.State.Revision);
                 json.WriteNumber("timeCode", frame.State.Time.TimeCode);

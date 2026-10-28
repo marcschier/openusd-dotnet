@@ -177,7 +177,9 @@ public sealed class RenderDiskJobTests
                 new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source);
             using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(
                 Path.Combine(result.OutputDirectory, "manifest.json")));
-            JsonElement simulation = manifest.RootElement.GetProperty("frames")[0].GetProperty("simulation");
+            JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(frame.GetProperty("format").GetString()).IsEqualTo("png-rgba8");
+            JsonElement simulation = frame.GetProperty("simulation");
             await Assert.That(simulation.GetProperty("epoch").GetGuid()).IsEqualTo(epoch);
             await Assert.That(simulation.GetProperty("scenarioIdentity").GetString()).IsEqualTo("drop-prop-v1");
             await Assert.That(simulation.GetProperty("sourceRevision").GetUInt64()).IsEqualTo(7ul);

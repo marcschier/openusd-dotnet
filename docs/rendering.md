@@ -872,8 +872,9 @@ The caller owns the source; the engine does not dispose it or mutate a USD stage
 The default hard limits are 4096 frames, 8192 pixels per side, 64 MiB per image and 4 GiB of total
 encoded output, including the manifest. Tighter caller limits are supported. Image dimensions must
 match the request. Filenames are generated from frame indexes, never scene-authored product paths.
-`manifest.json` retains camera matrices/clip planes, time, stage and renderer-state revision,
-display/purpose/draw settings, explicit colour/OCIO settings, bounded selection identity and SHA256.
+`manifest.json` records each frame's `format` (`png-rgba8`), `bytes` and `sha256`. It also retains
+camera matrices/clip planes, time, stage and renderer-state revision, display/purpose/draw settings,
+explicit colour/OCIO settings and bounded selection identity.
 The state revision is not mislabeled as an independently observed native stage revision.
 Diagnostics retain distinct severity/code/message records across frames. Only Information,
 Warning and Error severities are accepted; unknown numeric severities refuse the entire job
