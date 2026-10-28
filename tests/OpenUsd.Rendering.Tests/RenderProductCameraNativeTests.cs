@@ -168,6 +168,64 @@ public sealed class RenderProductCameraNativeTests
     }
 
     [Test]
+    [Arguments("uniform token[] materialBindingPurposes = [\"preview\", \"\"]", "preview", "preview|")]
+    [Arguments("", "full", "full|")]
+    public async Task AuthoredAndFallbackMaterialBindingPurposesAdmitTheirNamedPurpose(
+        string authored, string expected, string snapshot)
+    {
+        RequireNativeExecution();
+        string root = Directory.CreateTempSubdirectory("render-product-binding-").FullName;
+        string path = Path.Combine(root, "scene.usda");
+        string scene = $$"""
+            #usda 1.0
+            (renderSettingsPrimPath = "/Settings")
+            def Camera "Camera" {
+                token projection = "orthographic"
+                float horizontalAperture = 20
+                float verticalAperture = 20
+                float2 clippingRange = (1, 11)
+            }
+            def RenderSettings "Settings" {
+                rel camera = </Camera>
+                rel products = </Product>
+                int2 resolution = (4, 4)
+                bool disableMotionBlur = true
+                bool disableDepthOfField = true
+                uniform token[] includedPurposes = ["default"]
+                {{authored}}
+            }
+            def RenderProduct "Product" {
+                token productName = "never-written.exr"
+                rel orderedVars = </Color>
+            }
+            def RenderVar "Color" {
+                token dataType = "half4"
+                string sourceName = "color"
+                token sourceType = "raw"
+            }
+            """;
+        try
+        {
+            await File.WriteAllTextAsync(path, scene);
+            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            (string purposes, RenderProductJobPlan plan) = await scheduler.InvokeAsync(static stage =>
+            {
+                UsdRenderSpecification specification = stage.GetRenderSpecification()!;
+                var request = new RenderProductRequest(specification, 0);
+                return (string.Join('|', specification.MaterialBindingPurposes), new RenderProductJobPlan(
+                    new StageIdentity("scene.usda"), [request.PrepareExecutionFrame(stage, 0)],
+                    RenderSettings.PresentationDefault));
+            });
+            await Assert.That(purposes).IsEqualTo(snapshot);
+            await Assert.That(plan.MaterialBindingPurpose).IsEqualTo(expected);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task ActiveAccumulationSamplesTheMovingCameraAtStratifiedSubintervalCenters()
     {
         RequireNativeExecution();

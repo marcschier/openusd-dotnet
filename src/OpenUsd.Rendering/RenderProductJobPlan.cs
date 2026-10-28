@@ -73,7 +73,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             throw new ArgumentException("A sample cannot be null.", nameof(frames));
         Request = first.Request;
         (IncludedPurposes, Outputs) = ValidateStaticRequest(Request);
-        MaterialBindingPurpose = Request.Specification.MaterialBindingPurposes[0];
+        MaterialBindingPurpose = ResolveMaterialBindingPurpose(
+            Request.Specification.MaterialBindingPurposes, nameof(frames));
         IncludeHdrColor = Outputs.Any(static output => output.Plane == RenderProductPlane.HdrColor);
         IncludeDeviceDepth = Outputs.Any(static output => output.Plane == RenderProductPlane.DeviceDepth);
         SourceStageRevision = sourceStageRevision;
@@ -206,16 +207,38 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             throw new NotSupportedException(
                 "The capture adapters cannot certify the requested named rendering color space.");
         }
-        if (specification.MaterialBindingPurposes.Count != 1)
+        _ = ResolveMaterialBindingPurpose(specification.MaterialBindingPurposes, nameof(request));
+    }
+
+    // UsdShade resolution of a named purpose already falls back to the allPurpose ("") binding,
+    // so trailing allPurpose entries after one named purpose select the same materials.
+    private static string ResolveMaterialBindingPurpose(IReadOnlyList<string> purposes, string parameterName)
+    {
+        if (purposes.Count is < 1 or > 8)
         {
             throw new NotSupportedException("Product execution currently requires one exact material-binding purpose.");
         }
-        RequireText(specification.MaterialBindingPurposes[0]);
-        if (specification.MaterialBindingPurposes[0].Length > 128)
+        string purpose = purposes[0];
+        if (purpose is null || purpose.Length == 0)
+        {
+            throw new NotSupportedException(
+                "Product execution requires a named material-binding purpose before any allPurpose fallback.");
+        }
+        if (purpose.Length > 128)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(request), "The material-binding purpose exceeds 128 characters.");
+                parameterName, "The material-binding purpose exceeds 128 characters.");
         }
+        RequireText(purpose);
+        for (int index = 1; index < purposes.Count; index++)
+        {
+            if (purposes[index] is not { Length: 0 })
+            {
+                throw new NotSupportedException(
+                    "Product execution cannot resolve an ordered list of named material-binding purposes.");
+            }
+        }
+        return purpose;
     }
 
     private static RenderPurpose ResolvePurposes(IReadOnlyList<string> purposes)

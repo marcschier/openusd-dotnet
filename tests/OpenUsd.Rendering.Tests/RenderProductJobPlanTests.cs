@@ -38,6 +38,18 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
+    [Arguments("binding-fallback", "full")]
+    [Arguments("binding-preview-fallback", "preview")]
+    public async Task TrailingAllPurposeFallbacksSelectTheSameNamedMaterialBindingPurpose(
+        string variant, string expected)
+    {
+        RenderProductRequest request = Request(variant);
+        var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(request)],
+            RenderSettings.Default);
+        await Assert.That(plan.MaterialBindingPurpose).IsEqualTo(expected);
+    }
+
+    [Test]
     [Arguments("variable-type")]
     [Arguments("source-type")]
     [Arguments("source-name")]
@@ -47,6 +59,9 @@ public sealed class RenderProductJobPlanTests
     [Arguments("color-space")]
     [Arguments("binding-order")]
     [Arguments("binding-empty")]
+    [Arguments("binding-all-purpose")]
+    [Arguments("binding-fallback-first")]
+    [Arguments("binding-named-after-fallback")]
     [Arguments("purpose")]
     [Arguments("outputs-empty")]
     [Arguments("duplicate-color")]
@@ -764,7 +779,17 @@ public sealed class RenderProductJobPlanTests
                 2, 2, 1, "expandAperture", new UsdVec2f(20, 20), new UsdVec4f(0, 0, 1, 1),
                 disableOptics, disableOptics, indices, failure == "product-setting" ? ["renderer:samples"] : [])],
             [color, depth], failure == "purpose" ? ["custom"] : ["default", "render"],
-            failure == "binding-order" ? ["full", "preview"] : failure == "binding-empty" ? [] : ["full"],
+            failure switch
+            {
+                "binding-order" => ["full", "preview"],
+                "binding-empty" => [],
+                "binding-all-purpose" => [""],
+                "binding-fallback-first" => ["", "full"],
+                "binding-named-after-fallback" => ["full", "", "preview"],
+                "binding-fallback" => ["full", ""],
+                "binding-preview-fallback" => ["preview", "", ""],
+                _ => ["full"],
+            },
             failure == "color-space" ? "lin_rec709_scene" : "",
             failure == "settings-setting" ? ["renderer:samples"] : []), 0);
     }

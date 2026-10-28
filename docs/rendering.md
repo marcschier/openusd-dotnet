@@ -836,7 +836,12 @@ revision before and after each batch. The caller must continue excluding or dete
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
 The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
-variables, one per plane, with one material-binding purpose and standard scene-purpose tokens.
+variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
+Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
+resolution of a named purpose already falls back to the allPurpose binding. The unauthored
+fallback `["full", ""]` therefore runs as `full`, and `["preview", ""]` as `preview`. A list
+that starts with `""` or names a second purpose, such as `["full", "preview"]`, is refused:
+hdSilk ingestion resolves one purpose, not an ordered list.
 Depth is normalized device depth, not metric camera distance. Named rendering color spaces,
 unevaluated settings and other source/data types are not
 silently approximated. Authored camera exposure is applied: each frame
