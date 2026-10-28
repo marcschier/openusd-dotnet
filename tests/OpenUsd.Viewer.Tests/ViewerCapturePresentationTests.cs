@@ -35,6 +35,67 @@ public sealed class ViewerCapturePresentationTests
 
     [Test]
     [NotInParallel]
+    [Arguments(false, "ChooseBeforeButton")]
+    [Arguments(true, "ChooseBeforeButton")]
+    [Arguments(false, "ChooseAfterButton")]
+    [Arguments(true, "ChooseAfterButton")]
+    [Arguments(false, "OpenPresentationButton")]
+    [Arguments(true, "OpenPresentationButton")]
+    [Arguments(false, "SavePresentationButton")]
+    [Arguments(true, "SavePresentationButton")]
+    public async Task UnavailableComparisonPickerRetainsPairNotesAndKeyboardRetry(bool dark, string actionName)
+    {
+        using var fixture = await Fixture.CreateAsync();
+        await RunUiAsync(async () =>
+        {
+            var window = new CaptureComparisonWindow
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await window.LoadPairAsync(fixture.Before, fixture.After);
+                TextBox notes = Required<TextBox>(window, "ComparisonNotes");
+                notes.Text = "Keep the pending review after picker refusal.";
+                Button action = Required<Button>(window, actionName);
+                await Assert.That(actionName == "SavePresentationButton"
+                        ? window.StorageProvider.CanSave : window.StorageProvider.CanOpen)
+                    .IsFalse().Because("the headless provider must refuse rather than open an interactive dialog");
+                await Assert.That(action.Focus()).IsTrue();
+                action.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                while (!action.IsEnabled)
+                {
+                    await Task.Delay(1, lifetime.Token);
+                }
+                window.UpdateLayout();
+                await Assert.That(action.IsKeyboardFocusWithin).IsTrue();
+                TextBlock status = Required<TextBlock>(window, "ComparisonStatus");
+                await Assert.That(status.Text).Contains("picker is unavailable");
+                await Assert.That(status.Classes.Contains("viewer-error")).IsTrue();
+                status.Text = "Keyboard retry pending.";
+                window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+                await Assert.That(status.Text).Contains("picker is unavailable");
+                await Assert.That(action.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(notes.Text).IsEqualTo("Keep the pending review after picker refusal.");
+                await Assert.That(ReadPixels(Required<Image>(window, "BeforeImage"), 3, 2))
+                    .IsEqualTo(Convert.ToHexString(BeforeRgba));
+                await Assert.That(ReadPixels(Required<Image>(window, "AfterImage"), 2, 1))
+                    .IsEqualTo(Convert.ToHexString(AfterRgba));
+                await Assert.That(Required<Button>(window, "CancelComparisonButton").IsEnabled).IsFalse();
+                await Assert.That(fixture.ManifestDirectoryEntries()).IsEmpty();
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
+
+    [Test]
+    [NotInParallel]
     [Arguments(false, "success", "cancel")]
     [Arguments(true, "success", "cancel")]
     [Arguments(false, "success", "close")]

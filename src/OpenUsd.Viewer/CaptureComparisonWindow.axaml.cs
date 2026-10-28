@@ -107,10 +107,14 @@ internal sealed partial class CaptureComparisonWindow : Window
 
     private async Task ChoosePresentationAsync(bool save)
     {
-        _picking = true;
-        UpdateAvailability();
         try
         {
+            if (save ? !StorageProvider.CanSave : !StorageProvider.CanOpen)
+            {
+                throw new NotSupportedException("The storage provider does not support this file picker.");
+            }
+            _picking = true;
+            UpdateAvailability();
             var type = new FilePickerFileType("Saved capture comparison") { Patterns = ["*.usdcompare.json"] };
             IStorageFile? file;
             if (save)
@@ -207,10 +211,14 @@ internal sealed partial class CaptureComparisonWindow : Window
 
     private async Task ChooseAsync(bool before)
     {
-        _picking = true;
-        UpdateAvailability();
         try
         {
+            if (!StorageProvider.CanOpen)
+            {
+                throw new NotSupportedException("The storage provider does not support opening files.");
+            }
+            _picking = true;
+            UpdateAvailability();
             IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = before ? "Choose before capture (A)" : "Choose after capture (B)",

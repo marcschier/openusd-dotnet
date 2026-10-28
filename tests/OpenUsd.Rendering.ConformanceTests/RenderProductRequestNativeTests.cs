@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using OpenUsd.Editing;
+using OpenUsd.Geom;
 using OpenUsd.Interop;
 using OpenUsd.Render;
 using OpenUsd.Rendering.Silk;
@@ -11,12 +12,16 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class RenderProductRequestNativeTests
 {
     [Test]
-    [Arguments(false, false)]
-    [Arguments(true, false)]
-    [Arguments(false, true)]
-    [Arguments(true, true)]
-    public async Task ReviewCameraOpticsChangeRenderedCoverageAndRestoreWithoutSourceWrites(
-        bool timeSample, bool perspective)
+    [Arguments(false, UsdGeomCameraProjection.Orthographic, false)]
+    [Arguments(true, UsdGeomCameraProjection.Orthographic, false)]
+    [Arguments(false, UsdGeomCameraProjection.Perspective, false)]
+    [Arguments(true, UsdGeomCameraProjection.Perspective, false)]
+    [Arguments(false, UsdGeomCameraProjection.Orthographic, true)]
+    [Arguments(true, UsdGeomCameraProjection.Orthographic, true)]
+    [Arguments(false, UsdGeomCameraProjection.Perspective, true)]
+    [Arguments(true, UsdGeomCameraProjection.Perspective, true)]
+    public async Task ReviewCameraChangesRenderedCoverageAndRestoresWithoutSourceWrites(
+        bool timeSample, UsdGeomCameraProjection projection, bool translate)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(SilkGraphicsBackend.D3D12);
         string? plugins = Environment.GetEnvironmentVariable("OPENUSD_TEST_PLUGIN_PATH");
@@ -37,6 +42,8 @@ public sealed class RenderProductRequestNativeTests
                 float verticalAperture = 20
                 float focalLength = 40
                 float2 clippingRange = (1, 11)
+                double3 xformOp:translate = (0,0,0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
             }
             def Mesh "Marker" (prepend apiSchemas = ["MaterialBindingAPI"]) {
                 uniform token subdivisionScheme = "none"
@@ -75,6 +82,7 @@ public sealed class RenderProductRequestNativeTests
             """;
         try
         {
+            bool perspective = projection == UsdGeomCameraProjection.Perspective;
             File.WriteAllText(path, perspective
                 ? scene.Replace("token projection = \"orthographic\"", "token projection = \"perspective\"",
                     StringComparison.Ordinal)
@@ -84,20 +92,26 @@ public sealed class RenderProductRequestNativeTests
             using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
             using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins, source);
             using var capturer = new SilkFrameCapturer(device);
-            var address = new UsdLayerEditAddress(perspective ? "/Camera.focalLength" : "/Camera.horizontalAperture",
+            string propertyPath = translate ? "/Camera.xformOp:translate" :
+                perspective ? "/Camera.focalLength" : "/Camera.horizontalAperture";
+            var address = new UsdLayerEditAddress(propertyPath,
                 timeSample ? UsdLayerEditField.TimeSample : UsdLayerEditField.Default, timeSample ? 24 : 0);
             float editedValue = perspective ? 20 : 40;
+            UsdLayerEditValue authoredValue = translate
+                ? UsdLayerEditValue.FromVec3d(new UsdVec3d(0.25, 0, 0))
+                : UsdLayerEditValue.FromFloat(editedValue);
             float expectedDepth = perspective ? 0.825f : 0.3f;
             RenderPreparedFrame original = await prepareAsync();
             SilkFrameCaptureResult baseline = capture(original);
-            await assertCoverageAsync(baseline, 16, 48, expectedDepth);
+            await Assert.That(original.SampledCamera.Projection).IsEqualTo(projection);
+            await assertCoverageAsync(baseline, 16, 48, 16, 48, expectedDepth);
             (UsdLayerAuthoredSnapshot Before, UsdLayerAuthoredSnapshot After) edit =
                 await scheduler.InvokeAsync(stage =>
                 {
                     using UsdLayer review = stage.GetUserReviewLayer();
                     UsdLayerAuthoredSnapshot before = review.CaptureAuthored([address]);
                     UsdLayerEditResult result = review.CompareAndApply(before,
-                        [UsdLayerEdit.Set(address, UsdLayerEditValue.FromFloat(editedValue), "float")]);
+                        [UsdLayerEdit.Set(address, authoredValue, translate ? "double3" : "float")]);
                     if (result.Outcome != UsdLayerEditOutcome.Applied || result.AfterSnapshot is null)
                     {
                         throw new InvalidOperationException($"Review camera edit failed: {result.Outcome}.");
@@ -106,18 +120,28 @@ public sealed class RenderProductRequestNativeTests
                 });
             await Assert.That(edit.Before.Opinions[0].PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
             await Assert.That(edit.After.Opinions[0].Address).IsEqualTo(address);
-            await Assert.That(edit.After.Opinions[0].Value.AsFloat()).IsEqualTo(editedValue);
             RenderPreparedFrame changed = await prepareAsync();
             SilkFrameCaptureResult edited = capture(changed);
-            await Assert.That(perspective
-                    ? changed.SampledCamera.FocalLength : changed.SampledCamera.HorizontalAperture)
-                .IsEqualTo((double)editedValue);
-            await Assert.That(changed.Camera.Projection.M11).IsEqualTo(perspective ? 2f : 0.5f);
-            await Assert.That(changed.Camera.Projection.M22).IsEqualTo(perspective ? 2f : 0.5f);
+            if (translate)
+            {
+                await Assert.That(edit.After.Opinions[0].Value.AsVec3d()).IsEqualTo(new UsdVec3d(0.25, 0, 0));
+                await Assert.That(changed.Camera.View.M41).IsEqualTo(-0.25f);
+                await Assert.That(changed.Camera.Projection).IsEqualTo(original.Camera.Projection);
+                await assertCoverageAsync(edited, 8, 40, 16, 48, expectedDepth);
+            }
+            else
+            {
+                await Assert.That(edit.After.Opinions[0].Value.AsFloat()).IsEqualTo(editedValue);
+                await Assert.That(perspective
+                        ? changed.SampledCamera.FocalLength : changed.SampledCamera.HorizontalAperture)
+                    .IsEqualTo((double)editedValue);
+                await Assert.That(changed.Camera.Projection.M11).IsEqualTo(perspective ? 2f : 0.5f);
+                await Assert.That(changed.Camera.Projection.M22).IsEqualTo(perspective ? 2f : 0.5f);
+                await assertCoverageAsync(edited, 24, 40, 24, 40, expectedDepth);
+            }
             await Assert.That(changed.PixelAspectRatio).IsEqualTo(1d);
-            await assertCoverageAsync(edited, 24, 40, expectedDepth);
             await Assert.That(edited.Rgba.Span.SequenceEqual(baseline.Rgba.Span)).IsFalse()
-                .Because("an unchanged camera must not satisfy the edited optics' pixel contract");
+                .Because("an unchanged camera must not satisfy the edited camera's pixel contract");
             UsdLayerEditResult restored = await scheduler.InvokeAsync(stage =>
             {
                 using UsdLayer review = stage.GetUserReviewLayer();
@@ -129,9 +153,7 @@ public sealed class RenderProductRequestNativeTests
             await Assert.That(restored.AfterSnapshot.Opinions[0].Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
             RenderPreparedFrame restoredFrame = await prepareAsync();
             SilkFrameCaptureResult replay = capture(restoredFrame);
-            await Assert.That(perspective
-                    ? restoredFrame.SampledCamera.FocalLength : restoredFrame.SampledCamera.HorizontalAperture)
-                .IsEqualTo(perspective ? 40d : 20d);
+            await Assert.That(restoredFrame.Camera).IsEqualTo(original.Camera);
             await Assert.That(replay.Rgba.Span.SequenceEqual(baseline.Rgba.Span)).IsTrue();
             await Assert.That(replay.HdrColor!.Rgba16Float.Span.SequenceEqual(baseline.HdrColor!.Rgba16Float.Span))
                 .IsTrue();
@@ -157,7 +179,8 @@ public sealed class RenderProductRequestNativeTests
             Directory.Delete(root, recursive: true);
         }
 
-        static async Task assertCoverageAsync(SilkFrameCaptureResult frame, int minimumX, int maximumX, float depth)
+        static async Task assertCoverageAsync(
+            SilkFrameCaptureResult frame, int minimumX, int maximumX, int minimumY, int maximumY, float depth)
         {
             await Assert.That(frame.Width).IsEqualTo(64);
             await Assert.That(frame.Height).IsEqualTo(64);
@@ -167,7 +190,7 @@ public sealed class RenderProductRequestNativeTests
             {
                 for (int x = 0; x < 64; x++)
                 {
-                    bool covered = x >= minimumX && x < maximumX && y >= minimumX && y < maximumX;
+                    bool covered = x >= minimumX && x < maximumX && y >= minimumY && y < maximumY;
                     byte[] expected = covered ? foreground : background;
                     await Assert.That(frame.HdrColor!.Rgba16Float.Span.Slice((y * 64 + x) * 8, 8)
                         .SequenceEqual(expected)).IsTrue().Because($"analytic camera coverage at ({x},{y})");

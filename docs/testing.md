@@ -432,6 +432,11 @@ success, cancellation and read refusal in both themes. Completion preserves focu
 moved to Close, status details or another window; the next attempt still restores owned Cancel
 focus to Compare. The repeated load checks original decoded pixels, empty output and image
 disposal after close. These cases qualify the existing behavior; no focus repair was required.
+`UnavailableComparisonPickerRetainsPairNotesAndKeyboardRetry` checks the before/after capture
+and comparison open/save pickers in both themes. A provider advertising no support is refused
+before controls are disabled, rather than reported as a cancelled selection. The initiating
+button keeps focus for a raw headless Enter retry; decoded pixels, pending review notes and
+empty output remain unchanged. The refusal is presented as an error on both attempts.
 These headless keyboard cases do not qualify physical OS input.
 
 `RefreshHandsKeyboardFocusToCancellationAndRestoresItAfterDrain` exercises the saved-view
@@ -2581,12 +2586,14 @@ fixture. Manifest format, length and SHA-256 must describe the actual file; EXR 
 its float32 normalized-device-depth container. This gate does not qualify EXR on Linux or macOS.
 
 The same Windows step requires all `RenderProductRequestNativeTests` to execute without skips.
-`ReviewCameraOpticsChangeRenderedCoverageAndRestoreWithoutSourceWrites` edits the review
-layer's default or numeric-time orthographic aperture or perspective focal-length opinion while
-retaining one renderer session. On D3D12 WARP, a white emissive square must cover exactly 32 by 32
-pixels before the edit and 16 by 16 after it, with literal HDR half bits and analytic device depth
-at every pixel. The perspective fixture halves focal length; the orthographic fixture doubles
-horizontal aperture. Both retain their respective literal device depths of 0.825 and 0.3. The explicit
+`ReviewCameraChangesRenderedCoverageAndRestoresWithoutSourceWrites` edits the review layer's
+default or numeric-time orthographic aperture, perspective focal length and camera translation
+on both projections while retaining one renderer session. On D3D12 WARP, a white emissive square
+must cover exactly 32 by 32 pixels before the edit. Halving perspective focal length or doubling
+orthographic horizontal aperture reduces coverage to 16 by 16. Translating either camera by
+0.25 world units instead shifts the square eight pixels left without changing its size or
+depth. Every pixel must match literal HDR half bits and analytic device depth, respectively
+0.825 for perspective and 0.3 for orthographic coverage. The explicit
 `adjustApertureHeight` policy keeps square pixels. Exact authored-state restoration removes the
 new opinion/declaration and restores RGBA8, HDR and depth byte-for-byte; source bytes and authored
 output destinations remain untouched. This does not qualify non-square output pixels, authored
