@@ -2581,10 +2581,12 @@ fixture. Manifest format, length and SHA-256 must describe the actual file; EXR 
 its float32 normalized-device-depth container. This gate does not qualify EXR on Linux or macOS.
 
 The same Windows step requires all `RenderProductRequestNativeTests` to execute without skips.
-`ReviewCameraApertureChangesRenderedCoverageAndRestoresWithoutSourceWrites` edits the review
-layer's default or numeric-time aperture opinion while retaining one renderer session. On D3D12
-WARP, a white emissive square must cover exactly 32 by 32 pixels before the edit and 16 by 16
-after it, with literal HDR half bits and analytic device depth at every pixel. The explicit
+`ReviewCameraOpticsChangeRenderedCoverageAndRestoreWithoutSourceWrites` edits the review
+layer's default or numeric-time orthographic aperture or perspective focal-length opinion while
+retaining one renderer session. On D3D12 WARP, a white emissive square must cover exactly 32 by 32
+pixels before the edit and 16 by 16 after it, with literal HDR half bits and analytic device depth
+at every pixel. The perspective fixture halves focal length; the orthographic fixture doubles
+horizontal aperture. Both retain their respective literal device depths of 0.825 and 0.3. The explicit
 `adjustApertureHeight` policy keeps square pixels. Exact authored-state restoration removes the
 new opinion/declaration and restores RGBA8, HDR and depth byte-for-byte; source bytes and authored
 output destinations remain untouched. This does not qualify non-square output pixels, authored
