@@ -1187,6 +1187,10 @@ OpenUsd.UsdPrim.SetVec3f(string! attributeName, OpenUsd.UsdVec3f value) -> void
 OpenUsd.UsdPrim.SetVec3f(string! attributeName, OpenUsd.UsdVec3f value, double timeCode) -> void
 OpenUsd.UsdPrim.SetVec3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
 OpenUsd.UsdPrim.SetVec3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.UsdPrim.GetVec4fArray(string! attributeName) -> OpenUsd.UsdVec4f[]!
+OpenUsd.UsdPrim.GetVec4fArray(string! attributeName, double timeCode) -> OpenUsd.UsdVec4f[]!
+OpenUsd.UsdPrim.SetVec4fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec4f> values) -> void
+OpenUsd.UsdPrim.SetVec4fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec4f> values, double timeCode) -> void
 OpenUsd.UsdPrim.SetVisibility(string! visibility) -> void
 OpenUsd.UsdPrim.TypeName.get -> string!
 OpenUsd.UsdPrim.Unload() -> void

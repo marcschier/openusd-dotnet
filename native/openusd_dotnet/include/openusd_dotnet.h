@@ -307,7 +307,7 @@ typedef struct openusd_image_info
     uint32_t reserved;
 } openusd_image_info;
 
-#define OPENUSD_DATA_ABI_VERSION 24
+#define OPENUSD_DATA_ABI_VERSION 25
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -343,6 +343,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT (UINT64_C(1) << 31)
 /* Guarded EXR output API; the initial file-handle implementation is Windows x64 only. */
 #define OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT (UINT64_C(1) << 32)
+#define OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS (UINT64_C(1) << 33)
 
 typedef struct openusd_ocio_processor openusd_ocio_processor;
 
@@ -422,6 +423,14 @@ typedef struct openusd_vec2f
     float x;
     float y;
 } openusd_vec2f;
+
+typedef struct openusd_vec4f
+{
+    float x;
+    float y;
+    float z;
+    float w;
+} openusd_vec4f;
 
 typedef struct openusd_quatf
 {
@@ -1530,6 +1539,28 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_vec3f_array(
     int32_t time_sampled,
     double time_code,
     openusd_vec3f* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+/* float4[] and color4f[] arrays; requires OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS. */
+OPENUSD_DOTNET_API openusd_status openusd_stage_set_vec4f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_vec4f* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_vec4f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_vec4f* values,
     size_t capacity,
     size_t* required,
     openusd_error_buffer* error);

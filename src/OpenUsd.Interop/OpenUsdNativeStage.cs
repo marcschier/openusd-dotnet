@@ -310,6 +310,21 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         double? timeCode = null) =>
         OpenUsdNativeRuntime.GetVec3fArray(this, primPath, attributeName, timeCode);
 
+    /// <summary>Sets a vec4f-array attribute using one bulk native call.</summary>
+    public void SetVec4fArray(
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<OpenUsdNativeVec4f> values,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.SetVec4fArray(this, primPath, attributeName, values, timeCode);
+
+    /// <summary>Gets a vec4f-array attribute using a two-call bulk buffer transfer.</summary>
+    public OpenUsdNativeVec4f[] GetVec4fArray(
+        string primPath,
+        string attributeName,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetVec4fArray(this, primPath, attributeName, timeCode);
+
     /// <summary>Sets a color3f-array attribute using one bulk native call.</summary>
     public void SetColor3fArray(
         string primPath,

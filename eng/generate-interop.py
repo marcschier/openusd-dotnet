@@ -140,6 +140,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     if native_type == "openusd_vec3f*":
         return ("OpenUsdNativeVec3f*" if native_name in {"values", "offsets", "normal_offsets"}
                 else "out OpenUsdNativeVec3f"), managed_name
+    if native_type == "const openusd_vec4f*":
+        return "OpenUsdNativeVec4f*", managed_name
+    if native_type == "openusd_vec4f*":
+        return "OpenUsdNativeVec4f*", managed_name
     if native_type == "openusd_vec3f":
         return "OpenUsdNativeVec3f", managed_name
     if native_type == "const openusd_matrix4d*":

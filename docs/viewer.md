@@ -1733,7 +1733,7 @@ automatically requesting HDR or depth. The dialog shows the selected file types,
 charge, and completed PNG/HDR/depth file counts.
 
 When HDR is enabled, **HDR format** offers **Raw half** (the default) or **EXR**.
-EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 24 Core encoder.
+EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 25 Core encoder.
 It preserves the same finite binary16 samples and stored alpha without a color/alpha conversion;
 equal origin-zero windows, square pixels, unspecified primaries and alpha association remain explicit.
 The format is frozen with the job options and disabled during rendering; changing a control

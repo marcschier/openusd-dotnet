@@ -1,6 +1,6 @@
 # Bounded raw RGBA16Float EXR output
 
-> Unreleased source API requiring the matching Data ABI 24 Core runtime.
+> Unreleased source API requiring the matching Data ABI 25 Core runtime.
 > Published `0.14.0-alpha` native assets cannot serve this API.
 
 `OpenUsd.Rendering.ExrRgba16FloatWriter` writes one exact, packed RGBA binary16
@@ -28,8 +28,8 @@ Success synchronizes both the native cursor and `FileStream.Position` to EOF.
 
 ## Exact contract
 
-* Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
-  bit **32**, full current required mask **`0x1FFFFFFFF`**.
+* Introduced in Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
+  bit **32**. The current runtime is Data ABI **25** with full required mask **`0x3FFFFFFFF`**.
 * The capability describes a **guarded API**, not portable file-descriptor support.
   Old ABI23, a missing capability, and a missing export must be rejected. It is not
   valid to advertise this required export under ABI23.

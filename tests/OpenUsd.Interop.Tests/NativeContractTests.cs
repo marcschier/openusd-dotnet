@@ -16,14 +16,16 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiTwentyFourRequiresGuardedExrOutputAndAllPriorCapabilities()
+    public async Task DataAbiTwentyFiveRequiresVec4fArraysAndAllPriorCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
         ulong exrCapability = OpenUsdNativeContract.ImageExrOutputCapability;
+        ulong vec4fCapability = OpenUsdNativeContract.AttributeVec4fArraysCapability;
 
-        await Assert.That(abiVersion).IsEqualTo(24U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFFFFUL);
+        await Assert.That(abiVersion).IsEqualTo(25U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFFFFFFUL);
+        await Assert.That(vec4fCapability).IsEqualTo(1UL << 33);
         await Assert.That(exrCapability).IsEqualTo(1UL << 32);
         await Assert.That(requiredCapabilities & OpenUsdNativeContract.ImageExrOutputCapability)
             .IsEqualTo(OpenUsdNativeContract.ImageExrOutputCapability);

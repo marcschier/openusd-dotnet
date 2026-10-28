@@ -116,7 +116,7 @@ Typical messages name the managed and native ABI values or report missing requir
 
 The current contracts are:
 
-- data ABI 24 with required capabilities `0x1FFFFFFFF`;
+- data ABI 25 with required capabilities `0x3FFFFFFFF`;
 - direct Storm ABI 9;
 - Storm child ABI 9;
 - hdSilk session ABI 6;

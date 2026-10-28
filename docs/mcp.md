@@ -937,7 +937,7 @@ planes count toward the existing output quotas. This is raw HDR data, not an EXR
 
 To encode that plane as lossless half EXR, add `"hdrColorFormat":"exr"` alongside
 `"includeHdrColor":true`. The default is `"raw"`; other values, or EXR without HDR, are
-invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 24
+invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 25
 Core runtime. It preserves the same working values and stored alpha, with origin-zero equal
 windows, square pixels and unspecified primaries/alpha association. It neither applies a display
 transform nor uses scene-authored product filenames. PNG, depth and the actual EXR encoded extent

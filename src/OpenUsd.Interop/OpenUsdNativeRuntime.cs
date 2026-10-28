@@ -1389,6 +1389,22 @@ public static unsafe partial class OpenUsdNativeRuntime
             timeCode,
             NativeMethods.StageGetVec3fArray);
 
+    internal static void SetVec4fArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<OpenUsdNativeVec4f> values,
+        double? timeCode) =>
+        SetArray(stage, primPath, attributeName, values, timeCode, NativeMethods.StageSetVec4fArray);
+
+    internal static OpenUsdNativeVec4f[] GetVec4fArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode) =>
+        GetArray<OpenUsdNativeVec4f>(
+            stage, primPath, attributeName, timeCode, NativeMethods.StageGetVec4fArray, "vec4f");
+
     internal static void SetColor3fArray(
         OpenUsdNativeStage stage,
         string primPath,

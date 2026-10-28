@@ -399,3 +399,5 @@ EXPORTS
     openusd_vol_set_field_index @397
     openusd_vol_set_field_path @398
     openusd_image_encode_exr_rgba16f_v1 @399
+    openusd_stage_get_vec4f_array @400
+    openusd_stage_set_vec4f_array @401

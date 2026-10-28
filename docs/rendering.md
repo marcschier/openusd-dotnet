@@ -735,7 +735,7 @@ Aggregate GPU and cross-session admission remain separate work.
 
 ## Authored product preparation
 
-These interfaces are unreleased source additions and require the current matching data ABI 24 shim.
+These interfaces are unreleased source additions and require the current matching data ABI 25 shim.
 The published `0.14.0-alpha` Core runtime provides data ABI 17 and cannot serve this query.
 The storage-admission SDK profile admits resident USD/review values, bounded USDC/crate values,
 and bounded token-array edits before native specification evaluation. Crate admission uses the
@@ -793,8 +793,12 @@ plane and still requires refusal when the resulting depth coefficient exceeds fl
 Native specification aperture metadata describes default time. Preparation uses the actual
 camera sample instead, including animated aperture and parent/world transforms. A detached
 camera/transform overload is also available to hosts that already hold a camera sample.
-Stage-based preparation currently refuses authored extra `clippingPlanes` rather than silently
-dropping geometry clipping that its camera data interface cannot transfer.
+Stage-based preparation reads authored `clippingPlanes` at every camera sample, including
+motion-blur shutter samples, and passes them to the backend as eye-space planes. A plane keeps
+points where `a*x + b*y + c*z + d >= 0`. Under thin-lens depth of field, each lens sample shifts
+`d` by the lens offset so the plane stays fixed in the scene. Preparation refuses more than eight
+planes, a non-finite component and a zero normal; it never drops a plane to fit. The detached
+camera overloads take no planes.
 
 **Preparation is not rendering or output execution.** Variables with unknown sources, including
 LPEs, retain their original declarations; they are never relabeled as beauty. Custom setting names,
@@ -969,7 +973,7 @@ color-only and color/depth constructors remain unchanged, and every requested pl
 with matching dimensions. Results retain file descriptors and hashes, not HDR pixel arrays.
 
 The overload accepting `RenderHdrColorFormat.Exr` writes `.hdr.exr` instead of raw half bytes,
-using the matching [Data ABI 24 encoder](image-exr-output.md). Existing overloads keep raw HDR
+using the matching [Data ABI 25 encoder](image-exr-output.md). Existing overloads keep raw HDR
 and PNG defaults unchanged. EXR is opt-in, requires `includeHdrColor: true` and the Windows x64
 encoder profile, and borrows the same half plane without widening or copying it. Its lossless
 ZIPS output has equal origin-zero windows and square pixels, with unspecified primaries and
