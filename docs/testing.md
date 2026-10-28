@@ -2605,6 +2605,15 @@ and changes the device depth, near 4 keeps coverage with depth 0, and near 6 rem
 The view and projection scale terms must stay unchanged. This does not qualify far clipping, non-square
 output pixels, authored exposure, shutter integration, depth of field or another backend.
 
+`ReviewCameraFarClipChangesRenderedCoverageAndRestoresWithoutSourceWrites` holds the near plane at 1
+and edits the far plane to 3.999, 4 or 4.001 around the square's distance of 4. Default and numeric-time
+opinions on both projections must remove coverage just outside the plane, retain the square at exact
+equality with device depth 1, and retain it just inside with analytically computed depth. The view and
+projection scale terms stay unchanged; restoring the authored state removes the review opinion and
+reproduces RGBA8, HDR and depth byte-for-byte without changing the source. These near/far clipping cases
+do not qualify non-square output pixels, authored exposure, shutter integration, depth of field or
+another backend.
+
 The Windows clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires
 `AUTHORED_PRODUCT_EXR=true`. It publishes and executes a real NativeAOT application from the local
 package feed without project references. Both authored variable orders run the full- and
