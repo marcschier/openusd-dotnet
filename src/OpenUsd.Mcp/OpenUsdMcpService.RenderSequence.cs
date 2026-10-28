@@ -135,7 +135,7 @@ internal sealed partial class OpenUsdMcpService
             RenderDiskFrameResult frame = sequence.Result.Frames[request.FrameIndex];
             string artifactId = $"sequence-{request.JobId}-{frame.Index:D6}.png";
             IArtifactResourceStore store = services.GetRequiredService<IArtifactResourceStore>();
-            var outputs = new List<ArtifactResourceFileWrite>(5)
+            var outputs = new List<ArtifactResourceFileWrite>(6)
             {
                 new(artifactId, "image/png", Path.Combine(sequence.Result.OutputDirectory, frame.FileName),
                     frame.Bytes, frame.Sha256)
@@ -143,6 +143,7 @@ internal sealed partial class OpenUsdMcpService
             int depthIndex = -1;
             int hdrIndex = -1;
             int primIdIndex = -1;
+            int instanceIdIndex = -1;
             if (frame.DepthFileName is { } depthName)
             {
                 depthIndex = outputs.Count;
@@ -177,6 +178,14 @@ internal sealed partial class OpenUsdMcpService
                     $"sequence-{request.JobId}-{frame.Index:D6}.prim-id.json", "application/json",
                     Path.Combine(sequence.Result.OutputDirectory, tableName), frame.PrimIdTableBytes,
                     frame.PrimIdTableSha256!));
+            }
+            if (frame.InstanceIdFileName is { } instanceIdName)
+            {
+                instanceIdIndex = outputs.Count;
+                outputs.Add(new ArtifactResourceFileWrite(
+                    $"sequence-{request.JobId}-{frame.Index:D6}.instance-id.i32", "application/octet-stream",
+                    Path.Combine(sequence.Result.OutputDirectory, instanceIdName), frame.InstanceIdBytes,
+                    frame.InstanceIdSha256!));
             }
             var descriptors = new ArtifactResourceDescriptor[outputs.Count];
             var uncached = new List<ArtifactResourceFileWrite>(outputs.Count);
@@ -227,6 +236,7 @@ internal sealed partial class OpenUsdMcpService
             ArtifactResourceDescriptor? hdr = hdrIndex < 0 ? null : descriptors[hdrIndex];
             ArtifactResourceDescriptor? primId = primIdIndex < 0 ? null : descriptors[primIdIndex];
             ArtifactResourceDescriptor? primIdTable = primIdIndex < 0 ? null : descriptors[primIdIndex + 1];
+            ArtifactResourceDescriptor? instanceId = instanceIdIndex < 0 ? null : descriptors[instanceIdIndex];
             return new McpSequenceFrameResultDto(sequence.Revision.SessionId, sequence.Revision.Generation,
                 sequence.Revision.StageRevision, request.JobId, frame.Index, frame.State.Time.TimeCode,
                 frame.State.Viewport.Width, frame.State.Viewport.Height, ToArtifact(descriptor),
@@ -237,6 +247,7 @@ internal sealed partial class OpenUsdMcpService
                 HdrColorFormat = hdr is null ? null : frame.HdrColorFormat == RenderHdrColorFormat.Exr ? "exr" : "raw",
                 PrimId = primId is null ? null : ToArtifact(primId),
                 PrimIdTable = primIdTable is null ? null : ToArtifact(primIdTable),
+                InstanceId = instanceId is null ? null : ToArtifact(instanceId),
                 AuthoredProduct = sequence.AuthoredProduct,
                 ProductRaster = sequence.ProductFrames?[frame.Index].Raster,
                 ProductCamera = sequence.ProductFrames?[frame.Index].Camera,

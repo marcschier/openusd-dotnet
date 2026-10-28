@@ -260,13 +260,15 @@ internal sealed partial class PreviewSilkFrameSource
                 ? capturer.CaptureWithHdrColor(session, width, height, state.RenderSettings, productOptions,
                     new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes)
                     {
-                        IncludePrimId = plan.IncludePrimId
+                        IncludePrimId = plan.IncludePrimId,
+                        IncludeInstanceId = plan.IncludeInstanceId
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken)
                 : capturer.CaptureWithDepth(session, width, height, state.RenderSettings, productOptions,
                     new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes)
                     {
-                        IncludePrimId = plan.IncludePrimId
+                        IncludePrimId = plan.IncludePrimId,
+                        IncludeInstanceId = plan.IncludeInstanceId
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken);
             RequireProductRevision(source, plan);
@@ -379,15 +381,21 @@ internal sealed partial class PreviewSilkFrameSource
             throw new NotSupportedException(
                 "The MCP capture graphics device cannot run the pick pass needed for the primId identity plane.");
         }
+        if (plan.IncludeInstanceId && device is not ISilkPickingGraphicsDevice)
+        {
+            throw new NotSupportedException(
+                "The MCP capture graphics device cannot run the pick pass needed for the instanceId identity plane.");
+        }
     }
 
     private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
     {
-        // A primId-only product uses the color-and-depth path, whose depth plane is not an admitted output.
+        // A primId- or instanceId-only product uses the color-and-depth path, whose depth plane is not an admitted output.
         bool depthOnlyCarrier = !plan.IncludeHdrColor && !plan.IncludeDeviceDepth;
         if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
             (!depthOnlyCarrier && plan.IncludeDeviceDepth != (result.Depth is not null)) ||
-            plan.IncludePrimId != (result.PrimId is not null))
+            plan.IncludePrimId != (result.PrimId is not null) ||
+            plan.IncludeInstanceId != (result.InstanceId is not null))
         {
             throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
         }
@@ -404,6 +412,8 @@ internal sealed partial class PreviewSilkFrameSource
             DeviceDepth = plan.IncludeDeviceDepth && result.Depth is { } depth
                 ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
             PrimId = result.PrimId is { } primId ? ToJobPrimId(primId) : null,
+            InstanceId = result.InstanceId is { } instanceId
+                ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null,
             Diagnostics = result.Diagnostics
         };
     }

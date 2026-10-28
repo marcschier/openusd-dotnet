@@ -1241,3 +1241,16 @@ OpenUsd.Rendering.RenderDiskFrameResult.PrimIdSha256.get -> string?
 OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableFileName.get -> string?
 OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableBytes.get -> long
 OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableSha256.get -> string?
+OpenUsd.Rendering.RenderProductPlane.InstanceId = 3 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludeInstanceId.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeInstanceId.get -> bool
+OpenUsd.Rendering.RenderJobImage.InstanceId.get -> OpenUsd.Rendering.RenderJobInstanceId?
+OpenUsd.Rendering.RenderJobImage.InstanceId.init -> void
+OpenUsd.Rendering.RenderJobInstanceId
+OpenUsd.Rendering.RenderJobInstanceId.RenderJobInstanceId(int width, int height, System.ReadOnlyMemory<int> values) -> void
+OpenUsd.Rendering.RenderJobInstanceId.Width.get -> int
+OpenUsd.Rendering.RenderJobInstanceId.Height.get -> int
+OpenUsd.Rendering.RenderJobInstanceId.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdSha256.get -> string?

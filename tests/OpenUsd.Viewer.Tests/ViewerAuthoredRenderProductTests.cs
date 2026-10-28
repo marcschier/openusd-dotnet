@@ -507,6 +507,27 @@ public sealed class ViewerAuthoredRenderProductTests
     }
 
     [Test]
+    public async Task SnapshotAdmitsIntInstanceIdentityAlongsidePrimIdentityAndRefusesOtherTypes()
+    {
+        UsdRenderSpecification specification = CreateSpecification([
+            Product("/Render/ProductIdentity", [0, 3, 4]),
+            Product("/Render/ProductInstanceOnly", [0, 4]),
+            Product("/Render/ProductFloatInstance", [0, 5])
+        ]);
+
+        ViewerAuthoredRenderProductSnapshot snapshot =
+            ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, "/Render/ProductIdentity");
+
+        await Assert.That(snapshot.Products.Count).IsEqualTo(3);
+        await Assert.That(snapshot.Products[0].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:primId/int");
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:instanceId/int");
+        await Assert.That(snapshot.Products[1].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[2].CanRender).IsFalse();
+        await Assert.That(snapshot.Products[2].UnsupportedReason).Contains("'instanceId' / 'float'");
+    }
+
+    [Test]
     public async Task SnapshotRefusesAnOversizedCatalogInsteadOfSilentlyHidingProducts()
     {
         UsdRenderSpecification specification = CreateSpecification(
@@ -943,7 +964,10 @@ public sealed class ViewerAuthoredRenderProductTests
             [
                 Variable("/Render/Vars/Color", "half4", "color"),
                 Variable("/Render/Vars/Depth", "float", "depth"),
-                Variable("/Render/Vars/Id", "int", "id")
+                Variable("/Render/Vars/Id", "int", "id"),
+                Variable("/Render/Vars/PrimId", "int", "primId"),
+                Variable("/Render/Vars/InstanceId", "int", "instanceId"),
+                Variable("/Render/Vars/FloatInstanceId", "float", "instanceId")
             ],
             ["default", "render"],
             ["full"],

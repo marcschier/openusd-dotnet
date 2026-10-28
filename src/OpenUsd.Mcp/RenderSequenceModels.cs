@@ -149,6 +149,12 @@ internal sealed record McpSequenceFrameResultDto(
         "not instanced) exactly once. Present exactly when primId is present.")]
     public McpArtifactDto? PrimIdTable { get; init; }
 
+    [Description(
+        "Optional verified instanceId plane: packed top-down little-endian int32 instance indices within the " +
+        "innermost instancer that drew each pixel; -1 marks background and non-instanced prims. Present only " +
+        "for authored products with an instanceId variable.")]
+    public McpArtifactDto? InstanceId { get; init; }
+
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
 

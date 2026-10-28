@@ -120,6 +120,8 @@ public static partial class RenderDiskJob
                     result.DepthBytes, result.DepthSha256, "normalized-device-depth-zero-to-one"),
                 RenderProductPlane.PrimId => (result.PrimIdFileName, "int32-little-endian",
                     result.PrimIdBytes, result.PrimIdSha256, "visible-prim-identity-index"),
+                RenderProductPlane.InstanceId => (result.InstanceIdFileName, "int32-little-endian",
+                    result.InstanceIdBytes, result.InstanceIdSha256, InstanceIdConvention),
                 _ => throw new InvalidDataException("A product output names an unknown plane.")
             };
             json.WriteStartObject();
@@ -139,6 +141,10 @@ public static partial class RenderDiskJob
                 json.WriteString("tableFile", result.PrimIdTableFileName);
                 json.WriteNumber("tableBytes", result.PrimIdTableBytes);
                 json.WriteString("tableSha256", result.PrimIdTableSha256);
+            }
+            else if (output.Plane == RenderProductPlane.InstanceId)
+            {
+                json.WriteNumber("background", -1);
             }
             json.WriteEndObject();
         }

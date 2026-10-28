@@ -78,14 +78,14 @@ internal sealed record McpAuthoredProductDto(
     [property: Description("Explicit bounded execution profile, not a claim of arbitrary UsdRender support.")]
     string Profile,
     [property: Description("Exact material-binding purpose applied to ingestion.")] string MaterialBindingPurpose,
-    [property: Description("Requested render variables in authored order, at most three in the initial profile.")]
+    [property: Description("Requested render variables in authored order, at most four in the initial profile.")]
     IReadOnlyList<McpProductVariableDto> Outputs);
 
 internal sealed record McpProductVariableDto(
     [property: Description("Requested RenderVar prim path.")] string Path,
     [property: Description("Exact requested source name, not a substituted beauty output.")] string SourceName,
     [property: Description("Exact requested data type.")] string DataType,
-    [property: Description("Returned plane name: hdrColor, deviceDepth or primId.")] string Plane);
+    [property: Description("Returned plane name: hdrColor, deviceDepth, primId or instanceId.")] string Plane);
 
 internal sealed record McpProductRasterDto(
     [property: Description("Original prepared full-raster width before crop or overscan, not sheet-cell width.")]

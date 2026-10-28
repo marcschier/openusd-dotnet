@@ -1009,7 +1009,9 @@ It uses the same recorded size/SHA256 checks and existing resource limits. HDR j
 return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
 Raw binary16 uses `application/octet-stream`; EXR uses `image/x-exr` and a generated `.hdr.exr`
 identifier. EXR is a resource link, not an inline PNG substitute.
-At most three resource links accompany the selected frame;
+Product jobs with identity planes also return `primId` and `primIdTable` (raw int32 indices and
+their JSON prim table) and `instanceId` (raw int32 instance indices), with the same checks.
+At most six resource links accompany the selected frame;
 the rest of the sequence remains on disk. All uncached planes
 are admitted and verified before their descriptors and quota charges are committed together.
 A missing/changed depth or HDR file, cancellation or insufficient capacity cannot leave only a newly
@@ -1226,11 +1228,13 @@ MCP capture-dimension and output-byte quotas still apply.
 }
 ```
 
-The initial admitted profile is raw `half4` / `color` and/or `float` / `depth`, one variable per
-plane. Depth is normalized device depth, not camera-space distance. Named rendering color spaces,
+The admitted profile is raw `half4` / `color`, `float` / `depth`, `int` / `primId` and
+`int` / `instanceId`, one variable per plane and at most four bindings. Depth is normalized
+device depth, not camera-space distance. The identity planes need a graphics device that can run
+the hdSilk pick pass; other devices are refused. Named rendering color spaces,
 unevaluated settings and other variable types are refused. An open shutter or active
 depth-of-field aperture is accumulated as described for `productCamera`; with either, depth
-output is refused.
+and identity output are refused.
 Camera exposure is applied, not refused; the HDR binding convention
 `renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply the exact purpose mask and material-binding
 purpose, preserve retained state when returning to viewport jobs, and pass actual pixel cases.
@@ -1247,7 +1251,8 @@ must not be mistaken for released or complete general UsdRender execution.
 
 Each manifest frame's `productOutputs` bindings identify the stored `format` independently of
 the requested `dataType`: raw color uses `rgba16float-little-endian`, EXR color uses
-`openexr-rgba16float`, and depth uses `float32-little-endian`. The binding's byte extent,
+`openexr-rgba16float`, depth uses `float32-little-endian`, and `primId` and `instanceId` use
+`int32-little-endian`. The binding's byte extent,
 SHA-256, row order and value convention describe that file, not its PNG display companion.
 
 ### `analyze_scene` and proposals

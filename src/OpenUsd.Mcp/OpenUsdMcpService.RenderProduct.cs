@@ -133,6 +133,7 @@ internal sealed partial class OpenUsdMcpService
                 RenderProductPlane.HdrColor => "hdrColor",
                 RenderProductPlane.DeviceDepth => "deviceDepth",
                 RenderProductPlane.PrimId => "primId",
+                RenderProductPlane.InstanceId => "instanceId",
                 _ => throw new InvalidDataException("A product output names an unknown plane.")
             })).ToArray()));
 

@@ -4445,31 +4445,65 @@ public sealed partial class SilkMeshRenderer :
         commands.EndRendering();
     }
 
-    /// <summary>
-    /// Draws the prim-level pick pass over the whole viewport of the frame just
-    /// rendered and resolves every pixel to a dense per-frame identity index.
-    /// </summary>
-    /// <remarks>
-    /// Runs synchronously inside the capture lease with transient targets, so the
-    /// retained viewer pick targets and in-flight pick readbacks are untouched.
-    /// </remarks>
-    internal void ThrowIfPrimIdUnsupported(SilkDepthCaptureRequest? request)
+    internal void ThrowIfPickPlanesUnsupported(SilkDepthCaptureRequest? request)
     {
-        if (request?.IncludePrimId == true && _pickingDevice is null)
+        if (request is null || _pickingDevice is not null)
+        {
+            return;
+        }
+        if (request.IncludePrimId)
         {
             throw new NotSupportedException(
                 "Prim identity capture requires a pick-capable graphics device.");
         }
+        if (request.IncludeInstanceId)
+        {
+            throw new NotSupportedException(
+                "Instance identity capture requires a pick-capable graphics device.");
+        }
     }
 
-    internal SilkPrimIdCaptureResult CapturePrimIdRaster(
+    /// <summary>
+    /// Draws the prim-level pick pass once over the whole viewport of the frame just
+    /// rendered and derives every requested identity plane from its one token readback.
+    /// </summary>
+    /// <remarks>
+    /// Runs synchronously inside the capture lease with transient targets, so the
+    /// retained viewer pick targets and in-flight pick readbacks are untouched. Each
+    /// pixel resolves to a dense per-frame identity index; the instance plane takes the
+    /// <see cref="SilkPrimIdentity.InstanceIndex"/> of that identity. An instance-only
+    /// capture rewrites the index raster in place, so it allocates one int32 raster.
+    /// </remarks>
+    internal (SilkPrimIdCaptureResult? PrimId, SilkInstanceIdCaptureResult? InstanceId) CapturePickPlanes(
+        int width,
+        int height,
+        SilkDepthCaptureRequest request)
+    {
+        (int[] values, SilkPrimIdentity[] identities) = CapturePrimIdRaster(width, height, request);
+        if (!request.IncludeInstanceId)
+        {
+            return (new SilkPrimIdCaptureResult(width, height, values, identities), null);
+        }
+        int[] instances = request.IncludePrimId ? new int[values.Length] : values;
+        for (int pixel = 0; pixel < values.Length; pixel++)
+        {
+            int value = values[pixel];
+            instances[pixel] = value < 0 ? -1 : identities[value].InstanceIndex;
+        }
+        request.ThrowIfCancellationRequested();
+        return (
+            request.IncludePrimId ? new SilkPrimIdCaptureResult(width, height, values, identities) : null,
+            new SilkInstanceIdCaptureResult(width, height, instances));
+    }
+
+    private (int[] Values, SilkPrimIdentity[] Identities) CapturePrimIdRaster(
         int width,
         int height,
         SilkDepthCaptureRequest request)
     {
         ISilkPickingGraphicsDevice pickingDevice = _pickingDevice ??
             throw new NotSupportedException(
-                "Prim identity capture requires a pick-capable graphics device.");
+                "Prim and instance identity capture requires a pick-capable graphics device.");
         if (pickingDevice.PickDeviceGeneration != _pickDeviceGeneration)
         {
             throw new InvalidOperationException(
@@ -4513,7 +4547,8 @@ public sealed partial class SilkMeshRenderer :
         return ResolvePrimIdRaster(width, height, tokens, request);
     }
 
-    private SilkPrimIdCaptureResult ResolvePrimIdRaster(
+    private (int[] Values, SilkPrimIdentity[] Identities) ResolvePrimIdRaster(
+
         int width,
         int height,
         byte[] tokens,
@@ -4599,7 +4634,7 @@ public sealed partial class SilkMeshRenderer :
             }
         }
         request.ThrowIfCancellationRequested();
-        return new SilkPrimIdCaptureResult(width, height, values, identities);
+        return (values, identities);
     }
 
     /// <summary>Maps one retained topology to the pick pipeline topology.</summary>

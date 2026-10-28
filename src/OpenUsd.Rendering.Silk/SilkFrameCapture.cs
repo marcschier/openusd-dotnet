@@ -18,7 +18,8 @@ public sealed class SilkFrameCaptureResult
         RenderDiagnosticsState diagnostics,
         SilkDepthCaptureResult? depth = null,
         SilkHdrColorCaptureResult? hdrColor = null,
-        SilkPrimIdCaptureResult? primId = null)
+        SilkPrimIdCaptureResult? primId = null,
+        SilkInstanceIdCaptureResult? instanceId = null)
     {
         Width = width;
         Height = height;
@@ -31,6 +32,7 @@ public sealed class SilkFrameCaptureResult
         Depth = depth;
         HdrColor = hdrColor;
         PrimId = primId;
+        InstanceId = instanceId;
     }
 
     /// <summary>Gets the captured width in pixels.</summary>
@@ -60,6 +62,12 @@ public sealed class SilkFrameCaptureResult
     /// </summary>
     public SilkPrimIdCaptureResult? PrimId { get; }
 
+    /// <summary>
+    /// Gets the detached visible instance index plane when explicitly requested, or
+    /// <c>null</c> otherwise.
+    /// </summary>
+    public SilkInstanceIdCaptureResult? InstanceId { get; }
+
     /// <summary>Gets renderer evidence for the captured frame.</summary>
     public SilkMeshRenderResult RenderResult { get; }
 
@@ -74,7 +82,8 @@ public sealed class SilkFrameCaptureResult
 
     internal SilkFrameCaptureResult WithCompletion(
         SilkMeshRenderResult rendered, RenderDiagnosticsState diagnostics) =>
-        new(Width, Height, _rgba, rendered, PageRevision, CommandCount, diagnostics, Depth, HdrColor, PrimId);
+        new(Width, Height, _rgba, rendered, PageRevision, CommandCount, diagnostics, Depth, HdrColor, PrimId,
+            InstanceId);
 }
 
 /// <summary>
@@ -272,10 +281,10 @@ public static partial class SilkFrameCapture
 
         if (renderer is not SilkMeshRenderer silkRenderer)
         {
-            if (depthRequest?.IncludePrimId == true)
+            if (depthRequest?.IncludesPickRaster == true)
             {
                 throw new NotSupportedException(
-                    "Prim identity capture is only supported with the built-in SilkMeshRenderer.");
+                    "Prim and instance identity capture is only supported with the built-in SilkMeshRenderer.");
             }
             if (renderSettings.DisplayTransform is not null)
             {
@@ -298,7 +307,7 @@ public static partial class SilkFrameCapture
         {
             silkRenderer.ValidateCaptureDevice(device);
         }
-        silkRenderer.ThrowIfPrimIdUnsupported(depthRequest);
+        silkRenderer.ThrowIfPickPlanesUnsupported(depthRequest);
         silkRenderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
@@ -365,7 +374,7 @@ public static partial class SilkFrameCapture
         {
             silkRenderer.ValidateCaptureDevice(device);
         }
-        silkRenderer.ThrowIfPrimIdUnsupported(depthRequest);
+        silkRenderer.ThrowIfPickPlanesUnsupported(depthRequest);
         silkRenderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
@@ -392,7 +401,7 @@ public static partial class SilkFrameCapture
         renderSettings.ValidateDisplayTransform();
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
         depthRequest?.ThrowIfCancellationRequested();
-        renderer.ThrowIfPrimIdUnsupported(depthRequest);
+        renderer.ThrowIfPickPlanesUnsupported(depthRequest);
         renderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(
@@ -435,7 +444,7 @@ public static partial class SilkFrameCapture
         ValidateOcioSettings(renderSettings);
         using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
         depthRequest?.ThrowIfCancellationRequested();
-        renderer.ThrowIfPrimIdUnsupported(depthRequest);
+        renderer.ThrowIfPickPlanesUnsupported(depthRequest);
         renderer.ReleaseCaptureFrameScratch();
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
@@ -524,6 +533,8 @@ public static partial class SilkFrameCapture
             display.ReadbackForTesting(rgba);
         }
         depthRequest?.ThrowIfCancellationRequested();
+        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId) =
+            depthRequest?.ReadbackPickPlanes(renderer) ?? default;
         return new SilkFrameCaptureResult(
             width,
             height,
@@ -536,7 +547,8 @@ public static partial class SilkFrameCapture
                 : preparationPage.WithPreparationDiagnostics(MergeDisplayTransformDiagnostics(renderer)),
             capturedDepth,
             hdrColor,
-            depthRequest?.ReadbackPrimId(renderer));
+            primId,
+            instanceId);
     }
 
     private static RenderDiagnosticsState MergeDisplayTransformDiagnostics(
@@ -593,6 +605,8 @@ public static partial class SilkFrameCapture
             }
         }
         depthRequest?.ThrowIfCancellationRequested();
+        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId) =
+            depthRequest?.ReadbackPickPlanes(renderer) ?? default;
         return new SilkFrameCaptureResult(
             width,
             height,
@@ -603,7 +617,8 @@ public static partial class SilkFrameCapture
             diagnostics,
             capturedDepth,
             hdrColor,
-            depthRequest?.ReadbackPrimId(renderer));
+            primId,
+            instanceId);
     }
 
     private static SilkFrameCaptureResult ReadbackFrameOcio(
@@ -638,6 +653,8 @@ public static partial class SilkFrameCapture
             }
         }
         depthRequest?.ThrowIfCancellationRequested();
+        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId) =
+            depthRequest?.ReadbackPickPlanes(renderer) ?? default;
         return new SilkFrameCaptureResult(
             width,
             height,
@@ -648,7 +665,8 @@ public static partial class SilkFrameCapture
             diagnostics,
             capturedDepth,
             hdrColor,
-            depthRequest?.ReadbackPrimId(renderer));
+            primId,
+            instanceId);
     }
 
     internal static void ValidateOcioSettings(RenderSettings renderSettings)

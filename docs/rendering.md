@@ -835,8 +835,8 @@ time samples, and samples in scheduler batches of at most sixteen. It checks the
 revision before and after each batch. The caller must continue excluding or detecting writers
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
-The profile accepts only raw `half4` / `color`, `float` / `depth` and `int` / `primId`
-variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
+The profile accepts only raw `half4` / `color`, `float` / `depth`, `int` / `primId` and
+`int` / `instanceId` variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
 Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
 resolution of a named purpose already falls back to the allPurpose binding. The unauthored
 fallback `["full", ""]` therefore runs as `full`, and `["preview", ""]` as `preview`. A list
@@ -984,6 +984,17 @@ the job's frame accounting by 8 bytes per pixel. A table is limited to 65,536 id
 identity. The plane is refused with motion blur or depth of field, because an identity cannot be
 averaged across samples. The Viewer and MCP product jobs capture it, and MCP `read_sequence_frame`
 links the raw plane and its table as `primId` and `primIdTable`. Physics recordings refuse it.
+
+A product `instanceId` variable (`int`) records which instance of an instancer is visible at each
+pixel. It comes from the same pick pass and token readback as `primId`, so requesting both still
+runs one pass. Each pixel holds the instance index of the innermost Hydra instancer, which for a
+`PointInstancer` is the authored instance ordinal; background and non-instanced prims are `-1`.
+The job writes `frame-NNNNNN.instance-id.i32` as packed top-down little-endian int32 values, and
+the manifest records it with its bytes and SHA256 under the `innermost-instancer-instance-index`
+convention. Requesting either identity plane charges Silk 28 bytes per pixel and both charge 32;
+the job adds 8 bytes per pixel for the first plane and 4 for the second. The refusals match
+`primId`: non-pick devices, motion blur, depth of field and physics recordings. The Viewer and
+MCP product jobs capture it, and MCP `read_sequence_frame` links it as `instanceId`.
 
 The additional `includeHdrColor` overload preserves actual pre-display HDR color in generated
 `.hdr.rgba16f` sidecars. `RenderJobHdrColor` borrows tightly packed top-down little-endian RGBA

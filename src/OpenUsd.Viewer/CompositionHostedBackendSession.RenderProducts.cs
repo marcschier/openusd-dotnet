@@ -29,6 +29,11 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
             return "The active hdSilk graphics device cannot run the pick pass needed for the primId " +
                 "identity plane.";
         }
+        if (plan.IncludeInstanceId && resources.CaptureDevice is not ISilkPickingGraphicsDevice)
+        {
+            return "The active hdSilk graphics device cannot run the pick pass needed for the instanceId " +
+                "identity plane.";
+        }
         try
         {
             _ = new SilkSceneIngestionOptions(plan.IncludedPurposes, plan.MaterialBindingPurpose);
@@ -133,7 +138,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                         plan.IncludeDeviceDepth,
                         maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes)
                     {
-                        IncludePrimId = plan.IncludePrimId
+                        IncludePrimId = plan.IncludePrimId,
+                        IncludeInstanceId = plan.IncludeInstanceId
                     },
                     state.Time.TimeCode,
                     state.Camera,
@@ -147,7 +153,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     new SilkDepthCaptureOptions(
                         maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes)
                     {
-                        IncludePrimId = plan.IncludePrimId
+                        IncludePrimId = plan.IncludePrimId,
+                        IncludeInstanceId = plan.IncludeInstanceId
                     },
                     state.Time.TimeCode,
                     state.Camera,
@@ -167,7 +174,9 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
                 HdrColor = capture.HdrColor is { } hdr
                     ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,
-                PrimId = capture.PrimId is { } primId ? ToJobPrimId(primId) : null
+                PrimId = capture.PrimId is { } primId ? ToJobPrimId(primId) : null,
+                InstanceId = capture.InstanceId is { } instanceId
+                    ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null
             });
         }
 

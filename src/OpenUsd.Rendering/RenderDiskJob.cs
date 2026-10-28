@@ -76,9 +76,10 @@ public static partial class RenderDiskJob
                     staging, index, request.Frames[index], source, diagnostics, request.IncludeDeviceDepth,
                     request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index),
                     request.ProductPlan?.Frames[index].CameraSettings!.LinearExposureScale ?? 1, remaining,
-                    request.ProductPlan?.AccumulationStates(index), request.IncludePrimId, cancellationToken);
+                    request.ProductPlan?.AccumulationStates(index), request.IncludePrimId, request.IncludeInstanceId,
+                    cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes +
-                    frames[index].PrimIdBytes + frames[index].PrimIdTableBytes;
+                    frames[index].PrimIdBytes + frames[index].PrimIdTableBytes + frames[index].InstanceIdBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
             }
             beforePublish?.Invoke();
@@ -163,7 +164,8 @@ public static partial class RenderDiskJob
         string directory, int index, StageRenderState state, IRenderJobFrameSource source,
         List<RenderDiagnostic> diagnostics, bool includeDeviceDepth, bool includeHdrColor,
         RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, double hdrExposureScale, long maximumBytes,
-        IReadOnlyList<StageRenderState>? shutterStates, bool includePrimId, CancellationToken cancellationToken)
+        IReadOnlyList<StageRenderState>? shutterStates, bool includePrimId, bool includeInstanceId,
+        CancellationToken cancellationToken)
     {
         RenderJobImage image = (shutterStates is null
             ? source.Render(state, cancellationToken)
@@ -192,11 +194,17 @@ public static partial class RenderDiskJob
             throw new NotSupportedException(
                 "The render source did not provide exactly the requested prim identity output.");
         }
+        if (includeInstanceId != (image.InstanceId is not null))
+        {
+            throw new NotSupportedException(
+                "The render source did not provide exactly the requested instance identity output.");
+        }
         long depthBytes = includeDeviceDepth ? (long)image.Width * image.Height * sizeof(float) : 0;
         long hdrBytes = includeHdrColor && hdrColorFormat == RenderHdrColorFormat.RawRgba16Float
             ? (long)image.Width * image.Height * 8 : 0;
         long primIdBytes = includePrimId ? (long)image.Width * image.Height * sizeof(int) : 0;
-        long extraBytes = depthBytes + hdrBytes + primIdBytes;
+        long instanceIdBytes = includeInstanceId ? (long)image.Width * image.Height * sizeof(int) : 0;
+        long extraBytes = depthBytes + hdrBytes + primIdBytes + instanceIdBytes;
         if (extraBytes >= maximumBytes)
         {
             throw new RenderOutputQuotaExceededException(
@@ -240,13 +248,27 @@ public static partial class RenderDiskJob
             }
             string prefix = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}";
             primIdName = prefix + ".prim-id.i32";
-            primIdHash = WritePrimId(
-                Path.Combine(directory, primIdName), primId.Values.Span, primId.Identities.Count, cancellationToken);
+            primIdHash = WriteIndexPlane(
+                Path.Combine(directory, primIdName), primId.Values.Span, primId.Identities.Count,
+                "A prim identity index is outside its identity table.", cancellationToken);
             primIdTableName = prefix + ".prim-id.json";
             (primIdTableBytes, primIdTableHash) = WritePrimIdTable(
                 Path.Combine(directory, primIdTableName), primId.Identities, maximumBytes - extraBytes,
                 cancellationToken);
             extraBytes += primIdTableBytes;
+        }
+        string? instanceIdName = null;
+        string? instanceIdHash = null;
+        if (image.InstanceId is { } instanceId)
+        {
+            if (instanceId.Width != image.Width || instanceId.Height != image.Height)
+            {
+                throw new InvalidDataException("The instance identity plane does not match the color frame.");
+            }
+            instanceIdName = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}.instance-id.i32";
+            instanceIdHash = WriteIndexPlane(
+                Path.Combine(directory, instanceIdName), instanceId.Values.Span, int.MaxValue,
+                "An instance index must be minus one or non-negative.", cancellationToken);
         }
         string fileName = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}.png";
         using var file = new FileStream(Path.Combine(directory, fileName),
@@ -281,7 +303,8 @@ public static partial class RenderDiskJob
             {
                 (hdrBytes, hdrHash) = WriteExrColor(
                     Path.Combine(directory, hdrName), hdr, exrWindows, hdrExposureScale,
-                    maximumBytes - written - depthBytes - primIdBytes - primIdTableBytes, cancellationToken);
+                    maximumBytes - written - depthBytes - primIdBytes - primIdTableBytes - instanceIdBytes,
+                    cancellationToken);
             }
             else
             {
@@ -298,7 +321,10 @@ public static partial class RenderDiskJob
             PrimIdSha256 = primIdHash,
             PrimIdTableFileName = primIdTableName,
             PrimIdTableBytes = primIdTableBytes,
-            PrimIdTableSha256 = primIdTableHash
+            PrimIdTableSha256 = primIdTableHash,
+            InstanceIdFileName = instanceIdName,
+            InstanceIdBytes = instanceIdBytes,
+            InstanceIdSha256 = instanceIdHash
         };
     }
 
@@ -401,8 +427,9 @@ public static partial class RenderDiskJob
         return Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
     }
 
-    private static string WritePrimId(
-        string path, ReadOnlySpan<int> values, int identityCount, CancellationToken cancellationToken)
+    private static string WriteIndexPlane(
+        string path, ReadOnlySpan<int> values, int exclusiveMaximum, string rangeMessage,
+        CancellationToken cancellationToken)
     {
         using var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         Span<byte> buffer = stackalloc byte[4096];
@@ -413,9 +440,9 @@ public static partial class RenderDiskJob
             for (int index = 0; index < count; index++)
             {
                 int value = values[start + index];
-                if (value < -1 || value >= identityCount)
+                if (value < -1 || value >= exclusiveMaximum)
                 {
-                    throw new InvalidDataException("A prim identity index is outside its identity table.");
+                    throw new InvalidDataException(rangeMessage);
                 }
                 BinaryPrimitives.WriteInt32LittleEndian(buffer.Slice(index * sizeof(int), sizeof(int)), value);
             }
@@ -460,6 +487,8 @@ public static partial class RenderDiskJob
         file.Position = 0;
         return (written, Convert.ToHexString(SHA256.HashData(file)).ToLowerInvariant());
     }
+
+    private const string InstanceIdConvention = "innermost-instancer-instance-index";
 
     private static string HdrColorFormatName(RenderHdrColorFormat? format) => format switch
     {
@@ -533,6 +562,18 @@ public static partial class RenderDiskJob
                     json.WriteString("tableFormat", "utf8-json");
                     json.WriteNumber("tableBytes", frame.PrimIdTableBytes);
                     json.WriteString("tableSha256", frame.PrimIdTableSha256);
+                    json.WriteEndObject();
+                }
+                if (frame.InstanceIdFileName is { } instanceIdName)
+                {
+                    json.WriteStartObject("instanceId");
+                    json.WriteString("file", instanceIdName);
+                    json.WriteString("format", "int32-little-endian");
+                    json.WriteString("rowOrder", "top-down");
+                    json.WriteString("convention", InstanceIdConvention);
+                    json.WriteNumber("background", -1);
+                    json.WriteNumber("bytes", frame.InstanceIdBytes);
+                    json.WriteString("sha256", frame.InstanceIdSha256);
                     json.WriteEndObject();
                 }
                 if (frame.HdrColorFileName is { } hdrName)

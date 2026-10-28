@@ -428,6 +428,107 @@ public sealed partial class NativeMcpIntegrationTests
         string? path(int x, int y) => identities[value(x, y)].GetProperty("path").GetString();
     }
 
+    [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredInstanceIdProductsPublishVisiblePointInstancerIndices(bool instanceIdOnly)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>",
+                instanceIdOnly ? "rel orderedVars = </InstanceId>" : "rel orderedVars = [</PrimId>, </InstanceId>]",
+                StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
+                "    token sourceType = \"raw\"\n}\n" +
+                "def RenderVar \"InstanceId\" {\n    token dataType = \"int\"\n    string sourceName = \"instanceId\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal)
+            .Replace("    def Xform \"ProxyParent\" {",
+                "    def PointInstancer \"Instancer\" {\n" +
+                "        rel prototypes = </World/Instancer/Prototypes/Proto>\n" +
+                "        int[] protoIndices = [0, 0, 0]\n" +
+                "        point3f[] positions = [(-1, 0, -4), (1, 0, -4), (0, -1, -4)]\n" +
+                "        def Scope \"Prototypes\" {\n" +
+                "            def Cube \"Proto\" {\n" +
+                "                double size = 0.75\n" +
+                "            }\n" +
+                "        }\n" +
+                "    }\n" +
+                "    def Xform \"ProxyParent\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(instanceIdOnly ? ["instanceId"] : ["primId", "instanceId"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.HdrColor).IsNull();
+        await Assert.That(frame.PrimId is null).IsEqualTo(instanceIdOnly);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(instanceIdOnly ? 2 : 4);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.InstanceId!.Uri)) ??
+            throw new InvalidOperationException("The completed instanceId plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 4);
+        await Assert.That(value(raw, 4, 8)).IsEqualTo(0);
+        await Assert.That(value(raw, 12, 8)).IsEqualTo(1);
+        await Assert.That(value(raw, 8, 12)).IsEqualTo(2);
+        await Assert.That(value(raw, 4, 4)).IsEqualTo(-1).Because("a non-instanced prim has no instance index");
+        await Assert.That(value(raw, 8, 4)).IsEqualTo(-1).Because("background has no instance index");
+        if (!instanceIdOnly)
+        {
+            ArtifactResourceContent primId = await artifacts.ReadAsync(new Uri(frame.PrimId!.Uri)) ??
+                throw new InvalidOperationException("The completed primId plane is absent.");
+            ArtifactResourceContent table = await artifacts.ReadAsync(new Uri(frame.PrimIdTable!.Uri)) ??
+                throw new InvalidOperationException("The completed primId table is absent.");
+            using JsonDocument document = JsonDocument.Parse(table.Content);
+            JsonElement identities = document.RootElement.GetProperty("identities");
+            for (int pixel = 0; pixel < 16 * 16; pixel++)
+            {
+                int index = value(primId, pixel % 16, pixel / 16);
+                int expected = index < 0 ? -1 : identities[index].GetProperty("instanceIndex").GetInt32();
+                if (value(raw, pixel % 16, pixel / 16) != expected)
+                {
+                    Assert.Fail($"Pixel {pixel} instance index disagrees with its prim identity table entry.");
+                }
+            }
+        }
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement plane = manifest.RootElement.GetProperty("frames")[0].GetProperty("instanceId");
+        await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo("frame-000000.instance-id.i32");
+        await Assert.That(plane.GetProperty("convention").GetString())
+            .IsEqualTo("innermost-instancer-instance-index");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        static int value(ArtifactResourceContent content, int x, int y) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                content.Content.Span.Slice((y * 16 + x) * 4, 4));
+    }
+
     private static async Task AssertHalf(byte[] pixels, int x, int y, string expected) =>
         await Assert.That(Convert.ToHexString(pixels.AsSpan((y * 16 + x) * 8, 8))).IsEqualTo(expected);
 

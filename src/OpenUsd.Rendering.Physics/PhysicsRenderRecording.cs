@@ -268,6 +268,12 @@ public static class PhysicsRenderRecording
                     "Physics recordings do not capture the primId identity plane; remove the primId variable " +
                     "from the product.");
             }
+            if (plan.IncludeInstanceId)
+            {
+                throw new NotSupportedException(
+                    "Physics recordings do not capture the instanceId identity plane; remove the instanceId " +
+                    "variable from the product.");
+            }
             _source.Validate(_request, _context, cancellationToken);
         }
 

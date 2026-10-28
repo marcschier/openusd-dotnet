@@ -80,8 +80,9 @@ public sealed class SilkHdrColorCaptureOptions
     /// The managed pixel-array budget, charged uniformly at 20 bytes per pixel:
     /// 8 for HDR, 4 for RGBA8, 4 for optional depth, and 4 for the managed RGBA8
     /// selection-upload copy. The charge is unchanged when depth or selection is disabled.
-    /// Setting <see cref="IncludePrimId"/> adds 8 bytes per pixel: 4 for the RGBA8 pick-token
-    /// readback and 4 for the int32 identity output.
+    /// <see cref="IncludePrimId"/> or <see cref="IncludeInstanceId"/> adds 8 bytes per pixel:
+    /// 4 for the shared RGBA8 pick-token readback and 4 for the first int32 output raster.
+    /// Requesting both adds 4 more bytes per pixel for the second int32 output raster.
     /// </param>
     public SilkHdrColorCaptureOptions(
         bool includeDeviceDepth = false,
@@ -109,6 +110,18 @@ public sealed class SilkHdrColorCaptureOptions
     /// managed readback charge.
     /// </remarks>
     public bool IncludePrimId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible instance index plane is returned in
+    /// <see cref="SilkFrameCaptureResult.InstanceId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is derived from the same prim-level pick pass and token readback as
+    /// <see cref="IncludePrimId"/>; requesting both runs one pass. It requires a
+    /// pick-capable graphics device and adds 8 bytes per pixel to the managed readback
+    /// charge, or 4 bytes per pixel when <see cref="IncludePrimId"/> is also set.
+    /// </remarks>
+    public bool IncludeInstanceId { get; init; }
 
     /// <summary>Gets the maximum raster pixel count.</summary>
     public int MaximumPixelCount => Limits.MaximumPixelCount;

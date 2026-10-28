@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Text.Json;
+using OpenUsd.Geom;
+using OpenUsd.Render;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Physics;
 
@@ -332,6 +334,55 @@ public sealed partial class UsdPhysicsTransportTests
                     $"/Deform{index}");
             }
             return bindings;
+        }
+    }
+
+    [Test]
+    [Arguments("primId")]
+    [Arguments("instanceId")]
+    public async Task RecordingRefusesIdentityPlanesWithoutSimulationOrFiles(string plane)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-recording-identity-").FullName;
+        var world = new FakePhysicsWorld(1);
+        await using UsdPhysicsTransport transport = CreateTransport(world, new FakePhysicsClock(), CreateOptions());
+        await RunAsync(transport, transport.BuildAsync());
+        PhysicsRenderBindingTable bindings = RecordingBindings(transport);
+        var color = new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []);
+        var identity = new UsdRenderVariableSpecification("/Render/Identity", "int", plane, "raw", []);
+        var product = new RenderProductRequest(new UsdRenderSpecification("/Render/Settings",
+            [new UsdRenderProductSpecification("/Render/Product", "identity.exr", "raster", "/Camera",
+                1, 1, 1, "expandAperture", new UsdVec2f(20, 20), new UsdVec4f(0, 0, 1, 1),
+                true, true, [0, 1], [])],
+            [color, identity], ["default", "render"], ["full"], "", []), 0);
+        var optics = new UsdGeomCameraState(
+            UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 10, 0);
+        var frames = new RenderPreparedFrame[2];
+        for (int index = 0; index < frames.Length; index++)
+        {
+            frames[index] = product.PrepareFrame(UsdMatrix4d.Identity, optics,
+                transport.Timeline.ToTimeCode((transport.Status.StepIndex + (ulong)index + 1) * StepSeconds),
+                RenderCameraFrameSettings.Default);
+        }
+        RenderDiskJobRequest request = new RenderProductJobPlan(
+            new StageIdentity("recording.usda"), frames, RenderSettings.Default)
+            .CreateJob(Path.Combine(root, "recording"));
+        var source = new RecordingSource(request.OutputDirectory);
+        try
+        {
+            Task<RenderDiskJobResult> job = StartRecording(() => PhysicsRenderRecording.Execute(
+                request, transport, bindings, new PhysicsRenderCapacities(1, 0, 0),
+                source, new PhysicsRenderRecordingContext("identity", 8)));
+            await PumpRecordingAsync(transport, job);
+            Exception? failure = await CaptureAsync(transport, job);
+            await Assert.That(failure).IsTypeOf<NotSupportedException>();
+            await Assert.That(failure!.Message).Contains($"the {plane} identity plane");
+            await Assert.That(world.Counter).IsEqualTo(0ul);
+            await Assert.That(source.Positions.Count).IsEqualTo(0);
+            await Assert.That(Directory.Exists(request.OutputDirectory)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 

@@ -2812,3 +2812,12 @@ static OpenUsd.Rendering.Silk.SilkPrimIdentity.operator !=(OpenUsd.Rendering.Sil
 static OpenUsd.Rendering.Silk.SilkPrimIdentity.operator ==(OpenUsd.Rendering.Silk.SilkPrimIdentity left, OpenUsd.Rendering.Silk.SilkPrimIdentity right) -> bool
 OpenUsd.Rendering.Silk.SilkPrimIdentity.Equals(OpenUsd.Rendering.Silk.SilkPrimIdentity other) -> bool
 OpenUsd.Rendering.Silk.SilkPrimIdentity.Deconstruct(out string! Path, out int InstanceIndex) -> void
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.IncludeInstanceId.get -> bool
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.IncludeInstanceId.init -> void
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludeInstanceId.get -> bool
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludeInstanceId.init -> void
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.InstanceId.get -> OpenUsd.Rendering.Silk.SilkInstanceIdCaptureResult?
+OpenUsd.Rendering.Silk.SilkInstanceIdCaptureResult
+OpenUsd.Rendering.Silk.SilkInstanceIdCaptureResult.Height.get -> int
+OpenUsd.Rendering.Silk.SilkInstanceIdCaptureResult.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.Silk.SilkInstanceIdCaptureResult.Width.get -> int
