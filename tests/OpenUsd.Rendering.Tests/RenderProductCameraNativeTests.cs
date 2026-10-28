@@ -167,6 +167,69 @@ public sealed class RenderProductCameraNativeTests
         }
     }
 
+    [Test]
+    public async Task ActiveShutterSamplesTheMovingCameraAtStratifiedSubintervalCenters()
+    {
+        RequireNativeExecution();
+        string root = Directory.CreateTempSubdirectory("render-product-shutter-").FullName;
+        string path = Path.Combine(root, "scene.usda");
+        const string scene = """
+            #usda 1.0
+            (renderSettingsPrimPath = "/Settings")
+            def Camera "Camera" {
+                token projection = "orthographic"
+                float horizontalAperture = 20
+                float verticalAperture = 20
+                float2 clippingRange = (1, 11)
+                double shutter:open = -0.5
+                double shutter:close = 0.5
+                double3 xformOp:translate.timeSamples = { 0: (0, 0, 0), 8: (16, 0, 0) }
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+            def RenderSettings "Settings" {
+                rel camera = </Camera>
+                rel products = </Product>
+                int2 resolution = (4, 4)
+                bool disableMotionBlur = false
+                uniform token[] includedPurposes = ["default", "render"]
+                uniform token[] materialBindingPurposes = ["full"]
+            }
+            def RenderProduct "Product" {
+                token productName = "never-written.exr"
+                rel orderedVars = </Color>
+            }
+            def RenderVar "Color" {
+                token dataType = "half4"
+                string sourceName = "color"
+                token sourceType = "raw"
+            }
+            """;
+        try
+        {
+            await File.WriteAllTextAsync(path, scene);
+            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            RenderProductJobPlan plan = await RenderProductJobPlan.PrepareAsync(
+                scheduler, new StageIdentity("scene.usda"), [4], RenderSettings.PresentationDefault);
+            RenderPreparedFrame frame = plan.Frames[0];
+            await Assert.That(frame.ShutterSamples.Count).IsEqualTo(8);
+            for (int index = 0; index < 8; index++)
+            {
+                double time = 3.5 + ((index + 0.5) / 8);
+                RenderPreparedFrame sample = frame.ShutterSamples[index];
+                await Assert.That(sample.TimeCode).IsEqualTo(time);
+                await Assert.That(sample.Camera.View.M41).IsEqualTo((float)(-2 * time));
+                await Assert.That(sample.OutputDimensions).IsEqualTo(frame.OutputDimensions);
+            }
+            await Assert.That(frame.Camera.View.M41).IsEqualTo(-8f);
+            await Assert.That(plan.ShutterStates(0)!.Count).IsEqualTo(8);
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(scene);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static void RequireNativeExecution()
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")

@@ -76,7 +76,7 @@ public static partial class RenderDiskJob
                     staging, index, request.Frames[index], source, diagnostics, request.IncludeDeviceDepth,
                     request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index),
                     request.ProductPlan?.Frames[index].CameraSettings!.LinearExposureScale ?? 1, remaining,
-                    cancellationToken);
+                    request.ProductPlan?.ShutterStates(index), cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
             }
@@ -162,9 +162,11 @@ public static partial class RenderDiskJob
         string directory, int index, StageRenderState state, IRenderJobFrameSource source,
         List<RenderDiagnostic> diagnostics, bool includeDeviceDepth, bool includeHdrColor,
         RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, double hdrExposureScale, long maximumBytes,
-        CancellationToken cancellationToken)
+        IReadOnlyList<StageRenderState>? shutterStates, CancellationToken cancellationToken)
     {
-        RenderJobImage image = source.Render(state, cancellationToken) ??
+        RenderJobImage image = (shutterStates is null
+            ? source.Render(state, cancellationToken)
+            : AccumulateShutter(state, shutterStates, source, includeHdrColor, cancellationToken)) ??
             throw new InvalidOperationException("The render source returned no image.");
         cancellationToken.ThrowIfCancellationRequested();
         if (image.Width != state.Viewport.Width || image.Height != state.Viewport.Height)

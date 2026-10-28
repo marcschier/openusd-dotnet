@@ -441,7 +441,7 @@ public sealed class RenderProductJobPlanTests
             var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [exposed, unit], baseline);
             await Assert.That(plan.RenderSettings).IsEqualTo(baseline);
             RenderDiskJobRequest job = plan.CreateJob(
-                Path.Combine(root, "out"), exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.Raw);
+                Path.Combine(root, "out"), exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.RawRgba16Float);
             await Assert.That(job.Frames[0].RenderSettings.Exposure).IsEqualTo(baseline.Exposure - 2);
             RenderSettings shifted = job.Frames[0].RenderSettings;
             await Assert.That(shifted.SamplesPerPixel == baseline.SamplesPerPixel &&
@@ -509,7 +509,7 @@ public sealed class RenderProductJobPlanTests
             input[4] = 0x7BFF;
             string output = Path.Combine(root, "out");
             await Assert.That(() => RenderDiskJob.Execute(
-                    plan.CreateJob(output, exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.Raw),
+                    plan.CreateJob(output, exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.RawRgba16Float),
                     new ProductSource { HdrBytes = Halves(input) }))
                 .Throws<InvalidDataException>();
             await Assert.That(Directory.Exists(output)).IsFalse();
@@ -518,6 +518,115 @@ public sealed class RenderProductJobPlanTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Test]
+    public async Task ActiveShutterAccumulatesEqualWeightSamplesIntoBothColorPlanes()
+    {
+        string root = Directory.CreateTempSubdirectory("product-shutter-").FullName;
+        try
+        {
+            RenderProductRequest request = Request(disableOptics: false, colorOnly: true);
+            RenderPreparedFrame frame = ShutterFrame(request, 4, -0.25, 0.25);
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [frame],
+                RenderSettings.PresentationDefault);
+            IReadOnlyList<StageRenderState> shutter = plan.ShutterStates(0)!;
+            double[] expectedTimes = [.. Enumerable.Range(0, 8).Select(static i => 3.75 + (0.5 * (i + 0.5) / 8))];
+            await Assert.That(shutter.Select(static state => state.Time.TimeCode).SequenceEqual(expectedTimes)).IsTrue();
+            await Assert.That(shutter.Zip(shutter.Skip(1)).All(static pair => pair.Second.Revision > pair.First.Revision))
+                .IsTrue();
+            var source = new ProductSource
+            {
+                IncludeDepth = false,
+                Pixels = static (index, count) =>
+                {
+                    byte[] rgba = new byte[count * 4];
+                    Array.Fill(rgba, (byte)index);
+                    ushort[] hdr = new ushort[count * 4];
+                    Array.Fill(hdr, BitConverter.HalfToUInt16Bits((Half)index));
+                    return (rgba, Halves(hdr), index % 2 == 0 ? Rgba8RowOrder.TopDown : Rgba8RowOrder.BottomUp);
+                },
+            };
+            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "out")), source);
+            await Assert.That(source.Calls).IsEqualTo(8);
+            await Assert.That(source.States.Select(static state => state.Time.TimeCode).SequenceEqual(expectedTimes))
+                .IsTrue();
+            await Assert.That(result.Frames[0].State.Time.TimeCode).IsEqualTo(4d);
+            byte[] hdrFile = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, result.Frames[0].HdrColorFileName!));
+            ushort[] mean = new ushort[16];
+            Array.Fill(mean, BitConverter.HalfToUInt16Bits((Half)3.5));
+            await Assert.That(Convert.ToHexString(hdrFile)).IsEqualTo(Convert.ToHexString(Halves(mean)));
+            PngRgba8Image png = PngRgba8Reader.Decode(await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, result.Frames[0].FileName)));
+            await Assert.That(png.Pixels.All(static value => value == 4)).IsTrue();
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement saved = manifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(saved.GetProperty("productCamera").GetProperty("shutterSampleCount").GetInt32())
+                .IsEqualTo(8);
+            JsonElement accumulation = saved.GetProperty("productShutterAccumulation");
+            await Assert.That(accumulation.GetProperty("sampleTimeCodes").EnumerateArray()
+                .Select(static value => value.GetDouble()).SequenceEqual(expectedTimes)).IsTrue();
+            await Assert.That(accumulation.GetProperty("filter").GetString())
+                .IsEqualTo("box-stratified-subinterval-centers");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ActiveShutterRefusesDepthAndPublishesNothingForAnInvalidSample()
+    {
+        RenderProductRequest depth = Request(disableOptics: false);
+        await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [ShutterFrame(depth, 1, -0.25, 0.25)], RenderSettings.Default)).Throws<NotSupportedException>();
+        RenderProductRequest color = Request(disableOptics: false, colorOnly: true);
+        RenderPreparedFrame instant = color.PrepareFrame(
+            UsdMatrix4d.Identity, Optics(), 1, new RenderCameraFrameSettings(0.5, 0.5));
+        await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"), [instant],
+            RenderSettings.Default)).Throws<NotSupportedException>();
+        string root = Directory.CreateTempSubdirectory("product-shutter-invalid-").FullName;
+        try
+        {
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+                [ShutterFrame(color, 1, 0, 1)], RenderSettings.Default);
+            string output = Path.Combine(root, "out");
+            var source = new ProductSource
+            {
+                IncludeDepth = false,
+                Pixels = static (index, count) =>
+                {
+                    ushort[] hdr = new ushort[count * 4];
+                    hdr[0] = index == 5 ? (ushort)0x7C00 : (ushort)0x3C00;
+                    return (new byte[count * 4], Halves(hdr), Rgba8RowOrder.TopDown);
+                },
+            };
+            await Assert.That(() => RenderDiskJob.Execute(plan.CreateJob(output), source))
+                .Throws<InvalidDataException>();
+            await Assert.That(Directory.Exists(output)).IsFalse();
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static RenderPreparedFrame ShutterFrame(
+        RenderProductRequest request, double time, double open, double close)
+    {
+        var settings = new RenderCameraFrameSettings(open, close);
+        RenderPreparedFrame frame = request.PrepareFrame(UsdMatrix4d.Identity, Optics(), time, settings);
+        var samples = new RenderPreparedFrame[RenderProductRequest.MotionBlurSampleCount];
+        for (int index = 0; index < samples.Length; index++)
+        {
+            samples[index] = request.PrepareFrame(UsdMatrix4d.Identity, Optics(),
+                time + open + ((close - open) * (index + 0.5) / samples.Length), settings);
+        }
+        return frame.WithShutterSamples(samples);
     }
 
     private static byte[] Halves(ushort[] values)
@@ -537,7 +646,7 @@ public sealed class RenderProductJobPlanTests
         UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 10, fStop);
 
     private static RenderProductRequest Request(
-        string? failure = null, bool depthFirst = false, bool disableOptics = true)
+        string? failure = null, bool depthFirst = false, bool disableOptics = true, bool colorOnly = false)
     {
         var color = new UsdRenderVariableSpecification("/Render/Color",
             failure == "variable-type" ? "color3f" : "half4",
@@ -545,7 +654,7 @@ public sealed class RenderProductJobPlanTests
             failure == "variable-setting" ? ["renderer:filter"] : []);
         var depth = new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", []);
         int[] indices = failure == "outputs-empty" ? [] : failure == "duplicate-color" ? [0, 0] :
-            depthFirst ? [1, 0] : [0, 1];
+            colorOnly ? [0] : depthFirst ? [1, 0] : [0, 1];
         return new RenderProductRequest(new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
                 2, 2, 1, "expandAperture", new UsdVec2f(20, 20), new UsdVec4f(0, 0, 1, 1),
@@ -559,6 +668,8 @@ public sealed class RenderProductJobPlanTests
     private sealed class ProductSource : IRenderProductFrameSource
     {
         internal byte[]? HdrBytes { get; init; }
+        internal bool IncludeDepth { get; init; } = true;
+        internal Func<int, int, (byte[] Rgba, byte[] Hdr, Rgba8RowOrder RowOrder)>? Pixels { get; init; }
         internal bool Refuse { get; init; }
         internal int Validations { get; private set; }
         internal int Calls { get; private set; }
@@ -582,6 +693,17 @@ public sealed class RenderProductJobPlanTests
             Calls++;
             States.Add(state);
             int count = state.Viewport.Width * state.Viewport.Height;
+            if (Pixels is { } pixels)
+            {
+                (byte[] rgba, byte[] hdr, Rgba8RowOrder order) = pixels(Calls - 1, count);
+                return new RenderJobImage(state.Viewport.Width, state.Viewport.Height, rgba, order)
+                {
+                    HdrColor = new RenderJobHdrColor(state.Viewport.Width, state.Viewport.Height, hdr),
+                    DeviceDepth = IncludeDepth
+                        ? new RenderJobDeviceDepth(state.Viewport.Width, state.Viewport.Height, new float[count])
+                        : null
+                };
+            }
             return new RenderJobImage(
                 state.Viewport.Width, state.Viewport.Height, new byte[count * 4], Rgba8RowOrder.TopDown)
             {

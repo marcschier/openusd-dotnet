@@ -881,6 +881,7 @@ OpenUsd.Rendering.RenderPreparedFrame
 OpenUsd.Rendering.RenderPreparedFrame.Camera.get -> OpenUsd.Rendering.CameraState
 OpenUsd.Rendering.RenderPreparedFrame.DataWindowMinX.get -> int
 OpenUsd.Rendering.RenderPreparedFrame.DataWindowMinY.get -> int
+OpenUsd.Rendering.RenderPreparedFrame.ShutterSamples.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderPreparedFrame!>!
 OpenUsd.Rendering.RenderPreparedFrame.OutputDimensions.get -> OpenUsd.Rendering.ViewportDimensions
 OpenUsd.Rendering.RenderPreparedFrame.PixelAspectRatio.get -> double
 OpenUsd.Rendering.RenderPreparedFrame.Request.get -> OpenUsd.Rendering.RenderProductRequest!

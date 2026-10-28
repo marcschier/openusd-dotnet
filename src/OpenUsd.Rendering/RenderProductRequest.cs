@@ -82,6 +82,45 @@ public sealed class RenderProductRequest : IUsdDetachedResult
             throw new NotSupportedException($"Camera '{CameraPath}' must be active and defined.");
         }
         UsdGeomCamera camera = UsdGeomCamera.Wrap(prim);
+        (UsdMatrix4d worldToView, UsdGeomCameraState sampled) = SampleCamera(camera, timeCode);
+        if (!includeExecutionSettings)
+        {
+            return PrepareFrame(worldToView, sampled, timeCode);
+        }
+        RenderCameraFrameSettings settings = RenderCameraFrameSettings.Read(stage, prim, timeCode);
+        RenderPreparedFrame frame = PrepareFrame(worldToView, sampled, timeCode, settings);
+        if (settings.ShutterClose <= settings.ShutterOpen || Product.DisableMotionBlur)
+        {
+            return frame;
+        }
+        var samples = new RenderPreparedFrame[MotionBlurSampleCount];
+        double interval = settings.ShutterClose - settings.ShutterOpen;
+        for (int index = 0; index < samples.Length; index++)
+        {
+            // Stratified box-filter samples at subinterval centers; the shutter offsets are in time codes.
+            double time = timeCode + settings.ShutterOpen + (interval * (index + 0.5) / samples.Length);
+            if (!double.IsFinite(time))
+            {
+                throw new NotSupportedException("The camera shutter interval has no finite sample times.");
+            }
+            (UsdMatrix4d sampleView, UsdGeomCameraState sampleOptics) = SampleCamera(camera, time);
+            RenderPreparedFrame sample = PrepareFrame(sampleView, sampleOptics, time, settings);
+            if (sample.OutputDimensions != frame.OutputDimensions ||
+                sample.DataWindowMinX != frame.DataWindowMinX || sample.DataWindowMinY != frame.DataWindowMinY)
+            {
+                throw new NotSupportedException(
+                    "The product raster changes within the shutter interval and cannot be accumulated.");
+            }
+            samples[index] = sample;
+        }
+        return frame.WithShutterSamples(samples);
+    }
+
+    /// <summary>Gets the stratified sample count used when a product renders an active shutter interval.</summary>
+    internal const int MotionBlurSampleCount = 8;
+
+    private (UsdMatrix4d WorldToView, UsdGeomCameraState Optics) SampleCamera(UsdGeomCamera camera, double timeCode)
+    {
         if (camera.Prim.GetAttribute("clippingPlanes").GetValueState(timeCode).HasAuthoredValueOpinion)
         {
             throw new NotSupportedException(
@@ -92,10 +131,7 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         {
             throw new InvalidOperationException($"Camera '{CameraPath}' has a non-invertible transform.");
         }
-        UsdGeomCameraState sampled = camera.GetState(timeCode);
-        return includeExecutionSettings
-            ? PrepareFrame(worldToView, sampled, timeCode, RenderCameraFrameSettings.Read(stage, prim, timeCode))
-            : PrepareFrame(worldToView, sampled, timeCode);
+        return (worldToView, camera.GetState(timeCode));
     }
 
     /// <summary>Prepares a raster frame from a caller-sampled camera and world-to-view transform.</summary>

@@ -32,9 +32,11 @@ public sealed class RenderProductOutputBinding
 /// <summary>Admits one sampled raster product for the shared bounded split-plane disk-job engine.</summary>
 /// <remarks>
 /// The initial profile supports raw half4 color and float normalized depth, one material-binding
-/// purpose, standard scene purposes and no active motion blur or depth of field. The authored camera
-/// exposure multiplier scales the HDR color variable and adds its stops to the PNG companion's display
-/// exposure, so both outputs carry the same camera exposure.
+/// purpose, standard scene purposes and no active depth of field. The authored camera exposure
+/// multiplier scales the HDR color variable and adds its stops to the PNG companion's display
+/// exposure, so both outputs carry the same camera exposure. An open shutter with motion blur enabled
+/// renders eight equal-weight samples at stratified sub-interval centers and stores their mean;
+/// such frames cannot include device depth or exceed 4096 x 4096 pixels.
 /// Unsupported variables/settings remain inspectable through RenderProductRequest but cannot execute here.
 /// A PNG is an explicitly identified display companion, not a replacement for a requested variable.
 /// Adapters must apply the admitted scene filters and all render settings before returning each frame.
@@ -43,6 +45,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
 {
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private readonly IReadOnlyList<StageRenderState> _states;
+    private readonly IReadOnlyList<StageRenderState>?[]? _shutterStates;
 
     /// <summary>
     /// Copies and validates samples from one immutable product request before rendering or file creation.
@@ -74,6 +77,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         RenderSettings = renderSettings;
         var samples = new RenderPreparedFrame[count];
         var states = new StageRenderState[count];
+        IReadOnlyList<StageRenderState>?[]? shutterStates = null;
         StageRenderState state = StageRenderState.Create(stage)
             .WithDisplay(new SceneDisplayState(
                 IncludedPurposes, RenderVisibility.RespectAuthored, RenderDrawMode.SmoothShaded))
@@ -87,17 +91,36 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 throw new ArgumentException(
                     "All samples must belong to the same immutable product request.", nameof(frames));
             }
-            ValidateCamera(frame);
+            ValidateCamera(frame, IncludeDeviceDepth);
             samples[index] = frame;
+            RenderSettings exposed = ProductCameraExposure.ApplyToDisplay(
+                renderSettings, frame.CameraSettings!.LinearExposureScale);
+            if (frame.ShutterSamples.Count != 0)
+            {
+                var shutter = new StageRenderState[frame.ShutterSamples.Count];
+                for (int sample = 0; sample < shutter.Length; sample++)
+                {
+                    RenderPreparedFrame subframe = frame.ShutterSamples[sample];
+                    shutter[sample] = state = state.WithCamera(subframe.Camera)
+                        .WithViewport(subframe.OutputDimensions).WithTime(new StageTime(subframe.TimeCode))
+                        .WithRenderSettings(exposed).AdvanceRevision();
+                }
+                shutterStates ??= new IReadOnlyList<StageRenderState>?[count];
+                shutterStates[index] = new OwnedReadOnlyList<StageRenderState>(shutter);
+            }
             states[index] = state = state.WithCamera(frame.Camera).WithViewport(frame.OutputDimensions)
-                .WithTime(new StageTime(frame.TimeCode))
-                .WithRenderSettings(ProductCameraExposure.ApplyToDisplay(
-                    renderSettings, frame.CameraSettings!.LinearExposureScale))
-                .AdvanceRevision();
+                .WithTime(new StageTime(frame.TimeCode)).WithRenderSettings(exposed).AdvanceRevision();
         }
         Frames = new OwnedReadOnlyList<RenderPreparedFrame>(samples);
         _states = new OwnedReadOnlyList<StageRenderState>(states);
+        _shutterStates = shutterStates;
     }
+
+    /// <summary>Gets the per-sample states accumulated for a frame's active shutter, or null.</summary>
+    internal IReadOnlyList<StageRenderState>? ShutterStates(int index) => _shutterStates?[index];
+
+    /// <summary>Gets the largest output raster that may be accumulated across a shutter interval.</summary>
+    internal const int MaximumAccumulatedPixels = 4096 * 4096;
 
     /// <summary>Gets the unchanged authored request and explicit raster overrides.</summary>
     public RenderProductRequest Request { get; }
@@ -247,15 +270,33 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         return new OwnedReadOnlyList<RenderProductOutputBinding>(outputs);
     }
 
-    private static void ValidateCamera(RenderPreparedFrame frame)
+    private static void ValidateCamera(RenderPreparedFrame frame, bool includeDeviceDepth)
     {
         RenderCameraFrameSettings settings = frame.CameraSettings ??
             throw new NotSupportedException(
                 "Executing a product requires sampled camera shutter and exposure, not geometry alone.");
         if (!frame.Request.Product.DisableMotionBlur && (settings.ShutterOpen != 0 || settings.ShutterClose != 0))
         {
-            throw new NotSupportedException(
-                "The current capture profile cannot omit the active camera shutter interval.");
+            if (settings.ShutterClose <= settings.ShutterOpen)
+            {
+                throw new NotSupportedException(
+                    "A zero-length or inverted camera shutter interval cannot be accumulated.");
+            }
+            if (frame.ShutterSamples.Count != RenderProductRequest.MotionBlurSampleCount)
+            {
+                throw new NotSupportedException(
+                    "An active camera shutter needs stage-sampled shutter samples from PrepareExecutionFrame.");
+            }
+            if (includeDeviceDepth)
+            {
+                throw new NotSupportedException(
+                    "Normalized device depth has no defined value when accumulated across a shutter interval.");
+            }
+            if ((long)frame.OutputDimensions.Width * frame.OutputDimensions.Height > MaximumAccumulatedPixels)
+            {
+                throw new NotSupportedException(
+                    "The output raster exceeds the shutter-accumulation pixel limit of 4096 x 4096.");
+            }
         }
         if (!frame.Request.Product.DisableDepthOfField && frame.SampledCamera.FStop != 0)
         {

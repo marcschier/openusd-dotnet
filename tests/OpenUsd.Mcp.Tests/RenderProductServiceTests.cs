@@ -242,10 +242,10 @@ public sealed class RenderProductServiceTests
             new ReadSequenceFrameRequest { JobId = product.JobId, FrameIndex = 1 }, default);
         await Assert.That(first.ProductCamera)
             .IsEqualTo(new McpProductCameraDto(disableMotionBlur ? -0.25 : 0, disableMotionBlur ? 0.25 : 0,
-                -1, 200, 4, 2, 1, 1, 10, disableDepthOfField ? 3 : 0, disableMotionBlur, disableDepthOfField));
+                -1, 200, 4, 2, 1, 1, 10, disableDepthOfField ? 3 : 0, disableMotionBlur, disableDepthOfField, 0));
         await Assert.That(second.ProductCamera)
             .IsEqualTo(new McpProductCameraDto(disableMotionBlur ? -0.5 : 0, disableMotionBlur ? 0.75 : 0,
-                -2, 400, 8, 4, 2, 1, 20, disableDepthOfField ? 6 : 0, disableMotionBlur, disableDepthOfField));
+                -2, 400, 8, 4, 2, 1, 20, disableDepthOfField ? 6 : 0, disableMotionBlur, disableDepthOfField, 0));
         McpSequenceFrameResultDto[] frames = [first, second];
         foreach (McpSequenceFrameResultDto frame in frames)
         {

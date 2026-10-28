@@ -898,7 +898,8 @@ public sealed class OpenUsdMcpToolsTests
             {
                 "shutterOpen": -0.125, "shutterClose": 0.375, "exposure": -2, "exposureIso": 400,
                 "exposureTime": 2, "exposureFStop": 2, "exposureResponsivity": 2, "linearExposureScale": 1,
-                "focusDistance": 25, "fStop": 5.6, "disableMotionBlur": true, "disableDepthOfField": true
+                "focusDistance": 25, "fStop": 5.6, "disableMotionBlur": true, "disableDepthOfField": true,
+                "shutterSampleCount": 0
             }
             """);
         await Assert.That(JsonElement.DeepEquals(sequenceFrame.StructuredContent.Value.GetProperty("productCamera"),
@@ -973,7 +974,8 @@ public sealed class OpenUsdMcpToolsTests
             {
                 "shutterOpen": 0, "shutterClose": 0, "exposure": -3, "exposureIso": 800,
                 "exposureTime": 4, "exposureFStop": 4, "exposureResponsivity": 4, "linearExposureScale": 1,
-                "focusDistance": 0, "fStop": 0, "disableMotionBlur": false, "disableDepthOfField": false
+                "focusDistance": 0, "fStop": 0, "disableMotionBlur": false, "disableDepthOfField": false,
+                "shutterSampleCount": 0
             }
             """);
         await Assert.That(JsonElement.DeepEquals(sheet.StructuredContent.Value.GetProperty("tiles")[0]
@@ -1366,7 +1368,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                         .WithDisplay(new SceneDisplayState(
                             RenderPurpose.Guide, RenderVisibility.IncludeInvisible, RenderDrawMode.Wireframe))),
                     ProductRaster = new McpProductRasterDto(640, 360, 80, -24, 0.75, "adjustPixelAspectRatio"),
-                    ProductCamera = new McpProductCameraDto(0, 0, -3, 800, 4, 4, 4, 1, 0, 0, false, false)
+                    ProductCamera = new McpProductCameraDto(0, 0, -3, 800, 4, 4, 4, 1, 0, 0, false, false, 0)
                 }
             ],
             [descriptor])
@@ -1420,7 +1422,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 .WithViewport(new ViewportDimensions(1, 1))
                 .WithRenderSettings(RenderSettings.PresentationDefault)),
             ProductRaster = new McpProductRasterDto(720, 480, -16, 24, 1.5, "cropAperture"),
-            ProductCamera = new McpProductCameraDto(-0.125, 0.375, -2, 400, 2, 2, 2, 1, 25, 5.6, true, true)
+            ProductCamera = new McpProductCameraDto(-0.125, 0.375, -2, 400, 2, 2, 2, 1, 25, 5.6, true, true, 0)
         });
     }
 

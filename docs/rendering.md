@@ -834,12 +834,25 @@ through actual rendering; preparation alone is not a lifetime or revision guaran
 The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
 variables, one per plane, with one material-binding purpose and standard scene-purpose tokens.
 Depth is normalized device depth, not metric camera distance. Named rendering color spaces,
-unevaluated settings, other source/data types and active motion-blur or depth-of-field
-requirements are not silently approximated. Authored camera exposure is applied: each frame
+unevaluated settings, other source/data types and active depth-of-field requirements are not
+silently approximated. Authored camera exposure is applied: each frame
 multiplies HDR color by `LinearExposureScale` and adds its log2 stops to the companion's display
 exposure, so the raw plane and PNG agree. A zero scale is refused at planning; a binary16
 overflow fails the job before publication. These remain incomplete portions
 of the larger authored-render milestone.
+
+Motion blur is rendered by temporal accumulation. When the product leaves `disableMotionBlur`
+false and the camera's shutter interval is open, `PrepareExecutionFrame` samples the camera at
+eight stratified sub-interval centers, `frame + open + (close - open) * (i + 0.5) / 8`, and
+exposes them as `RenderPreparedFrame.ShutterSamples`. Geometry follows each sample's time code.
+A sample whose raster or data window differs from the frame's is refused, as is a zero-length or
+inverted interval. The job renders every sample with the frame's settings and stores box-filter
+means: HDR color averages the binary16 samples in single precision before camera exposure, and
+the PNG companion averages display-encoded RGBA8 with round-half-up. The PNG is therefore a mean
+of displayed images, not a display transform of the HDR mean. Accumulation refuses normalized
+device depth, which has no defined averaged value, and simulation-backed sources. Its working
+set is about 24 bytes per pixel, so the output raster is limited to 4096 × 4096 pixels.
+Explicit-matrix frames carry no samples and remain refused with an open shutter.
 
 `plan.CreateJob` reuses the existing disk engine and quota policy. A source must explicitly
 implement `IRenderProductFrameSource.ValidateProduct` and honor every admitted filter and setting;
@@ -909,8 +922,10 @@ to each 20/40/80/160-ms boundary without sleeping; Windows integration cases ret
 leases while controlling release, cancellation and destination collisions at those boundaries.
 
 This sequence API is an execution foundation, not implicit support for arbitrary authored
-render variables, arbitrary HDR containers, depth of field, motion blur or scene-supplied RenderPass commands. Product
-adapters must honor or explicitly refuse additional semantics before submitting prepared states.
+render variables, arbitrary HDR containers, depth of field or scene-supplied RenderPass commands.
+Product motion blur is the only accumulation it performs, and only for states supplied by an
+admitted product plan. Product adapters must honor or explicitly refuse additional semantics
+before submitting prepared states.
 
 The additive `includeDeviceDepth` request overload requires a `RenderJobDeviceDepth` plane from
 each source frame. The original request constructor remains color-only. Depth requests charge

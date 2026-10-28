@@ -52,4 +52,29 @@ public sealed class RenderPreparedFrame : IUsdDetachedResult
 
     /// <summary>Gets the pixel width-to-height ratio after conformance.</summary>
     public double PixelAspectRatio { get; }
+
+    /// <summary>Gets stratified camera samples across an active shutter interval, or an empty list.</summary>
+    /// <remarks>
+    /// Only stage-sampled execution frames with an open shutter and motion blur enabled carry samples.
+    /// Each sample shares this frame's raster and holds its own absolute time code.
+    /// </remarks>
+    public IReadOnlyList<RenderPreparedFrame> ShutterSamples { get; private init; } = [];
+
+    internal RenderPreparedFrame WithShutterSamples(RenderPreparedFrame[] samples) => new(this)
+    {
+        ShutterSamples = Array.AsReadOnly(samples),
+    };
+
+    private RenderPreparedFrame(RenderPreparedFrame source)
+    {
+        Request = source.Request;
+        SampledCamera = source.SampledCamera;
+        TimeCode = source.TimeCode;
+        Camera = source.Camera;
+        OutputDimensions = source.OutputDimensions;
+        DataWindowMinX = source.DataWindowMinX;
+        DataWindowMinY = source.DataWindowMinY;
+        PixelAspectRatio = source.PixelAspectRatio;
+        CameraSettings = source.CameraSettings;
+    }
 }

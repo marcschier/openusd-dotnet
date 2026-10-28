@@ -69,7 +69,26 @@ public static partial class RenderDiskJob
         json.WriteNumber("linearExposureScale", camera.LinearExposureScale);
         json.WriteNumber("focusDistance", frame.SampledCamera.FocusDistance);
         json.WriteNumber("fStop", frame.SampledCamera.FStop);
+        json.WriteNumber("shutterSampleCount", frame.ShutterSamples.Count);
         json.WriteEndObject();
+        if (frame.ShutterSamples.Count != 0)
+        {
+            json.WriteStartObject("productShutterAccumulation");
+            json.WriteString("filter", "box-stratified-subinterval-centers");
+            json.WriteStartArray("sampleTimeCodes");
+            foreach (RenderPreparedFrame sample in frame.ShutterSamples)
+            {
+                json.WriteNumberValue(sample.TimeCode);
+            }
+            json.WriteEndArray();
+            json.WriteString("hdrAccumulation", "float-mean-of-binary16-samples-before-camera-exposure");
+            json.WriteString("pngAccumulation", "rounded-mean-of-display-encoded-rgba8-samples");
+            json.WriteEndObject();
+        }
+        else
+        {
+            json.WriteNull("productShutterAccumulation");
+        }
         json.WriteStartArray("productOutputs");
         foreach (RenderProductOutputBinding output in plan.Outputs)
         {
