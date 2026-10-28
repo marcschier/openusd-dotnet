@@ -238,6 +238,13 @@ unmodified R channel. The SDK resolves actual module defaults; the dependency-fr
 authored-only profile retains its historical full-texture behavior when no influence
 or module default was supplied.
 
+When the selected standalone or ORM texture is unavailable, an exact zero influence
+is still recognized as neutral and keeps the constant. Nonzero influences remain
+unsupported: the pinned module blends the lookup even without a valid map, so absence
+alone does not prove equivalence to the constant. Malformed controls and texture
+resources retain their diagnostics. This diagnostic correction does not change
+shading records or establish new warehouse fidelity.
+
 ## Building
 
 The adapter is off by default:

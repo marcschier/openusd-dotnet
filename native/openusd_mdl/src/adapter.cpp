@@ -704,6 +704,24 @@ ClassifyInfluence(
 }
 
 void
+ReportUnmappedScalarInfluence(
+    ParameterTable& parameters,
+    DistillationResult& result,
+    const char* influenceName)
+{
+    if (!parameters.Has(influenceName))
+    {
+        return;
+    }
+    float factor = kUnauthored;
+    // Only exact zero proves that an unavailable lookup cannot change the constant.
+    if (ClassifyInfluence(parameters, influenceName, result, &factor) != TextureInfluence::Off)
+    {
+        result.unsupported.emplace_back(influenceName);
+    }
+}
+
+void
 ProjectScalarTexture(
     ParameterTable& parameters,
     DistillationResult& result,
@@ -1117,6 +1135,10 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result, bool radi
             OPENUSD_MDL_SURFACE_ROUGHNESS, OPENUSD_MDL_CHANNEL_R, hasRoughness, roughness, textureOrigin,
             ResolveColorSpace(parameters, "reflectionroughness_texture", OPENUSD_MDL_COLOR_SPACE_RAW), asset);
     }
+    else if (!(ormAuthored && ormEnabled))
+    {
+        ReportUnmappedScalarInfluence(parameters, result, "reflection_roughness_texture_influence");
+    }
 
     float metallic = 0.0F;
     const bool hasMetallic = TryFloat(parameters, "metallic_constant", result, &metallic);
@@ -1130,6 +1152,10 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result, bool radi
         ProjectScalarTexture(parameters, result, "metallic_texture_influence",
             OPENUSD_MDL_SURFACE_METALLIC, OPENUSD_MDL_CHANNEL_R, hasMetallic, metallic, textureOrigin,
             ResolveColorSpace(parameters, "metallic_texture", OPENUSD_MDL_COLOR_SPACE_RAW), asset);
+    }
+    else if (!(ormAuthored && ormEnabled))
+    {
+        ReportUnmappedScalarInfluence(parameters, result, "metallic_texture_influence");
     }
 
     float aoWeight = 1.0F;
@@ -1172,6 +1198,11 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result, bool radi
         {
             result.unsupported.emplace_back("ORM_texture");
         }
+    }
+    else if (ormAuthored && ormEnabled)
+    {
+        ReportUnmappedScalarInfluence(parameters, result, "reflection_roughness_texture_influence");
+        ReportUnmappedScalarInfluence(parameters, result, "metallic_texture_influence");
     }
 
     bool opacityEnabled = false;
