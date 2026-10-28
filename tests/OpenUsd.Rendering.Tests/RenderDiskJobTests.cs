@@ -179,6 +179,12 @@ public sealed class RenderDiskJobTests
                 Path.Combine(result.OutputDirectory, "manifest.json")));
             JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
             await Assert.That(frame.GetProperty("format").GetString()).IsEqualTo("png-rgba8");
+            byte[] png = await File.ReadAllBytesAsync(Path.Combine(
+                result.OutputDirectory, frame.GetProperty("file").GetString()!));
+            await Assert.That(Convert.ToHexString(png.AsSpan(0, 8))).IsEqualTo("89504E470D0A1A0A");
+            await Assert.That(frame.GetProperty("bytes").GetInt64()).IsEqualTo(png.LongLength);
+            await Assert.That(frame.GetProperty("sha256").GetString()).IsEqualTo(
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(png)).ToLowerInvariant());
             JsonElement simulation = frame.GetProperty("simulation");
             await Assert.That(simulation.GetProperty("epoch").GetGuid()).IsEqualTo(epoch);
             await Assert.That(simulation.GetProperty("scenarioIdentity").GetString()).IsEqualTo("drop-prop-v1");
