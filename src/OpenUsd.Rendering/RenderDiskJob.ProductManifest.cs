@@ -80,6 +80,7 @@ public static partial class RenderDiskJob
             json.WriteString("sourceName", output.Variable.SourceName);
             json.WriteString("dataType", output.Variable.DataType);
             json.WriteString("file", hdr ? result.HdrColorFileName : result.DepthFileName);
+            json.WriteString("format", hdr ? HdrColorFormatName(result.HdrColorFormat) : "float32-little-endian");
             json.WriteNumber("bytes", hdr ? result.HdrColorBytes : result.DepthBytes);
             json.WriteString("sha256", hdr ? result.HdrColorSha256 : result.DepthSha256);
             json.WriteString("rowOrder", "top-down");

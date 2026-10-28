@@ -57,7 +57,9 @@ internal static class PackageAuthoredProductExecution
                     product.GetProperty("materialBindingPurpose").GetString() != "full" ||
                     product.GetProperty("callerSourceStageRevision").GetUInt64() != revision ||
                     frame.GetProperty("productOutputs")[0].GetProperty("sourceName").GetString() != "depth" ||
+                    frame.GetProperty("productOutputs")[0].GetProperty("format").GetString() != "float32-little-endian" ||
                     frame.GetProperty("productOutputs")[1].GetProperty("dataType").GetString() != "half4" ||
+                    frame.GetProperty("productOutputs")[1].GetProperty("format").GetString() != "rgba16float-little-endian" ||
                     frame.GetProperty("productRaster").GetProperty("fullWidth").GetInt32() != 16)
                 {
                     throw new InvalidOperationException("The authored product manifest lost its requested semantics.");

@@ -1231,6 +1231,11 @@ companion, not a substitute for the requested raw/EXR variable. Source revision 
 preparation and before/after capture; all output planes publish together. This source interface
 must not be mistaken for released or complete general UsdRender execution.
 
+Each manifest frame's `productOutputs` bindings identify the stored `format` independently of
+the requested `dataType`: raw color uses `rgba16float-little-endian`, EXR color uses
+`openexr-rgba16float`, and depth uses `float32-little-endian`. The binding's byte extent,
+SHA-256, row order and value convention describe that file, not its PNG display companion.
+
 ### `analyze_scene` and proposals
 
 ```json

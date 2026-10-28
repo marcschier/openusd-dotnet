@@ -326,6 +326,13 @@ public static partial class RenderDiskJob
         return Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
     }
 
+    private static string HdrColorFormatName(RenderHdrColorFormat? format) => format switch
+    {
+        RenderHdrColorFormat.Exr => "openexr-rgba16float",
+        RenderHdrColorFormat.RawRgba16Float => "rgba16float-little-endian",
+        _ => throw new InvalidDataException("A published HDR plane must identify its stored format.")
+    };
+
     private static long WriteManifest(
         string directory, IReadOnlyList<RenderDiskFrameResult> frames,
         IReadOnlyList<RenderDiagnostic> diagnostics, long maximumBytes,
@@ -382,7 +389,7 @@ public static partial class RenderDiskJob
                     json.WriteStartObject("hdrColor");
                     json.WriteString("file", hdrName);
                     bool exr = frame.HdrColorFormat == RenderHdrColorFormat.Exr;
-                    json.WriteString("format", exr ? "openexr-rgba16float" : "rgba16float-little-endian");
+                    json.WriteString("format", HdrColorFormatName(frame.HdrColorFormat));
                     json.WriteString("rowOrder", "top-down");
                     json.WriteString("convention", "renderer-working-composited-before-exposure-and-display");
                     json.WriteString("alpha", "stored-framebuffer");

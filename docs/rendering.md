@@ -846,6 +846,12 @@ original name without filename authority, ordered variable/file bindings, sample
 camera exposure inputs, raster origin and pixel aspect. Raw split planes retain crop/overscan
 metadata; current EXR output refuses windows/aspect that its encoder cannot represent.
 
+Each `productOutputs` binding includes the actual file `format`: `rgba16float-little-endian`
+for raw HDR color, `openexr-rgba16float` for EXR color, or `float32-little-endian` for depth.
+This identifies the stored container independently of the unchanged authored `dataType`.
+The binding also carries byte extent, SHA-256, row order and value convention; depth remains
+normalized device depth even when color uses EXR.
+
 This admitted profile is wired through shared jobs, MCP and the D3D12/Vulkan Viewer with hdSilk session
 ABI 6. Filter transitions repopulate from current USD data, including hidden geometry edits;
 the legacy viewport reset remains explicit. Windows evidence covers D3D12 MCP execution and

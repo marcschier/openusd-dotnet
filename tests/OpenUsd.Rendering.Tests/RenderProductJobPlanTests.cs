@@ -220,12 +220,14 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
-    public async Task ProductManifestCarriesEveryRequestedVariableAndDoesNotUseItsAuthoredFilename()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ProductManifestCarriesEveryRequestedVariableAndDoesNotUseItsAuthoredFilename(bool depthFirst)
     {
         string root = Directory.CreateTempSubdirectory("product-manifest-").FullName;
         try
         {
-            RenderProductRequest request = Request(depthFirst: true);
+            RenderProductRequest request = Request(depthFirst: depthFirst);
             var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
                 [Frame(request, 1), Frame(request, 2)], RenderSettings.PresentationDefault, 42);
             var source = new ProductSource();
@@ -248,11 +250,40 @@ public sealed class RenderProductJobPlanTests
             JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
             JsonElement outputs = frame.GetProperty("productOutputs");
             await Assert.That(outputs.GetArrayLength()).IsEqualTo(2);
-            await Assert.That(outputs[0].GetProperty("sourceName").GetString()).IsEqualTo("depth");
-            await Assert.That(outputs[0].GetProperty("file").GetString()).IsEqualTo(result.Frames[0].DepthFileName);
-            await Assert.That(outputs[1].GetProperty("dataType").GetString()).IsEqualTo("half4");
-            await Assert.That(outputs[1].GetProperty("file").GetString()).IsEqualTo(result.Frames[0].HdrColorFileName);
-            await Assert.That(outputs[1].GetProperty("sha256").GetString()).IsEqualTo(result.Frames[0].HdrColorSha256);
+            foreach (JsonElement metadataFrame in manifest.RootElement.GetProperty("frames").EnumerateArray())
+            {
+                RenderDiskFrameResult stored = result.Frames[metadataFrame.GetProperty("index").GetInt32()];
+                JsonElement bindings = metadataFrame.GetProperty("productOutputs");
+                await Assert.That(bindings.GetArrayLength()).IsEqualTo(2);
+                for (int index = 0; index < bindings.GetArrayLength(); index++)
+                {
+                    bool depth = depthFirst == (index == 0);
+                    JsonElement binding = bindings[index];
+                    JsonElement plane = metadataFrame.GetProperty(depth ? "deviceDepth" : "hdrColor");
+                    string fileName = depth ? stored.DepthFileName! : stored.HdrColorFileName!;
+                    byte[] published = await File.ReadAllBytesAsync(Path.Combine(result.OutputDirectory, fileName));
+                    await Assert.That(binding.GetProperty("variablePath").GetString())
+                        .IsEqualTo(depth ? "/Render/Depth" : "/Render/Color");
+                    await Assert.That(binding.GetProperty("sourceName").GetString())
+                        .IsEqualTo(depth ? "depth" : "color");
+                    await Assert.That(binding.GetProperty("sourceType").GetString()).IsEqualTo("raw");
+                    await Assert.That(binding.GetProperty("dataType").GetString()).IsEqualTo(depth ? "float" : "half4");
+                    await Assert.That(binding.GetProperty("file").GetString()).IsEqualTo(fileName);
+                    await Assert.That(binding.GetProperty("format").GetString())
+                        .IsEqualTo(depth ? "float32-little-endian" : "rgba16float-little-endian");
+                    await Assert.That(binding.GetProperty("format").GetString())
+                        .IsEqualTo(plane.GetProperty("format").GetString());
+                    await Assert.That(binding.GetProperty("bytes").GetInt64()).IsEqualTo(published.LongLength);
+                    await Assert.That(published.LongLength).IsEqualTo(depth ? 16L : 32L);
+                    await Assert.That(binding.GetProperty("sha256").GetString()).IsEqualTo(
+                        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(published))
+                            .ToLowerInvariant());
+                    await Assert.That(binding.GetProperty("rowOrder").GetString()).IsEqualTo("top-down");
+                    await Assert.That(binding.GetProperty("convention").GetString()).IsEqualTo(depth
+                        ? "normalized-device-depth-zero-to-one"
+                        : "renderer-working-composited-before-exposure-and-display");
+                }
+            }
             await Assert.That(frame.GetProperty("productCamera").GetProperty("linearExposureScale").GetDouble())
                 .IsEqualTo(1d);
             await Assert.That(frame.GetProperty("productRaster").GetProperty("pixelAspectRatio").GetDouble())
