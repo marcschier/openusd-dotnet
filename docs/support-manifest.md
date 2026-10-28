@@ -56,6 +56,7 @@ Each entry maps a C macro from native/openusd_dotnet/include/openusd_dotnet.h to
 | `schema-facades-vol-render-media-proc-ui` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `inspection-v2` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `attribute-arrays-v2` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
+| `attribute-vec4f-arrays` | Implemented | `win-x64` |
 | `bounded-stage-inspection` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `session-overlay` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `physics-bake` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
@@ -227,6 +228,11 @@ Stage inspection v2 snapshot protocol
 ### `attribute-arrays-v2`
 
 Contiguous typed attribute-array v2 protocol
+
+### `attribute-vec4f-arrays`
+
+Data ABI25 float4[] and color4f[] attribute array get/set with optional time samples, used for authored camera
+clippingPlanes in render products
 
 ### `bounded-stage-inspection`
 

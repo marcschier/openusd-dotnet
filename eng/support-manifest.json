@@ -336,6 +336,17 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "attribute-vec4f-arrays",
+          "nativeCapability": "OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS",
+          "description": "Data ABI25 float4[] and color4f[] attribute array get/set with optional time samples, used for authored camera clippingPlanes in render products",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Interop.Tests/NativeContractTests.cs",
+            "tests/OpenUsd.Rendering.Tests/RenderProductCameraNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "bounded-stage-inspection",
           "nativeCapability": "OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION",
           "description": "Bounded stage statistics and diagnostics",
