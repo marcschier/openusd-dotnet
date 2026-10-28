@@ -2580,6 +2580,13 @@ over two frames, decode EXR with an independent reader and compare the stored ha
 fixture. Manifest format, length and SHA-256 must describe the actual file; EXR color leaves depth in
 its float32 normalized-device-depth container. This gate does not qualify EXR on Linux or macOS.
 
+The Windows native MCP integration step sets the same required-EXR flag so its plane-integrity and
+quota-rollback cases execute instead of taking their optional-runtime skips. Those cases verify that
+damaged or missing planes and exhausted resource capacity publish no partial frame or byte charge,
+preserve existing resources and leave retry capacity intact. Native sequence cases separately check
+raw/EXR frame retrieval at distinct times, including bounded preparation and texture streaming.
+The hardware GPU-upload and generated warehouse-camera journeys retain their own prerequisites.
+
 Windows CTest reports the WGL-only probes as capability skips only when the host lacks the required
 WGL context-creation or framebuffer extension. Context creation and incomplete-framebuffer failures
 on a capable host remain failures. The separate `windows-wgl` platform smoke remains the required

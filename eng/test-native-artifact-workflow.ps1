@@ -49,6 +49,9 @@ foreach ($required in @(
     Assert-Contains $nativeWorkflow $required 'Native artifact workflow'
 }
 $ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+$mcpStep = [regex]::Match(
+    $nativeWorkflow, '(?ms)^      - name: Run Windows native MCP integration\r?\n.*?(?=^      - name:|\z)').Value
+Assert-Contains $mcpStep "OPENUSD_EXR_EXECUTION_REQUIRED: '1'" 'Native MCP EXR execution gate'
 $diskOutputStep = [regex]::Match(
     $renderWorkflow, '(?ms)^      - name: Execute native disk output contracts\r?\n.*?(?=^      - name:|\z)').Value
 foreach ($required in @(

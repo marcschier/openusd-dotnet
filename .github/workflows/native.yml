@@ -783,6 +783,7 @@ jobs:
           Platform: ''
           OPENUSD_PHYSICS_RECORDING_REQUIRED: '1'
           OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+          OPENUSD_EXR_EXECUTION_REQUIRED: '1'
         run: |
           $testProject = Join-Path $PWD 'tests\OpenUsd.Mcp.Tests\OpenUsd.Mcp.Tests.csproj'
           dotnet build $testProject --configuration Release --framework net10.0
