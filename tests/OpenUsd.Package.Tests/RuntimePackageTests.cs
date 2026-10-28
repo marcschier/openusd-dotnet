@@ -3966,6 +3966,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_FILTER_PIXELS=true");
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_LEGACY_RESET=true");
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_SOURCE_UNCHANGED=true");
+            await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_VARIABLE_ORDERS=true");
             if (platform.Rid == "win-x64")
             {
                 await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_EXR=true");

@@ -455,7 +455,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "d04cc4dccc4d2500ecb5652670f185a4bb347c01e35b31006ab0d2edecef4b73"
+      "sha256": "3ce9a1685883f1a91973b4de0259642a9af45b0fa7516603c6a89f1717761a4c"
     }
   ],
   "programs": [

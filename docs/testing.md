@@ -2582,13 +2582,16 @@ its float32 normalized-device-depth container. This gate does not qualify EXR on
 
 The Windows clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires
 `AUTHORED_PRODUCT_EXR=true`. It publishes and executes a real NativeAOT application from the local
-package feed without project references. Full- and preview-purpose/material-binding jobs each render
-two times; an independent EXR decoder must recover every raw HDR half bit, while depth bytes remain
-identical. The manifest must preserve variable order, source identity and authored data types alongside
+package feed without project references. Both authored variable orders run the full- and
+preview-purpose/material-binding jobs at two times. An independent EXR decoder must recover every
+raw HDR half bit, while depth bytes remain identical. Every raw and EXR frame's manifest must preserve
+variable order, source identity and authored data types alongside
 the actual container format, file length, SHA-256, row order and depth convention. A legacy capture
 between EXR preview and full-product replay must restore the exact pixels without changing source
 bytes or using the authored product name as write authority. These product pixels use D3D12 WARP;
 the separate GPU-upload subcase requires hardware when `OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED=1`.
+`AUTHORED_PRODUCT_VARIABLE_ORDERS=true` requires both orders to produce identical HDR and depth
+planes. Each order separately preserves its source bytes and exact replay after legacy capture.
 This Windows package partition does not qualify other RIDs or full-scene hardware fidelity.
 
 The Windows native MCP integration step sets the same required-EXR flag so its plane-integrity and
