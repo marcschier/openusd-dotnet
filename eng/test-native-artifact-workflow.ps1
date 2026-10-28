@@ -63,7 +63,10 @@ foreach ($required in @(
     'RenderDiskJobPublicationTests',
     'RenderDiskJobHdrTests',
     'RenderDiskJobExrTests',
+    '$env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH',
+    'RenderProductRequestNativeTests',
     '-ReportAssembly OpenUsd.Rendering.Tests',
+    '-ReportAssembly OpenUsd.Rendering.ConformanceTests',
     '-RequireNoSkips $true',
     'Invoke-ManagedWorkflowScenario'))
 {

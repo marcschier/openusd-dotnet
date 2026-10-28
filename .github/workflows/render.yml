@@ -536,6 +536,18 @@ jobs:
               -ReportAssembly OpenUsd.Rendering.Tests `
               -RequireNoSkips $true
           }
+          $env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH
+          $conformanceProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $conformanceProject -c Release -f net10.0
+          if ($LASTEXITCODE -ne 0) { throw 'Native product camera test build failed.' }
+          Invoke-ManagedWorkflowScenario `
+            -Runner (Join-Path $PWD 'eng/run-managed-tests.ps1') `
+            -Project $conformanceProject `
+            -AssemblyDirectory (Join-Path $PWD 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0') `
+            -EvidenceRoot $reports `
+            -Entry @{ Id = 'RenderProductRequestNativeTests'; Class = 'RenderProductRequestNativeTests' } `
+            -ReportAssembly OpenUsd.Rendering.ConformanceTests `
+            -RequireNoSkips $true
       - name: Upload native disk output evidence
         if: always() && steps.native-ready.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

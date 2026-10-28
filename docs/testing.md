@@ -2580,6 +2580,16 @@ over two frames, decode EXR with an independent reader and compare the stored ha
 fixture. Manifest format, length and SHA-256 must describe the actual file; EXR color leaves depth in
 its float32 normalized-device-depth container. This gate does not qualify EXR on Linux or macOS.
 
+The same Windows step requires all `RenderProductRequestNativeTests` to execute without skips.
+`ReviewCameraApertureChangesRenderedCoverageAndRestoresWithoutSourceWrites` edits the review
+layer's default or numeric-time aperture opinion while retaining one renderer session. On D3D12
+WARP, a white emissive square must cover exactly 32 by 32 pixels before the edit and 16 by 16
+after it, with literal HDR half bits and analytic device depth at every pixel. The explicit
+`adjustApertureHeight` policy keeps square pixels. Exact authored-state restoration removes the
+new opinion/declaration and restores RGBA8, HDR and depth byte-for-byte; source bytes and authored
+output destinations remain untouched. This does not qualify non-square output pixels, authored
+exposure, shutter integration, depth of field or another backend.
+
 The Windows clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires
 `AUTHORED_PRODUCT_EXR=true`. It publishes and executes a real NativeAOT application from the local
 package feed without project references. Both authored variable orders run the full- and
