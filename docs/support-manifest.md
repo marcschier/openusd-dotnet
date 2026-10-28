@@ -680,10 +680,10 @@ records; this is not a rendered warehouse frame. Unknown calls, roots, resources
 explicit. These are partial projections, not general MDL, emissive-light transport, opacity-aware shadows/picking, full
 warehouse shading or BSDF execution.
 
-**Limits:** No workflow builds this configuration. It needs the MDL SDK acquisition eng/fetch-mdl-sdk.ps1 performs -- a
-roughly 276 MiB download verified against the SHA-256 in eng/mdl.lock.json -- and a user-supplied MDL SDK runtime at
-OPENUSD_MDL_SDK_RUNTIME, neither of which any OpenUsd package contains or may contain. The checks are runnable on demand
-and were run on win-x64; linux-x64 and osx-arm64 build the identical source but are not proven, and are not claimed.
+**Limits:** The native.yml mdl-sdk-adapter job schedules standalone SDK and pinned core-module checks on all three RIDs
+without an OpenUSD archive. It acquires digest-verified SDK dependencies and does not upload or package them. This entry
+also covers unchanged warehouse wrappers and rendered controls that those jobs do not execute. Local evidence remains
+win-x64; Linux/macOS job results are pending and are not claimed as evidence platforms.
 
 ### `mdl-generated-shader-code`
 

@@ -18,14 +18,13 @@
 
 #include "openusd_mdl.h"
 
-#include <mutex>
-
 #if defined(OPENUSD_MDL_WITH_SDK)
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
 #include <set>
 #include <utility>
 
@@ -66,6 +65,8 @@ namespace openusd_mdl
 {
 namespace
 {
+#if defined(OPENUSD_MDL_WITH_SDK)
+
 std::mutex&
 BackendLock()
 {
@@ -74,8 +75,6 @@ BackendLock()
 }
 
 constexpr const char* kRuntimePathVariable = "OPENUSD_MDL_SDK_RUNTIME";
-
-#if defined(OPENUSD_MDL_WITH_SDK)
 
 constexpr size_t kMaxModuleScopes = 32;
 constexpr unsigned int kMaxPrototypeDepth = 8;

@@ -66,7 +66,7 @@
     "gatedRids": [
       "win-x64"
     ],
-    "gatedRidsNote": "The gatedRids set records integrated hdSilk qualification: native.yml builds OPENUSD_WITH_MDL and runs the hdSilk probe on Windows only. A separate mdl-adapter job schedules dependency-free standalone C-ABI checks on win-x64, linux-x64 and osx-arm64 without a native archive; it does not qualify the loader or renderer on the other RIDs. The SDK-backed sibling has local win-x64 evidence against the acquisition tree eng/fetch-mdl-sdk.ps1 produces, not an automated SDK gate.",
+    "gatedRidsNote": "The gatedRids set records integrated hdSilk qualification: native.yml builds OPENUSD_WITH_MDL and runs the hdSilk probe on Windows only. Separate mdl-adapter and mdl-sdk-adapter jobs schedule standalone C-ABI and SDK/module checks on win-x64, linux-x64 and osx-arm64 without a native archive. They do not qualify the loader or renderer on the other RIDs. SDK dependencies are acquired through the pinned digest-verified script and are never uploaded or packaged.",
     "linksMdlSdk": false,
     "sdkBacked": false,
     "capability": "authored-value distillation of the accepted OmniPBR/OmniSurface/OmniGlass parameter subset; no .mdl module is opened, parsed, or evaluated",
