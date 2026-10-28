@@ -106,6 +106,8 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 custom float2 review:pair = (1, 2)
                 custom vector3d review:direction = (1, 2, 3)
                 custom color4f review:tint = (1, 1, 1, 1)
+                custom quatf review:rotation = (1, 0, 0, 0)
+                custom matrix4d review:matrix = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
             }
             def Scope "Looks"
             {

@@ -23,7 +23,14 @@ public sealed partial class ViewerPropertyPagingNativeTests
             ("/Components", "review:direction", "vector3d", new[] { "X", "Y", "Z" },
                 new[] { -1.0000000000000002, 0.12500000000000003, 1e100 }),
             ("/Components", "review:tint", "color4f", new[] { "R", "G", "B", "A" },
-                new[] { -0.25, 4d, 0.5, 2d })
+                new[] { -0.25, 4d, 0.5, 2d }),
+            ("/Components", "review:rotation", "quatf", new[] { "Real", "X", "Y", "Z" },
+                new[] { -2d, 0.25, -0.5, 4d }),
+            ("/Components", "review:matrix", "matrix4d",
+                new[] { "M00", "M01", "M02", "M03", "M10", "M11", "M12", "M13",
+                    "M20", "M21", "M22", "M23", "M30", "M31", "M32", "M33" },
+                new[] { 1.0000000000000002, 0.12500000000000003, -3d, 4d,
+                    5d, -6d, 1e100, 8d, 9d, 10d, -11d, 12d, -4.25, 2.5, -0.75, 16d })
         })
         {
             group.SelectedIndex = (int)ViewerPropertyGroup.All;
@@ -54,7 +61,22 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 await Assert.That(box.Text).IsEqualTo(string.Empty);
                 boxes.Add(box);
             }
-            await Assert.That(boxes.Count).IsEqualTo(inputs.Children.Count);
+            await Assert.That(boxes.Count).IsEqualTo(inputs.GetVisualDescendants().OfType<TextBox>().Count());
+            if (type == "matrix4d")
+            {
+                Grid matrix = inputs.GetVisualDescendants().OfType<Grid>().Single(grid =>
+                    AutomationProperties.GetAutomationId(grid) == "edit.propertyMatrix");
+                await Assert.That(matrix.RowDefinitions.Count).IsEqualTo(4);
+                await Assert.That(matrix.ColumnDefinitions.Count).IsEqualTo(4);
+                for (int index = 0; index < boxes.Count; index++)
+                {
+                    Grid cell = boxes[index].Parent as Grid
+                        ?? throw new InvalidOperationException("Each matrix input must have a labelled cell.");
+                    await Assert.That(ReferenceEquals(cell.Parent, matrix)).IsTrue();
+                    await Assert.That(Grid.GetRow(cell)).IsEqualTo(index / 4);
+                    await Assert.That(Grid.GetColumn(cell)).IsEqualTo(index % 4);
+                }
+            }
             await Assert.That(Required<Button>(edit, "SetPropertyButton").IsEnabled).IsFalse();
             await Assert.That((await readReviewComponentAsync()).Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
             boxes[0].Text = "1";
@@ -79,7 +101,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 await Assert.That((await readReviewComponentAsync()).Value.Kind)
                     .IsEqualTo(UsdLayerEditValueKind.Absent);
             }
-            boxes[0].Text = type == "vector3d" ? "1e309" : "1e100";
+            boxes[0].Text = type is "vector3d" or "matrix4d" ? "1e309" : "1e100";
             await Assert.That(Required<Button>(edit, "SetPropertyButton").IsEnabled).IsFalse();
             boxes[0].Text = components[0].ToString("R", CultureInfo.InvariantCulture);
             Click(edit, "SetPropertyButton");
@@ -156,6 +178,23 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 {
                     await Assert.That(opinion.Value.AsVec3f())
                         .IsEqualTo(new UsdVec3f((float)components[0], (float)components[1], (float)components[2]));
+                }
+                else if (type == "quatf")
+                {
+                    await Assert.That(opinion.Value.AsQuatf()).IsEqualTo(
+                        new UsdQuatf((float)components[0], (float)components[1],
+                            (float)components[2], (float)components[3]));
+                }
+                else if (type == "matrix4d")
+                {
+                    UsdMatrix4d matrix = opinion.Value.AsMatrix4d();
+                    for (int row = 0; row < 4; row++)
+                    {
+                        for (int column = 0; column < 4; column++)
+                        {
+                            await Assert.That(matrix[row, column]).IsEqualTo(components[row * 4 + column]);
+                        }
+                    }
                 }
                 else
                 {

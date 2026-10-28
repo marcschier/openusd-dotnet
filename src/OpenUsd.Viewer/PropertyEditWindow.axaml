@@ -68,7 +68,7 @@
               Spacing="6"
               IsVisible="False"
               IsEnabled="False"
-              AutomationProperties.Name="New vector or colour review components" />
+              AutomationProperties.Name="New review property components" />
           <Button
               x:Name="ChoosePropertyAssetButton"
               Grid.Column="1"

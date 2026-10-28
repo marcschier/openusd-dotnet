@@ -1192,12 +1192,13 @@ opinions; the editor does not substitute zero or a composed fallback. Signed, HD
 values retain their declared types and component values without clamping, normalization, colour transforms
 or unit conversion. Changing the default/sample selector or Refresh reads the exact target field.
 
-Quaternion and matrix text input requires the exact number of finite components; float fields
-reject values outside the float range. Commas, whitespace, parentheses and matrix brackets/separators
-are accepted in these text fields. Quaternions are scalar-first and are never silently normalized.
-Matrices retain
-OpenUSD row-vector semantics, with translation in the first three values of the final row; no
-transpose is applied. The form displays the input convention for the selected type.
+Quaternion properties use scalar-first fields labelled Real, X, Y and Z. Signed, non-unit
+quaternions retain their entered components without normalization; each field must fit the float range.
+Matrix properties use a four-by-four grid of double-precision fields labelled M00 through M33.
+The labels identify zero-based row and column indices. Matrices retain OpenUSD row-vector semantics,
+with translation in M30, M31 and M32; no transpose is applied. All fields are required for Set,
+while absent or blocked opinions remain empty. Refresh and default/sample selection restore the
+exact authored components through the same review history as vector and colour edits.
 
 Asset properties include **Choose asset...**, which fills in an absolute local path without
 authoring anything. **Set** commits that exact asset-path opinion to the review layer; canceling
