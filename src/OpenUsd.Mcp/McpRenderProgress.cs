@@ -21,6 +21,8 @@ internal static class McpRenderProgress
         });
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task pump = PumpAsync(channel.Reader, notify, lifetime);
+        int previous = 0;
+        int expectedTotal = 0;
         T? result = default;
         Exception? failure = null;
         try
@@ -28,10 +30,17 @@ internal static class McpRenderProgress
             result = await operation((completed, total) =>
             {
                 lifetime.Token.ThrowIfCancellationRequested();
+                if (completed <= previous || completed > total || total is < 1 or > 4096 ||
+                    (expectedTotal != 0 && total != expectedTotal))
+                {
+                    throw new InvalidDataException("Render progress must have increasing bounded frame counts.");
+                }
                 if (!channel.Writer.TryWrite((completed, total)))
                 {
                     throw new InvalidOperationException("The render progress observer has already stopped.");
                 }
+                previous = completed;
+                expectedTotal = total;
             }, lifetime.Token).ConfigureAwait(false);
         }
         catch (Exception exception)
@@ -68,17 +77,8 @@ internal static class McpRenderProgress
     {
         try
         {
-            int previous = 0;
-            int expectedTotal = 0;
             await foreach ((int completed, int total) in reader.ReadAllAsync(lifetime.Token).ConfigureAwait(false))
             {
-                if (completed <= previous || completed > total || total is < 1 or > 4096 ||
-                    (expectedTotal != 0 && total != expectedTotal))
-                {
-                    throw new InvalidDataException("Render progress must have increasing bounded frame counts.");
-                }
-                previous = completed;
-                expectedTotal = total;
                 await notify(completed, total, lifetime.Token).ConfigureAwait(false);
             }
         }

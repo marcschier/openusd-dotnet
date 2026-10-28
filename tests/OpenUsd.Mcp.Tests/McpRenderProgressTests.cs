@@ -42,6 +42,38 @@ public sealed class McpRenderProgressTests
     }
 
     [Test]
+    public async Task InvalidIntermediateProgressCannotBeHiddenByCoalescing()
+    {
+        var notificationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseNotification = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int> pending = McpRenderProgress.RunAsync<int>(async (report, token) =>
+        {
+            report(1, 3);
+            await notificationStarted.Task.WaitAsync(token);
+            report(2, 4);
+            report(3, 3);
+            return 42;
+        }, async (_, _, token) =>
+        {
+            notificationStarted.TrySetResult();
+            await releaseNotification.Task.WaitAsync(token);
+        }, default).AsTask();
+        try
+        {
+            await notificationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(pending.IsCompleted).IsFalse();
+        }
+        finally
+        {
+            releaseNotification.TrySetResult();
+        }
+
+        InvalidDataException? failure = await Assert.That(async () =>
+            await pending.WaitAsync(TimeSpan.FromSeconds(5))).Throws<InvalidDataException>();
+        await Assert.That(failure!.Message).Contains("Render progress");
+    }
+
+    [Test]
     public async Task SlowNotificationsCoalesceToOnePendingFrameAndDrainBeforeReturningTheResult()
     {
         var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
