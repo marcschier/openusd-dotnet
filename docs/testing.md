@@ -2573,6 +2573,13 @@ in preferences so startup geometry does not silently exceed the physical-pixel A
 These AOV execution claims are Windows-specific; Linux wiring and Metal refusal are not native
 cross-platform evidence.
 
+The Windows render workflow also runs the authored-product and disk-job contracts against its staged
+native runtime with `OPENUSD_EXR_EXECUTION_REQUIRED=1`. The shared workflow report reader rejects skips
+and retains each class's log, JSON report and HTML report. The product cases check both variable orders
+over two frames, decode EXR with an independent reader and compare the stored half bits with the raw
+fixture. Manifest format, length and SHA-256 must describe the actual file; EXR color leaves depth in
+its float32 normalized-device-depth container. This gate does not qualify EXR on Linux or macOS.
+
 Windows CTest reports the WGL-only probes as capability skips only when the host lacks the required
 WGL context-creation or framebuffer extension. Context creation and incomplete-framebuffer failures
 on a capable host remain failures. The separate `windows-wgl` platform smoke remains the required

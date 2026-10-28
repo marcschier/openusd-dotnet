@@ -49,6 +49,23 @@ foreach ($required in @(
     Assert-Contains $nativeWorkflow $required 'Native artifact workflow'
 }
 $ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+$diskOutputStep = [regex]::Match(
+    $renderWorkflow, '(?ms)^      - name: Execute native disk output contracts\r?\n.*?(?=^      - name:|\z)').Value
+foreach ($required in @(
+    "if: steps.native-ready.outputs.ready == 'true'",
+    "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+    '$env:OPENUSD_PARITY_RUNTIME_ROOT = $runtime',
+    'RenderProductJobPlanTests',
+    'RenderDiskJobTests',
+    'RenderDiskJobPublicationTests',
+    'RenderDiskJobHdrTests',
+    'RenderDiskJobExrTests',
+    '-ReportAssembly OpenUsd.Rendering.Tests',
+    '-RequireNoSkips $true',
+    'Invoke-ManagedWorkflowScenario'))
+{
+    Assert-Contains $diskOutputStep $required 'Native disk output workflow step'
+}
 $mdlJob = [regex]::Match(
     $nativeWorkflow, '(?ms)^  mdl-adapter:\r?\n.*?(?=^  [\w-]+:\r?$|\z)').Value
 foreach ($required in @(

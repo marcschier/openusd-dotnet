@@ -220,18 +220,31 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task ProductManifestCarriesEveryRequestedVariableAndDoesNotUseItsAuthoredFilename(bool depthFirst)
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task ProductManifestCarriesEveryRequestedVariableAndDoesNotUseItsAuthoredFilename(
+        bool depthFirst, bool exr)
     {
+        if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
         string root = Directory.CreateTempSubdirectory("product-manifest-").FullName;
         try
         {
             RenderProductRequest request = Request(depthFirst: depthFirst);
             var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
                 [Frame(request, 1), Frame(request, 2)], RenderSettings.PresentationDefault, 42);
-            var source = new ProductSource();
-            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "output")), source);
+            var source = new ProductSource
+            {
+                HdrBytes = Convert.FromHexString(
+                    "0054008000B8003C00340040004800380030004C002C0000000000540000003C")
+            };
+            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "output"),
+                exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.RawRgba16Float), source);
             await Assert.That(source.Validations).IsEqualTo(1);
             await Assert.That(source.Calls).IsEqualTo(2);
             await Assert.That(source.Admitted).IsSameReferenceAs(plan);
@@ -270,11 +283,25 @@ public sealed class RenderProductJobPlanTests
                     await Assert.That(binding.GetProperty("dataType").GetString()).IsEqualTo(depth ? "float" : "half4");
                     await Assert.That(binding.GetProperty("file").GetString()).IsEqualTo(fileName);
                     await Assert.That(binding.GetProperty("format").GetString())
-                        .IsEqualTo(depth ? "float32-little-endian" : "rgba16float-little-endian");
+                        .IsEqualTo(depth ? "float32-little-endian" :
+                            exr ? "openexr-rgba16float" : "rgba16float-little-endian");
                     await Assert.That(binding.GetProperty("format").GetString())
                         .IsEqualTo(plane.GetProperty("format").GetString());
                     await Assert.That(binding.GetProperty("bytes").GetInt64()).IsEqualTo(published.LongLength);
-                    await Assert.That(published.LongLength).IsEqualTo(depth ? 16L : 32L);
+                    if (!depth && exr)
+                    {
+                        await Assert.That(Convert.ToHexString(ExrScanlineOracle.Read(published, 2, 2)))
+                            .IsEqualTo(Convert.ToHexString(source.HdrBytes!));
+                    }
+                    else
+                    {
+                        await Assert.That(published.LongLength).IsEqualTo(depth ? 16L : 32L);
+                        if (!depth)
+                        {
+                            await Assert.That(Convert.ToHexString(published))
+                                .IsEqualTo(Convert.ToHexString(source.HdrBytes!));
+                        }
+                    }
                     await Assert.That(binding.GetProperty("sha256").GetString()).IsEqualTo(
                         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(published))
                             .ToLowerInvariant());
@@ -354,6 +381,7 @@ public sealed class RenderProductJobPlanTests
 
     private sealed class ProductSource : IRenderProductFrameSource
     {
+        internal byte[]? HdrBytes { get; init; }
         internal bool Refuse { get; init; }
         internal int Validations { get; private set; }
         internal int Calls { get; private set; }
@@ -378,7 +406,8 @@ public sealed class RenderProductJobPlanTests
             return new RenderJobImage(
                 state.Viewport.Width, state.Viewport.Height, new byte[count * 4], Rgba8RowOrder.TopDown)
             {
-                HdrColor = new RenderJobHdrColor(state.Viewport.Width, state.Viewport.Height, new byte[count * 8]),
+                HdrColor = new RenderJobHdrColor(
+                    state.Viewport.Width, state.Viewport.Height, HdrBytes ?? new byte[count * 8]),
                 DeviceDepth = new RenderJobDeviceDepth(state.Viewport.Width, state.Viewport.Height, new float[count])
             };
         }
