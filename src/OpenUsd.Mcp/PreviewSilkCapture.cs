@@ -261,14 +261,16 @@ internal sealed partial class PreviewSilkFrameSource
                     new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes)
                     {
                         IncludePrimId = plan.IncludePrimId,
-                        IncludeInstanceId = plan.IncludeInstanceId
+                        IncludeInstanceId = plan.IncludeInstanceId,
+                        IncludeNormal = plan.IncludeNormal
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken)
                 : capturer.CaptureWithDepth(session, width, height, state.RenderSettings, productOptions,
                     new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes)
                     {
                         IncludePrimId = plan.IncludePrimId,
-                        IncludeInstanceId = plan.IncludeInstanceId
+                        IncludeInstanceId = plan.IncludeInstanceId,
+                        IncludeNormal = plan.IncludeNormal
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken);
             RequireProductRevision(source, plan);
@@ -390,12 +392,13 @@ internal sealed partial class PreviewSilkFrameSource
 
     private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
     {
-        // A primId- or instanceId-only product uses the color-and-depth path, whose depth plane is not an admitted output.
+        // A primId-, instanceId- or normal-only product uses the color-and-depth path, whose depth plane is not an admitted output.
         bool depthOnlyCarrier = !plan.IncludeHdrColor && !plan.IncludeDeviceDepth;
         if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
             (!depthOnlyCarrier && plan.IncludeDeviceDepth != (result.Depth is not null)) ||
             plan.IncludePrimId != (result.PrimId is not null) ||
-            plan.IncludeInstanceId != (result.InstanceId is not null))
+            plan.IncludeInstanceId != (result.InstanceId is not null) ||
+            plan.IncludeNormal != (result.Normal is not null))
         {
             throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
         }
@@ -414,6 +417,8 @@ internal sealed partial class PreviewSilkFrameSource
             PrimId = result.PrimId is { } primId ? ToJobPrimId(primId) : null,
             InstanceId = result.InstanceId is { } instanceId
                 ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null,
+            Normal = result.Normal is { } normal
+                ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null,
             Diagnostics = result.Diagnostics
         };
     }

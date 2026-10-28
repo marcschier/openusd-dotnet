@@ -155,6 +155,12 @@ internal sealed record McpSequenceFrameResultDto(
         "for authored products with an instanceId variable.")]
     public McpArtifactDto? InstanceId { get; init; }
 
+    [Description(
+        "Optional verified normal plane: packed top-down little-endian float32 x, y, z world-space unit " +
+        "shading normals of the front-most surface, back faces flipped toward the camera; (0,0,0) marks " +
+        "background. Present only for authored products with a normal variable.")]
+    public McpArtifactDto? Normal { get; init; }
+
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
 

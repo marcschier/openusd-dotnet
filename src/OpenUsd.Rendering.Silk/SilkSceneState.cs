@@ -4020,6 +4020,22 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     }
 
     /// <summary>
+    /// The frame constants the most recent frame was drawn with, for passes that
+    /// re-rasterize that frame inside its capture lease.
+    /// </summary>
+    internal ISilkGraphicsBuffer CurrentFrameBuffer
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _frameBufferInitialized && _frameBuffer is not null
+                ? _frameBuffer
+                : throw new InvalidOperationException(
+                    "No frame has been rendered with the current scene resources.");
+        }
+    }
+
+    /// <summary>
     /// Reports every direct light whose authored <c>inputs:shadow:enable</c> did
     /// not produce a shadow map, and why.
     /// </summary>

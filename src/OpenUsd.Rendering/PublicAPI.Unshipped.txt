@@ -1254,3 +1254,16 @@ OpenUsd.Rendering.RenderJobInstanceId.Values.get -> System.ReadOnlyMemory<int>
 OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdFileName.get -> string?
 OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdBytes.get -> long
 OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdSha256.get -> string?
+OpenUsd.Rendering.RenderProductPlane.Normal = 4 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludeNormal.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeNormal.get -> bool
+OpenUsd.Rendering.RenderJobImage.Normal.get -> OpenUsd.Rendering.RenderJobNormal?
+OpenUsd.Rendering.RenderJobImage.Normal.init -> void
+OpenUsd.Rendering.RenderJobNormal
+OpenUsd.Rendering.RenderJobNormal.RenderJobNormal(int width, int height, System.ReadOnlyMemory<float> values) -> void
+OpenUsd.Rendering.RenderJobNormal.Width.get -> int
+OpenUsd.Rendering.RenderJobNormal.Height.get -> int
+OpenUsd.Rendering.RenderJobNormal.Values.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.RenderDiskFrameResult.NormalFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.NormalBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.NormalSha256.get -> string?

@@ -122,6 +122,8 @@ public static partial class RenderDiskJob
                     result.PrimIdBytes, result.PrimIdSha256, "visible-prim-identity-index"),
                 RenderProductPlane.InstanceId => (result.InstanceIdFileName, "int32-little-endian",
                     result.InstanceIdBytes, result.InstanceIdSha256, InstanceIdConvention),
+                RenderProductPlane.Normal => (result.NormalFileName, NormalFormat,
+                    result.NormalBytes, result.NormalSha256, NormalConvention),
                 _ => throw new InvalidDataException("A product output names an unknown plane.")
             };
             json.WriteStartObject();
@@ -145,6 +147,10 @@ public static partial class RenderDiskJob
             else if (output.Plane == RenderProductPlane.InstanceId)
             {
                 json.WriteNumber("background", -1);
+            }
+            else if (output.Plane == RenderProductPlane.Normal)
+            {
+                WriteNormalBackground(json);
             }
             json.WriteEndObject();
         }

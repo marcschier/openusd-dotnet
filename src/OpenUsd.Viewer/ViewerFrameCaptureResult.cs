@@ -41,6 +41,7 @@ internal sealed class ViewerFrameCaptureResult
     internal RenderJobHdrColor? HdrColor { get; init; }
     internal RenderJobPrimId? PrimId { get; init; }
     internal RenderJobInstanceId? InstanceId { get; init; }
+    internal RenderJobNormal? Normal { get; init; }
 
     internal static int GetByteCount(int width, int height)
     {

@@ -177,7 +177,7 @@ internal static class OpenUsdMcpDescriptions
         "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +
         "registers all uncached planes; failures do not charge a partial frame. " +
         "Arbitrary paths and changed output files are refused; existing cached resources remain immutable. " +
-        "Result bounds: one structured frame descriptor, one text summary and up to six resource-link blocks: " +
+        "Result bounds: one structured frame descriptor, one text summary and up to seven resource-link blocks: " +
         "PNG, optional top-down little-endian normalized device-depth float32 (clear/far=1), " +
         "and optional raw RGBA binary16 or lossless half EXR before exposure/display, with stored alpha " +
         "and unnamed primaries; hdrColorFormat and resource MIME identify the container. " +
@@ -185,6 +185,8 @@ internal static class OpenUsdMcpDescriptions
         "and its JSON primIdTable of visible prim paths and instance indices. " +
         "Products with an instanceId variable add a top-down little-endian int32 instanceId plane holding the " +
         "visible instance index within its innermost instancer (-1 background and non-instanced prims). " +
+        "Products with a normal variable add a top-down little-endian float32 x, y, z normal plane holding the " +
+        "world-space unit shading normal of the front-most surface ((0,0,0) background). " +
         "Recorded simulation context includes its optional original host-provided review identity, " +
         "an attestation rather than independent source verification. " +
         "cameraRequest retains the original submitted mode, row-major view/projection and view-space clip planes, " +
@@ -199,17 +201,19 @@ internal static class OpenUsdMcpDescriptions
         "optional settingsPath selects authored settings, and productPath is required unless there is one product. " +
         "Optional width and height override the full raster before cropping; supply both within 1-4096 pixels, " +
         "or omit both to retain authored resolution. " +
-        "The initial profile accepts raw half4 color, float normalized depth, int primId and/or int instanceId, " +
+        "The initial profile accepts raw half4 color, float normalized depth, int primId, int instanceId and/or " +
+        "normal3f normal, " +
         "one material-binding purpose, standard scene purposes and no active motion blur or depth of field. " +
         "primId and instanceId share one hdSilk pick pass and are refused when the capture device is not " +
             "pick-capable. " +
+        "normal runs a separate hdSilk world-space normal pass. " +
         "Authored camera exposure scales the HDR plane and adds its stops to the PNG display exposure. " +
         "Unsupported variables, named rendering color spaces and unevaluated settings are refused, " +
         "never replaced by beauty. " +
         "Effects: samples the camera in bounded scheduler batches and applies exact admitted scene filters; " +
         "writes generated raw or supported Windows EXR data planes, a display-companion PNG and manifest atomically. " +
         "No source opinions, authored product filename authority or RenderPass commands are used. " +
-        "Result bounds: one job descriptor and at most four variable bindings; " +
+        "Result bounds: one job descriptor and at most five variable bindings; " +
         "read_sequence_frame exposes selected planes. " +
         "Shares the 8-job/4-GiB process quota and 64-MiB per-frame policy with render_sequence. " +
         "Errors: invalid_argument, no_session, stale_session, stale_revision, quota_exceeded, " +

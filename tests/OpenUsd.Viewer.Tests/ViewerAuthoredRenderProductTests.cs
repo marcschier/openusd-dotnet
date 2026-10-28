@@ -528,6 +528,26 @@ public sealed class ViewerAuthoredRenderProductTests
     }
 
     [Test]
+    public async Task SnapshotAdmitsNormal3fSurfaceNormalsAndRefusesOtherTypes()
+    {
+        UsdRenderSpecification specification = CreateSpecification([
+            Product("/Render/ProductNormal", [0, 1, 3, 4, 6]),
+            Product("/Render/ProductNormalOnly", [6]),
+            Product("/Render/ProductFloat3Normal", [0, 7])
+        ]);
+
+        ViewerAuthoredRenderProductSnapshot snapshot =
+            ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, "/Render/ProductNormal");
+
+        await Assert.That(snapshot.Products.Count).IsEqualTo(3);
+        await Assert.That(snapshot.Products[0].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:normal/normal3f");
+        await Assert.That(snapshot.Products[1].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[2].CanRender).IsFalse();
+        await Assert.That(snapshot.Products[2].UnsupportedReason).Contains("'normal' / 'float3'");
+    }
+
+    [Test]
     public async Task SnapshotRefusesAnOversizedCatalogInsteadOfSilentlyHidingProducts()
     {
         UsdRenderSpecification specification = CreateSpecification(
@@ -967,7 +987,9 @@ public sealed class ViewerAuthoredRenderProductTests
                 Variable("/Render/Vars/Id", "int", "id"),
                 Variable("/Render/Vars/PrimId", "int", "primId"),
                 Variable("/Render/Vars/InstanceId", "int", "instanceId"),
-                Variable("/Render/Vars/FloatInstanceId", "float", "instanceId")
+                Variable("/Render/Vars/FloatInstanceId", "float", "instanceId"),
+                Variable("/Render/Vars/Normal", "normal3f", "normal"),
+                Variable("/Render/Vars/Float3Normal", "float3", "normal")
             ],
             ["default", "render"],
             ["full"],

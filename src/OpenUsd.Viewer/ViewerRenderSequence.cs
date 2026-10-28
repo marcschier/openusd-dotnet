@@ -164,7 +164,8 @@ internal static class ViewerRenderSequenceRunner
                     DeviceDepth = image.DeviceDepth,
                     HdrColor = image.HdrColor,
                     PrimId = image.PrimId,
-                    InstanceId = image.InstanceId
+                    InstanceId = image.InstanceId,
+                    Normal = image.Normal
                 };
             }, DispatcherPriority.Normal, cancellationToken).GetAwaiter().GetResult();
             return frame.GetAwaiter().GetResult();

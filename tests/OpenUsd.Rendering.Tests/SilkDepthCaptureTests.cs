@@ -103,6 +103,27 @@ public sealed class SilkDepthCaptureTests
     }
 
     [Test]
+    public async Task NormalChargesTwentyEightBytesPerPixelBeforeAllocating()
+    {
+        using var device = new RefusingGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+
+        // 20 bytes for depth and color plus 16 for the RGBA32F normal readback and 12 for
+        // the packed float3 copy: 48 bytes for each of the 16 pixels.
+        await Assert.That(() => SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 4, 4, RenderSettings.Default,
+            new SilkDepthCaptureOptions(maximumReadbackBytes: 767) { IncludeNormal = true }))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(device.ResourceRequests).IsEqualTo(0);
+
+        await Assert.That(() => SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 4, 4, RenderSettings.Default,
+            new SilkDepthCaptureOptions(maximumReadbackBytes: 768) { IncludeNormal = true }))
+            .Throws<NotSupportedException>();
+        await Assert.That(device.ResourceRequests).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task DefaultByteQuotaRejects4096SquareBeforeGraphicsAllocation()
     {
         using var device = new RefusingGraphicsDevice();

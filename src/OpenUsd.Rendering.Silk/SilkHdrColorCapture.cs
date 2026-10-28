@@ -83,6 +83,8 @@ public sealed class SilkHdrColorCaptureOptions
     /// <see cref="IncludePrimId"/> or <see cref="IncludeInstanceId"/> adds 8 bytes per pixel:
     /// 4 for the shared RGBA8 pick-token readback and 4 for the first int32 output raster.
     /// Requesting both adds 4 more bytes per pixel for the second int32 output raster.
+    /// Setting <see cref="IncludeNormal"/> adds 28 bytes per pixel: 16 for the RGBA32Float
+    /// normal readback and 12 for the float32 RGB output.
     /// </param>
     public SilkHdrColorCaptureOptions(
         bool includeDeviceDepth = false,
@@ -122,6 +124,17 @@ public sealed class SilkHdrColorCaptureOptions
     /// charge, or 4 bytes per pixel when <see cref="IncludePrimId"/> is also set.
     /// </remarks>
     public bool IncludeInstanceId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the world-space normal plane is returned in
+    /// <see cref="SilkFrameCaptureResult.Normal"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is drawn by a dedicated normal pass over the whole viewport of the
+    /// built-in <see cref="SilkMeshRenderer"/>, and adds 28 bytes per pixel to the
+    /// managed readback charge.
+    /// </remarks>
+    public bool IncludeNormal { get; init; }
 
     /// <summary>Gets the maximum raster pixel count.</summary>
     public int MaximumPixelCount => Limits.MaximumPixelCount;

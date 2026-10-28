@@ -1048,6 +1048,50 @@ public sealed class RenderProductServiceTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ProductJobsPublishTheNormalPlane(bool withIdentities)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times => Plan(backend.Context!.SessionId, backend.StageRevision, times,
+            includePrimId: withIdentities, includeInstanceId: withIdentities, includeNormal: true);
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(Request(session, 1), default);
+        string[] planes = withIdentities
+            ? ["deviceDepth", "hdrColor", "primId", "instanceId", "normal"]
+            : ["deviceDepth", "hdrColor", "normal"];
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static item => item.Plane).SequenceEqual(planes))
+            .IsTrue();
+        await Assert.That(job.AuthoredProduct.Outputs[^1].DataType).IsEqualTo("normal3f");
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(withIdentities ? 7 : 4);
+        await Assert.That(frame.InstanceId is not null).IsEqualTo(withIdentities);
+        await Assert.That(frame.Normal!.MimeType).IsEqualTo("application/octet-stream");
+        await Assert.That(frame.Normal.Uri).Contains(".normal.f32x3");
+        ArtifactResourceContent? raw = await artifacts.ReadAsync(new Uri(frame.Normal.Uri));
+        float[] values = [.. Enumerable.Range(0, 12).Select(index =>
+            BinaryPrimitives.ReadSingleLittleEndian(raw!.Content.Span.Slice(index * 4, 4)))];
+        await Assert.That(values.SequenceEqual(SampleNormals)).IsTrue();
+        JsonElement json = JsonSerializer.SerializeToElement(frame, JsonOptions);
+        await Assert.That(json.GetProperty("normal").GetProperty("uri").GetString())
+            .IsEqualTo(frame.Normal.Uri);
+    }
+
+
+    private static readonly float[] SampleNormals = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, -1, 0];
+    [Test]
     public async Task RefusedProductsConsumeNoJobSlotAndProductAndViewportJobsShareTheQuota()
     {
         using var files = new WorkspaceTestFiles();
@@ -1135,18 +1179,19 @@ public sealed class RenderProductServiceTests
         string authoredConformPolicy = "expandAperture", Func<double, UsdGeomCameraState>? cameraAtTime = null,
         Func<double, RenderCameraFrameSettings>? cameraSettingsAtTime = null,
         bool disableMotionBlur = true, bool disableDepthOfField = true, bool includePrimId = false,
-        bool includeInstanceId = false)
+        bool includeInstanceId = false, bool includeNormal = false)
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
                 2, 2, authoredPixelAspectRatio, authoredConformPolicy, new UsdVec2f(20, 20),
                 dataWindow ?? new UsdVec4f(0, 0, 1, 1),
                 disableMotionBlur, disableDepthOfField,
-                ProductVariableIndices(includePrimId, includeInstanceId), [])],
+                ProductVariableIndices(includePrimId, includeInstanceId, includeNormal), [])],
             [new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []),
                 new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", []),
                 new UsdRenderVariableSpecification("/Render/PrimId", "int", "primId", "raw", []),
-                new UsdRenderVariableSpecification("/Render/InstanceId", "int", "instanceId", "raw", [])],
+                new UsdRenderVariableSpecification("/Render/InstanceId", "int", "instanceId", "raw", []),
+                new UsdRenderVariableSpecification("/Render/Normal", "normal3f", "normal", "raw", [])],
             ["default", "render"], ["full"], "", []);
         var request = new RenderProductRequest(specification, 0, overrides);
         var optics = new UsdGeomCameraState(
@@ -1158,7 +1203,7 @@ public sealed class RenderProductServiceTests
             RenderSettings.PresentationDefault, revision);
     }
 
-    private static int[] ProductVariableIndices(bool includePrimId, bool includeInstanceId)
+    private static int[] ProductVariableIndices(bool includePrimId, bool includeInstanceId, bool includeNormal)
     {
         List<int> indices = [1, 0];
         if (includePrimId)
@@ -1168,6 +1213,10 @@ public sealed class RenderProductServiceTests
         if (includeInstanceId)
         {
             indices.Add(3);
+        }
+        if (includeNormal)
+        {
+            indices.Add(4);
         }
         return [.. indices];
     }
@@ -1232,6 +1281,9 @@ public sealed class RenderProductServiceTests
                     : null,
                 InstanceId = plan.IncludeInstanceId
                     ? new RenderJobInstanceId(width, height, new[] { -1, -1, 3, -1 })
+                    : null,
+                Normal = plan.IncludeNormal
+                    ? new RenderJobNormal(width, height, SampleNormals)
                     : null,
             };
         }

@@ -135,7 +135,7 @@ internal sealed partial class OpenUsdMcpService
             RenderDiskFrameResult frame = sequence.Result.Frames[request.FrameIndex];
             string artifactId = $"sequence-{request.JobId}-{frame.Index:D6}.png";
             IArtifactResourceStore store = services.GetRequiredService<IArtifactResourceStore>();
-            var outputs = new List<ArtifactResourceFileWrite>(6)
+            var outputs = new List<ArtifactResourceFileWrite>(7)
             {
                 new(artifactId, "image/png", Path.Combine(sequence.Result.OutputDirectory, frame.FileName),
                     frame.Bytes, frame.Sha256)
@@ -144,6 +144,7 @@ internal sealed partial class OpenUsdMcpService
             int hdrIndex = -1;
             int primIdIndex = -1;
             int instanceIdIndex = -1;
+            int normalIndex = -1;
             if (frame.DepthFileName is { } depthName)
             {
                 depthIndex = outputs.Count;
@@ -186,6 +187,14 @@ internal sealed partial class OpenUsdMcpService
                     $"sequence-{request.JobId}-{frame.Index:D6}.instance-id.i32", "application/octet-stream",
                     Path.Combine(sequence.Result.OutputDirectory, instanceIdName), frame.InstanceIdBytes,
                     frame.InstanceIdSha256!));
+            }
+            if (frame.NormalFileName is { } normalName)
+            {
+                normalIndex = outputs.Count;
+                outputs.Add(new ArtifactResourceFileWrite(
+                    $"sequence-{request.JobId}-{frame.Index:D6}.normal.f32x3", "application/octet-stream",
+                    Path.Combine(sequence.Result.OutputDirectory, normalName), frame.NormalBytes,
+                    frame.NormalSha256!));
             }
             var descriptors = new ArtifactResourceDescriptor[outputs.Count];
             var uncached = new List<ArtifactResourceFileWrite>(outputs.Count);
@@ -237,6 +246,7 @@ internal sealed partial class OpenUsdMcpService
             ArtifactResourceDescriptor? primId = primIdIndex < 0 ? null : descriptors[primIdIndex];
             ArtifactResourceDescriptor? primIdTable = primIdIndex < 0 ? null : descriptors[primIdIndex + 1];
             ArtifactResourceDescriptor? instanceId = instanceIdIndex < 0 ? null : descriptors[instanceIdIndex];
+            ArtifactResourceDescriptor? normal = normalIndex < 0 ? null : descriptors[normalIndex];
             return new McpSequenceFrameResultDto(sequence.Revision.SessionId, sequence.Revision.Generation,
                 sequence.Revision.StageRevision, request.JobId, frame.Index, frame.State.Time.TimeCode,
                 frame.State.Viewport.Width, frame.State.Viewport.Height, ToArtifact(descriptor),
@@ -248,6 +258,7 @@ internal sealed partial class OpenUsdMcpService
                 PrimId = primId is null ? null : ToArtifact(primId),
                 PrimIdTable = primIdTable is null ? null : ToArtifact(primIdTable),
                 InstanceId = instanceId is null ? null : ToArtifact(instanceId),
+                Normal = normal is null ? null : ToArtifact(normal),
                 AuthoredProduct = sequence.AuthoredProduct,
                 ProductRaster = sequence.ProductFrames?[frame.Index].Raster,
                 ProductCamera = sequence.ProductFrames?[frame.Index].Camera,

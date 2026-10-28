@@ -136,13 +136,14 @@ public sealed class MetalSelectionOutlineTests
         await Assert.That(
             parameters.GetProperty("shape").GetProperty("size").GetInt32())
             .IsEqualTo(48);
-        // Twenty-one declared program families, which expansion multiplies into
-        // the entries the combined library actually links. The extra family over
-        // the original twenty is the occluded selection-mask fragment stage the
-        // one-pass x-ray composite reads its second silhouette channel from.
+        // Twenty-three declared program families, which expansion multiplies into
+        // the entries the combined library actually links. Over the original twenty
+        // come the occluded selection-mask fragment stage the one-pass x-ray
+        // composite reads its second silhouette channel from, and the vertex and
+        // fragment stages of the world-space normal product plane.
         await Assert.That(
             manifest.RootElement.GetProperty("programs").GetArrayLength())
-            .IsEqualTo(21);
+            .IsEqualTo(23);
         await Assert.That(project).Contains(
             "checked\\selection.mask.occluded.fragment.metal");
         await Assert.That(project).Contains(

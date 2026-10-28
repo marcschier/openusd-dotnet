@@ -139,7 +139,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                         maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes)
                     {
                         IncludePrimId = plan.IncludePrimId,
-                        IncludeInstanceId = plan.IncludeInstanceId
+                        IncludeInstanceId = plan.IncludeInstanceId,
+                        IncludeNormal = plan.IncludeNormal
                     },
                     state.Time.TimeCode,
                     state.Camera,
@@ -154,7 +155,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                         maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes)
                     {
                         IncludePrimId = plan.IncludePrimId,
-                        IncludeInstanceId = plan.IncludeInstanceId
+                        IncludeInstanceId = plan.IncludeInstanceId,
+                        IncludeNormal = plan.IncludeNormal
                     },
                     state.Time.TimeCode,
                     state.Camera,
@@ -176,7 +178,9 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,
                 PrimId = capture.PrimId is { } primId ? ToJobPrimId(primId) : null,
                 InstanceId = capture.InstanceId is { } instanceId
-                    ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null
+                    ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null,
+                Normal = capture.Normal is { } normal
+                    ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null
             });
         }
 

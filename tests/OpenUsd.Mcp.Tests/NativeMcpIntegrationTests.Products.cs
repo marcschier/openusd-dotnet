@@ -529,6 +529,77 @@ public sealed partial class NativeMcpIntegrationTests
                 content.Content.Span.Slice((y * 16 + x) * 4, 4));
     }
 
+    [Test]
+    [NotInParallel]
+    public async Task AuthoredNormalProductsPublishWorldSpaceSurfaceNormals()
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>", "rel orderedVars = </Normal>", StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"Normal\" {\n    token dataType = \"normal3f\"\n    string sourceName = \"normal\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(["normal"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.HdrColor).IsNull();
+        await Assert.That(frame.PrimId).IsNull();
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(2);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.Normal!.Uri)) ??
+            throw new InvalidOperationException("The completed normal plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 12);
+        foreach ((int x, int y) in new[] { (4, 4), (12, 4) })
+        {
+            float nx = value(raw, x, y, 0);
+            float ny = value(raw, x, y, 1);
+            float nz = value(raw, x, y, 2);
+            await Assert.That(MathF.Sqrt(nx * nx + ny * ny + nz * nz)).IsEqualTo(1f).Within(1e-3f);
+            await Assert.That(nz).IsGreaterThan(0.5f)
+                .Because("the smooth cube face toward the -z looking camera faces world +z");
+        }
+        for (int channel = 0; channel < 3; channel++)
+        {
+            await Assert.That(value(raw, 8, 8, channel)).IsEqualTo(0f).Because("background has no surface");
+        }
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement plane = manifest.RootElement.GetProperty("frames")[0].GetProperty("normal");
+        await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo("frame-000000.normal.f32x3");
+        await Assert.That(plane.GetProperty("convention").GetString())
+            .IsEqualTo("world-space-unit-normal-float32x3");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        static float value(ArtifactResourceContent content, int x, int y, int channel) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(
+                content.Content.Span.Slice(((y * 16 + x) * 3 + channel) * 4, 4));
+    }
     private static async Task AssertHalf(byte[] pixels, int x, int y, string expected) =>
         await Assert.That(Convert.ToHexString(pixels.AsSpan((y * 16 + x) * 8, 8))).IsEqualTo(expected);
 

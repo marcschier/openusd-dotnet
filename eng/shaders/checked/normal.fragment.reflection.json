@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/normal.fragment.slang",
+  "entryPoint": {
+    "name": "normalFragmentMain",
+    "stage": "fragment",
+    "profile": "ps_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [
+    {
+      "name": "frameParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 8,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 8,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    }
+  ],
+  "stageInputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "eyePosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "worldNormal",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 1,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "isFrontFace",
+      "semantic": {
+        "name": "SV_ISFRONTFACE",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "bool"
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "result",
+      "semantic": {
+        "name": "SV_TARGET",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

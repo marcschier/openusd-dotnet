@@ -338,9 +338,11 @@ public sealed partial class UsdPhysicsTransportTests
     }
 
     [Test]
-    [Arguments("primId")]
-    [Arguments("instanceId")]
-    public async Task RecordingRefusesIdentityPlanesWithoutSimulationOrFiles(string plane)
+    [Arguments("primId", "int", "the primId identity plane")]
+    [Arguments("instanceId", "int", "the instanceId identity plane")]
+    [Arguments("normal", "normal3f", "do not capture the normal plane")]
+    public async Task RecordingRefusesIdentityPlanesWithoutSimulationOrFiles(
+        string plane, string dataType, string refusal)
     {
         string root = Directory.CreateTempSubdirectory("openusd-recording-identity-").FullName;
         var world = new FakePhysicsWorld(1);
@@ -348,7 +350,7 @@ public sealed partial class UsdPhysicsTransportTests
         await RunAsync(transport, transport.BuildAsync());
         PhysicsRenderBindingTable bindings = RecordingBindings(transport);
         var color = new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []);
-        var identity = new UsdRenderVariableSpecification("/Render/Identity", "int", plane, "raw", []);
+        var identity = new UsdRenderVariableSpecification("/Render/Identity", dataType, plane, "raw", []);
         var product = new RenderProductRequest(new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "identity.exr", "raster", "/Camera",
                 1, 1, 1, "expandAperture", new UsdVec2f(20, 20), new UsdVec4f(0, 0, 1, 1),
@@ -375,7 +377,7 @@ public sealed partial class UsdPhysicsTransportTests
             await PumpRecordingAsync(transport, job);
             Exception? failure = await CaptureAsync(transport, job);
             await Assert.That(failure).IsTypeOf<NotSupportedException>();
-            await Assert.That(failure!.Message).Contains($"the {plane} identity plane");
+            await Assert.That(failure!.Message).Contains(refusal);
             await Assert.That(world.Counter).IsEqualTo(0ul);
             await Assert.That(source.Positions.Count).IsEqualTo(0);
             await Assert.That(Directory.Exists(request.OutputDirectory)).IsFalse();

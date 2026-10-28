@@ -835,8 +835,8 @@ time samples, and samples in scheduler batches of at most sixteen. It checks the
 revision before and after each batch. The caller must continue excluding or detecting writers
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
-The profile accepts only raw `half4` / `color`, `float` / `depth`, `int` / `primId` and
-`int` / `instanceId` variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
+The profile accepts only raw `half4` / `color`, `float` / `depth`, `int` / `primId`,
+`int` / `instanceId` and `normal3f` / `normal` variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
 Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
 resolution of a named purpose already falls back to the allPurpose binding. The unauthored
 fallback `["full", ""]` therefore runs as `full`, and `["preview", ""]` as `preview`. A list
@@ -995,6 +995,20 @@ convention. Requesting either identity plane charges Silk 28 bytes per pixel and
 the job adds 8 bytes per pixel for the first plane and 4 for the second. The refusals match
 `primId`: non-pick devices, motion blur, depth of field and physics recordings. The Viewer and
 MCP product jobs capture it, and MCP `read_sequence_frame` links it as `instanceId`.
+
+A product `normal` variable (`normal3f`) records the world-space unit shading normal of the
+front-most surface at each pixel. Silk draws it in a separate pass with its own checked
+`normal.vertex`/`normal.fragment` program into an RGBA32F target, on the same retained scene and
+camera as color. The value is the interpolated vertex normal, authored or generated from topology;
+normal maps are not applied. Back faces flip the way the mesh shader flips them, and clip planes
+still cut. Background and degenerate normals are `(0, 0, 0)`. The job writes
+`frame-NNNNNN.normal.f32x3` as packed top-down little-endian float32 triples, and the manifest
+records it as `float32x3-little-endian` under the `world-space-unit-normal-float32x3` convention.
+The plane adds 28 bytes per pixel to Silk's managed charge (16 for the readback, 12 for the packed
+output) and the same to the job's frame accounting. Motion blur, depth of field, renderers other
+than the Silk mesh renderer and physics recordings refuse it. D3D12 and Vulkan run it; Metal waits
+for a macOS-built `mesh.metallib` that contains the new program. The Viewer and MCP product jobs
+capture it, and MCP `read_sequence_frame` links it as `normal`.
 
 The additional `includeHdrColor` overload preserves actual pre-display HDR color in generated
 `.hdr.rgba16f` sidecars. `RenderJobHdrColor` borrows tightly packed top-down little-endian RGBA

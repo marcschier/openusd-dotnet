@@ -829,6 +829,35 @@ public readonly record struct SilkBindingLayoutDescriptor(
         ]
     };
 
+    /// <summary>
+    /// Creates the world-space normal capture layout.
+    /// </summary>
+    /// <remarks>
+    /// Binds the per-mesh instance table the vertex stage projects with and the
+    /// raw frame block both stages read: the vertex stage recovers the
+    /// object-to-world transform from it and the fragment stage honours the
+    /// authored clip planes. No material, surface or shadow resource is
+    /// declared, because the normal programs reference none.
+    /// </remarks>
+    internal static SilkBindingLayoutDescriptor NormalParameters => SceneParameters with
+    {
+        MaterialSlots =
+        [
+            new(
+                0,
+                6,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex),
+            new(
+                0,
+                FrameParametersBinding,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+        ]
+    };
+
     internal static (uint Sampler, uint Texture) GetMaterialTextureBindings(
         SilkMaterialParameter parameter) =>
         parameter switch
@@ -1400,6 +1429,49 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         }
     }
 
+    /// <summary>Gets or creates the checked world-space normal capture pipeline.</summary>
+    /// <remarks>
+    /// Renders into an <see cref="SilkTextureFormat.Rgba32Float"/> target with a
+    /// <see cref="SilkTextureFormat.D32Float"/> depth buffer, the only formats the
+    /// normal plane is captured with.
+    /// </remarks>
+    internal ISilkGraphicsPipeline GetOrCreateNormalPipeline(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTopologyKind topologyKind,
+        SilkCullMode cullMode = SilkCullMode.None)
+    {
+        DeviceGenerationKey generation = ReadDeviceGeneration(_device);
+        PipelineCacheKey key = new(
+            "world-normal",
+            CreateVertexLayoutKey(vertexLayout),
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureFormat.D32Float,
+            cullMode,
+            topologyKind,
+            SilkBlendMode.None,
+            DepthWriteEnabled: true,
+            _shaderFormat,
+            generation);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (generation != _generation)
+            {
+                DisposeEntries();
+                _generation = generation;
+            }
+
+            if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
+            {
+                entry = CreateNormalEntry(vertexLayout, topologyKind, cullMode);
+                _entries.Add(key, entry);
+            }
+
+            return entry.AcquireLease();
+        }
+    }
+
     /// <summary>Gets or creates a runtime material pipeline from compiled shader descriptors.</summary>
     internal ISilkGraphicsPipeline GetOrCreateMaterialPipeline(
         SilkMaterialShaderProgram materialProgram,
@@ -1565,6 +1637,53 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             {
                 DepthOnly = true,
             });
+            return new CachedPipelineEntry(
+                vertexShader,
+                fragmentShader,
+                bindingLayout,
+                program,
+                pipeline);
+        }
+        catch
+        {
+            pipeline?.Dispose();
+            program?.Dispose();
+            bindingLayout?.Dispose();
+            fragmentShader?.Dispose();
+            vertexShader?.Dispose();
+            throw;
+        }
+    }
+
+    private CachedPipelineEntry CreateNormalEntry(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTopologyKind topologyKind,
+        SilkCullMode cullMode)
+    {
+        ISilkGraphicsShaderModule? vertexShader = null;
+        ISilkGraphicsShaderModule? fragmentShader = null;
+        ISilkGraphicsBindingLayout? bindingLayout = null;
+        ISilkGraphicsShaderProgram? program = null;
+        ISilkGraphicsPipeline? pipeline = null;
+        try
+        {
+            vertexShader = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadNormalVertex(_shaderFormat));
+            fragmentShader = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadNormalFragment(_shaderFormat));
+            bindingLayout = _device.CreateBindingLayout(
+                SilkBindingLayoutDescriptor.NormalParameters);
+            program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
+                vertexShader,
+                fragmentShader,
+                bindingLayout));
+            pipeline = _device.CreateGraphicsPipeline(new SilkGraphicsPipelineDescriptor(
+                program,
+                vertexLayout,
+                SilkTextureFormat.Rgba32Float,
+                SilkTextureFormat.D32Float,
+                cullMode,
+                topologyKind));
             return new CachedPipelineEntry(
                 vertexShader,
                 fragmentShader,
@@ -1993,6 +2112,24 @@ public static partial class SilkCheckedShaderAssets
             SilkShaderStage.Fragment,
             format,
             "shadowFragmentMain");
+
+    /// <summary>Loads the checked world-space normal capture vertex module.</summary>
+    public static SilkShaderModuleDescriptor LoadNormalVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "normal",
+            SilkShaderStage.Vertex,
+            format,
+            "normalVertexMain");
+
+    /// <summary>Loads the checked world-space normal capture fragment module.</summary>
+    public static SilkShaderModuleDescriptor LoadNormalFragment(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "normal",
+            SilkShaderStage.Fragment,
+            format,
+            "normalFragmentMain");
 
     /// <summary>Loads the checked fill compute module.</summary>
     public static SilkShaderModuleDescriptor LoadComputeFill(

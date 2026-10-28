@@ -77,9 +77,10 @@ public static partial class RenderDiskJob
                     request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index),
                     request.ProductPlan?.Frames[index].CameraSettings!.LinearExposureScale ?? 1, remaining,
                     request.ProductPlan?.AccumulationStates(index), request.IncludePrimId, request.IncludeInstanceId,
-                    cancellationToken);
+                    request.IncludeNormal, cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes +
-                    frames[index].PrimIdBytes + frames[index].PrimIdTableBytes + frames[index].InstanceIdBytes;
+                    frames[index].PrimIdBytes + frames[index].PrimIdTableBytes + frames[index].InstanceIdBytes +
+                    frames[index].NormalBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
             }
             beforePublish?.Invoke();
@@ -165,7 +166,7 @@ public static partial class RenderDiskJob
         List<RenderDiagnostic> diagnostics, bool includeDeviceDepth, bool includeHdrColor,
         RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, double hdrExposureScale, long maximumBytes,
         IReadOnlyList<StageRenderState>? shutterStates, bool includePrimId, bool includeInstanceId,
-        CancellationToken cancellationToken)
+        bool includeNormal, CancellationToken cancellationToken)
     {
         RenderJobImage image = (shutterStates is null
             ? source.Render(state, cancellationToken)
@@ -199,12 +200,18 @@ public static partial class RenderDiskJob
             throw new NotSupportedException(
                 "The render source did not provide exactly the requested instance identity output.");
         }
+        if (includeNormal != (image.Normal is not null))
+        {
+            throw new NotSupportedException(
+                "The render source did not provide exactly the requested normal output.");
+        }
         long depthBytes = includeDeviceDepth ? (long)image.Width * image.Height * sizeof(float) : 0;
         long hdrBytes = includeHdrColor && hdrColorFormat == RenderHdrColorFormat.RawRgba16Float
             ? (long)image.Width * image.Height * 8 : 0;
         long primIdBytes = includePrimId ? (long)image.Width * image.Height * sizeof(int) : 0;
         long instanceIdBytes = includeInstanceId ? (long)image.Width * image.Height * sizeof(int) : 0;
-        long extraBytes = depthBytes + hdrBytes + primIdBytes + instanceIdBytes;
+        long normalBytes = includeNormal ? (long)image.Width * image.Height * NormalBytesPerPixel : 0;
+        long extraBytes = depthBytes + hdrBytes + primIdBytes + instanceIdBytes + normalBytes;
         if (extraBytes >= maximumBytes)
         {
             throw new RenderOutputQuotaExceededException(
@@ -270,6 +277,17 @@ public static partial class RenderDiskJob
                 Path.Combine(directory, instanceIdName), instanceId.Values.Span, int.MaxValue,
                 "An instance index must be minus one or non-negative.", cancellationToken);
         }
+        string? normalName = null;
+        string? normalHash = null;
+        if (image.Normal is { } normal)
+        {
+            if (normal.Width != image.Width || normal.Height != image.Height)
+            {
+                throw new InvalidDataException("The normal plane does not match the color frame.");
+            }
+            normalName = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}.normal.f32x3";
+            normalHash = WriteFloatPlane(Path.Combine(directory, normalName), normal.Values.Span, cancellationToken);
+        }
         string fileName = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}.png";
         using var file = new FileStream(Path.Combine(directory, fileName),
             FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
@@ -303,8 +321,8 @@ public static partial class RenderDiskJob
             {
                 (hdrBytes, hdrHash) = WriteExrColor(
                     Path.Combine(directory, hdrName), hdr, exrWindows, hdrExposureScale,
-                    maximumBytes - written - depthBytes - primIdBytes - primIdTableBytes - instanceIdBytes,
-                    cancellationToken);
+                    maximumBytes - written - depthBytes - primIdBytes - primIdTableBytes - instanceIdBytes -
+                    normalBytes, cancellationToken);
             }
             else
             {
@@ -324,7 +342,10 @@ public static partial class RenderDiskJob
             PrimIdTableSha256 = primIdTableHash,
             InstanceIdFileName = instanceIdName,
             InstanceIdBytes = instanceIdBytes,
-            InstanceIdSha256 = instanceIdHash
+            InstanceIdSha256 = instanceIdHash,
+            NormalFileName = normalName,
+            NormalBytes = normalBytes,
+            NormalSha256 = normalHash
         };
     }
 
@@ -427,6 +448,30 @@ public static partial class RenderDiskJob
         return Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
     }
 
+    private static string WriteFloatPlane(string path, ReadOnlySpan<float> values, CancellationToken cancellationToken)
+    {
+        using var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        Span<byte> buffer = stackalloc byte[4096];
+        for (int start = 0; start < values.Length; start += buffer.Length / sizeof(float))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int count = Math.Min(buffer.Length / sizeof(float), values.Length - start);
+            for (int index = 0; index < count; index++)
+            {
+                float value = values[start + index];
+                if (!float.IsFinite(value))
+                {
+                    throw new InvalidDataException("A normal component must be finite.");
+                }
+                BinaryPrimitives.WriteSingleLittleEndian(buffer.Slice(index * sizeof(float), sizeof(float)), value);
+            }
+            output.Write(buffer[..(count * sizeof(float))]);
+        }
+        output.Flush(flushToDisk: true);
+        output.Position = 0;
+        return Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
+    }
+
     private static string WriteIndexPlane(
         string path, ReadOnlySpan<int> values, int exclusiveMaximum, string rangeMessage,
         CancellationToken cancellationToken)
@@ -489,6 +534,18 @@ public static partial class RenderDiskJob
     }
 
     private const string InstanceIdConvention = "innermost-instancer-instance-index";
+    private const string NormalConvention = "world-space-unit-normal-float32x3";
+    private const string NormalFormat = "float32x3-little-endian";
+    private const int NormalBytesPerPixel = 3 * sizeof(float);
+
+    private static void WriteNormalBackground(Utf8JsonWriter json)
+    {
+        json.WriteStartArray("background");
+        json.WriteNumberValue(0);
+        json.WriteNumberValue(0);
+        json.WriteNumberValue(0);
+        json.WriteEndArray();
+    }
 
     private static string HdrColorFormatName(RenderHdrColorFormat? format) => format switch
     {
@@ -574,6 +631,18 @@ public static partial class RenderDiskJob
                     json.WriteNumber("background", -1);
                     json.WriteNumber("bytes", frame.InstanceIdBytes);
                     json.WriteString("sha256", frame.InstanceIdSha256);
+                    json.WriteEndObject();
+                }
+                if (frame.NormalFileName is { } normalName)
+                {
+                    json.WriteStartObject("normal");
+                    json.WriteString("file", normalName);
+                    json.WriteString("format", NormalFormat);
+                    json.WriteString("rowOrder", "top-down");
+                    json.WriteString("convention", NormalConvention);
+                    WriteNormalBackground(json);
+                    json.WriteNumber("bytes", frame.NormalBytes);
+                    json.WriteString("sha256", frame.NormalSha256);
                     json.WriteEndObject();
                 }
                 if (frame.HdrColorFileName is { } hdrName)

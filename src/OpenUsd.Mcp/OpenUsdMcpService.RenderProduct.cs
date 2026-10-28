@@ -134,6 +134,7 @@ internal sealed partial class OpenUsdMcpService
                 RenderProductPlane.DeviceDepth => "deviceDepth",
                 RenderProductPlane.PrimId => "primId",
                 RenderProductPlane.InstanceId => "instanceId",
+                RenderProductPlane.Normal => "normal",
                 _ => throw new InvalidDataException("A product output names an unknown plane.")
             })).ToArray()));
 

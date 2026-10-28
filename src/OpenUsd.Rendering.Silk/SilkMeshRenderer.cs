@@ -4496,6 +4496,102 @@ public sealed partial class SilkMeshRenderer :
             new SilkInstanceIdCaptureResult(width, height, instances));
     }
 
+    /// <summary>
+    /// Draws the world-space normal pass once over the whole viewport of the frame just
+    /// rendered and reads the unit normal of the front-most surface back per pixel.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Runs synchronously inside the capture lease with transient RGBA32Float and depth
+    /// targets and the frame constants the colour pass used, so the viewer's retained
+    /// targets are untouched and the authored clip planes remove exactly the fragments
+    /// the colour pass removed.
+    /// </para>
+    /// <para>
+    /// Every mesh with indices is drawn, as the prim identity pass draws them, and
+    /// without culling, so the plane covers the same visible surfaces as the identity
+    /// planes. Back faces report the normal flipped toward the viewer. The cleared
+    /// background, and any surface whose interpolated normal is degenerate, is
+    /// (0, 0, 0).
+    /// </para>
+    /// </remarks>
+    internal SilkNormalCaptureResult CaptureNormalPlane(
+        int width,
+        int height,
+        SilkDepthCaptureRequest request)
+    {
+        request.ThrowIfCancellationRequested();
+        ISilkGraphicsBuffer frameBuffer = GpuResources.CurrentFrameBuffer;
+        uint targetWidth = checked((uint)width);
+        uint targetHeight = checked((uint)height);
+        using ISilkGraphicsTexture color = _device.CreateTexture2D(new SilkTextureDescriptor(
+            targetWidth,
+            targetHeight,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = _device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(targetWidth, targetHeight));
+        using (ISilkGraphicsCommandList commands = _device.CreateCommandList())
+        {
+            commands.ClearColor(color, new SilkColor(0, 0, 0, 0));
+            commands.ClearDepth(depth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
+            commands.SetViewport(new SilkViewport(0, 0, targetWidth, targetHeight));
+            commands.SetScissor(new SilkScissor(0, 0, targetWidth, targetHeight));
+            foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
+            {
+                if (mesh.IndexCount == 0)
+                {
+                    continue;
+                }
+                ISilkGraphicsPipeline pipeline = _pipelineCache.GetOrCreateNormalPipeline(
+                    mesh.VertexLayout,
+                    mesh.Mesh.TopologyKind);
+                commands.SetGraphicsPipeline(pipeline);
+                DisposePipelineLease(pipeline);
+                commands.SetVertexBuffer(mesh.VertexBuffer);
+                commands.SetIndexBuffer(mesh.IndexBuffer);
+                commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
+                // The per-mesh uniform buffer is the one-element instance table the
+                // normal vertex stage projects with, as in the colour pass.
+                commands.SetStorageBuffer(0, 6, mesh.UniformBuffer);
+                commands.SetStorageBuffer(
+                    0,
+                    SilkBindingLayoutDescriptor.FrameParametersBinding,
+                    frameBuffer);
+                commands.DrawIndexed(mesh.IndexCount);
+            }
+            commands.EndRendering();
+            using ISilkGraphicsSubmission submission = _device.Submit(commands);
+            submission.Wait();
+        }
+        request.ThrowIfCancellationRequested();
+        int pixelCount = checked(width * height);
+        float[] rgba = new float[checked(pixelCount * 4)];
+        color.ReadbackForTesting(rgba);
+        request.ThrowIfCancellationRequested();
+        float[] values = new float[checked(pixelCount * 3)];
+        for (int pixel = 0; pixel < pixelCount; pixel++)
+        {
+            if ((pixel & 0xFFFF) == 0)
+            {
+                request.ThrowIfCancellationRequested();
+            }
+            float x = rgba[pixel * 4];
+            float y = rgba[(pixel * 4) + 1];
+            float z = rgba[(pixel * 4) + 2];
+            if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z))
+            {
+                throw new InvalidDataException("The normal raster contains a non-finite component.");
+            }
+            values[pixel * 3] = x;
+            values[(pixel * 3) + 1] = y;
+            values[(pixel * 3) + 2] = z;
+        }
+        request.ThrowIfCancellationRequested();
+        return new SilkNormalCaptureResult(width, height, values);
+    }
+
     private (int[] Values, SilkPrimIdentity[] Identities) CapturePrimIdRaster(
         int width,
         int height,
