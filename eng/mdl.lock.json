@@ -147,7 +147,9 @@
     "acquisition": {
       "performed": true,
       "performedFor": [
-        "win-x64"
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
       ],
       "script": "eng/fetch-mdl-sdk.ps1",
       "verification": "The archive is verified against the SHA-256 recorded above before it is extracted. The digest is compared, never written back from the download: a hash computed from whatever arrived attests to nothing. A mismatch deletes the download and fails.",

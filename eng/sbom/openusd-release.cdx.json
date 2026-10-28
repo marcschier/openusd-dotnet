@@ -39,7 +39,7 @@
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
-        "value": "59a5007ebfbf28e5ec4b881fab621d02e7b1fe45ef124e43319decf5b0eee791"
+        "value": "e8f2efc0430aeccc247d760255611a2be2d459599a28e1f0fb4a2b8a2d0f993b"
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",

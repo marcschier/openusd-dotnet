@@ -681,10 +681,10 @@ explicit. These are partial projections, not general MDL, emissive-light transpo
 warehouse shading or BSDF execution.
 
 **Limits:** The native.yml mdl-sdk-adapter job builds the SDK adapter/probes on all three RIDs without an OpenUSD
-archive. Windows/Linux hosted jobs are explicitly compile-only after runtime loading failed; macOS schedules strict SDK
-and pinned core-module execution. Acquired dependencies are digest-verified and never uploaded or packaged. This entry
-also covers unchanged warehouse wrappers and rendered controls that those jobs do not execute. Local execution evidence
-remains win-x64; corrected macOS execution is pending, not an evidence platform.
+archive. Windows/Linux hosted jobs are explicitly compile-only after runtime loading failed; macOS runs strict SDK and
+pinned core-module tests. Acquired dependencies are digest-verified and never uploaded or packaged. This entry also
+covers unchanged warehouse wrappers and rendered controls that those jobs do not execute. The macOS standalone module
+gate does not qualify this entry's warehouse and renderer evidence on that platform.
 
 ### `mdl-generated-shader-code`
 
