@@ -118,7 +118,7 @@ $libraryName = switch ($Rid)
 {
     'win-x64' { 'libmdl_sdk.dll' }
     'linux-x64' { 'libmdl_sdk.so' }
-    'osx-arm64' { 'libmdl_sdk.dylib' }
+    'osx-arm64' { 'libmdl_sdk.so' }
 }
 $library = Get-ChildItem -LiteralPath $sdkRoot -Recurse -File -Filter $libraryName |
     Select-Object -First 1

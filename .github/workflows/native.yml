@@ -182,7 +182,7 @@ jobs:
           -R "^mdl_adapter_probe$" --no-tests=error --output-on-failure
 
   mdl-sdk-adapter:
-    name: ${{ matrix.rid }} standalone MDL SDK adapter
+    name: ${{ matrix.rid }} standalone MDL SDK ${{ matrix.qualification }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -191,10 +191,13 @@ jobs:
         include:
           - rid: win-x64
             runner: windows-latest
+            qualification: compile-only
           - rid: linux-x64
             runner: ubuntu-24.04
+            qualification: compile-only
           - rid: osx-arm64
             runner: macos-15
+            qualification: module tests
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -207,13 +210,17 @@ jobs:
       - name: Acquire pinned MDL SDK
         shell: pwsh
         run: ./eng/fetch-mdl-sdk.ps1 -Rid ${{ matrix.rid }}
-      - name: Acquire pinned modules and configure SDK adapter
+      - name: Configure SDK adapter and acquire executable module fixtures
         shell: pwsh
         run: |
-          $dataRoot = Join-Path $PWD 'artifacts/mdl-modules'
-          $report = & python ./eng/fetch_simready_mdl.py --data-root $dataRoot
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $moduleRoot = ($report -join "`n" | ConvertFrom-Json).moduleRoot
+          $moduleRoot = ''
+          if ($IsMacOS)
+          {
+            $dataRoot = Join-Path $PWD 'artifacts/mdl-modules'
+            $report = & python ./eng/fetch_simready_mdl.py --data-root $dataRoot
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $moduleRoot = ($report -join "`n" | ConvertFrom-Json).moduleRoot
+          }
           $sdkRoot = Join-Path $PWD 'native/install/mdl-sdk/${{ matrix.rid }}'
           cmake -S native/openusd_mdl -B artifacts/mdl-sdk-standalone `
             -DCMAKE_BUILD_TYPE=Release -Werror=dev `
@@ -223,6 +230,7 @@ jobs:
       - name: Build standalone MDL SDK adapter and probes
         run: cmake --build artifacts/mdl-sdk-standalone --config Release
       - name: Test standalone MDL SDK adapter and real modules
+        if: runner.os == 'macOS'
         run: >-
           ctest --test-dir artifacts/mdl-sdk-standalone -C Release
           --no-tests=error --output-on-failure

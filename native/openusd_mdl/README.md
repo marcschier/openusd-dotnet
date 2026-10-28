@@ -283,12 +283,14 @@ hdSilk probe on Windows. The `linux-x64-mdl` and `osx-arm64-mdl` presets remain
 buildable without an equivalent integrated loader/renderer gate; standalone
 adapter success does not supply that evidence.
 
-The separate `mdl-sdk-adapter` job acquires the pinned SDK and six-file core module
-profile on each RID, then runs the SDK and real-module probes without an OpenUSD
-archive. Its strict wrapper/module probes fail when the SDK cannot load or compile
-the fixtures. Acquired dependencies stay in the job workspace and are not uploaded
-or packaged. These jobs qualify the adapter's module behavior, not a warehouse
-stage, hdSilk integration or rendered pixels.
+The separate `mdl-sdk-adapter` job builds the SDK-backed adapter and its probes on
+each RID without an OpenUSD archive. Windows/Linux hosted jobs are explicitly
+compile-only: their SDK runtime could not load on the current runners, and the
+Windows binary imports `nvcuda.dll`. The macOS job additionally acquires the pinned
+six-file core module profile and runs strict SDK/module probes. Its pinned runtime
+is named `libmdl_sdk.so`, including on macOS; `.dylib` is not present in the archive.
+Acquired dependencies stay in the job workspace and are not uploaded or packaged.
+Module tests do not qualify a warehouse stage, hdSilk integration or rendered pixels.
 
 The build produces `openusd_mdl` in the build tree and installs nothing. hdSilk
 finds it beside its own binary, or at the absolute path named by the

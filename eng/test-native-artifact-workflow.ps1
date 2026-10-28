@@ -70,10 +70,12 @@ if ($mdlJob -match '(?m)^    needs:' -or $mdlJob.Contains('fetch-native') -or
 $mdlSdkJob = [regex]::Match(
     $nativeWorkflow, '(?ms)^  mdl-sdk-adapter:\r?\n.*?(?=^  [\w-]+:\r?$|\z)').Value
 foreach ($required in @(
-    'name: ${{ matrix.rid }} standalone MDL SDK adapter',
+    'name: ${{ matrix.rid }} standalone MDL SDK ${{ matrix.qualification }}',
     'rid: win-x64',
     'rid: linux-x64',
     'rid: osx-arm64',
+    'qualification: compile-only',
+    'qualification: module tests',
     './eng/fetch-mdl-sdk.ps1 -Rid ${{ matrix.rid }}',
     'python ./eng/fetch_simready_mdl.py --data-root $dataRoot',
     'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
@@ -86,6 +88,10 @@ foreach ($required in @(
 {
     Assert-Contains $mdlSdkJob $required 'Standalone MDL SDK adapter job'
 }
+Assert-Contains $mdlSdkJob @'
+      - name: Test standalone MDL SDK adapter and real modules
+        if: runner.os == 'macOS'
+'@ 'SDK module execution admission'
 if ($mdlSdkJob -match '(?m)^    needs:' -or $mdlSdkJob.Contains('fetch-native') -or
     $mdlSdkJob.Contains('upload-artifact'))
 {

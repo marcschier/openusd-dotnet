@@ -86,9 +86,6 @@ constexpr const char* kLegacyPbrRootVariable = "OPENUSD_MDL_LEGACY_PBR_ROOT";
 #if defined(_WIN32)
 using RuntimeHandle = HMODULE;
 constexpr const char* kRuntimeLibraryName = "libmdl_sdk.dll";
-#elif defined(__APPLE__)
-using RuntimeHandle = void*;
-constexpr const char* kRuntimeLibraryName = "libmdl_sdk.dylib";
 #else
 using RuntimeHandle = void*;
 constexpr const char* kRuntimeLibraryName = "libmdl_sdk.so";

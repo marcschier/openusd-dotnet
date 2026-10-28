@@ -680,10 +680,11 @@ records; this is not a rendered warehouse frame. Unknown calls, roots, resources
 explicit. These are partial projections, not general MDL, emissive-light transport, opacity-aware shadows/picking, full
 warehouse shading or BSDF execution.
 
-**Limits:** The native.yml mdl-sdk-adapter job schedules standalone SDK and pinned core-module checks on all three RIDs
-without an OpenUSD archive. It acquires digest-verified SDK dependencies and does not upload or package them. This entry
-also covers unchanged warehouse wrappers and rendered controls that those jobs do not execute. Local evidence remains
-win-x64; Linux/macOS job results are pending and are not claimed as evidence platforms.
+**Limits:** The native.yml mdl-sdk-adapter job builds the SDK adapter/probes on all three RIDs without an OpenUSD
+archive. Windows/Linux hosted jobs are explicitly compile-only after runtime loading failed; macOS schedules strict SDK
+and pinned core-module execution. Acquired dependencies are digest-verified and never uploaded or packaged. This entry
+also covers unchanged warehouse wrappers and rendered controls that those jobs do not execute. Local execution evidence
+remains win-x64; corrected macOS execution is pending, not an evidence platform.
 
 ### `mdl-generated-shader-code`
 
