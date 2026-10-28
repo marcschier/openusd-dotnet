@@ -3,3 +3,8 @@ mdl 1.7;
 using ::OmniPBR import OmniPBR;
 export material missing_texture(*) = OmniPBR(
     diffuse_texture: texture_2d("./textures/absent-on-purpose.png"));
+
+export material missing_scalar_textures(*) = OmniPBR(
+    reflectionroughness_texture: texture_2d("./textures/absent-roughness.png"),
+    metallic_texture: texture_2d("./textures/absent-metallic.png"),
+    ORM_texture: texture_2d("./textures/absent-orm.png"));

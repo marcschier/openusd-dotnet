@@ -245,6 +245,11 @@ alone does not prove equivalence to the constant. Malformed controls and texture
 resources retain their diagnostics. This diagnostic correction does not change
 shading records or establish new warehouse fidelity.
 
+The SDK wrapper probes distinguish empty module-default maps from unresolved
+nonempty resources for both standalone and ORM selection. They check that zero
+influence preserves constants without hiding a missing resource, while nonzero
+influence with no selected map remains diagnosed.
+
 ## Building
 
 The adapter is off by default:
@@ -253,6 +258,23 @@ The adapter is off by default:
 cmake --preset win-x64-mdl
 cmake --build --preset win-x64-mdl
 ```
+
+For adapter-only work, configure this directory directly instead of the full native
+project. This builds the same targets and public-C-ABI probes without OpenUSD,
+OpenGL, Vulkan or their runtime dependencies:
+
+```powershell
+cmake -S .\native\openusd_mdl -B D:\temp\openusd-mdl -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build D:\temp\openusd-mdl
+ctest --test-dir D:\temp\openusd-mdl --no-tests=error --output-on-failure
+```
+
+Run these commands from a configured native compiler environment. Optional
+`OPENUSD_MDL_SDK_ROOT`, `OPENUSD_MDL_SDK_RUNTIME_DIR` and
+`OPENUSD_MDL_REAL_MODULE_ROOT` settings enable the existing SDK and real-module
+probes; they do not acquire dependencies or change either adapter's linkage.
+`OPENUSD_BUILD_NATIVE_TESTS=OFF` builds only the selected adapter libraries.
+Adapter-only probes do not qualify the hdSilk loader, renderer, or base packages.
 
 `linux-x64-mdl` and `osx-arm64-mdl` build the identical dependency-free source,
 but only `win-x64` is gated: `native.yml` builds this configuration and runs the

@@ -973,6 +973,55 @@ void Synthetic(
             Text(result.diagnostic).find("absent-on-purpose.png") != std::string::npos,
             "an unresolved nonempty texture was silently treated as an empty default");
     });
+    probe.Run("EmptyScalarMapsKeepZeroInfluenceNeutralAndNonzeroInfluenceDiagnosed", [&] {
+        for (bool ormEnabled : {false, true})
+        {
+            for (float factor : {0.0F, 0.35F, 1.0F})
+            {
+               auto value = Distill(adapter.get(), variants, "constants", {
+                   Boolean("enable_ORM_texture", ormEnabled),
+                   Number("reflection_roughness_texture_influence", factor),
+                   Number("metallic_texture_influence", factor)});
+               const auto& result = Success(value);
+               Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.21F});
+               Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.84F});
+               Require(result.texture_count == 0 &&
+                   Reported(result, "reflection_roughness_texture_influence") == (factor != 0) &&
+                   Reported(result, "metallic_texture_influence") == (factor != 0),
+                   "empty SDK defaults changed constants or hid nonzero lookup influence");
+               for (const char* name : {"reflectionroughness_texture", "metallic_texture", "ORM_texture"})
+               {
+                   Require(!Reported(result, name), std::string("an empty default became a missing map: ") + name);
+               }
+            }
+        }
+        auto inherited = Distill(adapter.get(), variants, "constants");
+        Require(!Reported(Success(inherited), "reflection_roughness_texture_influence") &&
+            !Reported(Success(inherited), "metallic_texture_influence"),
+            "resolved zero module defaults were reported as unprojected");
+    });
+    probe.Run("ZeroInfluenceDoesNotHideUnresolvedScalarResources", [&] {
+        for (bool ormEnabled : {false, true})
+        {
+            auto value = Distill(adapter.get(), "wrappers\\missing_texture.mdl", "missing_scalar_textures", {
+               Boolean("enable_ORM_texture", ormEnabled),
+               Number("reflection_roughness_texture_influence", 0),
+               Number("metallic_texture_influence", 0)});
+            const auto& result = Success(value);
+            Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.5F});
+            Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0});
+            Require(result.texture_count == 0 &&
+               !Reported(result, "reflection_roughness_texture_influence") &&
+               !Reported(result, "metallic_texture_influence"),
+               "zero influence changed the scalar-only projection");
+            for (const char* name : {"reflectionroughness_texture", "metallic_texture", "ORM_texture"})
+            {
+               Require(Reported(result, name), std::string("zero influence hid an unresolved resource: ") + name);
+            }
+            Require(Text(result.diagnostic).find("absent-") != std::string::npos,
+               "the SDK resource-resolution diagnostic lost the missing filename");
+        }
+    });
     probe.Run("AbsoluteUrisAndSpacesDoNotCrossPollute", [&] {
         const std::string first = (fixtures / "wrappers" / "Asset One" / "paint wrapper.mdl").u8string();
         const std::string second = (fixtures / "wrappers" / "Asset Two" / "paint wrapper.mdl").u8string();
