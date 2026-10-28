@@ -196,7 +196,8 @@ internal static class OpenUsdMcpDescriptions
         "Optional width and height override the full raster before cropping; supply both within 1-4096 pixels, " +
         "or omit both to retain authored resolution. " +
         "The initial profile accepts raw half4 color and/or float normalized depth, one material-binding purpose, " +
-        "standard scene purposes, unit camera exposure and no active motion blur or depth of field. " +
+        "standard scene purposes and no active motion blur or depth of field. " +
+        "Authored camera exposure scales the HDR plane and adds its stops to the PNG display exposure. " +
         "Unsupported variables, named rendering color spaces and unevaluated settings are refused, " +
         "never replaced by beauty. " +
         "Effects: samples the camera in bounded scheduler batches and applies exact admitted scene filters; " +

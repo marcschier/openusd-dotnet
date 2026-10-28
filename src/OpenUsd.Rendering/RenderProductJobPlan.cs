@@ -8,7 +8,7 @@ namespace OpenUsd.Rendering;
 /// <summary>Identifies the exact captured plane backing an admitted raw render variable.</summary>
 public enum RenderProductPlane
 {
-    /// <summary>Pre-display packed top-down RGBA binary16 with stored framebuffer alpha.</summary>
+    /// <summary>Camera-exposed, pre-display packed top-down RGBA binary16 with stored framebuffer alpha.</summary>
     HdrColor,
     /// <summary>Top-down float32 normalized device depth in [0,1], with clear/far value one.</summary>
     DeviceDepth
@@ -32,7 +32,9 @@ public sealed class RenderProductOutputBinding
 /// <summary>Admits one sampled raster product for the shared bounded split-plane disk-job engine.</summary>
 /// <remarks>
 /// The initial profile supports raw half4 color and float normalized depth, one material-binding
-/// purpose, standard scene purposes, unit camera exposure and no active motion blur or depth of field.
+/// purpose, standard scene purposes and no active motion blur or depth of field. The authored camera
+/// exposure multiplier scales the HDR color variable and adds its stops to the PNG companion's display
+/// exposure, so both outputs carry the same camera exposure.
 /// Unsupported variables/settings remain inspectable through RenderProductRequest but cannot execute here.
 /// A PNG is an explicitly identified display companion, not a replacement for a requested variable.
 /// Adapters must apply the admitted scene filters and all render settings before returning each frame.
@@ -48,6 +50,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     /// <remarks>
     /// Renderer settings are explicit caller choices. Their display transform/exposure affect the PNG
     /// companion, not the raw HDR variable; scene lighting/material/quality choices affect the render.
+    /// Each frame's state adds the sampled camera exposure in stops to the display exposure.
     /// </remarks>
     public RenderProductJobPlan(
         StageIdentity stage, IReadOnlyList<RenderPreparedFrame> frames,
@@ -87,7 +90,10 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             ValidateCamera(frame);
             samples[index] = frame;
             states[index] = state = state.WithCamera(frame.Camera).WithViewport(frame.OutputDimensions)
-                .WithTime(new StageTime(frame.TimeCode)).AdvanceRevision();
+                .WithTime(new StageTime(frame.TimeCode))
+                .WithRenderSettings(ProductCameraExposure.ApplyToDisplay(
+                    renderSettings, frame.CameraSettings!.LinearExposureScale))
+                .AdvanceRevision();
         }
         Frames = new OwnedReadOnlyList<RenderPreparedFrame>(samples);
         _states = new OwnedReadOnlyList<StageRenderState>(states);
@@ -246,10 +252,6 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         RenderCameraFrameSettings settings = frame.CameraSettings ??
             throw new NotSupportedException(
                 "Executing a product requires sampled camera shutter and exposure, not geometry alone.");
-        if (settings.LinearExposureScale != 1)
-        {
-            throw new NotSupportedException("The current raw-output profile cannot omit non-unit camera exposure.");
-        }
         if (!frame.Request.Product.DisableMotionBlur && (settings.ShutterOpen != 0 || settings.ShutterClose != 0))
         {
             throw new NotSupportedException(

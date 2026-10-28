@@ -84,7 +84,7 @@ public static partial class RenderDiskJob
             json.WriteNumber("bytes", hdr ? result.HdrColorBytes : result.DepthBytes);
             json.WriteString("sha256", hdr ? result.HdrColorSha256 : result.DepthSha256);
             json.WriteString("rowOrder", "top-down");
-            json.WriteString("convention", hdr ? "renderer-working-composited-before-exposure-and-display" :
+            json.WriteString("convention", hdr ? "renderer-working-composited-camera-exposed-before-display" :
                 "normalized-device-depth-zero-to-one");
             json.WriteEndObject();
         }

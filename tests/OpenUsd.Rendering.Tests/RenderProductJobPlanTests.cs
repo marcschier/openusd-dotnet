@@ -58,7 +58,6 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
-    [Arguments("exposure")]
     [Arguments("shutter")]
     [Arguments("dof")]
     [Arguments("geometry-only")]
@@ -67,7 +66,6 @@ public sealed class RenderProductJobPlanTests
         RenderProductRequest request = Request(disableOptics: false);
         RenderCameraFrameSettings camera = failure switch
         {
-            "exposure" => new(exposure: 1),
             "shutter" => new(shutterOpen: -0.25, shutterClose: 0.25),
             _ => RenderCameraFrameSettings.Default
         };
@@ -308,7 +306,7 @@ public sealed class RenderProductJobPlanTests
                     await Assert.That(binding.GetProperty("rowOrder").GetString()).IsEqualTo("top-down");
                     await Assert.That(binding.GetProperty("convention").GetString()).IsEqualTo(depth
                         ? "normalized-device-depth-zero-to-one"
-                        : "renderer-working-composited-before-exposure-and-display");
+                        : "renderer-working-composited-camera-exposed-before-display");
                 }
             }
             await Assert.That(frame.GetProperty("productCamera").GetProperty("linearExposureScale").GetDouble())
@@ -422,6 +420,116 @@ public sealed class RenderProductJobPlanTests
             Directory.Delete(root, recursive: true);
         }
     }
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CameraExposureScalesProductHdrAndShiftsCompanionDisplayExposure(bool exr)
+    {
+        if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        string root = Directory.CreateTempSubdirectory("product-exposure-").FullName;
+        try
+        {
+            RenderProductRequest request = Request();
+            RenderPreparedFrame exposed = request.PrepareFrame(
+                UsdMatrix4d.Identity, Optics(), 1, new RenderCameraFrameSettings(exposure: -2));
+            RenderPreparedFrame unit = Frame(request, 2);
+            RenderSettings baseline = RenderSettings.PresentationDefault;
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [exposed, unit], baseline);
+            await Assert.That(plan.RenderSettings).IsEqualTo(baseline);
+            RenderDiskJobRequest job = plan.CreateJob(
+                Path.Combine(root, "out"), exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.Raw);
+            await Assert.That(job.Frames[0].RenderSettings.Exposure).IsEqualTo(baseline.Exposure - 2);
+            RenderSettings shifted = job.Frames[0].RenderSettings;
+            await Assert.That(shifted.SamplesPerPixel == baseline.SamplesPerPixel &&
+                shifted.EnableLighting == baseline.EnableLighting && shifted.EnableShadows == baseline.EnableShadows &&
+                shifted.ClearColor == baseline.ClearColor && shifted.BackfaceCulling == baseline.BackfaceCulling &&
+                shifted.UseSceneMaterials == baseline.UseSceneMaterials && shifted.Complexity == baseline.Complexity &&
+                shifted.OutputTransform == baseline.OutputTransform &&
+                Equals(shifted.DisplayTransform, baseline.DisplayTransform)).IsTrue();
+            await Assert.That(job.Frames[1].RenderSettings).IsEqualTo(baseline);
+            ushort[] input = [0x4400, 0xC000, 0x0000, 0x3800, 0x3C00, 0x7BFF, 0x3400, 0x3C00,
+                0x4000, 0x4200, 0x4400, 0x0000, 0x0001, 0x8400, 0x3C00, 0x3555];
+            byte[] hdr = Halves(input);
+            var source = new ProductSource { HdrBytes = hdr };
+            RenderDiskJobResult result = RenderDiskJob.Execute(job, source);
+            await Assert.That(source.States[0].RenderSettings.Exposure).IsEqualTo(baseline.Exposure - 2);
+            byte[] first = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, result.Frames[0].HdrColorFileName!));
+            byte[] second = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, result.Frames[1].HdrColorFileName!));
+            if (exr)
+            {
+                first = ExrScanlineOracle.Read(first, 2, 2);
+                second = ExrScanlineOracle.Read(second, 2, 2);
+            }
+            ushort[] expected = [0x3C00, 0xB800, 0x0000, 0x3800, 0x3400, 0x73FF, 0x2C00, 0x3C00,
+                0x3800, 0x3A00, 0x3C00, 0x0000, 0x0000, 0x8100, 0x3400, 0x3555];
+            await Assert.That(Convert.ToHexString(first)).IsEqualTo(Convert.ToHexString(Halves(expected)));
+            await Assert.That(Convert.ToHexString(second)).IsEqualTo(Convert.ToHexString(hdr));
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            await Assert.That(manifest.RootElement.GetProperty("frames")[0].GetProperty("productCamera")
+                .GetProperty("linearExposureScale").GetDouble()).IsEqualTo(0.25d);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task CameraExposureWithoutAFiniteDisplayStopIsRefusedBeforeOutput()
+    {
+        RenderProductRequest request = Request();
+        RenderPreparedFrame frame = request.PrepareFrame(
+            UsdMatrix4d.Identity, Optics(), 1, new RenderCameraFrameSettings(exposureResponsivity: 0));
+        await Assert.That(frame.CameraSettings!.LinearExposureScale).IsEqualTo(0d);
+        await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"), [frame],
+            RenderSettings.Default)).Throws<NotSupportedException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CameraExposureThatOverflowsBinary16PublishesNothing(bool exr)
+    {
+        string root = Directory.CreateTempSubdirectory("product-exposure-overflow-").FullName;
+        try
+        {
+            RenderProductRequest request = Request();
+            RenderPreparedFrame frame = request.PrepareFrame(
+                UsdMatrix4d.Identity, Optics(), 1, new RenderCameraFrameSettings(exposure: 2));
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [frame], RenderSettings.Default);
+            ushort[] input = new ushort[16];
+            Array.Fill(input, (ushort)0x3C00);
+            input[4] = 0x7BFF;
+            string output = Path.Combine(root, "out");
+            await Assert.That(() => RenderDiskJob.Execute(
+                    plan.CreateJob(output, exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.Raw),
+                    new ProductSource { HdrBytes = Halves(input) }))
+                .Throws<InvalidDataException>();
+            await Assert.That(Directory.Exists(output)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static byte[] Halves(ushort[] values)
+    {
+        byte[] bytes = new byte[values.Length * 2];
+        for (int index = 0; index < values.Length; index++)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(index * 2), values[index]);
+        }
+        return bytes;
+    }
+
     private static RenderPreparedFrame Frame(RenderProductRequest request, double time = 1) =>
         request.PrepareFrame(UsdMatrix4d.Identity, Optics(), time, RenderCameraFrameSettings.Default);
 
@@ -455,6 +563,7 @@ public sealed class RenderProductJobPlanTests
         internal int Validations { get; private set; }
         internal int Calls { get; private set; }
         internal RenderProductJobPlan? Admitted { get; private set; }
+        internal List<StageRenderState> States { get; } = [];
 
         public void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken)
         {
@@ -471,6 +580,7 @@ public sealed class RenderProductJobPlanTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Calls++;
+            States.Add(state);
             int count = state.Viewport.Width * state.Viewport.Height;
             return new RenderJobImage(
                 state.Viewport.Width, state.Viewport.Height, new byte[count * 4], Rgba8RowOrder.TopDown)

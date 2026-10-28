@@ -74,7 +74,8 @@ public static partial class RenderDiskJob
                 }
                 frames[index] = RenderFrame(
                     staging, index, request.Frames[index], source, diagnostics, request.IncludeDeviceDepth,
-                    request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index), remaining,
+                    request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index),
+                    request.ProductPlan?.Frames[index].CameraSettings!.LinearExposureScale ?? 1, remaining,
                     cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
@@ -160,7 +161,7 @@ public static partial class RenderDiskJob
     private static RenderDiskFrameResult RenderFrame(
         string directory, int index, StageRenderState state, IRenderJobFrameSource source,
         List<RenderDiagnostic> diagnostics, bool includeDeviceDepth, bool includeHdrColor,
-        RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, long maximumBytes,
+        RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, double hdrExposureScale, long maximumBytes,
         CancellationToken cancellationToken)
     {
         RenderJobImage image = source.Render(state, cancellationToken) ??
@@ -249,12 +250,13 @@ public static partial class RenderDiskJob
             if (hdrColorFormat == RenderHdrColorFormat.Exr)
             {
                 (hdrBytes, hdrHash) = WriteExrColor(
-                    Path.Combine(directory, hdrName), hdr, exrWindows, maximumBytes - written - depthBytes,
+                    Path.Combine(directory, hdrName), hdr, exrWindows, hdrExposureScale, maximumBytes - written - depthBytes,
                     cancellationToken);
             }
             else
             {
-                hdrHash = WriteHdrColor(Path.Combine(directory, hdrName), hdr.Rgba16Float.Span, cancellationToken);
+                hdrHash = WriteHdrColor(
+                    Path.Combine(directory, hdrName), hdr.Rgba16Float.Span, hdrExposureScale, cancellationToken);
             }
         }
         return new RenderDiskFrameResult(
@@ -276,7 +278,7 @@ public static partial class RenderDiskJob
     }
 
     private static (long Bytes, string Sha256) WriteExrColor(
-        string path, RenderJobHdrColor hdr, ExrImageWindows? windows, long maximumBytes,
+        string path, RenderJobHdrColor hdr, ExrImageWindows? windows, double exposureScale, long maximumBytes,
         CancellationToken cancellationToken)
     {
         ReadOnlySpan<byte> values = hdr.Rgba16Float.Span;
@@ -284,6 +286,13 @@ public static partial class RenderDiskJob
         {
             cancellationToken.ThrowIfCancellationRequested();
             ValidateHdrBlock(values.Slice(start, Math.Min(4096, values.Length - start)));
+        }
+        if (exposureScale != 1)
+        {
+            // The encoder takes the whole plane, so a camera-exposed product needs one transient copy.
+            byte[] exposed = GC.AllocateUninitializedArray<byte>(values.Length);
+            ProductCameraExposure.ScaleHdr(values, exposed, exposureScale);
+            values = exposed;
         }
         using var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         long written = ExrRgba16FloatWriter.Write(
@@ -305,15 +314,25 @@ public static partial class RenderDiskJob
         }
     }
 
-    private static string WriteHdrColor(string path, ReadOnlySpan<byte> values, CancellationToken cancellationToken)
+    private static string WriteHdrColor(
+        string path, ReadOnlySpan<byte> values, double exposureScale, CancellationToken cancellationToken)
     {
         using var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        Span<byte> exposed = stackalloc byte[4096];
         for (int start = 0; start < values.Length; start += 4096)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ReadOnlySpan<byte> block = values.Slice(start, Math.Min(4096, values.Length - start));
             ValidateHdrBlock(block);
-            output.Write(block);
+            if (exposureScale != 1)
+            {
+                ProductCameraExposure.ScaleHdr(block, exposed[..block.Length], exposureScale);
+                output.Write(exposed[..block.Length]);
+            }
+            else
+            {
+                output.Write(block);
+            }
         }
         output.Flush(flushToDisk: true);
         output.Position = 0;

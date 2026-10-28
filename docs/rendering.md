@@ -834,8 +834,11 @@ through actual rendering; preparation alone is not a lifetime or revision guaran
 The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
 variables, one per plane, with one material-binding purpose and standard scene-purpose tokens.
 Depth is normalized device depth, not metric camera distance. Named rendering color spaces,
-unevaluated settings, other source/data types, non-unit camera exposure and active motion-blur
-or depth-of-field requirements are not silently approximated. These remain incomplete portions
+unevaluated settings, other source/data types and active motion-blur or depth-of-field
+requirements are not silently approximated. Authored camera exposure is applied: each frame
+multiplies HDR color by `LinearExposureScale` and adds its log2 stops to the companion's display
+exposure, so the raw plane and PNG agree. A zero scale is refused at planning; a binary16
+overflow fails the job before publication. These remain incomplete portions
 of the larger authored-render milestone.
 
 `plan.CreateJob` reuses the existing disk engine and quota policy. A source must explicitly

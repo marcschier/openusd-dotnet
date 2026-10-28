@@ -992,8 +992,11 @@ Its sampled optics `focusDistance` and `fStop` are separate from exposure settin
 a nonzero shutter interval or aperture does not imply the corresponding effect was active.
 These are copied per-frame inputs, not verified effective backend state or a complete camera
 identity. Historical reads query no scene or manifest and do not apply exposure again.
-Viewport jobs and producers without camera samples return null. The existing execution
-profile still requires unit camera exposure and no active motion blur or depth of field.
+Viewport jobs and producers without camera samples return null. A product job applies
+`linearExposureScale` once, at render time: it multiplies the HDR red, green and blue channels
+and adds the scale's log2 stops to the PNG companion's display exposure. A zero scale, or one
+that moves a stored channel outside the binary16 range, fails the job before publication. The
+execution profile still refuses active motion blur and depth of field.
 
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
@@ -1219,8 +1222,9 @@ MCP capture-dimension and output-byte quotas still apply.
 
 The initial admitted profile is raw `half4` / `color` and/or `float` / `depth`, one variable per
 plane. Depth is normalized device depth, not camera-space distance. Named rendering color spaces,
-unevaluated settings, other variable types, non-unit camera exposure and active shutter/DOF
-requirements are refused. Native adapters must apply the exact purpose mask and material-binding
+unevaluated settings, other variable types and active shutter/DOF requirements are refused.
+Camera exposure is applied, not refused; the HDR binding convention
+`renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply the exact purpose mask and material-binding
 purpose, preserve retained state when returning to viewport jobs, and pass actual pixel cases.
 The current explicit hdSilk profile requires session ABI 6, masks containing `default` and a single
 `full` or `preview` binding purpose. Filter changes repopulate from current USD data rather than

@@ -262,7 +262,7 @@ internal static class PackageAuthoredProductExecution
                     binding.GetProperty("rowOrder").GetString() != "top-down" ||
                     binding.GetProperty("convention").GetString() != (isDepth
                         ? "normalized-device-depth-zero-to-one"
-                        : "renderer-working-composited-before-exposure-and-display"))
+                        : "renderer-working-composited-camera-exposed-before-display"))
                 {
                     throw new InvalidOperationException("Product bindings lost their stored-plane identity.");
                 }
