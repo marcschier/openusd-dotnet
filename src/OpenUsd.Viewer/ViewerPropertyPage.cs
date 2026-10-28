@@ -166,8 +166,7 @@ internal sealed class ViewerPropertyPage
             name is
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
             "inputs:specular" or "inputs:colorTemperature" or "inputs:enableColorTemperature" or
-            "inputs:normalize" or "inputs:color" or
-            "inputs:texture:file" or "inputs:texture:format"))
+            "inputs:normalize" or "inputs:color"))
         {
             return ViewerPropertyGroup.Light;
         }

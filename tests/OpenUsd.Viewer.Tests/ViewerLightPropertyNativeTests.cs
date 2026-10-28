@@ -67,6 +67,8 @@ public sealed class ViewerLightPropertyNativeTests
                 float inputs:shaping:focus = 2
                 float inputs:shaping:cone:angle = 2
                 float inputs:shaping:cone:softness = 2
+                asset inputs:texture:file = @original.hdr@
+                token inputs:texture:format = "latlong"
             }
             """;
         await File.WriteAllTextAsync(path, original);
@@ -79,6 +81,16 @@ public sealed class ViewerLightPropertyNativeTests
                 ? (expectedShapes.Length == 0 ? "" : expectedShapes + ",") +
                     "inputs:shaping:focus,inputs:shaping:cone:angle,inputs:shaping:cone:softness"
                 : expectedShapes;
+            string textureProperties = schema switch
+            {
+                "RectLight" => "inputs:texture:file",
+                "DomeLight" => "inputs:texture:file,inputs:texture:format",
+                _ => ""
+            };
+            if (textureProperties.Length != 0)
+            {
+                expected += (expected.Length == 0 ? "" : ",") + textureProperties;
+            }
             await Assert.That(snapshot.IsLight).IsTrue();
             await Assert.That(string.Join(",", snapshot.LightSchemaProperties!)).IsEqualTo(expected);
             ViewerPropertyPage grouped = ViewerPropertyPage.Create(
@@ -87,7 +99,8 @@ public sealed class ViewerLightPropertyNativeTests
             string[] declaredShapes =
             [
                 "inputs:width", "inputs:height", "inputs:radius", "inputs:length", "inputs:angle",
-                "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness"
+                "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness",
+                "inputs:texture:file", "inputs:texture:format"
             ];
             await Assert.That(grouped.Attributes.Where(attribute => declaredShapes.Contains(attribute.Name))
                 .Select(static attribute => attribute.Name))
@@ -300,6 +313,191 @@ public sealed class ViewerLightPropertyNativeTests
             await Assert.That(redone.After!.Opinions.Single().Value)
                 .IsEqualTo(UsdLayerEditValue.FromFloat(value));
             await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("RectLight", "inputs:texture:file", false)]
+    [Arguments("DomeLight", "inputs:texture:file", false)]
+    [Arguments("DomeLight", "inputs:texture:format", false)]
+    [Arguments("RectLight", "inputs:texture:file", true)]
+    [Arguments("DomeLight", "inputs:texture:file", true)]
+    [Arguments("DomeLight", "inputs:texture:format", true)]
+    public async Task LightTextureFieldsPreserveExactReviewHistoryAndRefuseStaleWrites(
+        string schema, string name, bool sampled)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-texture-edit-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        string original = $"#usda 1.0\ndef {schema} \"Light\" {{}}\n";
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            await using var editor = new ViewerAuthoredEditController(scheduler);
+            UsdLayerEditField field = sampled ? UsdLayerEditField.TimeSample : UsdLayerEditField.Default;
+            double time = sampled ? 5 : 0;
+            ViewerPropertyEditCapture property = await editor.CapturePropertyAsync("/Light", name, field, time);
+            bool asset = name == "inputs:texture:file";
+            await Assert.That(property.TypeName).IsEqualTo(asset ? "asset" : "token");
+            await Assert.That(property.Variability).IsEqualTo(UsdLayerEditVariability.Varying);
+            await Assert.That(property.Custom).IsFalse();
+            await Assert.That(property.Capture.Snapshot.Opinions.Single().PropertyKind)
+                .IsEqualTo(UsdLayerPropertyKind.Absent);
+            UsdLayerEditAddress address = property.Capture.Snapshot.Addresses.Single();
+            UsdLayerEditValue first = asset
+                ? UsdLayerEditValue.FromAssetPath("textures/Original Map.hdr")
+                : UsdLayerEditValue.FromToken("latlong");
+            UsdLayerEditValue second = asset
+                ? UsdLayerEditValue.FromAssetPath("textures/Other Map.hdr")
+                : UsdLayerEditValue.FromToken("angular");
+            ViewerAuthoredEditResult applied = await editor.ApplyAsync(property.Capture,
+                [UsdLayerEdit.Set(address, first, property.TypeName, property.Variability, property.Custom)],
+                "Set light texture", gestureId: Guid.NewGuid());
+            await Assert.That(applied.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(applied.After!.Opinions.Single().Value).IsEqualTo(first);
+            await Assert.That(applied.After.Opinions.Single().TypeName).IsEqualTo(property.TypeName);
+            await Assert.That(applied.After.Opinions.Single().Variability).IsEqualTo(property.Variability);
+            await Assert.That(applied.After.Opinions.Single().Custom).IsFalse();
+            await Assert.That(await ReadValue()).IsEqualTo(asset ? "textures/Original Map.hdr" : "latlong");
+            ViewerAuthoredEditResult undone = await editor.UndoAsync();
+            await Assert.That(undone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(undone.After!.Opinions.Single().PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+            ViewerAuthoredEditResult redone = await editor.RedoAsync();
+            await Assert.That(redone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(redone.After!.Opinions.Single().Value).IsEqualTo(first);
+            ViewerPropertyEditCapture stale = await editor.CapturePropertyAsync("/Light", name, field, time);
+            ViewerAuthoredEditResult newer = await editor.ApplyAsync(stale.Capture,
+                [UsdLayerEdit.Set(address, second)], "New light texture", gestureId: Guid.NewGuid());
+            await Assert.That(newer.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            int depth = editor.UndoDepth;
+            ViewerAuthoredEditResult conflict = await editor.ApplyAsync(stale.Capture,
+                [UsdLayerEdit.Set(address, first)], "Stale light texture");
+            await Assert.That(conflict.Outcome).IsEqualTo(UsdLayerEditOutcome.Conflict);
+            await Assert.That(editor.UndoDepth).IsEqualTo(depth);
+            await Assert.That(await ReadValue()).IsEqualTo(asset ? "textures/Other Map.hdr" : "angular");
+            ViewerPropertyEditCapture current = await editor.CapturePropertyAsync("/Light", name, field, time);
+            ViewerAuthoredEditResult cleared = await editor.ApplyAsync(current.Capture,
+                [UsdLayerEdit.Clear(address)], "Clear light texture", gestureId: Guid.NewGuid());
+            await Assert.That(cleared.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(cleared.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
+            await Assert.That(await ReadValue()).IsEqualTo(asset ? "" : "automatic");
+            await Assert.That((await editor.UndoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(await ReadValue()).IsEqualTo(asset ? "textures/Other Map.hdr" : "angular");
+            await Assert.That((await editor.RedoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(await ReadValue()).IsEqualTo(asset ? "" : "automatic");
+            ViewerPropertyEditCapture unblocked = await editor.CapturePropertyAsync("/Light", name, field, time);
+            ViewerAuthoredEditResult blocked = await editor.ApplyAsync(unblocked.Capture,
+                [UsdLayerEdit.Block(address, property.TypeName, property.Variability, property.Custom)],
+                "Block light texture", gestureId: Guid.NewGuid());
+            await Assert.That(blocked.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(blocked.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Block);
+            await AssertSuppressed();
+            ViewerAuthoredEditResult undoBlock = await editor.UndoAsync();
+            await Assert.That(undoBlock.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(undoBlock.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
+            await Assert.That(await ReadBlocked()).IsFalse();
+            await Assert.That(await ReadValue()).IsEqualTo(asset ? "" : "automatic");
+            ViewerAuthoredEditResult redoBlock = await editor.RedoAsync();
+            await Assert.That(redoBlock.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await Assert.That(redoBlock.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Block);
+            await AssertSuppressed();
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+
+            async Task<string> ReadValue() => await scheduler.InvokeAsync(stage =>
+                stage.GetPrimPropertySnapshot("/Light", sampled ? time : null).Properties
+                    .OfType<UsdAttributePropertySnapshot>().Single(attribute => attribute.Name == name)
+                    .Value?.Elements.SingleOrDefault() ?? "");
+            async Task<bool> ReadBlocked() => await scheduler.InvokeAsync(stage =>
+            {
+                UsdAttribute attribute = stage.GetPrim("/Light").GetAttribute(name);
+                return (sampled ? attribute.GetValueState(time) : attribute.GetValueState()).IsBlocked;
+            });
+            async Task AssertSuppressed()
+            {
+                if (sampled)
+                {
+                    await Assert.That(await ReadValue()).IsEqualTo("");
+                }
+                else
+                {
+                    await Assert.That(await ReadBlocked()).IsTrue();
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("SphereLight", "asset inputs:texture:file = @lookalike.hdr@", "inputs:texture:file")]
+    [Arguments("RectLight", "token inputs:texture:format = \"latlong\"", "inputs:texture:format")]
+    [Arguments("Xform", "asset inputs:texture:file = @lookalike.hdr@", "inputs:texture:file")]
+    public async Task LightTextureAdmissionRefusesReferencedPropertiesOnUnrelatedSchemas(
+        string schema, string declaration, string name)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-texture-refusal-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        string referencePath = Path.Combine(root, "reference.usda");
+        string reference = $"#usda 1.0\ndef Xform \"Source\" {{\n {declaration}\n}}\n";
+        string original = $"#usda 1.0\ndef {schema} \"Light\" " +
+            "(prepend references = @reference.usda@</Source>) {}\n";
+        await File.WriteAllTextAsync(referencePath, reference);
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            await using var editor = new ViewerAuthoredEditController(scheduler);
+            await Assert.That(async () => await editor.CapturePropertyAsync(
+                "/Light", name, UsdLayerEditField.Default, 0)).Throws<NotSupportedException>();
+            ViewerAuthoredEditCapture untouched = await editor.CaptureAsync(
+                [new($"/Light.{name}", UsdLayerEditField.Default)]);
+            await Assert.That(untouched.Snapshot.Opinions.Single().PropertyKind)
+                .IsEqualTo(UsdLayerPropertyKind.Absent);
+            await Assert.That(editor.UndoDepth).IsEqualTo(0);
+            await Assert.That(editor.RedoDepth).IsEqualTo(0);
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+            await Assert.That(await File.ReadAllTextAsync(referencePath)).IsEqualTo(reference);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("float inputs:texture:file = 2")]
+    [Arguments("custom asset inputs:texture:file = @lookalike.hdr@")]
+    public async Task LightTextureSchemaMetadataRemainsAuthoritativeOverWeakerReferenceDeclarations(string declaration)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-texture-metadata-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        string referencePath = Path.Combine(root, "reference.usda");
+        string reference = $"#usda 1.0\ndef Xform \"Source\" {{\n {declaration}\n}}\n";
+        const string original = "#usda 1.0\ndef DomeLight \"Light\" " +
+            "(prepend references = @reference.usda@</Source>) {}\n";
+        await File.WriteAllTextAsync(referencePath, reference);
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            await using var editor = new ViewerAuthoredEditController(scheduler);
+            ViewerPropertyEditCapture property = await editor.CapturePropertyAsync(
+                "/Light", "inputs:texture:file", UsdLayerEditField.Default, 0);
+            await Assert.That(property.TypeName).IsEqualTo("asset");
+            await Assert.That(property.Variability).IsEqualTo(UsdLayerEditVariability.Varying);
+            await Assert.That(property.Custom).IsFalse();
+            await Assert.That(property.Capture.Snapshot.Opinions.Single().PropertyKind)
+                .IsEqualTo(UsdLayerPropertyKind.Absent);
+            await Assert.That(editor.UndoDepth).IsEqualTo(0);
+            await Assert.That(editor.RedoDepth).IsEqualTo(0);
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+            await Assert.That(await File.ReadAllTextAsync(referencePath)).IsEqualTo(reference);
         }
         finally
         {

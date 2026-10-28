@@ -122,6 +122,8 @@ internal sealed partial class ViewerAuthoredEditController
                 "inputs:specular" or "inputs:colorTemperature" => "float",
             "inputs:enableColorTemperature" or "inputs:normalize" => "bool",
             "inputs:color" => "color3f",
+            "inputs:texture:file" => "asset",
+            "inputs:texture:format" => "token",
             _ => null
         };
         UsdPrim prim = stage.GetPrim(primPath);
@@ -157,6 +159,9 @@ internal sealed partial class ViewerAuthoredEditController
             UsdLuxDiskLight.TryWrap(prim, out _) || UsdLuxCylinderLight.TryWrap(prim, out _),
         "inputs:length" => UsdLuxCylinderLight.TryWrap(prim, out _),
         "inputs:angle" => UsdLuxDistantLight.TryWrap(prim, out _),
+        "inputs:texture:file" => UsdLuxRectLight.TryWrap(prim, out _) ||
+            UsdLuxDomeLight.TryWrap(prim, out _),
+        "inputs:texture:format" => UsdLuxDomeLight.TryWrap(prim, out _),
         "inputs:shaping:focus" or "inputs:shaping:cone:angle" or
             "inputs:shaping:cone:softness" => HasAppliedShaping(prim),
         "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or "inputs:specular" or

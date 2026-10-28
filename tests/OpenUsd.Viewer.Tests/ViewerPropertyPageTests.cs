@@ -219,6 +219,8 @@ public sealed class ViewerPropertyPageTests
     [Test]
     [Arguments("inputs:width")]
     [Arguments("inputs:shaping:focus")]
+    [Arguments("inputs:texture:file")]
+    [Arguments("inputs:texture:format")]
     public async Task RemovingSchemaMembershipReclassifiesWithoutReplacingOrChangingTheProperty(string name)
     {
         var property = new ViewerAttributeSnapshot(name, "float", true, false, 1, "5", "2");
@@ -258,7 +260,8 @@ public sealed class ViewerPropertyPageTests
         var relationship = new ViewerRelationshipSnapshot(name, "/World/Texture");
         ViewerPropertyPage lights = ViewerPropertyPage.Create(
             attributes, [relationship], "texture", int.MaxValue,
-            ViewerPropertyFilter.TimeSampledAttributes, ViewerPropertyGroup.Light, isLight: isLight);
+            ViewerPropertyFilter.TimeSampledAttributes, ViewerPropertyGroup.Light,
+            isLight: isLight, lightSchemaProperties: [name]);
         await Assert.That(lights.TotalCount).IsEqualTo(5);
         await Assert.That(lights.MatchCount).IsEqualTo(isLight ? 1 : 0);
         await Assert.That(lights.PageIndex).IsEqualTo(0);
@@ -273,7 +276,7 @@ public sealed class ViewerPropertyPageTests
         }
         ViewerPropertyPage unfiltered = ViewerPropertyPage.Create(
             attributes, [relationship], null, 0, group: ViewerPropertyGroup.Light, isLight: isLight);
-        await Assert.That(unfiltered.MatchCount).IsEqualTo(isLight ? 1 : 0);
+        await Assert.That(unfiltered.MatchCount).IsEqualTo(0);
         await Assert.That(unfiltered.Relationships).IsEmpty();
         ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
             attributes, [relationship], null, 0, group: ViewerPropertyGroup.ShaderInputs, isLight: isLight);

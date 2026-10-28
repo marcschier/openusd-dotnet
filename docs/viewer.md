@@ -326,12 +326,12 @@ only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The s
 native shape inputs (`inputs:width`, `inputs:height`, `inputs:radius`, `inputs:length`, and
 `inputs:angle`) only on their matching light schemas, and `inputs:shaping:focus`,
 `inputs:shaping:cone:angle`, and `inputs:shaping:cone:softness` only when `ShapingAPI` is applied.
-The detached snapshot carries validated shape/shaping property membership from the same native
+The detached snapshot carries validated shape, shaping and texture property membership from the same native
 schema checks used by review editing. A light flag or authored lookalike name alone does not
 establish that membership; unvalidated properties remain available through **Inputs**.
-Existing `inputs:texture:file` and `inputs:texture:format` attributes also appear in this
-group on light snapshots. This browsing change does not add texture editing or rendering
-support; absent declarations and similarly prefixed names are not synthesized.
+`inputs:texture:file` belongs to this group only on rectangle and dome lights;
+`inputs:texture:format` belongs only on dome lights. Other light schemas do not gain texture controls
+from an authored lookalike. Grouping does not load a texture or change rendering support.
 These inputs remain available in the **Inputs** group as well. Inputs and outputs group
 attribute namespaces
 (`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
@@ -1155,6 +1155,16 @@ type, and noncustom declaration metadata, not a property-name or registry hint. 
 the focused typed review editor and shared history; they do not recreate lights, apply `ShapingAPI`,
 or flatten shader graphs. No values are silently clamped or normalized. Custom schema fields and
 other shape/shaping properties remain outside this admission path.
+
+Rectangle and dome `inputs:texture:file` fields and dome `inputs:texture:format` also accept exact
+native declarations through the same review editor. Asset paths and format tokens retain their
+native varying declarations for default and individual numeric-time edits. Set preserves the entered
+path or token; Clear reveals the weaker value, Block suppresses it, and stale captures refuse conflicting writes.
+Shared Undo removes a newly authored review declaration rather than copying the composed fallback.
+The native schema's type and noncustom metadata remain authoritative over weaker reference
+declarations. Referenced lookalikes on unrelated schemas remain read-only through this admission path.
+Choosing or editing an asset path does not copy a texture, write the source layer, validate the
+image format or add environment-light rendering support.
 
 Existing direct material bindings have an **Edit Direct Binding...** action in the Value tab,
 including the Material bindings property group. The action supports `material:binding` and the

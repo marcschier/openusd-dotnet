@@ -408,6 +408,29 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 timeout);
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).Width, timeout)).IsEqualTo(originalWidth);
+            await FilterAttributeAsync(main, shaderQuery, "inputs:texture:file", timeout, "/Light");
+            await WaitAsync(() => PropertyButtons(main).Single().IsEnabled, timeout);
+            PropertyButtons(main).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
+            PropertyEditWindow textureEdit = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
+            await WaitAsync(() => Required<Button>(textureEdit, "SetPropertyButton").IsEnabled, timeout);
+            await Assert.That(Required<ComboBox>(textureEdit, "PropertySelector").SelectedItem?.ToString())
+                .IsEqualTo("inputs:texture:file (asset)");
+            Required<TextBox>(textureEdit, "PropertyValue").Text = "texture.bin";
+            Click(textureEdit, "SetPropertyButton");
+            await WaitAsync(() => Required<TextBlock>(textureEdit, "PropertyEditStatus").Text ==
+                "Review edit applied.", timeout);
+            await textureEdit.CloseAsync();
+            await WaitAsync(() => ValueText(main).Contains("texture.bin", StringComparison.Ordinal), timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => UsdLuxRectLight.Wrap(stage.GetPrim("/Light")).TextureFile.Path, timeout))
+                .IsEqualTo("texture.bin");
+            await WaitAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled, timeout);
+            Required<MenuItem>(main, "EditUndoMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await WaitAsync(() => Required<MenuItem>(main, "EditRedoMenuItem").IsEnabled, timeout);
+            await Assert.That(await session.Scheduler.InvokeAsync(
+                static stage => stage.GetPrim("/Light").GetAttribute("inputs:texture:file").IsAuthored, timeout))
+                .IsFalse();
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });

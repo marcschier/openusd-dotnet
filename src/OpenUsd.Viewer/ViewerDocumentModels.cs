@@ -840,7 +840,8 @@ internal static partial class ViewerStageSnapshotBuilder
     private static readonly string[] LightSchemaPropertyCandidates =
     [
         "inputs:width", "inputs:height", "inputs:radius", "inputs:length", "inputs:angle",
-        "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness"
+        "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness",
+        "inputs:texture:file", "inputs:texture:format"
     ];
 
     /// <summary>
