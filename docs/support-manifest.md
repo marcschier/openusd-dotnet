@@ -1180,9 +1180,11 @@ synchronous buffered writable empty regular-file profile. One borrowed half plan
 finite negatives, HDR values, signed zero and stored alpha are preserved without an image-sized copy or color
 conversion. Public writer, shared disk jobs and MCP opt-in EXR resources preserve exact encoded-byte ceilings,
 cancellation/drain, generated names, per-plane hashes and atomic publication. Default PNG/raw HDR behavior is unchanged.
-Origin-zero equal windows and square pixels only; primaries and alpha association remain unspecified by default. Encoded
-and managed-raster quotas do not bound native codec heap. Independent half-bit decoding and actual clean-feed NativeAOT
-execution cover Windows; POSIX/macOS/ARM64 encoders and full authored-product semantics are not claimed.
+Viewport writes use origin-zero equal windows and square pixels; authored-product jobs store the full raster as the
+display window, crop/overscan as the data window and pixel aspect within 1/65536..65536. Primaries and alpha association
+remain unspecified by default. Encoded and managed-raster quotas do not bound native codec heap. Independent half-bit
+decoding and actual clean-feed NativeAOT execution cover Windows; POSIX/macOS/ARM64 encoders and full authored-product
+semantics are not claimed.
 
 ### `bounded-authored-render-products`
 

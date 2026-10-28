@@ -66,8 +66,8 @@ internal sealed class RenderProductCaptureRequest : SceneRevisionRequestBase
 
     [JsonPropertyName("hdrColorFormat"), MaxLength(3), DefaultValue("raw")]
     [Description(
-        "Color-plane container: 'raw' or Windows x64 'exr'. EXR currently requires an uncropped, " +
-        "origin-zero square-pixel half4 color plane. Files use generated names, not the authored product name.")]
+        "Color-plane container: 'raw' or Windows x64 'exr'. EXR stores the product crop/overscan as its " +
+        "data window and the pixel aspect (1/65536..65536). Files use generated names, not the authored product name.")]
     public string HdrColorFormat { get; init; } = "raw";
 }
 

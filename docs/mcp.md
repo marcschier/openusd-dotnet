@@ -1182,7 +1182,8 @@ and positive. `aspectRatioConformPolicy` accepts `expandAperture`, `cropAperture
 retains its authored value. The shared planner applies these before cropping;
 `adjustPixelAspectRatio` derives the effective ratio from the camera aperture and full
 raster instead of using the requested ratio. The manifest records the effective ratio
-and policy without editing the product. Non-square pixels do not bypass EXR restrictions.
+and policy without editing the product. With `"hdrColorFormat":"exr"`, the file stores the
+effective ratio as its pixel aspect; a ratio outside 1/65536..65536 is refused before rendering.
 
 `dataWindowNdc` optionally overrides the data window as `[minX, minY, maxX, maxY]`,
 with bottom-left and top-right coordinates in the full raster's normalized space. Supply
@@ -1191,8 +1192,9 @@ the authored window. Coordinates outside 0-1 preserve overscan; they are not cla
 The shared planner selects pixels by their centres, including the minimum and excluding
 the maximum. A window containing no pixel centres is refused before output creation.
 The manifest retains the effective raster origin, including negative origins, and frame
-dimensions describe the actual crop or overscan. Existing MCP capture-dimension and
-output-byte quotas still apply.
+dimensions describe the actual crop or overscan. An EXR file records the same region as
+its data window inside a full-raster display window, using EXR's downward Y axis. Existing
+MCP capture-dimension and output-byte quotas still apply.
 
 ```json
 {

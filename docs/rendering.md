@@ -843,8 +843,11 @@ implement `IRenderProductFrameSource.ValidateProduct` and honor every admitted f
 viewport-only sources are rejected before staging output. A display PNG is an identified
 companion, never a substitute for a requested variable. The manifest retains product selection,
 original name without filename authority, ordered variable/file bindings, sampled optics,
-camera exposure inputs, raster origin and pixel aspect. Raw split planes retain crop/overscan
-metadata; current EXR output refuses windows/aspect that its encoder cannot represent.
+camera exposure inputs, raster origin and pixel aspect. Raw split planes carry crop/overscan
+only in that manifest. EXR color also stores it in the file: the full raster is the display
+window, the crop or overscan is the data window in downward-Y coordinates, and the effective
+pixel aspect is the `pixelAspectRatio` attribute. `CreateJob` refuses an EXR product whose
+pixel aspect lies outside 1/65536..65536 before staging output; raw output has no such limit.
 
 Each `productOutputs` binding includes the actual file `format`: `rgba16float-little-endian`
 for raw HDR color, `openexr-rgba16float` for EXR color, or `float32-little-endian` for depth.
@@ -936,7 +939,8 @@ using the matching [Data ABI 24 encoder](image-exr-output.md). Existing overload
 and PNG defaults unchanged. EXR is opt-in, requires `includeHdrColor: true` and the Windows x64
 encoder profile, and borrows the same half plane without widening or copying it. Its lossless
 ZIPS output has equal origin-zero windows and square pixels, with unspecified primaries and
-stored alpha association. It is not a conversion to an authored render-product color space.
+stored alpha association. Authored-product jobs write explicit windows and pixel aspect instead
+(see [Admitted authored-product jobs](#admitted-authored-product-jobs)). It is not a conversion to an authored render-product color space.
 
 The job gives EXR only the encoded budget remaining after PNG and depth, accounts its actual
 encoded extent, durably flushes and hashes it before publishing the complete directory. Native

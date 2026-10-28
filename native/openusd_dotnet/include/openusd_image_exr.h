@@ -40,6 +40,9 @@
 #define OPENUSD_IMAGE_EXR_ALPHA_STORED_ASSOCIATED 2u
 #define OPENUSD_IMAGE_EXR_ALPHA_STORED_UNASSOCIATED 3u
 #define OPENUSD_IMAGE_EXR_VIEWPORT_ORIGIN_ZERO 1u
+#define OPENUSD_IMAGE_EXR_EXPLICIT_WINDOWS 2u
+#define OPENUSD_IMAGE_EXR_MAX_WINDOW_COORDINATE 1073741823
+#define OPENUSD_IMAGE_EXR_MAX_PIXEL_ASPECT_SCALE 65536u
 
 #define OPENUSD_IMAGE_ENCODE_PHASE_PREFLIGHT 1u
 #define OPENUSD_IMAGE_ENCODE_PHASE_VALIDATE_ROW 2u
@@ -112,9 +115,16 @@ extern "C" {
  * Invalid arbitrary pointers are outside the C contract.
  *
  * Explicit metadata: raw renderer-working/unspecified primaries, selected stored
- * alpha convention (never converted), origin-zero equal full data/display windows,
- * and square pixels 1/1. Unsupported metadata is rejected before mutation/codec
- * construction. Both row orders are mapped without a whole-image copy.
+ * alpha convention (never converted) and a window policy. VIEWPORT_ORIGIN_ZERO
+ * requires origin-zero equal full data/display windows and square pixels 1/1.
+ * EXPLICIT_WINDOWS writes the width*height input as the data window at
+ * data_origin and a separate display window at display_origin/size; Y grows
+ * downward. The data window may crop or overscan the display window. Every
+ * window corner must stay within +/-OPENUSD_IMAGE_EXR_MAX_WINDOW_COORDINATE and
+ * the display size within 1..that bound. The nonzero pixel aspect rational must
+ * stay within 1/65536..65536 and is stored as the nearest float. Unsupported
+ * metadata is rejected before mutation/codec construction. Both row orders are
+ * mapped without a whole-image copy.
  *
  * Windows x64 profile: zero-extended borrowed HANDLE, neither 0 nor UINT64_MAX,
  * regular writable FILE_WRITE_DATA, synchronous buffered random access, empty,

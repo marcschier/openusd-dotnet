@@ -61,7 +61,7 @@
           <TextBlock Text="HDR color encoding" />
           <ComboBox x:Name="ProductHdrFormat" SelectedIndex="0" MinWidth="220"
                     AutomationProperties.Name="Product HDR color output format"
-                    ToolTip.Tip="Raw half stores top-down RGBA binary16. EXR is accepted only for uncropped square-pixel products.">
+                    ToolTip.Tip="Raw half stores top-down RGBA binary16. EXR stores the crop or overscan as its data window and the product's pixel aspect.">
             <ComboBoxItem Content="Raw half (.hdr.rgba16f)" />
             <ComboBoxItem Content="EXR (.hdr.exr)" />
           </ComboBox>

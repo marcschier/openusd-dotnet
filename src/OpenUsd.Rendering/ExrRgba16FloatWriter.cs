@@ -77,7 +77,20 @@ public static class ExrRgba16FloatWriter
         Rgba16FloatRowOrder rowOrder,
         ExrStoredAlphaPolicy alphaPolicy,
         long maximumBytes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Write(destination, width, height, rgba16Float, rowOrder, alphaPolicy, windows: null, maximumBytes,
+            cancellationToken);
+
+    internal static long Write(
+        FileStream destination,
+        int width,
+        int height,
+        ReadOnlySpan<byte> rgba16Float,
+        Rgba16FloatRowOrder rowOrder,
+        ExrStoredAlphaPolicy alphaPolicy,
+        ExrImageWindows? windows,
+        long maximumBytes,
+        CancellationToken cancellationToken)
     {
         if (!IsSupported)
         {
@@ -115,6 +128,9 @@ public static class ExrRgba16FloatWriter
         {
             throw new ArgumentException("EXR output requires an empty file positioned at zero.", nameof(destination));
         }
+        (uint numerator, uint denominator) = windows is { } explicitWindows
+            ? explicitWindows.Validate(width, height)
+            : (1u, 1u);
         cancellationToken.ThrowIfCancellationRequested();
 
         var request = new OpenUsdImageExrRequest
@@ -127,11 +143,15 @@ public static class ExrRgba16FloatWriter
             RowOrder = rowOrder == Rgba16FloatRowOrder.TopDown ? 1u : 2u,
             ColorPolicy = 1,
             AlphaPolicy = (uint)alphaPolicy + 1,
-            WindowPolicy = 1,
-            DisplayWidth = (uint)width,
-            DisplayHeight = (uint)height,
-            PixelAspectNumerator = 1,
-            PixelAspectDenominator = 1,
+            WindowPolicy = windows is null ? 1u : 2u,
+            DataOriginX = windows?.DataOriginX ?? 0,
+            DataOriginY = windows?.DataOriginY ?? 0,
+            DisplayOriginX = windows?.DisplayOriginX ?? 0,
+            DisplayOriginY = windows?.DisplayOriginY ?? 0,
+            DisplayWidth = (uint)(windows?.DisplayWidth ?? width),
+            DisplayHeight = (uint)(windows?.DisplayHeight ?? height),
+            PixelAspectNumerator = numerator,
+            PixelAspectDenominator = denominator,
             PixelCeiling = (ulong)pixels,
             OutputByteLimit = (ulong)maximumBytes
         };

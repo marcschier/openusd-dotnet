@@ -152,10 +152,9 @@ internal static class ViewerAuthoredRenderProductSelection
     }
 
     private static string? GetExrUnsupportedReason(UsdRenderProductSpecification product) =>
-        product.DataWindowNdc.X != 0 || product.DataWindowNdc.Y != 0 ||
-        product.DataWindowNdc.Z != 1 || product.DataWindowNdc.W != 1 ||
-        product.PixelAspectRatio != 1
-            ? "EXR output currently refuses cropped, overscanned or non-square-pixel products"
+        !double.IsFinite(product.PixelAspectRatio) || product.PixelAspectRatio < 1d / 65536 ||
+        product.PixelAspectRatio > 65536
+            ? "EXR output stores pixel aspect only within 1/65536..65536"
             : null;
 
     private static string? GetStaticUnsupportedReason(

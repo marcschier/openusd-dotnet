@@ -74,7 +74,8 @@ public static partial class RenderDiskJob
                 }
                 frames[index] = RenderFrame(
                     staging, index, request.Frames[index], source, diagnostics, request.IncludeDeviceDepth,
-                    request.IncludeHdrColor, request.HdrColorFormat, remaining, cancellationToken);
+                    request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index), remaining,
+                    cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
             }
@@ -159,7 +160,8 @@ public static partial class RenderDiskJob
     private static RenderDiskFrameResult RenderFrame(
         string directory, int index, StageRenderState state, IRenderJobFrameSource source,
         List<RenderDiagnostic> diagnostics, bool includeDeviceDepth, bool includeHdrColor,
-        RenderHdrColorFormat hdrColorFormat, long maximumBytes, CancellationToken cancellationToken)
+        RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, long maximumBytes,
+        CancellationToken cancellationToken)
     {
         RenderJobImage image = source.Render(state, cancellationToken) ??
             throw new InvalidOperationException("The render source returned no image.");
@@ -247,7 +249,8 @@ public static partial class RenderDiskJob
             if (hdrColorFormat == RenderHdrColorFormat.Exr)
             {
                 (hdrBytes, hdrHash) = WriteExrColor(
-                    Path.Combine(directory, hdrName), hdr, maximumBytes - written - depthBytes, cancellationToken);
+                    Path.Combine(directory, hdrName), hdr, exrWindows, maximumBytes - written - depthBytes,
+                    cancellationToken);
             }
             else
             {
@@ -259,8 +262,22 @@ public static partial class RenderDiskJob
             hdrName, hdrBytes, hdrHash, hdrColorFormat, image.Simulation);
     }
 
+    private static ExrImageWindows? ProductExrWindows(RenderDiskJobRequest request, int index)
+    {
+        if (request.HdrColorFormat != RenderHdrColorFormat.Exr || request.ProductPlan is not { } plan)
+        {
+            return null;
+        }
+        RenderPreparedFrame frame = plan.Frames[index];
+        ViewportDimensions full = plan.Request.Overrides.Resolution ??
+            new ViewportDimensions(plan.Request.Product.Width, plan.Request.Product.Height);
+        return ExrImageWindows.FromProductFrame(
+            full, frame.DataWindowMinX, frame.DataWindowMinY, frame.OutputDimensions.Height, frame.PixelAspectRatio);
+    }
+
     private static (long Bytes, string Sha256) WriteExrColor(
-        string path, RenderJobHdrColor hdr, long maximumBytes, CancellationToken cancellationToken)
+        string path, RenderJobHdrColor hdr, ExrImageWindows? windows, long maximumBytes,
+        CancellationToken cancellationToken)
     {
         ReadOnlySpan<byte> values = hdr.Rgba16Float.Span;
         for (int start = 0; start < values.Length; start += 4096)
@@ -270,7 +287,8 @@ public static partial class RenderDiskJob
         }
         using var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         long written = ExrRgba16FloatWriter.Write(
-            output, hdr.Width, hdr.Height, values, maximumBytes, cancellationToken);
+            output, hdr.Width, hdr.Height, values, Rgba16FloatRowOrder.TopDown, ExrStoredAlphaPolicy.Unspecified,
+            windows, maximumBytes, cancellationToken);
         output.Flush(flushToDisk: true);
         output.Position = 0;
         return (written, Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant());

@@ -234,6 +234,34 @@ void ValidateFile(Operation& operation, uint64_t handle)
     if (position.QuadPart != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
 }
 
+bool WindowCorner(int64_t origin, uint64_t extent) noexcept
+{
+    constexpr int64_t limit = OPENUSD_IMAGE_EXR_MAX_WINDOW_COORDINATE;
+    return origin >= -limit && origin <= limit && extent >= 1 &&
+        extent <= static_cast<uint64_t>(limit) && origin + static_cast<int64_t>(extent) - 1 <= limit;
+}
+
+bool ValidWindows(const openusd_image_encode_exr_request_v1& request) noexcept
+{
+    if (request.window_policy == OPENUSD_IMAGE_EXR_VIEWPORT_ORIGIN_ZERO)
+    {
+        return request.data_origin_x == 0 && request.data_origin_y == 0 &&
+            request.display_origin_x == 0 && request.display_origin_y == 0 &&
+            request.display_width == request.width && request.display_height == request.height &&
+            request.pixel_aspect_numerator == 1 && request.pixel_aspect_denominator == 1;
+    }
+    if (request.window_policy != OPENUSD_IMAGE_EXR_EXPLICIT_WINDOWS) return false;
+    const uint64_t numerator = request.pixel_aspect_numerator;
+    const uint64_t denominator = request.pixel_aspect_denominator;
+    return WindowCorner(request.data_origin_x, request.width) &&
+        WindowCorner(request.data_origin_y, request.height) &&
+        WindowCorner(request.display_origin_x, request.display_width) &&
+        WindowCorner(request.display_origin_y, request.display_height) &&
+        numerator != 0 && denominator != 0 &&
+        numerator <= denominator * OPENUSD_IMAGE_EXR_MAX_PIXEL_ASPECT_SCALE &&
+        denominator <= numerator * OPENUSD_IMAGE_EXR_MAX_PIXEL_ASPECT_SCALE;
+}
+
 void Validate(Operation& operation, const openusd_image_encode_exr_request_v1& request,
     const uint8_t* pixels, uint64_t bytes, uint64_t handle)
 {
@@ -256,12 +284,8 @@ void Validate(Operation& operation, const openusd_image_encode_exr_request_v1& r
         request.pixel_ceiling == 0 || request.pixel_ceiling > OPENUSD_IMAGE_EXR_MAX_PIXELS ||
         request.output_byte_limit > static_cast<uint64_t>(INT64_MAX))
         operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
-    if (request.color_policy != OPENUSD_IMAGE_EXR_RAW_WORKING_UNSPECIFIED ||
-        request.window_policy != OPENUSD_IMAGE_EXR_VIEWPORT_ORIGIN_ZERO || *AlphaName(request.alpha_policy) == '\0' ||
-        request.data_origin_x != 0 || request.data_origin_y != 0 ||
-        request.display_origin_x != 0 || request.display_origin_y != 0 ||
-        request.display_width != request.width || request.display_height != request.height ||
-        request.pixel_aspect_numerator != 1 || request.pixel_aspect_denominator != 1)
+    if (request.color_policy != OPENUSD_IMAGE_EXR_RAW_WORKING_UNSPECIFIED || *AlphaName(request.alpha_policy) == '\0' ||
+        !ValidWindows(request))
         operation.Fail(OPENUSD_IMAGE_ENCODE_UNSUPPORTED);
     if (count > request.pixel_ceiling || request.output_byte_limit < MinimumFileBytes(request))
         operation.Fail(OPENUSD_IMAGE_ENCODE_QUOTA_EXCEEDED);
@@ -285,9 +309,17 @@ void Encode(Operation& operation, const openusd_image_encode_exr_request_v1& req
 {
     operation.Check(OPENUSD_IMAGE_ENCODE_PHASE_BEFORE_CODEC);
     BorrowedStream stream(operation);
-    Exr::Header header(static_cast<int>(request.width), static_cast<int>(request.height));
+    const IMATH_NAMESPACE::Box2i display(
+        IMATH_NAMESPACE::V2i(request.display_origin_x, request.display_origin_y),
+        IMATH_NAMESPACE::V2i(request.display_origin_x + static_cast<int>(request.display_width) - 1,
+            request.display_origin_y + static_cast<int>(request.display_height) - 1));
+    const IMATH_NAMESPACE::Box2i data(
+        IMATH_NAMESPACE::V2i(request.data_origin_x, request.data_origin_y),
+        IMATH_NAMESPACE::V2i(request.data_origin_x + static_cast<int>(request.width) - 1,
+            request.data_origin_y + static_cast<int>(request.height) - 1));
+    Exr::Header header(display, data,
+        static_cast<float>(static_cast<double>(request.pixel_aspect_numerator) / request.pixel_aspect_denominator));
     header.compression() = Exr::ZIPS_COMPRESSION;
-    header.pixelAspectRatio() = 1.0f;
     header.lineOrder() = Exr::INCREASING_Y;
     header.insert(ColorAttribute, Exr::StringAttribute(ColorValue));
     header.insert(AlphaAttribute, Exr::StringAttribute(AlphaName(request.alpha_policy)));
@@ -305,13 +337,16 @@ void Encode(Operation& operation, const openusd_image_encode_exr_request_v1& req
                 operation.Check(OPENUSD_IMAGE_ENCODE_PHASE_ENCODE_ROW);
                 const uint32_t source_row = request.row_order == OPENUSD_IMAGE_EXR_TOP_DOWN ? row : request.height - 1 - row;
                 const uint8_t* source = pixels + static_cast<uint64_t>(source_row) * request.width * 8;
+                // OpenEXR addresses base + x * xStride with absolute data-window x.
+                const uintptr_t origin = reinterpret_cast<uintptr_t>(source) -
+                    static_cast<uintptr_t>(static_cast<intptr_t>(request.data_origin_x) * 8);
                 Exr::FrameBuffer frame;
                 for (size_t channel = 0; channel < 4; ++channel)
                 {
                     // One borrowed row with yStride=0: no image flip or pointer
                     // before the input allocation is needed for bottom-up storage.
                     frame.insert(names[channel], Exr::Slice(Exr::HALF,
-                        reinterpret_cast<char*>(const_cast<uint8_t*>(source + channel * 2)), 8, 0));
+                        reinterpret_cast<char*>(origin + channel * 2), 8, 0));
                 }
                 output.setFrameBuffer(frame);
                 output.writePixels(1);

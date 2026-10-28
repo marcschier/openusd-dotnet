@@ -325,7 +325,7 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
-    public async Task CroppedRawProductsRetainTheirRasterMetadataAndCannotMasqueradeAsFullWindowExr()
+    public async Task CroppedRawProductsRetainTheirRasterMetadata()
     {
         string root = Directory.CreateTempSubdirectory("product-crop-").FullName;
         try
@@ -334,8 +334,6 @@ public sealed class RenderProductJobPlanTests
                 resolution: new ViewportDimensions(4, 4), dataWindowNdc: new UsdVec4f(0.25f, 0, 0.75f, 1)));
             var plan = new RenderProductJobPlan(
                 new StageIdentity("scene.usda"), [Frame(request)], RenderSettings.Default);
-            await Assert.That(() => plan.CreateJob(Path.Combine(root, "exr"), RenderHdrColorFormat.Exr))
-                .Throws<NotSupportedException>();
             RenderDiskJobResult result = RenderDiskJob.Execute(
                 plan.CreateJob(Path.Combine(root, "raw")), new ProductSource());
             using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
@@ -345,7 +343,6 @@ public sealed class RenderProductJobPlanTests
             await Assert.That(raster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(1);
             await Assert.That(raster.GetProperty("dataWindowMinY").GetInt32()).IsEqualTo(0);
             await Assert.That(result.Frames[0].State.Viewport).IsEqualTo(new ViewportDimensions(2, 4));
-            await Assert.That(Directory.Exists(Path.Combine(root, "exr"))).IsFalse();
         }
         finally
         {
@@ -353,6 +350,78 @@ public sealed class RenderProductJobPlanTests
         }
     }
 
+    [Test]
+    [Arguments(0.25f, 0f, 0.75f, 1f, 1d, 1, 0, 2, 4, 0x3f800000u)]
+    [Arguments(-0.25f, 0f, 1.25f, 0.5f, 1d, -1, 2, 6, 2, 0x3f800000u)]
+    [Arguments(0f, 0.5f, 1f, 1.25f, 2d, 0, -1, 4, 3, 0x40000000u)]
+    public async Task ExrProductsStoreTheirDataWindowDisplayWindowAndPixelAspect(
+        float minX, float minY, float maxX, float maxY, double aspect,
+        int dataOriginX, int dataOriginY, int dataWidth, int dataHeight, uint aspectBits)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        string root = Directory.CreateTempSubdirectory("product-exr-window-").FullName;
+        try
+        {
+            var request = new RenderProductRequest(Request().Specification, 0, new RenderProductOverrides(
+                resolution: new ViewportDimensions(4, 4), pixelAspectRatio: aspect,
+                dataWindowNdc: new UsdVec4f(minX, minY, maxX, maxY)));
+            var plan = new RenderProductJobPlan(
+                new StageIdentity("scene.usda"), [Frame(request)], RenderSettings.Default);
+            byte[] hdr = new byte[dataWidth * dataHeight * 8];
+            for (int half = 0; half < hdr.Length / 2; half++)
+            {
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(
+                    hdr.AsSpan(half * 2, 2), (ushort)(0x3C00 + half));
+            }
+            RenderDiskJobResult result = RenderDiskJob.Execute(
+                plan.CreateJob(Path.Combine(root, "exr"), RenderHdrColorFormat.Exr),
+                new ProductSource { HdrBytes = hdr });
+            await Assert.That(result.Frames[0].State.Viewport)
+                .IsEqualTo(new ViewportDimensions(dataWidth, dataHeight));
+            byte[] published = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, result.Frames[0].HdrColorFileName!));
+            byte[] decoded = ExrScanlineOracle.Read(published, dataWidth, dataHeight,
+                new ExrOracleWindows(dataOriginX, dataOriginY, 0, 0, 4, 4, aspectBits));
+            await Assert.That(Convert.ToHexString(decoded)).IsEqualTo(Convert.ToHexString(hdr));
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement raster = manifest.RootElement.GetProperty("frames")[0].GetProperty("productRaster");
+            await Assert.That(raster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(dataOriginX);
+            await Assert.That(4 - raster.GetProperty("dataWindowMinY").GetInt32() - dataHeight)
+                .IsEqualTo(dataOriginY);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(1e6)]
+    [Arguments(1e-6)]
+    public async Task ExrProductsRefuseAPixelAspectTheFileCannotRepresent(double aspect)
+    {
+        string root = Directory.CreateTempSubdirectory("product-exr-aspect-").FullName;
+        try
+        {
+            var request = new RenderProductRequest(Request().Specification, 0, new RenderProductOverrides(
+                resolution: new ViewportDimensions(4, 4), pixelAspectRatio: aspect));
+            var plan = new RenderProductJobPlan(
+                new StageIdentity("scene.usda"), [Frame(request)], RenderSettings.Default);
+            await Assert.That(() => plan.CreateJob(Path.Combine(root, "exr"), RenderHdrColorFormat.Exr))
+                .Throws<NotSupportedException>();
+            await Assert.That(Directory.Exists(Path.Combine(root, "exr"))).IsFalse();
+            await Assert.That(plan.CreateJob(Path.Combine(root, "raw"))).IsNotNull();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
     private static RenderPreparedFrame Frame(RenderProductRequest request, double time = 1) =>
         request.PrepareFrame(UsdMatrix4d.Identity, Optics(), time, RenderCameraFrameSettings.Default);
 

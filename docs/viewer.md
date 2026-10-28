@@ -43,8 +43,9 @@ remain reachable; focused range fields and unsupported-product reasons scroll in
 
 The capture uses the authored product camera, raster, variables, scene purposes and exact
 material-binding purpose rather than the current viewport camera or dimensions. PNG files are
-explicit display companions. Raw HDR product variables are top-down RGBA16F, EXR is available only
-when the current encoder restrictions admit the product window, and depth variables are top-down
+explicit display companions. Raw HDR product variables are top-down RGBA16F. EXR stores the full
+raster as its display window, the crop or overscan as its data window and the product's pixel aspect;
+a pixel aspect outside 1/65536..65536 disables EXR for that product. Depth variables are top-down
 float32 normalized device depth rather than metric distance. Windows Viewer execution covers
 hdSilk Direct3D 12 and Vulkan. Both capture on the active composition device, with an exclusive
 lease that prevents presentation, device replacement or teardown while capture resources are

@@ -763,10 +763,25 @@ public sealed class ViewerAuthoredRenderProductTests
                     "/World/Camera",
                     5,
                     3,
-                    1,
+                    2,
                     "expandAperture",
                     new UsdVec2f(20, 10),
-                    new UsdVec4f(0.25f, 0, 0.75f, 1),
+                    new UsdVec4f(-0.25f, 0, 0.75f, 1),
+                    disableMotionBlur: true,
+                    disableDepthOfField: true,
+                    [0],
+                    []),
+            new UsdRenderProductSpecification(
+                    "/Render/ProductExtremeAspect",
+                    "extreme",
+                    "raster",
+                    "/World/Camera",
+                    5,
+                    3,
+                    1e6f,
+                    "expandAperture",
+                    new UsdVec2f(20, 10),
+                    new UsdVec4f(0, 0, 1, 1),
                     disableMotionBlur: true,
                     disableDepthOfField: true,
                     [0],
@@ -795,9 +810,12 @@ public sealed class ViewerAuthoredRenderProductTests
             Required<Button>(window, "ProductRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => Required<Button>(window, "ProductRenderButton").IsEnabled);
             Required<ComboBox>(window, "ProductHdrFormat").SelectedIndex = 1;
+            await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+            await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsTrue();
+            Required<ComboBox>(window, "ProductSelector").SelectedIndex = 1;
             await WaitUntilAsync(() => !Required<Button>(window, "ProductRenderButton").IsEnabled);
             await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
-                .Contains("EXR output currently refuses");
+                .Contains("pixel aspect only within 1/65536..65536");
         }
         finally
         {

@@ -116,8 +116,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     /// Creates a bounded job with caller-authorized output and generated filenames, never product-name authority.
     /// </summary>
     /// <remarks>
-    /// Raw split planes preserve crop/overscan and pixel aspect in the manifest. The initial EXR encoder
-    /// requires a complete origin-zero square-pixel color raster; it does not silently discard authored windows.
+    /// Raw split planes preserve crop/overscan and pixel aspect in the manifest. EXR output stores the same
+    /// crop/overscan as a data window inside the full display window, plus the pixel aspect.
     /// The PNG display companion is not a separately authored product or a color-space conversion claim.
     /// </remarks>
     public RenderDiskJobRequest CreateJob(
@@ -133,11 +133,13 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         {
             ViewportDimensions full = Request.Overrides.Resolution ??
                 new ViewportDimensions(Request.Product.Width, Request.Product.Height);
-            if (Frames.Any(frame => frame.DataWindowMinX != 0 || frame.DataWindowMinY != 0 ||
-                frame.OutputDimensions != full || frame.PixelAspectRatio != 1))
+            foreach (RenderPreparedFrame frame in Frames)
             {
-                throw new NotSupportedException(
-                    "The EXR encoder cannot omit a product's crop, overscan or non-square pixels.");
+                // Crop, overscan and pixel aspect become EXR data/display windows; refuse before rendering
+                // anything when a frame has no exact encoder representation.
+                _ = ExrImageWindows.FromProductFrame(full, frame.DataWindowMinX, frame.DataWindowMinY,
+                    frame.OutputDimensions.Height, frame.PixelAspectRatio)
+                    .Validate(frame.OutputDimensions.Width, frame.OutputDimensions.Height);
             }
         }
         return new RenderDiskJobRequest(outputDirectory, _states, IncludeDeviceDepth, IncludeHdrColor,

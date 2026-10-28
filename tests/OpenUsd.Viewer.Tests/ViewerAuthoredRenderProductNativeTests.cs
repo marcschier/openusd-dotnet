@@ -233,10 +233,19 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
             Required<Button>(product, "ProductRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => Required<Button>(product, "ProductRenderButton").IsEnabled);
+            string latestOutput = previewOutput;
+            if (ExrRgba16FloatWriter.IsSupported)
+            {
+                string exrOutput = latestOutput = await RenderSelectedAsync(
+                    product, outputParent, start: "0", end: "0", step: "1", hdrFormat: 1);
+                byte[] exr = await File.ReadAllBytesAsync(Path.Combine(exrOutput, "frame-000000.hdr.exr"));
+                byte[] decoded = ExrScanlineOracle.Read(exr, 16, 16,
+                    new ExrOracleWindows(8, 0, 0, 0, 32, 16, 0x3f800000));
+                await Assert.That(decoded.Length).IsEqualTo(16 * 16 * 8);
+            }
             Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = 1;
-            await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsFalse();
-            await Assert.That(Required<TextBlock>(product, "ProductStatus").Text)
-                .Contains("EXR output currently refuses");
+            await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+            await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsTrue();
             int outputsBeforeUnsupported = Directory.GetDirectories(outputParent).Length;
             selector.SelectedIndex = 1;
             await WaitUntilAsync(() => !Required<Button>(product, "ProductRenderButton").IsEnabled);
@@ -253,7 +262,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await Assert.That((await File.ReadAllBytesAsync(stagePath)).SequenceEqual(sourceBytes)).IsTrue();
             await Assert.That(File.Exists(Path.Combine(outputParent, "..", "must-not-be-used.exr"))).IsFalse();
             CompletedRenderJobWindow reloading = await ViewerCompletedJobPreviewJourney.OpenAsync(
-                product, "ProductViewResultsButton", previewOutput, [0], [0]);
+                product, "ProductViewResultsButton", latestOutput, [0], [0]);
             Bitmap[] reloadingImages = Required<ListBox>(reloading, "ResultsFrames").Items
                 .Cast<CompletedRenderJobTile>().Select(static tile => tile.Image).ToArray();
             ViewerStageSession previous = session;
@@ -290,9 +299,9 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
     }
 
     private static async Task<string> RenderSelectedAsync(
-        Window product, string outputParent, string start, string end, string step)
+        Window product, string outputParent, string start, string end, string step, int hdrFormat = 0)
     {
-        Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = 0;
+        Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = hdrFormat;
         Required<TextBox>(product, "ProductStartTime").Text = start;
         Required<TextBox>(product, "ProductEndTime").Text = end;
         Required<TextBox>(product, "ProductStep").Text = step;
