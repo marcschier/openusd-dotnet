@@ -2587,6 +2587,20 @@ preserve existing resources and leave retry capacity intact. Native sequence cas
 raw/EXR frame retrieval at distinct times, including bounded preparation and texture streaming.
 The hardware GPU-upload and generated warehouse-camera journeys retain their own prerequisites.
 
+`OPENUSD_WAREHOUSE_CAMERA_SCENARIO` supplies an absolute path to a generated
+`--focused-camera` scenario for `NativeGeneratedWarehouseCameraPreservesPoseAndProjection`.
+The test opens only `/WarehouseDemoCamera` through a population mask and requires `/World`
+to be absent. It checks the authored pose and projection at times 0, 120 and 240.
+Optional `OPENUSD_WAREHOUSE_CAMERA_EVIDENCE` names a new absolute JSON output; an existing
+file is refused. This camera-only execution does not qualify warehouse geometry or rendering.
+
+`OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED=1` enables
+`NativeGpuUploadSequenceUsesHardwareAndReleasesResources`. Its bounded native sequence
+requires an actual D3D12 hardware device with GPU-upload heaps, then checks frame retrieval
+and resource drain. Retained TUnit output includes the device name, API version, software
+flag and enabled heap policy. Unsupported hardware fails rather than falling back to WARP
+or ordinary upload memory. This fixture does not establish full-scene memory or fidelity.
+
 Windows CTest reports the WGL-only probes as capability skips only when the host lacks the required
 WGL context-creation or framebuffer extension. Context creation and incomplete-framebuffer failures
 on a capable host remain failures. The separate `windows-wgl` platform smoke remains the required

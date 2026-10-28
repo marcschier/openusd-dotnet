@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Text.Json;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 
@@ -33,6 +34,13 @@ public sealed partial class NativeMcpIntegrationTests
                 d3d12.UsesGpuUploadHeaps && !device.Capabilities.IsSoftware)
             {
                 HardwareGpuUploadCreates++;
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    scope = "Bounded native MCP fixture, not whole-scene warehouse qualification.",
+                    backend = "D3D12",
+                    capabilities = device.Capabilities,
+                    gpuUploadHeaps = d3d12.UsesGpuUploadHeaps
+                }));
             }
             return device;
         }

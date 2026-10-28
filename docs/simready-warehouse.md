@@ -1079,6 +1079,12 @@ not the earlier overview camera or a geometry/visibility filter. Without the opt
 generated scenario layer retains its previous content. The CPU qualification above predates
 this camera addition; it is not acceptance of a full-root image or host recording.
 
+The generated camera now has separate native qualification at times 0, 120 and 240.
+The test opens a camera-only population mask, requires `/World` to be absent, and checks
+the exact pose, target direction, perspective aperture, field of view and clipping range.
+This proves the generator's camera state without loading warehouse geometry; full-root
+rendering and recorded camera presentation remain unqualified.
+
 The JSON result includes `cameraPath` and the explicit `stageSettings` needed by MCP
 `open_scene`. Copy the latter object into that request: source-sublayer root metadata is
 not inherited by a new MCP workspace. Use the returned `cameraPath`, `fullScenePhysics: true`,
