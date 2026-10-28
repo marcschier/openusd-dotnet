@@ -142,6 +142,37 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  mdl-adapter:
+    name: ${{ matrix.rid }} standalone MDL adapter
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: linux-x64
+            runner: ubuntu-24.04
+          - rid: osx-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Configure standalone MDL adapter
+        run: >-
+          cmake -S native/openusd_mdl -B artifacts/mdl-standalone
+          -DCMAKE_BUILD_TYPE=Release -Werror=dev
+      - name: Build standalone MDL adapter and probe
+        run: cmake --build artifacts/mdl-standalone --config Release --target mdl_sdk_probe
+      - name: Test standalone MDL adapter
+        run: >-
+          ctest --test-dir artifacts/mdl-standalone -C Release
+          -R "^mdl_adapter_probe$" --no-tests=error --output-on-failure
+
   build:
     name: ${{ matrix.rid }} verified native archive
     runs-on: ${{ matrix.runner }}

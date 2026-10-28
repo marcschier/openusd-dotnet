@@ -653,10 +653,10 @@ package. The optional openusd_mdl_sdk sibling adds module evaluation on top of t
 mdl-sdk-module-evaluation. The loader resolves either adapter only as an absolute sibling of the hdSilk module or from
 an absolute OPENUSD_MDL_ADAPTER_PATH, never from a bare library name
 
-**Limits:** Only win-x64 is gated: native.yml builds the OPENUSD_WITH_MDL configuration and runs the hdSilk probe
-against it on Windows alone. The adapter is dependency-free C++ and the linux-x64-mdl and osx-arm64-mdl presets build
-the identical source, but no workflow builds them, so no accepted automated reference gate proves those RIDs and they
-are not claimed as evidence platforms.
+**Limits:** Only win-x64 has the integrated OPENUSD_WITH_MDL configuration and hdSilk probe gate. The independent
+native.yml mdl-adapter job schedules standalone dependency-free C-ABI checks on win-x64, linux-x64 and osx-arm64; it
+does not qualify loader integration or renderer fidelity on the other RIDs, which remain excluded from this entry's
+evidence platforms.
 
 ### `mdl-sdk-module-evaluation`
 

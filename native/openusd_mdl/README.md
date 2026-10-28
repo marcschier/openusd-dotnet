@@ -276,10 +276,12 @@ probes; they do not acquire dependencies or change either adapter's linkage.
 `OPENUSD_BUILD_NATIVE_TESTS=OFF` builds only the selected adapter libraries.
 Adapter-only probes do not qualify the hdSilk loader, renderer, or base packages.
 
-`linux-x64-mdl` and `osx-arm64-mdl` build the identical dependency-free source,
-but only `win-x64` is gated: `native.yml` builds this configuration and runs the
-hdSilk probe against it on Windows alone, so the other two RIDs are buildable
-rather than proven.
+`native.yml` schedules the standalone dependency-free adapter and C-ABI probe
+independently on `win-x64`, `linux-x64` and `osx-arm64`. Those jobs require no
+native archive or MDL SDK. The full `win-x64-mdl` preset additionally runs the
+hdSilk probe on Windows. The `linux-x64-mdl` and `osx-arm64-mdl` presets remain
+buildable without an equivalent integrated loader/renderer gate; standalone
+adapter success does not supply that evidence.
 
 The build produces `openusd_mdl` in the build tree and installs nothing. hdSilk
 finds it beside its own binary, or at the absolute path named by the

@@ -49,6 +49,23 @@ foreach ($required in @(
     Assert-Contains $nativeWorkflow $required 'Native artifact workflow'
 }
 $ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+$mdlJob = [regex]::Match($nativeWorkflow, '(?ms)^  mdl-adapter:\r?\n.*?(?=^  build:)').Value
+foreach ($required in @(
+    'name: ${{ matrix.rid }} standalone MDL adapter',
+    'rid: win-x64',
+    'rid: linux-x64',
+    'rid: osx-arm64',
+    'cmake -S native/openusd_mdl -B artifacts/mdl-standalone',
+    '--config Release --target mdl_sdk_probe',
+    '-R "^mdl_adapter_probe$" --no-tests=error --output-on-failure'))
+{
+    Assert-Contains $mdlJob $required 'Standalone MDL adapter job'
+}
+if ($mdlJob -match '(?m)^    needs:' -or $mdlJob.Contains('fetch-native') -or
+    $mdlJob.Contains('OPENUSD_MDL_SDK_ROOT'))
+{
+    throw 'The standalone authored adapter gate must not require a native archive or an MDL SDK.'
+}
 Assert-Contains $ciWorkflow './eng/test-native-download.ps1' 'Managed CI workflow'
 if ([regex]::Matches($nativeWorkflow, "(?m)^      - 'eng/test-native-download\.ps1'$").Count -ne 2)
 {
