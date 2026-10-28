@@ -54,6 +54,15 @@
               PlaceholderText="Enter the new typed review value"
               AutomationProperties.Name="New review property value"
               AutomationProperties.AutomationId="edit.propertyValue" />
+          <CheckBox
+              x:Name="PropertyBooleanValue"
+              Content="Boolean value (indeterminate means no draft)"
+              IsVisible="False"
+              IsEnabled="False"
+              IsThreeState="True"
+              IsChecked="{x:Null}"
+              AutomationProperties.Name="New boolean review property value"
+              AutomationProperties.AutomationId="edit.propertyBooleanValue" />
           <Button
               x:Name="ChoosePropertyAssetButton"
               Grid.Column="1"

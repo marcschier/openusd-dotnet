@@ -87,6 +87,7 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         SetPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Set));
         ClearPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Clear));
         BlockPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Block));
+        PropertyBooleanValue.IsCheckedChanged += (_, _) => UpdateAvailability();
         ChoosePropertyAssetButton.Click += (_, _) => Start(ChooseAssetAsync);
         ClosePropertyButton.Click += (_, _) => Close();
         Opened += async (_, _) =>
@@ -97,7 +98,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             {
                 if (_capture is not null || _bindingCapture is not null)
                 {
-                    PropertyValue.Focus();
+                    Control input = _capture is { TypeName: "bool" } ? PropertyBooleanValue : PropertyValue;
+                    input.Focus();
                 }
                 else
                 {
@@ -227,8 +229,18 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         UsdLayerEdit edit;
         if (operation == UsdLayerEditOperation.Set)
         {
-            if (!ViewerPropertyEditParser.TryParse(
-                property.TypeName, PropertyValue.Text ?? string.Empty, out UsdLayerEditValue? value, out string error))
+            UsdLayerEditValue? value;
+            if (property.TypeName == "bool")
+            {
+                if (PropertyBooleanValue.IsChecked is not bool boolean)
+                {
+                    PropertyEditStatus.Text = "Choose true or false before Set. Use Clear to remove this field.";
+                    return;
+                }
+                value = UsdLayerEditValue.FromBoolean(boolean);
+            }
+            else if (!ViewerPropertyEditParser.TryParse(
+                property.TypeName, PropertyValue.Text ?? string.Empty, out value, out string error))
             {
                 PropertyEditStatus.Text = error;
                 return;
@@ -295,6 +307,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         UsdLayerAuthoredOpinion opinion = capture.Capture.Snapshot.Opinions[0];
         PropertyInputHint.Text = capture.TypeName switch
         {
+            "bool" => "Checked is true; unchecked is false. Indeterminate has no draft value. " +
+                "Only Set authors a value; use Clear or Block for those operations.",
             "asset" => "Enter the authored path, or choose a file for an absolute path. Set authors the change.",
             "float2" or "texCoord2f" => "Two components: (x, y). Values are not clamped.",
             "float4" or "color4f" => "Four components: (x, y, z, w). Values are not clamped.",
@@ -308,6 +322,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertyTargetState.Text = $"Review target: {capture.Capture.LayerIdentifier}\n" +
             $"Revision {capture.Capture.Snapshot.Revision}; {opinion.Address.Field}: {value}";
         PropertyValue.Text = ViewerPropertyEditParser.Format(opinion.Value);
+        PropertyBooleanValue.IsChecked = capture.TypeName == "bool" &&
+            opinion.Value.Kind == UsdLayerEditValueKind.Boolean ? opinion.Value.AsBoolean() : null;
     }
 
     private void UpdateAvailability()
@@ -316,8 +332,13 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertySelector.IsEnabled = ready;
         PropertyFieldSelector.IsEnabled = ready;
         PropertyValue.IsEnabled = ready;
+        bool boolean = _capture is { TypeName: "bool" };
+        PropertyValue.IsVisible = !boolean;
+        PropertyBooleanValue.IsVisible = boolean;
+        PropertyBooleanValue.IsEnabled = ready && boolean;
         RefreshPropertyButton.IsEnabled = ready;
-        SetPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null);
+        SetPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null) &&
+            (!boolean || PropertyBooleanValue.IsChecked.HasValue);
         ClearPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null);
         BlockPropertyButton.IsEnabled = ready && _capture is not null;
         ChoosePropertyAssetButton.IsVisible = _capture is { TypeName: "asset" };

@@ -431,6 +431,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => stage.GetPrim("/Light").GetAttribute("inputs:texture:file").IsAuthored, timeout))
                 .IsFalse();
+            await ExerciseBooleanPropertiesAsync(main, session, shaderQuery, timeout);
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });

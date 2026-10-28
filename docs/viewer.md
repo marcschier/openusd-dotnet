@@ -1156,6 +1156,13 @@ the focused typed review editor and shared history; they do not recreate lights,
 or flatten shader graphs. No values are silently clamped or normalized. Custom schema fields and
 other shape/shaping properties remain outside this admission path.
 
+Boolean review properties use a three-state checkbox instead of text entry. Checked and unchecked
+select explicit true and false drafts. An absent or blocked target starts indeterminate; Set stays
+disabled until a boolean is chosen. Indeterminate is not a request to Clear or Block: those remain
+separate operations. Toggling changes only the draft; Set uses the captured review target and existing
+conflict checks. Refresh restores the exact authored boolean, not the composed fallback. These controls
+also apply to numeric-time samples and retain shared Undo/Redo.
+
 Rectangle and dome `inputs:texture:file` fields and dome `inputs:texture:format` also accept exact
 native declarations through the same review editor. Asset paths and format tokens retain their
 native varying declarations for default and individual numeric-time edits. Set preserves the entered
