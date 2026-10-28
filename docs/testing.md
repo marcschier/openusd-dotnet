@@ -2596,8 +2596,14 @@ depth. Every pixel must match literal HDR half bits and analytic device depth, r
 0.825 for perspective and 0.3 for orthographic coverage. The explicit
 `adjustApertureHeight` policy keeps square pixels. Exact authored-state restoration removes the
 new opinion/declaration and restores RGBA8, HDR and depth byte-for-byte; source bytes and authored
-output destinations remain untouched. This does not qualify non-square output pixels, authored
-exposure, shutter integration, depth of field or another backend.
+output destinations remain untouched.
+
+`ReviewCameraNearClipChangesRenderedCoverageAndRestoresWithoutSourceWrites` edits
+`clippingRange` to a near plane of 2, 4 or 6 with a far plane of 12, on default and numeric-time
+opinions of both projections. The square sits at distance 4. Near 2 keeps its 32 by 32 coverage
+and changes the device depth, near 4 keeps coverage with depth 0, and near 6 removes coverage.
+The view and projection scale terms must stay unchanged. This does not qualify far clipping, non-square
+output pixels, authored exposure, shutter integration, depth of field or another backend.
 
 The Windows clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires
 `AUTHORED_PRODUCT_EXR=true`. It publishes and executes a real NativeAOT application from the local

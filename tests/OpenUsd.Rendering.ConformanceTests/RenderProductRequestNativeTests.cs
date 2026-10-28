@@ -20,8 +20,29 @@ public sealed class RenderProductRequestNativeTests
     [Arguments(true, UsdGeomCameraProjection.Orthographic, true)]
     [Arguments(false, UsdGeomCameraProjection.Perspective, true)]
     [Arguments(true, UsdGeomCameraProjection.Perspective, true)]
-    public async Task ReviewCameraChangesRenderedCoverageAndRestoresWithoutSourceWrites(
-        bool timeSample, UsdGeomCameraProjection projection, bool translate)
+    public Task ReviewCameraChangesRenderedCoverageAndRestoresWithoutSourceWrites(
+        bool timeSample, UsdGeomCameraProjection projection, bool translate) =>
+        AssertReviewCameraChangeAsync(timeSample, projection, translate);
+
+    [Test]
+    [Arguments(false, UsdGeomCameraProjection.Orthographic, 2f)]
+    [Arguments(true, UsdGeomCameraProjection.Orthographic, 2f)]
+    [Arguments(false, UsdGeomCameraProjection.Perspective, 2f)]
+    [Arguments(true, UsdGeomCameraProjection.Perspective, 2f)]
+    [Arguments(false, UsdGeomCameraProjection.Orthographic, 4f)]
+    [Arguments(true, UsdGeomCameraProjection.Orthographic, 4f)]
+    [Arguments(false, UsdGeomCameraProjection.Perspective, 4f)]
+    [Arguments(true, UsdGeomCameraProjection.Perspective, 4f)]
+    [Arguments(false, UsdGeomCameraProjection.Orthographic, 6f)]
+    [Arguments(true, UsdGeomCameraProjection.Orthographic, 6f)]
+    [Arguments(false, UsdGeomCameraProjection.Perspective, 6f)]
+    [Arguments(true, UsdGeomCameraProjection.Perspective, 6f)]
+    public Task ReviewCameraNearClipChangesRenderedCoverageAndRestoresWithoutSourceWrites(
+        bool timeSample, UsdGeomCameraProjection projection, float nearClip) =>
+        AssertReviewCameraChangeAsync(timeSample, projection, translate: false, nearClip);
+
+    private static async Task AssertReviewCameraChangeAsync(
+        bool timeSample, UsdGeomCameraProjection projection, bool translate, float? nearClip = null)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(SilkGraphicsBackend.D3D12);
         string? plugins = Environment.GetEnvironmentVariable("OPENUSD_TEST_PLUGIN_PATH");
@@ -92,12 +113,15 @@ public sealed class RenderProductRequestNativeTests
             using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
             using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins, source);
             using var capturer = new SilkFrameCapturer(device);
-            string propertyPath = translate ? "/Camera.xformOp:translate" :
+            string propertyPath = nearClip.HasValue ? "/Camera.clippingRange" :
+                translate ? "/Camera.xformOp:translate" :
                 perspective ? "/Camera.focalLength" : "/Camera.horizontalAperture";
             var address = new UsdLayerEditAddress(propertyPath,
                 timeSample ? UsdLayerEditField.TimeSample : UsdLayerEditField.Default, timeSample ? 24 : 0);
             float editedValue = perspective ? 20 : 40;
-            UsdLayerEditValue authoredValue = translate
+            UsdLayerEditValue authoredValue = nearClip is { } near
+                ? UsdLayerEditValue.FromVec2f(new UsdVec2f(near, 12))
+                : translate
                 ? UsdLayerEditValue.FromVec3d(new UsdVec3d(0.25, 0, 0))
                 : UsdLayerEditValue.FromFloat(editedValue);
             float expectedDepth = perspective ? 0.825f : 0.3f;
@@ -111,7 +135,8 @@ public sealed class RenderProductRequestNativeTests
                     using UsdLayer review = stage.GetUserReviewLayer();
                     UsdLayerAuthoredSnapshot before = review.CaptureAuthored([address]);
                     UsdLayerEditResult result = review.CompareAndApply(before,
-                        [UsdLayerEdit.Set(address, authoredValue, translate ? "double3" : "float")]);
+                        [UsdLayerEdit.Set(address, authoredValue,
+                            nearClip.HasValue ? "float2" : translate ? "double3" : "float")]);
                     if (result.Outcome != UsdLayerEditOutcome.Applied || result.AfterSnapshot is null)
                     {
                         throw new InvalidOperationException($"Review camera edit failed: {result.Outcome}.");
@@ -122,7 +147,21 @@ public sealed class RenderProductRequestNativeTests
             await Assert.That(edit.After.Opinions[0].Address).IsEqualTo(address);
             RenderPreparedFrame changed = await prepareAsync();
             SilkFrameCaptureResult edited = capture(changed);
-            if (translate)
+            if (nearClip is { } clippingNear)
+            {
+                await Assert.That(edit.After.Opinions[0].Value.AsVec2f()).IsEqualTo(new UsdVec2f(clippingNear, 12));
+                await Assert.That(changed.SampledCamera.ClippingNear).IsEqualTo((double)clippingNear);
+                await Assert.That(changed.SampledCamera.ClippingFar).IsEqualTo(12d);
+                await Assert.That(changed.Camera.View).IsEqualTo(original.Camera.View);
+                await Assert.That(changed.Camera.Projection.M11).IsEqualTo(original.Camera.Projection.M11);
+                await Assert.That(changed.Camera.Projection.M22).IsEqualTo(original.Camera.Projection.M22);
+                float clippedDepth = clippingNear == 2 ? perspective ? 0.6f : 0.2f : 0f;
+                await assertCoverageAsync(edited, clippingNear <= 4 ? 16 : 0, clippingNear <= 4 ? 48 : 0,
+                    16, 48, clippedDepth);
+                await Assert.That(edited.Depth!.Values.Span.SequenceEqual(baseline.Depth!.Values.Span)).IsFalse()
+                    .Because("an unchanged depth plane must not satisfy the edited clipping-range contract");
+            }
+            else if (translate)
             {
                 await Assert.That(edit.After.Opinions[0].Value.AsVec3d()).IsEqualTo(new UsdVec3d(0.25, 0, 0));
                 await Assert.That(changed.Camera.View.M41).IsEqualTo(-0.25f);
@@ -140,8 +179,11 @@ public sealed class RenderProductRequestNativeTests
                 await assertCoverageAsync(edited, 24, 40, 24, 40, expectedDepth);
             }
             await Assert.That(changed.PixelAspectRatio).IsEqualTo(1d);
-            await Assert.That(edited.Rgba.Span.SequenceEqual(baseline.Rgba.Span)).IsFalse()
-                .Because("an unchanged camera must not satisfy the edited camera's pixel contract");
+            if (!nearClip.HasValue)
+            {
+                await Assert.That(edited.Rgba.Span.SequenceEqual(baseline.Rgba.Span)).IsFalse()
+                    .Because("an unchanged camera must not satisfy the edited camera's pixel contract");
+            }
             UsdLayerEditResult restored = await scheduler.InvokeAsync(stage =>
             {
                 using UsdLayer review = stage.GetUserReviewLayer();
