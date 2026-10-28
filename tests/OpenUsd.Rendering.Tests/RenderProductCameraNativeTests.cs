@@ -168,7 +168,7 @@ public sealed class RenderProductCameraNativeTests
     }
 
     [Test]
-    public async Task ActiveShutterSamplesTheMovingCameraAtStratifiedSubintervalCenters()
+    public async Task ActiveAccumulationSamplesTheMovingCameraAtStratifiedSubintervalCenters()
     {
         RequireNativeExecution();
         string root = Directory.CreateTempSubdirectory("render-product-shutter-").FullName;
@@ -211,17 +211,87 @@ public sealed class RenderProductCameraNativeTests
             RenderProductJobPlan plan = await RenderProductJobPlan.PrepareAsync(
                 scheduler, new StageIdentity("scene.usda"), [4], RenderSettings.PresentationDefault);
             RenderPreparedFrame frame = plan.Frames[0];
-            await Assert.That(frame.ShutterSamples.Count).IsEqualTo(8);
+            await Assert.That(frame.AccumulationSamples.Count).IsEqualTo(8);
             for (int index = 0; index < 8; index++)
             {
                 double time = 3.5 + ((index + 0.5) / 8);
-                RenderPreparedFrame sample = frame.ShutterSamples[index];
+                RenderPreparedFrame sample = frame.AccumulationSamples[index];
                 await Assert.That(sample.TimeCode).IsEqualTo(time);
                 await Assert.That(sample.Camera.View.M41).IsEqualTo((float)(-2 * time));
                 await Assert.That(sample.OutputDimensions).IsEqualTo(frame.OutputDimensions);
             }
             await Assert.That(frame.Camera.View.M41).IsEqualTo(-8f);
-            await Assert.That(plan.ShutterStates(0)!.Count).IsEqualTo(8);
+            await Assert.That(plan.AccumulationStates(0)!.Count).IsEqualTo(8);
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(scene);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ActiveDepthOfFieldSamplesTheLensDiskWithDecorrelatedShutterTimes()
+    {
+        RequireNativeExecution();
+        string root = Directory.CreateTempSubdirectory("render-product-lens-").FullName;
+        string path = Path.Combine(root, "scene.usda");
+        const string scene = """
+            #usda 1.0
+            (renderSettingsPrimPath = "/Settings")
+            def Camera "Camera" {
+                token projection = "perspective"
+                float focalLength = 50
+                float horizontalAperture = 20
+                float verticalAperture = 20
+                float2 clippingRange = (1, 100)
+                float fStop = 2
+                float focusDistance = 10
+                double shutter:open = -0.5
+                double shutter:close = 0.5
+                double3 xformOp:translate.timeSamples = { 0: (0, 0, 0), 8: (16, 0, 0) }
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+            def RenderSettings "Settings" {
+                rel camera = </Camera>
+                rel products = </Product>
+                int2 resolution = (4, 4)
+                bool disableMotionBlur = false
+                bool disableDepthOfField = false
+                uniform token[] includedPurposes = ["default", "render"]
+                uniform token[] materialBindingPurposes = ["full"]
+            }
+            def RenderProduct "Product" {
+                token productName = "never-written.exr"
+                rel orderedVars = </Color>
+            }
+            def RenderVar "Color" {
+                token dataType = "half4"
+                string sourceName = "color"
+                token sourceType = "raw"
+            }
+            """;
+        try
+        {
+            await File.WriteAllTextAsync(path, scene);
+            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            RenderProductJobPlan plan = await RenderProductJobPlan.PrepareAsync(
+                scheduler, new StageIdentity("scene.usda"), [4], RenderSettings.PresentationDefault);
+            RenderPreparedFrame frame = plan.Frames[0];
+            int count = RenderProductRequest.DepthOfFieldSampleCount;
+            await Assert.That(frame.AccumulationSamples.Count).IsEqualTo(count);
+            const float radius = 50 * 0.1f / (2 * 2);
+            for (int index = 0; index < count; index++)
+            {
+                double time = 3.5 + (((index * 5 % count) + 0.5) / count);
+                RenderPreparedFrame sample = frame.AccumulationSamples[index];
+                await Assert.That(sample.TimeCode).IsEqualTo(time);
+                System.Numerics.Vector2 offset = sample.LensOffset!.Value;
+                await Assert.That(offset.Length()).IsLessThanOrEqualTo(radius * 1.0001f);
+                await Assert.That(sample.Camera.View.M41).IsEqualTo((float)(-2 * time) - offset.X).Within(1e-4f);
+                await Assert.That(sample.Camera.View.M42).IsEqualTo(-offset.Y).Within(1e-4f);
+            }
+            await Assert.That(plan.AccumulationStates(0)!.Count).IsEqualTo(count);
             await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(scene);
         }
         finally

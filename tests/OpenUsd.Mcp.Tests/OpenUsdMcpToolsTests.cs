@@ -899,7 +899,7 @@ public sealed class OpenUsdMcpToolsTests
                 "shutterOpen": -0.125, "shutterClose": 0.375, "exposure": -2, "exposureIso": 400,
                 "exposureTime": 2, "exposureFStop": 2, "exposureResponsivity": 2, "linearExposureScale": 1,
                 "focusDistance": 25, "fStop": 5.6, "disableMotionBlur": true, "disableDepthOfField": true,
-                "shutterSampleCount": 0
+                "accumulationSampleCount": 0
             }
             """);
         await Assert.That(JsonElement.DeepEquals(sequenceFrame.StructuredContent.Value.GetProperty("productCamera"),
@@ -975,7 +975,7 @@ public sealed class OpenUsdMcpToolsTests
                 "shutterOpen": 0, "shutterClose": 0, "exposure": -3, "exposureIso": 800,
                 "exposureTime": 4, "exposureFStop": 4, "exposureResponsivity": 4, "linearExposureScale": 1,
                 "focusDistance": 0, "fStop": 0, "disableMotionBlur": false, "disableDepthOfField": false,
-                "shutterSampleCount": 0
+                "accumulationSampleCount": 0
             }
             """);
         await Assert.That(JsonElement.DeepEquals(sheet.StructuredContent.Value.GetProperty("tiles")[0]

@@ -76,7 +76,7 @@ public static partial class RenderDiskJob
                     staging, index, request.Frames[index], source, diagnostics, request.IncludeDeviceDepth,
                     request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index),
                     request.ProductPlan?.Frames[index].CameraSettings!.LinearExposureScale ?? 1, remaining,
-                    request.ProductPlan?.ShutterStates(index), cancellationToken);
+                    request.ProductPlan?.AccumulationStates(index), cancellationToken);
                 total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
             }

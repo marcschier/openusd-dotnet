@@ -834,7 +834,7 @@ through actual rendering; preparation alone is not a lifetime or revision guaran
 The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
 variables, one per plane, with one material-binding purpose and standard scene-purpose tokens.
 Depth is normalized device depth, not metric camera distance. Named rendering color spaces,
-unevaluated settings, other source/data types and active depth-of-field requirements are not
+unevaluated settings and other source/data types are not
 silently approximated. Authored camera exposure is applied: each frame
 multiplies HDR color by `LinearExposureScale` and adds its log2 stops to the companion's display
 exposure, so the raw plane and PNG agree. A zero scale is refused at planning; a binary16
@@ -844,7 +844,7 @@ of the larger authored-render milestone.
 Motion blur is rendered by temporal accumulation. When the product leaves `disableMotionBlur`
 false and the camera's shutter interval is open, `PrepareExecutionFrame` samples the camera at
 eight stratified sub-interval centers, `frame + open + (close - open) * (i + 0.5) / 8`, and
-exposes them as `RenderPreparedFrame.ShutterSamples`. Geometry follows each sample's time code.
+exposes them as `RenderPreparedFrame.AccumulationSamples`. Geometry follows each sample's time code.
 A sample whose raster or data window differs from the frame's is refused, as is a zero-length or
 inverted interval. The job renders every sample with the frame's settings and stores box-filter
 means: HDR color averages the binary16 samples in single precision before camera exposure, and
@@ -853,6 +853,22 @@ of displayed images, not a display transform of the HDR mean. Accumulation refus
 device depth, which has no defined averaged value, and simulation-backed sources. Its working
 set is about 24 bytes per pixel, so the output raster is limited to 4096 × 4096 pixels.
 Explicit-matrix frames carry no samples and remain refused with an open shutter.
+
+Depth of field is rendered by the same accumulation, using a thin-lens camera. It is active when
+the product leaves `disableDepthOfField` false and the sampled `fStop` is nonzero. A rasterizer
+renders through a pinhole, so a sharp image cannot show defocus without moving the eye.
+`PrepareExecutionFrame` therefore creates sixteen samples. Each sample moves the eye to a stratified
+point on the aperture disk and shears the frustum so the plane at `focusDistance` projects to the
+same pixels in every sample. Points off that plane land on different pixels, and their mean
+is the defocus blur. The 4 × 4 cell centers are mapped to the disk with the Shirley-Chiu
+concentric map. The disk radius is `focalLength × 0.1 / (2 × fStop)` scene units. The 0.1 factor
+converts USD's tenth-of-a-unit focal length, matching Hydra's camera adapter. It assumes the
+stage's linear unit is the scene unit; `metersPerUnit` is not applied. When the shutter is also
+open, sample `i` uses shutter stratum `(5i) mod 16`, so time and lens position are not
+correlated. Depth of field requires a perspective camera and a positive `focusDistance`;
+orthographic cameras and zero focus distances are refused rather than rendered without blur.
+It has the same depth, simulation and 4096 × 4096 limits as motion blur. Each sample's
+`LensOffset` and the manifest's `sampleLensOffsets` record the camera-space eye offsets.
 
 `plan.CreateJob` reuses the existing disk engine and quota policy. A source must explicitly
 implement `IRenderProductFrameSource.ValidateProduct` and honor every admitted filter and setting;
@@ -922,10 +938,10 @@ to each 20/40/80/160-ms boundary without sleeping; Windows integration cases ret
 leases while controlling release, cancellation and destination collisions at those boundaries.
 
 This sequence API is an execution foundation, not implicit support for arbitrary authored
-render variables, arbitrary HDR containers, depth of field or scene-supplied RenderPass commands.
-Product motion blur is the only accumulation it performs, and only for states supplied by an
-admitted product plan. Product adapters must honor or explicitly refuse additional semantics
-before submitting prepared states.
+render variables, arbitrary HDR containers or scene-supplied RenderPass commands.
+Product motion blur and depth of field are the only accumulations it performs, and only for states
+supplied by an admitted product plan. Product adapters must honor or explicitly refuse additional
+semantics before submitting prepared states.
 
 The additive `includeDeviceDepth` request overload requires a `RenderJobDeviceDepth` plane from
 each source frame. The original request constructor remains color-only. Depth requests charge

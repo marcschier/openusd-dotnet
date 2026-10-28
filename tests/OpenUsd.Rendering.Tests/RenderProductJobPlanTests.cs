@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
 using System.Text.Json;
 using OpenUsd.Geom;
 using OpenUsd.Render;
@@ -530,7 +531,7 @@ public sealed class RenderProductJobPlanTests
             RenderPreparedFrame frame = ShutterFrame(request, 4, -0.25, 0.25);
             var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [frame],
                 RenderSettings.PresentationDefault);
-            IReadOnlyList<StageRenderState> shutter = plan.ShutterStates(0)!;
+            IReadOnlyList<StageRenderState> shutter = plan.AccumulationStates(0)!;
             double[] expectedTimes = [.. Enumerable.Range(0, 8).Select(static i => 3.75 + (0.5 * (i + 0.5) / 8))];
             await Assert.That(shutter.Select(static state => state.Time.TimeCode).SequenceEqual(expectedTimes)).IsTrue();
             await Assert.That(shutter.Zip(shutter.Skip(1)).All(static pair => pair.Second.Revision > pair.First.Revision))
@@ -563,9 +564,9 @@ public sealed class RenderProductJobPlanTests
             using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
                 Path.Combine(result.OutputDirectory, "manifest.json")));
             JsonElement saved = manifest.RootElement.GetProperty("frames")[0];
-            await Assert.That(saved.GetProperty("productCamera").GetProperty("shutterSampleCount").GetInt32())
+            await Assert.That(saved.GetProperty("productCamera").GetProperty("accumulationSampleCount").GetInt32())
                 .IsEqualTo(8);
-            JsonElement accumulation = saved.GetProperty("productShutterAccumulation");
+            JsonElement accumulation = saved.GetProperty("productAccumulation");
             await Assert.That(accumulation.GetProperty("sampleTimeCodes").EnumerateArray()
                 .Select(static value => value.GetDouble()).SequenceEqual(expectedTimes)).IsTrue();
             await Assert.That(accumulation.GetProperty("filter").GetString())
@@ -615,6 +616,109 @@ public sealed class RenderProductJobPlanTests
         }
     }
 
+    [Test]
+    public async Task DepthOfFieldSamplesKeepTheFocusPlaneFixedAndAccumulateIntoTheProduct()
+    {
+        RenderProductRequest request = Request(disableOptics: false, colorOnly: true);
+        RenderPreparedFrame frame = LensFrame(request, PerspectiveOptics(fStop: 2, focusDistance: 10));
+        double radius = 20 * RenderProductRequest.FocalLengthUnit / (2 * 2);
+        await Assert.That(frame.AccumulationSamples.Count).IsEqualTo(RenderProductRequest.DepthOfFieldSampleCount);
+        Vector2 focusNdc = Ndc(frame.Camera, new Vector3(0.3f, 0.2f, -10));
+        Vector2 nearNdc = Ndc(frame.Camera, new Vector3(0.3f, 0.2f, -2));
+        float nearSpread = 0;
+        foreach (RenderPreparedFrame sample in frame.AccumulationSamples)
+        {
+            Vector2 offset = sample.LensOffset!.Value;
+            await Assert.That(offset.Length()).IsLessThanOrEqualTo((float)radius * 1.0001f);
+            await Assert.That(Vector2.Distance(Ndc(sample.Camera, new Vector3(0.3f, 0.2f, -10)), focusNdc))
+                .IsLessThan(1e-4f);
+            nearSpread = MathF.Max(nearSpread, Vector2.Distance(Ndc(sample.Camera, new Vector3(0.3f, 0.2f, -2)), nearNdc));
+        }
+        await Assert.That(nearSpread).IsGreaterThan(1e-2f);
+        await Assert.That(frame.AccumulationSamples.Select(static sample => sample.LensOffset!.Value).Distinct().Count())
+            .IsEqualTo(RenderProductRequest.DepthOfFieldSampleCount);
+
+        string root = Directory.CreateTempSubdirectory("product-lens-").FullName;
+        try
+        {
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [frame], RenderSettings.Default);
+            var source = new ProductSource
+            {
+                IncludeDepth = false,
+                Pixels = static (index, count) =>
+                {
+                    ushort[] hdr = new ushort[count * 4];
+                    Array.Fill(hdr, BitConverter.HalfToUInt16Bits((Half)index));
+                    return (new byte[count * 4], Halves(hdr), Rgba8RowOrder.TopDown);
+                },
+            };
+            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "out")), source);
+            await Assert.That(source.Calls).IsEqualTo(RenderProductRequest.DepthOfFieldSampleCount);
+            byte[] hdrFile = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, result.Frames[0].HdrColorFileName!));
+            ushort[] mean = new ushort[16];
+            Array.Fill(mean, BitConverter.HalfToUInt16Bits((Half)7.5));
+            await Assert.That(Convert.ToHexString(hdrFile)).IsEqualTo(Convert.ToHexString(Halves(mean)));
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement accumulation = manifest.RootElement.GetProperty("frames")[0].GetProperty("productAccumulation");
+            await Assert.That(accumulation.GetProperty("lensModel").GetString())
+                .IsEqualTo("thin-lens-concentric-disk-radius-focalLength-x0.1-over-2fStop");
+            await Assert.That(accumulation.GetProperty("sampleLensOffsets").GetArrayLength())
+                .IsEqualTo(RenderProductRequest.DepthOfFieldSampleCount);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("focus")]
+    [Arguments("depth")]
+    [Arguments("missing-samples")]
+    public async Task DepthOfFieldRefusesUndefinedLensesDepthAndUnsampledFrames(string failure)
+    {
+        RenderProductRequest request = Request(disableOptics: false, colorOnly: failure != "depth");
+        UsdGeomCameraState optics = PerspectiveOptics(fStop: 2, focusDistance: failure == "focus" ? 0 : 10);
+        if (failure == "focus")
+        {
+            RenderPreparedFrame unfocused = request.PrepareFrame(
+                UsdMatrix4d.Identity, optics, 1, RenderCameraFrameSettings.Default);
+            await Assert.That(() => RenderProductRequest.PrepareLensSample(unfocused, 0))
+                .Throws<NotSupportedException>();
+            await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"), [unfocused],
+                RenderSettings.Default)).Throws<NotSupportedException>();
+            return;
+        }
+        RenderPreparedFrame frame = failure == "missing-samples"
+            ? request.PrepareFrame(UsdMatrix4d.Identity, optics, 1, RenderCameraFrameSettings.Default)
+            : LensFrame(request, optics);
+        await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"), [frame],
+            RenderSettings.Default)).Throws<NotSupportedException>();
+    }
+
+    private static RenderPreparedFrame LensFrame(RenderProductRequest request, UsdGeomCameraState optics)
+    {
+        RenderPreparedFrame frame = request.PrepareFrame(
+            UsdMatrix4d.Identity, optics, 1, RenderCameraFrameSettings.Default);
+        var samples = new RenderPreparedFrame[RenderProductRequest.DepthOfFieldSampleCount];
+        for (int index = 0; index < samples.Length; index++)
+        {
+            samples[index] = RenderProductRequest.PrepareLensSample(frame, index);
+        }
+        return frame.WithAccumulationSamples(samples);
+    }
+
+    private static Vector2 Ndc(CameraState camera, Vector3 point)
+    {
+        Vector4 clip = Vector4.Transform(new Vector4(point, 1), camera.View * camera.Projection);
+        return new Vector2(clip.X / clip.W, clip.Y / clip.W);
+    }
+
+    private static UsdGeomCameraState PerspectiveOptics(double fStop, double focusDistance) => new(
+        UsdGeomCameraProjection.Perspective, -0.5, 0.5, -0.5, 0.5, 1, 100, 20, 20, 20, 0, 0, focusDistance, fStop);
+
     private static RenderPreparedFrame ShutterFrame(
         RenderProductRequest request, double time, double open, double close)
     {
@@ -626,7 +730,7 @@ public sealed class RenderProductJobPlanTests
             samples[index] = request.PrepareFrame(UsdMatrix4d.Identity, Optics(),
                 time + open + ((close - open) * (index + 0.5) / samples.Length), settings);
         }
-        return frame.WithShutterSamples(samples);
+        return frame.WithAccumulationSamples(samples);
     }
 
     private static byte[] Halves(ushort[] values)

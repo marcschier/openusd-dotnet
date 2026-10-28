@@ -89,22 +89,35 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         }
         RenderCameraFrameSettings settings = RenderCameraFrameSettings.Read(stage, prim, timeCode);
         RenderPreparedFrame frame = PrepareFrame(worldToView, sampled, timeCode, settings);
-        if (settings.ShutterClose <= settings.ShutterOpen || Product.DisableMotionBlur)
+        bool blur = settings.ShutterClose > settings.ShutterOpen && !Product.DisableMotionBlur;
+        bool lens = IsDepthOfFieldActive(sampled);
+        if (!blur && !lens)
         {
             return frame;
         }
-        var samples = new RenderPreparedFrame[MotionBlurSampleCount];
+        int count = lens ? DepthOfFieldSampleCount : MotionBlurSampleCount;
+        var samples = new RenderPreparedFrame[count];
         double interval = settings.ShutterClose - settings.ShutterOpen;
         for (int index = 0; index < samples.Length; index++)
         {
-            // Stratified box-filter samples at subinterval centers; the shutter offsets are in time codes.
-            double time = timeCode + settings.ShutterOpen + (interval * (index + 0.5) / samples.Length);
-            if (!double.IsFinite(time))
+            RenderPreparedFrame sample = frame;
+            if (blur)
             {
-                throw new NotSupportedException("The camera shutter interval has no finite sample times.");
+                // Stratified box-filter samples at subinterval centers; the shutter offsets are in time codes.
+                // With depth of field, 5 is coprime with 16 and decorrelates time strata from lens strata.
+                int stratum = lens ? index * 5 % count : index;
+                double time = timeCode + settings.ShutterOpen + (interval * (stratum + 0.5) / count);
+                if (!double.IsFinite(time))
+                {
+                    throw new NotSupportedException("The camera shutter interval has no finite sample times.");
+                }
+                (UsdMatrix4d sampleView, UsdGeomCameraState sampleOptics) = SampleCamera(camera, time);
+                sample = PrepareFrame(sampleView, sampleOptics, time, settings);
             }
-            (UsdMatrix4d sampleView, UsdGeomCameraState sampleOptics) = SampleCamera(camera, time);
-            RenderPreparedFrame sample = PrepareFrame(sampleView, sampleOptics, time, settings);
+            if (lens)
+            {
+                sample = PrepareLensSample(sample, index);
+            }
             if (sample.OutputDimensions != frame.OutputDimensions ||
                 sample.DataWindowMinX != frame.DataWindowMinX || sample.DataWindowMinY != frame.DataWindowMinY)
             {
@@ -113,11 +126,69 @@ public sealed class RenderProductRequest : IUsdDetachedResult
             }
             samples[index] = sample;
         }
-        return frame.WithShutterSamples(samples);
+        return frame.WithAccumulationSamples(samples);
     }
 
     /// <summary>Gets the stratified sample count used when a product renders an active shutter interval.</summary>
     internal const int MotionBlurSampleCount = 8;
+
+    /// <summary>Gets the stratified lens sample count used when a product renders depth of field.</summary>
+    internal const int DepthOfFieldSampleCount = 16;
+
+    /// <summary>Gets the scene-unit size of one USD focal-length unit, matching Hydra's lens conversion.</summary>
+    internal const double FocalLengthUnit = 0.1;
+
+    internal bool IsDepthOfFieldActive(UsdGeomCameraState optics) =>
+        !Product.DisableDepthOfField && optics.FStop != 0;
+
+    /// <summary>Moves a frame's eye to one stratified point on the thin-lens aperture disk.</summary>
+    /// <remarks>
+    /// The eye moves by <c>(dx, dy)</c> in camera space and the frustum window moves by
+    /// <c>-(dx, dy) / focusDistance</c>, so the focus plane projects to the same pixels for every sample.
+    /// </remarks>
+    internal static RenderPreparedFrame PrepareLensSample(RenderPreparedFrame frame, int index)
+    {
+        UsdGeomCameraState optics = frame.SampledCamera;
+        if (optics.Projection != UsdGeomCameraProjection.Perspective)
+        {
+            throw new NotSupportedException("Depth of field requires a perspective camera.");
+        }
+        if (optics.FocusDistance <= 0)
+        {
+            throw new NotSupportedException("Depth of field requires a positive camera focusDistance.");
+        }
+        double radius = optics.FocalLength * FocalLengthUnit / (2 * optics.FStop);
+        (double u, double v) = ConcentricDisk((index % 4 + 0.5) / 4, (index / 4 + 0.5) / 4);
+        double dx = radius * u;
+        double dy = radius * v;
+        double shiftX = dx / optics.FocusDistance;
+        double shiftY = dy / optics.FocusDistance;
+        if (!double.IsFinite(radius) || !double.IsFinite(shiftX) || !double.IsFinite(shiftY))
+        {
+            throw new NotSupportedException("The camera lens aperture has no finite sample positions.");
+        }
+        StageCameraApertureWindow window = frame.FramingWindow;
+        StageCameraApertureWindow shifted = StageCameraProjectionMath.CreateWindow(
+            window.Left - shiftX, window.Right - shiftX, window.Bottom - shiftY, window.Top - shiftY);
+        Matrix4x4 view = frame.Camera.View * Matrix4x4.CreateTranslation((float)-dx, (float)-dy, 0);
+        var camera = new CameraState(view, StageCameraProjectionMath.CreateProjectionMatrix(optics, shifted));
+        return frame.WithLensSample(camera, new Vector2((float)dx, (float)dy));
+    }
+
+    // Shirley-Chiu concentric map from the unit square to the unit disk, preserving stratification.
+    private static (double U, double V) ConcentricDisk(double s, double t)
+    {
+        double a = (2 * s) - 1;
+        double b = (2 * t) - 1;
+        if (a == 0 && b == 0)
+        {
+            return (0, 0);
+        }
+        (double r, double phi) = Math.Abs(a) > Math.Abs(b)
+            ? (a, Math.PI / 4 * (b / a))
+            : (b, (Math.PI / 2) - (Math.PI / 4 * (a / b)));
+        return (r * Math.Cos(phi), r * Math.Sin(phi));
+    }
 
     private (UsdMatrix4d WorldToView, UsdGeomCameraState Optics) SampleCamera(UsdGeomCamera camera, double timeCode)
     {

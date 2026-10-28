@@ -115,7 +115,7 @@ internal sealed record McpProductRasterDto(
 }
 
 internal sealed record McpProductCameraDto(
-    [property: Description("Sampled shutter open offset in USD time codes; shutterSampleCount shows applied blur.")]
+    [property: Description("Sampled shutter open offset in USD time codes; accumulationSampleCount shows applied blur.")]
     double ShutterOpen,
     [property: Description("Original sampled shutter close offset in USD time codes.")]
     double ShutterClose,
@@ -140,8 +140,8 @@ internal sealed record McpProductCameraDto(
     [property: Description("Whether the product disables depth of field despite its sampled focus and aperture.")]
     bool DisableDepthOfField,
     [property: Description(
-        "Equal-weight camera samples accumulated across the active shutter; zero when no motion blur was rendered.")]
-    int ShutterSampleCount)
+        "Equal-weight camera samples accumulated across the active shutter or lens aperture; zero when neither motion blur nor depth of field was rendered.")]
+    int AccumulationSampleCount)
 {
     internal static McpProductCameraDto From(RenderPreparedFrame frame)
     {
@@ -151,6 +151,6 @@ internal sealed record McpProductCameraDto(
             camera.ExposureTime, camera.ExposureFStop, camera.ExposureResponsivity, camera.LinearExposureScale,
             frame.SampledCamera.FocusDistance, frame.SampledCamera.FStop,
             frame.Request.Product.DisableMotionBlur, frame.Request.Product.DisableDepthOfField,
-            frame.ShutterSamples.Count);
+            frame.AccumulationSamples.Count);
     }
 }

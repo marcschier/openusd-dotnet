@@ -69,25 +69,44 @@ public static partial class RenderDiskJob
         json.WriteNumber("linearExposureScale", camera.LinearExposureScale);
         json.WriteNumber("focusDistance", frame.SampledCamera.FocusDistance);
         json.WriteNumber("fStop", frame.SampledCamera.FStop);
-        json.WriteNumber("shutterSampleCount", frame.ShutterSamples.Count);
+        json.WriteNumber("accumulationSampleCount", frame.AccumulationSamples.Count);
         json.WriteEndObject();
-        if (frame.ShutterSamples.Count != 0)
+        if (frame.AccumulationSamples.Count != 0)
         {
-            json.WriteStartObject("productShutterAccumulation");
+            json.WriteStartObject("productAccumulation");
             json.WriteString("filter", "box-stratified-subinterval-centers");
             json.WriteStartArray("sampleTimeCodes");
-            foreach (RenderPreparedFrame sample in frame.ShutterSamples)
+            foreach (RenderPreparedFrame sample in frame.AccumulationSamples)
             {
                 json.WriteNumberValue(sample.TimeCode);
             }
             json.WriteEndArray();
+            bool lens = frame.AccumulationSamples[0].LensOffset is not null;
+            if (lens)
+            {
+                json.WriteString("lensModel", "thin-lens-concentric-disk-radius-focalLength-x0.1-over-2fStop");
+                json.WriteStartArray("sampleLensOffsets");
+                foreach (RenderPreparedFrame sample in frame.AccumulationSamples)
+                {
+                    json.WriteStartArray();
+                    json.WriteNumberValue(sample.LensOffset!.Value.X);
+                    json.WriteNumberValue(sample.LensOffset!.Value.Y);
+                    json.WriteEndArray();
+                }
+                json.WriteEndArray();
+            }
+            else
+            {
+                json.WriteNull("lensModel");
+                json.WriteNull("sampleLensOffsets");
+            }
             json.WriteString("hdrAccumulation", "float-mean-of-binary16-samples-before-camera-exposure");
             json.WriteString("pngAccumulation", "rounded-mean-of-display-encoded-rgba8-samples");
             json.WriteEndObject();
         }
         else
         {
-            json.WriteNull("productShutterAccumulation");
+            json.WriteNull("productAccumulation");
         }
         json.WriteStartArray("productOutputs");
         foreach (RenderProductOutputBinding output in plan.Outputs)

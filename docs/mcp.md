@@ -989,8 +989,8 @@ codes, camera `exposure` in stops, `exposureIso`, `exposureTime` in seconds,
 `exposureFStop`, `exposureResponsivity` and the computed `linearExposureScale`.
 Its sampled optics `focusDistance` and `fStop` are separate from exposure settings.
 `disableMotionBlur` and `disableDepthOfField` retain the product's effect-disable flags.
-`shutterSampleCount` is the number of equal-weight shutter samples averaged into the frame, or
-zero when no motion blur was rendered; a nonzero aperture does not imply depth of field.
+`accumulationSampleCount` is the number of equal-weight camera samples averaged into the frame:
+eight for motion blur alone, sixteen with depth of field, or zero when neither was rendered.
 These are copied per-frame inputs, not verified effective backend state or a complete camera
 identity. Historical reads query no scene or manifest and do not apply exposure again.
 Viewport jobs and producers without camera samples return null. A product job applies
@@ -998,9 +998,11 @@ Viewport jobs and producers without camera samples return null. A product job ap
 and adds the scale's log2 stops to the PNG companion's display exposure. A zero scale, or one
 that moves a stored channel outside the binary16 range, fails the job before publication.
 An open shutter with motion blur enabled renders eight stratified samples and stores their box-filter
-mean; the job manifest lists their time codes in each frame's `productShutterAccumulation`.
-Blurred frames refuse depth output and rasters above 4096 × 4096. The execution profile still
-refuses active depth of field.
+mean; the job manifest lists their time codes in each frame's `productAccumulation`.
+A nonzero `fStop` with depth of field enabled renders sixteen thin-lens samples on a perspective
+camera with a positive `focusDistance`; `productAccumulation` then also carries `lensModel` and
+the camera-space `sampleLensOffsets`. Orthographic or unfocused cameras with an active aperture
+are refused. Accumulated frames refuse depth output and rasters above 4096 × 4096.
 
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
@@ -1226,8 +1228,9 @@ MCP capture-dimension and output-byte quotas still apply.
 
 The initial admitted profile is raw `half4` / `color` and/or `float` / `depth`, one variable per
 plane. Depth is normalized device depth, not camera-space distance. Named rendering color spaces,
-unevaluated settings, other variable types and active depth of field are refused. An open
-shutter is accumulated as described for `productCamera`; with it, depth output is refused.
+unevaluated settings and other variable types are refused. An open shutter or active
+depth-of-field aperture is accumulated as described for `productCamera`; with either, depth
+output is refused.
 Camera exposure is applied, not refused; the HDR binding convention
 `renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply the exact purpose mask and material-binding
 purpose, preserve retained state when returning to viewport jobs, and pass actual pixel cases.
