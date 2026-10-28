@@ -2596,8 +2596,9 @@ file is refused. This camera-only execution does not qualify warehouse geometry 
 
 `OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED=1` enables
 `NativeGpuUploadSequenceUsesHardwareAndReleasesResources`. Its bounded native sequence
-requires an actual D3D12 hardware device with GPU-upload heaps, then checks frame retrieval
-and resource drain. Retained TUnit output includes the device name, API version, software
+requires an actual D3D12 hardware device with GPU-upload heaps for both raw and EXR colour.
+It independently decodes EXR, checks exact HDR half bits and depth at three distinct frame times,
+then verifies resource drain. Retained TUnit output includes the device name, API version, software
 flag and enabled heap policy. Unsupported hardware fails rather than falling back to WARP
 or ordinary upload memory. This fixture does not establish full-scene memory or fidelity.
 

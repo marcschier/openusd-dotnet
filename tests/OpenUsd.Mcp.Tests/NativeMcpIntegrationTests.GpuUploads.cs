@@ -10,7 +10,9 @@ public sealed partial class NativeMcpIntegrationTests
 {
     [Test]
     [NotInParallel]
-    public async Task NativeGpuUploadSequenceUsesHardwareAndReleasesResources()
+    [Arguments("raw")]
+    [Arguments("exr")]
+    public async Task NativeGpuUploadSequenceUsesHardwareAndReleasesResources(string hdrFormat)
     {
         if (!OperatingSystem.IsWindows() ||
             Environment.GetEnvironmentVariable("OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED") != "1")
@@ -18,7 +20,7 @@ public sealed partial class NativeMcpIntegrationTests
             Skip.Test("Set OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED=1 with a matched runtime and supported hardware.");
             return;
         }
-        await RunNativeSequenceAsync(includeDepth: true, hdrFormat: "raw", bounded: true,
+        await RunNativeSequenceAsync(includeDepth: true, hdrFormat: hdrFormat, bounded: true,
             streaming: true, gpuUploadHeaps: true);
     }
 
