@@ -100,6 +100,30 @@ public sealed class ViewerDocumentSavePolicyTests
     }
 
     [Test]
+    public async Task MissingDocumentIdentityRefusesReviewAndOptedInSourceSaves()
+    {
+        var source = new ViewerDocumentLayerState("source", ViewerDocumentLayerRole.Source,
+            Path.Combine(AppContext.BaseDirectory, "source.usda"), 1, true, true);
+        var review = new ViewerDocumentLayerState("review", ViewerDocumentLayerRole.Review,
+            Path.Combine(AppContext.BaseDirectory, "review.usda"), 2, true, true);
+        var document = new ViewerDocumentState(
+            Guid.Empty, source, review, review.Identifier, SourceEditOptIn: true);
+
+        foreach (ViewerDocumentSaveAction action in new[]
+        {
+            ViewerDocumentSaveAction.SaveReview,
+            ViewerDocumentSaveAction.SaveSource
+        })
+        {
+            ViewerDocumentSaveDecision decision = ViewerDocumentSavePolicy.Plan(document, action);
+
+            await Assert.That(decision.IsAllowed).IsFalse();
+            await Assert.That(decision.LayerIdentifier).IsNull();
+            await Assert.That(decision.Message).Contains("document identity");
+        }
+    }
+
+    [Test]
     public async Task ReadOnlyRequestedLayerIsRefusedWithoutSubstitutingTheWritableLayer()
     {
         string sourcePath = Path.Combine(AppContext.BaseDirectory, "source.usda");

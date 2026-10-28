@@ -59,6 +59,10 @@ internal static class ViewerDocumentSavePolicy
         {
             return Refuse(role, "Open a document before saving a layer.");
         }
+        if (document.DocumentId == Guid.Empty)
+        {
+            return Refuse(role, "A document identity is required before saving a layer.");
+        }
         if (document.IsBusy)
         {
             return Refuse(role, "Wait for the current document operation or cancel it before saving.");
