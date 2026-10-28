@@ -29,7 +29,8 @@ public sealed class RenderDiskJobLimits
     /// <summary>Gets the per-frame raster admission and combined encoded output byte limit.</summary>
     /// <remarks>
     /// Display-only admission charges four bytes per pixel. HDR or device-depth admission conservatively
-    /// charges twenty bytes per pixel, including capture staging and selection upload storage.
+    /// charges twenty bytes per pixel, including capture staging and selection upload storage. A prim
+    /// identity plane adds eight bytes per pixel for its RGBA8 token readback and int32 index output.
     /// All encoded planes share this limit separately from raster admission.
     /// Native EXR codec working storage is not covered by either limit.
     /// </remarks>
@@ -47,13 +48,14 @@ public sealed class RenderDiskJobLimits
 public sealed class RenderDiskJobRequest
 {
     internal const int ExpandedCaptureManagedBytesPerPixel = 20;
+    internal const int PrimIdCaptureManagedBytesPerPixel = 8;
     internal Action<int, int>? FrameEncoded { get; init; }
 
     internal RenderDiskJobRequest(
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
-        RenderDiskJobLimits? limits, RenderProductJobPlan productPlan)
-        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits)
+        RenderDiskJobLimits? limits, RenderProductJobPlan productPlan, bool includePrimId)
+        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits, includePrimId)
     {
         ProductPlan = productPlan;
     }
@@ -93,6 +95,15 @@ public sealed class RenderDiskJobRequest
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
         RenderDiskJobLimits? limits = null)
+        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits,
+            includePrimId: false)
+    {
+    }
+
+    private RenderDiskJobRequest(
+        string outputDirectory, IReadOnlyList<StageRenderState> frames,
+        bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
+        RenderDiskJobLimits? limits, bool includePrimId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         ArgumentNullException.ThrowIfNull(frames);
@@ -124,6 +135,7 @@ public sealed class RenderDiskJobRequest
         Limits = limits ?? RenderDiskJobLimits.Default;
         IncludeDeviceDepth = includeDeviceDepth;
         IncludeHdrColor = includeHdrColor;
+        IncludePrimId = includePrimId;
         HdrColorFormat = hdrColorFormat;
         int count = frames.Count;
         if (count < 1 || count > Limits.MaximumFrames)
@@ -144,6 +156,10 @@ public sealed class RenderDiskJobRequest
             int bytes = PngRgba8Writer.GetPixelByteCount(state.Viewport.Width, state.Viewport.Height);
             long charge = includeDeviceDepth || includeHdrColor
                 ? ((long)bytes / 4) * ExpandedCaptureManagedBytesPerPixel : bytes;
+            if (includePrimId)
+            {
+                charge += ((long)bytes / 4) * PrimIdCaptureManagedBytesPerPixel;
+            }
             if (charge > Limits.MaximumFrameBytes || state.Viewport.Width > 8192 || state.Viewport.Height > 8192)
             {
                 throw new ArgumentOutOfRangeException(nameof(frames), "Frame dimensions exceed the render-job limit.");
@@ -188,6 +204,10 @@ public sealed class RenderDiskJobRequest
     public bool IncludeDeviceDepth { get; }
     /// <summary>Gets whether each frame must include actual pre-display HDR color; missing HDR is an error.</summary>
     public bool IncludeHdrColor { get; }
+    /// <summary>
+    /// Gets whether each frame must include the visible prim identity plane; only admitted products request it.
+    /// </summary>
+    public bool IncludePrimId { get; }
     /// <summary>Gets the HDR container choice; existing overloads retain raw binary16 output.</summary>
     public RenderHdrColorFormat HdrColorFormat { get; }
     /// <summary>
@@ -248,6 +268,8 @@ public sealed class RenderJobImage
     public RenderJobDeviceDepth? DeviceDepth { get; init; }
     /// <summary>Gets or initializes actual pre-display HDR color from the same rendered frame.</summary>
     public RenderJobHdrColor? HdrColor { get; init; }
+    /// <summary>Gets or initializes the visible prim identity plane from the same rendered frame.</summary>
+    public RenderJobPrimId? PrimId { get; init; }
     /// <summary>Gets or initializes the exact simulation publication represented by all captured planes.</summary>
     public RenderSimulationFrameIdentity? Simulation { get; init; }
 }
@@ -305,6 +327,87 @@ public sealed class RenderJobDeviceDepth
     public ReadOnlyMemory<float> Values { get; }
 }
 
+/// <summary>Top-down int32 indices of the front-most rendered prim identity, with background minus one.</summary>
+/// <remarks>
+/// Each index refers to <see cref="Identities"/>, the distinct prim path and instance index pairs that
+/// appear in the frame, densely numbered from zero in ordinal path and then instance-index order.
+/// </remarks>
+public sealed class RenderJobPrimId
+{
+    /// <summary>Gets the largest admitted identity table.</summary>
+    public const int MaximumIdentities = 65536;
+
+    /// <summary>Validates dimensions, every index and the bounded identity table, copying only the table.</summary>
+    public RenderJobPrimId(
+        int width, int height, ReadOnlyMemory<int> values, IReadOnlyList<RenderJobPrimIdentity> identities)
+    {
+        ArgumentNullException.ThrowIfNull(identities);
+        if (values.Length != PngRgba8Writer.GetPixelByteCount(width, height) / 4)
+        {
+            throw new ArgumentException("Prim identity storage does not match its dimensions.", nameof(values));
+        }
+        int count = identities.Count;
+        if (count > MaximumIdentities)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(identities), "A frame admits at most 65,536 distinct prim identities.");
+        }
+        var owned = new RenderJobPrimIdentity[count];
+        for (int index = 0; index < count; index++)
+        {
+            owned[index] = identities[index] ??
+                throw new ArgumentException("A prim identity cannot be null.", nameof(identities));
+        }
+        foreach (int value in values.Span)
+        {
+            if (value < -1 || value >= count)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(values), "A prim identity index is outside the identity table.");
+            }
+        }
+        Width = width;
+        Height = height;
+        Values = values;
+        Identities = new OwnedReadOnlyList<RenderJobPrimIdentity>(owned);
+    }
+
+    /// <summary>Gets the width.</summary>
+    public int Width { get; }
+    /// <summary>Gets the height.</summary>
+    public int Height { get; }
+    /// <summary>Gets packed top-down int32 indices, consumed before the next source render.</summary>
+    public ReadOnlyMemory<int> Values { get; }
+    /// <summary>Gets the per-frame identity table addressed by <see cref="Values"/>.</summary>
+    public IReadOnlyList<RenderJobPrimIdentity> Identities { get; }
+}
+
+/// <summary>One rendered prim identity: its path and instance index, or minus one when not instanced.</summary>
+public sealed class RenderJobPrimIdentity
+{
+    /// <summary>Gets the largest admitted path length in UTF-16 code units.</summary>
+    public const int MaximumPathLength = 4096;
+
+    /// <summary>Validates a bounded, non-empty path without control characters.</summary>
+    public RenderJobPrimIdentity(string path, int instanceIndex)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        if (path.Length > MaximumPathLength || path.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                "A prim identity path must have at most 4096 characters and no control characters.", nameof(path));
+        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(instanceIndex, -1);
+        Path = path;
+        InstanceIndex = instanceIndex;
+    }
+
+    /// <summary>Gets the rendered prim path.</summary>
+    public string Path { get; }
+    /// <summary>Gets the instance index, or minus one for a prim that is not instanced.</summary>
+    public int InstanceIndex { get; }
+}
+
 /// <summary>Describes one published image without retaining its pixel buffer.</summary>
 public sealed class RenderDiskFrameResult
 {
@@ -354,6 +457,18 @@ public sealed class RenderDiskFrameResult
     public string? HdrColorSha256 { get; }
     /// <summary>Gets the encoded HDR format, or null when no HDR plane was requested.</summary>
     public RenderHdrColorFormat? HdrColorFormat { get; }
+    /// <summary>Gets the optional int32-little-endian prim identity index filename, relative to the job.</summary>
+    public string? PrimIdFileName { get; internal init; }
+    /// <summary>Gets the prim identity index file length, or zero when no prim identity was requested.</summary>
+    public long PrimIdBytes { get; internal init; }
+    /// <summary>Gets the prim identity index file SHA256, or null when no prim identity was requested.</summary>
+    public string? PrimIdSha256 { get; internal init; }
+    /// <summary>Gets the optional UTF-8 JSON prim identity table filename, relative to the job.</summary>
+    public string? PrimIdTableFileName { get; internal init; }
+    /// <summary>Gets the prim identity table file length, or zero when no prim identity was requested.</summary>
+    public long PrimIdTableBytes { get; internal init; }
+    /// <summary>Gets the prim identity table SHA256, or null when no prim identity was requested.</summary>
+    public string? PrimIdTableSha256 { get; internal init; }
     /// <summary>Gets the exact simulation publication represented by this frame, when recorded.</summary>
     public RenderSimulationFrameIdentity? Simulation { get; }
 }

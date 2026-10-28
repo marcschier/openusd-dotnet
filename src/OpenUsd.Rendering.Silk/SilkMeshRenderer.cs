@@ -4078,94 +4078,13 @@ public sealed partial class SilkMeshRenderer :
                 return;
             }
 
-            commands.ClearColor(pickColor, new SilkColor(0, 0, 0, 0));
-            commands.ClearDepth(pickDepth, 1);
-            commands.BeginRendering(new SilkRenderingDescriptor(pickColor, pickDepth));
-
-            // One pipeline is bound before any state or draw so the recorded
-            // scope is always complete, even when no mesh is eligible; meshes
-            // whose vertex stride differs rebind below.
-            pickCommands.SetPickGraphicsPipeline(EnsurePickPipeline(
-                SilkPickPrimitiveTopology.TriangleList,
-                SilkVertexLayoutDescriptor.PositionNormal,
-                SilkPickDepthBias.None));
-            (SilkPickPrimitiveTopology Topology, uint Stride, bool ColorWrite)? bound =
-                (SilkPickPrimitiveTopology.TriangleList,
-                    SilkVertexLayoutDescriptor.PositionNormal.Stride,
-                    true);
-            commands.SetViewport(new SilkViewport(
-                0,
-                0,
-                pickColor.Width,
-                pickColor.Height));
-            commands.SetScissor(new SilkScissor(
-                request.X,
-                request.Y,
-                1,
-                1));
-
-            // Every rendered topology takes part, not only triangles. A basis
-            // curve and a point cloud are drawn, depth-tested, and visible, so
-            // they must both answer a prim pick and write the depth that hides a
-            // face, edge or point behind them. Skipping them made a curve in
-            // front of a surface invisible to picking, which is the one thing a
-            // "visible only" pick must never be.
-            foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
-            {
-                if (mesh.IndexCount == 0)
-                {
-                    continue;
-                }
-                SilkPickPrimitiveTopology topology =
-                    PickTopologyOf(mesh.Mesh.TopologyKind);
-                uint indicesPerPrimitive = IndicesPerPickPrimitive(topology);
-                if (!Scene.PickIdentities.TryGetRange(
-                    mesh.Mesh.Path,
-                    mesh.Mesh.InstanceIndex,
-                    out SilkPickTokenRange tokenRange))
-                {
-                    throw new InvalidDataException(
-                        $"Mesh '{mesh.Mesh.Path}' has no active Silk pick token range.");
-                }
-                if (tokenRange.FirstToken == 0 ||
-                    tokenRange.TokenCount != mesh.IndexCount / indicesPerPrimitive)
-                {
-                    throw new InvalidDataException(
-                        $"Mesh '{mesh.Mesh.Path}' has an inconsistent Silk pick token range.");
-                }
-
-                // A face request draws a curve or a point cloud as a pure
-                // occluder. Its depth still hides the faces behind it -- that is
-                // exactly what a visible-surface face pick has to honour -- but
-                // it writes no token, so the pixel keeps the background value and
-                // the request answers a miss instead of a face index the scene
-                // never authored.
-                bool colorWrite = request.Target != RenderPickTarget.Face ||
-                    Scene.PickIdentities.AnswersFacePicks(
-                        mesh.Mesh.Path,
-                        mesh.Mesh.InstanceIndex);
-
-                // Each mesh is drawn through the pipeline that matches its own
-                // topology and vertex stride, so a textured or normal-mapped
-                // mesh is picked from the same vertices the colour pass
-                // rasterized, and a curve is picked as a line rather than being
-                // reinterpreted as triangles.
-                if (bound != (topology, mesh.VertexLayout.Stride, colorWrite))
-                {
-                    pickCommands.SetPickGraphicsPipeline(EnsurePickPipeline(
-                        topology,
-                        mesh.VertexLayout,
-                        SilkPickDepthBias.None,
-                        colorWrite));
-                    bound = (topology, mesh.VertexLayout.Stride, colorWrite);
-                }
-                commands.SetVertexBuffer(mesh.VertexBuffer);
-                commands.SetIndexBuffer(mesh.IndexBuffer);
-                commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
-                pickCommands.SetPickBaseToken(tokenRange.FirstToken);
-                commands.DrawIndexed(mesh.IndexCount);
-            }
-            commands.EndRendering();
+            RecordPickSurfacePass(
+                commands,
+                pickCommands,
+                pickColor,
+                pickDepth,
+                new SilkScissor(request.X, request.Y, 1, 1),
+                faceTarget: request.Target == RenderPickTarget.Face);
 
             if (subprimKind is { } resolvedKind)
             {
@@ -4422,6 +4341,265 @@ public sealed partial class SilkMeshRenderer :
         indices = [];
         primitiveCount = 0;
         return false;
+    }
+
+    /// <summary>
+    /// Records the depth-tested surface pick pass that writes one token per visible
+    /// primitive of every retained topology, limited to one scissor rectangle.
+    /// </summary>
+    /// <remarks>
+    /// A point pick uses a one-pixel scissor; a full-raster identity capture uses the
+    /// whole viewport. Both draw the exact same meshes, pipelines and tokens.
+    /// </remarks>
+    private void RecordPickSurfacePass(
+        ISilkGraphicsCommandList commands,
+        ISilkPickGraphicsCommandList pickCommands,
+        ISilkGraphicsTexture pickColor,
+        ISilkGraphicsTexture pickDepth,
+        SilkScissor scissor,
+        bool faceTarget)
+    {
+        commands.ClearColor(pickColor, new SilkColor(0, 0, 0, 0));
+        commands.ClearDepth(pickDepth, 1);
+        commands.BeginRendering(new SilkRenderingDescriptor(pickColor, pickDepth));
+
+        // One pipeline is bound before any state or draw so the recorded
+        // scope is always complete, even when no mesh is eligible; meshes
+        // whose vertex stride differs rebind below.
+        pickCommands.SetPickGraphicsPipeline(EnsurePickPipeline(
+            SilkPickPrimitiveTopology.TriangleList,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkPickDepthBias.None));
+        (SilkPickPrimitiveTopology Topology, uint Stride, bool ColorWrite)? bound =
+            (SilkPickPrimitiveTopology.TriangleList,
+                SilkVertexLayoutDescriptor.PositionNormal.Stride,
+                true);
+        commands.SetViewport(new SilkViewport(
+            0,
+            0,
+            pickColor.Width,
+            pickColor.Height));
+        commands.SetScissor(scissor);
+
+        // Every rendered topology takes part, not only triangles. A basis
+        // curve and a point cloud are drawn, depth-tested, and visible, so
+        // they must both answer a prim pick and write the depth that hides a
+        // face, edge or point behind them. Skipping them made a curve in
+        // front of a surface invisible to picking, which is the one thing a
+        // "visible only" pick must never be.
+        foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
+        {
+            if (mesh.IndexCount == 0)
+            {
+                continue;
+            }
+            SilkPickPrimitiveTopology topology =
+                PickTopologyOf(mesh.Mesh.TopologyKind);
+            uint indicesPerPrimitive = IndicesPerPickPrimitive(topology);
+            if (!Scene.PickIdentities.TryGetRange(
+                mesh.Mesh.Path,
+                mesh.Mesh.InstanceIndex,
+                out SilkPickTokenRange tokenRange))
+            {
+                throw new InvalidDataException(
+                    $"Mesh '{mesh.Mesh.Path}' has no active Silk pick token range.");
+            }
+            if (tokenRange.FirstToken == 0 ||
+                tokenRange.TokenCount != mesh.IndexCount / indicesPerPrimitive)
+            {
+                throw new InvalidDataException(
+                    $"Mesh '{mesh.Mesh.Path}' has an inconsistent Silk pick token range.");
+            }
+
+            // A face request draws a curve or a point cloud as a pure
+            // occluder. Its depth still hides the faces behind it -- that is
+            // exactly what a visible-surface face pick has to honour -- but
+            // it writes no token, so the pixel keeps the background value and
+            // the request answers a miss instead of a face index the scene
+            // never authored.
+            bool colorWrite = !faceTarget ||
+                Scene.PickIdentities.AnswersFacePicks(
+                    mesh.Mesh.Path,
+                    mesh.Mesh.InstanceIndex);
+
+            // Each mesh is drawn through the pipeline that matches its own
+            // topology and vertex stride, so a textured or normal-mapped
+            // mesh is picked from the same vertices the colour pass
+            // rasterized, and a curve is picked as a line rather than being
+            // reinterpreted as triangles.
+            if (bound != (topology, mesh.VertexLayout.Stride, colorWrite))
+            {
+                pickCommands.SetPickGraphicsPipeline(EnsurePickPipeline(
+                    topology,
+                    mesh.VertexLayout,
+                    SilkPickDepthBias.None,
+                    colorWrite));
+                bound = (topology, mesh.VertexLayout.Stride, colorWrite);
+            }
+            commands.SetVertexBuffer(mesh.VertexBuffer);
+            commands.SetIndexBuffer(mesh.IndexBuffer);
+            commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
+            pickCommands.SetPickBaseToken(tokenRange.FirstToken);
+            commands.DrawIndexed(mesh.IndexCount);
+        }
+        commands.EndRendering();
+    }
+
+    /// <summary>
+    /// Draws the prim-level pick pass over the whole viewport of the frame just
+    /// rendered and resolves every pixel to a dense per-frame identity index.
+    /// </summary>
+    /// <remarks>
+    /// Runs synchronously inside the capture lease with transient targets, so the
+    /// retained viewer pick targets and in-flight pick readbacks are untouched.
+    /// </remarks>
+    internal void ThrowIfPrimIdUnsupported(SilkDepthCaptureRequest? request)
+    {
+        if (request?.IncludePrimId == true && _pickingDevice is null)
+        {
+            throw new NotSupportedException(
+                "Prim identity capture requires a pick-capable graphics device.");
+        }
+    }
+
+    internal SilkPrimIdCaptureResult CapturePrimIdRaster(
+        int width,
+        int height,
+        SilkDepthCaptureRequest request)
+    {
+        ISilkPickingGraphicsDevice pickingDevice = _pickingDevice ??
+            throw new NotSupportedException(
+                "Prim identity capture requires a pick-capable graphics device.");
+        if (pickingDevice.PickDeviceGeneration != _pickDeviceGeneration)
+        {
+            throw new InvalidOperationException(
+                "The pick device was recreated after this frame was prepared; capture the frame again.");
+        }
+        request.ThrowIfCancellationRequested();
+        uint targetWidth = checked((uint)width);
+        uint targetHeight = checked((uint)height);
+        using ISilkGraphicsTexture color = _device.CreateTexture2D(new SilkTextureDescriptor(
+            targetWidth,
+            targetHeight,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = _device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(targetWidth, targetHeight));
+        using ISilkPickReadbackBuffer anchor = pickingDevice.CreatePickReadbackBuffer();
+        using (ISilkGraphicsCommandList commands = _device.CreateCommandList())
+        {
+            if (commands is not ISilkPickGraphicsCommandList pickCommands)
+            {
+                throw new InvalidOperationException(
+                    "A pick-capable device must create pick-capable command lists.");
+            }
+            RecordPickSurfacePass(
+                commands,
+                pickCommands,
+                color,
+                depth,
+                new SilkScissor(0, 0, targetWidth, targetHeight),
+                faceTarget: false);
+            // Pick-capable backends close a pick scope with exactly one pixel copy; the
+            // whole token raster is then read from the transient target itself.
+            pickCommands.CopyRgba8Pixel(color, new SilkTexturePixelCoordinate(0, 0), anchor);
+            using ISilkGraphicsSubmission submission = _device.Submit(commands);
+            submission.Wait();
+        }
+        request.ThrowIfCancellationRequested();
+        byte[] tokens = new byte[checked(width * height * SilkPickTokenEncoding.ByteSize)];
+        color.ReadbackForTesting(tokens);
+        request.ThrowIfCancellationRequested();
+        return ResolvePrimIdRaster(width, height, tokens, request);
+    }
+
+    private SilkPrimIdCaptureResult ResolvePrimIdRaster(
+        int width,
+        int height,
+        byte[] tokens,
+        SilkDepthCaptureRequest request)
+    {
+        int pixelCount = checked(width * height);
+        var values = new int[pixelCount];
+        var keys = new Dictionary<(string Path, int InstanceIndex), int>();
+        var resolved = new Dictionary<uint, int>();
+        uint lastToken = 0;
+        int lastKey = -1;
+        for (int pixel = 0; pixel < pixelCount; pixel++)
+        {
+            if ((pixel & 0xFFFF) == 0)
+            {
+                request.ThrowIfCancellationRequested();
+            }
+            uint token = SilkPickTokenEncoding.Decode(
+                tokens.AsSpan(pixel * SilkPickTokenEncoding.ByteSize, SilkPickTokenEncoding.ByteSize));
+            if (token == 0)
+            {
+                values[pixel] = -1;
+                continue;
+            }
+            if (token != lastToken)
+            {
+                if (!resolved.TryGetValue(token, out lastKey))
+                {
+                    if (!Scene.PickIdentities.TryResolve(token, out SilkPickIdentity identity))
+                    {
+                        throw new InvalidDataException(
+                            "The prim identity raster contains a token outside the retained pick table.");
+                    }
+                    (string, int) key = (
+                        identity.Path,
+                        identity.InstancerPath is null ? -1 : identity.InstanceIndex);
+                    if (!keys.TryGetValue(key, out lastKey))
+                    {
+                        lastKey = keys.Count;
+                        keys.Add(key, lastKey);
+                    }
+                    resolved.Add(token, lastKey);
+                }
+                lastToken = token;
+            }
+            values[pixel] = lastKey;
+        }
+
+        // Keys were numbered in first-seen raster order; renumber them densely in
+        // ordinal path, then instance-index order, so the table is deterministic.
+        var ordered = new (string Path, int InstanceIndex)[keys.Count];
+        foreach (KeyValuePair<(string Path, int InstanceIndex), int> entry in keys)
+        {
+            ordered[entry.Value] = entry.Key;
+        }
+        int[] order = new int[ordered.Length];
+        for (int index = 0; index < order.Length; index++)
+        {
+            order[index] = index;
+        }
+        Array.Sort(order, (left, right) =>
+        {
+            int compared = string.CompareOrdinal(ordered[left].Path, ordered[right].Path);
+            return compared != 0
+                ? compared
+                : ordered[left].InstanceIndex.CompareTo(ordered[right].InstanceIndex);
+        });
+        int[] remap = new int[order.Length];
+        var identities = new SilkPrimIdentity[order.Length];
+        for (int index = 0; index < order.Length; index++)
+        {
+            remap[order[index]] = index;
+            identities[index] = new SilkPrimIdentity(
+                ordered[order[index]].Path,
+                ordered[order[index]].InstanceIndex);
+        }
+        for (int pixel = 0; pixel < pixelCount; pixel++)
+        {
+            int value = values[pixel];
+            if (value >= 0)
+            {
+                values[pixel] = remap[value];
+            }
+        }
+        request.ThrowIfCancellationRequested();
+        return new SilkPrimIdCaptureResult(width, height, values, identities);
     }
 
     /// <summary>Maps one retained topology to the pick pipeline topology.</summary>

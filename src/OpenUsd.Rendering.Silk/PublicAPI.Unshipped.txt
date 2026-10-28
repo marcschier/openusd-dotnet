@@ -2788,3 +2788,27 @@ static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.Si
 ~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkViewport.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkViewport.ToString() -> string
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.IncludePrimId.get -> bool
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.IncludePrimId.init -> void
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludePrimId.get -> bool
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludePrimId.init -> void
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.PrimId.get -> OpenUsd.Rendering.Silk.SilkPrimIdCaptureResult?
+OpenUsd.Rendering.Silk.SilkPrimIdCaptureResult
+OpenUsd.Rendering.Silk.SilkPrimIdCaptureResult.Height.get -> int
+OpenUsd.Rendering.Silk.SilkPrimIdCaptureResult.Identities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkPrimIdentity>!
+OpenUsd.Rendering.Silk.SilkPrimIdCaptureResult.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.Silk.SilkPrimIdCaptureResult.Width.get -> int
+OpenUsd.Rendering.Silk.SilkPrimIdentity
+OpenUsd.Rendering.Silk.SilkPrimIdentity.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkPrimIdentity.InstanceIndex.init -> void
+OpenUsd.Rendering.Silk.SilkPrimIdentity.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkPrimIdentity.Path.init -> void
+OpenUsd.Rendering.Silk.SilkPrimIdentity.SilkPrimIdentity() -> void
+OpenUsd.Rendering.Silk.SilkPrimIdentity.SilkPrimIdentity(string! Path, int InstanceIndex) -> void
+~override OpenUsd.Rendering.Silk.SilkPrimIdentity.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPrimIdentity.Equals(object obj) -> bool
+override OpenUsd.Rendering.Silk.SilkPrimIdentity.GetHashCode() -> int
+static OpenUsd.Rendering.Silk.SilkPrimIdentity.operator !=(OpenUsd.Rendering.Silk.SilkPrimIdentity left, OpenUsd.Rendering.Silk.SilkPrimIdentity right) -> bool
+static OpenUsd.Rendering.Silk.SilkPrimIdentity.operator ==(OpenUsd.Rendering.Silk.SilkPrimIdentity left, OpenUsd.Rendering.Silk.SilkPrimIdentity right) -> bool
+OpenUsd.Rendering.Silk.SilkPrimIdentity.Equals(OpenUsd.Rendering.Silk.SilkPrimIdentity other) -> bool
+OpenUsd.Rendering.Silk.SilkPrimIdentity.Deconstruct(out string! Path, out int InstanceIndex) -> void

@@ -76,8 +76,9 @@ public static partial class RenderDiskJob
                     staging, index, request.Frames[index], source, diagnostics, request.IncludeDeviceDepth,
                     request.IncludeHdrColor, request.HdrColorFormat, ProductExrWindows(request, index),
                     request.ProductPlan?.Frames[index].CameraSettings!.LinearExposureScale ?? 1, remaining,
-                    request.ProductPlan?.AccumulationStates(index), cancellationToken);
-                total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes;
+                    request.ProductPlan?.AccumulationStates(index), request.IncludePrimId, cancellationToken);
+                total += frames[index].Bytes + frames[index].DepthBytes + frames[index].HdrColorBytes +
+                    frames[index].PrimIdBytes + frames[index].PrimIdTableBytes;
                 request.FrameEncoded?.Invoke(index + 1, frames.Length);
             }
             beforePublish?.Invoke();
@@ -162,7 +163,7 @@ public static partial class RenderDiskJob
         string directory, int index, StageRenderState state, IRenderJobFrameSource source,
         List<RenderDiagnostic> diagnostics, bool includeDeviceDepth, bool includeHdrColor,
         RenderHdrColorFormat hdrColorFormat, ExrImageWindows? exrWindows, double hdrExposureScale, long maximumBytes,
-        IReadOnlyList<StageRenderState>? shutterStates, CancellationToken cancellationToken)
+        IReadOnlyList<StageRenderState>? shutterStates, bool includePrimId, CancellationToken cancellationToken)
     {
         RenderJobImage image = (shutterStates is null
             ? source.Render(state, cancellationToken)
@@ -186,10 +187,16 @@ public static partial class RenderDiskJob
         {
             throw new NotSupportedException("The render source did not provide exactly the requested HDR output.");
         }
+        if (includePrimId != (image.PrimId is not null))
+        {
+            throw new NotSupportedException(
+                "The render source did not provide exactly the requested prim identity output.");
+        }
         long depthBytes = includeDeviceDepth ? (long)image.Width * image.Height * sizeof(float) : 0;
         long hdrBytes = includeHdrColor && hdrColorFormat == RenderHdrColorFormat.RawRgba16Float
             ? (long)image.Width * image.Height * 8 : 0;
-        long extraBytes = depthBytes + hdrBytes;
+        long primIdBytes = includePrimId ? (long)image.Width * image.Height * sizeof(int) : 0;
+        long extraBytes = depthBytes + hdrBytes + primIdBytes;
         if (extraBytes >= maximumBytes)
         {
             throw new RenderOutputQuotaExceededException(
@@ -219,6 +226,27 @@ public static partial class RenderDiskJob
                 }
                 diagnostics.Add(diagnostic);
             }
+        }
+        string? primIdName = null;
+        string? primIdHash = null;
+        string? primIdTableName = null;
+        string? primIdTableHash = null;
+        long primIdTableBytes = 0;
+        if (image.PrimId is { } primId)
+        {
+            if (primId.Width != image.Width || primId.Height != image.Height)
+            {
+                throw new InvalidDataException("The prim identity plane does not match the color frame.");
+            }
+            string prefix = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}";
+            primIdName = prefix + ".prim-id.i32";
+            primIdHash = WritePrimId(
+                Path.Combine(directory, primIdName), primId.Values.Span, primId.Identities.Count, cancellationToken);
+            primIdTableName = prefix + ".prim-id.json";
+            (primIdTableBytes, primIdTableHash) = WritePrimIdTable(
+                Path.Combine(directory, primIdTableName), primId.Identities, maximumBytes - extraBytes,
+                cancellationToken);
+            extraBytes += primIdTableBytes;
         }
         string fileName = $"frame-{index.ToString("D6", CultureInfo.InvariantCulture)}.png";
         using var file = new FileStream(Path.Combine(directory, fileName),
@@ -252,8 +280,8 @@ public static partial class RenderDiskJob
             if (hdrColorFormat == RenderHdrColorFormat.Exr)
             {
                 (hdrBytes, hdrHash) = WriteExrColor(
-                    Path.Combine(directory, hdrName), hdr, exrWindows, hdrExposureScale, maximumBytes - written - depthBytes,
-                    cancellationToken);
+                    Path.Combine(directory, hdrName), hdr, exrWindows, hdrExposureScale,
+                    maximumBytes - written - depthBytes - primIdBytes - primIdTableBytes, cancellationToken);
             }
             else
             {
@@ -263,7 +291,15 @@ public static partial class RenderDiskJob
         }
         return new RenderDiskFrameResult(
             index, state, fileName, written, hash, depthName, depthBytes, depthHash,
-            hdrName, hdrBytes, hdrHash, hdrColorFormat, image.Simulation);
+            hdrName, hdrBytes, hdrHash, hdrColorFormat, image.Simulation)
+        {
+            PrimIdFileName = primIdName,
+            PrimIdBytes = primIdBytes,
+            PrimIdSha256 = primIdHash,
+            PrimIdTableFileName = primIdTableName,
+            PrimIdTableBytes = primIdTableBytes,
+            PrimIdTableSha256 = primIdTableHash
+        };
     }
 
     private static ExrImageWindows? ProductExrWindows(RenderDiskJobRequest request, int index)
@@ -365,6 +401,66 @@ public static partial class RenderDiskJob
         return Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
     }
 
+    private static string WritePrimId(
+        string path, ReadOnlySpan<int> values, int identityCount, CancellationToken cancellationToken)
+    {
+        using var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        Span<byte> buffer = stackalloc byte[4096];
+        for (int start = 0; start < values.Length; start += buffer.Length / sizeof(int))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int count = Math.Min(buffer.Length / sizeof(int), values.Length - start);
+            for (int index = 0; index < count; index++)
+            {
+                int value = values[start + index];
+                if (value < -1 || value >= identityCount)
+                {
+                    throw new InvalidDataException("A prim identity index is outside its identity table.");
+                }
+                BinaryPrimitives.WriteInt32LittleEndian(buffer.Slice(index * sizeof(int), sizeof(int)), value);
+            }
+            output.Write(buffer[..(count * sizeof(int))]);
+        }
+        output.Flush(flushToDisk: true);
+        output.Position = 0;
+        return Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
+    }
+
+    private static (long Bytes, string Sha256) WritePrimIdTable(
+        string path, IReadOnlyList<RenderJobPrimIdentity> identities, long maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        long written;
+        using (var bounded = new OutputBudgetStream(
+            file, maximumBytes, cancellationToken, "A prim identity table exceeds the remaining frame budget."))
+        {
+            using (var json = new Utf8JsonWriter(bounded, new JsonWriterOptions { Indented = true }))
+            {
+                json.WriteStartObject();
+                json.WriteNumber("background", -1);
+                json.WriteStartArray("identities");
+                for (int index = 0; index < identities.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    RenderJobPrimIdentity identity = identities[index];
+                    json.WriteStartObject();
+                    json.WriteNumber("index", index);
+                    json.WriteString("path", identity.Path);
+                    json.WriteNumber("instanceIndex", identity.InstanceIndex);
+                    json.WriteEndObject();
+                    json.Flush();
+                }
+                json.WriteEndArray();
+                json.WriteEndObject();
+            }
+            written = bounded.BytesWritten;
+        }
+        file.Flush(flushToDisk: true);
+        file.Position = 0;
+        return (written, Convert.ToHexString(SHA256.HashData(file)).ToLowerInvariant());
+    }
+
     private static string HdrColorFormatName(RenderHdrColorFormat? format) => format switch
     {
         RenderHdrColorFormat.Exr => "openexr-rgba16float",
@@ -423,6 +519,22 @@ public static partial class RenderDiskJob
                     json.WriteString("sha256", frame.DepthSha256);
                     json.WriteEndObject();
                 }
+                if (frame.PrimIdFileName is { } primIdName)
+                {
+                    json.WriteStartObject("primId");
+                    json.WriteString("file", primIdName);
+                    json.WriteString("format", "int32-little-endian");
+                    json.WriteString("rowOrder", "top-down");
+                    json.WriteString("convention", "visible-prim-identity-index");
+                    json.WriteNumber("background", -1);
+                    json.WriteNumber("bytes", frame.PrimIdBytes);
+                    json.WriteString("sha256", frame.PrimIdSha256);
+                    json.WriteString("tableFile", frame.PrimIdTableFileName);
+                    json.WriteString("tableFormat", "utf8-json");
+                    json.WriteNumber("tableBytes", frame.PrimIdTableBytes);
+                    json.WriteString("tableSha256", frame.PrimIdTableSha256);
+                    json.WriteEndObject();
+                }
                 if (frame.HdrColorFileName is { } hdrName)
                 {
                     json.WriteStartObject("hdrColor");
@@ -470,7 +582,8 @@ public static partial class RenderDiskJob
     }
 
     private sealed class OutputBudgetStream(
-        Stream destination, long maximumBytes, CancellationToken cancellationToken) : Stream
+        Stream destination, long maximumBytes, CancellationToken cancellationToken,
+        string exceededMessage = "The render-job manifest exceeds the remaining output budget.") : Stream
     {
         internal long BytesWritten { get; private set; }
         public override bool CanRead => false;
@@ -488,8 +601,7 @@ public static partial class RenderDiskJob
             cancellationToken.ThrowIfCancellationRequested();
             if (buffer.Length > maximumBytes - BytesWritten)
             {
-                throw new RenderOutputQuotaExceededException(
-                    "The render-job manifest exceeds the remaining output budget.");
+                throw new RenderOutputQuotaExceededException(exceededMessage);
             }
             destination.Write(buffer);
             BytesWritten += buffer.Length;

@@ -262,6 +262,12 @@ public static class PhysicsRenderRecording
             {
                 throw new InvalidOperationException("The recording product changed.");
             }
+            if (plan.IncludePrimId)
+            {
+                throw new NotSupportedException(
+                    "Physics recordings do not capture the primId identity plane; remove the primId variable " +
+                    "from the product.");
+            }
             _source.Validate(_request, _context, cancellationToken);
         }
 

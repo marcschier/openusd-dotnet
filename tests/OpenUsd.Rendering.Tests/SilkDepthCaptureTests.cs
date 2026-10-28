@@ -53,6 +53,25 @@ public sealed class SilkDepthCaptureTests
     }
 
     [Test]
+    public async Task PrimIdChargesTwentyEightBytesAndRefusesNonPickDevicesBeforeAllocating()
+    {
+        using var device = new RefusingGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+
+        await Assert.That(() => SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 4, 4, RenderSettings.Default,
+            new SilkDepthCaptureOptions(maximumReadbackBytes: 447) { IncludePrimId = true }))
+            .Throws<ArgumentOutOfRangeException>();
+        NotSupportedException? refusal = Assert.Throws<NotSupportedException>(
+            () => SilkFrameCapture.CaptureRetainedWithDepth(
+                renderer, device, 4, 4, RenderSettings.Default,
+                new SilkDepthCaptureOptions(maximumReadbackBytes: 448) { IncludePrimId = true }));
+
+        await Assert.That(refusal!.Message).Contains("pick-capable");
+        await Assert.That(device.ResourceRequests).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task DefaultByteQuotaRejects4096SquareBeforeGraphicsAllocation()
     {
         using var device = new RefusingGraphicsDevice();

@@ -111,19 +111,35 @@ public static partial class RenderDiskJob
         json.WriteStartArray("productOutputs");
         foreach (RenderProductOutputBinding output in plan.Outputs)
         {
-            bool hdr = output.Plane == RenderProductPlane.HdrColor;
+            (string? file, string format, long bytes, string? sha256, string convention) = output.Plane switch
+            {
+                RenderProductPlane.HdrColor => (result.HdrColorFileName, HdrColorFormatName(result.HdrColorFormat),
+                    result.HdrColorBytes, result.HdrColorSha256,
+                    "renderer-working-composited-camera-exposed-before-display"),
+                RenderProductPlane.DeviceDepth => (result.DepthFileName, "float32-little-endian",
+                    result.DepthBytes, result.DepthSha256, "normalized-device-depth-zero-to-one"),
+                RenderProductPlane.PrimId => (result.PrimIdFileName, "int32-little-endian",
+                    result.PrimIdBytes, result.PrimIdSha256, "visible-prim-identity-index"),
+                _ => throw new InvalidDataException("A product output names an unknown plane.")
+            };
             json.WriteStartObject();
             json.WriteString("variablePath", output.Variable.Path);
             json.WriteString("sourceType", output.Variable.SourceType);
             json.WriteString("sourceName", output.Variable.SourceName);
             json.WriteString("dataType", output.Variable.DataType);
-            json.WriteString("file", hdr ? result.HdrColorFileName : result.DepthFileName);
-            json.WriteString("format", hdr ? HdrColorFormatName(result.HdrColorFormat) : "float32-little-endian");
-            json.WriteNumber("bytes", hdr ? result.HdrColorBytes : result.DepthBytes);
-            json.WriteString("sha256", hdr ? result.HdrColorSha256 : result.DepthSha256);
+            json.WriteString("file", file);
+            json.WriteString("format", format);
+            json.WriteNumber("bytes", bytes);
+            json.WriteString("sha256", sha256);
             json.WriteString("rowOrder", "top-down");
-            json.WriteString("convention", hdr ? "renderer-working-composited-camera-exposed-before-display" :
-                "normalized-device-depth-zero-to-one");
+            json.WriteString("convention", convention);
+            if (output.Plane == RenderProductPlane.PrimId)
+            {
+                json.WriteNumber("background", -1);
+                json.WriteString("tableFile", result.PrimIdTableFileName);
+                json.WriteNumber("tableBytes", result.PrimIdTableBytes);
+                json.WriteString("tableSha256", result.PrimIdTableSha256);
+            }
             json.WriteEndObject();
         }
         json.WriteEndArray();

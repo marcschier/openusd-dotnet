@@ -12,7 +12,15 @@ public enum RenderProductPlane
     /// <summary>Camera-exposed, pre-display packed top-down RGBA binary16 with stored framebuffer alpha.</summary>
     HdrColor,
     /// <summary>Top-down float32 normalized device depth in [0,1], with clear/far value one.</summary>
-    DeviceDepth
+    DeviceDepth,
+    /// <summary>
+    /// Top-down int32 index of the front-most rendered prim identity, with background value minus one.
+    /// </summary>
+    /// <remarks>
+    /// Indices are dense and refer to a per-frame identity table of distinct prim path and instance
+    /// index pairs, sorted by ordinal path and then instance index.
+    /// </remarks>
+    PrimId
 }
 
 /// <summary>Maps one unchanged requested variable to its explicitly typed output plane.</summary>
@@ -32,14 +40,14 @@ public sealed class RenderProductOutputBinding
 
 /// <summary>Admits one sampled raster product for the shared bounded split-plane disk-job engine.</summary>
 /// <remarks>
-/// The initial profile supports raw half4 color and float normalized depth, one material-binding
+/// The initial profile supports raw half4 color, float normalized depth and int prim identity, one material-binding
 /// purpose and standard scene purposes. The authored camera exposure
 /// multiplier scales the HDR color variable and adds its stops to the PNG companion's display
 /// exposure, so both outputs carry the same camera exposure. An open shutter with motion blur enabled
 /// renders eight equal-weight samples at stratified sub-interval centers and stores their mean. An
 /// active depth-of-field aperture on a perspective camera renders sixteen thin-lens samples instead,
 /// with their shutter times decorrelated from the lens positions. Accumulated frames cannot include
-/// device depth or exceed 4096 x 4096 pixels.
+/// device depth or prim identity, or exceed 4096 x 4096 pixels.
 /// Unsupported variables/settings remain inspectable through RenderProductRequest but cannot execute here.
 /// A PNG is an explicitly identified display companion, not a replacement for a requested variable.
 /// Adapters must apply the admitted scene filters and all render settings before returning each frame.
@@ -77,6 +85,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             Request.Specification.MaterialBindingPurposes, nameof(frames));
         IncludeHdrColor = Outputs.Any(static output => output.Plane == RenderProductPlane.HdrColor);
         IncludeDeviceDepth = Outputs.Any(static output => output.Plane == RenderProductPlane.DeviceDepth);
+        IncludePrimId = Outputs.Any(static output => output.Plane == RenderProductPlane.PrimId);
         SourceStageRevision = sourceStageRevision;
         RenderSettings = renderSettings;
         var samples = new RenderPreparedFrame[count];
@@ -95,7 +104,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 throw new ArgumentException(
                     "All samples must belong to the same immutable product request.", nameof(frames));
             }
-            ValidateCamera(frame, IncludeDeviceDepth);
+            ValidateCamera(frame, IncludeDeviceDepth, IncludePrimId);
             samples[index] = frame;
             RenderSettings exposed = ProductCameraExposure.ApplyToDisplay(
                 renderSettings, frame.CameraSettings!.LinearExposureScale);
@@ -144,6 +153,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     public bool IncludeHdrColor { get; }
     /// <summary>Gets whether the product requires actual normalized device depth.</summary>
     public bool IncludeDeviceDepth { get; }
+    /// <summary>Gets whether the product requires the visible prim identity index plane and its table.</summary>
+    public bool IncludePrimId { get; }
 
     /// <summary>
     /// Creates a bounded job with caller-authorized output and generated filenames, never product-name authority.
@@ -176,7 +187,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             }
         }
         return new RenderDiskJobRequest(outputDirectory, _states, IncludeDeviceDepth, IncludeHdrColor,
-            hdrColorFormat, limits, this)
+            hdrColorFormat, limits, this, IncludePrimId)
         {
             FrameEncoded = frameEncoded
         };
@@ -264,10 +275,10 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
 
     private static OwnedReadOnlyList<RenderProductOutputBinding> ResolveOutputs(RenderProductRequest request)
     {
-        if (request.Outputs.Count is < 1 or > 2)
+        if (request.Outputs.Count is < 1 or > 3)
         {
             throw new NotSupportedException(
-                "The current product profile accepts one color variable and/or one depth variable.");
+                "The current product profile accepts at most one color, one depth and one prim identity variable.");
         }
         var outputs = new RenderProductOutputBinding[request.Outputs.Count];
         var seen = new HashSet<RenderProductPlane>();
@@ -284,6 +295,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             {
                 ("color", "half4") => RenderProductPlane.HdrColor,
                 ("depth", "float") => RenderProductPlane.DeviceDepth,
+                ("primId", "int") => RenderProductPlane.PrimId,
                 _ => throw new NotSupportedException(
                     $"Variable '{variable.Path}' requests unsupported '{variable.SourceName}' / '{variable.DataType}'.")
             };
@@ -296,7 +308,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         return new OwnedReadOnlyList<RenderProductOutputBinding>(outputs);
     }
 
-    private static void ValidateCamera(RenderPreparedFrame frame, bool includeDeviceDepth)
+    private static void ValidateCamera(RenderPreparedFrame frame, bool includeDeviceDepth, bool includePrimId)
     {
         RenderCameraFrameSettings settings = frame.CameraSettings ??
             throw new NotSupportedException(
@@ -328,6 +340,12 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             {
                 throw new NotSupportedException(
                     "Normalized device depth has no defined value when accumulated across a shutter or lens aperture.");
+            }
+            if (includePrimId)
+            {
+                throw new NotSupportedException(
+                    "Prim identity cannot be averaged across a shutter or lens aperture; disable motion blur and " +
+                    "depth of field for a product with a primId variable.");
             }
             if ((long)frame.OutputDimensions.Width * frame.OutputDimensions.Height > MaximumAccumulatedPixels)
             {

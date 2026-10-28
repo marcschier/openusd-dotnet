@@ -128,7 +128,13 @@ internal sealed partial class OpenUsdMcpService
         "raw-raster-split-planes-v1", plan.MaterialBindingPurpose,
         new OwnedReadOnlyList<McpProductVariableDto>(plan.Outputs.Select(static output => new McpProductVariableDto(
             output.Variable.Path, output.Variable.SourceName, output.Variable.DataType,
-            output.Plane == RenderProductPlane.HdrColor ? "hdrColor" : "deviceDepth")).ToArray()));
+            output.Plane switch
+            {
+                RenderProductPlane.HdrColor => "hdrColor",
+                RenderProductPlane.DeviceDepth => "deviceDepth",
+                RenderProductPlane.PrimId => "primId",
+                _ => throw new InvalidDataException("A product output names an unknown plane.")
+            })).ToArray()));
 
     private readonly record struct CompletedProductFrame(McpProductRasterDto Raster, McpProductCameraDto Camera);
 }

@@ -1435,6 +1435,51 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     internal void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+    /// <summary>
+    /// The render area covering the copied pixel and every recorded scissor.
+    /// </summary>
+    /// <remarks>
+    /// A point pick scissors every scope to the copied pixel, so its area stays
+    /// that one pixel. A full-raster identity capture scissors the whole target,
+    /// and its area must cover the target for the raster to be written.
+    /// </remarks>
+    private static Rect2D PickRenderArea(
+        VulkanSilkGraphicsTexture color,
+        IReadOnlyList<VulkanPickPass> passes,
+        SilkTexturePixelCoordinate coordinate)
+    {
+        long left = coordinate.X;
+        long top = coordinate.Y;
+        long right = left + 1;
+        long bottom = top + 1;
+        foreach (VulkanPickPass pass in passes)
+        {
+            if (pass.ClearRect is { } clear)
+            {
+                include(clear);
+            }
+            foreach (VulkanPickDrawCommand draw in pass.Draws)
+            {
+                include(draw.Scissor);
+            }
+        }
+        left = Math.Max(0, left);
+        top = Math.Max(0, top);
+        right = Math.Min(color.Width, right);
+        bottom = Math.Min(color.Height, bottom);
+        return new Rect2D(
+            new Offset2D(checked((int)left), checked((int)top)),
+            new Extent2D(checked((uint)(right - left)), checked((uint)(bottom - top))));
+
+        void include(SilkScissor scissor)
+        {
+            left = Math.Min(left, scissor.X);
+            top = Math.Min(top, scissor.Y);
+            right = Math.Max(right, (long)scissor.X + scissor.Width);
+            bottom = Math.Max(bottom, (long)scissor.Y + scissor.Height);
+        }
+    }
+
     internal ulong RecordAndSubmit(
         VulkanSilkGraphicsTexture color,
         VulkanSilkGraphicsTexture depth,
@@ -1522,11 +1567,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             SType = StructureType.RenderPassBeginInfo,
             RenderPass = pipeline.RenderPass,
             Framebuffer = _framebuffer,
-            RenderArea = new Rect2D(
-                new Offset2D(
-                    checked((int)coordinate.X),
-                    checked((int)coordinate.Y)),
-                new Extent2D(1, 1)),
+            RenderArea = PickRenderArea(color, passes, coordinate),
             ClearValueCount = 2,
             PClearValues = clearValues
         };

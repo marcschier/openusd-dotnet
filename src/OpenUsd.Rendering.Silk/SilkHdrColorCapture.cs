@@ -80,6 +80,8 @@ public sealed class SilkHdrColorCaptureOptions
     /// The managed pixel-array budget, charged uniformly at 20 bytes per pixel:
     /// 8 for HDR, 4 for RGBA8, 4 for optional depth, and 4 for the managed RGBA8
     /// selection-upload copy. The charge is unchanged when depth or selection is disabled.
+    /// Setting <see cref="IncludePrimId"/> adds 8 bytes per pixel: 4 for the RGBA8 pick-token
+    /// readback and 4 for the int32 identity output.
     /// </param>
     public SilkHdrColorCaptureOptions(
         bool includeDeviceDepth = false,
@@ -95,6 +97,18 @@ public sealed class SilkHdrColorCaptureOptions
 
     /// <summary>Gets whether the actual normalized D32 depth plane is returned.</summary>
     public bool IncludeDeviceDepth { get; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible prim identity plane is returned in
+    /// <see cref="SilkFrameCaptureResult.PrimId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The identity plane is drawn by the prim-level pick pass over the whole viewport,
+    /// so it requires a pick-capable graphics device; other devices refuse the capture
+    /// with <see cref="NotSupportedException"/>. It adds 8 bytes per pixel to the
+    /// managed readback charge.
+    /// </remarks>
+    public bool IncludePrimId { get; init; }
 
     /// <summary>Gets the maximum raster pixel count.</summary>
     public int MaximumPixelCount => Limits.MaximumPixelCount;

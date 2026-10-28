@@ -24,6 +24,11 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
             return "The active hdSilk renderer does not expose the managed graphics device " +
                 "needed for product readback.";
         }
+        if (plan.IncludePrimId && resources.CaptureDevice is not ISilkPickingGraphicsDevice)
+        {
+            return "The active hdSilk graphics device cannot run the pick pass needed for the primId " +
+                "identity plane.";
+        }
         try
         {
             _ = new SilkSceneIngestionOptions(plan.IncludedPurposes, plan.MaterialBindingPurpose);
@@ -126,7 +131,10 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     _ingestionOptions,
                     new SilkHdrColorCaptureOptions(
                         plan.IncludeDeviceDepth,
-                        maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes),
+                        maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes)
+                    {
+                        IncludePrimId = plan.IncludePrimId
+                    },
                     state.Time.TimeCode,
                     state.Camera,
                     cancellationToken)
@@ -137,7 +145,10 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     state.RenderSettings,
                     _ingestionOptions,
                     new SilkDepthCaptureOptions(
-                        maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes),
+                        maximumReadbackBytes: RenderDiskJobLimits.Default.MaximumFrameBytes)
+                    {
+                        IncludePrimId = plan.IncludePrimId
+                    },
                     state.Time.TimeCode,
                     state.Camera,
                     cancellationToken);
@@ -155,8 +166,20 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                 DeviceDepth = capture.Depth is { } depth
                     ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
                 HdrColor = capture.HdrColor is { } hdr
-                    ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null
+                    ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,
+                PrimId = capture.PrimId is { } primId ? ToJobPrimId(primId) : null
             });
+        }
+
+        private static RenderJobPrimId ToJobPrimId(SilkPrimIdCaptureResult primId)
+        {
+            var identities = new RenderJobPrimIdentity[primId.Identities.Count];
+            for (int index = 0; index < identities.Length; index++)
+            {
+                SilkPrimIdentity identity = primId.Identities[index];
+                identities[index] = new RenderJobPrimIdentity(identity.Path, identity.InstanceIndex);
+            }
+            return new RenderJobPrimId(primId.Width, primId.Height, primId.Values, identities);
         }
 
         public async ValueTask DisposeAsync()

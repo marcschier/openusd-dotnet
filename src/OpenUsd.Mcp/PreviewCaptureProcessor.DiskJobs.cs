@@ -120,6 +120,13 @@ public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcesso
     {
         public void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(plan);
+            if (plan.IncludePrimId)
+            {
+                throw new NotSupportedException(
+                    "MCP product execution does not capture the primId identity plane; render this product in " +
+                    "the Viewer with a pick-capable Silk device.");
+            }
             if (!ReferenceEquals(plan, productPlan) || source is not IPreviewProductFrameSource productSource)
             {
                 throw new NotSupportedException(

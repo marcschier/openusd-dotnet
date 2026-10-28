@@ -1218,3 +1218,26 @@ const OpenUsd.Rendering.CompositionHostReadback.ImageHandleType = "HostMemoryRea
 OpenUsd.Rendering.CompositionHostReadback
 OpenUsd.Rendering.ICompositionReadbackFrame
 OpenUsd.Rendering.ICompositionReadbackFrame.CopyPresentedPixels(System.Span<byte> destination) -> void
+OpenUsd.Rendering.RenderProductPlane.PrimId = 2 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludePrimId.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludePrimId.get -> bool
+OpenUsd.Rendering.RenderJobImage.PrimId.get -> OpenUsd.Rendering.RenderJobPrimId?
+OpenUsd.Rendering.RenderJobImage.PrimId.init -> void
+OpenUsd.Rendering.RenderJobPrimId
+OpenUsd.Rendering.RenderJobPrimId.RenderJobPrimId(int width, int height, System.ReadOnlyMemory<int> values, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderJobPrimIdentity!>! identities) -> void
+OpenUsd.Rendering.RenderJobPrimId.Width.get -> int
+OpenUsd.Rendering.RenderJobPrimId.Height.get -> int
+OpenUsd.Rendering.RenderJobPrimId.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.RenderJobPrimId.Identities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderJobPrimIdentity!>!
+const OpenUsd.Rendering.RenderJobPrimId.MaximumIdentities = 65536 -> int
+OpenUsd.Rendering.RenderJobPrimIdentity
+OpenUsd.Rendering.RenderJobPrimIdentity.RenderJobPrimIdentity(string! path, int instanceIndex) -> void
+OpenUsd.Rendering.RenderJobPrimIdentity.Path.get -> string!
+OpenUsd.Rendering.RenderJobPrimIdentity.InstanceIndex.get -> int
+const OpenUsd.Rendering.RenderJobPrimIdentity.MaximumPathLength = 4096 -> int
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdSha256.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableSha256.get -> string?

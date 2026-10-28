@@ -835,7 +835,7 @@ time samples, and samples in scheduler batches of at most sixteen. It checks the
 revision before and after each batch. The caller must continue excluding or detecting writers
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
-The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
+The profile accepts only raw `half4` / `color`, `float` / `depth` and `int` / `primId`
 variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
 Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
 resolution of a named purpose already falls back to the allPurpose binding. The unauthored
@@ -964,6 +964,26 @@ little-endian data. Each plane has its own byte length and SHA256 in the manifes
 `normalized-device-depth-zero-to-one` convention, clear value one and no independent coverage claim.
 This is the actual visible-pass attachment, nonlinear in perspective, not camera-space distance,
 normals, stable identity or a display-color conversion.
+
+A product `primId` variable (`int`) asks which prim is visible at each pixel. hdSilk answers
+it by running its existing pick pass over the whole raster instead of one pixel, on the same
+retained scene, depth-tested so only the front-most prim wins. Token resolution then maps each
+pixel to its prim. The job writes two files per frame:
+
+- `frame-NNNNNN.prim-id.i32` holds packed top-down little-endian int32 indices, with `-1` for
+  background.
+- `frame-NNNNNN.prim-id.json` maps each index to a prim path and instance index. Indices are
+  dense and sorted by path, then instance index; a non-instanced prim has instance index `-1`.
+
+Indices are local to one frame, so the same number can name different prims in two frames;
+compare paths, not indices. The raw file is written whether color goes to raw HDR or EXR. The
+manifest records both files with their bytes and SHA256 under the `visible-prim-identity-index`
+convention. Requesting the plane raises Silk's managed charge from 20 to 28 bytes per pixel and
+the job's frame accounting by 8 bytes per pixel. A table is limited to 65,536 identities and
+4,096-character paths. A device that cannot run the pick pass is refused, not given synthesized
+identity. The plane is refused with motion blur or depth of field, because an identity cannot be
+averaged across samples. The Viewer captures it; MCP product jobs and physics recordings refuse
+it explicitly.
 
 The additional `includeHdrColor` overload preserves actual pre-display HDR color in generated
 `.hdr.rgba16f` sidecars. `RenderJobHdrColor` borrows tightly packed top-down little-endian RGBA

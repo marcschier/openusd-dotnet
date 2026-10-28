@@ -713,6 +713,214 @@ public sealed class RenderProductJobPlanTests
             RenderSettings.Default)).Throws<NotSupportedException>();
     }
 
+    [Test]
+    public async Task PrimIdVariableIsAdmittedAsItsOwnIntPlane()
+    {
+        var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [Frame(Request(primIdType: "int"))], RenderSettings.Default);
+        await Assert.That(plan.Outputs.Select(static output => output.Plane).SequenceEqual(
+            [RenderProductPlane.HdrColor, RenderProductPlane.DeviceDepth, RenderProductPlane.PrimId])).IsTrue();
+        await Assert.That(plan.Outputs[2].Variable.DataType).IsEqualTo("int");
+        await Assert.That(plan.IncludePrimId && plan.IncludeDeviceDepth && plan.IncludeHdrColor).IsTrue();
+        RenderDiskJobRequest job = plan.CreateJob(Path.Combine(Path.GetTempPath(), $"product-{Guid.NewGuid():N}"));
+        await Assert.That(job.IncludePrimId).IsTrue();
+        var colorOnly = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [Frame(Request(colorOnly: true))], RenderSettings.Default);
+        await Assert.That(colorOnly.IncludePrimId).IsFalse();
+        await Assert.That(colorOnly.CreateJob(Path.Combine(Path.GetTempPath(), $"product-{Guid.NewGuid():N}"))
+            .IncludePrimId).IsFalse();
+    }
+
+    [Test]
+    [Arguments("float")]
+    [Arguments("int2")]
+    [Arguments("uint")]
+    public async Task PrimIdVariableRequiresTheIntDataType(string dataType)
+    {
+        RenderProductRequest request = Request(primIdType: dataType);
+        await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(request)],
+            RenderSettings.Default)).Throws<NotSupportedException>();
+    }
+
+    [Test]
+    public async Task PrimIdRefusesShutterAndLensAccumulation()
+    {
+        RenderProductRequest request = Request(disableOptics: false, colorOnly: true, primIdType: "int");
+        NotSupportedException? shutter = Assert.Throws<NotSupportedException>(() => _ = new RenderProductJobPlan(
+            new StageIdentity("scene.usda"), [ShutterFrame(request, 1, -0.25, 0.25)], RenderSettings.Default));
+        await Assert.That(shutter!.Message).Contains("Prim identity cannot be averaged");
+        NotSupportedException? lens = Assert.Throws<NotSupportedException>(() => _ = new RenderProductJobPlan(
+            new StageIdentity("scene.usda"), [LensFrame(request, PerspectiveOptics(fStop: 2, focusDistance: 10))],
+            RenderSettings.Default));
+        await Assert.That(lens!.Message).Contains("Prim identity cannot be averaged");
+    }
+
+    [Test]
+    public async Task PrimIdChargesEightMoreManagedBytesPerPixel()
+    {
+        var plan = new RenderProductJobPlan(
+            new StageIdentity("scene.usda"), [Frame(Request(primIdType: "int"))], RenderSettings.Default);
+        string output = Path.Combine(Path.GetTempPath(), $"product-quota-{Guid.NewGuid():N}");
+        await Assert.That(() => plan.CreateJob(output, limits: new RenderDiskJobLimits(maximumFrameBytes: 111)))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(plan.CreateJob(output, limits: new RenderDiskJobLimits(maximumFrameBytes: 112))
+            .Limits.MaximumFrameBytes).IsEqualTo(112L);
+        await Assert.That(Directory.Exists(output)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task PrimIdProductWritesRawIndicesTableAndManifestEntries(bool exr)
+    {
+        if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        string root = Directory.CreateTempSubdirectory("product-prim-id-").FullName;
+        try
+        {
+            RenderProductRequest request = Request(primIdType: "int");
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(request, 1), Frame(request, 2)],
+                RenderSettings.Default);
+            var source = new ProductSource { PrimIdPlane = SamplePrimId() };
+            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "output"),
+                exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.RawRgba16Float), source);
+            await Assert.That(Directory.GetFiles(result.OutputDirectory).Length).IsEqualTo(11);
+            RenderDiskFrameResult stored = result.Frames[1];
+            await Assert.That(stored.PrimIdFileName).IsEqualTo("frame-000001.prim-id.i32");
+            await Assert.That(stored.PrimIdTableFileName).IsEqualTo("frame-000001.prim-id.json");
+            byte[] raw = await File.ReadAllBytesAsync(Path.Combine(result.OutputDirectory, stored.PrimIdFileName!));
+            await Assert.That(Convert.ToHexString(raw)).IsEqualTo("01000000FFFFFFFF0000000001000000");
+            await Assert.That(stored.PrimIdBytes).IsEqualTo(16L);
+            await Assert.That(stored.PrimIdSha256).IsEqualTo(Sha256(raw));
+            byte[] table = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, stored.PrimIdTableFileName!));
+            await Assert.That(stored.PrimIdTableBytes).IsEqualTo(table.LongLength);
+            await Assert.That(stored.PrimIdTableSha256).IsEqualTo(Sha256(table));
+            using (JsonDocument tableJson = JsonDocument.Parse(table))
+            {
+                await Assert.That(tableJson.RootElement.GetProperty("background").GetInt32()).IsEqualTo(-1);
+                JsonElement identities = tableJson.RootElement.GetProperty("identities");
+                await Assert.That(identities.GetArrayLength()).IsEqualTo(2);
+                await Assert.That(identities[0].GetProperty("index").GetInt32()).IsEqualTo(0);
+                await Assert.That(identities[0].GetProperty("path").GetString()).IsEqualTo("/World/Cube");
+                await Assert.That(identities[0].GetProperty("instanceIndex").GetInt32()).IsEqualTo(-1);
+                await Assert.That(identities[1].GetProperty("index").GetInt32()).IsEqualTo(1);
+                await Assert.That(identities[1].GetProperty("path").GetString()).IsEqualTo("/World/Ünstanced");
+                await Assert.That(identities[1].GetProperty("instanceIndex").GetInt32()).IsEqualTo(3);
+            }
+
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement frame = manifest.RootElement.GetProperty("frames")[1];
+            JsonElement plane = frame.GetProperty("primId");
+            await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo(stored.PrimIdFileName);
+            await Assert.That(plane.GetProperty("format").GetString()).IsEqualTo("int32-little-endian");
+            await Assert.That(plane.GetProperty("background").GetInt32()).IsEqualTo(-1);
+            await Assert.That(plane.GetProperty("sha256").GetString()).IsEqualTo(Sha256(raw));
+            await Assert.That(plane.GetProperty("tableFile").GetString()).IsEqualTo(stored.PrimIdTableFileName);
+            await Assert.That(plane.GetProperty("tableSha256").GetString()).IsEqualTo(Sha256(table));
+            JsonElement binding = frame.GetProperty("productOutputs")[2];
+            await Assert.That(binding.GetProperty("variablePath").GetString()).IsEqualTo("/Render/PrimId");
+            await Assert.That(binding.GetProperty("sourceName").GetString()).IsEqualTo("primId");
+            await Assert.That(binding.GetProperty("dataType").GetString()).IsEqualTo("int");
+            await Assert.That(binding.GetProperty("file").GetString()).IsEqualTo(stored.PrimIdFileName);
+            await Assert.That(binding.GetProperty("bytes").GetInt64()).IsEqualTo(16L);
+            await Assert.That(binding.GetProperty("convention").GetString()).IsEqualTo("visible-prim-identity-index");
+            await Assert.That(binding.GetProperty("tableBytes").GetInt64()).IsEqualTo(table.LongLength);
+            await Assert.That(result.TotalBytes).IsEqualTo(
+                Directory.GetFiles(result.OutputDirectory).Sum(static file => new FileInfo(file).Length));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task PrimIdMustBeProvidedExactlyWhenRequested(bool requested)
+    {
+        string root = Directory.CreateTempSubdirectory("product-prim-id-set-").FullName;
+        try
+        {
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+                [Frame(Request(primIdType: requested ? "int" : null))], RenderSettings.Default);
+            var source = new ProductSource { PrimIdPlane = requested ? null : SamplePrimId() };
+            string output = Path.Combine(root, "output");
+            NotSupportedException? failure = Assert.Throws<NotSupportedException>(
+                () => RenderDiskJob.Execute(plan.CreateJob(output), source));
+            await Assert.That(failure!.Message).Contains("prim identity");
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task PrimIdValidatesIndicesDimensionsAndItsBoundedTable()
+    {
+        RenderJobPrimIdentity[] two = [new("/A", -1), new("/B", 0)];
+        await Assert.That(() => new RenderJobPrimId(2, 1, OutOfRange, two)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimId(2, 1, BelowBackground, two)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimId(2, 2, Dense, two)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimId(2, 1, Dense, null!)).Throws<ArgumentNullException>();
+        await Assert.That(() => new RenderJobPrimId(1, 1, Single,
+            Enumerable.Repeat(new RenderJobPrimIdentity("/A", -1), RenderJobPrimId.MaximumIdentities + 1).ToArray()))
+            .Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimIdentity("", -1)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimIdentity("/A\n", -1)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimIdentity(
+            "/" + new string('a', RenderJobPrimIdentity.MaximumPathLength), -1)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobPrimIdentity("/A", -2)).Throws<ArgumentOutOfRangeException>();
+        var background = new RenderJobPrimId(2, 1, new[] { -1, -1 }, []);
+        await Assert.That(background.Identities.Count).IsEqualTo(0);
+        var accepted = new RenderJobPrimId(2, 1, new[] { 1, -1 }, two);
+        two[1] = new("/C", 0);
+        await Assert.That(accepted.Identities[1].Path).IsEqualTo("/B");
+    }
+
+    [Test]
+    public async Task ShutterAccumulationRefusesAnUnrequestedPrimIdPlane()
+    {
+        string root = Directory.CreateTempSubdirectory("product-prim-id-shutter-").FullName;
+        try
+        {
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+                [ShutterFrame(Request(disableOptics: false, colorOnly: true), 1, 0, 1)], RenderSettings.Default);
+            var source = new ProductSource
+            {
+                IncludeDepth = false,
+                PrimIdPlane = SamplePrimId(),
+                Pixels = static (_, count) => (new byte[count * 4], new byte[count * 8], Rgba8RowOrder.TopDown),
+            };
+            NotSupportedException? failure = Assert.Throws<NotSupportedException>(
+                () => RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "out")), source));
+            await Assert.That(failure!.Message).Contains("shutter-sample planes");
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static readonly int[] OutOfRange = [0, 2];
+    private static readonly int[] BelowBackground = [-2, 0];
+    private static readonly int[] Dense = [0, 1];
+    private static readonly int[] Single = [0];
+
+    private static RenderJobPrimId SamplePrimId() => new(2, 2, new[] { 1, -1, 0, 1 },
+        [new RenderJobPrimIdentity("/World/Cube", -1), new RenderJobPrimIdentity("/World/Ünstanced", 3)]);
+
+    private static string Sha256(byte[] bytes) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+
     private static RenderPreparedFrame LensFrame(RenderProductRequest request, UsdGeomCameraState optics)
     {
         RenderPreparedFrame frame = request.PrepareFrame(
@@ -765,7 +973,8 @@ public sealed class RenderProductJobPlanTests
         UsdGeomCameraProjection.Orthographic, -1, 1, -1, 1, 1, 11, 0, 20, 20, 0, 0, 10, fStop);
 
     private static RenderProductRequest Request(
-        string? failure = null, bool depthFirst = false, bool disableOptics = true, bool colorOnly = false)
+        string? failure = null, bool depthFirst = false, bool disableOptics = true, bool colorOnly = false,
+        string? primIdType = null)
     {
         var color = new UsdRenderVariableSpecification("/Render/Color",
             failure == "variable-type" ? "color3f" : "half4",
@@ -774,11 +983,18 @@ public sealed class RenderProductJobPlanTests
         var depth = new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", []);
         int[] indices = failure == "outputs-empty" ? [] : failure == "duplicate-color" ? [0, 0] :
             colorOnly ? [0] : depthFirst ? [1, 0] : [0, 1];
+        UsdRenderVariableSpecification[] variables = primIdType is null
+            ? [color, depth]
+            : [color, depth, new UsdRenderVariableSpecification("/Render/PrimId", primIdType, "primId", "raw", [])];
+        if (primIdType is not null)
+        {
+            indices = [.. indices, 2];
+        }
         return new RenderProductRequest(new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
                 2, 2, 1, "expandAperture", new UsdVec2f(20, 20), new UsdVec4f(0, 0, 1, 1),
                 disableOptics, disableOptics, indices, failure == "product-setting" ? ["renderer:samples"] : [])],
-            [color, depth], failure == "purpose" ? ["custom"] : ["default", "render"],
+            variables, failure == "purpose" ? ["custom"] : ["default", "render"],
             failure switch
             {
                 "binding-order" => ["full", "preview"],
@@ -800,6 +1016,7 @@ public sealed class RenderProductJobPlanTests
         internal bool IncludeDepth { get; init; } = true;
         internal Func<int, int, (byte[] Rgba, byte[] Hdr, Rgba8RowOrder RowOrder)>? Pixels { get; init; }
         internal bool Refuse { get; init; }
+        internal RenderJobPrimId? PrimIdPlane { get; init; }
         internal int Validations { get; private set; }
         internal int Calls { get; private set; }
         internal RenderProductJobPlan? Admitted { get; private set; }
@@ -830,7 +1047,8 @@ public sealed class RenderProductJobPlanTests
                     HdrColor = new RenderJobHdrColor(state.Viewport.Width, state.Viewport.Height, hdr),
                     DeviceDepth = IncludeDepth
                         ? new RenderJobDeviceDepth(state.Viewport.Width, state.Viewport.Height, new float[count])
-                        : null
+                        : null,
+                    PrimId = PrimIdPlane
                 };
             }
             return new RenderJobImage(
@@ -838,7 +1056,8 @@ public sealed class RenderProductJobPlanTests
             {
                 HdrColor = new RenderJobHdrColor(
                     state.Viewport.Width, state.Viewport.Height, HdrBytes ?? new byte[count * 8]),
-                DeviceDepth = new RenderJobDeviceDepth(state.Viewport.Width, state.Viewport.Height, new float[count])
+                DeviceDepth = new RenderJobDeviceDepth(state.Viewport.Width, state.Viewport.Height, new float[count]),
+                PrimId = PrimIdPlane
             };
         }
     }
