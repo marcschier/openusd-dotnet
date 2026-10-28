@@ -93,6 +93,30 @@ internal static class PackageAuthoredProductExecution
                 throw new InvalidOperationException("Returning from legacy capture did not restore the exact product.");
             }
             Console.WriteLine("AUTHORED_PRODUCT_LEGACY_RESET=true");
+            if (OperatingSystem.IsWindows())
+            {
+                RenderDiskJobResult exrFull = RenderDiskJob.Execute(fullPlan.CreateJob(
+                    Path.Combine(AppContext.BaseDirectory, "authored-product-full-exr"),
+                    RenderHdrColorFormat.Exr), adapter);
+                AssertExrMatches(full, exrFull);
+                RenderDiskJobResult exrPreview = RenderDiskJob.Execute(Prepare("/Preview").CreateJob(
+                    Path.Combine(AppContext.BaseDirectory, "authored-product-preview-exr"),
+                    RenderHdrColorFormat.Exr), adapter);
+                AssertExrMatches(preview, exrPreview);
+                SilkFrameCaptureResult legacyAgain = capturer.CaptureWithHdrColor(session, 16, 16,
+                    RenderSettings.PresentationDefault, timeCode: 0, camera: fullPlan.Frames[0].Camera);
+                if (!(legacyAgain.HdrColor ??
+                    throw new InvalidOperationException("Legacy reset omitted HDR."))
+                    .Rgba16Float.Span.SequenceEqual(legacyPixels))
+                {
+                    throw new InvalidOperationException("EXR preview did not restore the legacy capture.");
+                }
+                RenderDiskJobResult exrRestored = RenderDiskJob.Execute(fullPlan.CreateJob(
+                    Path.Combine(AppContext.BaseDirectory, "authored-product-restored-exr"),
+                    RenderHdrColorFormat.Exr), adapter);
+                AssertExrMatches(full, exrRestored);
+                Console.WriteLine("AUTHORED_PRODUCT_EXR=true");
+            }
             if (GetRevision(scheduler) != revision || File.ReadAllText(path) != Scene ||
                 File.Exists(Path.Combine(AppContext.BaseDirectory, "authored-name-must-not-write.exr")))
             {
@@ -119,12 +143,90 @@ internal static class PackageAuthoredProductExecution
         RenderDiskFrameResult frame = result.Frames[index];
         byte[] bytes = File.ReadAllBytes(Path.Combine(result.OutputDirectory,
             frame.HdrColorFileName ?? throw new InvalidOperationException("Product HDR file is absent.")));
-        if (bytes.Length != 16 * 16 * 8 || !string.Equals(
+        if (bytes.LongLength != frame.HdrColorBytes || !string.Equals(
             Convert.ToHexString(SHA256.HashData(bytes)), frame.HdrColorSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Product HDR bytes or hash changed after publication.");
         }
-        return bytes;
+        byte[] pixels = frame.HdrColorFormat switch
+        {
+            RenderHdrColorFormat.RawRgba16Float => bytes,
+            RenderHdrColorFormat.Exr => ExrScanlineOracle.Read(bytes, 16, 16),
+            _ => throw new InvalidOperationException("Product HDR container is unsupported.")
+        };
+        if (pixels.Length != 16 * 16 * 8)
+        {
+            throw new InvalidOperationException("Product HDR pixel extent changed.");
+        }
+        return pixels;
+    }
+
+    private static void AssertExrMatches(RenderDiskJobResult raw, RenderDiskJobResult exr)
+    {
+        if (exr.Frames.Count != 2 || exr.Frames.Count != raw.Frames.Count)
+        {
+            throw new InvalidOperationException("EXR product frame count changed.");
+        }
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(
+            Path.Combine(exr.OutputDirectory, "manifest.json")));
+        JsonElement frames = manifest.RootElement.GetProperty("frames");
+        if (frames.GetArrayLength() != exr.Frames.Count)
+        {
+            throw new InvalidOperationException("EXR product manifest frame count changed.");
+        }
+        for (int index = 0; index < exr.Frames.Count; index++)
+        {
+            RenderDiskFrameResult frame = exr.Frames[index];
+            if (frame.HdrColorFormat != RenderHdrColorFormat.Exr ||
+                frame.State.Time.TimeCode != raw.Frames[index].State.Time.TimeCode ||
+                !ReadHdr(exr, index).AsSpan().SequenceEqual(ReadHdr(raw, index)))
+            {
+                throw new InvalidOperationException("EXR product time, container or decoded half bits changed.");
+            }
+            byte[] depth = File.ReadAllBytes(Path.Combine(exr.OutputDirectory,
+                frame.DepthFileName ?? throw new InvalidOperationException("EXR product depth is absent.")));
+            byte[] rawDepth = File.ReadAllBytes(Path.Combine(raw.OutputDirectory,
+                raw.Frames[index].DepthFileName ??
+                    throw new InvalidOperationException("Raw product depth is absent.")));
+            if (depth.Length != 16 * 16 * 4 || depth.LongLength != frame.DepthBytes ||
+                !depth.AsSpan().SequenceEqual(rawDepth) || !string.Equals(
+                    Convert.ToHexString(SHA256.HashData(depth)), frame.DepthSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("EXR changed the raw depth plane or its accounting.");
+            }
+            JsonElement bindings = frames[index].GetProperty("productOutputs");
+            if (bindings.GetArrayLength() != 2)
+            {
+                throw new InvalidOperationException("EXR product variable count changed.");
+            }
+            for (int bindingIndex = 0; bindingIndex < 2; bindingIndex++)
+            {
+                bool isDepth = bindingIndex == 0;
+                JsonElement binding = bindings[bindingIndex];
+                JsonElement plane = frames[index].GetProperty(isDepth ? "deviceDepth" : "hdrColor");
+                string format = isDepth ? "float32-little-endian" : "openexr-rgba16float";
+                if (binding.GetProperty("variablePath").GetString() != (isDepth ? "/Depth" : "/Color") ||
+                    binding.GetProperty("sourceName").GetString() != (isDepth ? "depth" : "color") ||
+                    binding.GetProperty("sourceType").GetString() != "raw" ||
+                    binding.GetProperty("dataType").GetString() != (isDepth ? "float" : "half4") ||
+                    binding.GetProperty("file").GetString() !=
+                        (isDepth ? frame.DepthFileName : frame.HdrColorFileName) ||
+                    binding.GetProperty("format").GetString() != format ||
+                    plane.GetProperty("format").GetString() != format ||
+                    binding.GetProperty("bytes").GetInt64() !=
+                        (isDepth ? frame.DepthBytes : frame.HdrColorBytes) ||
+                    binding.GetProperty("sha256").GetString() !=
+                        (isDepth ? frame.DepthSha256 : frame.HdrColorSha256) ||
+                    binding.GetProperty("rowOrder").GetString() != "top-down" ||
+                    binding.GetProperty("convention").GetString() != (isDepth
+                        ? "normalized-device-depth-zero-to-one"
+                        : "renderer-working-composited-before-exposure-and-display"))
+                {
+                    throw new InvalidOperationException("EXR product bindings lost their stored-plane identity.");
+                }
+            }
+        }
     }
 
     private static void AssertPixel(byte[] pixels, int x, int y, string expected)

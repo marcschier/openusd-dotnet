@@ -2580,6 +2580,17 @@ over two frames, decode EXR with an independent reader and compare the stored ha
 fixture. Manifest format, length and SHA-256 must describe the actual file; EXR color leaves depth in
 its float32 normalized-device-depth container. This gate does not qualify EXR on Linux or macOS.
 
+The Windows clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires
+`AUTHORED_PRODUCT_EXR=true`. It publishes and executes a real NativeAOT application from the local
+package feed without project references. Full- and preview-purpose/material-binding jobs each render
+two times; an independent EXR decoder must recover every raw HDR half bit, while depth bytes remain
+identical. The manifest must preserve variable order, source identity and authored data types alongside
+the actual container format, file length, SHA-256, row order and depth convention. A legacy capture
+between EXR preview and full-product replay must restore the exact pixels without changing source
+bytes or using the authored product name as write authority. These product pixels use D3D12 WARP;
+the separate GPU-upload subcase requires hardware when `OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED=1`.
+This Windows package partition does not qualify other RIDs or full-scene hardware fidelity.
+
 The Windows native MCP integration step sets the same required-EXR flag so its plane-integrity and
 quota-rollback cases execute instead of taking their optional-runtime skips. Those cases verify that
 damaged or missing planes and exhausted resource capacity publish no partial frame or byte charge,

@@ -3966,6 +3966,10 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_FILTER_PIXELS=true");
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_LEGACY_RESET=true");
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_SOURCE_UNCHANGED=true");
+            if (platform.Rid == "win-x64")
+            {
+                await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_EXR=true");
+            }
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             if (platform.Rid is "win-x64" or "osx-arm64")
             {
@@ -7394,6 +7398,11 @@ public sealed partial class RuntimePackageTests
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "AuthoredProduct.cs"),
             CreateRenderProductConsumerProgram());
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "ExrScanlineOracle.cs"),
+            "using System;\nusing System.Collections.Generic;\nusing System.IO;\n" +
+                await File.ReadAllTextAsync(Path.Combine(
+                    FindRepositoryRoot(), "tests", "OpenUsd.Exr.NativeProbe", "ExrScanlineOracle.cs")));
 
         string globalPackagesRoot = Path.Combine(workRoot, "imaging-global-packages");
         var publishArguments = new List<string>
