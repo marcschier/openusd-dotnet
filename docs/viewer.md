@@ -326,6 +326,9 @@ only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The s
 native shape inputs (`inputs:width`, `inputs:height`, `inputs:radius`, `inputs:length`, and
 `inputs:angle`) only on their matching light schemas, and `inputs:shaping:focus`,
 `inputs:shaping:cone:angle`, and `inputs:shaping:cone:softness` only when `ShapingAPI` is applied.
+The detached snapshot carries validated shape/shaping property membership from the same native
+schema checks used by review editing. A light flag or authored lookalike name alone does not
+establish that membership; unvalidated properties remain available through **Inputs**.
 Existing `inputs:texture:file` and `inputs:texture:format` attributes also appear in this
 group on light snapshots. This browsing change does not add texture editing or rendering
 support; absent declarations and similarly prefixed names are not synthesized.

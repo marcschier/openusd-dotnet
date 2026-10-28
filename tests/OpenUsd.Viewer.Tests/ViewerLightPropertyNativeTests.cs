@@ -38,6 +38,69 @@ public sealed class ViewerLightPropertyNativeTests
     }
 
     [Test]
+    [Arguments("RectLight", false, "inputs:width,inputs:height")]
+    [Arguments("SphereLight", false, "inputs:radius")]
+    [Arguments("DiskLight", false, "inputs:radius")]
+    [Arguments("CylinderLight", false, "inputs:radius,inputs:length")]
+    [Arguments("DistantLight", false, "inputs:angle")]
+    [Arguments("DomeLight", false, "")]
+    [Arguments("RectLight", true, "inputs:width,inputs:height")]
+    [Arguments("SphereLight", true, "inputs:radius")]
+    [Arguments("DiskLight", true, "inputs:radius")]
+    [Arguments("CylinderLight", true, "inputs:radius,inputs:length")]
+    [Arguments("DistantLight", true, "inputs:angle")]
+    [Arguments("DomeLight", true, "")]
+    public async Task InspectorLightGroupingUsesNativeSchemaAndAppliedShapingRatherThanAuthoredNames(
+        string schema, bool shaping, string expectedShapes)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-light-groups-").FullName;
+        string path = Path.Combine(root, "source.usda");
+        string original = $$"""
+            #usda 1.0
+            def {{schema}} "Light" {{(shaping ? "(prepend apiSchemas = [\"ShapingAPI\"])" : "")}}
+            {
+                float inputs:width = 2
+                float inputs:height = 2
+                float inputs:radius = 2
+                float inputs:length = 2
+                float inputs:angle = 2
+                float inputs:shaping:focus = 2
+                float inputs:shaping:cone:angle = 2
+                float inputs:shaping:cone:softness = 2
+            }
+            """;
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await using UsdStageScheduler scheduler = ViewerNativeTestStages.OpenSchedulerOrSkip(path);
+            ViewerPrimInspectorSnapshot snapshot = await scheduler.InvokeAsync(
+                stage => ViewerStageSnapshotBuilder.BuildInspector(stage, "/Light"));
+            string expected = shaping
+                ? (expectedShapes.Length == 0 ? "" : expectedShapes + ",") +
+                    "inputs:shaping:focus,inputs:shaping:cone:angle,inputs:shaping:cone:softness"
+                : expectedShapes;
+            await Assert.That(snapshot.IsLight).IsTrue();
+            await Assert.That(string.Join(",", snapshot.LightSchemaProperties!)).IsEqualTo(expected);
+            ViewerPropertyPage grouped = ViewerPropertyPage.Create(
+                snapshot.Attributes, snapshot.Relationships, null, 0, group: ViewerPropertyGroup.Light,
+                isLight: snapshot.IsLight, lightSchemaProperties: snapshot.LightSchemaProperties);
+            string[] declaredShapes =
+            [
+                "inputs:width", "inputs:height", "inputs:radius", "inputs:length", "inputs:angle",
+                "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness"
+            ];
+            await Assert.That(grouped.Attributes.Where(attribute => declaredShapes.Contains(attribute.Name))
+                .Select(static attribute => attribute.Name))
+                .IsEquivalentTo(expected.Split(',', StringSplitOptions.RemoveEmptyEntries));
+            await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("RectLight", "inputs:intensity", "float")]
     [Arguments("SphereLight", "inputs:intensity", "float")]
     [Arguments("DiskLight", "inputs:intensity", "float")]

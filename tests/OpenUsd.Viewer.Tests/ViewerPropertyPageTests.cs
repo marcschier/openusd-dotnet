@@ -142,9 +142,7 @@ public sealed class ViewerPropertyPageTests
         await Assert.That(string.Join(",", lightControls.Attributes.Select(static item => item.Name)))
             .IsEqualTo(
                 "inputs:intensity,inputs:exposure,inputs:diffuse,inputs:specular," +
-                "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color," +
-                "inputs:width,inputs:height,inputs:radius,inputs:length,inputs:angle,inputs:shaping:focus," +
-                "inputs:shaping:cone:angle,inputs:shaping:cone:softness");
+                "inputs:colorTemperature,inputs:enableColorTemperature,inputs:normalize,inputs:color");
 
         ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs, isLight: true);
@@ -160,6 +158,85 @@ public sealed class ViewerPropertyPageTests
         ViewerPropertyPage nonLightControls = ViewerPropertyPage.Create(
             attributes, [], null, 0, group: ViewerPropertyGroup.Light);
         await Assert.That(nonLightControls.Attributes).IsEmpty();
+    }
+
+    [Test]
+    [Arguments("inputs:width", true)]
+    [Arguments("inputs:height", true)]
+    [Arguments("inputs:radius", true)]
+    [Arguments("inputs:length", true)]
+    [Arguments("inputs:angle", true)]
+    [Arguments("inputs:shaping:focus", true)]
+    [Arguments("inputs:shaping:cone:angle", true)]
+    [Arguments("inputs:shaping:cone:softness", true)]
+    [Arguments("inputs:width", false)]
+    [Arguments("inputs:height", false)]
+    [Arguments("inputs:radius", false)]
+    [Arguments("inputs:length", false)]
+    [Arguments("inputs:angle", false)]
+    [Arguments("inputs:shaping:focus", false)]
+    [Arguments("inputs:shaping:cone:angle", false)]
+    [Arguments("inputs:shaping:cone:softness", false)]
+    public async Task ShapeAndShapingGroupingRequiresValidatedMembershipAndPreservesGenericAccess(
+        string name, bool isLight)
+    {
+        var supported = new ViewerAttributeSnapshot(name, "float", true, false, 1, "5", "2");
+        var unproven = new ViewerAttributeSnapshot("inputs:unsupportedShape", "float", true, false, 1, "5", "3");
+        ViewerAttributeSnapshot[] attributes =
+        [
+            supported, unproven,
+            new(name + ":extra", "float", true, false, 1, "5", "4"),
+            new(name.ToUpperInvariant(), "float", true, false, 1, "5", "5")
+        ];
+        var relationship = new ViewerRelationshipSnapshot(name, "/World");
+        ViewerPropertyPage validated = ViewerPropertyPage.Create(
+            attributes, [relationship], null, int.MaxValue,
+            ViewerPropertyFilter.TimeSampledAttributes, ViewerPropertyGroup.Light,
+            isLight: isLight, lightSchemaProperties: [name]);
+        await Assert.That(validated.MatchCount).IsEqualTo(isLight ? 1 : 0);
+        await Assert.That(validated.PageIndex).IsEqualTo(0);
+        await Assert.That(validated.Relationships).IsEmpty();
+        if (isLight)
+        {
+            await Assert.That(validated.Attributes.Single()).IsSameReferenceAs(supported);
+        }
+        else
+        {
+            await Assert.That(validated.Attributes).IsEmpty();
+        }
+        ViewerPropertyPage unvalidated = ViewerPropertyPage.Create(
+            attributes, [relationship], null, 0, group: ViewerPropertyGroup.Light, isLight: isLight);
+        await Assert.That(unvalidated.Attributes).IsEmpty();
+        ViewerPropertyPage shaderInputs = ViewerPropertyPage.Create(
+            attributes, [relationship], null, 0, group: ViewerPropertyGroup.ShaderInputs,
+            isLight: isLight, lightSchemaProperties: [name]);
+        await Assert.That(shaderInputs.Attributes).IsEquivalentTo(attributes.Take(3));
+        await Assert.That(shaderInputs.Relationships).IsEmpty();
+        await Assert.That(supported.Value).IsEqualTo("2");
+        await Assert.That(supported.TimeSampleCount).IsEqualTo(1);
+    }
+
+    [Test]
+    [Arguments("inputs:width")]
+    [Arguments("inputs:shaping:focus")]
+    public async Task RemovingSchemaMembershipReclassifiesWithoutReplacingOrChangingTheProperty(string name)
+    {
+        var property = new ViewerAttributeSnapshot(name, "float", true, false, 1, "5", "2");
+        ViewerPropertyPage before = ViewerPropertyPage.Create(
+            [property], [], null, 0, group: ViewerPropertyGroup.Light,
+            isLight: true, lightSchemaProperties: [name]);
+        ViewerPropertyPage after = ViewerPropertyPage.Create(
+            [property], [], null, 0, group: ViewerPropertyGroup.Light,
+            isLight: true, lightSchemaProperties: []);
+        ViewerPropertyPage generic = ViewerPropertyPage.Create(
+            [property], [], null, 0, group: ViewerPropertyGroup.ShaderInputs,
+            isLight: true, lightSchemaProperties: []);
+        await Assert.That(before.Attributes.Single()).IsSameReferenceAs(property);
+        await Assert.That(after.Attributes).IsEmpty();
+        await Assert.That(after.TotalCount).IsEqualTo(1);
+        await Assert.That(generic.Attributes.Single()).IsSameReferenceAs(property);
+        await Assert.That(before.Attributes.Single().Value).IsEqualTo("2");
+        await Assert.That(property.TimeSampleCount).IsEqualTo(1);
     }
 
     [Test]

@@ -150,7 +150,7 @@ internal sealed partial class ViewerAuthoredEditController
         return property;
     }
 
-    private static bool IsSupportedLightProperty(UsdPrim prim, string attributeName) => attributeName switch
+    internal static bool IsSupportedLightProperty(UsdPrim prim, string attributeName) => attributeName switch
     {
         "inputs:width" or "inputs:height" => UsdLuxRectLight.TryWrap(prim, out _),
         "inputs:radius" => UsdLuxSphereLight.TryWrap(prim, out _) ||

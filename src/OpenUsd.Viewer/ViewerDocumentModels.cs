@@ -617,7 +617,8 @@ internal sealed record ViewerPrimInspectorSnapshot(
     ViewerAttributeSnapshot[] Attributes,
     ViewerRelationshipSnapshot[] Relationships,
     ViewerUnsupportedFeature[] UnsupportedFeatures,
-    UsdPrimPropertySnapshot? PropertySnapshot = null) : IUsdDetachedResult;
+    UsdPrimPropertySnapshot? PropertySnapshot = null,
+    IReadOnlyList<string>? LightSchemaProperties = null) : IUsdDetachedResult;
 
 internal static class ViewerHierarchyExpansionPolicy
 {
@@ -836,6 +837,12 @@ internal sealed record ViewerDocumentSnapshot(
 
 internal static partial class ViewerStageSnapshotBuilder
 {
+    private static readonly string[] LightSchemaPropertyCandidates =
+    [
+        "inputs:width", "inputs:height", "inputs:radius", "inputs:length", "inputs:angle",
+        "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness"
+    ];
+
     /// <summary>
     /// The most authored Ts splines one inspector snapshot reads and evaluates.
     /// </summary>
@@ -915,6 +922,10 @@ internal static partial class ViewerStageSnapshotBuilder
         bool isImageable = UsdGeomImageable.TryWrap(prim, out UsdGeomImageable imageable);
         bool isCamera = UsdGeomCamera.TryWrap(prim, out _);
         bool isLight = ViewerAuthoredEditController.IsSupportedLight(prim);
+        string[] lightSchemaProperties = isLight
+            ? LightSchemaPropertyCandidates
+                .Where(name => ViewerAuthoredEditController.IsSupportedLightProperty(prim, name)).ToArray()
+            : [];
         var unsupported = new List<ViewerUnsupportedFeature>();
         UsdGeomVisibility? visibility = null;
         UsdGeomPurpose? purpose = null;
@@ -953,7 +964,8 @@ internal static partial class ViewerStageSnapshotBuilder
             attributeSnapshots,
             relationshipSnapshots,
             unsupported.ToArray(),
-            properties);
+            properties,
+            Array.AsReadOnly(lightSchemaProperties));
     }
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)
