@@ -336,7 +336,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Light;
             shaderQuery.Text = string.Empty;
             await WaitAsync(() => Required<TextBlock>(main, "InspectorPropertyPageState").Text ==
-                "Properties 1-13 of 13 matches", timeout);
+                "Properties 1-14 of 14 matches", timeout);
             foreach (string lightControl in new[]
             {
                 "inputs:intensity",
@@ -349,6 +349,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 "inputs:color",
                 "inputs:width",
                 "inputs:height",
+                "inputs:texture:file",
                 "inputs:shaping:focus",
                 "inputs:shaping:cone:angle",
                 "inputs:shaping:cone:softness"

@@ -772,6 +772,9 @@ public sealed partial class ViewerImportedRenderJobTests
                 try
                 {
                     await Assert.That(otherEditor.Focus()).IsTrue();
+                    otherWindow.Activate();
+                    await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                        () => otherWindow.IsActive && otherEditor.IsKeyboardFocusWithin);
                     release.TrySetResult();
                     await importing;
                     await Assert.That(otherEditor.IsKeyboardFocusWithin).IsTrue();

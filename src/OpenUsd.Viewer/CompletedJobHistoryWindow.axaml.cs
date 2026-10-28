@@ -170,17 +170,25 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         }
         Button returnFocus = remembered ? HistoryViewButton : HistoryImportButton;
         bool restoreImportFocus = returnFocus.IsKeyboardFocusWithin;
+        bool temporaryFocusMoved = false;
+        EventHandler<FocusChangedEventArgs>? temporaryFocusLost = restoreImportFocus
+            ? (_, _) => temporaryFocusMoved = true
+            : null;
         _opening = true;
-        UpdateSelection();
-        if (restoreImportFocus)
-        {
-            HistoryCloseButton.Focus();
-        }
         var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _openTask = drained.Task;
         string? status = null;
         try
         {
+            if (temporaryFocusLost is not null)
+            {
+                HistoryCloseButton.LostFocus += temporaryFocusLost;
+            }
+            UpdateSelection();
+            if (restoreImportFocus)
+            {
+                HistoryCloseButton.Focus();
+            }
             if (path is null)
             {
                 IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
@@ -219,17 +227,27 @@ internal sealed partial class CompletedJobHistoryWindow : Window, IAsyncDisposab
         finally
         {
             _opening = false;
-            if (!_closing)
+            try
             {
-                UpdateSelection();
-                HistoryStatus.Text = status;
-                if (restoreImportFocus && HistoryCloseButton.IsKeyboardFocusWithin &&
-                    (IsActive || IsKeyboardFocusWithin))
+                if (!_closing)
                 {
-                    returnFocus.Focus();
+                    UpdateSelection();
+                    HistoryStatus.Text = status;
+                    if (restoreImportFocus && !temporaryFocusMoved && HistoryCloseButton.IsKeyboardFocusWithin &&
+                        (IsActive || IsKeyboardFocusWithin))
+                    {
+                        returnFocus.Focus();
+                    }
                 }
             }
-            drained.TrySetResult();
+            finally
+            {
+                if (temporaryFocusLost is not null)
+                {
+                    HistoryCloseButton.LostFocus -= temporaryFocusLost;
+                }
+                drained.TrySetResult();
+            }
         }
     }
 
