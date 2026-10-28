@@ -985,10 +985,11 @@ material placements.
 Passing those authored values and texture metadata to the existing adapter produces
 **882 distinct requests across the 3,701 shader definitions**: 875 partial successes and
 seven refusals. The refusals still represent the same nine legacy signature-qualified
-OmniPBR definitions and three OmniSurface definitions. Named unprojected authored inputs
-include texture influence/scale, tint and normal/detail controls. Some controls are
-inactive or neutral, so their presence alone does not prove a visible defect; each active
-semantic still needs projection and pixel qualification.
+OmniPBR definitions and three OmniSurface definitions. The adapter projects authored
+`diffuse_tint` into constant color and diffuse-texture RGB scale. Remaining named
+unprojected authored inputs include texture influence/scale and normal/detail controls.
+Some controls are inactive or neutral, so their presence alone does not prove a visible
+defect; each active semantic still needs projection and pixel qualification.
 
 This is a stronger material inventory, not complete material fidelity, a bound/visible
 material census or a warehouse render. The `openusd_warehouse_audit_contract` regression
