@@ -1185,9 +1185,17 @@ mutation time, and conflicting target edits require a refresh rather than overwr
 Collection bindings, binding strength, shader connections and material graphs are not edited.
 Normal USD ancestor and collection-binding precedence still applies to the effective material.
 
-Vector, quaternion and matrix input requires the exact number of finite components; float fields
+Two-, three- and four-component vector and colour properties use individually labelled inputs:
+X/Y/Z/W for vectors and R/G/B/A for colours. Each field takes one finite component, and Set requires
+every component within the declared numeric range. Empty fields remain empty for absent or blocked
+opinions; the editor does not substitute zero or a composed fallback. Signed, HDR and double-precision
+values retain their declared types and component values without clamping, normalization, colour transforms
+or unit conversion. Changing the default/sample selector or Refresh reads the exact target field.
+
+Quaternion and matrix text input requires the exact number of finite components; float fields
 reject values outside the float range. Commas, whitespace, parentheses and matrix brackets/separators
-are accepted. Quaternions are scalar-first and are never silently normalized. Matrices retain
+are accepted in these text fields. Quaternions are scalar-first and are never silently normalized.
+Matrices retain
 OpenUSD row-vector semantics, with translation in the first three values of the final row; no
 transpose is applied. The form displays the input convention for the selected type.
 

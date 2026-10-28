@@ -63,6 +63,12 @@
               IsChecked="{x:Null}"
               AutomationProperties.Name="New boolean review property value"
               AutomationProperties.AutomationId="edit.propertyBooleanValue" />
+          <StackPanel
+              x:Name="PropertyComponentValues"
+              Spacing="6"
+              IsVisible="False"
+              IsEnabled="False"
+              AutomationProperties.Name="New vector or colour review components" />
           <Button
               x:Name="ChoosePropertyAssetButton"
               Grid.Column="1"

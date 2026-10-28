@@ -98,7 +98,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             {
                 if (_capture is not null || _bindingCapture is not null)
                 {
-                    Control input = _capture is { TypeName: "bool" } ? PropertyBooleanValue : PropertyValue;
+                    Control input = _capture is { TypeName: "bool" } ? PropertyBooleanValue :
+                        _componentInputs.Count != 0 ? _componentInputs[0] : PropertyValue;
                     input.Focus();
                 }
                 else
@@ -239,6 +240,14 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
                 }
                 value = UsdLayerEditValue.FromBoolean(boolean);
             }
+            else if (_componentInputs.Count != 0)
+            {
+                if (!TryReadComponentValue(out value, out string error))
+                {
+                    PropertyEditStatus.Text = error;
+                    return;
+                }
+            }
             else if (!ViewerPropertyEditParser.TryParse(
                 property.TypeName, PropertyValue.Text ?? string.Empty, out value, out string error))
             {
@@ -324,6 +333,7 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertyValue.Text = ViewerPropertyEditParser.Format(opinion.Value);
         PropertyBooleanValue.IsChecked = capture.TypeName == "bool" &&
             opinion.Value.Kind == UsdLayerEditValueKind.Boolean ? opinion.Value.AsBoolean() : null;
+        ShowComponentCapture(capture.TypeName, opinion.Value);
     }
 
     private void UpdateAvailability()
@@ -333,12 +343,16 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertyFieldSelector.IsEnabled = ready;
         PropertyValue.IsEnabled = ready;
         bool boolean = _capture is { TypeName: "bool" };
-        PropertyValue.IsVisible = !boolean;
+        bool components = _capture is not null && _componentInputs.Count != 0;
+        PropertyValue.IsVisible = !boolean && !components;
         PropertyBooleanValue.IsVisible = boolean;
         PropertyBooleanValue.IsEnabled = ready && boolean;
+        PropertyComponentValues.IsVisible = components;
+        PropertyComponentValues.IsEnabled = ready && components;
         RefreshPropertyButton.IsEnabled = ready;
         SetPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null) &&
-            (!boolean || PropertyBooleanValue.IsChecked.HasValue);
+            (!boolean || PropertyBooleanValue.IsChecked.HasValue) &&
+            (!components || TryReadComponentValue(out _, out _));
         ClearPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null);
         BlockPropertyButton.IsEnabled = ready && _capture is not null;
         ChoosePropertyAssetButton.IsVisible = _capture is { TypeName: "asset" };

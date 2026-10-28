@@ -101,6 +101,12 @@ public sealed partial class ViewerPropertyPagingNativeTests
             }
             def Camera "Camera" {}
             def RectLight "Light" (prepend apiSchemas = ["ShapingAPI"]) {}
+            def Scope "Components"
+            {
+                custom float2 review:pair = (1, 2)
+                custom vector3d review:direction = (1, 2, 3)
+                custom color4f review:tint = (1, 1, 1, 1)
+            }
             def Scope "Looks"
             {
                 def Material "Material" {}
@@ -432,6 +438,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 static stage => stage.GetPrim("/Light").GetAttribute("inputs:texture:file").IsAuthored, timeout))
                 .IsFalse();
             await ExerciseBooleanPropertiesAsync(main, session, shaderQuery, timeout);
+            await ExerciseComponentPropertiesAsync(main, session, tree, shaderQuery, propertyGroup, timeout);
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Camera;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });

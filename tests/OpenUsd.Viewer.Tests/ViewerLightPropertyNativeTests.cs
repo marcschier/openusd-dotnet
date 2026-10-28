@@ -362,7 +362,7 @@ public sealed class ViewerLightPropertyNativeTests
             await Assert.That(applied.After.Opinions.Single().TypeName).IsEqualTo(property.TypeName);
             await Assert.That(applied.After.Opinions.Single().Variability).IsEqualTo(property.Variability);
             await Assert.That(applied.After.Opinions.Single().Custom).IsFalse();
-            await Assert.That(await ReadValue()).IsEqualTo(asset ? "textures/Original Map.hdr" : "latlong");
+            await Assert.That(await readValue()).IsEqualTo(asset ? "textures/Original Map.hdr" : "latlong");
             ViewerAuthoredEditResult undone = await editor.UndoAsync();
             await Assert.That(undone.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             await Assert.That(undone.After!.Opinions.Single().PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
@@ -378,53 +378,53 @@ public sealed class ViewerLightPropertyNativeTests
                 [UsdLayerEdit.Set(address, first)], "Stale light texture");
             await Assert.That(conflict.Outcome).IsEqualTo(UsdLayerEditOutcome.Conflict);
             await Assert.That(editor.UndoDepth).IsEqualTo(depth);
-            await Assert.That(await ReadValue()).IsEqualTo(asset ? "textures/Other Map.hdr" : "angular");
+            await Assert.That(await readValue()).IsEqualTo(asset ? "textures/Other Map.hdr" : "angular");
             ViewerPropertyEditCapture current = await editor.CapturePropertyAsync("/Light", name, field, time);
             ViewerAuthoredEditResult cleared = await editor.ApplyAsync(current.Capture,
                 [UsdLayerEdit.Clear(address)], "Clear light texture", gestureId: Guid.NewGuid());
             await Assert.That(cleared.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             await Assert.That(cleared.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
-            await Assert.That(await ReadValue()).IsEqualTo(asset ? "" : "automatic");
+            await Assert.That(await readValue()).IsEqualTo(asset ? "" : "automatic");
             await Assert.That((await editor.UndoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
-            await Assert.That(await ReadValue()).IsEqualTo(asset ? "textures/Other Map.hdr" : "angular");
+            await Assert.That(await readValue()).IsEqualTo(asset ? "textures/Other Map.hdr" : "angular");
             await Assert.That((await editor.RedoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
-            await Assert.That(await ReadValue()).IsEqualTo(asset ? "" : "automatic");
+            await Assert.That(await readValue()).IsEqualTo(asset ? "" : "automatic");
             ViewerPropertyEditCapture unblocked = await editor.CapturePropertyAsync("/Light", name, field, time);
             ViewerAuthoredEditResult blocked = await editor.ApplyAsync(unblocked.Capture,
                 [UsdLayerEdit.Block(address, property.TypeName, property.Variability, property.Custom)],
                 "Block light texture", gestureId: Guid.NewGuid());
             await Assert.That(blocked.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             await Assert.That(blocked.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Block);
-            await AssertSuppressed();
+            await assertSuppressed();
             ViewerAuthoredEditResult undoBlock = await editor.UndoAsync();
             await Assert.That(undoBlock.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             await Assert.That(undoBlock.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
-            await Assert.That(await ReadBlocked()).IsFalse();
-            await Assert.That(await ReadValue()).IsEqualTo(asset ? "" : "automatic");
+            await Assert.That(await readBlocked()).IsFalse();
+            await Assert.That(await readValue()).IsEqualTo(asset ? "" : "automatic");
             ViewerAuthoredEditResult redoBlock = await editor.RedoAsync();
             await Assert.That(redoBlock.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
             await Assert.That(redoBlock.After!.Opinions.Single().Value.Kind).IsEqualTo(UsdLayerEditValueKind.Block);
-            await AssertSuppressed();
+            await assertSuppressed();
             await Assert.That(await File.ReadAllTextAsync(path)).IsEqualTo(original);
 
-            async Task<string> ReadValue() => await scheduler.InvokeAsync(stage =>
+            async Task<string> readValue() => await scheduler.InvokeAsync(stage =>
                 stage.GetPrimPropertySnapshot("/Light", sampled ? time : null).Properties
                     .OfType<UsdAttributePropertySnapshot>().Single(attribute => attribute.Name == name)
                     .Value?.Elements.SingleOrDefault() ?? "");
-            async Task<bool> ReadBlocked() => await scheduler.InvokeAsync(stage =>
+            async Task<bool> readBlocked() => await scheduler.InvokeAsync(stage =>
             {
                 UsdAttribute attribute = stage.GetPrim("/Light").GetAttribute(name);
                 return (sampled ? attribute.GetValueState(time) : attribute.GetValueState()).IsBlocked;
             });
-            async Task AssertSuppressed()
+            async Task assertSuppressed()
             {
                 if (sampled)
                 {
-                    await Assert.That(await ReadValue()).IsEqualTo("");
+                    await Assert.That(await readValue()).IsEqualTo("");
                 }
                 else
                 {
-                    await Assert.That(await ReadBlocked()).IsTrue();
+                    await Assert.That(await readBlocked()).IsTrue();
                 }
             }
         }

@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using OpenUsd.Editing;
 
 namespace OpenUsd.Viewer.Tests;
@@ -47,14 +48,15 @@ public sealed class ViewerDocumentNativeSmokeTests
                         try
                         {
                             property.Show(owner);
-                            await WaitUntilAsync(() => Required<Button>(property, "SetPropertyButton").IsEnabled);
+                            await WaitUntilAsync(() => Required<Button>(property, "ClearPropertyButton").IsEnabled);
                             await Assert.That(property.Owner).IsSameReferenceAs(owner);
                             await Assert.That(property.ActualThemeVariant).IsEqualTo(ThemeVariant.Dark);
-                            await Assert.That(Required<TextBox>(property, "PropertyValue").IsKeyboardFocusWithin)
+                            await Assert.That(ComponentInput(property, "X").IsKeyboardFocusWithin)
                                 .IsTrue();
                             await Assert.That(Required<TextBlock>(property, "PropertyTargetState").Text)
                                 .Contains("Absent");
-                            Required<TextBox>(property, "PropertyValue").Text = "(4, 5, 6)";
+                            await Assert.That(Required<Button>(property, "SetPropertyButton").IsEnabled).IsFalse();
+                            SetTranslationDraft(property, "4", "5", "6");
                             Required<Button>(property, "SetPropertyButton")
                                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                             await WaitUntilAsync(() => editor.CanUndo);
@@ -157,12 +159,12 @@ public sealed class ViewerDocumentNativeSmokeTests
             Required<MenuItem>(main, "EditPropertyMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             await WaitUntilAsync(() => main.OwnedWindows.Any(window => window is PropertyEditWindow));
             var property = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
-            await WaitUntilAsync(() => Required<Button>(property, "SetPropertyButton").IsEnabled ||
+            await WaitUntilAsync(() => Required<Button>(property, "ClearPropertyButton").IsEnabled ||
                 Required<TextBlock>(property, "PropertyEditStatus").Text?.Contains(
                     "unavailable", StringComparison.Ordinal) == true);
-            await Assert.That(Required<Button>(property, "SetPropertyButton").IsEnabled).IsTrue()
+            await Assert.That(Required<Button>(property, "ClearPropertyButton").IsEnabled).IsTrue()
                 .Because(Required<TextBlock>(property, "PropertyEditStatus").Text ?? "No editor status");
-            Required<TextBox>(property, "PropertyValue").Text = "(8, 9, 10)";
+            SetTranslationDraft(property, "8", "9", "10");
             Required<Button>(property, "SetPropertyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => Required<MenuItem>(main, "EditUndoMenuItem").IsEnabled);
             await property.CloseAsync();
@@ -218,7 +220,7 @@ public sealed class ViewerDocumentNativeSmokeTests
             await WaitUntilAsync(() => main.OwnedWindows.Any(window => window is PropertyEditWindow));
             property = main.OwnedWindows.OfType<PropertyEditWindow>().Single();
             await WaitUntilAsync(() => Required<Button>(property, "SetPropertyButton").IsEnabled);
-            Required<TextBox>(property, "PropertyValue").Text = "(12, 13, 14)";
+            SetTranslationDraft(property, "12", "13", "14");
             Required<Button>(property, "SetPropertyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() =>
                 Required<TextBlock>(property, "PropertyEditStatus").Text == "Review edit applied.");
@@ -283,6 +285,17 @@ public sealed class ViewerDocumentNativeSmokeTests
 
     private static T Required<T>(Control control, string name) where T : Control =>
         control.FindControl<T>(name) ?? throw new InvalidOperationException($"Missing control '{name}'.");
+
+    private static TextBox ComponentInput(PropertyEditWindow window, string label) =>
+        window.GetVisualDescendants().OfType<TextBox>()
+            .Single(input => input.Name == $"PropertyComponent{label}");
+
+    private static void SetTranslationDraft(PropertyEditWindow window, string x, string y, string z)
+    {
+        ComponentInput(window, "X").Text = x;
+        ComponentInput(window, "Y").Text = y;
+        ComponentInput(window, "Z").Text = z;
+    }
 
     private static ValueTask<UsdVec3d> ReadTranslationAsync(ViewerStageSession session) =>
         session.Scheduler.InvokeAsync(stage =>
