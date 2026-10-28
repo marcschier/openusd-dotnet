@@ -274,6 +274,12 @@ public static class PhysicsRenderRecording
                     "Physics recordings do not capture the instanceId identity plane; remove the instanceId " +
                     "variable from the product.");
             }
+            if (plan.IncludeElementId)
+            {
+                throw new NotSupportedException(
+                    "Physics recordings do not capture the elementId identity plane; remove the elementId " +
+                    "variable from the product.");
+            }
             if (plan.IncludeNormal)
             {
                 throw new NotSupportedException(

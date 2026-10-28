@@ -43,7 +43,8 @@ public static partial class RenderDiskJob
                     "Simulation publications cannot be accumulated across a camera shutter interval.");
             }
             if (image.DeviceDepth is not null || image.PrimId is not null || image.InstanceId is not null ||
-                image.Normal is not null || includeHdrColor != (image.HdrColor is not null))
+                image.Normal is not null || image.ElementId is not null ||
+                includeHdrColor != (image.HdrColor is not null))
             {
                 throw new NotSupportedException(
                     "The render source did not provide exactly the requested shutter-sample planes.");

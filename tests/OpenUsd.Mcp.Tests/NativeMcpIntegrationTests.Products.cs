@@ -531,6 +531,89 @@ public sealed partial class NativeMcpIntegrationTests
 
     [Test]
     [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredElementIdProductsPublishVisibleAuthoredFaceIndices(bool elementIdOnly)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>",
+                elementIdOnly ? "rel orderedVars = </ElementId>" : "rel orderedVars = [</PrimId>, </ElementId>]",
+                StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
+                "    token sourceType = \"raw\"\n}\n" +
+                "def RenderVar \"ElementId\" {\n    token dataType = \"int\"\n    string sourceName = \"elementId\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(elementIdOnly ? ["elementId"] : ["primId", "elementId"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.HdrColor).IsNull();
+        await Assert.That(frame.PrimId is null).IsEqualTo(elementIdOnly);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(elementIdOnly ? 2 : 4);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.ElementId!.Uri)) ??
+            throw new InvalidOperationException("The completed elementId plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 4);
+        int front = value(raw, 4, 4);
+        await Assert.That(front).IsBetween(0, 5).Because("a cube has six authored faces");
+        await Assert.That(value(raw, 12, 4)).IsEqualTo(front)
+            .Because("both cubes show the same authored face toward the camera");
+        await Assert.That(value(raw, 8, 8)).IsEqualTo(-1).Because("background has no element");
+        await Assert.That(value(raw, 4, 12)).IsEqualTo(-1).Because("the proxy cube is not rendered");
+        if (!elementIdOnly)
+        {
+            ArtifactResourceContent primId = await artifacts.ReadAsync(new Uri(frame.PrimId!.Uri)) ??
+                throw new InvalidOperationException("The completed primId plane is absent.");
+            for (int pixel = 0; pixel < 16 * 16; pixel++)
+            {
+                bool surface = value(primId, pixel % 16, pixel / 16) >= 0;
+                if ((value(raw, pixel % 16, pixel / 16) >= 0) != surface)
+                {
+                    Assert.Fail($"Pixel {pixel} element coverage disagrees with its prim identity coverage.");
+                }
+            }
+        }
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement plane = manifest.RootElement.GetProperty("frames")[0].GetProperty("elementId");
+        await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo("frame-000000.element-id.i32");
+        await Assert.That(plane.GetProperty("convention").GetString()).IsEqualTo("authored-face-index");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        static int value(ArtifactResourceContent content, int x, int y) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                content.Content.Span.Slice((y * 16 + x) * 4, 4));
+    }
+
+    [Test]
+    [NotInParallel]
     public async Task AuthoredNormalProductsPublishWorldSpaceSurfaceNormals()
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")

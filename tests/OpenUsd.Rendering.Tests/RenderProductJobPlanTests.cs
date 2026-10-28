@@ -1271,6 +1271,188 @@ public sealed class RenderProductJobPlanTests
         }
     }
 
+    [Test]
+    public async Task ElementIdVariableIsAdmittedAsItsOwnIntPlane()
+    {
+        var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [Frame(Request(elementIdType: "int"))], RenderSettings.Default);
+        await Assert.That(plan.Outputs.Select(static output => output.Plane).SequenceEqual(
+            [RenderProductPlane.HdrColor, RenderProductPlane.DeviceDepth, RenderProductPlane.ElementId])).IsTrue();
+        await Assert.That(plan.Outputs[2].Variable.DataType).IsEqualTo("int");
+        await Assert.That(plan.IncludeElementId && !plan.IncludePrimId && !plan.IncludeInstanceId).IsTrue();
+        await Assert.That(plan.CreateJob(Path.Combine(Path.GetTempPath(), $"product-{Guid.NewGuid():N}"))
+            .IncludeElementId).IsTrue();
+        var all = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [Frame(Request(primIdType: "int", instanceIdType: "int", normalType: "normal3f", elementIdType: "int"))],
+            RenderSettings.Default);
+        await Assert.That(all.Outputs.Select(static output => output.Plane).SequenceEqual(
+            [RenderProductPlane.HdrColor, RenderProductPlane.DeviceDepth, RenderProductPlane.PrimId,
+                RenderProductPlane.InstanceId, RenderProductPlane.Normal, RenderProductPlane.ElementId])).IsTrue();
+        await Assert.That(all.IncludeElementId && all.IncludePrimId && all.IncludeInstanceId).IsTrue();
+        var colorOnly = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [Frame(Request(colorOnly: true))], RenderSettings.Default);
+        await Assert.That(colorOnly.IncludeElementId).IsFalse();
+        await Assert.That(colorOnly.CreateJob(Path.Combine(Path.GetTempPath(), $"product-{Guid.NewGuid():N}"))
+            .IncludeElementId).IsFalse();
+    }
+
+    [Test]
+    [Arguments("float")]
+    [Arguments("int2")]
+    [Arguments("uint")]
+    public async Task ElementIdVariableRequiresTheIntDataType(string dataType)
+    {
+        RenderProductRequest request = Request(elementIdType: dataType);
+        await Assert.That(() => new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(request)],
+            RenderSettings.Default)).Throws<NotSupportedException>();
+    }
+
+    [Test]
+    public async Task ElementIdRefusesShutterAndLensAccumulation()
+    {
+        RenderProductRequest request = Request(disableOptics: false, colorOnly: true, elementIdType: "int");
+        NotSupportedException? shutter = Assert.Throws<NotSupportedException>(() => _ = new RenderProductJobPlan(
+            new StageIdentity("scene.usda"), [ShutterFrame(request, 1, -0.25, 0.25)], RenderSettings.Default));
+        await Assert.That(shutter!.Message).Contains("Element identity cannot be averaged");
+        NotSupportedException? lens = Assert.Throws<NotSupportedException>(() => _ = new RenderProductJobPlan(
+            new StageIdentity("scene.usda"), [LensFrame(request, PerspectiveOptics(fStop: 2, focusDistance: 10))],
+            RenderSettings.Default));
+        await Assert.That(lens!.Message).Contains("Element identity cannot be averaged");
+    }
+
+    [Test]
+    [Arguments(false, false, 112)]
+    [Arguments(true, false, 128)]
+    [Arguments(true, true, 144)]
+    public async Task ElementIdChargesOnlyItsOwnRasterWhenSharingThePickReadback(
+        bool withPrimId, bool withInstanceId, int minimum)
+    {
+        var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+            [Frame(Request(primIdType: withPrimId ? "int" : null, instanceIdType: withInstanceId ? "int" : null,
+                elementIdType: "int"))], RenderSettings.Default);
+        string output = Path.Combine(Path.GetTempPath(), $"product-quota-{Guid.NewGuid():N}");
+        await Assert.That(() => plan.CreateJob(output, limits: new RenderDiskJobLimits(maximumFrameBytes: minimum - 1)))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(plan.CreateJob(output, limits: new RenderDiskJobLimits(maximumFrameBytes: minimum))
+            .Limits.MaximumFrameBytes).IsEqualTo((long)minimum);
+        await Assert.That(Directory.Exists(output)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ElementIdProductWritesRawIndicesAndManifestEntries(bool exr)
+    {
+        if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        string root = Directory.CreateTempSubdirectory("product-element-id-").FullName;
+        try
+        {
+            RenderProductRequest request = Request(primIdType: "int", elementIdType: "int");
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"), [Frame(request, 1), Frame(request, 2)],
+                RenderSettings.Default);
+            var source = new ProductSource { PrimIdPlane = SamplePrimId(), ElementIdPlane = SampleElementId() };
+            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "output"),
+                exr ? RenderHdrColorFormat.Exr : RenderHdrColorFormat.RawRgba16Float), source);
+            await Assert.That(Directory.GetFiles(result.OutputDirectory).Length).IsEqualTo(13);
+            RenderDiskFrameResult stored = result.Frames[1];
+            await Assert.That(stored.ElementIdFileName).IsEqualTo("frame-000001.element-id.i32");
+            byte[] raw = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, stored.ElementIdFileName!));
+            await Assert.That(Convert.ToHexString(raw)).IsEqualTo("05000000FFFFFFFF0000000002000000");
+            await Assert.That(stored.ElementIdBytes).IsEqualTo(16L);
+            await Assert.That(stored.ElementIdSha256).IsEqualTo(Sha256(raw));
+
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement frame = manifest.RootElement.GetProperty("frames")[1];
+            JsonElement plane = frame.GetProperty("elementId");
+            await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo(stored.ElementIdFileName);
+            await Assert.That(plane.GetProperty("format").GetString()).IsEqualTo("int32-little-endian");
+            await Assert.That(plane.GetProperty("rowOrder").GetString()).IsEqualTo("top-down");
+            await Assert.That(plane.GetProperty("convention").GetString()).IsEqualTo("authored-face-index");
+            await Assert.That(plane.GetProperty("background").GetInt32()).IsEqualTo(-1);
+            await Assert.That(plane.GetProperty("bytes").GetInt64()).IsEqualTo(16L);
+            await Assert.That(plane.GetProperty("sha256").GetString()).IsEqualTo(Sha256(raw));
+            JsonElement binding = frame.GetProperty("productOutputs")[3];
+            await Assert.That(binding.GetProperty("variablePath").GetString()).IsEqualTo("/Render/ElementId");
+            await Assert.That(binding.GetProperty("sourceName").GetString()).IsEqualTo("elementId");
+            await Assert.That(binding.GetProperty("dataType").GetString()).IsEqualTo("int");
+            await Assert.That(binding.GetProperty("file").GetString()).IsEqualTo(stored.ElementIdFileName);
+            await Assert.That(binding.GetProperty("bytes").GetInt64()).IsEqualTo(16L);
+            await Assert.That(binding.GetProperty("convention").GetString()).IsEqualTo("authored-face-index");
+            await Assert.That(binding.GetProperty("background").GetInt32()).IsEqualTo(-1);
+            await Assert.That(result.TotalBytes).IsEqualTo(
+                Directory.GetFiles(result.OutputDirectory).Sum(static file => new FileInfo(file).Length));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ElementIdMustBeProvidedExactlyWhenRequested(bool requested)
+    {
+        string root = Directory.CreateTempSubdirectory("product-element-id-set-").FullName;
+        try
+        {
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+                [Frame(Request(elementIdType: requested ? "int" : null))], RenderSettings.Default);
+            var source = new ProductSource { ElementIdPlane = requested ? null : SampleElementId() };
+            string output = Path.Combine(root, "output");
+            NotSupportedException? failure = Assert.Throws<NotSupportedException>(
+                () => RenderDiskJob.Execute(plan.CreateJob(output), source));
+            await Assert.That(failure!.Message).Contains("element identity");
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ElementIdValidatesIndicesAndDimensions()
+    {
+        await Assert.That(() => new RenderJobElementId(2, 1, BelowBackground)).Throws<ArgumentException>();
+        await Assert.That(() => new RenderJobElementId(2, 2, Dense)).Throws<ArgumentException>();
+        var accepted = new RenderJobElementId(2, 1, new[] { 7, -1 });
+        await Assert.That(accepted.Values.Span[0]).IsEqualTo(7);
+        await Assert.That(new RenderJobElementId(2, 1, new[] { int.MaxValue, -1 }).Values.Span[0])
+            .IsEqualTo(int.MaxValue);
+    }
+
+    [Test]
+    public async Task ShutterAccumulationRefusesAnUnrequestedElementIdPlane()
+    {
+        string root = Directory.CreateTempSubdirectory("product-element-id-shutter-").FullName;
+        try
+        {
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+                [ShutterFrame(Request(disableOptics: false, colorOnly: true), 1, 0, 1)], RenderSettings.Default);
+            var source = new ProductSource
+            {
+                IncludeDepth = false,
+                ElementIdPlane = SampleElementId(),
+                Pixels = static (_, count) => (new byte[count * 4], new byte[count * 8], Rgba8RowOrder.TopDown),
+            };
+            NotSupportedException? failure = Assert.Throws<NotSupportedException>(
+                () => RenderDiskJob.Execute(plan.CreateJob(Path.Combine(root, "out")), source));
+            await Assert.That(failure!.Message).Contains("shutter-sample planes");
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static readonly float[] NotANumberNormal = [0f, float.NaN, 1f];
     private static readonly float[] InfiniteNormal = [float.PositiveInfinity, 0f, 0f];
     private static readonly float[] UpNormal = [0f, 1f, 0f];
@@ -1278,6 +1460,7 @@ public sealed class RenderProductJobPlanTests
     private static RenderJobNormal SampleNormal() =>
         new(2, 2, new[] { 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, -1f, 0f });
     private static RenderJobInstanceId SampleInstanceId() => new(2, 2, new[] { 3, -1, -1, 3 });
+    private static RenderJobElementId SampleElementId() => new(2, 2, new[] { 5, -1, 0, 2 });
 
     private static readonly int[] OutOfRange = [0, 2];
     private static readonly int[] BelowBackground = [-2, 0];
@@ -1343,7 +1526,8 @@ public sealed class RenderProductJobPlanTests
 
     private static RenderProductRequest Request(
         string? failure = null, bool depthFirst = false, bool disableOptics = true, bool colorOnly = false,
-        string? primIdType = null, string? instanceIdType = null, string? normalType = null)
+        string? primIdType = null, string? instanceIdType = null, string? normalType = null,
+        string? elementIdType = null)
     {
         var color = new UsdRenderVariableSpecification("/Render/Color",
             failure == "variable-type" ? "color3f" : "half4",
@@ -1370,6 +1554,12 @@ public sealed class RenderProductJobPlanTests
             indices = [.. indices, variables.Length];
             variables = [.. variables,
                 new UsdRenderVariableSpecification("/Render/Normal", normalType, "normal", "raw", [])];
+        }
+        if (elementIdType is not null)
+        {
+            indices = [.. indices, variables.Length];
+            variables = [.. variables,
+                new UsdRenderVariableSpecification("/Render/ElementId", elementIdType, "elementId", "raw", [])];
         }
         return new RenderProductRequest(new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
@@ -1400,6 +1590,7 @@ public sealed class RenderProductJobPlanTests
         internal RenderJobPrimId? PrimIdPlane { get; init; }
         internal RenderJobInstanceId? InstanceIdPlane { get; init; }
         internal RenderJobNormal? NormalPlane { get; init; }
+        internal RenderJobElementId? ElementIdPlane { get; init; }
         internal int Validations { get; private set; }
         internal int Calls { get; private set; }
         internal RenderProductJobPlan? Admitted { get; private set; }
@@ -1434,6 +1625,7 @@ public sealed class RenderProductJobPlanTests
                     PrimId = PrimIdPlane,
                     InstanceId = InstanceIdPlane,
                     Normal = NormalPlane,
+                    ElementId = ElementIdPlane,
                 };
             }
             return new RenderJobImage(
@@ -1445,6 +1637,7 @@ public sealed class RenderProductJobPlanTests
                 PrimId = PrimIdPlane,
                 InstanceId = InstanceIdPlane,
                 Normal = NormalPlane,
+                ElementId = ElementIdPlane,
             };
         }
     }

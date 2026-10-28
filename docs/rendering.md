@@ -836,7 +836,7 @@ revision before and after each batch. The caller must continue excluding or dete
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
 The profile accepts only raw `half4` / `color`, `float` / `depth`, `int` / `primId`,
-`int` / `instanceId` and `normal3f` / `normal` variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
+`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal` variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
 Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
 resolution of a named purpose already falls back to the allPurpose binding. The unauthored
 fallback `["full", ""]` therefore runs as `full`, and `["preview", ""]` as `preview`. A list
@@ -995,6 +995,17 @@ convention. Requesting either identity plane charges Silk 28 bytes per pixel and
 the job adds 8 bytes per pixel for the first plane and 4 for the second. The refusals match
 `primId`: non-pick devices, motion blur, depth of field and physics recordings. The Viewer and
 MCP product jobs capture it, and MCP `read_sequence_frame` links it as `instanceId`.
+
+A product `elementId` variable (`int`) records the authored face index of the front-most surface
+at each pixel, matching Hydra's `elementId` AOV. The pick pass already writes one token per
+triangle, and token resolution maps the triangle back to its authored face, so `primId`,
+`instanceId` and `elementId` all come from one pass and one readback. Background, points, curves
+and prims whose face identity hdSilk reports as unsupported are `-1`. A refined subdivision mesh
+reports the coarse authored face, as Hydra picking does. The job writes
+`frame-NNNNNN.element-id.i32` as packed top-down little-endian int32 values under the
+`authored-face-index` convention. Each identity plane after the first adds 4 bytes per pixel to
+Silk's charge and the job's frame accounting. The refusals match `instanceId`, and MCP
+`read_sequence_frame` links it as `elementId`.
 
 A product `normal` variable (`normal3f`) records the world-space unit shading normal of the
 front-most surface at each pixel. Silk draws it in a separate pass with its own checked

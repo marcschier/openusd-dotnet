@@ -103,6 +103,40 @@ public sealed class SilkDepthCaptureTests
     }
 
     [Test]
+    [Arguments(false, false, 448)]
+    [Arguments(true, false, 512)]
+    [Arguments(true, true, 576)]
+    public async Task ElementIdChargesItsOwnRasterAndRefusesNonPickDevicesBeforeAllocating(
+        bool withPrimId, bool withInstanceId, int quota)
+    {
+        using var device = new RefusingGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+
+        await Assert.That(() => SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 4, 4, RenderSettings.Default,
+            new SilkDepthCaptureOptions(maximumReadbackBytes: quota - 1)
+            {
+                IncludePrimId = withPrimId,
+                IncludeInstanceId = withInstanceId,
+                IncludeElementId = true,
+            }))
+            .Throws<ArgumentOutOfRangeException>();
+        NotSupportedException? refusal = Assert.Throws<NotSupportedException>(
+            () => SilkFrameCapture.CaptureRetainedWithDepth(
+                renderer, device, 4, 4, RenderSettings.Default,
+                new SilkDepthCaptureOptions(maximumReadbackBytes: quota)
+                {
+                    IncludePrimId = withPrimId,
+                    IncludeInstanceId = withInstanceId,
+                    IncludeElementId = true,
+                }));
+
+        await Assert.That(refusal!.Message).Contains(withPrimId ? "Prim identity" : "Element identity");
+        await Assert.That(refusal.Message).Contains("pick-capable");
+        await Assert.That(device.ResourceRequests).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task NormalChargesTwentyEightBytesPerPixelBeforeAllocating()
     {
         using var device = new RefusingGraphicsDevice();

@@ -340,6 +340,7 @@ public sealed partial class UsdPhysicsTransportTests
     [Test]
     [Arguments("primId", "int", "the primId identity plane")]
     [Arguments("instanceId", "int", "the instanceId identity plane")]
+    [Arguments("elementId", "int", "the elementId identity plane")]
     [Arguments("normal", "normal3f", "do not capture the normal plane")]
     public async Task RecordingRefusesIdentityPlanesWithoutSimulationOrFiles(
         string plane, string dataType, string refusal)

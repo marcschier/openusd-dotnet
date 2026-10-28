@@ -262,7 +262,8 @@ internal sealed partial class PreviewSilkFrameSource
                     {
                         IncludePrimId = plan.IncludePrimId,
                         IncludeInstanceId = plan.IncludeInstanceId,
-                        IncludeNormal = plan.IncludeNormal
+                        IncludeNormal = plan.IncludeNormal,
+                        IncludeElementId = plan.IncludeElementId
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken)
                 : capturer.CaptureWithDepth(session, width, height, state.RenderSettings, productOptions,
@@ -270,7 +271,8 @@ internal sealed partial class PreviewSilkFrameSource
                     {
                         IncludePrimId = plan.IncludePrimId,
                         IncludeInstanceId = plan.IncludeInstanceId,
-                        IncludeNormal = plan.IncludeNormal
+                        IncludeNormal = plan.IncludeNormal,
+                        IncludeElementId = plan.IncludeElementId
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken);
             RequireProductRevision(source, plan);
@@ -388,17 +390,23 @@ internal sealed partial class PreviewSilkFrameSource
             throw new NotSupportedException(
                 "The MCP capture graphics device cannot run the pick pass needed for the instanceId identity plane.");
         }
+        if (plan.IncludeElementId && device is not ISilkPickingGraphicsDevice)
+        {
+            throw new NotSupportedException(
+                "The MCP capture graphics device cannot run the pick pass needed for the elementId identity plane.");
+        }
     }
 
     private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
     {
-        // A primId-, instanceId- or normal-only product uses the color-and-depth path, whose depth plane is not an admitted output.
+        // A primId-, instanceId-, elementId- or normal-only product uses the color-and-depth path, whose depth plane is not an admitted output.
         bool depthOnlyCarrier = !plan.IncludeHdrColor && !plan.IncludeDeviceDepth;
         if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
             (!depthOnlyCarrier && plan.IncludeDeviceDepth != (result.Depth is not null)) ||
             plan.IncludePrimId != (result.PrimId is not null) ||
             plan.IncludeInstanceId != (result.InstanceId is not null) ||
-            plan.IncludeNormal != (result.Normal is not null))
+            plan.IncludeNormal != (result.Normal is not null) ||
+            plan.IncludeElementId != (result.ElementId is not null))
         {
             throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
         }
@@ -419,6 +427,8 @@ internal sealed partial class PreviewSilkFrameSource
                 ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null,
             Normal = result.Normal is { } normal
                 ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null,
+            ElementId = result.ElementId is { } elementId
+                ? new RenderJobElementId(elementId.Width, elementId.Height, elementId.Values) : null,
             Diagnostics = result.Diagnostics
         };
     }

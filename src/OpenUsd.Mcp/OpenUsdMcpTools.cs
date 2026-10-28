@@ -177,7 +177,7 @@ internal static class OpenUsdMcpDescriptions
         "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +
         "registers all uncached planes; failures do not charge a partial frame. " +
         "Arbitrary paths and changed output files are refused; existing cached resources remain immutable. " +
-        "Result bounds: one structured frame descriptor, one text summary and up to seven resource-link blocks: " +
+        "Result bounds: one structured frame descriptor, one text summary and up to eight resource-link blocks: " +
         "PNG, optional top-down little-endian normalized device-depth float32 (clear/far=1), " +
         "and optional raw RGBA binary16 or lossless half EXR before exposure/display, with stored alpha " +
         "and unnamed primaries; hdrColorFormat and resource MIME identify the container. " +
@@ -187,6 +187,8 @@ internal static class OpenUsdMcpDescriptions
         "visible instance index within its innermost instancer (-1 background and non-instanced prims). " +
         "Products with a normal variable add a top-down little-endian float32 x, y, z normal plane holding the " +
         "world-space unit shading normal of the front-most surface ((0,0,0) background). " +
+        "Products with an elementId variable add a top-down little-endian int32 elementId plane holding the " +
+        "authored face index of the front-most surface (-1 background and surfaces without face identity). " +
         "Recorded simulation context includes its optional original host-provided review identity, " +
         "an attestation rather than independent source verification. " +
         "cameraRequest retains the original submitted mode, row-major view/projection and view-space clip planes, " +
@@ -201,10 +203,10 @@ internal static class OpenUsdMcpDescriptions
         "optional settingsPath selects authored settings, and productPath is required unless there is one product. " +
         "Optional width and height override the full raster before cropping; supply both within 1-4096 pixels, " +
         "or omit both to retain authored resolution. " +
-        "The initial profile accepts raw half4 color, float normalized depth, int primId, int instanceId and/or " +
-        "normal3f normal, " +
+        "The initial profile accepts raw half4 color, float normalized depth, int primId, int instanceId, " +
+        "int elementId and/or normal3f normal, " +
         "one material-binding purpose, standard scene purposes and no active motion blur or depth of field. " +
-        "primId and instanceId share one hdSilk pick pass and are refused when the capture device is not " +
+        "primId, instanceId and elementId share one hdSilk pick pass and are refused when the capture device is not " +
             "pick-capable. " +
         "normal runs a separate hdSilk world-space normal pass. " +
         "Authored camera exposure scales the HDR plane and adds its stops to the PNG display exposure. " +

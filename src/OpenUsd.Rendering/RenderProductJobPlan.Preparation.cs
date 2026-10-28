@@ -95,7 +95,7 @@ public sealed partial class RenderProductJobPlan
                     RenderPreparedFrame frame = selection.Request.PrepareExecutionFrame(source, times[index]);
                     ValidateCamera(
                         frame, includeDeviceDepth: false, includePrimId: false, includeInstanceId: false,
-                        includeNormal: false);
+                        includeNormal: false, includeElementId: false);
                     frames[index] = frame;
                 }
                 RequireRevision(source, selection.Revision);

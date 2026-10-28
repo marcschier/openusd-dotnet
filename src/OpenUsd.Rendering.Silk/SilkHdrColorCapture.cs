@@ -80,9 +80,10 @@ public sealed class SilkHdrColorCaptureOptions
     /// The managed pixel-array budget, charged uniformly at 20 bytes per pixel:
     /// 8 for HDR, 4 for RGBA8, 4 for optional depth, and 4 for the managed RGBA8
     /// selection-upload copy. The charge is unchanged when depth or selection is disabled.
-    /// <see cref="IncludePrimId"/> or <see cref="IncludeInstanceId"/> adds 8 bytes per pixel:
-    /// 4 for the shared RGBA8 pick-token readback and 4 for the first int32 output raster.
-    /// Requesting both adds 4 more bytes per pixel for the second int32 output raster.
+    /// <see cref="IncludePrimId"/>, <see cref="IncludeInstanceId"/> or <see cref="IncludeElementId"/>
+    /// adds 8 bytes per pixel: 4 for the shared RGBA8 pick-token readback and 4 for the first
+    /// int32 output raster. Each further requested pick plane adds 4 more bytes per pixel for its
+    /// own int32 output raster.
     /// Setting <see cref="IncludeNormal"/> adds 28 bytes per pixel: 16 for the RGBA32Float
     /// normal readback and 12 for the float32 RGB output.
     /// </param>
@@ -124,6 +125,19 @@ public sealed class SilkHdrColorCaptureOptions
     /// charge, or 4 bytes per pixel when <see cref="IncludePrimId"/> is also set.
     /// </remarks>
     public bool IncludeInstanceId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible authored face index plane is returned in
+    /// <see cref="SilkFrameCaptureResult.ElementId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is derived from the same pick pass and token readback as
+    /// <see cref="IncludePrimId"/> and <see cref="IncludeInstanceId"/>; requesting any
+    /// combination runs one pass. It requires a pick-capable graphics device and adds
+    /// 8 bytes per pixel to the managed readback charge, or 4 bytes per pixel when another
+    /// pick plane is also set.
+    /// </remarks>
+    public bool IncludeElementId { get; init; }
 
     /// <summary>
     /// Gets or initializes whether the world-space normal plane is returned in

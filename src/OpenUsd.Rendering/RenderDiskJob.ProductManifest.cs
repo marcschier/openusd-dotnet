@@ -124,6 +124,8 @@ public static partial class RenderDiskJob
                     result.InstanceIdBytes, result.InstanceIdSha256, InstanceIdConvention),
                 RenderProductPlane.Normal => (result.NormalFileName, NormalFormat,
                     result.NormalBytes, result.NormalSha256, NormalConvention),
+                RenderProductPlane.ElementId => (result.ElementIdFileName, "int32-little-endian",
+                    result.ElementIdBytes, result.ElementIdSha256, ElementIdConvention),
                 _ => throw new InvalidDataException("A product output names an unknown plane.")
             };
             json.WriteStartObject();
@@ -144,7 +146,7 @@ public static partial class RenderDiskJob
                 json.WriteNumber("tableBytes", result.PrimIdTableBytes);
                 json.WriteString("tableSha256", result.PrimIdTableSha256);
             }
-            else if (output.Plane == RenderProductPlane.InstanceId)
+            else if (output.Plane is RenderProductPlane.InstanceId or RenderProductPlane.ElementId)
             {
                 json.WriteNumber("background", -1);
             }

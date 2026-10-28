@@ -1090,6 +1090,62 @@ public sealed class RenderProductServiceTests
     }
 
 
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ProductJobsPublishTheElementIdPlane(bool withEveryPlane)
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times => Plan(backend.Context!.SessionId, backend.StageRevision, times,
+            includePrimId: withEveryPlane, includeInstanceId: withEveryPlane, includeNormal: withEveryPlane,
+            includeElementId: true);
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(Request(session, 1), default);
+        string[] planes = withEveryPlane
+            ? ["deviceDepth", "hdrColor", "primId", "instanceId", "normal", "elementId"]
+            : ["deviceDepth", "hdrColor", "elementId"];
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static item => item.Plane).SequenceEqual(planes))
+            .IsTrue();
+        await Assert.That(job.AuthoredProduct.Outputs[^1].DataType).IsEqualTo("int");
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(withEveryPlane ? 8 : 4);
+        await Assert.That(frame.Normal is not null).IsEqualTo(withEveryPlane);
+        await Assert.That(frame.ElementId!.MimeType).IsEqualTo("application/octet-stream");
+        await Assert.That(frame.ElementId.Uri).Contains(".element-id.i32");
+        ArtifactResourceContent? raw = await artifacts.ReadAsync(new Uri(frame.ElementId.Uri));
+        int[] values = [.. Enumerable.Range(0, 4).Select(index =>
+            BinaryPrimitives.ReadInt32LittleEndian(raw!.Content.Span.Slice(index * 4, 4)))];
+        await Assert.That(values.SequenceEqual([5, -1, 0, -1])).IsTrue();
+        JsonElement json = JsonSerializer.SerializeToElement(frame, JsonOptions);
+        await Assert.That(json.GetProperty("elementId").GetProperty("uri").GetString())
+            .IsEqualTo(frame.ElementId.Uri);
+    }
+
+    [Test]
+    public async Task ElementIdProductsAreRefusedOnlyOnNonPickGraphicsDevices()
+    {
+        RenderProductJobPlan elementId = Plan("session", 1, [0d], includeElementId: true);
+        ISilkGraphicsDevice device = DispatchProxy.Create<ISilkGraphicsDevice, UnusedDeviceProxy>();
+        await Assert.That(elementId.IncludeElementId && !elementId.IncludePrimId && !elementId.IncludeInstanceId)
+            .IsTrue();
+        await Assert.That(() => PreviewSilkFrameSource.RequirePrimIdDevice(elementId, device))
+            .Throws<NotSupportedException>()
+            .WithMessage(
+                "The MCP capture graphics device cannot run the pick pass needed for the elementId identity plane.");
+    }
+
     private static readonly float[] SampleNormals = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, -1, 0];
     [Test]
     public async Task RefusedProductsConsumeNoJobSlotAndProductAndViewportJobsShareTheQuota()
@@ -1179,19 +1235,20 @@ public sealed class RenderProductServiceTests
         string authoredConformPolicy = "expandAperture", Func<double, UsdGeomCameraState>? cameraAtTime = null,
         Func<double, RenderCameraFrameSettings>? cameraSettingsAtTime = null,
         bool disableMotionBlur = true, bool disableDepthOfField = true, bool includePrimId = false,
-        bool includeInstanceId = false, bool includeNormal = false)
+        bool includeInstanceId = false, bool includeNormal = false, bool includeElementId = false)
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
                 2, 2, authoredPixelAspectRatio, authoredConformPolicy, new UsdVec2f(20, 20),
                 dataWindow ?? new UsdVec4f(0, 0, 1, 1),
                 disableMotionBlur, disableDepthOfField,
-                ProductVariableIndices(includePrimId, includeInstanceId, includeNormal), [])],
+                ProductVariableIndices(includePrimId, includeInstanceId, includeNormal, includeElementId), [])],
             [new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []),
                 new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", []),
                 new UsdRenderVariableSpecification("/Render/PrimId", "int", "primId", "raw", []),
                 new UsdRenderVariableSpecification("/Render/InstanceId", "int", "instanceId", "raw", []),
-                new UsdRenderVariableSpecification("/Render/Normal", "normal3f", "normal", "raw", [])],
+                new UsdRenderVariableSpecification("/Render/Normal", "normal3f", "normal", "raw", []),
+                new UsdRenderVariableSpecification("/Render/ElementId", "int", "elementId", "raw", [])],
             ["default", "render"], ["full"], "", []);
         var request = new RenderProductRequest(specification, 0, overrides);
         var optics = new UsdGeomCameraState(
@@ -1203,7 +1260,8 @@ public sealed class RenderProductServiceTests
             RenderSettings.PresentationDefault, revision);
     }
 
-    private static int[] ProductVariableIndices(bool includePrimId, bool includeInstanceId, bool includeNormal)
+    private static int[] ProductVariableIndices(
+        bool includePrimId, bool includeInstanceId, bool includeNormal, bool includeElementId)
     {
         List<int> indices = [1, 0];
         if (includePrimId)
@@ -1217,6 +1275,10 @@ public sealed class RenderProductServiceTests
         if (includeNormal)
         {
             indices.Add(4);
+        }
+        if (includeElementId)
+        {
+            indices.Add(5);
         }
         return [.. indices];
     }
@@ -1284,6 +1346,9 @@ public sealed class RenderProductServiceTests
                     : null,
                 Normal = plan.IncludeNormal
                     ? new RenderJobNormal(width, height, SampleNormals)
+                    : null,
+                ElementId = plan.IncludeElementId
+                    ? new RenderJobElementId(width, height, new[] { 5, -1, 0, -1 })
                     : null,
             };
         }

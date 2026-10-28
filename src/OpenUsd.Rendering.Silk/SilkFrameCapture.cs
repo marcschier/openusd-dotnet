@@ -20,7 +20,8 @@ public sealed class SilkFrameCaptureResult
         SilkHdrColorCaptureResult? hdrColor = null,
         SilkPrimIdCaptureResult? primId = null,
         SilkInstanceIdCaptureResult? instanceId = null,
-        SilkNormalCaptureResult? normal = null)
+        SilkNormalCaptureResult? normal = null,
+        SilkElementIdCaptureResult? elementId = null)
     {
         Width = width;
         Height = height;
@@ -35,6 +36,7 @@ public sealed class SilkFrameCaptureResult
         PrimId = primId;
         InstanceId = instanceId;
         Normal = normal;
+        ElementId = elementId;
     }
 
     /// <summary>Gets the captured width in pixels.</summary>
@@ -76,6 +78,12 @@ public sealed class SilkFrameCaptureResult
     /// </summary>
     public SilkNormalCaptureResult? Normal { get; }
 
+    /// <summary>
+    /// Gets the detached visible authored face index plane when explicitly requested, or
+    /// <c>null</c> otherwise.
+    /// </summary>
+    public SilkElementIdCaptureResult? ElementId { get; }
+
     /// <summary>Gets renderer evidence for the captured frame.</summary>
     public SilkMeshRenderResult RenderResult { get; }
 
@@ -91,7 +99,7 @@ public sealed class SilkFrameCaptureResult
     internal SilkFrameCaptureResult WithCompletion(
         SilkMeshRenderResult rendered, RenderDiagnosticsState diagnostics) =>
         new(Width, Height, _rgba, rendered, PageRevision, CommandCount, diagnostics, Depth, HdrColor, PrimId,
-            InstanceId, Normal);
+            InstanceId, Normal, ElementId);
 }
 
 /// <summary>
@@ -292,7 +300,8 @@ public static partial class SilkFrameCapture
             if (depthRequest?.IncludesPickRaster == true)
             {
                 throw new NotSupportedException(
-                    "Prim and instance identity capture is only supported with the built-in SilkMeshRenderer.");
+                    "Prim, instance and element identity capture is only supported with the " +
+                    "built-in SilkMeshRenderer.");
             }
             if (depthRequest?.IncludeNormal == true)
             {
@@ -546,8 +555,8 @@ public static partial class SilkFrameCapture
             display.ReadbackForTesting(rgba);
         }
         depthRequest?.ThrowIfCancellationRequested();
-        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId) =
-            depthRequest?.ReadbackPickPlanes(renderer) ?? default;
+        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId,
+            SilkElementIdCaptureResult? elementId) = depthRequest?.ReadbackPickPlanes(renderer) ?? default;
         SilkNormalCaptureResult? normal = depthRequest?.ReadbackNormal(renderer);
         return new SilkFrameCaptureResult(
             width,
@@ -563,7 +572,8 @@ public static partial class SilkFrameCapture
             hdrColor,
             primId,
             instanceId,
-            normal);
+            normal,
+            elementId);
     }
 
     private static RenderDiagnosticsState MergeDisplayTransformDiagnostics(
@@ -620,8 +630,8 @@ public static partial class SilkFrameCapture
             }
         }
         depthRequest?.ThrowIfCancellationRequested();
-        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId) =
-            depthRequest?.ReadbackPickPlanes(renderer) ?? default;
+        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId,
+            SilkElementIdCaptureResult? elementId) = depthRequest?.ReadbackPickPlanes(renderer) ?? default;
         SilkNormalCaptureResult? normal = depthRequest?.ReadbackNormal(renderer);
         return new SilkFrameCaptureResult(
             width,
@@ -635,7 +645,8 @@ public static partial class SilkFrameCapture
             hdrColor,
             primId,
             instanceId,
-            normal);
+            normal,
+            elementId);
     }
 
     private static SilkFrameCaptureResult ReadbackFrameOcio(
@@ -670,8 +681,8 @@ public static partial class SilkFrameCapture
             }
         }
         depthRequest?.ThrowIfCancellationRequested();
-        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId) =
-            depthRequest?.ReadbackPickPlanes(renderer) ?? default;
+        (SilkPrimIdCaptureResult? primId, SilkInstanceIdCaptureResult? instanceId,
+            SilkElementIdCaptureResult? elementId) = depthRequest?.ReadbackPickPlanes(renderer) ?? default;
         SilkNormalCaptureResult? normal = depthRequest?.ReadbackNormal(renderer);
         return new SilkFrameCaptureResult(
             width,
@@ -685,7 +696,8 @@ public static partial class SilkFrameCapture
             hdrColor,
             primId,
             instanceId,
-            normal);
+            normal,
+            elementId);
     }
 
     internal static void ValidateOcioSettings(RenderSettings renderSettings)

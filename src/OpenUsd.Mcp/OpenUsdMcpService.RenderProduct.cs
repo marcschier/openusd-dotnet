@@ -135,6 +135,7 @@ internal sealed partial class OpenUsdMcpService
                 RenderProductPlane.PrimId => "primId",
                 RenderProductPlane.InstanceId => "instanceId",
                 RenderProductPlane.Normal => "normal",
+                RenderProductPlane.ElementId => "elementId",
                 _ => throw new InvalidDataException("A product output names an unknown plane.")
             })).ToArray()));
 

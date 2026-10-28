@@ -165,7 +165,8 @@ internal static class ViewerRenderSequenceRunner
                     HdrColor = image.HdrColor,
                     PrimId = image.PrimId,
                     InstanceId = image.InstanceId,
-                    Normal = image.Normal
+                    Normal = image.Normal,
+                    ElementId = image.ElementId
                 };
             }, DispatcherPriority.Normal, cancellationToken).GetAwaiter().GetResult();
             return frame.GetAwaiter().GetResult();

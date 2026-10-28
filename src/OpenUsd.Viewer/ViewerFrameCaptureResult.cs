@@ -42,6 +42,7 @@ internal sealed class ViewerFrameCaptureResult
     internal RenderJobPrimId? PrimId { get; init; }
     internal RenderJobInstanceId? InstanceId { get; init; }
     internal RenderJobNormal? Normal { get; init; }
+    internal RenderJobElementId? ElementId { get; init; }
 
     internal static int GetByteCount(int width, int height)
     {

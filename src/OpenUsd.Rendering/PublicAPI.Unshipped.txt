@@ -1267,3 +1267,16 @@ OpenUsd.Rendering.RenderJobNormal.Values.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.RenderDiskFrameResult.NormalFileName.get -> string?
 OpenUsd.Rendering.RenderDiskFrameResult.NormalBytes.get -> long
 OpenUsd.Rendering.RenderDiskFrameResult.NormalSha256.get -> string?
+OpenUsd.Rendering.RenderProductPlane.ElementId = 5 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludeElementId.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeElementId.get -> bool
+OpenUsd.Rendering.RenderJobImage.ElementId.get -> OpenUsd.Rendering.RenderJobElementId?
+OpenUsd.Rendering.RenderJobImage.ElementId.init -> void
+OpenUsd.Rendering.RenderJobElementId
+OpenUsd.Rendering.RenderJobElementId.RenderJobElementId(int width, int height, System.ReadOnlyMemory<int> values) -> void
+OpenUsd.Rendering.RenderJobElementId.Width.get -> int
+OpenUsd.Rendering.RenderJobElementId.Height.get -> int
+OpenUsd.Rendering.RenderJobElementId.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.RenderDiskFrameResult.ElementIdFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.ElementIdBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.ElementIdSha256.get -> string?

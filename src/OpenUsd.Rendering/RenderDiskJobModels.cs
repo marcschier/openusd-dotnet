@@ -30,8 +30,9 @@ public sealed class RenderDiskJobLimits
     /// <remarks>
     /// Display-only admission charges four bytes per pixel. HDR or device-depth admission conservatively
     /// charges twenty bytes per pixel, including capture staging and selection upload storage. A prim
-    /// identity or instance index plane adds eight bytes per pixel for the shared RGBA8 token readback and
-    /// its int32 output; requesting both adds four more bytes per pixel for the second int32 output. A normal
+    /// identity, instance index or element index plane adds eight bytes per pixel for the shared RGBA8 token
+    /// readback and its int32 output; each further requested one adds four more bytes per pixel for its own
+    /// int32 output. A normal
     /// plane adds twenty-eight bytes per pixel for its RGBA32F readback and float32 x, y, z output.
     /// All encoded planes share this limit separately from raster admission.
     /// Native EXR codec working storage is not covered by either limit.
@@ -59,9 +60,9 @@ public sealed class RenderDiskJobRequest
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
         RenderDiskJobLimits? limits, RenderProductJobPlan productPlan, bool includePrimId, bool includeInstanceId,
-        bool includeNormal)
+        bool includeNormal, bool includeElementId)
         : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits, includePrimId,
-            includeInstanceId, includeNormal)
+            includeInstanceId, includeNormal, includeElementId)
     {
         ProductPlan = productPlan;
     }
@@ -102,14 +103,15 @@ public sealed class RenderDiskJobRequest
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
         RenderDiskJobLimits? limits = null)
         : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits,
-            includePrimId: false, includeInstanceId: false, includeNormal: false)
+            includePrimId: false, includeInstanceId: false, includeNormal: false, includeElementId: false)
     {
     }
 
     private RenderDiskJobRequest(
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
-        RenderDiskJobLimits? limits, bool includePrimId, bool includeInstanceId, bool includeNormal)
+        RenderDiskJobLimits? limits, bool includePrimId, bool includeInstanceId, bool includeNormal,
+        bool includeElementId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         ArgumentNullException.ThrowIfNull(frames);
@@ -144,7 +146,9 @@ public sealed class RenderDiskJobRequest
         IncludePrimId = includePrimId;
         IncludeInstanceId = includeInstanceId;
         IncludeNormal = includeNormal;
+        IncludeElementId = includeElementId;
         HdrColorFormat = hdrColorFormat;
+        int pickPlanes = (includePrimId ? 1 : 0) + (includeInstanceId ? 1 : 0) + (includeElementId ? 1 : 0);
         int count = frames.Count;
         if (count < 1 || count > Limits.MaximumFrames)
         {
@@ -164,13 +168,10 @@ public sealed class RenderDiskJobRequest
             int bytes = PngRgba8Writer.GetPixelByteCount(state.Viewport.Width, state.Viewport.Height);
             long charge = includeDeviceDepth || includeHdrColor
                 ? ((long)bytes / 4) * ExpandedCaptureManagedBytesPerPixel : bytes;
-            if (includePrimId || includeInstanceId)
+            if (pickPlanes != 0)
             {
                 charge += ((long)bytes / 4) * PrimIdCaptureManagedBytesPerPixel;
-            }
-            if (includePrimId && includeInstanceId)
-            {
-                charge += ((long)bytes / 4) * SecondPickPlaneManagedBytesPerPixel;
+                charge += ((long)bytes / 4) * SecondPickPlaneManagedBytesPerPixel * (pickPlanes - 1);
             }
             if (includeNormal)
             {
@@ -232,6 +233,11 @@ public sealed class RenderDiskJobRequest
     /// Gets whether each frame must include the world-space normal plane; only admitted products request it.
     /// </summary>
     public bool IncludeNormal { get; }
+    /// <summary>
+    /// Gets whether each frame must include the visible authored face index plane; only admitted products
+    /// request it.
+    /// </summary>
+    public bool IncludeElementId { get; }
     /// <summary>Gets the HDR container choice; existing overloads retain raw binary16 output.</summary>
     public RenderHdrColorFormat HdrColorFormat { get; }
     /// <summary>
@@ -298,6 +304,8 @@ public sealed class RenderJobImage
     public RenderJobInstanceId? InstanceId { get; init; }
     /// <summary>Gets or initializes the world-space normal plane from the same rendered frame.</summary>
     public RenderJobNormal? Normal { get; init; }
+    /// <summary>Gets or initializes the visible authored face index plane from the same rendered frame.</summary>
+    public RenderJobElementId? ElementId { get; init; }
     /// <summary>Gets or initializes the exact simulation publication represented by all captured planes.</summary>
     public RenderSimulationFrameIdentity? Simulation { get; init; }
 }
@@ -449,8 +457,45 @@ public sealed class RenderJobInstanceId
 }
 
 /// <summary>
-/// Top-down float32 x, y, z world-space unit shading normals of the front-most rendered surface, with
-/// (0, 0, 0) for the background.
+/// Top-down int32 authored face indices of the front-most rendered surface, with minus one for the
+/// background and for surfaces without authored face identity.
+/// </summary>
+/// <remarks>
+/// Each value is the authored mesh face the visible triangle was triangulated from; a refined subdivision
+/// surface reports its coarse authored face, while curves and points report minus one.
+/// </remarks>
+public sealed class RenderJobElementId
+{
+    /// <summary>Validates dimensions and that every value is minus one or a non-negative face index.</summary>
+    public RenderJobElementId(int width, int height, ReadOnlyMemory<int> values)
+    {
+        if (values.Length != PngRgba8Writer.GetPixelByteCount(width, height) / 4)
+        {
+            throw new ArgumentException("Element identity storage does not match its dimensions.", nameof(values));
+        }
+        foreach (int value in values.Span)
+        {
+            if (value < -1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(values), "An element index must be minus one or non-negative.");
+            }
+        }
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width.</summary>
+    public int Width { get; }
+    /// <summary>Gets the height.</summary>
+    public int Height { get; }
+    /// <summary>Gets packed top-down int32 authored face indices, consumed before the next source render.</summary>
+    public ReadOnlyMemory<int> Values { get; }
+}
+
+/// <summary>
+/// Top-down float32 x, y, z world-space unit shading normals of the front-most rendered surface, with/// (0, 0, 0) for the background.
 /// </summary>
 /// <remarks>
 /// A back face reports its normal flipped toward the camera. A surface whose interpolated normal
@@ -584,6 +629,12 @@ public sealed class RenderDiskFrameResult
     public long NormalBytes { get; internal init; }
     /// <summary>Gets the normal file SHA256, or null when no normal was requested.</summary>
     public string? NormalSha256 { get; internal init; }
+    /// <summary>Gets the optional int32-little-endian authored face index filename, relative to the job.</summary>
+    public string? ElementIdFileName { get; internal init; }
+    /// <summary>Gets the element index file length, or zero when no element index was requested.</summary>
+    public long ElementIdBytes { get; internal init; }
+    /// <summary>Gets the element index file SHA256, or null when no element index was requested.</summary>
+    public string? ElementIdSha256 { get; internal init; }
     /// <summary>Gets the exact simulation publication represented by this frame, when recorded.</summary>
     public RenderSimulationFrameIdentity? Simulation { get; }
 }

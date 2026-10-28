@@ -548,6 +548,27 @@ public sealed class ViewerAuthoredRenderProductTests
     }
 
     [Test]
+    public async Task SnapshotAdmitsIntElementIdentityAlongsideEveryPlaneAndRefusesOtherTypes()
+    {
+        UsdRenderSpecification specification = CreateSpecification([
+            Product("/Render/ProductElement", [0, 1, 3, 4, 6, 8]),
+            Product("/Render/ProductElementOnly", [8]),
+            Product("/Render/ProductFloatElement", [0, 9])
+        ]);
+
+        ViewerAuthoredRenderProductSnapshot snapshot =
+            ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, "/Render/ProductElement");
+
+        await Assert.That(snapshot.Products.Count).IsEqualTo(3);
+        await Assert.That(snapshot.Products[0].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:elementId/int");
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:instanceId/int");
+        await Assert.That(snapshot.Products[1].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[2].CanRender).IsFalse();
+        await Assert.That(snapshot.Products[2].UnsupportedReason).Contains("'elementId' / 'float'");
+    }
+
+    [Test]
     public async Task SnapshotRefusesAnOversizedCatalogInsteadOfSilentlyHidingProducts()
     {
         UsdRenderSpecification specification = CreateSpecification(
@@ -989,7 +1010,9 @@ public sealed class ViewerAuthoredRenderProductTests
                 Variable("/Render/Vars/InstanceId", "int", "instanceId"),
                 Variable("/Render/Vars/FloatInstanceId", "float", "instanceId"),
                 Variable("/Render/Vars/Normal", "normal3f", "normal"),
-                Variable("/Render/Vars/Float3Normal", "float3", "normal")
+                Variable("/Render/Vars/Float3Normal", "float3", "normal"),
+                Variable("/Render/Vars/ElementId", "int", "elementId"),
+                Variable("/Render/Vars/FloatElementId", "float", "elementId")
             ],
             ["default", "render"],
             ["full"],

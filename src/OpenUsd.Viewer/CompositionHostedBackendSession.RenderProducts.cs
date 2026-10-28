@@ -34,6 +34,11 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
             return "The active hdSilk graphics device cannot run the pick pass needed for the instanceId " +
                 "identity plane.";
         }
+        if (plan.IncludeElementId && resources.CaptureDevice is not ISilkPickingGraphicsDevice)
+        {
+            return "The active hdSilk graphics device cannot run the pick pass needed for the elementId " +
+                "identity plane.";
+        }
         try
         {
             _ = new SilkSceneIngestionOptions(plan.IncludedPurposes, plan.MaterialBindingPurpose);
@@ -140,7 +145,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     {
                         IncludePrimId = plan.IncludePrimId,
                         IncludeInstanceId = plan.IncludeInstanceId,
-                        IncludeNormal = plan.IncludeNormal
+                        IncludeNormal = plan.IncludeNormal,
+                        IncludeElementId = plan.IncludeElementId
                     },
                     state.Time.TimeCode,
                     state.Camera,
@@ -156,7 +162,8 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                     {
                         IncludePrimId = plan.IncludePrimId,
                         IncludeInstanceId = plan.IncludeInstanceId,
-                        IncludeNormal = plan.IncludeNormal
+                        IncludeNormal = plan.IncludeNormal,
+                        IncludeElementId = plan.IncludeElementId
                     },
                     state.Time.TimeCode,
                     state.Camera,
@@ -180,7 +187,9 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                 InstanceId = capture.InstanceId is { } instanceId
                     ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null,
                 Normal = capture.Normal is { } normal
-                    ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null
+                    ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null,
+                ElementId = capture.ElementId is { } elementId
+                    ? new RenderJobElementId(elementId.Width, elementId.Height, elementId.Values) : null
             });
         }
 

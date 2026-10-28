@@ -2832,3 +2832,12 @@ OpenUsd.Rendering.Silk.SilkNormalCaptureResult.Values.get -> System.ReadOnlyMemo
 OpenUsd.Rendering.Silk.SilkNormalCaptureResult.Width.get -> int
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadNormalFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadNormalVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.IncludeElementId.get -> bool
+OpenUsd.Rendering.Silk.SilkDepthCaptureOptions.IncludeElementId.init -> void
+OpenUsd.Rendering.Silk.SilkElementIdCaptureResult
+OpenUsd.Rendering.Silk.SilkElementIdCaptureResult.Height.get -> int
+OpenUsd.Rendering.Silk.SilkElementIdCaptureResult.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.Silk.SilkElementIdCaptureResult.Width.get -> int
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.ElementId.get -> OpenUsd.Rendering.Silk.SilkElementIdCaptureResult?
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludeElementId.get -> bool
+OpenUsd.Rendering.Silk.SilkHdrColorCaptureOptions.IncludeElementId.init -> void

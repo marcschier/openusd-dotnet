@@ -39,7 +39,17 @@ public enum RenderProductPlane
     /// face reports the normal flipped toward the camera, and a surface whose interpolated normal
     /// degenerates also reports (0, 0, 0). Material normal maps are not applied.
     /// </remarks>
-    Normal
+    Normal,
+    /// <summary>
+    /// Top-down int32 authored face index of the front-most rendered surface, with value minus one for
+    /// the background and for surfaces without authored face identity.
+    /// </summary>
+    /// <remarks>
+    /// The index is the authored mesh face the visible triangle was triangulated from; a refined
+    /// subdivision surface reports its coarse authored face. Curves, points and meshes drawn as points
+    /// report minus one.
+    /// </remarks>
+    ElementId
 }
 
 /// <summary>Maps one unchanged requested variable to its explicitly typed output plane.</summary>
@@ -59,14 +69,14 @@ public sealed class RenderProductOutputBinding
 
 /// <summary>Admits one sampled raster product for the shared bounded split-plane disk-job engine.</summary>
 /// <remarks>
-/// The initial profile supports raw half4 color, float normalized depth, int prim identity, int instance index and normal3f world-space normal, one material-binding
+/// The initial profile supports raw half4 color, float normalized depth, int prim identity, int instance index, int element index and normal3f world-space normal, one material-binding
 /// purpose and standard scene purposes. The authored camera exposure
 /// multiplier scales the HDR color variable and adds its stops to the PNG companion's display
 /// exposure, so both outputs carry the same camera exposure. An open shutter with motion blur enabled
 /// renders eight equal-weight samples at stratified sub-interval centers and stores their mean. An
 /// active depth-of-field aperture on a perspective camera renders sixteen thin-lens samples instead,
 /// with their shutter times decorrelated from the lens positions. Accumulated frames cannot include
-/// device depth, prim identity, instance index or normal, or exceed 4096 x 4096 pixels.
+/// device depth, prim identity, instance index, element index or normal, or exceed 4096 x 4096 pixels.
 /// Unsupported variables/settings remain inspectable through RenderProductRequest but cannot execute here.
 /// A PNG is an explicitly identified display companion, not a replacement for a requested variable.
 /// Adapters must apply the admitted scene filters and all render settings before returning each frame.
@@ -107,6 +117,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         IncludePrimId = Outputs.Any(static output => output.Plane == RenderProductPlane.PrimId);
         IncludeInstanceId = Outputs.Any(static output => output.Plane == RenderProductPlane.InstanceId);
         IncludeNormal = Outputs.Any(static output => output.Plane == RenderProductPlane.Normal);
+        IncludeElementId = Outputs.Any(static output => output.Plane == RenderProductPlane.ElementId);
         SourceStageRevision = sourceStageRevision;
         RenderSettings = renderSettings;
         var samples = new RenderPreparedFrame[count];
@@ -125,7 +136,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 throw new ArgumentException(
                     "All samples must belong to the same immutable product request.", nameof(frames));
             }
-            ValidateCamera(frame, IncludeDeviceDepth, IncludePrimId, IncludeInstanceId, IncludeNormal);
+            ValidateCamera(
+                frame, IncludeDeviceDepth, IncludePrimId, IncludeInstanceId, IncludeNormal, IncludeElementId);
             samples[index] = frame;
             RenderSettings exposed = ProductCameraExposure.ApplyToDisplay(
                 renderSettings, frame.CameraSettings!.LinearExposureScale);
@@ -180,6 +192,8 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     public bool IncludeInstanceId { get; }
     /// <summary>Gets whether the product requires the world-space normal plane.</summary>
     public bool IncludeNormal { get; }
+    /// <summary>Gets whether the product requires the visible authored face index plane.</summary>
+    public bool IncludeElementId { get; }
 
     /// <summary>
     /// Creates a bounded job with caller-authorized output and generated filenames, never product-name authority.
@@ -212,7 +226,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             }
         }
         return new RenderDiskJobRequest(outputDirectory, _states, IncludeDeviceDepth, IncludeHdrColor,
-            hdrColorFormat, limits, this, IncludePrimId, IncludeInstanceId, IncludeNormal)
+            hdrColorFormat, limits, this, IncludePrimId, IncludeInstanceId, IncludeNormal, IncludeElementId)
         {
             FrameEncoded = frameEncoded
         };
@@ -300,11 +314,11 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
 
     private static OwnedReadOnlyList<RenderProductOutputBinding> ResolveOutputs(RenderProductRequest request)
     {
-        if (request.Outputs.Count is < 1 or > 5)
+        if (request.Outputs.Count is < 1 or > 6)
         {
             throw new NotSupportedException(
                 "The current product profile accepts at most one color, one depth, one prim identity, one " +
-                "instance identity and one normal variable.");
+                "instance identity, one element identity and one normal variable.");
         }
         var outputs = new RenderProductOutputBinding[request.Outputs.Count];
         var seen = new HashSet<RenderProductPlane>();
@@ -324,6 +338,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 ("primId", "int") => RenderProductPlane.PrimId,
                 ("instanceId", "int") => RenderProductPlane.InstanceId,
                 ("normal", "normal3f") => RenderProductPlane.Normal,
+                ("elementId", "int") => RenderProductPlane.ElementId,
                 _ => throw new NotSupportedException(
                     $"Variable '{variable.Path}' requests unsupported '{variable.SourceName}' / '{variable.DataType}'.")
             };
@@ -338,7 +353,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
 
     private static void ValidateCamera(
         RenderPreparedFrame frame, bool includeDeviceDepth, bool includePrimId, bool includeInstanceId,
-        bool includeNormal)
+        bool includeNormal, bool includeElementId)
     {
         RenderCameraFrameSettings settings = frame.CameraSettings ??
             throw new NotSupportedException(
@@ -382,6 +397,12 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 throw new NotSupportedException(
                     "Instance identity cannot be averaged across a shutter or lens aperture; disable motion blur " +
                     "and depth of field for a product with an instanceId variable.");
+            }
+            if (includeElementId)
+            {
+                throw new NotSupportedException(
+                    "Element identity cannot be averaged across a shutter or lens aperture; disable motion blur " +
+                    "and depth of field for a product with an elementId variable.");
             }
             if (includeNormal)
             {

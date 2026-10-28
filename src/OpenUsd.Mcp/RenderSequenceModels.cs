@@ -161,6 +161,12 @@ internal sealed record McpSequenceFrameResultDto(
         "background. Present only for authored products with a normal variable.")]
     public McpArtifactDto? Normal { get; init; }
 
+    [Description(
+        "Optional verified elementId plane: packed top-down little-endian int32 authored face indices of the " +
+        "front-most surface; -1 marks background and surfaces without authored face identity. Present only " +
+        "for authored products with an elementId variable.")]
+    public McpArtifactDto? ElementId { get; init; }
+
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
 

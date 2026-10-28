@@ -4461,6 +4461,11 @@ public sealed partial class SilkMeshRenderer :
             throw new NotSupportedException(
                 "Instance identity capture requires a pick-capable graphics device.");
         }
+        if (request.IncludeElementId)
+        {
+            throw new NotSupportedException(
+                "Element identity capture requires a pick-capable graphics device.");
+        }
     }
 
     /// <summary>
@@ -4472,17 +4477,28 @@ public sealed partial class SilkMeshRenderer :
     /// retained viewer pick targets and in-flight pick readbacks are untouched. Each
     /// pixel resolves to a dense per-frame identity index; the instance plane takes the
     /// <see cref="SilkPrimIdentity.InstanceIndex"/> of that identity. An instance-only
-    /// capture rewrites the index raster in place, so it allocates one int32 raster.
+    /// capture rewrites the index raster in place, so it allocates one int32 raster. The
+    /// element plane takes the authored face each token's triangle was triangulated from,
+    /// resolved through the same token, so it adds one int32 raster and no pass.
     /// </remarks>
-    internal (SilkPrimIdCaptureResult? PrimId, SilkInstanceIdCaptureResult? InstanceId) CapturePickPlanes(
+    internal (SilkPrimIdCaptureResult? PrimId, SilkInstanceIdCaptureResult? InstanceId,
+        SilkElementIdCaptureResult? ElementId) CapturePickPlanes(
         int width,
         int height,
         SilkDepthCaptureRequest request)
     {
-        (int[] values, SilkPrimIdentity[] identities) = CapturePrimIdRaster(width, height, request);
+        (int[]? values, SilkPrimIdentity[] identities, int[]? elements) =
+            CapturePrimIdRaster(width, height, request);
+        SilkElementIdCaptureResult? elementId = elements is null
+            ? null
+            : new SilkElementIdCaptureResult(width, height, elements);
+        if (values is null)
+        {
+            return (null, null, elementId);
+        }
         if (!request.IncludeInstanceId)
         {
-            return (new SilkPrimIdCaptureResult(width, height, values, identities), null);
+            return (new SilkPrimIdCaptureResult(width, height, values, identities), null, elementId);
         }
         int[] instances = request.IncludePrimId ? new int[values.Length] : values;
         for (int pixel = 0; pixel < values.Length; pixel++)
@@ -4493,7 +4509,8 @@ public sealed partial class SilkMeshRenderer :
         request.ThrowIfCancellationRequested();
         return (
             request.IncludePrimId ? new SilkPrimIdCaptureResult(width, height, values, identities) : null,
-            new SilkInstanceIdCaptureResult(width, height, instances));
+            new SilkInstanceIdCaptureResult(width, height, instances),
+            elementId);
     }
 
     /// <summary>
@@ -4592,14 +4609,14 @@ public sealed partial class SilkMeshRenderer :
         return new SilkNormalCaptureResult(width, height, values);
     }
 
-    private (int[] Values, SilkPrimIdentity[] Identities) CapturePrimIdRaster(
+    private (int[]? Values, SilkPrimIdentity[] Identities, int[]? Elements) CapturePrimIdRaster(
         int width,
         int height,
         SilkDepthCaptureRequest request)
     {
         ISilkPickingGraphicsDevice pickingDevice = _pickingDevice ??
             throw new NotSupportedException(
-                "Prim and instance identity capture requires a pick-capable graphics device.");
+                "Prim, instance and element identity capture requires a pick-capable graphics device.");
         if (pickingDevice.PickDeviceGeneration != _pickDeviceGeneration)
         {
             throw new InvalidOperationException(
@@ -4643,7 +4660,7 @@ public sealed partial class SilkMeshRenderer :
         return ResolvePrimIdRaster(width, height, tokens, request);
     }
 
-    private (int[] Values, SilkPrimIdentity[] Identities) ResolvePrimIdRaster(
+    private (int[]? Values, SilkPrimIdentity[] Identities, int[]? Elements) ResolvePrimIdRaster(
 
         int width,
         int height,
@@ -4651,11 +4668,12 @@ public sealed partial class SilkMeshRenderer :
         SilkDepthCaptureRequest request)
     {
         int pixelCount = checked(width * height);
-        var values = new int[pixelCount];
+        int[]? values = request.IncludePrimId || request.IncludeInstanceId ? new int[pixelCount] : null;
+        int[]? elements = request.IncludeElementId ? new int[pixelCount] : null;
         var keys = new Dictionary<(string Path, int InstanceIndex), int>();
-        var resolved = new Dictionary<uint, int>();
+        var resolved = new Dictionary<uint, (int Key, int Element)>();
         uint lastToken = 0;
-        int lastKey = -1;
+        (int Key, int Element) last = (-1, -1);
         for (int pixel = 0; pixel < pixelCount; pixel++)
         {
             if ((pixel & 0xFFFF) == 0)
@@ -4666,31 +4684,55 @@ public sealed partial class SilkMeshRenderer :
                 tokens.AsSpan(pixel * SilkPickTokenEncoding.ByteSize, SilkPickTokenEncoding.ByteSize));
             if (token == 0)
             {
-                values[pixel] = -1;
+                if (values is not null)
+                {
+                    values[pixel] = -1;
+                }
+                if (elements is not null)
+                {
+                    elements[pixel] = -1;
+                }
                 continue;
             }
             if (token != lastToken)
             {
-                if (!resolved.TryGetValue(token, out lastKey))
+                if (!resolved.TryGetValue(token, out last))
                 {
                     if (!Scene.PickIdentities.TryResolve(token, out SilkPickIdentity identity))
                     {
                         throw new InvalidDataException(
                             "The prim identity raster contains a token outside the retained pick table.");
                     }
-                    (string, int) key = (
-                        identity.Path,
-                        identity.InstancerPath is null ? -1 : identity.InstanceIndex);
-                    if (!keys.TryGetValue(key, out lastKey))
+                    int keyIndex = -1;
+                    if (values is not null)
                     {
-                        lastKey = keys.Count;
-                        keys.Add(key, lastKey);
+                        (string, int) key = (
+                            identity.Path,
+                            identity.InstancerPath is null ? -1 : identity.InstanceIndex);
+                        if (!keys.TryGetValue(key, out keyIndex))
+                        {
+                            keyIndex = keys.Count;
+                            keys.Add(key, keyIndex);
+                        }
                     }
-                    resolved.Add(token, lastKey);
+                    last = (keyIndex, elements is null ? -1 : AuthoredFaceOf(identity));
+                    resolved.Add(token, last);
                 }
                 lastToken = token;
             }
-            values[pixel] = lastKey;
+            if (values is not null)
+            {
+                values[pixel] = last.Key;
+            }
+            if (elements is not null)
+            {
+                elements[pixel] = last.Element;
+            }
+        }
+        if (values is null)
+        {
+            request.ThrowIfCancellationRequested();
+            return (null, [], elements);
         }
 
         // Keys were numbered in first-seen raster order; renumber them densely in
@@ -4730,8 +4772,20 @@ public sealed partial class SilkMeshRenderer :
             }
         }
         request.ThrowIfCancellationRequested();
-        return (values, identities);
+        return (values, identities, elements);
     }
+
+    /// <summary>
+    /// The authored face a whole-resource pick token names, or -1 when the token names a
+    /// curve or point primitive or its record publishes no authored face identity.
+    /// </summary>
+    private int AuthoredFaceOf(SilkPickIdentity identity) =>
+        identity.SubprimKind == SilkPickSubprimKind.Face &&
+        Scene.PickIdentities.TryGetSubprimSupport(
+            identity.Path, identity.InstanceIndex, out SilkPickSubprimSupport support) &&
+        support.Supports(SilkPickSubprimKind.Face)
+            ? identity.SubprimIndex
+            : -1;
 
     /// <summary>Maps one retained topology to the pick pipeline topology.</summary>
     private static SilkPickPrimitiveTopology PickTopologyOf(
