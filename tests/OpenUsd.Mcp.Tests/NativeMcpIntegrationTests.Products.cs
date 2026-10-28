@@ -353,6 +353,81 @@ public sealed partial class NativeMcpIntegrationTests
         }
     }
 
+    [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredPrimIdProductsPublishResolvableVisiblePrimIdentities(bool primIdOnly)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>",
+                primIdOnly ? "rel orderedVars = </PrimId>" : "rel orderedVars = [</Color>, </PrimId>]",
+                StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(primIdOnly ? ["primId"] : ["hdrColor", "primId"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.DeviceDepth).IsNull();
+        await Assert.That(frame.HdrColor is null).IsEqualTo(primIdOnly);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(primIdOnly ? 3 : 4);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.PrimId!.Uri)) ??
+            throw new InvalidOperationException("The completed primId plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 4);
+        ArtifactResourceContent table = await artifacts.ReadAsync(new Uri(frame.PrimIdTable!.Uri)) ??
+            throw new InvalidOperationException("The completed primId table is absent.");
+        using JsonDocument document = JsonDocument.Parse(table.Content);
+        JsonElement identities = document.RootElement.GetProperty("identities");
+        await Assert.That(document.RootElement.GetProperty("background").GetInt32()).IsEqualTo(-1);
+        await Assert.That(identities.GetArrayLength()).IsEqualTo(2);
+        await Assert.That(path(4, 4)).IsEqualTo("/World/Default");
+        await Assert.That(path(12, 4)).IsEqualTo("/World/Render");
+        await Assert.That(value(4, 12)).IsEqualTo(-1);
+        await Assert.That(value(12, 12)).IsEqualTo(-1);
+        await Assert.That(identities[value(4, 4)].GetProperty("instanceIndex").GetInt32()).IsEqualTo(-1);
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement manifestPrimId = manifest.RootElement.GetProperty("frames")[0].GetProperty("primId");
+        await Assert.That(manifestPrimId.GetProperty("file").GetString()).IsEqualTo("frame-000000.prim-id.i32");
+        await Assert.That(manifestPrimId.GetProperty("tableFile").GetString())
+            .IsEqualTo("frame-000000.prim-id.json");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        int value(int x, int y) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(raw.Content.Span.Slice((y * 16 + x) * 4, 4));
+
+        string? path(int x, int y) => identities[value(x, y)].GetProperty("path").GetString();
+    }
+
     private static async Task AssertHalf(byte[] pixels, int x, int y, string expected) =>
         await Assert.That(Convert.ToHexString(pixels.AsSpan((y * 16 + x) * 8, 8))).IsEqualTo(expected);
 

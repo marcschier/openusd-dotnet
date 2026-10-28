@@ -1,10 +1,13 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using OpenUsd.Geom;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -933,6 +936,64 @@ public sealed class RenderProductServiceTests
     }
 
     [Test]
+    public async Task ProductJobsPublishThePrimIdPlaneAndItsResolvableIdentityTable()
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        backend.PrepareProduct = times =>
+            Plan(backend.Context!.SessionId, backend.StageRevision, times, includePrimId: true);
+        await using var workspace = files.CreateWorkspace(backend);
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var factory = new ProductFactory();
+        using var processor = new PreviewCaptureProcessor(factory, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, Options(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(Request(session, 1), default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static item => item.Plane)
+            .SequenceEqual(["deviceDepth", "hdrColor", "primId"])).IsTrue();
+        await Assert.That(job.AuthoredProduct.Outputs[2].DataType).IsEqualTo("int");
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(5);
+        await Assert.That(frame.PrimId!.MimeType).IsEqualTo("application/octet-stream");
+        await Assert.That(frame.PrimIdTable!.MimeType).IsEqualTo("application/json");
+        ArtifactResourceContent? raw = await artifacts.ReadAsync(new Uri(frame.PrimId.Uri));
+        int[] values = [.. Enumerable.Range(0, 4).Select(index =>
+            BinaryPrimitives.ReadInt32LittleEndian(raw!.Content.Span.Slice(index * 4, 4)))];
+        await Assert.That(values.SequenceEqual([0, -1, 1, 0])).IsTrue();
+        ArtifactResourceContent? table = await artifacts.ReadAsync(new Uri(frame.PrimIdTable.Uri));
+        using JsonDocument document = JsonDocument.Parse(table!.Content);
+        await Assert.That(document.RootElement.GetProperty("background").GetInt32()).IsEqualTo(-1);
+        JsonElement identities = document.RootElement.GetProperty("identities");
+        await Assert.That(identities.GetArrayLength()).IsEqualTo(2);
+        await Assert.That(identities[values[2]].GetProperty("path").GetString()).IsEqualTo("/World/B");
+        await Assert.That(identities[values[2]].GetProperty("instanceIndex").GetInt32()).IsEqualTo(3);
+        await Assert.That(identities[values[0]].GetProperty("path").GetString()).IsEqualTo("/World/A");
+        JsonElement json = JsonSerializer.SerializeToElement(frame, JsonOptions);
+        await Assert.That(json.GetProperty("primId").GetProperty("uri").GetString()).IsEqualTo(frame.PrimId.Uri);
+        await Assert.That(json.GetProperty("primIdTable").GetProperty("uri").GetString())
+            .IsEqualTo(frame.PrimIdTable.Uri);
+    }
+
+    [Test]
+    public async Task PrimIdProductsAreRefusedOnlyOnNonPickGraphicsDevices()
+    {
+        RenderProductJobPlan primId = Plan("session", 1, [0d], includePrimId: true);
+        RenderProductJobPlan plain = Plan("session", 1, [0d]);
+        ISilkGraphicsDevice device = DispatchProxy.Create<ISilkGraphicsDevice, UnusedDeviceProxy>();
+        await Assert.That(primId.IncludePrimId).IsTrue();
+        await Assert.That(() => PreviewSilkFrameSource.RequirePrimIdDevice(primId, device))
+            .Throws<NotSupportedException>()
+            .WithMessage("The MCP capture graphics device cannot run the pick pass needed for the primId identity plane.");
+        PreviewSilkFrameSource.RequirePrimIdDevice(plain, device);
+    }
+
+    [Test]
     public async Task RefusedProductsConsumeNoJobSlotAndProductAndViewportJobsShareTheQuota()
     {
         using var files = new WorkspaceTestFiles();
@@ -1019,15 +1080,16 @@ public sealed class RenderProductServiceTests
         UsdVec4f? dataWindow = null, float authoredPixelAspectRatio = 1,
         string authoredConformPolicy = "expandAperture", Func<double, UsdGeomCameraState>? cameraAtTime = null,
         Func<double, RenderCameraFrameSettings>? cameraSettingsAtTime = null,
-        bool disableMotionBlur = true, bool disableDepthOfField = true)
+        bool disableMotionBlur = true, bool disableDepthOfField = true, bool includePrimId = false)
     {
         var specification = new UsdRenderSpecification("/Render/Settings",
             [new UsdRenderProductSpecification("/Render/Product", "../not-authorized.exr", "raster", "/Camera",
                 2, 2, authoredPixelAspectRatio, authoredConformPolicy, new UsdVec2f(20, 20),
                 dataWindow ?? new UsdVec4f(0, 0, 1, 1),
-                disableMotionBlur, disableDepthOfField, [1, 0], [])],
+                disableMotionBlur, disableDepthOfField, includePrimId ? [1, 0, 2] : [1, 0], [])],
             [new UsdRenderVariableSpecification("/Render/Color", "half4", "color", "raw", []),
-                new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", [])],
+                new UsdRenderVariableSpecification("/Render/Depth", "float", "depth", "raw", []),
+                new UsdRenderVariableSpecification("/Render/PrimId", "int", "primId", "raw", [])],
             ["default", "render"], ["full"], "", []);
         var request = new RenderProductRequest(specification, 0, overrides);
         var optics = new UsdGeomCameraState(
@@ -1042,6 +1104,12 @@ public sealed class RenderProductServiceTests
     private static OpenUsdMcpApplicationOptions Options(WorkspaceTestFiles files) => new(
         files.SourceRoot, files.OutputRoot, files.SourceRoot, files.OutputRoot,
         Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+
+    public class UnusedDeviceProxy : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            throw new NotSupportedException("The refusal test must not touch the graphics device.");
+    }
 
     private sealed class ProductFactory : IPreviewFrameSourceFactory
     {
@@ -1086,7 +1154,11 @@ public sealed class RenderProductServiceTests
             return new RenderJobImage(width, height, new byte[width * height * 4], Rgba8RowOrder.TopDown)
             {
                 HdrColor = new RenderJobHdrColor(width, height, new byte[width * height * 8]),
-                DeviceDepth = new RenderJobDeviceDepth(width, height, new float[width * height])
+                DeviceDepth = new RenderJobDeviceDepth(width, height, new float[width * height]),
+                PrimId = plan.IncludePrimId
+                    ? new RenderJobPrimId(width, height, new[] { 0, -1, 1, 0 },
+                        [new RenderJobPrimIdentity("/World/A", -1), new RenderJobPrimIdentity("/World/B", 3)])
+                    : null
             };
         }
 

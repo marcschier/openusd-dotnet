@@ -163,7 +163,7 @@ internal sealed partial class CompositionHostedBackendSession : IViewerRenderPro
                 ViewerFrameRowOrder.TopDown,
                 capture.Diagnostics)
             {
-                DeviceDepth = capture.Depth is { } depth
+                DeviceDepth = plan.IncludeDeviceDepth && capture.Depth is { } depth
                     ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
                 HdrColor = capture.HdrColor is { } hdr
                     ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,

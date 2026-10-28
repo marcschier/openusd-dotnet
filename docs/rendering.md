@@ -982,8 +982,8 @@ convention. Requesting the plane raises Silk's managed charge from 20 to 28 byte
 the job's frame accounting by 8 bytes per pixel. A table is limited to 65,536 identities and
 4,096-character paths. A device that cannot run the pick pass is refused, not given synthesized
 identity. The plane is refused with motion blur or depth of field, because an identity cannot be
-averaged across samples. The Viewer captures it; MCP product jobs and physics recordings refuse
-it explicitly.
+averaged across samples. The Viewer and MCP product jobs capture it, and MCP `read_sequence_frame`
+links the raw plane and its table as `primId` and `primIdTable`. Physics recordings refuse it.
 
 The additional `includeHdrColor` overload preserves actual pre-display HDR color in generated
 `.hdr.rgba16f` sidecars. `RenderJobHdrColor` borrows tightly packed top-down little-endian RGBA

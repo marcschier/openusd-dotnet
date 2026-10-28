@@ -138,6 +138,17 @@ internal sealed record McpSequenceFrameResultDto(
     [Description("HDR container: 'raw' or 'exr', or null when no HDR plane was captured.")]
     public string? HdrColorFormat { get; init; }
 
+    [Description(
+        "Optional verified primId plane: packed top-down little-endian int32 indices into primIdTable; " +
+        "-1 marks background. Present only for authored products with a primId variable.")]
+    public McpArtifactDto? PrimId { get; init; }
+
+    [Description(
+        "Optional verified JSON identity table for primId: {background:-1, identities:[{index, path, " +
+        "instanceIndex}]}, listing each distinct visible retained Hydra prim path and instance index (-1 when " +
+        "not instanced) exactly once. Present exactly when primId is present.")]
+    public McpArtifactDto? PrimIdTable { get; init; }
+
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
 

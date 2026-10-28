@@ -240,6 +240,7 @@ internal sealed partial class PreviewSilkFrameSource
             {
                 throw new NotSupportedException("The MCP product adapter requires its explicit presentation settings.");
             }
+            RequirePrimIdDevice(plan, device);
             var ingestion = new SilkSceneIngestionOptions(plan.IncludedPurposes, plan.MaterialBindingPurpose);
             RequireProductRevision(source, plan);
             productOptions = ingestion;
@@ -257,10 +258,16 @@ internal sealed partial class PreviewSilkFrameSource
             int height = state.Viewport.Height;
             SilkFrameCaptureResult result = plan.IncludeHdrColor
                 ? capturer.CaptureWithHdrColor(session, width, height, state.RenderSettings, productOptions,
-                    new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes),
+                    new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes)
+                    {
+                        IncludePrimId = plan.IncludePrimId
+                    },
                     state.Time.TimeCode, state.Camera, cancellationToken)
                 : capturer.CaptureWithDepth(session, width, height, state.RenderSettings, productOptions,
-                    new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes),
+                    new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes)
+                    {
+                        IncludePrimId = plan.IncludePrimId
+                    },
                     state.Time.TimeCode, state.Camera, cancellationToken);
             RequireProductRevision(source, plan);
             return ProductImage(result, plan);
@@ -363,10 +370,24 @@ internal sealed partial class PreviewSilkFrameSource
         }
     }
 
+    internal static void RequirePrimIdDevice(RenderProductJobPlan plan, ISilkGraphicsDevice device)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(device);
+        if (plan.IncludePrimId && device is not ISilkPickingGraphicsDevice)
+        {
+            throw new NotSupportedException(
+                "The MCP capture graphics device cannot run the pick pass needed for the primId identity plane.");
+        }
+    }
+
     private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
     {
+        // A primId-only product uses the color-and-depth path, whose depth plane is not an admitted output.
+        bool depthOnlyCarrier = !plan.IncludeHdrColor && !plan.IncludeDeviceDepth;
         if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
-            plan.IncludeDeviceDepth != (result.Depth is not null))
+            (!depthOnlyCarrier && plan.IncludeDeviceDepth != (result.Depth is not null)) ||
+            plan.IncludePrimId != (result.PrimId is not null))
         {
             throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
         }
@@ -380,10 +401,22 @@ internal sealed partial class PreviewSilkFrameSource
         {
             HdrColor = result.HdrColor is { } hdr
                 ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,
-            DeviceDepth = result.Depth is { } depth
+            DeviceDepth = plan.IncludeDeviceDepth && result.Depth is { } depth
                 ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
+            PrimId = result.PrimId is { } primId ? ToJobPrimId(primId) : null,
             Diagnostics = result.Diagnostics
         };
+    }
+
+    private static RenderJobPrimId ToJobPrimId(SilkPrimIdCaptureResult primId)
+    {
+        var identities = new RenderJobPrimIdentity[primId.Identities.Count];
+        for (int index = 0; index < identities.Length; index++)
+        {
+            SilkPrimIdentity identity = primId.Identities[index];
+            identities[index] = new RenderJobPrimIdentity(identity.Path, identity.InstanceIndex);
+        }
+        return new RenderJobPrimId(primId.Width, primId.Height, primId.Values, identities);
     }
 
     public void Dispose()
