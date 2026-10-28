@@ -63,7 +63,7 @@
     },
     {
       "path": ".github/workflows/viewer-distribution.yml",
-      "sha256": "0bcead2a4675ff8c56cd774f8c454b36d54cf89846177f52e7d115d22cf6e82b"
+      "sha256": "ee761ad339787a86f876f226981ee6d4edc7a5d4a66802b5a94883c39c30798e"
     },
     {
       "path": "LICENSE",
