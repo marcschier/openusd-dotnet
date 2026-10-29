@@ -1858,9 +1858,8 @@ public enum SilkTextureWrap : uint
     /// </summary>
     /// <remarks>
     /// The name records the authored intent, not what every stage does with it.
-    /// The fragment sampler maps this mode and <see cref="UseMetadata"/> to a
-    /// transparent-black border. The vertex-stage displacement sampler applies
-    /// the same border behavior. The wire carries no custom border colour, so
+    /// The fragment and vertex-stage displacement samplers use a transparent-black
+    /// border for this mode. The wire carries no custom border colour, so
     /// MaterialX <c>constant</c> uses transparent black; its <c>default</c>
     /// remains the fallback for an unreadable image.
     /// </remarks>
@@ -1882,11 +1881,10 @@ public enum SilkTextureWrap : uint
     /// <remarks>
     /// Distinct from <see cref="Black"/> because it records different authored
     /// intent: <c>black</c> states the addressing, while <c>useMetadata</c>
-    /// defers it to wrap metadata inside the image file. hdSilk reads no image
-    /// wrap metadata, and USD's documented fallback when no metadata is present
-    /// is <c>black</c>, so both resolve to the same addressing in this renderer
-    /// -- but a consumer that reads metadata, or that reports what it resolved,
-    /// must be able to tell them apart.
+    /// defers it to wrap metadata inside the image file. The renderer resolves
+    /// observed per-axis metadata; USD's documented fallback when metadata is
+    /// absent is <c>black</c>. Unavailable or unsupported metadata also falls
+    /// back to the black border and emits a texture-fallback diagnostic.
     /// </remarks>
     UseMetadata = 4
 }

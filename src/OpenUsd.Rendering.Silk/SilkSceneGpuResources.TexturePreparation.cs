@@ -598,7 +598,7 @@ public sealed partial class SilkSceneGpuResources
                         continue;
                     }
                     TextureCacheEntry ordinary = _owner.RequireTexture(material, texture);
-                    _owner.RequireSampler(texture, ordinary.Texture.Format,
+                    _owner.RequireSampler(material, texture, ordinary.Texture.Format, ordinary,
                         ordinary.IsUdim, ordinary.Texture.MipLevelCount);
                     if (!ordinary.Uploaded)
                     {

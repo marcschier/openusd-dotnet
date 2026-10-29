@@ -3104,6 +3104,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private readonly Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? _ownedImageDecoder;
     private readonly Func<string, bool, bool, SilkCpuTextureBudget?, SilkDecodedImage>? _precisionImageDecoder;
     private readonly Func<string, SilkImageDescription> _imageDescriber;
+    private readonly bool _imageDescriberAvailable;
     private readonly Func<string, IReadOnlyList<SilkUdimTile>> _udimResolver;
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
     private ulong _deformationDeviceGeneration;
@@ -3275,7 +3276,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         bool isUdim = false,
         TextureDependency[]? dependencies = null,
         IDisposable? pixelReservation = null,
-        ISilkGraphicsTexture? auxiliaryTexture = null)
+        ISilkGraphicsTexture? auxiliaryTexture = null,
+        bool isFallback = false)
     {
         internal ISilkGraphicsTexture Texture { get; } = texture;
         internal ISilkGraphicsTexture? AuxiliaryTexture { get; } = auxiliaryTexture;
@@ -3286,7 +3288,15 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
         internal bool IsUdim { get; } = isUdim;
 
+        internal bool IsFallback { get; } = isFallback;
+
         internal TextureDependency[]? Dependencies { get; } = dependencies;
+
+        internal SilkImageDescription? ImageDescription { get; set; }
+
+        internal string? ImageDescriptionFailure { get; set; }
+
+        internal bool ImageDescriptionResolved { get; set; }
 
         internal bool Uploaded { get; set; }
 
@@ -3476,6 +3486,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             using SilkDecodedImage decoded = _budgetedImageDecoder(asset, false);
             return new SilkImageDescription(decoded.Width, decoded.Height, decoded.Format);
         });
+        _imageDescriberAvailable = imageDescriber is not null;
         _udimResolver = udimResolver ?? SilkNativeImageDecoder.ResolveUdimTiles;
         _residencyOptions = residencyOptions ?? SilkTextureResidencyOptions.Default;
         _environmentMeanRadiance = new SilkEnvironmentMeanRadianceCache(
@@ -6185,10 +6196,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             0,
             samplerBinding,
             RequireSampler(
+                material,
                 texture,
                 UsesIndexedNormal(material, texture.Parameter) ||
                     UsesCompactRgb(material, texture.Parameter)
                     ? SilkTextureFormat.Rgba32Float : entry.Texture.Format,
+                entry,
                 entry.IsUdim,
                 entry.Texture.MipLevelCount));
         commands.SetTexture(0, textureBinding, entry.Texture);
@@ -6214,7 +6227,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         commands.SetSampler(
             0,
             SilkBindingLayoutDescriptor.VolumeSamplerBinding,
-            RequireSampler(texture, entry.Texture.Format));
+            RequireSampler(material, texture, entry.Texture.Format, entry));
         commands.SetTexture(
             0,
             SilkBindingLayoutDescriptor.VolumeDensityTextureBinding,
@@ -6431,7 +6444,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             _failedTextures,
             isUdim: false,
             dependencies: null,
-            isNormalMap: texture.Parameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal);
+            isNormalMap: texture.Parameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal,
+            isFallback: true);
     }
 
     private TextureCacheEntry CreateTextureEntry(
@@ -6440,7 +6454,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         Dictionary<TextureCacheKey, TextureCacheEntry> cache,
         bool isUdim = false,
         IReadOnlyList<string>? dependencies = null,
-        bool isNormalMap = false)
+        bool isNormalMap = false,
+        bool isFallback = false)
     {
         ISilkGraphicsTexture? gpuTexture = null;
         IDisposable? pixelsReservation = null;
@@ -6501,7 +6516,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 checked((ulong)pixels.Length),
                 isUdim,
                 CaptureDependencies(dependencies),
-                pixelsReservation);
+                pixelsReservation,
+                isFallback: isFallback);
             RegisterEntry(entry);
             cache.Add(key, entry);
             pixelsReservation = null;
@@ -7223,17 +7239,19 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         };
 
     private ISilkGraphicsSampler RequireSampler(
+        SilkMaterialData material,
         SilkMaterialTexture texture,
         SilkTextureFormat format,
+        TextureCacheEntry entry,
         bool isUdim = false,
         uint mipLevelCount = 1)
     {
         SilkSamplerAddressMode addressU = isUdim
             ? SilkSamplerAddressMode.ClampToEdge
-            : GetAddressMode(texture.WrapS);
+            : GetSamplerAddressMode(material, texture.WrapS, texture, entry, horizontal: true);
         SilkSamplerAddressMode addressV = isUdim
             ? SilkSamplerAddressMode.ClampToEdge
-            : GetAddressMode(texture.WrapT);
+            : GetSamplerAddressMode(material, texture.WrapT, texture, entry, horizontal: false);
         SilkSamplerFilter filter = format is SilkTextureFormat.Rgba32Float or SilkTextureFormat.Rg32Float ||
             (format == SilkTextureFormat.R32Float && texture.Parameter != SilkMaterialParameter.VolumeDensity)
             ? SilkSamplerFilter.Nearest
@@ -7268,15 +7286,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     }
 
     /// <summary>
-    /// Maps a wire wrap mode onto a sampler address mode.
+    /// Maps an explicit wire wrap mode onto a sampler address mode.
     /// </summary>
     /// <remarks>
     /// <see cref="SilkTextureWrap.Black"/> uses a transparent-black border.
-    /// <see cref="SilkTextureWrap.UseMetadata"/> also uses that border because this
-    /// fragment path does not read wrap metadata and USD's fallback is
-    /// <c>black</c>. The vertex-stage displacement sampler resolves metadata
-    /// separately and uses the same border when metadata is absent; see
-    /// <c>SilkDisplacementField</c>.
+    /// <see cref="SilkTextureWrap.UseMetadata"/> requires an image entry and is
+    /// resolved by <see cref="GetSamplerAddressMode"/>.
     /// </remarks>
     private static SilkSamplerAddressMode GetAddressMode(SilkTextureWrap wrap) =>
         wrap switch
@@ -7288,6 +7303,105 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 SilkTextureWrap.UseMetadata => SilkSamplerAddressMode.ClampToBorder,
             _ => throw new ArgumentOutOfRangeException(nameof(wrap))
         };
+
+    private SilkSamplerAddressMode GetSamplerAddressMode(
+        SilkMaterialData material,
+        SilkTextureWrap wrap,
+        SilkMaterialTexture texture,
+        TextureCacheEntry entry,
+        bool horizontal)
+    {
+        if (wrap != SilkTextureWrap.UseMetadata)
+        {
+            return GetAddressMode(wrap);
+        }
+        if (entry.IsFallback)
+        {
+            return SilkSamplerAddressMode.ClampToBorder;
+        }
+
+        SilkImageDescription? description = ResolveImageDescription(texture, entry);
+        if (description is not { } image ||
+            !image.Observed.HasFlag(SilkImageObservation.Queried))
+        {
+            string reason = entry.ImageDescriptionFailure ??
+                "the image library did not provide metadata";
+            ReportWrapMetadataFallback(material, texture, horizontal, reason);
+            return SilkSamplerAddressMode.ClampToBorder;
+        }
+
+        SilkImageObservation axisObservation = horizontal
+            ? SilkImageObservation.AddressU
+            : SilkImageObservation.AddressV;
+        if (!image.Observed.HasFlag(axisObservation))
+        {
+            return SilkSamplerAddressMode.ClampToBorder;
+        }
+
+        SilkImageAddressObservation address = horizontal ? image.AddressU : image.AddressV;
+        return address switch
+        {
+            SilkImageAddressObservation.ClampToEdge => SilkSamplerAddressMode.ClampToEdge,
+            SilkImageAddressObservation.Repeat => SilkSamplerAddressMode.Repeat,
+            SilkImageAddressObservation.MirrorRepeat => SilkSamplerAddressMode.MirrorRepeat,
+            SilkImageAddressObservation.ClampToBorder => SilkSamplerAddressMode.ClampToBorder,
+            _ => UnsupportedWrapMetadata(material, texture, horizontal)
+        };
+    }
+
+    private SilkImageDescription? ResolveImageDescription(
+        SilkMaterialTexture texture,
+        TextureCacheEntry entry)
+    {
+        if (entry.ImageDescriptionResolved)
+        {
+            return entry.ImageDescription;
+        }
+
+        if (!_imageDescriberAvailable)
+        {
+            entry.ImageDescriptionResolved = true;
+            return null;
+        }
+
+        try
+        {
+            entry.ImageDescription = _imageDescriber(texture.Asset);
+        }
+        catch (Exception error) when (IsUnreadableImage(error))
+        {
+            entry.ImageDescriptionFailure = error.Message;
+        }
+        entry.ImageDescriptionResolved = true;
+        return entry.ImageDescription;
+    }
+
+    private SilkSamplerAddressMode UnsupportedWrapMetadata(
+        SilkMaterialData material,
+        SilkMaterialTexture texture,
+        bool horizontal)
+    {
+        ReportWrapMetadataFallback(
+            material,
+            texture,
+            horizontal,
+            "the image wrap mode cannot be represented by the sampler");
+        return SilkSamplerAddressMode.ClampToBorder;
+    }
+
+    private void ReportWrapMetadataFallback(
+        SilkMaterialData material,
+        SilkMaterialTexture texture,
+        bool horizontal,
+        string reason)
+    {
+        string axis = horizontal ? "U" : "V";
+        AddDiagnostic(
+            SilkRenderDiagnosticCodes.TextureFallbackUsed,
+            string.Concat(material.Path, "\0", texture.Asset, "\0", texture.Parameter, "\0wrap-", axis),
+            RenderDiagnosticSeverity.Warning,
+            $"Texture '{texture.Asset}' used transparent-black border addressing on {axis}: {reason}.");
+    }
 
     private void ClearTextureCache()
     {

@@ -29,7 +29,7 @@ public static class SilkRenderDiagnosticCodes
     /// <summary>A referenced texture asset could not be decoded.</summary>
     public const string TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED";
 
-    /// <summary>An authored texture fallback value was used.</summary>
+    /// <summary>A material texture value or address fallback was used.</summary>
     public const string TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED";
 
     /// <summary>The material samples default coordinates because the selected mesh primvar is absent.</summary>

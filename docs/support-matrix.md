@@ -562,8 +562,11 @@ analytic native fixtures rather than this unsuitable Storm reference.
 - Other primvar names beyond constant `displayColor`, normals, and `st` texture coordinates are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
   space are gated. `useMetadata` and `black` remain distinct wire values. The fragment sampler maps both
-  to a transparent-black border; vertex displacement samples the same border and resolves
-  `useMetadata` from the image's own per-axis wrap metadata.
+  according to their intent: `black` selects a transparent-black border, while `useMetadata` resolves
+  the image's observed per-axis wrap metadata and uses that border when metadata is absent. If the
+  metadata cannot be read or its mode cannot be represented, fragment sampling uses the black border
+  and reports a texture-fallback diagnostic. Vertex displacement resolves the same per-axis metadata
+  but refuses unavailable or unsupported metadata.
 - Specular, opacity, and occlusion texture slots have no parity scene.
 - `displacement` moves geometry in hdSilk, resolved from the authored `displacement` material terminal
   rather than inferred from a surface input. A constant authored amount, or a per-vertex float sample

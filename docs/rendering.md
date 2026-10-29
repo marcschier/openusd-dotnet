@@ -5105,24 +5105,26 @@ two sides cannot drift apart silently.
   the library's own auto resolution does not call a single-channel image sRGB, while a three- or
   four-channel eight-bit image is linearized as it should be. Deciding from the decoded RGBA format
   alone would have linearized every eight-bit height map the author left at the schema default.
-- `useMetadata` uses the observed per-axis wrap. An axis the library was asked about and reported
-  nothing for is USD's documented "no metadata" case and resolves to `black`.
-- When the image library was **not consulted at all**, neither input can be resolved from anything, and
-  the exact deferred case is refused by name as `MetadataUnavailable` rather than resolved from a
-  default nobody authored. When the file's own metadata names an addressing mode the wire cannot carry
-  -- Hio's mirror-clamp-to-edge is neither of UsdUVTexture's mirroring or clamping modes -- the case is
-  refused as `MetadataUnsupported` rather than rounded to the nearest mode this renderer implements.
+- `useMetadata` uses the observed per-axis wrap for fragment sampling and vertex displacement. An axis
+  the library was asked about and reported nothing for is USD's documented "no metadata" case and
+  resolves to `black`.
+- For vertex displacement, when the image library was **not consulted at all**, the deferred case is
+  refused by name as `MetadataUnavailable`. When the file's own metadata names an addressing mode the
+  wire cannot carry -- Hio's mirror-clamp-to-edge is neither of UsdUVTexture's mirroring or clamping
+  modes -- displacement is refused as `MetadataUnsupported` rather than rounded to the nearest mode.
+  Fragment sampling uses the black border and reports a texture-fallback diagnostic for unavailable
+  or unsupported metadata.
 
-**Border addressing is exact, and the affine lands after it.** `black` and `useMetadata` are a
-transparent-black border in the vertex stage: a texel outside the image contributes zero *sampled*
-value, including its share of a bilinear blend near an edge, which is what a border-addressed sampler
-computes and what a clamp cannot reproduce. The authored `scale` and `bias` are then applied to the
-filtered value, because that is where UsdUVTexture puts them -- the reader samples, then scales and
-biases. A fully bordered sample therefore resolves to the authored bias rather than to zero, and a
-blend that straddles an edge carries the bias exactly once instead of once per texel. The fragment
-sampler uses the same transparent-black border. The wire carries no custom border colour, so MaterialX
-`constant` cannot use its authored `default` as the out-of-range value; `default` remains the fallback
-for an unreadable image. The two
+**Border addressing is exact, and the affine lands after it.** `black` selects a transparent-black
+border in both fragment sampling and vertex displacement. A `useMetadata` axis selects the image's
+observed wrap mode, or the same border when metadata is absent. A texel outside a border-addressed
+image contributes zero *sampled* value, including its share of a bilinear blend near an edge, which is
+what a border-addressed sampler computes and what a clamp cannot reproduce. The authored `scale` and
+`bias` are then applied to the filtered value, because that is where UsdUVTexture puts them -- the
+reader samples, then scales and biases. A fully bordered sample therefore resolves to the authored
+bias rather than to zero, and a blend that straddles an edge carries the bias exactly once instead of
+once per texel. The wire carries no custom border colour, so MaterialX `constant` cannot use its
+authored `default` as the out-of-range value; `default` remains the fallback for an unreadable image. The two
 modes are distinct on the wire: `OPENUSD_SILK_WRAP_USE_METADATA` is published for an authored
 `useMetadata` and for an unauthored `wrap` -- which is the same thing, since `useMetadata` is the
 schema default -- while `OPENUSD_SILK_WRAP_BLACK` is published for an authored `black` and for a token

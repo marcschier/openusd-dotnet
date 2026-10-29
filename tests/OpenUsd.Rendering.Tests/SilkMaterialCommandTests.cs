@@ -1364,6 +1364,183 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    [Arguments((int)SilkImageAddressObservation.ClampToEdge, SilkSamplerAddressMode.ClampToEdge)]
+    [Arguments((int)SilkImageAddressObservation.Repeat, SilkSamplerAddressMode.Repeat)]
+    [Arguments((int)SilkImageAddressObservation.MirrorRepeat, SilkSamplerAddressMode.MirrorRepeat)]
+    [Arguments((int)SilkImageAddressObservation.ClampToBorder, SilkSamplerAddressMode.ClampToBorder)]
+    public async Task UseMetadataUsesObservedImageWrap(
+        int imageWrapValue,
+        SilkSamplerAddressMode expectedAddress)
+    {
+        SilkImageAddressObservation imageWrap = (SilkImageAddressObservation)imageWrapValue;
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/MetadataWrap",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.UseMetadata,
+                    SilkTextureWrap.UseMetadata,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 4,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "metadata-wrap.png",
+                    UvPrimvar: "st"),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        int descriptionCalls = 0;
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]),
+            imageDescriber: _ =>
+            {
+                descriptionCalls++;
+                return new SilkImageDescription(
+                    1,
+                    1,
+                    SilkTextureFormat.Rgba8Unorm,
+                    Observed: SilkImageObservation.Queried |
+                        SilkImageObservation.AddressU |
+                        SilkImageObservation.AddressV,
+                    AddressU: imageWrap,
+                    AddressV: imageWrap);
+            });
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(expectedAddress);
+        await Assert.That(sampler.AddressV).IsEqualTo(expectedAddress);
+        await Assert.That(descriptionCalls).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task UseMetadataResolvesEachAxisIndependently()
+    {
+        SilkMaterialData material = CreateUseMetadataMaterial();
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]),
+            imageDescriber: _ => new SilkImageDescription(
+                1,
+                1,
+                SilkTextureFormat.Rgba8Unorm,
+                Observed: SilkImageObservation.Queried |
+                    SilkImageObservation.AddressU |
+                    SilkImageObservation.AddressV,
+                AddressU: SilkImageAddressObservation.Repeat,
+                AddressV: SilkImageAddressObservation.ClampToEdge));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(SilkSamplerAddressMode.Repeat);
+        await Assert.That(sampler.AddressV).IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+    }
+
+    [Test]
+    public async Task UseMetadataWithoutImageWrapMetadataUsesBlackBorder()
+    {
+        SilkMaterialData material = CreateUseMetadataMaterial();
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]),
+            imageDescriber: _ => new SilkImageDescription(
+                1,
+                1,
+                SilkTextureFormat.Rgba8Unorm,
+                Observed: SilkImageObservation.Queried));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(sampler.AddressV).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(resources.Diagnostics.Entries
+            .Any(entry => entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed)).IsFalse();
+    }
+
+    [Test]
+    public async Task UseMetadataWithoutImageDescriberUsesBlackBorderAndReportsFallback()
+    {
+        SilkMaterialData material = CreateUseMetadataMaterial();
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(sampler.AddressV).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed &&
+            entry.Message.Contains("image library did not provide metadata", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    public async Task UseMetadataWhenImageDescriptionFailsUsesBlackBorderAndReportsFallback()
+    {
+        SilkMaterialData material = CreateUseMetadataMaterial();
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]),
+            imageDescriber: _ => throw new InvalidDataException("Image metadata is unreadable."));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(sampler.AddressV).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed &&
+            entry.Message.Contains("Image metadata is unreadable.", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    public async Task UseMetadataUnsupportedAxisFallsBackWithoutChangingOtherAxis()
+    {
+        SilkMaterialData material = CreateUseMetadataMaterial();
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]),
+            imageDescriber: _ => new SilkImageDescription(
+                1,
+                1,
+                SilkTextureFormat.Rgba8Unorm,
+                Observed: SilkImageObservation.Queried |
+                    SilkImageObservation.AddressU |
+                    SilkImageObservation.AddressV,
+                AddressU: SilkImageAddressObservation.MirrorClampToEdge,
+                AddressV: SilkImageAddressObservation.Repeat));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(sampler.AddressV).IsEqualTo(SilkSamplerAddressMode.Repeat);
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed &&
+            entry.Message.Contains("addressing on U", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
     public async Task ChangedLocalTextureIsDecodedAndUploadedAgain()
     {
         string asset = Path.GetTempFileName();
@@ -3517,6 +3694,26 @@ public sealed class SilkMaterialCommandTests
         _ = commands.MoveNext();
         return SilkMaterialData.CopyFrom(commands.Current.AsMaterialUpsert());
     }
+
+    private static SilkMaterialData CreateUseMetadataMaterial() =>
+        CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/MetadataWrap",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.UseMetadata,
+                    SilkTextureWrap.UseMetadata,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 4,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "metadata-wrap.png",
+                    UvPrimvar: "st"),
+            ]));
 
     private sealed record TextureSpec(
         SilkMaterialParameter Parameter,
