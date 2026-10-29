@@ -470,6 +470,11 @@ public sealed class SilkShadowWireTests
         {
             payload.AddRange(BitConverter.GetBytes(element));
         }
+        payload.AddRange(BitConverter.GetBytes(0u));
+        foreach (float element in (float[])[1, 0, 0, 1, 0, 0])
+        {
+            payload.AddRange(BitConverter.GetBytes(element));
+        }
 
         var bytes = new byte[8 + payload.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);

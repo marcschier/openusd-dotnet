@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 29u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 30u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 6u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 
@@ -596,6 +596,8 @@ extern "C" {
 ///        *    4 uint32   generated_fragment_msl_source_byte_count
 ///        *    * uint8    generated_fragment_msl_source_bytes
 ///        *   24 float    uv_transform[6]
+///        *    4 uint32   alternate_uv_parameter_mask (ABI v30)
+///        *   24 float    alternate_uv_transform[6] (ABI v30)
 ///
 /// Each scalar entry is:
 ///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)
@@ -650,19 +652,30 @@ extern "C" {
 /// UsdPreviewSurface UsdTransform2d nodes whose inputs are all constant, in
 /// which case that chain is folded exactly and composed into one affine,
 /// including place2d's SRT and TRS operation orders and UsdTransform2d's
-/// opposite, counter-clockwise rotation sense. hdSilk carries one transform per
-/// material because the renderer samples every texture of a material from one
-/// coordinate stream, and it reconciles both halves of that stream: a texture
-/// asking for a different transform, or naming a different uv_primvar, than the
-/// material's first texture is dropped with a diagnostic rather than sampled
-/// with coordinates it did not author. Every uv_primvar surviving in one
-/// MATERIAL_UPSERT is therefore either equal to the material's stream or empty,
-/// which is what lets a consumer take the stream from the first entry that names
-/// one. A chain with a non-constant input, a
+/// opposite, counter-clockwise rotation sense. It is the transform of the
+/// material's first surface texture. Since ABI v30 a material may carry a second
+/// one; see alternate_uv_transform below. hdSilk reconciles both halves of the
+/// coordinate stream: a texture asking for a third transform, or naming a third
+/// uv_primvar, is dropped with a diagnostic rather than sampled with coordinates
+/// it did not author. Every uv_primvar surviving in one MATERIAL_UPSERT is
+/// therefore one of at most two names or empty, which is what lets a consumer
+/// take the streams from the first entries that name them. A chain with a
+/// non-constant input, a
 /// chain passing through any other node, and a chain that never reaches a
 /// coordinate node are likewise rejected with a diagnostic and leave the input
 /// at the documented default, because folding part of an authored chain would
 /// render coordinates the graph never produced.
+///
+/// ABI v30 appends alternate_uv_parameter_mask and alternate_uv_transform, so one
+/// material can sample its images through two different folded transforms. The
+/// mask has bit (1u << parameter) set for every surface parameter whose texture
+/// entries read the alternate transform; every other surface entry reads
+/// uv_transform. The alternate transform is the first surface transform, in the
+/// fixed input order, that differs from uv_transform. When no entry differs, the
+/// mask is zero and the transform is the identity. Both entries of a composited
+/// parameter read one transform, and a mask bit always names a surface texture
+/// the record carries; displacement is never masked, because the CPU samples it
+/// through uv_transform.
 ///
 /// Like the vertex attribute table, both tables are keyed by an explicit
 /// parameter id, so supporting a further UsdPreviewSurface input needs a new

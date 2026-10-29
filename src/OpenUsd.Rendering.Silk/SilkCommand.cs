@@ -2081,10 +2081,16 @@ public readonly ref struct SilkMaterialUpsertCommand
     private const int FixedSize = 32;
 
     /// <summary>
-    /// Bytes of the trailing row-major affine (m00, m01, m10, m11, tx, ty) every
+    /// Bytes of the trailing row-major affine (m00, m01, m10, m11, tx, ty) a
     /// texture of this material samples its coordinates through.
     /// </summary>
     private const int UvTransformByteCount = 6 * sizeof(float);
+
+    /// <summary>
+    /// Bytes of the ABI v30 tail: the alternate parameter mask and the
+    /// alternate row-major affine.
+    /// </summary>
+    private const int AlternateUvByteCount = sizeof(uint) + UvTransformByteCount;
 
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
@@ -2179,6 +2185,12 @@ public readonly ref struct SilkMaterialUpsertCommand
         }
         _uvTransformOffset = offset;
         offset += UvTransformByteCount;
+        if (offset + AlternateUvByteCount > bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The material upsert alternate UV transform is truncated.");
+        }
+        offset += AlternateUvByteCount;
         if (offset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -2205,9 +2217,10 @@ public readonly ref struct SilkMaterialUpsertCommand
     public string Path => _path;
 
     /// <summary>
-    /// Gets one element of the constant texture-coordinate transform every
-    /// texture of this material samples through, in the row-major order
-    /// (m00, m01, m10, m11, tx, ty).
+    /// Gets one element of the material's primary constant texture-coordinate
+    /// transform, in the row-major order (m00, m01, m10, m11, tx, ty). Every
+    /// texture whose parameter is absent from
+    /// <see cref="AlternateUvParameterMask"/> samples through it.
     /// </summary>
     /// <remarks>
     /// The identity (1, 0, 0, 1, 0, 0) unless the graph routed texture
@@ -2222,6 +2235,35 @@ public readonly ref struct SilkMaterialUpsertCommand
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 6);
         return BinaryPrimitives.ReadSingleLittleEndian(
             _bytes.Slice(_uvTransformOffset + (index * sizeof(float)), sizeof(float)));
+    }
+
+    /// <summary>
+    /// Gets the surface parameters whose textures sample through the alternate
+    /// UV transform, as bit <c>1 &lt;&lt; parameter</c>.
+    /// </summary>
+    /// <remarks>
+    /// Zero when every texture of the material reads the primary transform.
+    /// hdSilk sets a bit only for a published surface texture, never for
+    /// displacement, and both entries of a composited parameter read one
+    /// transform.
+    /// </remarks>
+    public uint AlternateUvParameterMask => BinaryPrimitives.ReadUInt32LittleEndian(
+        _bytes.Slice(_uvTransformOffset + UvTransformByteCount, sizeof(uint)));
+
+    /// <summary>
+    /// Gets one element of the material's alternate constant texture-coordinate
+    /// transform, in the same row-major order as <see cref="GetUvTransform"/>.
+    /// </summary>
+    /// <remarks>
+    /// The identity when <see cref="AlternateUvParameterMask"/> is zero.
+    /// </remarks>
+    public float GetAlternateUvTransform(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 6);
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(
+            _uvTransformOffset + UvTransformByteCount + sizeof(uint) + (index * sizeof(float)),
+            sizeof(float)));
     }
 
     /// <summary>Gets generated MaterialX fragment SPIR-V bytes, if this material carries any.</summary>

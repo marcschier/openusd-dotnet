@@ -2273,11 +2273,30 @@ void AppendMaterialUpsert(
 
     for (size_t index = 0; index < 6; ++index)
     {
-        if (!std::isfinite(record.uvTransform[index]))
+        if (!std::isfinite(record.uvTransform[index]) ||
+            !std::isfinite(record.alternateUvTransform[index]))
         {
             throw std::invalid_argument(
                 "An hdSilk material UV transform must be finite.");
         }
+    }
+    // Every masked parameter must be a surface texture this record publishes:
+    // a bit naming nothing, naming displacement (sampled on the CPU through the
+    // primary transform), or naming the detail normal (which has its own rows)
+    // would be a transform no consumer reads.
+    uint32_t publishedSurfaceTextures = 0;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.parameter < 32 && texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT &&
+            texture.parameter != OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            publishedSurfaceTextures |= 1u << texture.parameter;
+        }
+    }
+    if ((record.alternateUvParameterMask & ~publishedSurfaceTextures) != 0)
+    {
+        throw std::invalid_argument(
+            "An hdSilk material alternate UV transform names a parameter with no surface texture.");
     }
 
     const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
@@ -2350,6 +2369,11 @@ void AppendMaterialUpsert(
     for (size_t index = 0; index < 6; ++index)
     {
         AppendF32(payload, record.uvTransform[index]);
+    }
+    AppendU32(payload, record.alternateUvParameterMask);
+    for (size_t index = 0; index < 6; ++index)
+    {
+        AppendF32(payload, record.alternateUvTransform[index]);
     }
 
     payload.Complete();

@@ -82,14 +82,14 @@ internal static class SilkShadowConformance
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. CreateShadowLightFrame(), .. CreateReceiver(), .. CreateCaster(0), .. CreateShadow()], 4);
         _ = renderer.ApplyAndRender(first, color, depth);
         byte[] before = ReadPixels(color);
         ulong rendered = renderer.ShadowMapRenderCount;
         ulong reserved = budget.Usage.ReservedBytes;
         byte[] command = remove ? CreateShadow(0) : CreateCaster(0.6);
-        using var changed = new OpenUsdSilkPage(29, 2, command, 1);
+        using var changed = new OpenUsdSilkPage(30, 2, command, 1);
         device.RefuseSubmissionAfter = 2;
         await Assert.That(() => renderer.ApplyAndRender(changed, color, depth))
             .Throws<SilkGpuStagingBudgetExceededException>();
@@ -126,13 +126,13 @@ internal static class SilkShadowConformance
             BinaryPrimitives.WriteUInt32LittleEndian(shadows.AsSpan(12), 2);
             BinaryPrimitives.WriteUInt32LittleEndian(shadows.AsSpan(312), 1);
         }
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. frame, .. CreateReceiver(), .. CreateCaster(0), .. shadows], 4);
         renderer.ApplyPage(first);
         ulong revision = 1;
         if (stage == "reused")
         {
-            using var warm = new OpenUsdSilkPage(29, ++revision, CreateCaster(0.2), 1);
+            using var warm = new OpenUsdSilkPage(30, ++revision, CreateCaster(0.2), 1);
             renderer.ApplyPage(warm);
         }
         _ = renderer.Render(color, depth);
@@ -141,7 +141,7 @@ internal static class SilkShadowConformance
         SilkMeshGpuResource[] meshes = [.. renderer.GpuResources.MeshValues];
         ulong reserved = budget.Usage.ReservedBytes;
         ulong rendered = renderer.ShadowMapRenderCount;
-        using var changed = new OpenUsdSilkPage(29, revision + 1, CreateCaster(0.6), 1);
+        using var changed = new OpenUsdSilkPage(30, revision + 1, CreateCaster(0.6), 1);
         bool pipelineFailure = stage == "pipeline";
         device.RefuseSubmissionAfter = pipelineFailure ? null : stage == "second-light" ? 1 : 0;
         device.RefuseGraphicsPipeline = pipelineFailure;
@@ -895,6 +895,13 @@ internal static class SilkShadowConformance
             // The generated MaterialX SPIR-V and MSL payloads are both empty, and
             // the folded texture-coordinate transform is the identity affine.
             .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0u),
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),

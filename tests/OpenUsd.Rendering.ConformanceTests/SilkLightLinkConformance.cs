@@ -438,8 +438,8 @@ internal static class SilkLightLinkConformance
 
             buffers[receiver] = renderer.GpuResources.RequireSurfaceBuffer(
                 renderer.Scene, mesh, RenderHeadlight.Deterministic);
-            await Assert.That(buffers[receiver].Size).IsEqualTo((nuint)272).Because(evidence);
-            var bytes = new byte[272];
+            await Assert.That(buffers[receiver].Size).IsEqualTo((nuint)304).Because(evidence);
+            var bytes = new byte[304];
             buffers[receiver].ReadbackForTesting(bytes);
             await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208, 16)))
                 .IsEqualTo(expected[receiver].LightMask).Because(evidence);

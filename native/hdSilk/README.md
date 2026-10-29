@@ -90,7 +90,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 6 and page ABI 29. Managed creation requires the matching session/page
+session ABI 6 and page ABI 30. Managed creation requires the matching session/page
 version exports; older session-5 libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -136,6 +136,12 @@ Page ABI 29 adds texture wrap value 5 for MaterialX `constant` addressing, which
 page 28 published as black. Table layouts are unchanged; the managed cache pads
 the image with a ring of the authored `default`, and the surface block's
 reserved lanes after the dome mask carry the per-axis constant-border masks.
+Page ABI 30 appends a second UV transform to `MATERIAL_UPSERT`: a `u32` mask of
+the parameters that sample through it, then six floats in the `uv_transform`
+layout. A transformed base colour beside an untransformed normal map therefore
+keeps both images; a third distinct transform is still dropped with a `TF_WARN`.
+The serializer skips a material whose mask names displacement, the detail normal,
+or a parameter with no surface texture. The surface block grows to 304 bytes.
 
 Requested filters commit only when a page is successfully returned. Failure
 during engine reconstruction leaves the stage and owned scene state available

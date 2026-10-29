@@ -152,7 +152,7 @@ wire bytes. This avoids redundant allocation without changing identity or topolo
 Page ABI 27 also carries regular detail-normal maps independently of the primary
 normal and emission composite. `DetailUvRow0`/`DetailUvRow1` transform the existing
 coordinate stream for the detail sample; its tangent orientation is applied before
-per-fragment RNM. The checked surface block is 272 bytes. Normal-only bindings reuse
+per-fragment RNM. The checked surface block was 272 bytes at that ABI; page ABI 30 grows it to 304 bytes. Normal-only bindings reuse
 registers absent from those permutations, without adding a sampled-volume collision.
 
 Version 1 is restricted to Low-complexity, SmoothShaded mesh Rprims without Skel/external
@@ -1311,7 +1311,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v6; the hdSilk page ABI is v29. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v6; the hdSilk page ABI is v30. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -3572,22 +3572,32 @@ a partial answer:
 The refusal is reported once, against the real cause. When the coordinate chain is what failed, hdSilk does not also
 report the image node as an unsupported input, because the image is understood and naming it would misdirect the reader.
 
-The renderer builds at most two texture-coordinate streams per material and applies one UV transform to both. hdSilk
-therefore reconciles the transform and the primvars across every surface texture the material publishes. The first
-texture in the fixed input order states the transform, which `uv_transform` carries. The consumer derives the
-*primary* primvar from the first entry that names one and the *secondary* primvar from the first entry naming a
-different one; each texture then samples whichever of the two streams its entry names. A base colour on `uvSet0`
-beside a normal map on `uvSet1` is therefore supported, and neither texture is dropped.
+The renderer builds at most two texture-coordinate streams and carries at most two UV transforms per material. hdSilk
+therefore reconciles the transforms and the primvars across every surface texture the material publishes. The first
+texture in the fixed input order states the *primary* transform, which `uv_transform` carries. The first texture whose
+transform differs from it states the *alternate* transform, which page ABI 30 carries as `alternate_uv_transform`;
+`alternate_uv_parameter_mask` names the parameters that sample through it. The consumer derives the *primary* primvar
+from the first entry that names one and the *secondary* primvar from the first entry naming a different one; each
+texture then samples whichever of the two streams its entry names, through whichever of the two transforms its
+parameter selects. A transformed base colour beside an untransformed normal map, and a base colour on `uvSet0` beside
+a normal map on `uvSet1`, are therefore both supported, and neither texture is dropped.
 
 Three shapes remain outside the projection and are rejected with a `TF_WARN` naming the material, the parameter, and
 the cause, instead of being sampled through coordinates they never authored:
 
-- A texture asking for a different transform. A transformed base colour beside an untransformed normal map is the
-  ordinary case, and the later texture is left at its default.
+- A texture asking for a third transform. Transforms are claimed in the fixed input order, so a transformed base
+  colour, a roughness image behind a second `place2d`, and an untransformed normal map keep the base colour and the
+  roughness and leave the normal map at its default.
 - A texture asking for a third primvar. Streams are claimed in the fixed input order, so the texture that comes later
   in that order is the one left at its default, not the one whose primvar name sorts later.
-- A composite whose two operands read different streams. One input samples one stream, so the whole parameter is
-  dropped.
+- A composite whose two operands read different streams or different transforms. One input samples one stream
+  through one transform, so the whole parameter is dropped.
+
+Displacement and the detail normal never take the alternate transform. Displacement is sampled per vertex through its
+own folded affine, and the detail normal through `DetailUvRow0`/`DetailUvRow1`. A mask bit naming either of them, or
+a parameter with no published surface texture, would make the shader read a transform nothing asked for. The native
+serializer therefore skips such a material with a `TF_WARN` and counts it as rejected, and the managed parser refuses
+the same mask with `InvalidDataException`.
 
 The second stream travels in the vertex payload rather than in the material wire, so it does not change the page
 ABI. A mesh with a secondary set uses a 40-byte vertex (56 bytes with tangents), with the secondary coordinates in the
@@ -4669,6 +4679,15 @@ floats and rejects a `MATERIAL_UPSERT` that ends without them, so a stale native
 for a material with no transform. `SilkSurfaceUniformWriter` packs it into the surface block as
 `(m00, m01, tx, 0)` and `(m10, m11, ty, 0)` at offsets 144 and 160, which the mesh fragment shader applies
 once to the interpolated coordinate before any texture sample.
+
+Page ABI v30 appends `alternate_uv_parameter_mask`, a little-endian `u32`, and then `alternate_uv_transform`, six
+floats in the same row-major layout, after `uv_transform`. Bit `1 << parameter` selects the alternate transform for
+that parameter's texture; a material with one transform publishes mask zero and the identity. The managed parser
+rejects a command that ends inside this tail and a mask bit naming displacement, volume density, the detail normal,
+or a parameter without a texture entry. `SilkSurfaceUniformWriter` packs the alternate rows at offsets 272 and 288 and
+stores the matching shader texture-slot bits in lane `w` of offset 192, so the surface block is 304 bytes. The
+fragment shader transforms the coordinate once per transform and picks per texture slot; normal-map tangent
+orientation follows the alternate rows when the normal slot selects them.
 
 The table is how every per-vertex value other than position travels, so authored normals, texture coordinates
 and arbitrary primvars all use one mechanism and a new attribute needs no further ABI bump. Attribute data is

@@ -105,6 +105,11 @@ public sealed class SilkSpecularLevelConformanceTests
         {
             writer.Write(value);
         }
+        writer.Write(0u);
+        foreach (float value in new float[] { 1, 0, 0, 1, 0, 0 })
+        {
+            writer.Write(value);
+        }
         byte[] bytes = stream.ToArray();
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         return bytes;

@@ -1465,6 +1465,7 @@ internal static class OffscreenRhiConformance
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(208), UInt128.MaxValue);
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(224), UInt128.MaxValue);
         MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(240));
+        MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(272));
         buffer.Write(values);
         return buffer;
     }

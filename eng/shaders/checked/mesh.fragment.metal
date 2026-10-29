@@ -35,6 +35,8 @@ struct SurfaceParameters_natural_0
     packed_uint4 shadowLinkMask_0;
     packed_float4 detailUvTransformRow0_0;
     packed_float4 detailUvTransformRow1_0;
+    packed_float4 alternateUvTransformRow0_0;
+    packed_float4 alternateUvTransformRow1_0;
 };
 
 struct FrameVectorView_0

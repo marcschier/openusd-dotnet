@@ -924,6 +924,13 @@ internal static class SilkDomeLinkConformance
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
         ];
 
         var bytes = new byte[8 + payload.Count];

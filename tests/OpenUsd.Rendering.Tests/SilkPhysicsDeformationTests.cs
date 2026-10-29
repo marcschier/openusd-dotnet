@@ -46,7 +46,7 @@ public sealed class SilkPhysicsDeformationTests
         SilkMeshData original = scene.Meshes.Values.Single();
         ulong revision = deformations.Revision;
         ulong geometryRevision = scene.GeometryRevision;
-        using var page = new OpenUsdSilkPage(29, 2, [], 0);
+        using var page = new OpenUsdSilkPage(30, 2, [], 0);
         ulong[] changed;
         float[] candidate;
         using (SilkSceneState.PreparedPage cpu = scene.PreparePage(page))

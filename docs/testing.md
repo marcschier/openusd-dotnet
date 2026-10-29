@@ -1591,7 +1591,7 @@ case verifies replay does not hold the native-session lock. Vulkan uses SwiftSha
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 29 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 30 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 `hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable
@@ -1961,10 +1961,15 @@ requires two chained `place2d` nodes to compose into the single affine neither n
 requires `UsdTransform2d` to fold with UsdPreviewSurface's opposite, counter-clockwise rotation sense while
 preserving the `UsdPrimvarReader_float2` primvar behind it -- a shared matrix builder would transpose the
 off-diagonal terms, and a fallback to the default `st` would sample a primvar nothing authored. It also
-requires four rejections: a `place2d` whose `offset` is connected, a `place2d` sitting behind a per-pixel
-`ND_multiply_vector2`, a `UsdTransform2d` with no upstream reader, and -- for the one-stream-per-material
-limit -- a transformed base colour beside an untransformed normal map, where exactly one texture and one
-transform survive. It then pins the primvar half of the two-stream limit. A base colour on `uvSet0` beside a normal
+requires three rejections: a `place2d` whose `offset` is connected, a `place2d` sitting behind a per-pixel
+`ND_multiply_vector2`, and a `UsdTransform2d` with no upstream reader. It then pins the transform half of the
+two-transform limit. A transformed base colour beside an untransformed normal map must keep both images, with the
+identity as the alternate transform and only the normal bit in the mask, and the page bytes must carry both
+transforms and the mask. Adding a roughness image behind a second `place2d` must keep the base colour and the
+roughness, with roughness as the alternate, and drop the normal map. Two forged records must not reach the page: a
+mask bit for roughness without a roughness texture, and a detail-normal bit on a record that does publish a detail
+normal. The unmasked detail record must serialize, so the rejection is the mask's alone. It then pins the primvar
+half of the two-stream limit. A base colour on `uvSet0` beside a normal
 map on `uvSet1` must keep **both** textures on their own primvars, in either authoring order. Adding a roughness image
 on `uvSet2` must keep the base colour and the roughness and drop the normal map, because streams are claimed in the
 fixed input order and roughness precedes the normal; the same roughness on `uvSet0` must keep all three. The shared
@@ -1982,7 +1987,11 @@ they select at `maxChannelDelta=2` / `meanChannelDelta=0.017`, and the identity 
 comparison at `maxChannelDelta=244`. The rotation capture is what proves the off-diagonal matrix terms reach
 the shader; a translation-only capture leaves them at zero and cannot. The three are written to
 `uv-transform-<backend>-self-consistency.txt`, `uv-transform-<backend>-rotation.txt`, and
-`uv-transform-<backend>-divergence.txt`.
+`uv-transform-<backend>-divergence.txt`. A fourth capture publishes the quarter turn as the primary transform and the
+translation as the alternate, with the diffuse bit in the mask; it must match the translated texel at
+`maxChannelDelta=3` / `meanChannelDelta=0.5`, and the same transforms with mask zero must diverge from it by more
+than 32. That pair proves the mask, not the transform alone, selects the alternate rows. It is written to
+`uv-transform-<backend>-alternate.txt`.
 
 `VerifyMaterialXImageArithmeticProjection` pins the fold of constant arithmetic over exactly one image
 into the texture entry's scale and bias. `mix(0.2, image * 0.5, 0.75)` must fold to
@@ -3967,7 +3976,10 @@ checked `compute.fill` kernel and requires every float past the texture
 coordinates of a twelve-float vertex to survive untouched, and the uploaded
 coordinates to be passed through in order, with a non-vacuity check that the
 deformed range really was rewritten -- a stride error would otherwise overwrite
-the coordinates a material samples through. Seeding through the other checked
+the coordinates a material samples through. The payload policy sends a layout
+that wide to the CPU, so the test builds the eight-float payload, requires the
+twelve-float build to fall back with `SecondaryTexCoords`, and widens only the
+stride field it dispatches with. Seeding through the other checked
 kernel is deliberate: it makes the seed reproducible arithmetic rather than an
 assumption about uninitialized device memory, and it proves two kernels with
 different generalized binding layouts share one command list and one destination

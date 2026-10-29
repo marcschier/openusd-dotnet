@@ -17,7 +17,7 @@ public sealed partial class SilkSceneGpuResources
     {
         var selected = new HashSet<uint>();
         var visited = new HashSet<SilkMeshGpuGeometryResource>();
-        IReadOnlyList<float> uv = material.UvTransform;
+        IReadOnlyList<float> uv = material.GetUvTransformFor(texture.Parameter);
         Vector3 row0 = new(uv[0], uv[1], uv[4]);
         Vector3 row1 = new(uv[2], uv[3], uv[5]);
         if (texture.Parameter == SilkMaterialParameter.DetailNormal)

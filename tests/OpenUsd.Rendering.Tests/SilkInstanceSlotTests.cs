@@ -105,7 +105,7 @@ public sealed class SilkInstanceSlotTests
         budget.ConfigureDevice(device);
         using var resources = new SilkSceneGpuResources(device);
         var scene = new SilkSceneState();
-        using var page = new OpenUsdSilkPage(29, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
+        using var page = new OpenUsdSilkPage(30, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
         using (SilkSceneState.PreparedPage cpu = scene.PreparePage(page))
         using (SilkSceneGpuResources.PreparedMeshUpdate gpu = resources.Prepare(
             scene, cpu.Delta, prepareUniformCapacity: true)!)
@@ -169,7 +169,7 @@ public sealed class SilkInstanceSlotTests
             BinaryPrimitives.WriteSingleLittleEndian(
                 changed.AsSpan(268 + System.Text.Encoding.UTF8.GetByteCount(FirstPath)), 0.25f);
         }
-        using var page = new OpenUsdSilkPage(29, 2,
+        using var page = new OpenUsdSilkPage(30, 2,
             [.. changed, .. SilkTransactionalApplyTests.Removal(SecondPath),
                 .. SilkTransactionalApplyTests.Mesh("/World/Geom/Third", 3)], 3);
         bool removedWasAbsent;
@@ -434,11 +434,11 @@ public sealed class SilkInstanceSlotTests
         var budget = new SilkGpuBufferBudget(1_048_576);
         budget.ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(29, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
+        using var first = new OpenUsdSilkPage(30, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
         renderer.ApplyPage(first);
         _ = renderer.GpuResources.UpdateUniforms(renderer.Scene.Frame);
         _ = renderer.GpuResources.RequireFrameBuffer(renderer.Scene, RenderOutputTransform.Identity, 0);
-        using var moved = new OpenUsdSilkPage(29, 2, SilkTransactionalApplyTests.Mesh(FirstPath, 1, x: 4), 1);
+        using var moved = new OpenUsdSilkPage(30, 2, SilkTransactionalApplyTests.Mesh(FirstPath, 1, x: 4), 1);
         renderer.ApplyPage(moved);
         ulong reserved = budget.Usage.ReservedBytes;
         using (budget.Reserve(budget.MaximumBytes - reserved))
@@ -600,7 +600,7 @@ public sealed class SilkInstanceSlotTests
         using var renderer = new SilkMeshRenderer(device);
         byte[] initial = prototypes == 1 ? SilkTransactionalApplyTests.Mesh(FirstPath, 1) :
             [.. SilkTransactionalApplyTests.Mesh(FirstPath, 1), .. SilkTransactionalApplyTests.Mesh(SecondPath, 2)];
-        using var first = new OpenUsdSilkPage(29, 1, initial, (uint)prototypes);
+        using var first = new OpenUsdSilkPage(30, 1, initial, (uint)prototypes);
         renderer.ApplyPage(first);
         SilkMeshGpuResource[] originals = [.. renderer.GpuResources.MeshValues];
         ulong reserved = budget.Usage.ReservedBytes;
@@ -609,7 +609,7 @@ public sealed class SilkInstanceSlotTests
         {
             instances = [.. instances, .. Instance(SecondPath, 2)];
         }
-        using var second = new OpenUsdSilkPage(29, 2, instances, (uint)prototypes);
+        using var second = new OpenUsdSilkPage(30, 2, instances, (uint)prototypes);
         ulong required = (ulong)prototypes * 6ul * SilkSceneUniformWriter.ByteSize;
         using (budget.Reserve(budget.MaximumBytes - reserved - required + 1))
         {
@@ -641,13 +641,13 @@ public sealed class SilkInstanceSlotTests
         var budget = new SilkGpuBufferBudget(1_048_576);
         budget.ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(29, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
+        using var first = new OpenUsdSilkPage(30, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
         renderer.ApplyPage(first);
         ulong reserved = budget.Usage.ReservedBytes;
         byte[] instance = Instance(FirstPath, 1);
         BinaryPrimitives.WriteUInt32LittleEndian(instance.AsSpan(44), (uint)SilkMeshCullStyle.Front);
-        using var second = new OpenUsdSilkPage(29, 2, instance, 1);
-        using var third = new OpenUsdSilkPage(29, 3, [], 0);
+        using var second = new OpenUsdSilkPage(30, 2, instance, 1);
+        using var third = new OpenUsdSilkPage(30, 3, [], 0);
         SilkMeshRenderOptions merged = SilkMeshRenderOptions.Default with { BackfaceCulling = false };
         using (budget.Reserve(budget.MaximumBytes - reserved - (6ul * SilkSceneUniformWriter.ByteSize) + 1))
         {
@@ -667,12 +667,12 @@ public sealed class SilkInstanceSlotTests
         var budget = new SilkGpuBufferBudget(1_048_576);
         budget.ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(29, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
+        using var first = new OpenUsdSilkPage(30, 1, SilkTransactionalApplyTests.Mesh(FirstPath, 1), 1);
         renderer.ApplyPage(first);
         ulong reserved = budget.Usage.ReservedBytes;
         byte[] instance = Instance(FirstPath, 1);
         BinaryPrimitives.WriteUInt32LittleEndian(instance.AsSpan(44), (uint)SilkMeshCullStyle.Front);
-        using var second = new OpenUsdSilkPage(29, 2, instance, 1);
+        using var second = new OpenUsdSilkPage(30, 2, instance, 1);
         renderer.ApplyPage(second);
         await Assert.That(renderer.GpuResources.MeshValues.First().Geometry.InstanceSlotCount).IsEqualTo(0);
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved + (2ul * SilkSceneUniformWriter.ByteSize));

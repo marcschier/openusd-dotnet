@@ -109,12 +109,12 @@ public sealed class SilkShadowAtlasRetentionTests
         var budget = new SilkGpuBufferBudget(1_048_576);
         budget.ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. HighShadowFrame(1), .. SilkTransactionalApplyTests.Mesh("/Caster", 1)], 2);
         renderer.ApplyPage(first);
         SilkMeshGpuGeometryResource geometry = renderer.GpuResources.MeshValues.Single().Geometry;
         ulong reserved = budget.Usage.ReservedBytes;
-        using var changed = new OpenUsdSilkPage(29, 2, HighShadowTable(1, 0), 1);
+        using var changed = new OpenUsdSilkPage(30, 2, HighShadowTable(1, 0), 1);
         const ulong required = 2ul * SilkSceneUniformWriter.ByteSize;
         using (budget.Reserve(budget.MaximumBytes - reserved - required + 1))
         {
@@ -140,13 +140,13 @@ public sealed class SilkShadowAtlasRetentionTests
         var budget = new SilkGpuTextureBudget(33_554_432);
         budget.ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. HighShadowFrame(1), .. SilkTransactionalApplyTests.Mesh("/Old", 1)], 2);
         renderer.ApplyPage(first);
         SilkMeshGpuResource original = renderer.GpuResources.Meshes.Values.Single();
         ulong revision = renderer.Scene.Revision;
         ulong reserved = budget.Usage.ReservedBytes;
-        using var update = new OpenUsdSilkPage(29, 2,
+        using var update = new OpenUsdSilkPage(30, 2,
             [.. HighShadowFrame(1), .. HighShadowTable(1, 0), .. HighShadowMeshRemoval("/Old"),
                 .. SilkTransactionalApplyTests.Mesh("/New", 2)], 4);
         using (IDisposable pressure = budget.Reserve(new SilkTextureDescriptor(

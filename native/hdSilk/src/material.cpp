@@ -2534,19 +2534,21 @@ bool _TryPublishCompositeEntries(
 
 /// Settles the texture-coordinate streams this material publishes.
 ///
-/// The renderer builds at most two coordinate streams per material and applies
-/// one UV transform to both: it takes the transform from the wire's
-/// per-material affine, the primary primvar from the first surface texture entry
-/// that names one, and the secondary primvar from the first surface entry naming
-/// a different one. Each texture then samples whichever of the two streams its
-/// own entry names. A material whose images ask for different transforms, or for
-/// a third primvar, is outside the projection.
+/// The renderer builds at most two coordinate streams per material and at most
+/// two UV transforms: the primary transform is the first surface texture's, and
+/// the alternate is the first surface transform that differs from it. Each
+/// texture samples whichever stream its own entry names, through whichever of
+/// the two transforms it asked for; alternateUvParameterMask records the
+/// parameters that read the alternate one. The primary primvar is the first
+/// surface texture entry that names one, and the secondary the first surface
+/// entry naming a different one. A material whose images ask for a third
+/// transform, or a third primvar, is outside the projection.
 ///
-/// The first texture in the fixed input order states the transform. A texture
-/// that asks for a different transform or a third primvar is dropped with a
-/// diagnostic naming which of the two diverged, rather than sampled through
+/// A texture that asks for a third transform or a third primvar is dropped with
+/// a diagnostic naming which of the two diverged, rather than sampled through
 /// coordinates it did not author. So is a parameter whose entries disagree on
-/// the stream: the shader samples both halves of one input through one stream.
+/// the stream or the transform: the shader samples both halves of one input
+/// through one coordinate.
 ///
 /// Entries are dropped a whole parameter at a time. Since ABI v15 one surface
 /// input may carry two entries -- a primary and a composite operand -- and those
@@ -2571,6 +2573,11 @@ bool _BelongsToSurfaceUvStream(const HdSilkMaterialTexture& texture)
 
 bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
 {
+    for (size_t index = 0; index < 6; ++index)
+    {
+        record.alternateUvTransform[index] = index == 0 || index == 3 ? 1.0f : 0.0f;
+    }
+    record.alternateUvParameterMask = 0;
     const HdSilkMaterialTexture* first = nullptr;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
@@ -2588,6 +2595,29 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
     {
         record.uvTransform[index] = first->uvTransform[index];
     }
+    // The alternate transform is the first surface transform, in the fixed input
+    // order, that differs from the primary one. A third distinct transform has no
+    // slot and is dropped below.
+    const HdSilkMaterialTexture* alternate = nullptr;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_BelongsToSurfaceUvStream(texture) &&
+            !_UvTransformsEqual(texture.uvTransform, record.uvTransform))
+        {
+            alternate = &texture;
+            break;
+        }
+    }
+    if (alternate != nullptr)
+    {
+        for (size_t index = 0; index < 6; ++index)
+        {
+            record.alternateUvTransform[index] = alternate->uvTransform[index];
+        }
+    }
+    const auto usesAlternate = [&record](const HdSilkMaterialTexture& texture) {
+        return !_UvTransformsEqual(texture.uvTransform, record.uvTransform);
+    };
 
     // The primary primvar is the first non-empty one and the secondary the first
     // that differs from it, which is exactly how the consumer derives its two
@@ -2623,13 +2653,17 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
             continue;
         }
         const bool transformAgrees =
-            _UvTransformsEqual(texture.uvTransform, record.uvTransform);
+            _UvTransformsEqual(texture.uvTransform, record.uvTransform) ||
+            (alternate != nullptr &&
+                _UvTransformsEqual(texture.uvTransform, record.alternateUvTransform));
         const bool primvarAgrees = texture.uvPrimvar.empty() ||
             texture.uvPrimvar == primvar || texture.uvPrimvar == secondary;
         bool pairAgrees = true;
         for (const HdSilkMaterialTexture& other : record.textures)
         {
-            if (other.parameter == texture.parameter && streamOf(other) != streamOf(texture))
+            if (other.parameter == texture.parameter &&
+                (streamOf(other) != streamOf(texture) ||
+                    usesAlternate(other) != usesAlternate(texture)))
             {
                 pairAgrees = false;
                 break;
@@ -2673,22 +2707,32 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
         {
             TF_WARN(
                 "hdSilk material '%s' parameter %u combines images that read "
-                "different texture-coordinate streams; one input samples one "
-                "stream, so this input is left at its default.",
+                "different texture-coordinate streams or transforms; one input "
+                "samples one stream through one transform, so this input is left "
+                "at its default.",
                 record.path.c_str(),
                 texture.parameter);
             continue;
         }
         TF_WARN(
-            "hdSilk material '%s' texture for parameter %u asks for a different "
-            "MaterialX UV transform than the material's first texture; hdSilk "
-            "carries one UV transform per material, so this input is left at its "
-            "default.",
+            "hdSilk material '%s' texture for parameter %u asks for a third "
+            "MaterialX UV transform; hdSilk carries at most two UV transforms per "
+            "material, so this input is left at its default.",
             record.path.c_str(),
             texture.parameter);
     }
     if (divergent.empty())
     {
+        for (const HdSilkMaterialTexture& texture : record.textures)
+        {
+            // A detail normal samples through its own DETAIL_UV_ROW affine.
+            if (_BelongsToSurfaceUvStream(texture) &&
+                texture.parameter != OPENUSD_SILK_MATERIAL_DETAIL_NORMAL &&
+                usesAlternate(texture))
+            {
+                record.alternateUvParameterMask |= 1u << texture.parameter;
+            }
+        }
         return false;
     }
 

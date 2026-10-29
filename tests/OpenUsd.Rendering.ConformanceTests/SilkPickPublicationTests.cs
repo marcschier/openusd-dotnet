@@ -22,7 +22,7 @@ public sealed class SilkPickPublicationTests
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(32, 24));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(32, 24));
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(32, 24, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad()], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -32,7 +32,7 @@ public sealed class SilkPickPublicationTests
         var binding = new SilkPickFrameBinding(1, 2);
         var request = new RenderPickRequest(16, 12, new ViewportDimensions(32, 24), 1, 2, RenderPickTarget.Face);
         Task<RenderPickResult> pending = renderer.PickAsync(request).AsTask();
-        using var next = new OpenUsdSilkPage(29, 2, [], 0);
+        using var next = new OpenUsdSilkPage(30, 2, [], 0);
         ulong headroom = allowColor ? 32ul * 24 * 4 : 0;
         ulong pressure = textures.MaximumBytes - retained - headroom;
         using (textures.Reserve(SilkTextureDescriptor.ColorTarget(checked((uint)(pressure / 4)), 1), 1))
@@ -85,7 +85,7 @@ public sealed class SilkPickPublicationTests
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(32, 24));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(32, 24));
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(32, 24, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad()], 2);
         var oldBinding = new SilkPickFrameBinding(7, 1);
@@ -122,7 +122,7 @@ public sealed class SilkPickPublicationTests
             _ => throw new ArgumentOutOfRangeException(nameof(target))
         };
         var request = new RenderPickRequest(x, y, new ViewportDimensions(64, 48), 8, 2, target);
-        using var next = new OpenUsdSilkPage(29, 2,
+        using var next = new OpenUsdSilkPage(30, 2,
             SilkMeshRendererConformance.CreateFrameCommand(64, 48, SilkMeshRendererConformance.Identity()), 1);
         Task<RenderPickResult> pending = renderer.PickAsync(request).AsTask();
         device.RefuseSubmissionAfter = refusePublication ? 2 : 1;
@@ -182,7 +182,7 @@ public sealed class SilkPickPublicationTests
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(32, 24));
         byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(1, "/Mesh",
             [-0.6f, 0.6f, 0.5f, 0.6f, 0.6f, 0.5f, 0.6f, -0.6f, 0.5f], [0, 1, 2]);
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(32, 24, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -191,7 +191,7 @@ public sealed class SilkPickPublicationTests
         var binding = new SilkPickFrameBinding(1, 2);
         var request = new RenderPickRequest(20, 8, new ViewportDimensions(32, 24), 1, 2);
         Task<RenderPickResult> pick = renderer.PickAsync(request).AsTask();
-        using var next = new OpenUsdSilkPage(29, 2, [], 0);
+        using var next = new OpenUsdSilkPage(30, 2, [], 0);
         using (staging.Reserve(staging.MaximumBytes - retainedStaging))
         {
             await Assert.That(() => renderer.ApplyAndRender(next, color, depth, binding))
@@ -248,7 +248,7 @@ public sealed class SilkPickPublicationTests
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(32, 24));
         byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(1, "/Mesh",
             [-0.6f, 0.6f, 0.5f, 0.6f, 0.6f, 0.5f, 0.6f, -0.6f, 0.5f, -0.6f, -0.6f, 0.5f], [0, 1, 2, 0, 2, 3]);
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(32, 24, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -258,7 +258,7 @@ public sealed class SilkPickPublicationTests
         byte[] before = new byte[32 * 24 * 4];
         color.ReadbackForTesting(before);
         BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.25);
-        using var changed = new OpenUsdSilkPage(29, 2, mesh, 1);
+        using var changed = new OpenUsdSilkPage(30, 2, mesh, 1);
         var binding = new SilkPickFrameBinding(7, 2);
         var request = new RenderPickRequest(16, 12, new ViewportDimensions(32, 24),
             binding.StateRevision, binding.SceneRevision, RenderPickTarget.Primitive);

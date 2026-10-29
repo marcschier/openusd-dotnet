@@ -65,12 +65,12 @@ public sealed class SilkEnvironmentRetentionTests
             gpu?.Commit();
             cpu.Commit();
         }
-        using var first = new OpenUsdSilkPage(29, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(30, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         SilkEnvironmentFrameBinding binding = resources.EnvironmentBinding;
         ulong reserved = budget.Usage.ReservedBytes;
         int originalAttempts = attempts;
-        using var update = new OpenUsdSilkPage(29, 2, Upsert(DomePath, SecondTexturePath), 1);
+        using var update = new OpenUsdSilkPage(30, 2, Upsert(DomePath, SecondTexturePath), 1);
         refuse = true;
         await Assert.That(() => apply(update)).Throws<OutOfMemoryException>();
         await Assert.That(attempts).IsEqualTo(originalAttempts + 1);
@@ -211,7 +211,7 @@ public sealed class SilkEnvironmentRetentionTests
                 return image;
             });
         var scene = new SilkSceneState();
-        using var page = new OpenUsdSilkPage(29, 1,
+        using var page = new OpenUsdSilkPage(30, 1,
             [.. Upsert(DomePath, TexturePath), .. Upsert(SecondDomePath, SecondTexturePath)], 2);
         void apply()
         {
@@ -289,7 +289,7 @@ public sealed class SilkEnvironmentRetentionTests
             cpu.Commit();
             resources.CompleteApply(scene, cpu.Delta, gpu?.TexturesPrepared == true);
         }
-        using var first = new OpenUsdSilkPage(29, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(30, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         using var originalCommands = new EnvironmentCommandList();
         resources.BindEnvironment(originalCommands);
@@ -302,8 +302,8 @@ public sealed class SilkEnvironmentRetentionTests
         ulong revision = scene.EnvironmentRevision;
         bool retireOnly = refusal == "retirement-mesh";
         using var update = retireOnly
-            ? new OpenUsdSilkPage(29, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
-            : new OpenUsdSilkPage(29, 2,
+            ? new OpenUsdSilkPage(30, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
+            : new OpenUsdSilkPage(30, 2,
                 [.. Remove(DomePath), .. Upsert(SecondDomePath, SecondTexturePath), .. LinkedMesh()], 3);
         IDisposable? pressure = refusal == "texture"
             ? budget.Reserve(new SilkTextureDescriptor(
@@ -1763,6 +1763,13 @@ public sealed class SilkEnvironmentRetentionTests
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
         ];
         var bytes = new byte[8 + payload.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
@@ -2850,9 +2857,9 @@ public sealed class SilkEnvironmentRetentionTests
                 scene, scene.MeshesByPath[(paths[index], 0)], RenderHeadlight.Deterministic);
             await AssertRetentionSurface(buffers[index], masks[index]);
             await Assert.That(resources.Statistics.BufferAllocationBytes - previous.BufferAllocationBytes)
-                .IsEqualTo(index == 3 ? 0UL : 272UL);
+                .IsEqualTo(index == 3 ? 0UL : 304UL);
             await Assert.That(resources.Statistics.BufferWriteBytes - previous.BufferWriteBytes)
-                .IsEqualTo(index == 3 ? 0UL : 272UL);
+                .IsEqualTo(index == 3 ? 0UL : 304UL);
         }
 
         await Assert.That(buffers[3]).IsSameReferenceAs(buffers[0]);
@@ -2866,9 +2873,9 @@ public sealed class SilkEnvironmentRetentionTests
         }
         await Assert.That(resources.SurfaceBufferCount).IsEqualTo(5);
         await Assert.That(resources.Statistics.BufferAllocationBytes - before.BufferAllocationBytes)
-            .IsEqualTo(5UL * 272);
+            .IsEqualTo(5UL * 304);
         await Assert.That(resources.Statistics.BufferWriteBytes - before.BufferWriteBytes)
-            .IsEqualTo(5UL * 272);
+            .IsEqualTo(5UL * 304);
         await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(before.GeometryBuilds);
         await Assert.That(resources.Statistics.VertexUploads).IsEqualTo(before.VertexUploads);
         await Assert.That(resources.Statistics.IndexUploads).IsEqualTo(before.IndexUploads);
@@ -3228,7 +3235,7 @@ public sealed class SilkEnvironmentRetentionTests
     private static async Task AssertRetentionSurface(ISilkGraphicsBuffer buffer, SilkLightLinkMasks masks)
     {
         byte[] bytes = RetentionReadback(buffer);
-        await Assert.That(buffer.Size).IsEqualTo((nuint)272);
+        await Assert.That(buffer.Size).IsEqualTo((nuint)304);
         await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208)))
             .IsEqualTo(masks.LightMask);
         await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(224)))

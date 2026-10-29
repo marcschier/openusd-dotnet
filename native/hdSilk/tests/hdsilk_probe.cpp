@@ -91,7 +91,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 29);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 30);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -293,6 +293,8 @@ struct ParsedPage
     uint32_t material_scalar_count = 0;
     uint32_t material_texture_count = 0;
     std::array<float, 6> material_uv_transform{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
+    uint32_t material_alternate_uv_mask = 0;
+    std::array<float, 6> material_alternate_uv_transform{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
     float material_roughness = -1.0F;
     // Every published scalar as (parameter, first component). The MDL
     // module-default check needs more than one input, because the claim is
@@ -1522,6 +1524,20 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     &uvTransform[element]);
             }
             valid = valid && AddSize(&cursor, 6 * sizeof(float));
+            uint32_t alternateUvMask = 0;
+            valid = valid &&
+                ReadValue(data, size, offset + cursor, &alternateUvMask) &&
+                AddSize(&cursor, sizeof(uint32_t));
+            std::array<float, 6> alternateUvTransform{};
+            for (size_t element = 0; valid && element < alternateUvTransform.size(); ++element)
+            {
+                valid = ReadValue(
+                    data,
+                    size,
+                    offset + cursor + (element * sizeof(float)),
+                    &alternateUvTransform[element]);
+            }
+            valid = valid && AddSize(&cursor, 6 * sizeof(float));
             // Requiring the exact size means an unaccounted byte fails here rather
             // than surfacing as a silently mis-read parameter later.
             valid = valid && cursor == byteSize &&
@@ -1544,6 +1560,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 result.material_texture_parameter = textureParameter;
                 result.material_textures = std::move(textures);
                 result.material_uv_transform = uvTransform;
+                result.material_alternate_uv_mask = alternateUvMask;
+                result.material_alternate_uv_transform = alternateUvTransform;
             }
         }
         else if (type == OPENUSD_SILK_COMMAND_MATERIAL_REMOVE)
@@ -7062,9 +7080,10 @@ bool VerifyMissingPrimvarFallback()
 
 /// Builds a MaterialX standard-surface network with a transformed base-colour
 /// image and an untransformed normal map, which is the ordinary authoring shape
-/// this renderer's single UV transform per material cannot serve.
+/// that needs the material's second UV transform. `thirdTransform` adds a
+/// roughness image through a third, distinct place2d, which has no slot.
 HdMaterialNetworkMap
-MakeDivergentUvChainNetwork()
+MakeDivergentUvChainNetwork(bool thirdTransform = false)
 {
     HdMaterialNode baseCoordinate;
     baseCoordinate.path = SdfPath("/World/Placed/BasePrimvar");
@@ -7126,6 +7145,41 @@ MakeDivergentUvChainNetwork()
         {normalImage.path, TfToken("out"), normalMap.path, TfToken("in")});
     network.relationships.push_back(
         {normalMap.path, TfToken("out"), surface.path, TfToken("normal")});
+    if (thirdTransform)
+    {
+        HdMaterialNode roughnessCoordinate;
+        roughnessCoordinate.path = SdfPath("/World/Placed/RoughnessPrimvar");
+        roughnessCoordinate.identifier = TfToken("ND_geompropvalue_vector2");
+        roughnessCoordinate.parameters[TfToken("geomprop")] =
+            VtValue(std::string("uvSet0"));
+
+        HdMaterialNode roughnessPlace;
+        roughnessPlace.path = SdfPath("/World/Placed/RoughnessPlace2d");
+        roughnessPlace.identifier = TfToken("ND_place2d_vector2");
+        roughnessPlace.parameters[TfToken("scale")] = VtValue(GfVec2f(4.0F, 4.0F));
+
+        HdMaterialNode roughnessImage;
+        roughnessImage.path = SdfPath("/World/Placed/RoughnessImage");
+        roughnessImage.identifier = TfToken("ND_image_float");
+        roughnessImage.parameters[TfToken("file")] =
+            VtValue(SdfAssetPath("textures/materialx-roughness.png"));
+
+        network.nodes.push_back(roughnessCoordinate);
+        network.nodes.push_back(roughnessPlace);
+        network.nodes.push_back(roughnessImage);
+        network.relationships.push_back(
+            {roughnessCoordinate.path,
+             TfToken("out"),
+             roughnessPlace.path,
+             TfToken("texcoord")});
+        network.relationships.push_back(
+            {roughnessPlace.path, TfToken("out"), roughnessImage.path, TfToken("texcoord")});
+        network.relationships.push_back(
+            {roughnessImage.path,
+             TfToken("out"),
+             surface.path,
+             TfToken("specular_roughness")});
+    }
     network.primvars = {TfToken("uvSet0")};
 
     HdMaterialNetworkMap map;
@@ -7364,13 +7418,16 @@ MakeTwoImageProductNetwork()
 /// The two operands carry different constant multipliers so their folded affines
 /// differ, which is what proves each entry keeps its own branch rather than
 /// sharing one. `secondInput` adds a second composited parameter, which is the
-/// case the renderer's single composite slot cannot serve.
+/// case the renderer's single composite slot cannot serve. `placeSecond` routes
+/// the second image's coordinate through a place2d, so the pair asks for two
+/// transforms.
 HdMaterialNetworkMap
 MakeTwoImageCompositeNetwork(
     const TfToken& nodeIdentifier,
     const TfToken& firstInput,
     const TfToken& secondInput,
-    const VtValue& mixFactor)
+    const VtValue& mixFactor,
+    bool placeSecond = false)
 {
     const bool mix = nodeIdentifier.GetString().rfind("ND_mix_", 0) == 0;
     const TfToken primaryInput = mix ? TfToken("bg") : TfToken("in1");
@@ -7419,8 +7476,23 @@ MakeTwoImageCompositeNetwork(
     network.nodes = {primvar, first, second, scaleSecond, combine, surface};
     network.relationships.push_back(
         {primvar.path, TfToken("out"), first.path, TfToken("texcoord")});
-    network.relationships.push_back(
-        {primvar.path, TfToken("out"), second.path, TfToken("texcoord")});
+    if (placeSecond)
+    {
+        HdMaterialNode place;
+        place.path = SdfPath("/World/Composite/PlaceSecond");
+        place.identifier = TfToken("ND_place2d_vector2");
+        place.parameters[TfToken("scale")] = VtValue(GfVec2f(2.0F, 2.0F));
+        network.nodes.push_back(place);
+        network.relationships.push_back(
+            {primvar.path, TfToken("out"), place.path, TfToken("texcoord")});
+        network.relationships.push_back(
+            {place.path, TfToken("out"), second.path, TfToken("texcoord")});
+    }
+    else
+    {
+        network.relationships.push_back(
+            {primvar.path, TfToken("out"), second.path, TfToken("texcoord")});
+    }
     network.relationships.push_back(
         {second.path, TfToken("out"), scaleSecond.path, TfToken("in1")});
     network.relationships.push_back(
@@ -7699,8 +7771,15 @@ bool UvTransformMatches(
     return true;
 }
 
-/// Extracts the ABI v14 trailing uv_transform of the one MATERIAL_UPSERT command
-/// in a built page, so the fold is proven on the wire and not only in memory.
+bool UvTransformMatches(
+    const std::array<float, 6>& actual,
+    const std::array<float, 6>& expected)
+{
+    float values[6];
+    std::copy(actual.begin(), actual.end(), values);
+    return UvTransformMatches(values, expected);
+}
+
 /// Extracts the ABI v15 composite_op of the first two texture entries of the one
 /// MATERIAL_UPSERT command in a built page.
 ///
@@ -7757,10 +7836,17 @@ bool ReadPageCompositeOperators(
     return false;
 }
 
+/// Extracts the trailing UV transforms of the one MATERIAL_UPSERT command in a
+/// built page, so the fold is proven on the wire and not only in memory.
 bool ReadPageUvTransform(
     const std::vector<uint8_t>& page,
-    std::array<float, 6>* out)
+    std::array<float, 6>* out,
+    uint32_t* alternateMask = nullptr,
+    std::array<float, 6>* alternate = nullptr)
 {
+    // The ABI v30 tail is uv_transform[6], alternate_uv_parameter_mask and
+    // alternate_uv_transform[6].
+    constexpr size_t tailSize = (12 * sizeof(float)) + sizeof(uint32_t);
     size_t offset = 0;
     bool found = false;
     while (offset + 8 <= page.size())
@@ -7775,14 +7861,23 @@ bool ReadPageUvTransform(
         }
         if (type == OPENUSD_SILK_COMMAND_MATERIAL_UPSERT)
         {
-            if (byteSize < 8 + (6 * sizeof(float)))
+            if (byteSize < 8 + tailSize)
             {
                 return false;
             }
-            std::memcpy(
-                out->data(),
-                page.data() + offset + byteSize - (6 * sizeof(float)),
-                6 * sizeof(float));
+            const uint8_t* tail = page.data() + offset + byteSize - tailSize;
+            std::memcpy(out->data(), tail, 6 * sizeof(float));
+            if (alternateMask != nullptr)
+            {
+                std::memcpy(alternateMask, tail + (6 * sizeof(float)), sizeof(uint32_t));
+            }
+            if (alternate != nullptr)
+            {
+                std::memcpy(
+                    alternate->data(),
+                    tail + (6 * sizeof(float)) + sizeof(uint32_t),
+                    6 * sizeof(float));
+            }
             found = true;
         }
         offset += byteSize;
@@ -8043,6 +8138,24 @@ bool VerifyMaterialXImageArithmeticProjection()
                       << texture.parameter << "\n";
             return false;
         }
+    }
+
+    // A composite samples both operands through one coordinate, so a pair whose
+    // images ask for two transforms is dropped whole even though the material
+    // has a slot for a second transform.
+    HdSilkMaterialRecord mixedTransforms = HdSilkMaterial::Resolve(
+        compositePath,
+        MakeTwoImageCompositeNetwork(
+            TfToken("ND_multiply_color3"),
+            TfToken("base_color"),
+            TfToken(),
+            VtValue(),
+            true));
+    if (!mixedTransforms.textures.empty() || mixedTransforms.alternateUvParameterMask != 0)
+    {
+        std::cerr << "A composite pair with two transforms was not dropped: textures="
+                  << mixedTransforms.textures.size() << "\n";
+        return false;
     }
 
     // The wire must round-trip both entries, because the renderer only ever sees
@@ -9452,27 +9565,127 @@ bool VerifyMaterialXUvChainProjection()
         return false;
     }
 
-    // A second image asking for a different transform is outside the one
-    // transform per material this renderer can sample through. This is the
-    // ordinary authoring shape -- a transformed base colour and a normal map
-    // reading the same primvar untransformed -- so the limitation is stated
-    // against a real graph rather than a contrived one.
+    // A second image asking for a different transform takes the material's
+    // alternate UV transform. This is the ordinary authoring shape -- a
+    // transformed base colour and a normal map reading the same primvar
+    // untransformed -- so the second transform is proven against a real graph.
     HdSilkMaterialRecord reconciled =
         HdSilkMaterial::Resolve(materialPath, MakeDivergentUvChainNetwork());
-    if (reconciled.textures.size() != 1 ||
-        reconciled.textures[0].parameter != OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR ||
-        reconciled.textures[0].uvPrimvar != "uvSet0" ||
+    const auto hasParameter = [](const HdSilkMaterialRecord& record, uint32_t parameter) {
+        return std::any_of(
+            record.textures.begin(),
+            record.textures.end(),
+            [parameter](const HdSilkMaterialTexture& texture) {
+                return texture.parameter == parameter;
+            });
+    };
+    if (reconciled.textures.size() != 2 ||
+        !hasParameter(reconciled, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR) ||
+        !hasParameter(reconciled, OPENUSD_SILK_MATERIAL_NORMAL) ||
         !UvTransformMatches(
-            reconciled.uvTransform, {0.5F, 0.0F, 0.0F, 0.5F, -0.25F, -0.5F}))
+            reconciled.uvTransform, {0.5F, 0.0F, 0.0F, 0.5F, -0.25F, -0.5F}) ||
+        !UvTransformMatches(
+            reconciled.alternateUvTransform, {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F}) ||
+        reconciled.alternateUvParameterMask != (1u << OPENUSD_SILK_MATERIAL_NORMAL))
     {
-        std::cerr << "Divergent MaterialX UV chains were not reconciled: textures="
-                  << reconciled.textures.size();
+        std::cerr << "Two MaterialX UV transforms were not both carried: textures="
+                  << reconciled.textures.size() << " mask=0x" << std::hex
+                  << reconciled.alternateUvParameterMask << std::dec;
         for (const HdSilkMaterialTexture& texture : reconciled.textures)
         {
             std::cerr << " (parameter=" << texture.parameter << ")";
         }
         std::cerr << "\n";
         return false;
+    }
+
+    // Both transforms and the mask must reach the wire, because the renderer
+    // only ever sees the page.
+    {
+        HdSilkSceneState alternateState;
+        alternateState.ReplaceMaterial(reconciled);
+        uint64_t alternateRevision = 0;
+        uint32_t alternateCommands = 0;
+        const std::vector<uint8_t> alternatePage =
+            alternateState.BuildPage(&alternateRevision, &alternateCommands);
+        std::array<float, 6> primaryWire{};
+        std::array<float, 6> alternateWire{};
+        uint32_t maskWire = 0;
+        if (!ReadPageUvTransform(alternatePage, &primaryWire, &maskWire, &alternateWire) ||
+            maskWire != (1u << OPENUSD_SILK_MATERIAL_NORMAL) ||
+            !UvTransformMatches(primaryWire, {0.5F, 0.0F, 0.0F, 0.5F, -0.25F, -0.5F}) ||
+            !UvTransformMatches(alternateWire, {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F}))
+        {
+            std::cerr << "The alternate UV transform did not reach the wire: mask=0x"
+                      << std::hex << maskWire << std::dec << "\n";
+            return false;
+        }
+    }
+
+    // A third distinct transform has no slot. Transforms are claimed in the
+    // fixed input order, as streams are below, so roughness takes the alternate
+    // slot ahead of the untransformed normal map, which is dropped.
+    HdSilkMaterialRecord thirdTransform =
+        HdSilkMaterial::Resolve(materialPath, MakeDivergentUvChainNetwork(true));
+    if (thirdTransform.textures.size() != 2 ||
+        !hasParameter(thirdTransform, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR) ||
+        !hasParameter(thirdTransform, OPENUSD_SILK_MATERIAL_ROUGHNESS) ||
+        hasParameter(thirdTransform, OPENUSD_SILK_MATERIAL_NORMAL) ||
+        !UvTransformMatches(
+            thirdTransform.uvTransform, {0.5F, 0.0F, 0.0F, 0.5F, -0.25F, -0.5F}) ||
+        !UvTransformMatches(
+            thirdTransform.alternateUvTransform, {0.25F, 0.0F, 0.0F, 0.25F, 0.0F, 0.0F}) ||
+        thirdTransform.alternateUvParameterMask != (1u << OPENUSD_SILK_MATERIAL_ROUGHNESS))
+    {
+        std::cerr << "A third MaterialX UV transform was not dropped: textures="
+                  << thirdTransform.textures.size() << " mask=0x" << std::hex
+                  << thirdTransform.alternateUvParameterMask << std::dec << "\n";
+        return false;
+    }
+
+    // An invalid mask must not reach the wire: a bit naming a parameter without
+    // a surface texture would have the shader read a transform nothing asked for.
+    {
+        HdSilkMaterialRecord forged = reconciled;
+        forged.alternateUvParameterMask |= 1u << OPENUSD_SILK_MATERIAL_ROUGHNESS;
+        HdSilkSceneState forgedState;
+        forgedState.ReplaceMaterial(forged);
+        uint64_t forgedRevision = 0;
+        uint32_t forgedCommands = 0;
+        const uint64_t rejectedBefore = HdSilkSceneState::GetRejectedMaterialCount();
+        (void)forgedState.BuildPage(&forgedRevision, &forgedCommands);
+        if (HdSilkSceneState::GetRejectedMaterialCount() != rejectedBefore + 1)
+        {
+            std::cerr << "A mask bit with no surface texture was serialized: commands="
+                      << forgedCommands << "\n";
+            return false;
+        }
+    }
+
+    // The detail normal samples through its own rows, so a published detail
+    // image still cannot carry an alternate bit. The unmasked control proves the
+    // record is otherwise serializable and the rejection is the mask's alone.
+    {
+        HdSilkMaterialRecord detailed = reconciled;
+        HdSilkMaterialTexture detail = detailed.textures.back();
+        detail.parameter = OPENUSD_SILK_MATERIAL_DETAIL_NORMAL;
+        detailed.textures.push_back(detail);
+        const auto serializes = [](const HdSilkMaterialRecord& record) {
+            HdSilkSceneState state;
+            state.ReplaceMaterial(record);
+            uint64_t revision = 0;
+            uint32_t commands = 0;
+            const uint64_t rejectedBefore = HdSilkSceneState::GetRejectedMaterialCount();
+            (void)state.BuildPage(&revision, &commands);
+            return HdSilkSceneState::GetRejectedMaterialCount() == rejectedBefore;
+        };
+        HdSilkMaterialRecord detailMasked = detailed;
+        detailMasked.alternateUvParameterMask |= 1u << OPENUSD_SILK_MATERIAL_DETAIL_NORMAL;
+        if (!serializes(detailed) || serializes(detailMasked))
+        {
+            std::cerr << "A detail-normal alternate UV bit was not rejected alone.\n";
+            return false;
+        }
     }
 
     // Two primvars fit the renderer's two coordinate streams. Both images carry

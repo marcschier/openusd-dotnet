@@ -216,7 +216,7 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(144))).IsEqualTo(4f);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(164))).IsEqualTo(5f);
         float[] expected = transformed ? [0, 2, 0.25f, 0, -3, 0, -0.5f, 0] : [1, 0, 0, 0, 0, 1, 0, 0];
-        await Assert.That(MemoryMarshal.Cast<byte, float>(constants.AsSpan(240)).SequenceEqual(expected)).IsTrue();
+        await Assert.That(MemoryMarshal.Cast<byte, float>(constants.AsSpan(240, 32)).SequenceEqual(expected)).IsTrue();
         var permutation = new SilkShaderPermutationId(SilkShaderFeatures.Uv | material.GetTextureFeatures());
         await Assert.That(permutation.MeshVertexArtifactName).IsEqualTo("mesh.vertex.uv+normal");
         await Assert.That(permutation.MeshFragmentArtifactName).IsEqualTo("mesh.fragment.uv+material+normal");
@@ -602,8 +602,8 @@ public sealed class SilkMaterialCommandTests
                 [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "texture.png", "st")]);
         await Assert.That(() => CopyMaterial(page)).Throws<InvalidDataException>();
         await Assert.That(() => SilkCommandParser.ValidatePageAbi(24)).Throws<InvalidDataException>();
-        await Assert.That(() => SilkCommandParser.ValidatePageAbi(28)).Throws<InvalidDataException>();
-        SilkCommandParser.ValidatePageAbi(29);
+        await Assert.That(() => SilkCommandParser.ValidatePageAbi(29)).Throws<InvalidDataException>();
+        SilkCommandParser.ValidatePageAbi(30);
     }
 
     [Test]
@@ -659,7 +659,7 @@ public sealed class SilkMaterialCommandTests
         new SilkGpuTextureBudget(1024).ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil,
             (_, _) => throw new InvalidOperationException("No image is used."));
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. material(0.25f), .. CreateMeshUpsert("/Mesh", "/Material")], 2);
         renderer.ApplyPage(first);
         TextureGraphicsBuffer[] frames =
@@ -678,7 +678,7 @@ public sealed class SilkMaterialCommandTests
         original.ReadbackForTesting(before);
         ulong revision = renderer.Scene.Revision;
         int live = device.Buffers.Count(buffer => !buffer.Released);
-        using var update = new OpenUsdSilkPage(29, 2, material(0.75f), 1);
+        using var update = new OpenUsdSilkPage(30, 2, material(0.75f), 1);
         device.RefuseBufferSize = original.Size;
         await Assert.That(() => renderer.ApplyPage(update)).Throws<InvalidOperationException>();
         device.RefuseBufferSize = null;
@@ -1502,7 +1502,8 @@ public sealed class SilkMaterialCommandTests
             "/World/Materials/Truncated",
             SilkSurfaceKind.MaterialXProjected,
             scalars: [],
-            textures: []);
+            textures: [],
+            omitAlternateUv: true);
         byte[] truncated = upsert[..^sizeof(float)];
         BinaryPrimitives.WriteUInt32LittleEndian(truncated.AsSpan(4), (uint)truncated.Length);
 
@@ -1510,6 +1511,162 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(() => state.Apply(truncated, 1, 1))
             .Throws<InvalidDataException>();
     }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(sizeof(uint))]
+    [Arguments(sizeof(uint) + (5 * sizeof(float)))]
+    public async Task RejectsAMaterialUpsertWithATruncatedAlternateUvTail(int keptTailBytes)
+    {
+        // A page from an ABI 29 library ends after the primary affine; any cut
+        // inside the mask or the alternate affine must not parse as a material.
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Truncated",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures: []);
+        const int tailBytes = sizeof(uint) + (6 * sizeof(float));
+        byte[] truncated = upsert[..^(tailBytes - keptTailBytes)];
+        BinaryPrimitives.WriteUInt32LittleEndian(truncated.AsSpan(4), (uint)truncated.Length);
+
+        SilkSceneState state = new();
+        await Assert.That(() => state.Apply(truncated, 1, 1))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RetainsTheAlternateUvTransformForTheMaskedTexture()
+    {
+        // Base color samples through the primary place2d and roughness through a
+        // second one, which is what hdSilk publishes for two differing place2d nodes.
+        float[] alternate = [0.5f, 0f, 0f, 0.5f, 0.25f, 0.75f];
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/TwoPlacements",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                AlternateUvTexture(SilkMaterialParameter.DiffuseColor, "textures/base.png", 3),
+                AlternateUvTexture(SilkMaterialParameter.Roughness, "textures/rough.png", 1),
+            ],
+            uvTransform: PlacedUvTransform,
+            alternateUvMask: 1u << (int)SilkMaterialParameter.Roughness,
+            alternateUvTransform: alternate));
+
+        await Assert.That(material.AlternateUvParameterMask)
+            .IsEqualTo(1u << (int)SilkMaterialParameter.Roughness);
+        await Assert.That(material.AlternateUvTransform.ToArray()).IsEquivalentTo(alternate);
+        await Assert.That(material.GetUvTransformFor(SilkMaterialParameter.Roughness).ToArray())
+            .IsEquivalentTo(alternate);
+        await Assert.That(material.GetUvTransformFor(SilkMaterialParameter.DiffuseColor).ToArray())
+            .IsEquivalentTo(PlacedUvTransform);
+        await Assert.That(material.GetAlternateUvTextureMask())
+            .IsEqualTo(SilkShaderFeatures.RoughnessMetallicMap);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        await Assert.That(ReadSingle(constants, 204))
+            .IsEqualTo((float)(uint)SilkShaderFeatures.RoughnessMetallicMap);
+        await Assert.That(ReadSingle(constants, 144)).IsEqualTo(2f);
+        await Assert.That(ReadSingle(constants, 152)).IsEqualTo(-0.25f);
+        await Assert.That(ReadSingle(constants, 272)).IsEqualTo(0.5f);
+        await Assert.That(ReadSingle(constants, 276)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 280)).IsEqualTo(0.25f);
+        await Assert.That(ReadSingle(constants, 284)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 288)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 292)).IsEqualTo(0.5f);
+        await Assert.That(ReadSingle(constants, 296)).IsEqualTo(0.75f);
+        await Assert.That(ReadSingle(constants, 300)).IsEqualTo(0f);
+    }
+
+    [Test]
+    public async Task WritesTheIdentityAlternateUvTransformWithoutAMaskedTexture()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/OnePlacement",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures: [AlternateUvTexture(SilkMaterialParameter.DiffuseColor, "textures/base.png", 3)],
+            uvTransform: PlacedUvTransform));
+
+        await Assert.That(material.AlternateUvParameterMask).IsEqualTo(0u);
+        await Assert.That(material.GetAlternateUvTextureMask()).IsEqualTo(SilkShaderFeatures.None);
+        foreach (SilkMaterialData? candidate in new[] { material, null })
+        {
+            byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+            SilkSurfaceUniformWriter.Write(candidate, RenderHeadlight.Deterministic, constants);
+            await Assert.That(ReadSingle(constants, 204)).IsEqualTo(0f);
+            await Assert.That(ReadSingle(constants, 272)).IsEqualTo(1f);
+            await Assert.That(ReadSingle(constants, 276)).IsEqualTo(0f);
+            await Assert.That(ReadSingle(constants, 280)).IsEqualTo(0f);
+            await Assert.That(ReadSingle(constants, 288)).IsEqualTo(0f);
+            await Assert.That(ReadSingle(constants, 292)).IsEqualTo(1f);
+            await Assert.That(ReadSingle(constants, 296)).IsEqualTo(0f);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkMaterialParameter.Normal, SilkMaterialParameter.DiffuseColor)]
+    [Arguments(SilkMaterialParameter.DetailNormal, SilkMaterialParameter.DetailNormal)]
+    [Arguments(SilkMaterialParameter.Displacement, SilkMaterialParameter.Displacement)]
+    public async Task RejectsAnAlternateUvMaskThatNamesNoMaskableTexture(
+        SilkMaterialParameter masked,
+        SilkMaterialParameter authored)
+    {
+        // The detail normal has its own affine and displacement samples in the
+        // vertex stage through the primary one, so neither can be masked; a bit
+        // with no texture behind it is a forged page.
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Forged",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures: [AlternateUvTexture(authored, "textures/authored.png", 3)],
+            alternateUvMask: 1u << (int)masked,
+            alternateUvTransform: [0.5f, 0f, 0f, 0.5f, 0f, 0f]);
+
+        SilkSceneState state = new();
+        await Assert.That(() => state.Apply(upsert, 1, 1))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task TheRuntimeShaderKeyTracksTheAlternateUvTransform()
+    {
+        static byte[] key(uint mask, float[] alternate) => CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Keyed",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                AlternateUvTexture(SilkMaterialParameter.DiffuseColor, "textures/base.png", 3),
+                AlternateUvTexture(SilkMaterialParameter.Roughness, "textures/rough.png", 1),
+            ],
+            alternateUvMask: mask,
+            alternateUvTransform: alternate)).CreateRuntimeShaderKeyBytes();
+
+        uint roughness = 1u << (int)SilkMaterialParameter.Roughness;
+        byte[] baseline = key(roughness, [0.5f, 0f, 0f, 0.5f, 0f, 0f]);
+        await Assert.That(key(roughness, [0.5f, 0f, 0f, 0.5f, 0f, 0f]).SequenceEqual(baseline)).IsTrue();
+        await Assert.That(key(roughness, [0.5f, 0f, 0f, 0.5f, 0.1f, 0f]).SequenceEqual(baseline)).IsFalse();
+        await Assert.That(key(0, [0.5f, 0f, 0f, 0.5f, 0f, 0f]).SequenceEqual(baseline)).IsFalse();
+    }
+
+    private static TextureSpec AlternateUvTexture(
+        SilkMaterialParameter parameter,
+        string asset,
+        int components) =>
+        new(
+            parameter,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: components,
+            Scale: [1f, 1f, 1f, 1f],
+            Bias: [0f, 0f, 0f, 0f],
+            Fallback: [0f, 0f, 0f, 1f],
+            Asset: asset,
+            UvPrimvar: "st");
 
     [Test]
     public async Task RejectsAMaterialWhoseHashDoesNotMatchItsPath()
@@ -2038,13 +2195,13 @@ public sealed class SilkMaterialCommandTests
             using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil, (asset, _) =>
                 new SilkDecodedImage(1, 1, File.ReadAllText(asset) == "before"
                     ? [255, 0, 0, 255] : [0, 0, 255, 255]));
-            using var first = new OpenUsdSilkPage(29, 1,
+            using var first = new OpenUsdSilkPage(30, 1,
                 [.. material, .. CreateMeshUpsert("/Mesh", "/Material")], 2);
             renderer.ApplyPage(first);
             Texture previous = device.TextureOwners.Single(texture => texture.Format == SilkTextureFormat.Rgba8Unorm);
             ulong reserved = budget.Usage.ReservedBytes;
             await File.WriteAllTextAsync(path, "after-longer");
-            using var quiet = new OpenUsdSilkPage(29, 2, [], 0);
+            using var quiet = new OpenUsdSilkPage(30, 2, [], 0);
             using (IDisposable pressure = budget.Reserve(
                 new SilkTextureDescriptor(checked((uint)((budget.MaximumBytes - reserved) / 4)),
                     1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
@@ -2090,7 +2247,7 @@ public sealed class SilkMaterialCommandTests
             decodes++;
             throw new InvalidOperationException("Disabled material textures must not be decoded.");
         });
-        using var page = new OpenUsdSilkPage(29, 1,
+        using var page = new OpenUsdSilkPage(30, 1,
             [.. material, .. CreateMeshUpsert("/First", "/Material")], 2);
         renderer.ApplyPage(page, useSceneMaterials: false);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
@@ -2139,7 +2296,7 @@ public sealed class SilkMaterialCommandTests
                 image.OwnReservation(reservation);
                 return image;
             });
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. material("before.png"), .. CreateMeshUpsert("/First", "/Material"),
                 .. CreateMeshUpsert("/Removed", "/Material", 8)], 3);
         renderer.ApplyPage(first);
@@ -2157,7 +2314,7 @@ public sealed class SilkMaterialCommandTests
         ulong charged = budget.Usage.ReservedBytes;
         int priorDecodes = decodes;
         string nextAsset = luminanceOnly ? "before.png" : "after.png";
-        using var replacement = new OpenUsdSilkPage(29, 2,
+        using var replacement = new OpenUsdSilkPage(30, 2,
             [.. material(nextAsset, luminanceOnly), .. CreateMeshRemove("/Removed"),
                 .. CreateMeshUpsert("/Added", "/Material", 9)], 3);
         int originalOwners = device.TextureOwners.Count(texture => !texture.Released);
@@ -3974,7 +4131,10 @@ public sealed class SilkMaterialCommandTests
         TextureSpec[] textures,
         byte[]? generatedFragmentSpirV = null,
         byte[]? generatedFragmentMslSource = null,
-        float[]? uvTransform = null)
+        float[]? uvTransform = null,
+        uint alternateUvMask = 0,
+        float[]? alternateUvTransform = null,
+        bool omitAlternateUv = false)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         List<byte> payload = [];
@@ -4035,6 +4195,14 @@ public sealed class SilkMaterialCommandTests
         foreach (float element in uvTransform)
         {
             payload.AddRange(BitConverter.GetBytes(element));
+        }
+        if (!omitAlternateUv)
+        {
+            payload.AddRange(BitConverter.GetBytes(alternateUvMask));
+            foreach (float element in alternateUvTransform ?? [1f, 0f, 0f, 1f, 0f, 0f])
+            {
+                payload.AddRange(BitConverter.GetBytes(element));
+            }
         }
 
         return CreateCommand(4, payload);

@@ -74,7 +74,7 @@ internal static class SilkNestedInstanceLinkConformance
             SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(29, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. Frame(), .. Quad(1, NestedPrototype, Positions[0]),
                 .. InstanceReference(NestedPrototype, 1, Positions[1])], 3);
         renderer.ApplyPage(first);
@@ -83,7 +83,7 @@ internal static class SilkNestedInstanceLinkConformance
         await Assert.That(CoveredColumns(before)[Centres[0]]).IsTrue();
         await Assert.That(CoveredColumns(before)[Centres[2]]).IsFalse();
         ulong reserved = budget.Usage.ReservedBytes;
-        using var grown = new OpenUsdSilkPage(29, 2,
+        using var grown = new OpenUsdSilkPage(30, 2,
             [.. InstanceReference(NestedPrototype, 2, Positions[2]),
                 .. InstanceReference(NestedPrototype, 3, Positions[3])], 2);
         const ulong growthBytes = 12ul * SilkSceneUniformWriter.ByteSize;
@@ -731,8 +731,8 @@ internal static class SilkNestedInstanceLinkConformance
             await Assert.That(resolved.DomeMask).IsEqualTo(expected[instance].DomeMask).Because(evidence);
             buffers[instance] = renderer.GpuResources.RequireSurfaceBuffer(
                 renderer.Scene, mesh, RenderHeadlight.Deterministic);
-            await Assert.That(buffers[instance].Size).IsEqualTo((nuint)272).Because(evidence);
-            var bytes = new byte[272];
+            await Assert.That(buffers[instance].Size).IsEqualTo((nuint)304).Because(evidence);
+            var bytes = new byte[304];
             buffers[instance].ReadbackForTesting(bytes);
             await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208, 16)))
                 .IsEqualTo(expected[instance].LightMask).Because(evidence);

@@ -30,12 +30,14 @@ internal static class SilkSurfaceUniformWriter
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
     /// (m10, m11, ty, secondaryUvMask), the two-image composite controls
     /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
-    /// (domeLinkMask, constantBorderMaskU, constantBorderMaskV, 0), followed by uint4 direct and shadow link masks
-    /// and two independent detail-normal UV affine rows. Their unused w components
-    /// select private indexed storage for the base and detail normal respectively.
-    /// The base UV row's unused w selects private compact RGB emission storage.
+    /// (domeLinkMask, constantBorderMaskU, constantBorderMaskV, alternateUvMask), followed by uint4
+    /// direct and shadow link masks, two independent detail-normal UV affine rows,
+    /// and the two alternate UV transform rows (m00, m01, tx, 0) and (m10, m11, ty, 0).
+    /// The detail rows' unused w components select private indexed storage for the
+    /// base and detail normal respectively. The base UV row's unused w selects
+    /// private compact RGB emission storage.
     /// </remarks>
-    internal const int ByteSize = 272;
+    internal const int ByteSize = 304;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -181,9 +183,9 @@ internal static class SilkSurfaceUniformWriter
             volumeDepth,
             omniPbrSpecular ? 1 : 0);
 
-        // hdSilk publishes one folded MaterialX place2d affine per material, so the
-        // shader applies it once to the interpolated coordinate rather than
-        // re-deriving a per-texture transform it was never given.
+        // hdSilk publishes up to two folded MaterialX place2d affines per material.
+        // This is the primary one; the slots in the alternate mask at 192.w read
+        // the second pair of rows at 272 instead.
         IReadOnlyList<float>? uv = shaded?.UvTransform;
         WriteVector4(
             destination,
@@ -234,13 +236,29 @@ internal static class SilkSurfaceUniformWriter
             masks.DomeMask & SilkLightLinkMasks.AllDomeBits,
             volumeDensity ? 0 : GetConstantBorderMask(shaded, horizontal: true),
             volumeDensity ? 0 : GetConstantBorderMask(shaded, horizontal: false),
-            0);
+            // Texture-mask bits below 2^24, so the float carries the mask exactly.
+            volumeDensity || shaded is null ? 0 : (float)(uint)shaded.GetAlternateUvTextureMask());
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(208, 16), masks.LightMask);
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(224, 16), masks.ShadowMask);
         Vector3 detailRow0 = Vector(shaded, SilkMaterialParameter.DetailUvRow0, Vector3.UnitX);
         Vector3 detailRow1 = Vector(shaded, SilkMaterialParameter.DetailUvRow1, Vector3.UnitY);
         WriteVector4(destination, 240, detailRow0.X, detailRow0.Y, detailRow0.Z, indexedNormal ? 1 : 0);
         WriteVector4(destination, 256, detailRow1.X, detailRow1.Y, detailRow1.Z, indexedDetailNormal ? 1 : 0);
+        IReadOnlyList<float>? alternate = volumeDensity ? null : shaded?.AlternateUvTransform;
+        WriteVector4(
+            destination,
+            272,
+            alternate is null ? 1 : Finite(alternate[0], "alternate UV transform m00"),
+            alternate is null ? 0 : Finite(alternate[1], "alternate UV transform m01"),
+            alternate is null ? 0 : Finite(alternate[4], "alternate UV transform tx"),
+            0);
+        WriteVector4(
+            destination,
+            288,
+            alternate is null ? 0 : Finite(alternate[2], "alternate UV transform m10"),
+            alternate is null ? 1 : Finite(alternate[3], "alternate UV transform m11"),
+            alternate is null ? 0 : Finite(alternate[5], "alternate UV transform ty"),
+            0);
     }
 
     private static bool IsUdim(SilkMaterialTexture texture) =>

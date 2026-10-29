@@ -53,6 +53,7 @@ public sealed class SurfaceConstantsSizeContractTests
         const int expectedPrefixFloats = 208 / sizeof(float);
         const int wideMaskBytes = 2 * 16;
         const int detailUvBytes = 2 * 16;
+        const int alternateUvBytes = 2 * 16;
 
         List<string> mismatches = [];
         foreach (string relative in HandWrittenCopies)
@@ -88,10 +89,10 @@ public sealed class SurfaceConstantsSizeContractTests
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             int written = values.Length;
             if (written != expectedPrefixFloats
-                || written * sizeof(float) + wideMaskBytes + detailUvBytes != shaderSize)
+                || written * sizeof(float) + wideMaskBytes + detailUvBytes + alternateUvBytes != shaderSize)
             {
                 mismatches.Add(
-                    $"{relative} writes {written} prefix floats plus two UInt128 masks and two detail UV rows, " +
+                    $"{relative} writes {written} prefix floats plus two UInt128 masks, two detail UV rows and two alternate UV rows, " +
                     $"the shader block holds {shaderSize} bytes");
             }
             Match detail = Regex.Match(body,
@@ -102,6 +103,15 @@ public sealed class SurfaceConstantsSizeContractTests
             if (!detail.Success || !detailValues.SequenceEqual(["1", "0", "0", "0", "0", "1", "0", "0"]))
             {
                 mismatches.Add($"{relative} does not write independent identity detail UV rows at 240");
+            }
+            Match alternate = Regex.Match(body,
+                @"MemoryMarshal\.AsBytes<float>\(\s*\[(?<values>[^\]]*)\]\)\.CopyTo\(\w+\.AsSpan\(272\)\)",
+                RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            string[] alternateValues = alternate.Groups["values"].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (!alternate.Success || !alternateValues.SequenceEqual(["1", "0", "0", "0", "0", "1", "0", "0"]))
+            {
+                mismatches.Add($"{relative} does not write identity alternate UV rows at 272");
             }
             if (written > 35 && (values[19] != "0" || values[35] != "0"))
             {
@@ -198,7 +208,7 @@ public sealed class SurfaceConstantsSizeContractTests
     {
         int shaderSize = ReadShaderSurfaceParametersByteSize(FindRepositoryRoot());
         int writerSize = SilkSurfaceUniformWriter.ByteSize;
-        await Assert.That(shaderSize).IsEqualTo(272);
-        await Assert.That(writerSize).IsEqualTo(272);
+        await Assert.That(shaderSize).IsEqualTo(304);
+        await Assert.That(writerSize).IsEqualTo(304);
     }
 }

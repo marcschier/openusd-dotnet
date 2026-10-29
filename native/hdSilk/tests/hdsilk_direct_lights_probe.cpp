@@ -26,7 +26,7 @@ namespace
 {
 using namespace hdsilk_direct_lights_test;
 
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 29u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 30u);
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6u);
 static_assert(OPENUSD_SILK_SCENE_INGESTION_VERSION == 1u);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128u);
@@ -1031,6 +1031,8 @@ struct MaterialView
     uint32_t surface = 0;
     std::vector<ScalarView> scalars;
     std::array<float, 6> uv{};
+    uint32_t alternateUvMask = ~0u;
+    std::array<float, 6> alternateUv{};
 };
 
 struct RemovalView
@@ -1249,6 +1251,12 @@ MaterialView ReadMaterial(CommandView command)
     {
         material.uv[component] = ReadF32Le(command, cursor);
     }
+    material.alternateUvMask = ReadU32Le(command, cursor);
+    cursor += 4;
+    for (size_t component = 0; component < 6; ++component, cursor += 4)
+    {
+        material.alternateUv[component] = ReadF32Le(command, cursor);
+    }
     Require(cursor == command.size, "MATERIAL_UPSERT: incomplete command consumption");
     return material;
 }
@@ -1463,8 +1471,10 @@ void RequireRoughness(
     Require(material.path == path && material.hash != 0u && material.surface == 1u &&
             material.scalars.size() == 1 && material.scalars[0].parameter == 5u &&
             material.scalars[0].components == std::vector<float>{roughness} &&
-            material.uv == std::array<float, 6>{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},
-        label + ": wrong Preview Surface identity, roughness or trailing UV transform");
+            material.uv == std::array<float, 6>{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f} &&
+            material.alternateUvMask == 0u &&
+            material.alternateUv == std::array<float, 6>{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},
+        label + ": wrong Preview Surface identity, roughness or trailing UV transforms");
 }
 
 void RequireTriangle(

@@ -99,7 +99,7 @@ internal static class VolumeCommandAuthoring
                 Encoding.UTF8.GetByteCount(texture.UvPrimvar));
         }
         const int scalarBytes = 8 + (3 * sizeof(float)) + 8 + sizeof(float);
-        const int uvTransformBytes = 6 * sizeof(float);
+        const int uvTransformBytes = (12 * sizeof(float)) + sizeof(uint);
         byte[] bytes = new byte[
             32 + pathBytes.Length + scalarBytes + textureBytes +
             (2 * sizeof(uint)) + uvTransformBytes];
@@ -123,6 +123,13 @@ internal static class VolumeCommandAuthoring
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + sizeof(uint)), 0);
         offset += 2 * sizeof(uint);
         float[] identityUvTransform = [1, 0, 0, 1, 0, 0];
+        for (int index = 0; index < identityUvTransform.Length; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(offset + (index * sizeof(float))),
+                identityUvTransform[index]);
+        }
+        offset += 6 * sizeof(float) + sizeof(uint);
         for (int index = 0; index < identityUvTransform.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

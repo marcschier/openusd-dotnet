@@ -3619,6 +3619,39 @@ def Xform "World"
         Console.WriteLine(divergence);
         WriteEvidence($"uv-transform-{backend}-divergence.txt", [divergence]);
         await Assert.That(identityMaxDelta).IsGreaterThan((byte)32);
+
+        // A second place2d: the primary affine is the quarter turn, and only the
+        // masked base colour samples through the translation. Reading the
+        // translated texel proves the shader chose the alternate rows per slot.
+        float[] quarterTurn = [0f, -1f, 1f, 0f, 1f, 0f];
+        float[] translation = [1f, 0f, 0f, 1f, 0.5f, 0.5f];
+        ParityImage alternate = CaptureSyntheticFoldedUvTransform(
+            device,
+            quarterTurn,
+            TranslatedTexel,
+            1u << (int)SilkMaterialParameter.DiffuseColor,
+            translation);
+        (byte alternateMaxDelta, double alternateMeanDelta) = CompareTranslatedHalves(alternate);
+        string alternateLine = FormatSelfConsistencyMetrics(
+            $"uv-transform-alternate-{backend}",
+            alternateMaxDelta,
+            alternateMeanDelta);
+        Console.WriteLine(alternateLine);
+        WriteEvidence($"uv-transform-{backend}-alternate.txt", [alternateLine]);
+        await Assert.That(CountNonBlackPixels(alternate)).IsGreaterThan(100);
+        await Assert.That(alternateMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(alternateMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // Non-vacuity: the same transforms with an empty mask read the quarter
+        // turn's texel, so they must diverge from the translated reference.
+        ParityImage unmasked = CaptureSyntheticFoldedUvTransform(
+            device,
+            quarterTurn,
+            TranslatedTexel,
+            0,
+            translation);
+        (byte unmaskedMaxDelta, _) = CompareTranslatedHalves(unmasked);
+        await Assert.That(unmaskedMaxDelta).IsGreaterThan((byte)32);
     }
 
     /// <summary>
@@ -4130,7 +4163,9 @@ def Xform "World"
     private static ParityImage CaptureSyntheticFoldedUvTransform(
         ISilkGraphicsDevice device,
         float[] uvTransform,
-        float[] expectedColor)
+        float[] expectedColor,
+        uint alternateUvMask = 0,
+        float[]? alternateUvTransform = null)
     {
         MaterialScalarSpec[] referenceScalars =
         [
@@ -4173,7 +4208,9 @@ def Xform "World"
                 "/Candidate",
                 [placed],
                 texturedScalars,
-                uvTransform),
+                uvTransform,
+                alternateUvMask,
+                alternateUvTransform),
             textureCoordinates,
             requireImagePlugins: false,
             imageDecoder: static (_, _) => new SilkDecodedImage(
@@ -5603,7 +5640,9 @@ def Xform "World"
         string path,
         ReadOnlySpan<MaterialTextureSpec> textures,
         ReadOnlySpan<MaterialScalarSpec> scalars,
-        ReadOnlySpan<float> uvTransform)
+        ReadOnlySpan<float> uvTransform,
+        uint alternateUvMask = 0,
+        float[]? alternateUvTransform = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         int textureByteCount = 0;
@@ -5664,14 +5703,24 @@ def Xform "World"
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset + sizeof(uint)), 0);
         WriteUvTransform(bytes.AsSpan(generatedOffset + (2 * sizeof(uint))), uvTransform);
+        int alternateOffset = generatedOffset + (2 * sizeof(uint)) + (6 * sizeof(float));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(alternateOffset), alternateUvMask);
+        for (int index = 0; index < 6 && alternateUvTransform is not null; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(alternateOffset + sizeof(uint) + (index * sizeof(float))),
+                alternateUvTransform[index]);
+        }
         return bytes;
     }
 
     /// <summary>The affine hdSilk publishes when no MaterialX place2d was folded.</summary>
     private static ReadOnlySpan<float> IdentityUvTransform => [1f, 0f, 0f, 1f, 0f, 0f];
 
-    private const int UvTransformByteCount = 6 * sizeof(float);
+    /// <summary>The primary affine, the alternate texture mask and the alternate affine.</summary>
+    private const int UvTransformByteCount = (12 * sizeof(float)) + sizeof(uint);
 
+    /// <summary>Writes the primary affine and an empty alternate tail (no masked texture, identity affine).</summary>
     private static void WriteUvTransform(Span<byte> bytes, ReadOnlySpan<float> uvTransform)
     {
         for (int index = 0; index < 6; index++)
@@ -5679,6 +5728,13 @@ def Xform "World"
             BinaryPrimitives.WriteSingleLittleEndian(
                 bytes[(index * sizeof(float))..],
                 uvTransform[index]);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes[(6 * sizeof(float))..], 0);
+        for (int index = 0; index < 6; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes[((7 + index) * sizeof(float))..],
+                IdentityUvTransform[index]);
         }
     }
 

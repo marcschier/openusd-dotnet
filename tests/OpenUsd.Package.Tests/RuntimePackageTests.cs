@@ -46,7 +46,7 @@ public sealed partial class RuntimePackageTests
     private const int RequiredStormAbiVersion = 9;
     private static readonly int RequiredSilkSessionAbiVersion =
         checked((int)ReadLockNumber("silkSession"));
-    private const int RequiredSilkPageAbiVersion = 29;
+    private const int RequiredSilkPageAbiVersion = 30;
     private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -7731,6 +7731,11 @@ public sealed partial class RuntimePackageTests
                             writer.Write("detail.png"u8);
                             writer.Write("st"u8);
                             writer.Write(0u);
+                            writer.Write(0u);
+                            foreach (float value in new float[] { 1, 0, 0, 1, 0, 0 })
+                            {
+                                writer.Write(value);
+                            }
                             writer.Write(0u);
                             foreach (float value in new float[] { 1, 0, 0, 1, 0, 0 })
                             {

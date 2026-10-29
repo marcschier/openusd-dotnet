@@ -94,7 +94,7 @@ constants, package validation, and tests must be updated together.
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
-| hdSilk command page | ABI 29 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 30 | Every managed page is validated before parsing. |
 | Optional `openusd_mdl` / `openusd_mdl_sdk` | ABI 7 | hdSilk checks the exact adapter version and result size. |
 | Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
 | Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |

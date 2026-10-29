@@ -1286,11 +1286,12 @@ internal static class Program
     /// stopped short of them left the shader reading an all-zero affine, which
     /// collapses every texture coordinate onto one texel. The ABI 18 light-link
     /// masks now follow the float prefix as two integer uint4 values, with every
-    /// bit set because a zero mask means "linked to no light".
+    /// bit set because a zero mask means "linked to no light". The ABI 30
+    /// alternate UV transform closes the block, also written as the identity.
     /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
-        const int surfaceConstantsByteSize = 272;
+        const int surfaceConstantsByteSize = 304;
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             surfaceConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
@@ -1314,6 +1315,7 @@ internal static class Program
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(208, 16), UInt128.MaxValue);
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(224, 16), UInt128.MaxValue);
         MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(240));
+        MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(272));
         buffer.Write(values);
         return buffer;
     }

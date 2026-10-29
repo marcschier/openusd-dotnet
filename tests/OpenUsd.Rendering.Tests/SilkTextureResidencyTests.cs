@@ -1397,6 +1397,11 @@ public sealed class SilkTextureResidencyTests
         {
             payload.AddRange(BitConverter.GetBytes(element));
         }
+        payload.AddRange(BitConverter.GetBytes(0u));
+        foreach (float element in new[] { 1f, 0f, 0f, 1f, 0f, 0f })
+        {
+            payload.AddRange(BitConverter.GetBytes(element));
+        }
         return CreateCommand((uint)SilkCommandType.MaterialUpsert, payload);
     }
 

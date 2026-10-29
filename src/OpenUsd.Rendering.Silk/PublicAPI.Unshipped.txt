@@ -1003,6 +1003,8 @@ OpenUsd.Rendering.Silk.SilkMaterialData.Scalars.get -> System.Collections.Generi
 OpenUsd.Rendering.Silk.SilkMaterialData.StableHash.get -> ulong
 OpenUsd.Rendering.Silk.SilkMaterialData.SurfaceKind.get -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkMaterialData.Textures.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkMaterialTexture!>!
+OpenUsd.Rendering.Silk.SilkMaterialData.AlternateUvParameterMask.get -> uint
+OpenUsd.Rendering.Silk.SilkMaterialData.AlternateUvTransform.get -> System.Collections.Generic.IReadOnlyList<float>!
 OpenUsd.Rendering.Silk.SilkMaterialData.UvTransform.get -> System.Collections.Generic.IReadOnlyList<float>!
 OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.Clearcoat = 6 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
@@ -1112,6 +1114,8 @@ OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.GeneratedFragmentMslSource.get 
 OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.GeneratedFragmentSpirV.get -> System.ReadOnlySpan<byte>
 OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.GetScalar(int index) -> OpenUsd.Rendering.Silk.SilkMaterialScalarEntry
 OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.GetTexture(int index) -> OpenUsd.Rendering.Silk.SilkMaterialTextureEntry
+OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.AlternateUvParameterMask.get -> uint
+OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.GetAlternateUvTransform(int index) -> float
 OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.GetUvTransform(int index) -> float
 OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand.ScalarCount.get -> int
@@ -2260,7 +2264,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 29 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 30 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint

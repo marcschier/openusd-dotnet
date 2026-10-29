@@ -381,10 +381,16 @@ struct HdSilkMaterialRecord
 {
     std::string path;
     uint32_t surfaceKind = 0;
-    // The single constant UV transform every texture of this material samples
-    // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Identity
-    // unless a MaterialX place2d node with constant inputs was folded into it.
+    // The primary constant UV transform, the one the material's first surface
+    // texture samples through, as the row-major affine (m00, m01, m10, m11, tx,
+    // ty). Identity unless a MaterialX place2d node with constant inputs was
+    // folded into it.
     float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    // The second folded transform, read by the surface parameters whose bit
+    // (1u << parameter) is set in alternateUvParameterMask. Identity and zero
+    // when every surface texture agrees with uvTransform.
+    float alternateUvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    uint32_t alternateUvParameterMask = 0;
     std::vector<HdSilkMaterialScalar> scalars;
     std::vector<HdSilkMaterialTexture> textures;
     std::vector<uint32_t> generatedFragmentSpirv;

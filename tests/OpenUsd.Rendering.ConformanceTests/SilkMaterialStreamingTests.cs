@@ -985,6 +985,8 @@ public sealed class SilkMaterialStreamingTests
     [Arguments(SilkGraphicsBackend.Vulkan, "crossing")]
     [Arguments(SilkGraphicsBackend.D3D12, "affine")]
     [Arguments(SilkGraphicsBackend.Vulkan, "affine")]
+    [Arguments(SilkGraphicsBackend.D3D12, "alternate-affine")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "alternate-affine")]
     [Arguments(SilkGraphicsBackend.D3D12, "missing")]
     [Arguments(SilkGraphicsBackend.Vulkan, "missing")]
     [Arguments(SilkGraphicsBackend.D3D12, "boundary")]
@@ -1004,7 +1006,7 @@ public sealed class SilkMaterialStreamingTests
         {
             "shared" => ["A", "C"],
             "crossing" => ["A", "B", "C"],
-            "affine" => ["C"],
+            "affine" or "alternate-affine" => ["C"],
             "boundary" => ["A", "B"],
             _ => ["A"]
         };
@@ -1076,7 +1078,10 @@ public sealed class SilkMaterialStreamingTests
         List<byte[]> commands =
         [
             SilkMeshRendererConformance.CreateFrameCommand(32, 32, SilkMeshRendererConformance.Identity()),
-            Material('A', false, udim: true, uvTranslate: scenario == "affine" ? 2 : 0)
+            scenario == "alternate-affine"
+                ? Material('A', false, udim: true, alternateUvMask: 1u << (int)SilkMaterialParameter.DiffuseColor,
+                    alternateUvTranslate: 2)
+                : Material('A', false, udim: true, uvTranslate: scenario == "affine" ? 2 : 0)
         ];
         for (int index = 0; index < 2; index++)
         {
@@ -2243,7 +2248,8 @@ public sealed class SilkMaterialStreamingTests
         string pathSuffix = "", string? assetPath = null, bool vectorNormals = false,
         bool promotedNormals = false, SilkTextureWrap wrap = SilkTextureWrap.Repeat, bool normalScalarMaps = false,
         bool flipNormalGreen = false, bool emissiveOnly = false, uint colorComponents = 3,
-        string uvPrimvar = "st", string secondaryUvPrimvar = "")
+        string uvPrimvar = "st", string secondaryUvPrimvar = "",
+        uint alternateUvMask = 0, float alternateUvTranslate = 0)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2322,6 +2328,11 @@ public sealed class SilkMaterialStreamingTests
         writer.Write(0u);
         float baseScale = promotedNormals ? 5 : 1;
         foreach (float value in new float[] { baseScale, 0, 0, baseScale, uvTranslate, 0 })
+        {
+            writer.Write(value);
+        }
+        writer.Write(alternateUvMask);
+        foreach (float value in new float[] { 1, 0, 0, 1, alternateUvTranslate, 0 })
         {
             writer.Write(value);
         }
