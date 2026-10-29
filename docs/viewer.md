@@ -1485,7 +1485,12 @@ File-identity preparation uses a caller-bounded streaming SHA256 read, not just 
 timestamps. Missing files, read failures, over-budget inputs and cancellation remain distinct.
 A fingerprint is an observation, not a write lease or atomic filesystem compare-and-swap.
 Portable review support remains bounded to the native Windows filesystem USDA/text-USD profile
-with concrete assets/composition. Non-Windows verified opening, crate/custom/URI/package/template/
+with concrete assets/composition. A `.usd` source whose content carries the crate signature `PXR-USDC`
+opens as a session-only document without a verified source binding. Its edits use the shared
+Undo/Redo history, but review Save and recovery checkpoints are refused, and neither the source nor a
+review destination is written. A reload keeps the retained session-only reason, so it never upgrades
+a document to verified review even when its source would otherwise qualify.
+Non-Windows verified opening, crate/custom/URI/package/template/
 UDIM/value-clip/inherit/specialize/relocate portability and unverified dirty legacy reconciliation
 remain unsupported. Source saving and broader platform/document-editing work remain completion
 gaps. Counted review-layer admission into render-specification queries is validated separately;
