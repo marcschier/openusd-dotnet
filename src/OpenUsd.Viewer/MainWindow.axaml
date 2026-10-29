@@ -1226,6 +1226,7 @@
               <ComboBoxItem Content="Volume and fields" />
               <ComboBoxItem Content="Intrinsic shapes" />
               <ComboBoxItem Content="Render settings and products" />
+              <ComboBoxItem Content="Shader identity (info:)" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

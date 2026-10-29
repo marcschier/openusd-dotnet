@@ -506,6 +506,33 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task ShaderIdentityGroupUsesTheInfoNamespaceAndLeavesShaderInputsUnderInputs()
+    {
+        string[] names =
+        [
+            "info:id", "info:implementationSource", "info:sourceAsset", "info:glslfx:sourceAsset",
+            "info:sourceCode", "info:", "infos:id", "inputs:info:id", "inputs:roughness", "outputs:surface"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "raw"))
+            .ToArray();
+
+        ViewerPropertyPage identity = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.ShaderIdentity);
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Other);
+        ViewerPropertyPage inputs = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs);
+
+        await Assert.That(string.Join(",", identity.Attributes.Select(static item => item.Name))).IsEqualTo(
+            "info:id,info:implementationSource,info:sourceAsset,info:glslfx:sourceAsset,info:sourceCode");
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("info:,infos:id");
+        await Assert.That(string.Join(",", inputs.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("inputs:info:id,inputs:roughness");
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

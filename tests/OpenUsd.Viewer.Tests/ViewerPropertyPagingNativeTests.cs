@@ -521,6 +521,15 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(PropertyButtons(main).Select(
                     static button => AutomationProperties.GetAutomationId(button)))
                 .DoesNotContain("edit.property:/Beauty.sourceNameExtra");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.ShaderIdentity;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Surface" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Surface.info:id"), timeout);
+            await Assert.That(PropertyButtons(main).Select(
+                    static button => AutomationProperties.GetAutomationId(button)))
+                .DoesNotContain("edit.property:/Surface.inputs:roughness");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
             TreeViewItem grid = tree.Items.OfType<TreeViewItem>().Single(

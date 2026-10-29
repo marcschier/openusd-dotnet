@@ -34,6 +34,7 @@ internal enum ViewerPropertyGroup
     Volume,
     Shape,
     Render,
+    ShaderIdentity,
     Other
 }
 
@@ -256,6 +257,10 @@ internal sealed class ViewerPropertyPage
         if (name.StartsWith("outputs:", StringComparison.Ordinal))
         {
             return ViewerPropertyGroup.ShaderOutputs;
+        }
+        if (HasNamespace(name, "info:"))
+        {
+            return ViewerPropertyGroup.ShaderIdentity;
         }
         if (HasNamespace(name, "primvars:"))
         {

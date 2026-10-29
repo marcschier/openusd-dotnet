@@ -411,6 +411,11 @@ shapes. A mesh or any other prim keeps these names under **Other properties**.
 `orderedVars`. `RenderVar` contributes `dataType`, `sourceName` and `sourceType`, and `RenderPass`
 contributes `passType`, `command`, `fileName`, `denoise:enable`, `renderSource` and `inputPasses`.
 On any other prim these names stay under **Other properties**.
+**Shader identity (info:)** groups the UsdShade node-definition properties in the `info:`
+namespace: `info:id`, `info:implementationSource`, `info:sourceAsset`, `info:sourceCode` and
+source-type variants such as `info:glslfx:sourceAsset`. The group is name-based and applies to any
+prim. A bare `info:` and lookalikes such as `infos:id` stay under **Other properties**, and
+`inputs:info:id` stays under **Inputs**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing
