@@ -17,6 +17,8 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
     internal bool RefuseSubmission { get; set; }
     internal int? RefuseSubmissionAfter { get; set; }
     internal int? FailSubmissionCleanupAfter { get; set; }
+    internal bool FailSamplerDisposal { get; set; }
+    internal int FailingSamplers { get; private set; }
     internal CancellationTokenSource? CancelAfterSubmission { get; set; }
     internal int CancelSubmissionCountdown { get; set; }
     internal bool RefuseBufferAfterSubmission { get; set; }
@@ -125,7 +127,16 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
         CreatedTextures.Add(descriptor);
         return inner.CreateTexture2D(descriptor);
     }
-    public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) => inner.CreateSampler(descriptor);
+    public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
+    {
+        ISilkGraphicsSampler sampler = inner.CreateSampler(descriptor);
+        if (!FailSamplerDisposal)
+        {
+            return sampler;
+        }
+        FailingSamplers++;
+        return new CleanupFailureSampler(sampler);
+    }
     public ISilkGraphicsShaderModule CreateShaderModule(SilkShaderModuleDescriptor descriptor) =>
         inner.CreateShaderModule(descriptor);
     public ISilkGraphicsBindingLayout CreateBindingLayout(SilkBindingLayoutDescriptor descriptor) =>
@@ -199,6 +210,22 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
             _disposed = true;
             inner.Dispose();
             throw new InvalidOperationException("Injected publication cleanup failure.");
+        }
+    }
+
+    private sealed class CleanupFailureSampler(ISilkGraphicsSampler inner) : ISilkGraphicsSampler
+    {
+        private bool _disposed;
+        public SilkSamplerDescriptor Descriptor => inner.Descriptor;
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            inner.Dispose();
+            throw new InvalidOperationException("Injected sampler cleanup failure.");
         }
     }
 
