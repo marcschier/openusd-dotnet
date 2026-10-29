@@ -154,6 +154,12 @@ public sealed partial class ViewerPropertyPagingNativeTests
             {
                 int[] indices = [0]
             }
+            def Backdrop "Notes"
+            {
+                uniform token ui:description = "Lighting review"
+                uniform float2 ui:nodegraph:node:pos = (10, 20)
+                custom float uix:size = 3
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -530,6 +536,18 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(PropertyButtons(main).Select(
                     static button => AutomationProperties.GetAutomationId(button)))
                 .DoesNotContain("edit.property:/Surface.inputs:roughness");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.UserInterface;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Notes" });
+            await WaitAsync(() => PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Notes.ui:description"), timeout);
+            await Assert.That(PropertyButtons(main).Select(
+                    static button => AutomationProperties.GetAutomationId(button)))
+                .Contains("edit.property:/Notes.ui:nodegraph:node:pos");
+            await Assert.That(PropertyButtons(main).Select(
+                    static button => AutomationProperties.GetAutomationId(button)))
+                .DoesNotContain("edit.property:/Notes.uix:size");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
             TreeViewItem grid = tree.Items.OfType<TreeViewItem>().Single(

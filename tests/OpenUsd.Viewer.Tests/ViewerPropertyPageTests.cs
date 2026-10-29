@@ -533,6 +533,37 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task UserInterfaceGroupUsesTheUiNamespaceAndLeavesPrimvarsAndInputsInPlace()
+    {
+        string[] names =
+        [
+            "ui:nodegraph:node:pos", "ui:nodegraph:node:size", "ui:displayName", "ui:displayGroup",
+            "ui:description", "ui:", "uix:pos", "inputs:ui:hint", "primvars:ui:tag", "info:id"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "raw"))
+            .ToArray();
+
+        ViewerPropertyPage ui = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.UserInterface);
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Other);
+        ViewerPropertyPage inputs = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.ShaderInputs);
+        ViewerPropertyPage primvars = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Primvars);
+
+        await Assert.That(string.Join(",", ui.Attributes.Select(static item => item.Name))).IsEqualTo(
+            "ui:nodegraph:node:pos,ui:nodegraph:node:size,ui:displayName,ui:displayGroup,ui:description");
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("ui:,uix:pos");
+        await Assert.That(string.Join(",", inputs.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("inputs:ui:hint");
+        await Assert.That(string.Join(",", primvars.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("primvars:ui:tag");
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

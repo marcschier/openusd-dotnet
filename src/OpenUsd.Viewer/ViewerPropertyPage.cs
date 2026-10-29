@@ -35,6 +35,7 @@ internal enum ViewerPropertyGroup
     Shape,
     Render,
     ShaderIdentity,
+    UserInterface,
     Other
 }
 
@@ -261,6 +262,10 @@ internal sealed class ViewerPropertyPage
         if (HasNamespace(name, "info:"))
         {
             return ViewerPropertyGroup.ShaderIdentity;
+        }
+        if (HasNamespace(name, "ui:"))
+        {
+            return ViewerPropertyGroup.UserInterface;
         }
         if (HasNamespace(name, "primvars:"))
         {

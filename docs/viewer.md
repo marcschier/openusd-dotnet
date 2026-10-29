@@ -416,6 +416,12 @@ namespace: `info:id`, `info:implementationSource`, `info:sourceAsset`, `info:sou
 source-type variants such as `info:glslfx:sourceAsset`. The group is name-based and applies to any
 prim. A bare `info:` and lookalikes such as `infos:id` stay under **Other properties**, and
 `inputs:info:id` stays under **Inputs**.
+**User interface (ui:)** groups the UsdUI presentation properties in the `ui:` namespace:
+`ui:nodegraph:node:pos`, `ui:nodegraph:node:size` and the other NodeGraphNodeAPI hints,
+`ui:displayName` and `ui:displayGroup` from SceneGraphPrimAPI, and `ui:description` on a Backdrop.
+The group is name-based and applies to any prim. A bare `ui:` and lookalikes such as `uix:pos`
+stay under **Other properties**; `inputs:ui:hint` stays under **Inputs** and `primvars:ui:tag`
+under **Primvars**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing
