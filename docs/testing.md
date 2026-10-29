@@ -2852,9 +2852,9 @@ The default producer encodes its timeline signal in the same Metal command buffe
 so resource leases, draw completion and presentation readiness share one submission boundary.
 The test runner raises a terminating error after failed test executions: subsequent successful
 commands cannot overwrite an earlier failure in a calling workflow.
-`eng/run-platform-conformance.ps1` assigns nine explicitly named, unchanged Vulkan methods to
+`eng/run-platform-conformance.ps1` assigns 13 explicitly named, unchanged Vulkan methods to
 both supported Windows/Linux CI routes and requires exact method-level pass/no-skip receipts.
-macOS excludes only those nine methods, leaving every other Metal and renderer-neutral method
+macOS excludes only those 13 methods, leaving every other Metal and renderer-neutral method
 selected, including the original five-second IOSurface and submission-lifetime contracts.
 The partition receipt accounts for every selected namespace/class/method from compiled metadata,
 including parameterized cases and existing prerequisite skips. Missing methods, ambiguous case

@@ -115,7 +115,7 @@ $executionFailure = $null
 try
 {
     & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') -Project $project -Framework net10.0 `
-        -Configuration $Configuration -MinimumExpectedTests $(if ($Partition -eq 'Vulkan') { 9 } else { 1 }) `
+        -Configuration $Configuration -MinimumExpectedTests $(if ($Partition -eq 'Vulkan') { $vulkanMethods.Count } else { 1 }) `
         -TestArguments @('--treenode-filter', $selector)
     if ($LASTEXITCODE -ne 0) { throw 'The platform conformance execution failed.' }
 }
@@ -215,9 +215,9 @@ if ($Partition -eq 'Metal')
         }
     }
 }
-elseif ($actual.summary.passed -ne 9 -or $actual.summary.skipped -ne 0)
+elseif ($actual.summary.passed -ne $vulkanMethods.Count -or $actual.summary.skipped -ne 0)
 {
-    throw 'The supported Vulkan partition must execute exactly nine original methods with no skips.'
+    throw "The supported Vulkan partition must execute exactly $($vulkanMethods.Count) original methods with no skips."
 }
 [ordered]@{
     source = (& git -C $repo rev-parse HEAD).Trim()
