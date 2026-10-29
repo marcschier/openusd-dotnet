@@ -54,7 +54,10 @@ internal enum ViewerGeometrySchema
     Cylinder,
     Cone,
     Capsule,
-    Plane
+    Plane,
+    Skeleton,
+    SkelAnimation,
+    BlendShape
 }
 
 internal sealed class ViewerPropertyPage
@@ -226,6 +229,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Shape;
         }
+        if (IsSkeletalProperty(name, geometry))
+        {
+            return ViewerPropertyGroup.Skinning;
+        }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
@@ -326,6 +333,17 @@ internal sealed class ViewerPropertyPage
             ViewerGeometrySchema.Cylinder or ViewerGeometrySchema.Cone or ViewerGeometrySchema.Capsule =>
                 IsShapeBaseProperty(name) || name is "height" or "radius" or "axis",
             ViewerGeometrySchema.Plane => IsShapeBaseProperty(name) || name is "width" or "length" or "axis",
+            _ => false
+        };
+
+    private static bool IsSkeletalProperty(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.Skeleton => name is "joints" or "jointNames" or "bindTransforms" or "restTransforms",
+            ViewerGeometrySchema.SkelAnimation => name is "joints" or "translations" or "rotations" or "scales" or
+                "blendShapes" or "blendShapeWeights",
+            ViewerGeometrySchema.BlendShape => name is "offsets" or "normalOffsets" or "pointIndices" ||
+                HasNamespace(name, "inbetweens:"),
             _ => false
         };
 

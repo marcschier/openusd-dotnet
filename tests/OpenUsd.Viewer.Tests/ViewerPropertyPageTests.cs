@@ -388,6 +388,37 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task SkinningGroupHoldsTheAttributesOfSkeletonAnimationAndBlendShapePrims()
+    {
+        string[] names =
+        [
+            "joints", "jointNames", "bindTransforms", "restTransforms", "translations", "rotations", "scales",
+            "blendShapes", "blendShapeWeights", "offsets", "normalOffsets", "pointIndices", "inbetweens:half",
+            "inbetweens:", "Joints", "extent", "visibility"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+
+        await Assert.That(groupNames(ViewerGeometrySchema.Skeleton))
+            .IsEqualTo("joints,jointNames,bindTransforms,restTransforms");
+        await Assert.That(groupNames(ViewerGeometrySchema.SkelAnimation))
+            .IsEqualTo("joints,translations,rotations,scales,blendShapes,blendShapeWeights");
+        await Assert.That(groupNames(ViewerGeometrySchema.BlendShape))
+            .IsEqualTo("offsets,normalOffsets,pointIndices,inbetweens:half");
+        await Assert.That(groupNames(ViewerGeometrySchema.Mesh)).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Other, geometry: ViewerGeometrySchema.Skeleton);
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name))).IsEqualTo(
+            "translations,rotations,scales,blendShapes,blendShapeWeights,offsets,normalOffsets,pointIndices," +
+            "inbetweens:half,inbetweens:,Joints,extent");
+
+        string groupNames(ViewerGeometrySchema geometry) => string.Join(",", ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Skinning, geometry: geometry)
+            .Attributes.Select(static item => item.Name));
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

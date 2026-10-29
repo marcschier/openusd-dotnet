@@ -365,11 +365,14 @@ mesh topology and subdivision attributes, such as `faceVertexCounts`, `faceVerte
 `extent`, `doubleSided`, and `orientation` attributes. A custom `points` attribute on an `Xform`
 stays under **Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
 `primvars:normals`, stay under **Primvars**.
-**Skinning** groups attributes and relationships in the `skel:` namespace, such as
+**Skinning and skeletons** groups attributes and relationships in the `skel:` namespace, such as
 `skel:skinningMethod` and the `skel:skeleton` relationship. Like the other namespace groups, it does
 not check that `SkelBindingAPI` is applied. Skinning primvars such as `primvars:skel:jointIndices`
 stay under **Primvars**; a bare `skel:` name and names that differ in case stay under
-**Other properties**.
+**Other properties**. The group also holds the schema attributes of skeletal prims: `joints`,
+`jointNames`, `bindTransforms` and `restTransforms` on a `Skeleton`; `joints`, `translations`,
+`rotations`, `scales`, `blendShapes` and `blendShapeWeights` on a `SkelAnimation`; and `offsets`,
+`normalOffsets`, `pointIndices` and `inbetweens:` attributes on a `BlendShape`.
 **Model and draw mode** groups properties in the `model:` namespace, such as `model:drawMode`,
 `model:applyDrawMode` and the `model:card*` texture attributes. It does not check that
 `GeomModelAPI` is applied either. Primvars such as `primvars:model:tint` stay under **Primvars**,
