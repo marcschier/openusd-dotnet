@@ -1403,7 +1403,7 @@ uses C++17-compatible captures, and removes unused internal state without disabl
 strict compilation.
 
 Curated parity byte baselines are measured against the current 128-light frame layout.
-The fixed 15,296-byte frame block is outside the variable-scene headroom calculation:
+The fixed 17,344-byte frame block is outside the variable-scene headroom calculation:
 only the remaining scene buffers receive the existing 25-percent/256-byte margin.
 Draw, mesh, geometry/upload counts, texture-byte limits and all pixel tolerances remain
 unchanged. The opt-in `RecordsCuratedResourceFootprintsForBaselineReview` helper records

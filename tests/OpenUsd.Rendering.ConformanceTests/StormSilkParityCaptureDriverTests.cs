@@ -6219,7 +6219,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "clip-plane-asymmetric",
@@ -6237,7 +6237,7 @@ def Xform "World"
             {
                 ClipPlanes = [new Vector4(1, 0, 0, 0.12f)],
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 15_936, 15_936, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_016, 18_016, 0)),
             },
             new ParityScene(
                 "depth-overlap-multiprim",
@@ -6254,7 +6254,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 16_100, 16_100, 0)),
+                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 18_180, 18_180, 0)),
             },
             new ParityScene(
                 "material-normals-uv",
@@ -6272,7 +6272,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_796, 15_796, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_876, 17_876, 0)),
             },
             new ParityScene(
                 "materials-textures",
@@ -6290,7 +6290,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_812, 15_812, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 17_892, 17_892, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-varying-texture",
@@ -6309,7 +6309,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_812, 15_812, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 17_892, 17_892, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-facevarying-texture",
@@ -6328,7 +6328,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_812, 15_812, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 17_892, 17_892, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-uniform-texture",
@@ -6347,7 +6347,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_940, 15_940, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 18_020, 18_020, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "material-metallic-workflow",
@@ -6365,7 +6365,7 @@ def Xform "World"
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_212, 16_212, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_324, 18_324, 0)),
             },
             new ParityScene(
                 "materialx-standard-surface-constant",
@@ -6382,7 +6382,7 @@ def Xform "World"
                 RequiredAdjustedIou: null)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_284, 16_284, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_396, 18_396, 0)),
             },
             new ParityScene(
                 "materialx-standard-surface-preview-equivalent",
@@ -6399,7 +6399,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_796, 15_796, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_876, 17_876, 0)),
             },
             new ParityScene(
                 "light-distant-exposure",
@@ -6418,7 +6418,7 @@ def Xform "World"
                 SceneLightSensitivityStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-exposure-double.usda"),
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "light-distant-specular",
@@ -6435,7 +6435,7 @@ def Xform "World"
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "light-sphere-point",
@@ -6452,7 +6452,7 @@ def Xform "World"
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "light-dome-ambient",
@@ -6468,7 +6468,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_796, 15_796, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_876, 17_876, 0)),
             },
             new ParityScene(
                 "light-distant-shadow",
@@ -6491,7 +6491,7 @@ def Xform "World"
                 ShadowDisabledStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-shadow-disabled.usda"),
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_260, 16_260, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_372, 18_372, 0)),
             },
             new ParityScene(
                 "point-instancer-cluster",
@@ -6509,7 +6509,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 15_940, 15_940, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 18_020, 18_020, 0)),
             },
             new ParityScene(
                 "points-asymmetric",
@@ -6527,7 +6527,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 18_696, 18_696, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 20_776, 20_776, 0)),
             },
             new ParityScene(
                 "cards-draw-mode",
@@ -6546,7 +6546,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 16_336, 16_336, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 18_416, 18_416, 0)),
             },
             new ParityScene(
                 "single-sided-winding",
@@ -6569,7 +6569,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 15_900, 15_900, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 17_980, 17_980, 0)),
             },
             new ParityScene(
                 "bounds-draw-mode",
@@ -6585,7 +6585,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 16_288, 16_288, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 18_368, 18_368, 0)),
             },
             new ParityScene(
                 "origin-draw-mode",
@@ -6601,7 +6601,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_784, 15_784, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_864, 17_864, 0)),
             },
             new ParityScene(
                 "time-varying-transform-primvar",
@@ -6619,7 +6619,7 @@ def Xform "World"
             {
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 15_900, 15_900, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 17_980, 17_980, 0)),
             },
             new ParityScene(
                 "subdivision-catmull-clark",
@@ -6638,7 +6638,7 @@ def Xform "World"
                 RequiredAdjustedIou: null)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_152, 16_152, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_232, 18_232, 0)),
             },
             new ParityScene(
                 "skinned-pennant",
@@ -6657,7 +6657,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "cpu-skinning"],
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_808, 15_808, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_888, 17_888, 0)),
             },
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
@@ -7252,7 +7252,7 @@ def Xform "World"
 
         private static ulong SceneBufferBudget(ulong measured)
         {
-            const ulong fixedFrameBytes = 15_296;
+            const ulong fixedFrameBytes = 17_344;
             if (SilkFrameUniformWriter.ByteSize != fixedFrameBytes || measured < fixedFrameBytes)
             {
                 throw new InvalidOperationException(
