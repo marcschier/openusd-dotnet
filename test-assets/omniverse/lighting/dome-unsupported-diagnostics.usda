@@ -16,9 +16,10 @@
       OPENUSD_SILK_ENVIRONMENT_MAPPING_UNSUPPORTED.
     - </World/Lights/MissingTextureDome> references an asset that does not
       exist, and reports OPENUSD_SILK_ENVIRONMENT_ASSET_NOT_FOUND.
-    - </World/Lights/ColorTemperatureDome> enables colour temperature, which
-      hdSilk does not put on the environment wire, and reports
-      OPENUSD_SILK_ENVIRONMENT_FEATURE_UNSUPPORTED."""
+    - </World/Lights/ColorTemperatureDome> enables a non-finite colour
+      temperature. hdSilk tints a dome by any finite temperature, as Storm
+      does, but has no tint for "inf", so it keeps the authored colour and
+      reports OPENUSD_SILK_ENVIRONMENT_FEATURE_UNSUPPORTED."""
     defaultPrim = "World"
     metersPerUnit = 0.01
     upAxis = "Y"
@@ -55,7 +56,7 @@ def Xform "World"
             asset inputs:texture:file = @dome-white-latlong.hdr@
             token inputs:texture:format = "latlong"
             bool inputs:enableColorTemperature = true
-            float inputs:colorTemperature = 4500
+            float inputs:colorTemperature = inf
             color3f inputs:color = (1, 1, 1)
             float inputs:intensity = 1
             float inputs:specular = 0

@@ -2470,7 +2470,10 @@ public enum SilkEnvironmentUnsupportedFeatures : uint
     /// <summary>Everything authored on the dome reached the wire.</summary>
     None = 0,
 
-    /// <summary><c>enableColorTemperature</c> is on and was not applied.</summary>
+    /// <summary>
+    /// <c>enableColorTemperature</c> is on and was not applied, because the
+    /// authored temperature is not finite.
+    /// </summary>
     ColorTemperature = 1,
 
     /// <summary><c>poleAxis</c> is authored to something other than <c>scene</c>.</summary>

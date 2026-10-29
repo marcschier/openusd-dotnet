@@ -211,6 +211,86 @@ public sealed class SilkDirectLightNativeConformanceTests
         await AssertSteady(capture, result.Captures["steady"]);
     }
 
+    [Test]
+    [Arguments("10000", false)]
+    [Arguments("800", false)]
+    [Arguments("10000", true)]
+    [Arguments("inf", true)]
+    public async Task NativeDomeTintsByColorTemperature(string temperature, bool textured)
+    {
+        SilkGraphicsBackend backend = OperatingSystem.IsWindows()
+            ? SilkGraphicsBackend.D3D12
+            : SilkGraphicsBackend.Vulkan;
+        var profile = new ExecutionProfile(
+            backend, IsEnabled(Environment.GetEnvironmentVariable(RequiredVariable)), false);
+        string? plugins = Environment.GetEnvironmentVariable(PluginVariable);
+        CheckPrerequisites(profile, plugins, Directory.Exists(plugins), SupportedOs(backend));
+        string root = Directory.CreateTempSubdirectory("silk-dome-temperature-").FullName;
+        string path = Path.Combine(root, "scene.usda");
+        string texture = textured
+            ? "asset inputs:texture:file = @environment.ppm@\ntoken inputs:texture:format = \"latlong\""
+            : string.Empty;
+        string scene = $$"""
+            #usda 1.0
+            def DomeLight "Dome" {
+                {{texture}}
+                color3f inputs:color = (0.2, 0.3, 0.4)
+                float inputs:intensity = 0.5
+                float inputs:exposure = 1
+                bool inputs:enableColorTemperature = true
+                float inputs:colorTemperature = {{temperature}}
+            }
+            """;
+        bool finite = temperature != "inf";
+        Vector3 authored = new(0.2f, 0.3f, 0.4f);
+        Vector3 tint = !finite
+            ? Vector3.One
+            : temperature == "800"
+                ? BlackbodyKnot(new Vector3(1.0f, 0.02749f, 0.0f))
+                : BlackbodyKnot(new Vector3(0.609681f, 0.695588f, 1.0f));
+        try
+        {
+            await File.WriteAllTextAsync(path, scene);
+            await File.WriteAllTextAsync(Path.Combine(root, "environment.ppm"), "P3\n1 1\n255\n80 120 180\n");
+            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins!, source);
+            var state = new SilkSceneState();
+            using (OpenUsdSilkPage page = session.Sync(Size, Size, camera: Camera))
+            {
+                _ = state.Apply(page);
+            }
+
+            await Assert.That(state.Frame.DomeCount).IsEqualTo(1u);
+            SilkFrameDome dome = state.Frame.Domes[0];
+            await Assert.That(dome.IsTextured).IsEqualTo(textured);
+            if (textured)
+            {
+                // The tint travels in the environment colour, so the prefilter and
+                // the mean-radiance fallback both see the tinted emission.
+                SilkEnvironmentData environment = state.Environments.Values.Single();
+                await AssertNear(environment.Color, authored * tint);
+                await Assert.That(environment.UnsupportedFeatures &
+                        SilkEnvironmentUnsupportedFeatures.ColorTemperature)
+                    .IsEqualTo(finite
+                        ? SilkEnvironmentUnsupportedFeatures.None
+                        : SilkEnvironmentUnsupportedFeatures.ColorTemperature);
+                await Assert.That(dome.AmbientColor).IsEqualTo(Vector3.Zero);
+            }
+            else
+            {
+                // Storm's unit-dome normalization times intensity and 2^exposure.
+                await AssertNear(dome.AmbientColor, authored * tint * (0.96f * 0.5f * 2f));
+                Vector4 ambient = state.Frame.AmbientLight;
+                await AssertNear(new Vector3(ambient.X, ambient.Y, ambient.Z), dome.AmbientColor);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static async Task AssertNear(Vector3 actual, Vector3 expected)
     {
         await Assert.That(MathF.Abs(actual.X - expected.X)).IsLessThanOrEqualTo(1e-5f);

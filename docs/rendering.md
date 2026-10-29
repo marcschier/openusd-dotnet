@@ -1921,9 +1921,11 @@ was diagnosed, fell back successfully, and the successful fallback wiped the rec
 that silently lost its directionality is not a state this renderer can be in.
 
 Every control diagnostic above is emitted from the authored record, **independently of whether the
-prefilter succeeded**. A dome that prefilters correctly and also authors `enableColorTemperature` is
-still named, and because that control invalidates the semantics of the image the prefilter produced, it
-forces the fallback rather than silently rendering an image whose colour is not the authored one.
+prefilter succeeded**. A dome that prefilters correctly and also authors an enabled colour temperature
+that is not finite is still named. hdSilk tints a dome by any finite temperature before the record
+reaches the wire, so only the non-finite case remains; because the image the prefilter produced cannot
+carry the authored emission, that dome is forced onto the fallback rather than silently rendered in a
+colour the author did not describe.
 
 Explicit exclusions, none of which are approximated:
 
@@ -3649,10 +3651,13 @@ transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Rect and di
 180 degrees, a surface outside the cone receives nothing, and inside it the contribution is scaled by
 the emitter-axis cosine raised to `shaping:focus`. Because Storm's default cone is 90 degrees, an
 unshaped rect or disk light emits only from its front face. Cone softness, IES profiles and sphere-light
-shaping are not applied. Every direct light also honours `enableColorTemperature`: hdSilk multiplies
-the authored colour by `UsdLuxBlackbodyTemperatureAsRgb(colorTemperature)` when it selects the frame's
-direct lights, the same luminance-normalized tint Storm applies, so the retained record keeps the
-authored colour. `normalize` is not applied. Shadow-enable is preserved as a
+shaping are not applied. Every direct light and every dome also honours `enableColorTemperature`:
+hdSilk multiplies the authored colour by `UsdLuxBlackbodyTemperatureAsRgb(colorTemperature)`, the
+same luminance-normalized tint Storm applies. It does so when it selects the frame's direct lights,
+resolves an untextured dome's ambient term, or builds a textured dome's environment record, so the
+retained record keeps the authored colour and both the prefilter and the mean-radiance fallback see
+the tinted emission. A dome whose enabled temperature is not finite has no tint to apply: hdSilk keeps
+its authored colour and names the prim. `normalize` is not applied. Shadow-enable is preserved as a
 diagnostic bit only, and `UsdLuxLightAPI` light linking is applied per draw (see "hdSilk UsdLux light
 and shadow linking"). The measured `light-distant-shadow` parity scene confirms Storm's offscreen
 harness is byte-identical when the authored distant-light shadow is disabled

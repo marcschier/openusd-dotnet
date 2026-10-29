@@ -803,9 +803,23 @@ void SelectDirectLights(
                 // color, intensity, exposure, and diffuse contribution.
                 const float exposed =
                     0.96f * light.intensity * std::pow(2.0f, light.exposure) * light.diffuse;
-                dome.ambientColor[0] = light.color[0] * exposed;
-                dome.ambientColor[1] = light.color[1] * exposed;
-                dome.ambientColor[2] = light.color[2] * exposed;
+                GfVec3f color(light.color[0], light.color[1], light.color[2]);
+                if (light.colorTemperatureEnabled)
+                {
+                    color = GfCompMult(
+                        color, UsdLuxBlackbodyTemperatureAsRgb(light.colorTemperature));
+                }
+                else if ((light.unsupportedFeatures &
+                             OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_COLOR_TEMPERATURE) != 0u)
+                {
+                    TF_WARN(
+                        "hdSilk ignores the non-finite colorTemperature on the "
+                        "untextured dome light '%s' and keeps its authored colour.",
+                        light.path.c_str());
+                }
+                dome.ambientColor[0] = color[0] * exposed;
+                dome.ambientColor[1] = color[1] * exposed;
+                dome.ambientColor[2] = color[2] * exposed;
 
                 // Accumulated from the very floats the dome entry carries, in
                 // the order the dome table publishes them. Summing the per-dome
@@ -3623,6 +3637,18 @@ HdSilkMakeEnvironmentSnapshot(const HdSilkLightRecord& record, uint32_t domeInde
     snapshot.color[0] = record.color[0];
     snapshot.color[1] = record.color[1];
     snapshot.color[2] = record.color[2];
+    if (record.colorTemperatureEnabled)
+    {
+        // Storm's dome light multiplies its colour by the same blackbody tint
+        // as its area lights. Resolving it here keeps the environment's colour
+        // the effective emission, so the image bake, the mean-radiance fallback
+        // and the diffuse/specular scales all see the tinted value.
+        const GfVec3f tint = UsdLuxBlackbodyTemperatureAsRgb(record.colorTemperature);
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            snapshot.color[channel] *= tint[channel];
+        }
+    }
     snapshot.intensity = record.intensity;
     snapshot.exposure = record.exposure;
     snapshot.diffuse = record.diffuse;

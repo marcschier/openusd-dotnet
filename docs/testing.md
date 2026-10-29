@@ -1707,6 +1707,12 @@ parsed page and the bound GPU frame. The 10000 K and clamped 800 K cases sit on 
 knots, so the expected tint is the knot scaled to unit Rec.709 luminance; a disabled temperature
 must leave the authored colour unchanged.
 
+`NativeDomeTintsByColorTemperature` covers the dome. An untextured dome at 10000 K and 800 K must
+publish its authored colour times the same knot tint, times Storm's 0.96 unit-dome factor, intensity
+and 2^exposure, in both its dome-table entry and the scene-wide ambient. A textured dome at 10000 K
+must carry the tinted colour in its environment record without the `ColorTemperature` unsupported
+flag; at an infinite temperature it must keep the authored colour and set that flag.
+
 The default D3D12 cases continue to require WARP. Set
 `OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED=1` to additionally run
 `NativeHighLightLinkingSurvivesRemovalAndRestorationOnHardware` for 97/128 lights

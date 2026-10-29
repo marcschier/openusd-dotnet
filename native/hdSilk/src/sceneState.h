@@ -418,8 +418,10 @@ struct HdSilkLightRecord
     float shapingFocus = 0.0f;
     // UsdLux enableColorTemperature/colorTemperature in Kelvin. Storm tints every
     // light it approximates, directional and area alike, by the luminance-
-    // normalized blackbody colour; hdSilk applies the same tint when it selects
-    // the direct lights, so the retained colour stays the authored one.
+    // normalized blackbody colour, and its dome light too; hdSilk applies the
+    // same tint when it selects the direct lights, resolves a dome's ambient
+    // term or builds a dome's environment snapshot, so the retained colour
+    // stays the authored one.
     bool colorTemperatureEnabled = false;
     float colorTemperature = 6500.0f;
     bool visible = true;
