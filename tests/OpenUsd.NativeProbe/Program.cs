@@ -758,6 +758,16 @@ internal static partial class Program
                     return 23;
                 }
 
+                UsdStageLinearUnits linearUnits = coreStage.GetLinearUnits();
+                if (linearUnits.MetersPerUnit != UsdStageLinearUnits.FallbackMetersPerUnit ||
+                    linearUnits.IsMetersPerUnitAuthored ||
+                    linearUnits.IsUpAxisAuthored ||
+                    linearUnits.UpAxis is not (UsdStageUpAxis.Y or UsdStageUpAxis.Z))
+                {
+                    Console.Error.WriteLine("Unauthored stage linear units did not report UsdGeom fallbacks.");
+                    return 38;
+                }
+
                 coreStage.ClearDefaultPrim();
                 coreStage.Save();
             }

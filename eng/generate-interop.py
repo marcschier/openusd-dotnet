@@ -173,6 +173,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref OpenUsdNativeBounds3d", managed_name
     if native_type == "openusd_oriented_bounds3d*":
         return "ref OpenUsdNativeOrientedBounds3d", managed_name
+    if native_type == "openusd_stage_linear_units*":
+        return "out OpenUsdNativeStageLinearUnits", managed_name
     if native_type == "openusd_prim_classification*":
         return "ref OpenUsdNativePrimClassification", managed_name
     if native_type == "openusd_geom_camera_state*":

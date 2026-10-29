@@ -696,6 +696,15 @@ public sealed partial class MainWindow : Window, IDisposable
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.Escape &&
+            e.KeyModifiers == KeyModifiers.None &&
+            _measure.IsActive &&
+            !IsCameraShortcutEditing())
+        {
+            CancelMeasureMode("Measure mode cancelled.");
+            e.Handled = true;
+            return;
+        }
         bool firstCameraShortcutPress = _cameraShortcutRepeat.TryPress(e.Key);
         bool firstPhysicsShortcutPress = _physicsShortcutRepeat.TryPress(e.Key);
         bool control = (e.KeyModifiers & KeyModifiers.Control) != 0;
@@ -1346,6 +1355,13 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
+            if (_measure.IsActive)
+            {
+                // Measure mode reads the pick as a point; the selection and its tint stay untouched.
+                await ApplyMeasurePickAsync(coordinator, result, cancellationToken);
+                return;
+            }
+
             switch (result.Status)
             {
                 case RenderPickStatus.Hit when result.Item is { } item:
@@ -1866,6 +1882,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void OnRenderStateChanged(StageRenderState state)
     {
         Dispatcher.UIThread.Post(UpdateSavedViewsContext);
+        Dispatcher.UIThread.Post(() => InvalidateMeasurementForState(state));
         var camera = new ViewerCameraState(state.Camera, state.Viewport);
         if (_hasLastHostCamera && camera == _lastHostCamera)
         {
@@ -4254,6 +4271,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             stageChangeCoordinator.StateChanged -= OnRenderStateChanged;
         }
+        CancelMeasureMode(status: null);
         ViewerStageCameraRefreshPump? stageCameraRefreshes =
             _stageCameraRefreshes;
         _stageCameraRefreshes = null;
@@ -6502,6 +6520,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = false;
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
+        UpdateMeasureAvailability(available: false);
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
@@ -6523,6 +6542,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = true;
         ReloadStageButton.IsEnabled = _coordinator is not null;
         ReloadStageMenuItem.IsEnabled = _coordinator is not null;
+        UpdateMeasureAvailability(_coordinator is not null);
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
@@ -6546,6 +6566,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = true;
         ReloadStageButton.IsEnabled = _coordinator is not null;
         ReloadStageMenuItem.IsEnabled = _coordinator is not null;
+        UpdateMeasureAvailability(_coordinator is not null);
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
@@ -6575,6 +6596,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = !_documentBusy;
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
+        UpdateMeasureAvailability(available: false);
         CaptureFrameMenuItem.IsEnabled = false;
         RenderImageSequenceMenuItem.IsEnabled = false;
         PhysicsRecordSequenceMenuItem.IsEnabled = false;

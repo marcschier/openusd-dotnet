@@ -662,6 +662,15 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_linear_units")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetLinearUnits(
+            nint stage,
+            out OpenUsdNativeStageLinearUnits units,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_stage_get_world_bounds",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]

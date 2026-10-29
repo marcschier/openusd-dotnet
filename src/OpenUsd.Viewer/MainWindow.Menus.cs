@@ -211,6 +211,7 @@ public sealed partial class MainWindow
         setAccessibleName(
             ToolsSelectionVisibleOnlyMenuItem, ViewerCommandIds.ToolsSelectionVisibleOnly);
         setAccessibleName(ToolsSelectionXRayMenuItem, ViewerCommandIds.ToolsSelectionXRay);
+        setAccessibleName(ToolsMeasureDistanceMenuItem, ViewerCommandIds.ToolsMeasureDistance);
         setAccessibleName(
             ToolsCopyDiagnosticsMenuItem, ViewerCommandIds.ToolsDeveloperCopyDiagnostics);
         setAccessibleName(CopyDiagnosticsButton, ViewerCommandIds.ToolsDeveloperCopyDiagnostics);
@@ -430,6 +431,7 @@ public sealed partial class MainWindow
         ToolsPickTargetPointMenuItem.Click += OnToolsPickTargetMenuClick;
         ToolsSelectionVisibleOnlyMenuItem.Click += OnToolsSelectionModeMenuClick;
         ToolsSelectionXRayMenuItem.Click += OnToolsSelectionModeMenuClick;
+        ToolsMeasureDistanceMenuItem.Click += OnToolsMeasureDistanceMenuClick;
 
         ToolsCopyDiagnosticsMenuItem.Click += OnCopyDiagnosticsClick;
         ToolsExportDiagnosticsMenuItem.Click += OnExportDiagnosticsClick;

@@ -16,15 +16,18 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiTwentyFiveRequiresVec4fArraysAndAllPriorCapabilities()
+    public async Task DataAbiTwentySixRequiresStageLinearUnitsAndAllPriorCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
         ulong exrCapability = OpenUsdNativeContract.ImageExrOutputCapability;
         ulong vec4fCapability = OpenUsdNativeContract.AttributeVec4fArraysCapability;
+        ulong linearUnitsCapability = OpenUsdNativeContract.StageLinearUnitsCapability;
 
-        await Assert.That(abiVersion).IsEqualTo(25U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFFFFFFUL);
+        await Assert.That(abiVersion).IsEqualTo(26U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x7FFFFFFFFUL);
+        await Assert.That(linearUnitsCapability).IsEqualTo(1UL << 34);
+        await Assert.That(requiredCapabilities & linearUnitsCapability).IsEqualTo(linearUnitsCapability);
         await Assert.That(vec4fCapability).IsEqualTo(1UL << 33);
         await Assert.That(exrCapability).IsEqualTo(1UL << 32);
         await Assert.That(requiredCapabilities & OpenUsdNativeContract.ImageExrOutputCapability)
@@ -157,6 +160,24 @@ public sealed class NativeContractTests
         await Assert.That(
             Marshal.OffsetOf<OpenUsdNativeExtent3f>(nameof(OpenUsdNativeExtent3f.Maximum)).ToInt32())
             .IsEqualTo(12);
+    }
+
+    [Test]
+    public async Task StageLinearUnitsLayoutMatchesTheFixedCAbi()
+    {
+        await Assert.That(Marshal.SizeOf<OpenUsdNativeStageLinearUnits>()).IsEqualTo(24);
+        await Assert.That(Marshal.OffsetOf<OpenUsdNativeStageLinearUnits>(
+            nameof(OpenUsdNativeStageLinearUnits.MetersPerUnit)).ToInt32()).IsEqualTo(0);
+        await Assert.That(Marshal.OffsetOf<OpenUsdNativeStageLinearUnits>(
+            nameof(OpenUsdNativeStageLinearUnits.MetersPerUnitAuthored)).ToInt32()).IsEqualTo(8);
+        await Assert.That(Marshal.OffsetOf<OpenUsdNativeStageLinearUnits>(
+            nameof(OpenUsdNativeStageLinearUnits.UpAxis)).ToInt32()).IsEqualTo(12);
+        await Assert.That(Marshal.OffsetOf<OpenUsdNativeStageLinearUnits>(
+            nameof(OpenUsdNativeStageLinearUnits.UpAxisAuthored)).ToInt32()).IsEqualTo(16);
+        await Assert.That(Marshal.OffsetOf<OpenUsdNativeStageLinearUnits>(
+            nameof(OpenUsdNativeStageLinearUnits.Reserved)).ToInt32()).IsEqualTo(20);
+        uint[] axes = [OpenUsdNativeStageLinearUnits.UpAxisY, OpenUsdNativeStageLinearUnits.UpAxisZ];
+        await Assert.That(axes).IsEquivalentTo([1U, 2U]);
     }
 
     [Test]

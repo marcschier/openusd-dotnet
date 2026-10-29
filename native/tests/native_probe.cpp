@@ -4794,7 +4794,7 @@ int main(int argc, char** argv)
         }
     }
 
-    if (openusd_get_abi_version() != 25 ||
+    if (openusd_get_abi_version() != 26 ||
         (openusd_get_capabilities() &
          (OPENUSD_CAPABILITY_STRING_LIST_V2 |
           OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -4829,7 +4829,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT |
           OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
           OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT |
-          OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS)) !=
+          OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS |
+          OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -4863,7 +4864,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT |
              OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
              OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT |
-             OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS))
+             OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS |
+             OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
@@ -5134,6 +5136,23 @@ int main(int argc, char** argv)
         openusd_stage_release(stage);
         std::cerr << "Core stage timing controls did not round-trip.\n";
         return 12;
+    }
+
+    openusd_stage_linear_units linearUnits{};
+    linearUnits.reserved = 7;
+    if (openusd_stage_get_linear_units(stage, nullptr, &error) != OPENUSD_STATUS_INVALID_ARGUMENT ||
+        openusd_stage_get_linear_units(stage, &linearUnits, &error) != OPENUSD_STATUS_OK ||
+        linearUnits.meters_per_unit != 0.01 ||
+        linearUnits.meters_per_unit_authored != 0 ||
+        (linearUnits.up_axis != OPENUSD_STAGE_UP_AXIS_Y &&
+         linearUnits.up_axis != OPENUSD_STAGE_UP_AXIS_Z) ||
+        linearUnits.up_axis_authored != 0 ||
+        linearUnits.reserved != 0 ||
+        sizeof(openusd_stage_linear_units) != 24)
+    {
+        openusd_stage_release(stage);
+        std::cerr << "Fallback stage linear units were not reported.\n";
+        return 241;
     }
 
     required = 0;

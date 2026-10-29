@@ -655,6 +655,13 @@
                     ToggleType="Radio"
                     GroupName="tools.pickTarget" />
               </MenuItem>
+              <MenuItem
+                  x:Name="ToolsMeasureDistanceMenuItem"
+                  AutomationProperties.Name="Measure distance between two picked points"
+                  Header="_Measure Distance"
+                  ToggleType="CheckBox"
+                  InputGesture="Ctrl+M"
+                  IsEnabled="False" />
               <MenuItem Header="Se_lection Outline">
                 <MenuItem
                     x:Name="ToolsSelectionVisibleOnlyMenuItem"

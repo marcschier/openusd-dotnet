@@ -90,7 +90,7 @@ constants, package validation, and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 25, required capabilities `0x3FFFFFFFF` | Managed runtime validates both. |
+| Data shim `openusd_dotnet` | ABI 26, required capabilities `0x7FFFFFFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
@@ -99,7 +99,7 @@ constants, package validation, and tests must be updated together.
 | Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
 | Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |
 
-The data capability mask is part of compatibility. A native library with ABI 25 but an older capability
+The data capability mask is part of compatibility. A native library with ABI 26 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.
 
 Optional MDL ABI 4 adds a diffuse texture luminance-mix scalar, carried by hdSilk
@@ -146,6 +146,14 @@ satisfy it. Neither addition changes the hdSilk contracts. The published `0.14.0
 Storm runtime remains ABI 8 and cannot serve these unreleased APIs. Native output formats,
 snapshot-local identity, known-copy budgets and explicit unsupported outputs are described in
 [Rendering](rendering.md#native-storm-aov-snapshots).
+
+Data ABI 26 adds `OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS` (`0x400000000`) and the
+`openusd_stage_get_linear_units` export, appended at Windows ordinal 402. The export returns the
+24-byte `openusd_stage_linear_units` record: composed `metersPerUnit`, `upAxis`, and whether each
+is authored or the UsdGeom fallback. Units-aware pick measurement needs it, because a world-space
+pick position is in scene units and no earlier export reported the stage's scale or whether it
+was authored. A runtime without the capability is rejected at startup. Every ABI 25 export and
+capability is preserved, and the hdSilk, Storm and physics contracts are unchanged.
 
 Data ABI 25 adds `OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS` (`0x200000000`) and the
 `openusd_stage_set_vec4f_array`/`openusd_stage_get_vec4f_array` exports, appended at Windows

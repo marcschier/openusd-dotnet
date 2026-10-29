@@ -62,8 +62,8 @@
     "license": "Apache-2.0"
   },
   "abi": {
-    "data": 25,
-    "dataCapabilities": 17179869183,
+    "data": 26,
+    "dataCapabilities": 34359738367,
     "storm": 9,
     "stormChild": 9,
     "silkSession": 6,

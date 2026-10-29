@@ -57,6 +57,7 @@ Each entry maps a C macro from native/openusd_dotnet/include/openusd_dotnet.h to
 | `inspection-v2` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `attribute-arrays-v2` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `attribute-vec4f-arrays` | Implemented | `win-x64` |
+| `stage-linear-units` | Implemented | `win-x64` |
 | `bounded-stage-inspection` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `session-overlay` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
 | `physics-bake` | Implemented | `win-x64`, `linux-x64`, `osx-arm64` |
@@ -233,6 +234,10 @@ Contiguous typed attribute-array v2 protocol
 
 Data ABI25 float4[] and color4f[] attribute array get/set with optional time samples, used for authored camera
 clippingPlanes in render products
+
+### `stage-linear-units`
+
+Data ABI26 composed stage metersPerUnit and upAxis with authored flags, used for units-aware pick measurement
 
 ### `bounded-stage-inspection`
 

@@ -347,6 +347,17 @@
           "evidencePlatforms": ["win-x64"]
         },
         {
+          "id": "stage-linear-units",
+          "nativeCapability": "OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS",
+          "description": "Data ABI26 composed stage metersPerUnit and upAxis with authored flags, used for units-aware pick measurement",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Interop.Tests/NativeContractTests.cs",
+            "tests/OpenUsd.Tests/UsdStageLinearUnitsNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "bounded-stage-inspection",
           "nativeCapability": "OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION",
           "description": "Bounded stage statistics and diagnostics",

@@ -207,6 +207,7 @@ internal static class ViewerCommandIds
     internal const string ToolsPickTargetFace = "tools.pickTarget.face";
     internal const string ToolsPickTargetEdge = "tools.pickTarget.edge";
     internal const string ToolsPickTargetPoint = "tools.pickTarget.point";
+    internal const string ToolsMeasureDistance = "tools.measureDistance";
     internal const string ToolsSelectionVisibleOnly = "tools.selection.visibleOnly";
     internal const string ToolsSelectionXRay = "tools.selection.xray";
     internal const string ToolsDeveloperCopyDiagnostics = "tools.developer.copyDiagnostics";
@@ -577,6 +578,9 @@ internal static class ViewerCommandCatalog
         new(ViewerCommandIds.ToolsPickTargetPoint, ViewerCommandGroup.Tools,
             "Point", "Pick target: Authored point",
             ViewerCommandCheckKind.Radio, "tools.pickTarget"),
+        new(ViewerCommandIds.ToolsMeasureDistance, ViewerCommandGroup.Tools,
+            "_Measure Distance", "Measure distance between two picked points",
+            ViewerCommandCheckKind.Check, Gesture: "Ctrl+M"),
         new(ViewerCommandIds.ToolsSelectionVisibleOnly, ViewerCommandGroup.Tools,
             "Visible only", "Selection outline: Visible only",
             ViewerCommandCheckKind.Radio, "tools.selection"),

@@ -1280,3 +1280,27 @@ OpenUsd.Rendering.RenderJobElementId.Values.get -> System.ReadOnlyMemory<int>
 OpenUsd.Rendering.RenderDiskFrameResult.ElementIdFileName.get -> string?
 OpenUsd.Rendering.RenderDiskFrameResult.ElementIdBytes.get -> long
 OpenUsd.Rendering.RenderDiskFrameResult.ElementIdSha256.get -> string?
+OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.None = 0 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.StartNotHit = 1 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.EndNotHit = 2 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.StartWithoutWorldPosition = 3 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.EndWithoutWorldPosition = 4 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.NonFinitePosition = 5 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.StateRevisionMismatch = 6 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.SceneRevisionMismatch = 7 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.InvalidMetersPerUnit = 8 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurement
+OpenUsd.Rendering.RenderPickMeasurement.Start.get -> OpenUsd.Rendering.SelectionItem
+OpenUsd.Rendering.RenderPickMeasurement.End.get -> OpenUsd.Rendering.SelectionItem
+OpenUsd.Rendering.RenderPickMeasurement.StartWorldPosition.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderPickMeasurement.EndWorldPosition.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderPickMeasurement.Delta.get -> OpenUsd.UsdVec3d
+OpenUsd.Rendering.RenderPickMeasurement.DistanceInSceneUnits.get -> double
+OpenUsd.Rendering.RenderPickMeasurement.DistanceInMeters.get -> double
+OpenUsd.Rendering.RenderPickMeasurement.Units.get -> OpenUsd.UsdStageLinearUnits
+OpenUsd.Rendering.RenderPickMeasurement.MetersPerUnit.get -> double
+OpenUsd.Rendering.RenderPickMeasurement.IsMetersPerUnitAuthored.get -> bool
+OpenUsd.Rendering.RenderPickMeasurement.StateRevision.get -> ulong
+OpenUsd.Rendering.RenderPickMeasurement.SceneRevision.get -> ulong?
+static OpenUsd.Rendering.RenderPickMeasurement.TryCreate(in OpenUsd.Rendering.RenderPickResult start, in OpenUsd.Rendering.RenderPickResult end, OpenUsd.UsdStageLinearUnits units, out OpenUsd.Rendering.RenderPickMeasurement? measurement, out OpenUsd.Rendering.RenderPickMeasurementRefusal refusal) -> bool

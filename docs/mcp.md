@@ -937,7 +937,7 @@ planes count toward the existing output quotas. This is raw HDR data, not an EXR
 
 To encode that plane as lossless half EXR, add `"hdrColorFormat":"exr"` alongside
 `"includeHdrColor":true`. The default is `"raw"`; other values, or EXR without HDR, are
-invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 25
+invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 26
 Core runtime. It preserves the same working values and stored alpha, with origin-zero equal
 windows, square pixels and unspecified primaries/alpha association. It neither applies a display
 transform nor uses scene-authored product filenames. PNG, depth and the actual EXR encoded extent
@@ -1231,14 +1231,16 @@ MCP capture-dimension and output-byte quotas still apply.
 ```
 
 The admitted profile is raw `half4` / `color`, `float` / `depth`, `int` / `primId`,
-`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal`, one variable per plane and at most six bindings. Depth is normalized
-device depth, not camera-space distance; `normal` is the world-space unit shading normal. The identity planes need a graphics device that can run
+`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal`, one variable per plane and at
+most six bindings. Depth is normalized device depth, not camera-space distance; `normal` is the
+world-space unit shading normal. The identity planes need a graphics device that can run
 the hdSilk pick pass; other devices are refused. Named rendering color spaces,
 unevaluated settings and other variable types are refused. An open shutter or active
 depth-of-field aperture is accumulated as described for `productCamera`; with either, depth,
 identity and normal output are refused.
 Camera exposure is applied, not refused; the HDR binding convention
-`renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply the exact purpose mask and material-binding
+`renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply
+the exact purpose mask and material-binding
 purpose, preserve retained state when returning to viewport jobs, and pass actual pixel cases.
 The current explicit hdSilk profile requires session ABI 6, masks containing `default` and a single
 `full` or `preview` binding purpose. Filter changes repopulate from current USD data rather than

@@ -735,7 +735,7 @@ Aggregate GPU and cross-session admission remain separate work.
 
 ## Authored product preparation
 
-These interfaces are unreleased source additions and require the current matching data ABI 25 shim.
+These interfaces are unreleased source additions and require the current matching data ABI 26 shim.
 The published `0.14.0-alpha` Core runtime provides data ABI 17 and cannot serve this query.
 The storage-admission SDK profile admits resident USD/review values, bounded USDC/crate values,
 and bounded token-array edits before native specification evaluation. Crate admission uses the
@@ -836,7 +836,8 @@ revision before and after each batch. The caller must continue excluding or dete
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
 The profile accepts only raw `half4` / `color`, `float` / `depth`, `int` / `primId`,
-`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal` variables, one per plane, with one named material-binding purpose and standard scene-purpose tokens.
+`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal` variables, one per plane, with
+one named material-binding purpose and standard scene-purpose tokens.
 Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
 resolution of a named purpose already falls back to the allPurpose binding. The unauthored
 fallback `["full", ""]` therefore runs as `full`, and `["preview", ""]` as `preview`. A list
@@ -1034,12 +1035,13 @@ color-only and color/depth constructors remain unchanged, and every requested pl
 with matching dimensions. Results retain file descriptors and hashes, not HDR pixel arrays.
 
 The overload accepting `RenderHdrColorFormat.Exr` writes `.hdr.exr` instead of raw half bytes,
-using the matching [Data ABI 25 encoder](image-exr-output.md). Existing overloads keep raw HDR
+using the matching [Data ABI 26 encoder](image-exr-output.md). Existing overloads keep raw HDR
 and PNG defaults unchanged. EXR is opt-in, requires `includeHdrColor: true` and the Windows x64
 encoder profile, and borrows the same half plane without widening or copying it. Its lossless
 ZIPS output has equal origin-zero windows and square pixels, with unspecified primaries and
 stored alpha association. Authored-product jobs write explicit windows and pixel aspect instead
-(see [Admitted authored-product jobs](#admitted-authored-product-jobs)). It is not a conversion to an authored render-product color space.
+(see [Admitted authored-product jobs](#admitted-authored-product-jobs)). It is not a conversion to
+an authored render-product color space.
 
 The job gives EXR only the encoded budget remaining after PNG and depth, accounts its actual
 encoded extent, durably flushes and hashes it before publishing the complete directory. Native
@@ -2718,6 +2720,33 @@ presentation change may move it in either direction, and a lower revision is an 
 rather than a stale page. Because the value describes the presentation and not the payload, an
 ABI v8 instance-reference record publishes exactly the revision of the prototype payload whose
 geometry it reuses.
+
+### Units-aware pick measurement
+
+A pick hit's `WorldPosition` is in stage scene units, so the distance between two hits is
+meaningless until it is scaled by the stage's `metersPerUnit`. A stage that does not author
+`metersPerUnit` is interpreted with the UsdGeom fallback of 0.01, which means a value derived from
+unauthored metadata must be labelled as a fallback rather than presented as a confirmed scale.
+
+`UsdStage.GetLinearUnits()` returns `UsdStageLinearUnits`: the composed `MetersPerUnit` and
+`UpAxis`, each with an `Is...Authored` flag. It requires data ABI 26 and throws
+`NotSupportedException` on an older runtime. The native export refuses a non-finite or non-positive
+`metersPerUnit` and an up axis other than Y or Z instead of reporting them.
+
+`RenderPickMeasurement.TryCreate(start, end, units, out measurement, out refusal)` measures the
+straight line between two pick results. It produces a measurement only when both are `Hit` results
+with finite world positions, both were resolved against the same state revision and the same bound
+scene revision, and `units.MetersPerUnit` is positive and finite. Any other input returns `false`
+with one `RenderPickMeasurementRefusal` value naming the first failed check; no partial distance
+is returned. The scene revision may be unbound on both sides, but a bound revision on one side and
+an unbound one on the other is a mismatch.
+
+The measurement keeps the authoritative `SelectionItem` of each end, including instance and
+subprim identity, the scene-unit positions, the scene-unit `Delta`, and the units used. It computes
+`DistanceInSceneUnits` in double precision from the single-precision hit positions and
+`DistanceInMeters` as that distance times `MetersPerUnit`. `IsMetersPerUnitAuthored` carries the
+fallback flag through, so a consumer can report a fallback-derived length as such. The measurement
+does not apply `metersPerUnit` to render product optics; that remains a separate open item.
 
 ### Viewer click-to-selection integration
 

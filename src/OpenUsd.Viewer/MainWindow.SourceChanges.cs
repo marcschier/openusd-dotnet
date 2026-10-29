@@ -24,6 +24,7 @@ public sealed partial class MainWindow
 
     private void OnStageChanged(SourceChangeRegistration source, UsdStageChange change)
     {
+        PostMeasurementInvalidation("the stage changed");
         if (source.Changes.Post(change))
         {
             ScheduleSourceRefresh(source);

@@ -1,6 +1,6 @@
 # Bounded raw RGBA16Float EXR output
 
-> Unreleased source API requiring the matching Data ABI 25 Core runtime.
+> Unreleased source API requiring the matching Data ABI 26 Core runtime.
 > Published `0.14.0-alpha` native assets cannot serve this API.
 
 `OpenUsd.Rendering.ExrRgba16FloatWriter` writes one exact, packed RGBA binary16

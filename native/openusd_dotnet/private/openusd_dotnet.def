@@ -401,3 +401,4 @@ EXPORTS
     openusd_image_encode_exr_rgba16f_v1 @399
     openusd_stage_get_vec4f_array @400
     openusd_stage_set_vec4f_array @401
+    openusd_stage_get_linear_units @402

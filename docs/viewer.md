@@ -1733,7 +1733,7 @@ automatically requesting HDR or depth. The dialog shows the selected file types,
 charge, and completed PNG/HDR/depth file counts.
 
 When HDR is enabled, **HDR format** offers **Raw half** (the default) or **EXR**.
-EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 25 Core encoder.
+EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 26 Core encoder.
 It preserves the same finite binary16 samples and stored alpha without a color/alpha conversion;
 equal origin-zero windows, square pixels, unspecified primaries and alpha association remain explicit.
 The format is frozen with the job options and disabled during rendering; changing a control
@@ -2133,6 +2133,35 @@ back to **Prim** and **Visible only**, which reproduce the pre-v3 behaviour, and
 rewritten with them on the next save. A token this build does not recognise falls back the same way
 rather than rejecting the whole profile, because a forward-compatible token must not cost the user
 their unrelated layout.
+
+### Measure distance
+
+**Tools &gt; Measure Distance** (`tools.measureDistance`, **Ctrl+M**) turns the next two viewport
+clicks into measurement points instead of selections. While the mode is checked, a click neither
+replaces the selection nor changes its tint. The first hit sets the start point; the second hit
+reports the straight-line distance on the status line, and the next click starts a new pair. Clicking
+the menu entry again or pressing **Escape** ends the mode.
+
+The distance comes from `RenderPickMeasurement` (see
+[Rendering](rendering.md#units-aware-pick-measurement)), and the Viewer only words its result.
+The status line shows meters first, then the scene-unit distance and the `metersPerUnit` that
+converted it, for example `2.000 m (200 scene units, metersPerUnit not authored, fallback 0.01)`.
+A stage without authored `metersPerUnit` is measured with the UsdGeom fallback and says so, because
+an unlabelled length from unauthored metadata would look like a confirmed scale. Each end point is
+named by its prim path, plus the instance index and instancer when the hit was on an instance.
+
+The stage units are read on the stage scheduler only when the second hit arrives. A miss, a stale
+pick, a hit without a world position, or a pair resolved against different view states or scene
+revisions is refused with a named reason, and no distance is shown. A miss, stale, or position-less
+end click keeps the start point, so the user can click again. A refusal after a valid end hit drops
+the start point, and the next click starts a new pair. A runtime older than data ABI 26 cannot
+report units, so the second point is refused with that reason instead of assuming centimeters.
+
+A measurement describes one view of one stage revision. A camera, viewport, or time change that
+moves the render state revision clears a pending start point and the last measurement. Editing,
+reloading, or closing the stage clears them too and reports why. The command is disabled while no
+stage is open, and closing or failing to load a stage leaves the mode. The mode is not persisted in
+the settings profile.
 
 Diagnostics, Hydra, and TfDebug visibility is independently toggleable from two places that stay in
 sync: View &gt; Inspector Tabs, and Tools &gt; Developer &gt; (Diagnostics | Hydra Scene | TfDebug)

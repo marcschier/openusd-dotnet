@@ -307,7 +307,7 @@ typedef struct openusd_image_info
     uint32_t reserved;
 } openusd_image_info;
 
-#define OPENUSD_DATA_ABI_VERSION 25
+#define OPENUSD_DATA_ABI_VERSION 26
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -344,6 +344,7 @@ typedef struct openusd_image_info
 /* Guarded EXR output API; the initial file-handle implementation is Windows x64 only. */
 #define OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT (UINT64_C(1) << 32)
 #define OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS (UINT64_C(1) << 33)
+#define OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS (UINT64_C(1) << 34)
 
 typedef struct openusd_ocio_processor openusd_ocio_processor;
 
@@ -1248,6 +1249,30 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_time_codes_per_second(
 OPENUSD_DOTNET_API openusd_status openusd_stage_set_time_codes_per_second(
     const openusd_stage* stage,
     double value,
+    openusd_error_buffer* error);
+
+#define OPENUSD_STAGE_UP_AXIS_Y 1u
+#define OPENUSD_STAGE_UP_AXIS_Z 2u
+
+/*
+ * Composed UsdGeom linear-unit metadata; requires OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS.
+ * Fixed 24-byte layout: meters_per_unit at offset 0, meters_per_unit_authored at 8,
+ * up_axis at 12 (OPENUSD_STAGE_UP_AXIS_Y or OPENUSD_STAGE_UP_AXIS_Z), up_axis_authored
+ * at 16 and reserved (always zero) at 20. Authored flags are 0 or 1. Unauthored values
+ * report the UsdGeom fallbacks (0.01 meters per unit and the configured fallback up axis).
+ */
+typedef struct openusd_stage_linear_units
+{
+    double meters_per_unit;
+    uint32_t meters_per_unit_authored;
+    uint32_t up_axis;
+    uint32_t up_axis_authored;
+    uint32_t reserved;
+} openusd_stage_linear_units;
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_linear_units(
+    const openusd_stage* stage,
+    openusd_stage_linear_units* units,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_stage_get_world_bounds(

@@ -2729,3 +2729,26 @@ static OpenUsd.UsdStage.Open(string! path, OpenUsd.UsdResolverContext! context) 
 ~override OpenUsd.UsdResolvedAsset.ToString() -> string
 ~override OpenUsd.UsdResolverContextString.Equals(object obj) -> bool
 ~override OpenUsd.UsdResolverContextString.ToString() -> string
+OpenUsd.UsdStage.GetLinearUnits() -> OpenUsd.UsdStageLinearUnits
+OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageUpAxis.Y = 1 -> OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageUpAxis.Z = 2 -> OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageLinearUnits
+OpenUsd.UsdStageLinearUnits.UsdStageLinearUnits() -> void
+OpenUsd.UsdStageLinearUnits.UsdStageLinearUnits(double MetersPerUnit, bool IsMetersPerUnitAuthored, OpenUsd.UsdStageUpAxis UpAxis, bool IsUpAxisAuthored) -> void
+OpenUsd.UsdStageLinearUnits.Deconstruct(out double MetersPerUnit, out bool IsMetersPerUnitAuthored, out OpenUsd.UsdStageUpAxis UpAxis, out bool IsUpAxisAuthored) -> void
+OpenUsd.UsdStageLinearUnits.Equals(OpenUsd.UsdStageLinearUnits other) -> bool
+OpenUsd.UsdStageLinearUnits.MetersPerUnit.get -> double
+OpenUsd.UsdStageLinearUnits.MetersPerUnit.init -> void
+OpenUsd.UsdStageLinearUnits.IsMetersPerUnitAuthored.get -> bool
+OpenUsd.UsdStageLinearUnits.IsMetersPerUnitAuthored.init -> void
+OpenUsd.UsdStageLinearUnits.UpAxis.get -> OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageLinearUnits.UpAxis.init -> void
+OpenUsd.UsdStageLinearUnits.IsUpAxisAuthored.get -> bool
+OpenUsd.UsdStageLinearUnits.IsUpAxisAuthored.init -> void
+const OpenUsd.UsdStageLinearUnits.FallbackMetersPerUnit = 0.01 -> double
+override OpenUsd.UsdStageLinearUnits.GetHashCode() -> int
+static OpenUsd.UsdStageLinearUnits.operator !=(OpenUsd.UsdStageLinearUnits left, OpenUsd.UsdStageLinearUnits right) -> bool
+static OpenUsd.UsdStageLinearUnits.operator ==(OpenUsd.UsdStageLinearUnits left, OpenUsd.UsdStageLinearUnits right) -> bool
+~override OpenUsd.UsdStageLinearUnits.Equals(object obj) -> bool
+~override OpenUsd.UsdStageLinearUnits.ToString() -> string

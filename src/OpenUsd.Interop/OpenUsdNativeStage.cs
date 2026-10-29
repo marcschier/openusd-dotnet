@@ -101,6 +101,9 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         set => OpenUsdNativeRuntime.SetTimeCodesPerSecond(this, value);
     }
 
+    /// <summary>Gets the composed UsdGeom metersPerUnit and upAxis metadata in one native call.</summary>
+    public OpenUsdNativeStageLinearUnits GetLinearUnits() => OpenUsdNativeRuntime.GetLinearUnits(this);
+
     /// <summary>Gets the path of the valid default prim.</summary>
     public string GetDefaultPrimPath() => OpenUsdNativeRuntime.GetDefaultPrimPath(this);
 
