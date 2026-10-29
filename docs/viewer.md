@@ -378,6 +378,12 @@ and a bare `model:` name or a case variant stays under **Other properties**.
 `protoIndices`, `positions`, `orientations`, `scales`, `ids`, `invisibleIds` and the velocity
 attributes, plus `extent` and the `prototypes` relationship. On other prim types these names are not
 grouped as instancing, and lookalikes such as `positionsExtra` stay under **Other properties**.
+**Points and curves** appears for `Points`, `BasisCurves`, `NurbsCurves` and `HermiteCurves` prims.
+It groups `points`, `widths`, `normals`, `doubleSided`, `orientation`, the velocity attributes and
+`extent`, and adds the names
+each schema defines: `ids` for points, `curveVertexCounts` for every curve type, `type`, `basis` and
+`wrap` for basis curves, `order`, `knots`, `ranges` and `pointWeights` for NURBS curves, and
+`tangents` for Hermite curves. Width primvars stay under **Primvars**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

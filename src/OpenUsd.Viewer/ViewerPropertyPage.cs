@@ -30,7 +30,19 @@ internal enum ViewerPropertyGroup
     Skinning,
     Model,
     Instancer,
+    PointsAndCurves,
     Other
+}
+
+internal enum ViewerGeometrySchema
+{
+    None,
+    Mesh,
+    PointInstancer,
+    Points,
+    BasisCurves,
+    NurbsCurves,
+    HermiteCurves
 }
 
 internal sealed class ViewerPropertyPage
@@ -71,8 +83,7 @@ internal sealed class ViewerPropertyPage
         bool isCamera = false,
         bool isLight = false,
         IReadOnlyList<string>? lightSchemaProperties = null,
-        bool isMesh = false,
-        bool isPointInstancer = false)
+        ViewerGeometrySchema geometry = ViewerGeometrySchema.None)
     {
         ArgumentNullException.ThrowIfNull(attributes);
         ArgumentNullException.ThrowIfNull(relationships);
@@ -90,15 +101,15 @@ internal sealed class ViewerPropertyPage
         int matches = 0;
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh,
-                    isPointInstancer))
+            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties,
+                    geometry))
             {
                 matches++;
             }
         }
         foreach (ViewerRelationshipSnapshot relationship in relationships)
         {
-            if (Matches(relationship, filter, search, group, isPointInstancer))
+            if (Matches(relationship, filter, search, group, geometry))
             {
                 matches++;
             }
@@ -111,8 +122,8 @@ internal sealed class ViewerPropertyPage
         var pageRelationships = new List<ViewerRelationshipSnapshot>();
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh,
-                    isPointInstancer) &&
+            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties,
+                    geometry) &&
                 seen++ >= start && pageAttributes.Count < PageSize)
             {
                 pageAttributes.Add(attribute);
@@ -120,7 +131,7 @@ internal sealed class ViewerPropertyPage
         }
         foreach (ViewerRelationshipSnapshot relationship in relationships)
         {
-            if (Matches(relationship, filter, search, group, isPointInstancer) &&
+            if (Matches(relationship, filter, search, group, geometry) &&
                 seen++ >= start && pageAttributes.Count + pageRelationships.Count < PageSize)
             {
                 pageRelationships.Add(relationship);
@@ -137,11 +148,11 @@ internal sealed class ViewerPropertyPage
     private static bool Matches(
         ViewerAttributeSnapshot attribute, ViewerPropertyFilter filter, string query,
         ViewerPropertyGroup group, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties,
-        bool isMesh, bool isPointInstancer) =>
+        ViewerGeometrySchema geometry) =>
         (group == ViewerPropertyGroup.All ||
          (group == ViewerPropertyGroup.ShaderInputs &&
              attribute.Name.StartsWith("inputs:", StringComparison.Ordinal)) ||
-         AttributeGroup(attribute.Name, isCamera, isLight, lightSchemaProperties, isMesh, isPointInstancer) ==
+         AttributeGroup(attribute.Name, isCamera, isLight, lightSchemaProperties, geometry) ==
              group) &&
         Matches(attribute.Name, attribute.TypeName, query) && (filter switch
         {
@@ -156,14 +167,14 @@ internal sealed class ViewerPropertyPage
 
     private static bool Matches(
         ViewerRelationshipSnapshot relationship, ViewerPropertyFilter filter, string query,
-        ViewerPropertyGroup group, bool isPointInstancer) =>
+        ViewerPropertyGroup group, ViewerGeometrySchema geometry) =>
         filter is ViewerPropertyFilter.All or ViewerPropertyFilter.Relationships &&
-        (group == ViewerPropertyGroup.All || RelationshipGroup(relationship.Name, isPointInstancer) == group) &&
+        (group == ViewerPropertyGroup.All || RelationshipGroup(relationship.Name, geometry) == group) &&
         Matches(relationship.Name, "relationship", query);
 
     private static ViewerPropertyGroup AttributeGroup(
-        string name, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties, bool isMesh,
-        bool isPointInstancer)
+        string name, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties,
+        ViewerGeometrySchema geometry)
     {
         if (name == "xformOpOrder" || name.StartsWith("xformOp:", StringComparison.Ordinal))
         {
@@ -177,19 +188,23 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Camera;
         }
-        if (isMesh && name is "points" or "velocities" or "accelerations" or "normals" or "extent" or
-            "doubleSided" or "orientation" or "faceVertexCounts" or "faceVertexIndices" or
+        if (geometry == ViewerGeometrySchema.Mesh && name is "points" or "velocities" or "accelerations" or
+            "normals" or "extent" or "doubleSided" or "orientation" or "faceVertexCounts" or "faceVertexIndices" or
             "subdivisionScheme" or "interpolateBoundary" or "faceVaryingLinearInterpolation" or
             "triangleSubdivisionRule" or "holeIndices" or "cornerIndices" or "cornerSharpnesses" or
             "creaseIndices" or "creaseLengths" or "creaseSharpnesses")
         {
             return ViewerPropertyGroup.Mesh;
         }
-        if (isPointInstancer && name is "protoIndices" or "ids" or "positions" or "orientations" or
-            "orientationsf" or "scales" or "velocities" or "accelerations" or "angularVelocities" or
+        if (geometry == ViewerGeometrySchema.PointInstancer && name is "protoIndices" or "ids" or "positions" or
+            "orientations" or "orientationsf" or "scales" or "velocities" or "accelerations" or "angularVelocities" or
             "invisibleIds" or "extent")
         {
             return ViewerPropertyGroup.Instancer;
+        }
+        if (IsPointsOrCurvesProperty(name, geometry))
+        {
+            return ViewerPropertyGroup.PointsAndCurves;
         }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
@@ -230,9 +245,9 @@ internal sealed class ViewerPropertyPage
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
-    private static ViewerPropertyGroup RelationshipGroup(string name, bool isPointInstancer)
+    private static ViewerPropertyGroup RelationshipGroup(string name, ViewerGeometrySchema geometry)
     {
-        if (isPointInstancer && name == "prototypes")
+        if (geometry == ViewerGeometrySchema.PointInstancer && name == "prototypes")
         {
             return ViewerPropertyGroup.Instancer;
         }
@@ -258,6 +273,24 @@ internal sealed class ViewerPropertyPage
         }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
+
+    private static bool IsPointsOrCurvesProperty(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.Points => IsPointBasedProperty(name) || name is "widths" or "ids",
+            ViewerGeometrySchema.BasisCurves => IsCurvesProperty(name) || name is "type" or "basis" or "wrap",
+            ViewerGeometrySchema.NurbsCurves => IsCurvesProperty(name) ||
+                name is "order" or "knots" or "ranges" or "pointWeights",
+            ViewerGeometrySchema.HermiteCurves => IsCurvesProperty(name) || name == "tangents",
+            _ => false
+        };
+
+    private static bool IsCurvesProperty(string name) =>
+        IsPointBasedProperty(name) || name is "curveVertexCounts" or "widths";
+
+    private static bool IsPointBasedProperty(string name) =>
+        name is "points" or "velocities" or "accelerations" or "normals" or "extent" or "doubleSided" or
+            "orientation";
 
     // A namespace prefix only groups a property that has a nonempty name after it.
     private static bool HasNamespace(string name, string prefix) =>

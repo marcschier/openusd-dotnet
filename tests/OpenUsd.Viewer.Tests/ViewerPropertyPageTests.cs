@@ -179,7 +179,7 @@ public sealed class ViewerPropertyPageTests
         ViewerRelationshipSnapshot[] relationships = [new("points", "/World/A")];
 
         ViewerPropertyPage mesh = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Mesh, isMesh: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Mesh, geometry: ViewerGeometrySchema.Mesh);
 
         string[] expected = MeshNames
             .Where(static name => name is not ("pointsExtra" or "Points" or "primvars:normals" or "visibility"))
@@ -188,7 +188,7 @@ public sealed class ViewerPropertyPageTests
             .IsEqualTo(string.Join(",", expected));
         await Assert.That(mesh.Relationships).IsEmpty();
         ViewerPropertyPage other = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isMesh: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, geometry: ViewerGeometrySchema.Mesh);
         await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
             .IsEqualTo("pointsExtra,Points");
         await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationships[0]);
@@ -220,23 +220,57 @@ public sealed class ViewerPropertyPageTests
         ];
 
         ViewerPropertyPage instancer = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Instancer, isPointInstancer: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Instancer,
+            geometry: ViewerGeometrySchema.PointInstancer);
 
         await Assert.That(string.Join(",", instancer.Attributes.Select(static item => item.Name)))
             .IsEqualTo(string.Join(",", names.Take(11)));
         await Assert.That(instancer.Relationships.Single()).IsSameReferenceAs(relationships[0]);
         ViewerPropertyPage other = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isPointInstancer: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other,
+            geometry: ViewerGeometrySchema.PointInstancer);
         await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
             .IsEqualTo("Positions,positionsExtra,points");
         await Assert.That(string.Join(",", other.Relationships.Select(static item => item.Name)))
             .IsEqualTo("Prototypes,prototypesExtra");
         ViewerPropertyPage notInstancer = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Instancer, isMesh: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Instancer,
+            geometry: ViewerGeometrySchema.Mesh);
         await Assert.That(notInstancer.MatchCount).IsEqualTo(0);
         ViewerPropertyPage notInstancerOther = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
         await Assert.That(notInstancerOther.MatchCount).IsEqualTo(names.Length - 1 + relationships.Length);
+    }
+
+    [Test]
+    public async Task PointsAndCurvesGroupFollowsTheSchemaOfThePrim()
+    {
+        string[] names =
+        [
+            "points", "widths", "ids", "curveVertexCounts", "type", "basis", "wrap", "order", "knots",
+            "tangents", "Widths", "widthsExtra", "primvars:widths", "visibility"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "int[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+
+        await Assert.That(groupNames(ViewerGeometrySchema.Points)).IsEqualTo("points,widths,ids");
+        await Assert.That(groupNames(ViewerGeometrySchema.BasisCurves))
+            .IsEqualTo("points,widths,curveVertexCounts,type,basis,wrap");
+        await Assert.That(groupNames(ViewerGeometrySchema.NurbsCurves))
+            .IsEqualTo("points,widths,curveVertexCounts,order,knots");
+        await Assert.That(groupNames(ViewerGeometrySchema.HermiteCurves))
+            .IsEqualTo("points,widths,curveVertexCounts,tangents");
+        await Assert.That(groupNames(ViewerGeometrySchema.Mesh)).IsEmpty();
+        await Assert.That(groupNames(ViewerGeometrySchema.None)).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Other, geometry: ViewerGeometrySchema.Points);
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("curveVertexCounts,type,basis,wrap,order,knots,tangents,Widths,widthsExtra");
+
+        string groupNames(ViewerGeometrySchema geometry) => string.Join(",", ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.PointsAndCurves, geometry: geometry)
+            .Attributes.Select(static item => item.Name));
     }
 
     [Test]
@@ -257,7 +291,8 @@ public sealed class ViewerPropertyPageTests
         ];
 
         ViewerPropertyPage skinning = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Skinning, isMesh: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Skinning,
+            geometry: ViewerGeometrySchema.Mesh);
 
         await Assert.That(string.Join(",", skinning.Attributes.Select(static item => item.Name)))
             .IsEqualTo("skel:joints,skel:blendShapes,skel:skinningMethod");
@@ -290,7 +325,7 @@ public sealed class ViewerPropertyPageTests
         ];
 
         ViewerPropertyPage model = ViewerPropertyPage.Create(
-            attributes, relationships, null, 0, group: ViewerPropertyGroup.Model, isMesh: true);
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Model, geometry: ViewerGeometrySchema.Mesh);
 
         await Assert.That(string.Join(",", model.Attributes.Select(static item => item.Name)))
             .IsEqualTo("model:drawMode,model:cardGeometry,model:drawModeColor");

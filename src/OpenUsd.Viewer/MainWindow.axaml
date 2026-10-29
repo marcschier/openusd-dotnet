@@ -1222,6 +1222,7 @@
               <ComboBoxItem Content="Skinning (skel:)" />
               <ComboBoxItem Content="Model and draw mode (model:)" />
               <ComboBoxItem Content="Instancing (PointInstancer)" />
+              <ComboBoxItem Content="Points and curves" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

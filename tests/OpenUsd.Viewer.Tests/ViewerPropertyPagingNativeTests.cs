@@ -95,6 +95,14 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 custom float positionsExtra = 1
                 rel prototypes = </Other>
             }
+            def BasisCurves "Strands"
+            {
+                int[] curveVertexCounts = [2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0)]
+                float[] widths = [0.1, 0.1]
+                uniform token type = "linear"
+                custom float widthsExtra = 1
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -408,6 +416,17 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(instancerProperties).Contains("edit.property:/Scatter.positions");
             await Assert.That(instancerProperties).DoesNotContain("edit.property:/Scatter.positionsExtra");
             await Assert.That(instancerProperties).DoesNotContain("edit.property:/Scatter.visibility");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.PointsAndCurves;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Strands" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Strands.widths"), timeout);
+            string[] curveProperties = PropertyButtons(main)
+                .Select(static button => AutomationProperties.GetAutomationId(button)!).ToArray();
+            await Assert.That(curveProperties).Contains("edit.property:/Strands.curveVertexCounts");
+            await Assert.That(curveProperties).Contains("edit.property:/Strands.type");
+            await Assert.That(curveProperties).DoesNotContain("edit.property:/Strands.widthsExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
