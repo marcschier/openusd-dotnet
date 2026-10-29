@@ -2063,6 +2063,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkSamplerAddressMode.ClampToEdge => TextureAddressMode.Clamp,
             SilkSamplerAddressMode.Repeat => TextureAddressMode.Wrap,
             SilkSamplerAddressMode.MirrorRepeat => TextureAddressMode.Mirror,
+            SilkSamplerAddressMode.ClampToBorder => TextureAddressMode.Border,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 

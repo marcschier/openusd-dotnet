@@ -3573,18 +3573,13 @@ def Xform "World"
     /// <remarks>
     /// MaterialX defaults <c>uaddressmode</c>/<c>vaddressmode</c> to
     /// <c>periodic</c>, while UsdUVTexture's unauthored <c>wrap</c> resolves to
-    /// black. hdSilk read the UsdUVTexture names from MaterialX image nodes, found
-    /// nothing, and published black for every one of them, which the renderer
-    /// resolves to clamp-to-edge. A MaterialX texture the graph tiles was
-    /// therefore smeared from its edge column of texels.
+    /// black. hdSilk reads MaterialX's address names and publishes the selected
+    /// sampler mode.
     ///
-    /// The captures use a coordinate of 1.25 on a 2x2 image, which is the smallest
-    /// case that separates the two: periodic wraps it to the 0.25 texel centre and
-    /// reads the first column, clamp-to-edge reads the last. Both land exactly on
-    /// a texel centre, so neither reads a filtered blend and the comparison is
-    /// against an exact constant colour rather than a tolerance band. The third
-    /// capture is what makes this non-vacuous: black matching the *clamped* texel
-    /// proves the divergence is clamping and not a dropped texture.
+    /// At coordinate 1.25 on a 2x2 image, periodic wraps to the 0.25 texel centre
+    /// and reads the first column, clamp reads the last column, and black reads
+    /// the transparent border. These exact samples prove the texture is bound and
+    /// distinguish the modes without filtering blends.
     ///
     /// The native half of the claim -- that an unauthored MaterialX image resolves
     /// to periodic in the first place -- is
@@ -3611,28 +3606,56 @@ def Xform "World"
 
         ParityImage clamped = CaptureSyntheticAddressModeTexel(
             device,
-            SilkTextureWrap.Black,
+            SilkTextureWrap.Clamp,
             ClampedTexel);
         (byte clampedMaxDelta, double clampedMeanDelta) = CompareTranslatedHalves(clamped);
         string clamping = FormatSelfConsistencyMetrics(
-            $"address-mode-constant-{backend}",
+            $"address-mode-clamp-{backend}",
             clampedMaxDelta,
             clampedMeanDelta);
         Console.WriteLine(clamping);
-        WriteEvidence($"address-mode-{backend}-constant.txt", [clamping]);
+        WriteEvidence($"address-mode-{backend}-clamp.txt", [clamping]);
         await Assert.That(CountNonBlackPixels(clamped)).IsGreaterThan(100);
         await Assert.That(clampedMaxDelta).IsLessThanOrEqualTo((byte)3);
 
-        // The mode that hdSilk published for every MaterialX image before it read
-        // uaddressmode does not select the texel periodic addressing selects.
+        ParityImage blackBorder = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Black,
+            [0.0f, 0.0f, 0.0f]);
+        (byte borderMaxDelta, double borderMeanDelta) =
+            CompareTranslatedHalves(blackBorder);
+        string border = FormatSelfConsistencyMetrics(
+            $"address-mode-black-border-{backend}",
+            borderMaxDelta,
+            borderMeanDelta);
+        Console.WriteLine(border);
+        WriteEvidence($"address-mode-{backend}-black-border.txt", [border]);
+        await Assert.That(borderMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(borderMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage metadataBorder = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.UseMetadata,
+            [0.0f, 0.0f, 0.0f]);
+        (byte metadataMaxDelta, double metadataMeanDelta) =
+            CompareTranslatedHalves(metadataBorder);
+        string metadata = FormatSelfConsistencyMetrics(
+            $"address-mode-metadata-border-{backend}",
+            metadataMaxDelta,
+            metadataMeanDelta);
+        Console.WriteLine(metadata);
+        WriteEvidence($"address-mode-{backend}-metadata-border.txt", [metadata]);
+        await Assert.That(metadataMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(metadataMeanDelta).IsLessThanOrEqualTo(0.500);
+
         ParityImage divergent = CaptureSyntheticAddressModeTexel(
             device,
             SilkTextureWrap.Black,
-            WrappedTexel);
+            ClampedTexel);
         (byte divergentMaxDelta, double divergentMeanDelta) =
             CompareTranslatedHalves(divergent);
         string divergence = FormatSelfConsistencyMetrics(
-            $"address-mode-divergence-{backend}",
+            $"address-mode-border-divergence-{backend}",
             divergentMaxDelta,
             divergentMeanDelta);
         Console.WriteLine(divergence);

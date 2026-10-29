@@ -1516,7 +1516,7 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(commands.SamplerBindings[1].Descriptor.AddressU)
             .IsEqualTo(SilkSamplerAddressMode.MirrorRepeat);
         await Assert.That(commands.SamplerBindings[1].Descriptor.AddressV)
-            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+            .IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
     }
 
     [Test]

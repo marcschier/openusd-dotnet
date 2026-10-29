@@ -1595,6 +1595,7 @@ OpenUsd.Rendering.Silk.SilkRenderingDescriptor.Equals(OpenUsd.Rendering.Silk.Sil
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.SilkRenderingDescriptor() -> void
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.SilkRenderingDescriptor(OpenUsd.Rendering.Silk.ISilkGraphicsTexture! ColorAttachment, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! DepthAttachment) -> void
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode
+OpenUsd.Rendering.Silk.SilkSamplerAddressMode.ClampToBorder = 3 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode.ClampToEdge = 0 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode.MirrorRepeat = 2 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode.Repeat = 1 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode

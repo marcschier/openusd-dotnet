@@ -604,11 +604,11 @@ analytic native fixtures rather than this unsuitable Storm reference.
   operators over an image, three or more images in one input, arithmetic on the `normal` input, and per-entry folds
   leaving the unit range are rejected with diagnostics.
 - MaterialX image sampling is read from `uaddressmode`/`vaddressmode` and `default`, with MaterialX's periodic
-  default. Border sampling is **not** implemented: `SilkTextureWrap.Black` -- published for UsdUVTexture's
-  `black`/unauthored `wrap` and for MaterialX `constant` addressing -- is resolved to clamp-to-edge, so it renders
-  identically to `SilkTextureWrap.Clamp` and a sample outside the unit range returns the edge texel rather than black
-  or a MaterialX node's `default` colour. The `default` colour is transported only in its other role, as the
-  unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not supported.
+  default. `SilkTextureWrap.Black` and `SilkTextureWrap.UseMetadata` select transparent-black border sampling on
+  D3D12, Vulkan, and Metal. D3D12 WARP and Vulkan SwiftShader pixel gates distinguish the border from clamp-to-edge;
+  Metal runtime pixel evidence still requires a Metal-capable host. MaterialX `default` is not a configurable border
+  colour and remains the unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not
+  supported.
 - Rect and disk lights apply ShapingAPI cone and focus, gated by Vulkan self-consistency pairs. Sphere-light
   shaping, cone softness, IES profiles and area-light texture inputs are not implemented. Dome textures have no gated
   Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome

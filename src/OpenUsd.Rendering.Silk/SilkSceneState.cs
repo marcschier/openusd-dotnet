@@ -7271,17 +7271,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// Maps a wire wrap mode onto a sampler address mode.
     /// </summary>
     /// <remarks>
-    /// <see cref="SilkTextureWrap.Black"/> resolves to clamp-to-edge rather than
-    /// to a border colour: the wire carries no border colour, so there is nothing
-    /// to hand a backend that supports one. It therefore renders identically to
-    /// <see cref="SilkTextureWrap.Clamp"/>, and a sample outside the unit range
-    /// returns the edge texel. This is the documented approximation for
-    /// UsdUVTexture's <c>black</c> wrap and MaterialX <c>constant</c> addressing.
-    /// <see cref="SilkTextureWrap.UseMetadata"/> resolves the same way for a
-    /// different reason: this renderer reads no wrap metadata out of an image
-    /// file, and USD's documented fallback when no metadata is present is
-    /// <c>black</c>. The vertex-stage displacement sampler, which owns its own
-    /// addressing, implements both exactly instead; see
+    /// <see cref="SilkTextureWrap.Black"/> uses a transparent-black border.
+    /// <see cref="SilkTextureWrap.UseMetadata"/> also uses that border because this
+    /// fragment path does not read wrap metadata and USD's fallback is
+    /// <c>black</c>. The vertex-stage displacement sampler resolves metadata
+    /// separately and uses the same border when metadata is absent; see
     /// <c>SilkDisplacementField</c>.
     /// </remarks>
     private static SilkSamplerAddressMode GetAddressMode(SilkTextureWrap wrap) =>
@@ -7289,9 +7283,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             SilkTextureWrap.Repeat => SilkSamplerAddressMode.Repeat,
             SilkTextureWrap.Mirror => SilkSamplerAddressMode.MirrorRepeat,
-            SilkTextureWrap.Clamp or
-                SilkTextureWrap.Black or
-                SilkTextureWrap.UseMetadata => SilkSamplerAddressMode.ClampToEdge,
+            SilkTextureWrap.Clamp => SilkSamplerAddressMode.ClampToEdge,
+            SilkTextureWrap.Black or
+                SilkTextureWrap.UseMetadata => SilkSamplerAddressMode.ClampToBorder,
             _ => throw new ArgumentOutOfRangeException(nameof(wrap))
         };
 

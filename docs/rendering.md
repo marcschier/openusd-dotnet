@@ -3459,15 +3459,14 @@ reads it that way for `ND_image_*` and the UsdUVTexture way for `UsdUVTexture`:
 
 - `uaddressmode` and `vaddressmode` are read per axis and default to `periodic`, which is the wire's repeat mode.
   `clamp` and `mirror` map to the matching wire modes, and `constant` maps to the wire's black mode because the
-  wire carries no border colour. Reading `wrapS`/`wrapT` from a MaterialX image found nothing and published black,
-  which the renderer resolves to clamp-to-edge, so a texture the graph tiles was smeared from its edge column of
-  texels. An address mode outside that enumeration is reported and the input keeps its default.
-- The wire's black mode is not a border colour. `SilkTextureWrap.Black` records what UsdUVTexture's `black`/unauthored
-  `wrap` and MaterialX `constant` addressing asked for, but no supported backend is handed a border colour and
-  `SilkSceneGpuResources` resolves it to `ClampToEdge`, so it renders identically to `SilkTextureWrap.Clamp`: a sample
-  outside the unit range returns the edge texel, not black and not a MaterialX node's `default` value. The two values
-  stay distinct because they record different authored intent; true border sampling would need a new wire field and an
-  ABI bump.
+  wire carries no custom border colour. The fragment sampler maps `black` and `useMetadata` to transparent-black
+  border sampling on D3D12, Vulkan, and Metal. MaterialX image addressing is read from its own `uaddressmode` and
+  `vaddressmode` inputs; an address mode outside the supported enumeration is reported and the input keeps its default.
+- `SilkTextureWrap.Black` records UsdUVTexture's `black`/unauthored `wrap` and MaterialX `constant` addressing.
+  Samples outside the image return transparent black rather than the edge texel. The sampler has no separate border
+  colour, so MaterialX `default` is not used as the `constant` border value; it remains the fallback when the image file
+  cannot be read. `useMetadata` in this fragment path also selects the black border; vertex displacement resolves image
+  metadata separately.
 - `default` is the value the node produces when the file cannot be read, which is exactly what UsdUVTexture calls
   `fallback`, so it is carried in the same wire field. Only the components the node authors are overwritten, so a
   `color3` default keeps the opaque alpha.

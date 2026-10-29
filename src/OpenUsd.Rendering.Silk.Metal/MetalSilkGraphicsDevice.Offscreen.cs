@@ -1555,6 +1555,7 @@ public sealed partial class MetalSilkGraphicsDevice
             SilkSamplerAddressMode.ClampToEdge => MTLSamplerAddressMode.ClampToEdge,
             SilkSamplerAddressMode.Repeat => MTLSamplerAddressMode.Repeat,
             SilkSamplerAddressMode.MirrorRepeat => MTLSamplerAddressMode.MirrorRepeat,
+            SilkSamplerAddressMode.ClampToBorder => MTLSamplerAddressMode.ClampToZero,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 }

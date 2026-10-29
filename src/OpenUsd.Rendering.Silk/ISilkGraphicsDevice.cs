@@ -1286,7 +1286,10 @@ public enum SilkSamplerAddressMode
     Repeat,
 
     /// <summary>Mirrors texture coordinates across integer boundaries.</summary>
-    MirrorRepeat
+    MirrorRepeat,
+
+    /// <summary>Returns transparent black for coordinates outside the texture.</summary>
+    ClampToBorder
 }
 
 /// <summary>
