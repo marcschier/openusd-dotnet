@@ -3,6 +3,7 @@
 using System.Globalization;
 using OpenUsd.Geom;
 using OpenUsd.Interop;
+using OpenUsd.Vol;
 
 namespace OpenUsd.Viewer;
 
@@ -978,6 +979,10 @@ internal static partial class ViewerStageSnapshotBuilder
         UsdGeomBasisCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.BasisCurves :
         UsdGeomNurbsCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.NurbsCurves :
         UsdGeomHermiteCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.HermiteCurves :
+        UsdVolVolume.TryWrap(prim, out _) ? ViewerGeometrySchema.Volume :
+        UsdVolOpenVDBAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.OpenVdbAsset :
+        UsdVolField3DAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.Field3DAsset :
+        UsdVolFieldAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.FieldAsset :
         ViewerGeometrySchema.None;
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)

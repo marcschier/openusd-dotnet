@@ -103,6 +103,17 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 uniform token type = "linear"
                 custom float widthsExtra = 1
             }
+            def Volume "Smoke"
+            {
+                rel field:density = </Density>
+                rel fieldExtra = </Other>
+            }
+            def OpenVDBAsset "Density"
+            {
+                asset filePath = @@
+                token fieldName = "density"
+                custom float filePathExtra = 1
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -427,6 +438,22 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(curveProperties).Contains("edit.property:/Strands.curveVertexCounts");
             await Assert.That(curveProperties).Contains("edit.property:/Strands.type");
             await Assert.That(curveProperties).DoesNotContain("edit.property:/Strands.widthsExtra");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Volume;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Smoke" });
+            await WaitAsync(() => shaderQuery.IsEnabled &&
+                Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                    .Any(static row => row.Text == "field:density: /Density"), timeout);
+            await Assert.That(ValueText(main)).DoesNotContain("fieldExtra");
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Density" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Density.filePath"), timeout);
+            string[] fieldProperties = PropertyButtons(main)
+                .Select(static button => AutomationProperties.GetAutomationId(button)!).ToArray();
+            await Assert.That(fieldProperties).Contains("edit.property:/Density.fieldName");
+            await Assert.That(fieldProperties).DoesNotContain("edit.property:/Density.filePathExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });

@@ -274,6 +274,50 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task VolumeGroupCoversFieldRelationshipsAndFieldAssetAttributes()
+    {
+        string[] names =
+        [
+            "filePath", "fieldName", "fieldIndex", "fieldDataType", "vectorDataRoleHint", "fieldClass",
+            "fieldPurpose", "FilePath", "filePathExtra", "visibility"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "a"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+        [
+            new("field:density", "/Other"),
+            new("field:", "/Other"),
+            new("fieldExtra", "/Other"),
+            new("material:binding", "/Other"),
+        ];
+
+        await Assert.That(attributeNames(ViewerGeometrySchema.OpenVdbAsset))
+            .IsEqualTo("filePath,fieldName,fieldIndex,fieldDataType,vectorDataRoleHint,fieldClass");
+        await Assert.That(attributeNames(ViewerGeometrySchema.Field3DAsset))
+            .IsEqualTo("filePath,fieldName,fieldIndex,fieldDataType,vectorDataRoleHint,fieldPurpose");
+        await Assert.That(attributeNames(ViewerGeometrySchema.FieldAsset))
+            .IsEqualTo("filePath,fieldName,fieldIndex,fieldDataType,vectorDataRoleHint");
+        await Assert.That(attributeNames(ViewerGeometrySchema.Volume)).IsEmpty();
+        await Assert.That(attributeNames(ViewerGeometrySchema.None)).IsEmpty();
+        await Assert.That(relationshipNames(ViewerGeometrySchema.Volume)).IsEqualTo("field:density");
+        await Assert.That(relationshipNames(ViewerGeometrySchema.None)).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other,
+            geometry: ViewerGeometrySchema.Volume);
+        await Assert.That(string.Join(",", other.Relationships.Select(static item => item.Name)))
+            .IsEqualTo("field:,fieldExtra");
+
+        string attributeNames(ViewerGeometrySchema geometry) => string.Join(",", ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Volume, geometry: geometry)
+            .Attributes.Select(static item => item.Name));
+
+        string relationshipNames(ViewerGeometrySchema geometry) => string.Join(",", ViewerPropertyPage.Create(
+                [], relationships, null, 0, group: ViewerPropertyGroup.Volume, geometry: geometry)
+            .Relationships.Select(static item => item.Name));
+    }
+
+    [Test]
     public async Task SkinningGroupUsesTheSkelNamespaceAndLeavesSkinningPrimvarsUnderPrimvars()
     {
         string[] names =

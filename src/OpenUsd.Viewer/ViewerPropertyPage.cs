@@ -31,6 +31,7 @@ internal enum ViewerPropertyGroup
     Model,
     Instancer,
     PointsAndCurves,
+    Volume,
     Other
 }
 
@@ -42,7 +43,11 @@ internal enum ViewerGeometrySchema
     Points,
     BasisCurves,
     NurbsCurves,
-    HermiteCurves
+    HermiteCurves,
+    Volume,
+    OpenVdbAsset,
+    Field3DAsset,
+    FieldAsset
 }
 
 internal sealed class ViewerPropertyPage
@@ -206,6 +211,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.PointsAndCurves;
         }
+        if (IsFieldAssetProperty(name, geometry))
+        {
+            return ViewerPropertyGroup.Volume;
+        }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
@@ -251,6 +260,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Instancer;
         }
+        if (geometry == ViewerGeometrySchema.Volume && HasNamespace(name, "field:"))
+        {
+            return ViewerPropertyGroup.Volume;
+        }
         if (name == "material:binding" || name.StartsWith("material:binding:", StringComparison.Ordinal))
         {
             return ViewerPropertyGroup.MaterialBindings;
@@ -284,6 +297,18 @@ internal sealed class ViewerPropertyPage
             ViewerGeometrySchema.HermiteCurves => IsCurvesProperty(name) || name == "tangents",
             _ => false
         };
+
+    private static bool IsFieldAssetProperty(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.OpenVdbAsset => IsFieldAssetBaseProperty(name) || name == "fieldClass",
+            ViewerGeometrySchema.Field3DAsset => IsFieldAssetBaseProperty(name) || name == "fieldPurpose",
+            ViewerGeometrySchema.FieldAsset => IsFieldAssetBaseProperty(name),
+            _ => false
+        };
+
+    private static bool IsFieldAssetBaseProperty(string name) =>
+        name is "filePath" or "fieldName" or "fieldIndex" or "fieldDataType" or "vectorDataRoleHint";
 
     private static bool IsCurvesProperty(string name) =>
         IsPointBasedProperty(name) || name is "curveVertexCounts" or "widths";

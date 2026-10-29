@@ -384,6 +384,11 @@ It groups `points`, `widths`, `normals`, `doubleSided`, `orientation`, the veloc
 each schema defines: `ids` for points, `curveVertexCounts` for every curve type, `type`, `basis` and
 `wrap` for basis curves, `order`, `knots`, `ranges` and `pointWeights` for NURBS curves, and
 `tangents` for Hermite curves. Width primvars stay under **Primvars**.
+**Volume and fields** groups the `field:` relationships of a `Volume` prim, such as
+`field:density`, and the attributes a field asset defines: `filePath`, `fieldName`, `fieldIndex`,
+`fieldDataType` and `vectorDataRoleHint`, plus `fieldClass` for `OpenVDBAsset` and `fieldPurpose` for
+`Field3DAsset`. Other prims keep these names under **Other properties**, as does a bare `field:`
+relationship.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing
