@@ -1402,6 +1402,49 @@ public sealed class SilkMaterialStreamingTests
     }
 
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, "upload")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "upload")]
+    [Arguments(SilkGraphicsBackend.D3D12, "cleanup")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "cleanup")]
+    public async Task EagerUploadFailureRestoresTexturesAndBudgetsAndReplays(
+        SilkGraphicsBackend backend, string failure)
+    {
+        using var actual = new Fixture(backend, streaming: false);
+        using var expected = new Fixture(backend, streaming: false);
+        using OpenUsdSilkPage initial = Page(2, 1);
+        _ = actual.Render(initial);
+        _ = expected.Render(initial);
+        byte[] before = actual.ColorBytes();
+        ulong textures = actual.Textures.Usage.ReservedBytes;
+        ulong cpu = actual.Cpu.Usage.ReservedBytes;
+        using var maps = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
+            Material('A', false, multipleMaps: true), 1);
+        actual.Device.RefuseSubmissionAfter = failure == "upload" ? 0 : null;
+        actual.Device.FailSubmissionCleanupAfter = failure == "cleanup" ? 0 : null;
+
+        Exception? error = await Assert.That(() => actual.Render(maps)).Throws<Exception>();
+
+        await Assert.That(failure == "upload"
+            ? error is SilkGpuStagingBudgetExceededException
+            : error is InvalidOperationException).IsTrue();
+        await Assert.That(actual.Renderer.Scene.Revision).IsEqualTo(2ul);
+        await Assert.That(actual.ColorBytes().SequenceEqual(before)).IsTrue();
+        await Assert.That(actual.Textures.Usage.ReservedBytes).IsEqualTo(textures)
+            .Because("textures created for a rejected eager upload must be released");
+        await Assert.That(actual.Cpu.Usage.ReservedBytes).IsEqualTo(cpu);
+        await Assert.That(actual.Staging.Usage.ReservedBytes).IsEqualTo(0ul);
+        actual.Device.RefuseSubmissionAfter = null;
+        actual.Device.FailSubmissionCleanupAfter = null;
+        _ = actual.Render(maps);
+        _ = expected.Render(maps);
+        await Assert.That(actual.Renderer.Scene.Revision).IsEqualTo(3ul);
+        await Assert.That(actual.ColorBytes().SequenceEqual(expected.ColorBytes())).IsTrue();
+        await Assert.That(actual.ColorBytes().SequenceEqual(before)).IsFalse();
+        actual.ReleaseResources();
+        await actual.AssertReleased();
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task FailedLaterFloatMipKeepsTheOldFrameAndReplays(SilkGraphicsBackend backend)
