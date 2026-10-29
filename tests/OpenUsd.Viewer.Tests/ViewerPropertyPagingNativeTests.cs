@@ -60,6 +60,9 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 rel material:binding = </Looks/Material>
                 color3f[] primvars:displayColor = [(1, 0, 0)]
                 rel collection:lights:includes = </Other>
+                uniform token purpose = "default"
+                rel proxyPrim = </Other>
+                custom float physics:mass = 2
 
             """);
         for (int index = 0; index < 257; index++)
@@ -473,6 +476,16 @@ public sealed partial class ViewerPropertyPagingNativeTests
                     .Any(static row => row.Text == "collection:lights:includes: /Other"), timeout);
             await Assert.That(ValueText(main)).DoesNotContain("primvars:displayColor");
             await Assert.That(ValueText(main)).DoesNotContain("material:binding");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Imageable;
+            await WaitAsync(() => state.Text?.StartsWith("Properties 1-", StringComparison.Ordinal) == true &&
+                Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                    .Any(static row => row.Text == "proxyPrim: /Other"), timeout);
+            await Assert.That(ValueText(main)).Contains("purpose");
+            await Assert.That(ValueText(main)).DoesNotContain("physics:mass");
+            await Assert.That(ValueText(main)).DoesNotContain("collection:lights:includes");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Physics;
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(ValueText(main)).Contains("physics:mass");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.MaterialBindings;
             await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
             await Assert.That(Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
@@ -520,11 +533,13 @@ public sealed partial class ViewerPropertyPagingNativeTests
             propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.UnauthoredAttributes;
             await WaitAsync(() => state.Text == "No properties match the current filter.", timeout);
             await Assert.That(PropertyButtons(main)).IsEmpty();
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Imageable;
             query.Text = "visibility";
             await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
             await Assert.That(ValueText(main)).Contains("inherited");
             propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.AuthoredAttributes;
             await WaitAsync(() => state.Text == "No properties match the current filter.", timeout);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Other;
             propertyFilter.SelectedIndex = (int)ViewerPropertyFilter.BlockedAttributes;
             query.Text = "details:blocked";
             await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
@@ -749,6 +764,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
             query.Text = string.Empty;
             await WaitAsync(() => Required<Button>(main, "InspectorPropertyNext").IsEnabled, timeout);
             Click(main, "InspectorPropertyNext");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.All;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
             await WaitAsync(() => query.IsEnabled && state.Text?.StartsWith(

@@ -24,6 +24,8 @@ internal enum ViewerPropertyGroup
     MaterialBindings,
     Primvars,
     Collections,
+    Imageable,
+    Physics,
     Other
 }
 
@@ -184,7 +186,15 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Primvars;
         }
-        return HasNamespace(name, "collection:") ? ViewerPropertyGroup.Collections : ViewerPropertyGroup.Other;
+        if (HasNamespace(name, "collection:"))
+        {
+            return ViewerPropertyGroup.Collections;
+        }
+        if (name is "visibility" or "purpose")
+        {
+            return ViewerPropertyGroup.Imageable;
+        }
+        return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
     private static ViewerPropertyGroup RelationshipGroup(string name)
@@ -193,7 +203,15 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.MaterialBindings;
         }
-        return HasNamespace(name, "collection:") ? ViewerPropertyGroup.Collections : ViewerPropertyGroup.Other;
+        if (HasNamespace(name, "collection:"))
+        {
+            return ViewerPropertyGroup.Collections;
+        }
+        if (name == "proxyPrim")
+        {
+            return ViewerPropertyGroup.Imageable;
+        }
+        return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
     // A namespace prefix only groups a property that has a nonempty name after it.

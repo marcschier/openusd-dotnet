@@ -13,12 +13,17 @@ public sealed class ViewerPropertyPageTests
     [
         "XformOp:translate", "xformOpOrderExtra", "FocalLength", "shutter:custom",
         "inputsExtra:roughness", "Outputs:surface", "material:binding", "primvars:", "Primvars:displayColor",
-        "primvarsExtra:st", "collection:", "Collection:lights:includeRoot"
+        "primvarsExtra:st", "collection:", "Collection:lights:includeRoot", "Visibility", "purposeExtra",
+        "physics:", "Physics:mass", "physicsExtra:mass", "physxRigidBody:linearDamping"
     ];
     private static readonly string[] NamespacedApiNames =
     [
         "primvars:displayColor", "primvars:st:indices", "inputs:file", "collection:lights:expansionRule",
         "collection:lights", "custom"
+    ];
+    private static readonly string[] ImageableAndPhysicsNames =
+    [
+        "physics:mass", "visibility", "custom", "purpose", "physics:rigidBodyEnabled"
     ];
 
     [Test]
@@ -79,13 +84,15 @@ public sealed class ViewerPropertyPageTests
             new("inputs:roughness", "/Graph.outputs:value"),
             new("xformOp:translate", "/World"),
             new("primvars:displayColor", "/World"),
-            new("collection:", "/World")
+            new("collection:", "/World"),
+            new("proxyPrimExtra", "/Proxy"),
+            new("physics:", "/Body")
         ];
         ViewerPropertyPage other = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isCamera: true);
         await Assert.That(other.Attributes).IsEquivalentTo(attributes);
         await Assert.That(other.Relationships).IsEquivalentTo(relationships);
-        await Assert.That(other.MatchCount).IsEqualTo(18);
+        await Assert.That(other.MatchCount).IsEqualTo(26);
         await Assert.That(() => ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: (ViewerPropertyGroup)999))
             .Throws<ArgumentOutOfRangeException>();
@@ -119,6 +126,37 @@ public sealed class ViewerPropertyPageTests
         ViewerPropertyPage bindings = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.MaterialBindings);
         await Assert.That(bindings.Relationships.Single()).IsSameReferenceAs(relationships[1]);
+    }
+
+    [Test]
+    public async Task ImageableAndPhysicsGroupsUseExactSchemaNamesAndTheirNamespace()
+    {
+        ViewerAttributeSnapshot[] attributes = ImageableAndPhysicsNames
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "7"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+        [
+            new("physics:body0", "/World/A"),
+            new("proxyPrim", "/World/Proxy"),
+            new("physics:filteredPairs", "/World/B")
+        ];
+
+        ViewerPropertyPage imageable = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Imageable, isCamera: true, isLight: true);
+        ViewerPropertyPage physics = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Physics);
+
+        await Assert.That(string.Join(",", imageable.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("visibility,purpose");
+        await Assert.That(imageable.Relationships.Single()).IsSameReferenceAs(relationships[1]);
+        await Assert.That(string.Join(",", physics.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("physics:mass,physics:rigidBodyEnabled");
+        await Assert.That(string.Join(",", physics.Relationships.Select(static item => item.Name)))
+            .IsEqualTo("physics:body0,physics:filteredPairs");
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
+        await Assert.That(other.Attributes.Single().Name).IsEqualTo("custom");
+        await Assert.That(other.Relationships).IsEmpty();
     }
 
     [Test]

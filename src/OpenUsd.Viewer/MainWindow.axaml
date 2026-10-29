@@ -1216,6 +1216,8 @@
               <ComboBoxItem Content="Material bindings" />
               <ComboBoxItem Content="Primvars (primvars:)" />
               <ComboBoxItem Content="Collections (collection:)" />
+              <ComboBoxItem Content="Visibility and purpose (Imageable)" />
+              <ComboBoxItem Content="Physics (physics:)" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

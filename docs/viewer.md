@@ -354,6 +354,11 @@ relationships in the `collection:` namespace, such as `collection:lights:include
 outputs, these two groups follow the namespace and do not check that `PrimvarsAPI` or
 `CollectionAPI` is applied. A bare `primvars:` or `collection:` name with nothing after the prefix,
 or a prefix that differs in case, stays under **Other properties**.
+**Visibility and purpose** groups the exact `visibility` and `purpose` attributes and the exact
+`proxyPrim` relationship; it does not check that the prim is imageable. **Physics** groups
+attributes and relationships in the `physics:` namespace, such as `physics:mass`. PhysX
+namespaces such as `physxRigidBody:` stay under **Other properties**, as do a bare `physics:`
+name and names that differ in case.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing
