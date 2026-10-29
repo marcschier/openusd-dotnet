@@ -610,8 +610,10 @@ analytic native fixtures rather than this unsuitable Storm reference.
 - MaterialX image sampling is read from `uaddressmode`/`vaddressmode` and `default`, with MaterialX's periodic
   default. `SilkTextureWrap.Black` and `SilkTextureWrap.UseMetadata` select transparent-black border sampling on
   D3D12, Vulkan, and Metal. D3D12 WARP and Vulkan SwiftShader pixel gates distinguish the border from clamp-to-edge;
-  Metal runtime pixel evidence still requires a Metal-capable host. MaterialX `default` is not a configurable border
-  colour and remains the unreadable-file fallback.
+  Metal runtime pixel evidence still requires a Metal-capable host. MaterialX `constant` addressing returns the
+  authored `default` outside the image through a one-texel ring in the cached texture; D3D12 WARP and Vulkan
+  SwiftShader pixel gates read the default at a 1.25 coordinate and diverge from the black border. Lower mip levels
+  blend the ring into the edge texels, and an image whose ring exceeds the device texture limit binds the default.
 - Rect and disk lights apply ShapingAPI cone and focus, gated by Vulkan self-consistency pairs. Sphere-light
   shaping, cone softness, IES profiles and area-light texture inputs are not implemented. Dome textures have no gated
   Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome

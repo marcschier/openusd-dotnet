@@ -554,11 +554,14 @@ struct SurfaceParameters
     // composite drives, so exactly one of the slots below combines. operator is
     // one of the CompositeOp constants and factor is meaningful only for mix.
     float4 compositeControls;
-    // (domeLinkMask, 0, 0, 0). domeLinkMask is the UsdLux dome-link mask of the
-    // prim this draw covers: bit i is set when dome light i of the frame dome
-    // table illuminates it. It is a slot of its own rather than more bits of
-    // clearcoatShaded.w because the dome table and the direct-light table are two
-    // orderings -- dome 0 and direct light 0 are different lights.
+    // (domeLinkMask, constantBorderMaskU, constantBorderMaskV, 0). domeLinkMask
+    // is the UsdLux dome-link mask of the prim this draw covers: bit i is set
+    // when dome light i of the frame dome table illuminates it. It is a slot of
+    // its own rather than more bits of clearcoatShaded.w because the dome table
+    // and the direct-light table are two orderings -- dome 0 and direct light 0
+    // are different lights. The two border masks carry the textureControls.x
+    // bit of every slot whose image has a one-texel ring of its MaterialX
+    // constant default on that axis; bit 1 stands for the composite operand.
     float4 domeLinkControls;
     // Bit i is in word i/32, bit i%32. Never convert direct membership to float.
     uint4 lightLinkMask;
@@ -617,16 +620,56 @@ uint LoadUdimByte(Texture2D<float4> textureMap, uint width, uint offset)
     return uint(round(textureMap.Load(int3(offset % width, offset / width, 0)).r * 255.0));
 }
 
+/// Selects the constant-border axes (bit 0 = u, bit 1 = v) of one slot.
+[ForceInline]
+uint ConstantBorderAxes(SurfaceParameters surface, uint slotBit)
+{
+    uint maskU = (uint)round(surface.domeLinkControls.y);
+    uint maskV = (uint)round(surface.domeLinkControls.z);
+    return ((maskU & slotBit) != 0 ? 1u : 0u) | ((maskV & slotBit) != 0 ? 2u : 0u);
+}
+
+/// Maps a unit-range coordinate into the interior of an image that carries a
+/// one-texel ring of its MaterialX constant default, on each masked axis.
+///
+/// Inside [0, 1] the coordinate addresses the authored texels exactly; outside
+/// it clamps to the centre of the ring texel, so a level-zero linear sample
+/// returns the default and an edge sample blends into it over half a texel.
+/// Lower mip levels average the ring with the outermost texels, so a minified
+/// edge carries a little of the default inward.
+[ForceInline]
+float2 ConstantBorderCoordinate(Texture2D<float4> textureMap, float2 textureCoordinate, uint borderAxes)
+{
+    if (borderAxes == 0u)
+    {
+        return textureCoordinate;
+    }
+    uint width;
+    uint height;
+    textureMap.GetDimensions(width, height);
+    float2 size = float2(width, height);
+    float2 remapped = clamp(
+        (textureCoordinate * (size - 2.0) + 1.0) / size,
+        0.5 / size,
+        (size - 0.5) / size);
+    return float2(
+        (borderAxes & 1u) != 0 ? remapped.x : textureCoordinate.x,
+        (borderAxes & 2u) != 0 ? remapped.y : textureCoordinate.y);
+}
+
 [ForceInline]
 float4 SampleMaterialTexture(
     Texture2D<float4> textureMap,
     SamplerState textureSampler,
     float2 textureCoordinate,
-    bool isUdim)
+    bool isUdim,
+    uint borderAxes)
 {
     if (!isUdim)
     {
-        return textureMap.Sample(textureSampler, textureCoordinate);
+        return textureMap.Sample(
+            textureSampler,
+            ConstantBorderCoordinate(textureMap, textureCoordinate, borderAxes));
     }
 
     uint atlasWidth;
@@ -766,7 +809,8 @@ float4 ApplyMaterialComposite(
         compositeTexture,
         compositeSampler,
         textureCoordinate,
-        surface.compositeControls.w >= 0.5);
+        surface.compositeControls.w >= 0.5,
+        ConstantBorderAxes(surface, 1u));
     uint operation = (uint)round(surface.compositeControls.y);
     if (operation == CompositeOpMultiply)
     {
@@ -1274,7 +1318,8 @@ float4 FRAGMENT_ENTRY_POINT(
     {
         float2 slotTexCoord = SelectTexCoord(2u, secondaryMask, materialTexCoord, secondaryTexCoord);
         float4 diffuseSample = SampleMaterialTexture(
-            baseColorTexture, baseColorSampler, slotTexCoord, (udimMask & 2u) != 0);
+            baseColorTexture, baseColorSampler, slotTexCoord, (udimMask & 2u) != 0,
+            ConstantBorderAxes(surface, 2u));
         // Equal widths explicitly identify the split-RGB fallback. Indexed tables
         // are admitted only with a different width; dimensions are exact integers.
         if (surface.compositeControls.x == 0.0 && surface.compositeControls.w == 2.0)
@@ -1288,7 +1333,10 @@ float4 FRAGMENT_ENTRY_POINT(
             }
             else
             {
-                diffuseSample.b = diffuseValuesTexture.Sample(baseColorSampler, slotTexCoord).r;
+                diffuseSample.b = diffuseValuesTexture.Sample(
+                    baseColorSampler,
+                    ConstantBorderCoordinate(
+                        diffuseValuesTexture, slotTexCoord, ConstantBorderAxes(surface, 2u))).r;
             }
         }
         diffuseColor = ApplyMaterialComposite(
@@ -1303,7 +1351,8 @@ float4 FRAGMENT_ENTRY_POINT(
         normalTexture,
         normalSampler,
         SelectTexCoord(4u, secondaryMask, materialTexCoord, secondaryTexCoord),
-        (udimMask & 4u) != 0);
+        (udimMask & 4u) != 0,
+        ConstantBorderAxes(surface, 4u));
     if (surface.detailUvTransformRow0.w != 0.0)
     {
         baseNormalSample.rgb = DecodeIndexedRgb(baseNormalSample, normalValuesTexture);
@@ -1319,7 +1368,8 @@ float4 FRAGMENT_ENTRY_POINT(
             dot(surface.detailUvTransformRow0.xy, detailSource) + surface.detailUvTransformRow0.z,
             dot(surface.detailUvTransformRow1.xy, detailSource) + surface.detailUvTransformRow1.z);
         float4 detailSample = SampleMaterialTexture(
-            detailNormalTexture, detailNormalSampler, detailUv, (udimMask & 4096u) != 0);
+            detailNormalTexture, detailNormalSampler, detailUv, (udimMask & 4096u) != 0,
+            ConstantBorderAxes(surface, 4096u));
         if (surface.detailUvTransformRow1.w != 0.0)
         {
             detailSample.rgb = DecodeIndexedRgb(detailSample, detailNormalValuesTexture);
@@ -1372,7 +1422,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     roughnessMetallicTexture,
                     roughnessMetallicSampler,
                     slotTexCoord,
-            (udimMask & 8u) != 0),
+                    (udimMask & 8u) != 0,
+                    ConstantBorderAxes(surface, 8u)),
                 slotTexCoord).r,
             0.01,
             1.0);
@@ -1392,14 +1443,16 @@ float4 FRAGMENT_ENTRY_POINT(
                     metallicTexture,
                     metallicSampler,
                     slotTexCoord,
-                    (udimMask & 32u) != 0),
+                    (udimMask & 32u) != 0,
+                    ConstantBorderAxes(surface, 32u)),
                 slotTexCoord).r);
     }
     if ((textureMask & 16u) != 0)
     {
         float2 slotTexCoord = SelectTexCoord(16u, secondaryMask, materialTexCoord, secondaryTexCoord);
         float4 emissionSample = SampleMaterialTexture(
-            emissiveTexture, emissiveSampler, slotTexCoord, (udimMask & 16u) != 0);
+            emissiveTexture, emissiveSampler, slotTexCoord, (udimMask & 16u) != 0,
+            ConstantBorderAxes(surface, 16u));
         if (surface.uvTransformRow0.w != 0.0)
         {
             uint sourceWidth, sourceHeight, valueWidth, valueHeight;
@@ -1411,7 +1464,10 @@ float4 FRAGMENT_ENTRY_POINT(
             }
             else
             {
-                emissionSample.b = emissiveValuesTexture.Sample(emissiveSampler, slotTexCoord).r;
+                emissionSample.b = emissiveValuesTexture.Sample(
+                    emissiveSampler,
+                    ConstantBorderCoordinate(
+                        emissiveValuesTexture, slotTexCoord, ConstantBorderAxes(surface, 16u))).r;
             }
         }
         emissiveColor = ApplyMaterialComposite(
@@ -1431,7 +1487,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     opacityTexture,
                     opacitySampler,
                     slotTexCoord,
-                    (udimMask & 64u) != 0),
+                    (udimMask & 64u) != 0,
+                    ConstantBorderAxes(surface, 64u)),
                 slotTexCoord).r);
     }
     if ((textureMask & 128u) != 0)
@@ -1445,7 +1502,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     occlusionTexture,
                     occlusionSampler,
                     slotTexCoord,
-                    (udimMask & 128u) != 0),
+                    (udimMask & 128u) != 0,
+                    ConstantBorderAxes(surface, 128u)),
                 slotTexCoord).r);
     }
     if ((textureMask & 256u) != 0)
@@ -1459,7 +1517,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     specularColorTexture,
                     specularColorSampler,
                     slotTexCoord,
-                    (udimMask & 256u) != 0),
+                    (udimMask & 256u) != 0,
+                    ConstantBorderAxes(surface, 256u)),
                 slotTexCoord).rgb);
     }
     if ((textureMask & 512u) != 0)
@@ -1473,7 +1532,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     clearcoatTexture,
                     clearcoatSampler,
                     slotTexCoord,
-                    (udimMask & 512u) != 0),
+                    (udimMask & 512u) != 0,
+                    ConstantBorderAxes(surface, 512u)),
                 slotTexCoord).r);
     }
     if ((textureMask & 1024u) != 0)
@@ -1487,7 +1547,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     clearcoatRoughnessTexture,
                     clearcoatRoughnessSampler,
                     slotTexCoord,
-                    (udimMask & 1024u) != 0),
+                    (udimMask & 1024u) != 0,
+                    ConstantBorderAxes(surface, 1024u)),
                 slotTexCoord).r);
     }
     if ((textureMask & 2048u) != 0)
@@ -1500,7 +1561,8 @@ float4 FRAGMENT_ENTRY_POINT(
                     iorTexture,
                     iorSampler,
                     slotTexCoord,
-                    (udimMask & 2048u) != 0),
+                    (udimMask & 2048u) != 0,
+                    ConstantBorderAxes(surface, 2048u)),
                 slotTexCoord).r;
     }
 #endif

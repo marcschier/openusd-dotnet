@@ -3770,6 +3770,34 @@ def Xform "World"
         await Assert.That(metadataMaxDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(metadataMeanDelta).IsLessThanOrEqualTo(0.500);
 
+        // MaterialX constant reads the authored default outside the unit range.
+        // The texture spec's default is magenta, which no texel of the image
+        // carries, so a match proves the ring rather than an edge texel.
+        ParityImage constantBorder = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Constant,
+            [1.0f, 0.0f, 1.0f]);
+        (byte constantMaxDelta, double constantMeanDelta) =
+            CompareTranslatedHalves(constantBorder);
+        string constant = FormatSelfConsistencyMetrics(
+            $"address-mode-constant-border-{backend}",
+            constantMaxDelta,
+            constantMeanDelta);
+        Console.WriteLine(constant);
+        WriteEvidence($"address-mode-{backend}-constant-border.txt", [constant]);
+        await Assert.That(CountNonBlackPixels(constantBorder)).IsGreaterThan(100);
+        await Assert.That(constantMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(constantMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // Non-vacuity: the same constant capture compared with the black border
+        // must diverge, or the ring never reached the sample.
+        ParityImage constantAgainstBlack = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Constant,
+            [0.0f, 0.0f, 0.0f]);
+        (byte constantDivergence, _) = CompareTranslatedHalves(constantAgainstBlack);
+        await Assert.That(constantDivergence).IsGreaterThan(MinimumTextureDivergenceChannelDelta);
+
         ParityImage divergent = CaptureSyntheticAddressModeTexel(
             device,
             SilkTextureWrap.Black,

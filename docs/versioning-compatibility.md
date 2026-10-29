@@ -94,7 +94,7 @@ constants, package validation, and tests must be updated together.
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
-| hdSilk command page | ABI 28 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 29 | Every managed page is validated before parsing. |
 | Optional `openusd_mdl` / `openusd_mdl_sdk` | ABI 7 | hdSilk checks the exact adapter version and result size. |
 | Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
 | Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |
@@ -140,6 +140,11 @@ tier, raising the full native frame to 25416 bytes and the GPU frame to 17344
 bytes. Rect and disk lights apply its cone and focus; a frame without the table
 renders those lights unshaped. Deploy the native library, managed parser and
 checked shaders together; a page-27 library is refused.
+
+hdSilk page ABI 29 adds texture wrap value 5, MaterialX `constant` addressing. Page ABI 28 published `constant` as
+black; the version changes because a page-28 consumer does not know value 5. No table layout changes. The surface block uses the reserved lanes after the dome mask for the per-axis constant-border masks, and the
+checked mesh fragment permutations read them. Deploy the native library, managed parser and checked shaders together;
+a page-28 library is refused.
 
 Direct Storm ABI 9 adds the owned bulk AOV contract in `openusd_storm_aov.h`:
 `openusd_storm_aov_capture`, `openusd_storm_aov_get_view`, and `openusd_storm_aov_release`.

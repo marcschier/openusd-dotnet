@@ -30,7 +30,7 @@ internal static class SilkSurfaceUniformWriter
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
     /// (m10, m11, ty, secondaryUvMask), the two-image composite controls
     /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
-    /// (domeLinkMask, 0, 0, 0), followed by uint4 direct and shadow link masks
+    /// (domeLinkMask, constantBorderMaskU, constantBorderMaskV, 0), followed by uint4 direct and shadow link masks
     /// and two independent detail-normal UV affine rows. Their unused w components
     /// select private indexed storage for the base and detail normal respectively.
     /// The base UV row's unused w selects private compact RGB emission storage.
@@ -232,8 +232,8 @@ internal static class SilkSurfaceUniformWriter
             destination,
             192,
             masks.DomeMask & SilkLightLinkMasks.AllDomeBits,
-            0,
-            0,
+            volumeDensity ? 0 : GetConstantBorderMask(shaded, horizontal: true),
+            volumeDensity ? 0 : GetConstantBorderMask(shaded, horizontal: false),
             0);
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(208, 16), masks.LightMask);
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(224, 16), masks.ShadowMask);
@@ -297,6 +297,69 @@ internal static class SilkSurfaceUniformWriter
             if (material?.GetTexture(parameter) is { } texture && IsUdim(texture))
             {
                 mask |= (int)feature;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a material texture is uploaded with a one-texel ring of its
+    /// authored default on each <see cref="SilkTextureWrap.Constant"/> axis.
+    /// </summary>
+    /// <remarks>
+    /// UDIM sets are excluded because their atlas already addresses unauthored
+    /// tiles through the default, and volume density and displacement never reach
+    /// the fragment sampler. The texture cache pads by this rule and the border
+    /// masks are derived from it, so the shader remaps a coordinate exactly when
+    /// the ring exists.
+    /// </remarks>
+    internal static (bool S, bool T) GetConstantBorderAxes(SilkMaterialTexture texture) =>
+        texture.Parameter is SilkMaterialParameter.VolumeDensity or SilkMaterialParameter.Displacement ||
+        IsUdim(texture)
+            ? (false, false)
+            : (texture.WrapS == SilkTextureWrap.Constant, texture.WrapT == SilkTextureWrap.Constant);
+
+    /// <summary>
+    /// The texture-mask bits of the slots whose image carries a constant border
+    /// on one axis, with bit 1 standing for the composite operand.
+    /// </summary>
+    /// <remarks>
+    /// Bit 1 is the coordinate feature, which never names a sampled slot, so it
+    /// is free to identify the composite operand without a second identifier
+    /// space. Every bit is below 2^24, so the float carries the mask exactly.
+    /// </remarks>
+    private static float GetConstantBorderMask(SilkMaterialData? material, bool horizontal)
+    {
+        if (material is null)
+        {
+            return 0;
+        }
+        int mask = 0;
+        addBorderBit(material.GetTexture(SilkMaterialParameter.DiffuseColor), SilkShaderFeatures.BaseColorMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Normal), SilkShaderFeatures.NormalMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.DetailNormal), SilkShaderFeatures.DetailNormalMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Roughness), SilkShaderFeatures.RoughnessMetallicMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.EmissiveColor), SilkShaderFeatures.EmissiveMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Metallic), SilkShaderFeatures.MetallicMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Opacity), SilkShaderFeatures.OpacityMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Occlusion), SilkShaderFeatures.OcclusionMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.SpecularColor), SilkShaderFeatures.SpecularColorMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Clearcoat), SilkShaderFeatures.ClearcoatMap);
+        addBorderBit(
+            material.GetTexture(SilkMaterialParameter.ClearcoatRoughness),
+            SilkShaderFeatures.ClearcoatRoughnessMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Ior), SilkShaderFeatures.IorMap);
+        addBorderBit(material.GetCompositeTexture(), SilkShaderFeatures.Uv);
+        return mask;
+
+        void addBorderBit(SilkMaterialTexture? texture, SilkShaderFeatures feature)
+        {
+            if (texture is not null)
+            {
+                (bool s, bool t) = GetConstantBorderAxes(texture);
+                if (horizontal ? s : t)
+                {
+                    mask |= (int)feature;
+                }
             }
         }
     }

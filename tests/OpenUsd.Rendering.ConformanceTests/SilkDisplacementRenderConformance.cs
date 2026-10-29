@@ -444,13 +444,13 @@ internal static class SilkDisplacementRenderConformance
             .. Frame(), .. Material(textureAsset: HeightAsset),
             .. Quad("/Quad", QuadPoints(), QuadNormals())
         ];
-        using var first = new OpenUsdSilkPage(28, 1, initial, 3);
+        using var first = new OpenUsdSilkPage(29, 1, initial, 3);
         renderer.ApplyPage(first);
         byte[] before = RenderInto(renderer, color, depth);
         await Assert.That(CountLit(before)).IsGreaterThan(100);
         ulong retained = budget.Usage.ReservedBytes;
         await Assert.That(retained).IsGreaterThanOrEqualTo(16ul);
-        using var changed = new OpenUsdSilkPage(28, 2,
+        using var changed = new OpenUsdSilkPage(29, 2,
             Material(textureAsset: HeightAsset, textureScale: 0.5f), 1);
         using (budget.Reserve(budget.MaximumBytes - retained - 15))
         {

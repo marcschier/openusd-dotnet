@@ -65,12 +65,12 @@ public sealed class SilkEnvironmentRetentionTests
             gpu?.Commit();
             cpu.Commit();
         }
-        using var first = new OpenUsdSilkPage(28, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(29, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         SilkEnvironmentFrameBinding binding = resources.EnvironmentBinding;
         ulong reserved = budget.Usage.ReservedBytes;
         int originalAttempts = attempts;
-        using var update = new OpenUsdSilkPage(28, 2, Upsert(DomePath, SecondTexturePath), 1);
+        using var update = new OpenUsdSilkPage(29, 2, Upsert(DomePath, SecondTexturePath), 1);
         refuse = true;
         await Assert.That(() => apply(update)).Throws<OutOfMemoryException>();
         await Assert.That(attempts).IsEqualTo(originalAttempts + 1);
@@ -211,7 +211,7 @@ public sealed class SilkEnvironmentRetentionTests
                 return image;
             });
         var scene = new SilkSceneState();
-        using var page = new OpenUsdSilkPage(28, 1,
+        using var page = new OpenUsdSilkPage(29, 1,
             [.. Upsert(DomePath, TexturePath), .. Upsert(SecondDomePath, SecondTexturePath)], 2);
         void apply()
         {
@@ -289,7 +289,7 @@ public sealed class SilkEnvironmentRetentionTests
             cpu.Commit();
             resources.CompleteApply(scene, cpu.Delta, gpu?.TexturesPrepared == true);
         }
-        using var first = new OpenUsdSilkPage(28, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(29, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         using var originalCommands = new EnvironmentCommandList();
         resources.BindEnvironment(originalCommands);
@@ -302,8 +302,8 @@ public sealed class SilkEnvironmentRetentionTests
         ulong revision = scene.EnvironmentRevision;
         bool retireOnly = refusal == "retirement-mesh";
         using var update = retireOnly
-            ? new OpenUsdSilkPage(28, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
-            : new OpenUsdSilkPage(28, 2,
+            ? new OpenUsdSilkPage(29, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
+            : new OpenUsdSilkPage(29, 2,
                 [.. Remove(DomePath), .. Upsert(SecondDomePath, SecondTexturePath), .. LinkedMesh()], 3);
         IDisposable? pressure = refusal == "texture"
             ? budget.Reserve(new SilkTextureDescriptor(

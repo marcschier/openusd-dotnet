@@ -1591,7 +1591,7 @@ case verifies replay does not hold the native-session lock. Vulkan uses SwiftSha
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 28 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 29 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 `hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable
@@ -1691,7 +1691,7 @@ not a device-register or process-memory estimate. The old full-frame array copie
 15180 bytes and fail; the direct reads require 844 bytes. Python tests cover the exact boundary,
 one-vector overflow, storage-buffer exclusion, independent functions and malformed streams.
 Native 97/128-light controls and paired D3D12/Vulkan light/shadow pixel cases remain unchanged;
-the native fixture now expects the current exact page ABI 28 rather than stale ABI 25.
+the native fixture now expects the current exact page ABI 29 rather than stale ABI 25.
 
 Four Vulkan self-consistency pairs in `StormSilkParityCaptureDriverTests` gate rect and disk
 `UsdLuxShapingAPI`. A 180-degree cone with focus matches the unshaped rect; a 15-degree cone and a
@@ -2013,6 +2013,16 @@ to `stN`, and connected, negative, or non-integer indices to be rejected. The
 texture bound to `st1` samples that stream rather than `st`.
 `MissingNamedTextureCoordinatesUseZeroAndReportTheRequestedPrimvar` proves that
 an absent `st1` does not fall back to `st` and reports the requested primvar.
+
+MaterialX `constant` addressing is gated at three levels. In `SilkMaterialCommandTests`,
+`ConstantWrapSurroundsTheImageWithARingOfTheAuthoredDefault` requires a ring only on constant axes, with every
+authored texel present once at a one-texel offset. `AFailedConstantBorderTextureStillCarriesItsRing` and
+`AConstantBorderPastTheDeviceLimitFallsBackToTheDefault` cover the unreadable-image and device-limit fallbacks, and
+`ConstantBorderMasksCarryEachSlotAxisAndTheCompositeOperand` requires per-axis mask bits, bit 1 for the composite
+operand, and no bits for UDIM or volume-density materials. `SilkDisplacementTests` requires the raw default outside the
+image with the affine applied once, an equal blend at the edge, black precedence on a mixed corner, and rejection of a
+non-finite default. The `MaterialXPeriodicAddressModeTiles*` pixel tests on D3D12 WARP and Vulkan SwiftShader read the
+magenta default at a 1.25 coordinate and require it to diverge from black.
 
 `SilkMaterialStreamingTests.MapsOnASecondPrimvarSampleTheSecondCoordinateSet` gates the secondary stream on D3D12
 WARP and Vulkan SwiftShader. A material whose base colour reads `st` and whose roughness and metallic maps read `st1`

@@ -90,7 +90,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 6 and page ABI 28. Managed creation requires the matching session/page
+session ABI 6 and page ABI 29. Managed creation requires the matching session/page
 version exports; older session-5 libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -132,6 +132,10 @@ every other light, and every slot past the light count, carries 180 and zero.
 The managed/GPU frame is 17344 bytes at the existing raw-buffer binding;
 the 240-byte per-draw surface block carries two integer `uint4` masks, without
 floating-point conversion or per-element native calls.
+Page ABI 29 adds texture wrap value 5 for MaterialX `constant` addressing, which
+page 28 published as black. Table layouts are unchanged; the managed cache pads
+the image with a ring of the authored `default`, and the surface block's
+reserved lanes after the dome mask carry the per-axis constant-border masks.
 
 Requested filters commit only when a page is successfully returned. Failure
 during engine reconstruction leaves the stage and owned scene state available

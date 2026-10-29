@@ -46,7 +46,7 @@ public sealed partial class RuntimePackageTests
     private const int RequiredStormAbiVersion = 9;
     private static readonly int RequiredSilkSessionAbiVersion =
         checked((int)ReadLockNumber("silkSession"));
-    private const int RequiredSilkPageAbiVersion = 28;
+    private const int RequiredSilkPageAbiVersion = 29;
     private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 

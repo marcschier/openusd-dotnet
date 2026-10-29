@@ -252,7 +252,7 @@ public sealed class SilkMeshRendererTests
         await Assert.That(storage.Disposals).IsEqualTo(0);
         storage.FailPass = 0;
         device.BufferFailureCountdown = null;
-        using var next = new OpenUsdSilkPage(28, 8, CreateFrameCommand(), 1);
+        using var next = new OpenUsdSilkPage(29, 8, CreateFrameCommand(), 1);
         renderer.ApplyPage(next);
         await Assert.That(renderer.Scene.Revision).IsEqualTo(8ul);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
@@ -287,7 +287,7 @@ public sealed class SilkMeshRendererTests
         using var renderer = new SilkMeshRenderer(device);
         using var color = new ValidationTexture(4, 4, SilkTextureFormat.Rgba8Unorm);
         using var depth = new ValidationTexture(invalidOptions ? 4u : 2u, 4, SilkTextureFormat.D32Float);
-        using var page = new OpenUsdSilkPage(28, 1,
+        using var page = new OpenUsdSilkPage(29, 1,
             [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         SilkMeshRenderOptions options = invalidOptions
             ? SilkMeshRenderOptions.Default with { ClearDepth = float.NaN }
@@ -358,7 +358,7 @@ public sealed class SilkMeshRendererTests
         byte[] removal = CreateRemoval("/Removed");
         byte[] movedFrame = CreateFrameCommand();
         BinaryPrimitives.WriteDoubleLittleEndian(movedFrame.AsSpan(16 + 12 * sizeof(double)), 2);
-        using var page = new OpenUsdSilkPage(28, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
+        using var page = new OpenUsdSilkPage(29, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
         SilkSceneDelta delta = coordinated ? default : scene.Apply(page);
         device.BufferFailureCountdown = failWrite ? null : failure;
         device.WriteFailureCountdown = failWrite ? failure : null;
@@ -400,9 +400,9 @@ public sealed class SilkMeshRendererTests
     {
         using var device = new TestGraphicsDevice();
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(28, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        using var first = new OpenUsdSilkPage(29, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         renderer.ApplyPage(first);
-        using var quiet = new OpenUsdSilkPage(28, 2, CreateFrameCommand(), 1);
+        using var quiet = new OpenUsdSilkPage(29, 2, CreateFrameCommand(), 1);
         SilkMeshGpuResource original = renderer.GpuResources.Meshes[7];
         int created = device.Buffers.Count;
         for (int index = 0; index < 1000; index++)

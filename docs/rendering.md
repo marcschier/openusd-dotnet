@@ -1311,7 +1311,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v6; the hdSilk page ABI is v28. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v6; the hdSilk page ABI is v29. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -3459,15 +3459,24 @@ A MaterialX image node states its sampling with MaterialX names and MaterialX de
 reads it that way for `ND_image_*` and the UsdUVTexture way for `UsdUVTexture`:
 
 - `uaddressmode` and `vaddressmode` are read per axis and default to `periodic`, which is the wire's repeat mode.
-  `clamp` and `mirror` map to the matching wire modes, and `constant` maps to the wire's black mode because the
-  wire carries no custom border colour. The fragment sampler maps `black` and `useMetadata` to transparent-black
-  border sampling on D3D12, Vulkan, and Metal. MaterialX image addressing is read from its own `uaddressmode` and
-  `vaddressmode` inputs; an address mode outside the supported enumeration is reported and the input keeps its default.
-- `SilkTextureWrap.Black` records UsdUVTexture's `black`/unauthored `wrap` and MaterialX `constant` addressing.
-  Samples outside the image return transparent black rather than the edge texel. The sampler has no separate border
-  colour, so MaterialX `default` is not used as the `constant` border value; it remains the fallback when the image file
-  cannot be read. `useMetadata` in this fragment path also selects the black border; vertex displacement resolves image
-  metadata separately.
+  `clamp` and `mirror` map to the matching wire modes, and `constant` maps to `SilkTextureWrap.Constant`, added in
+  page ABI 29. An address mode outside the supported enumeration is reported and the input keeps its default.
+- `SilkTextureWrap.Black` records UsdUVTexture's `black`/unauthored `wrap`. Samples outside the image return
+  transparent black rather than the edge texel. The fragment sampler maps `black` and `useMetadata` to
+  transparent-black border sampling on D3D12, Vulkan, and Metal; vertex displacement resolves image metadata
+  separately.
+- `SilkTextureWrap.Constant` returns the MaterialX `default` outside the image. No backend sampler takes a per-texture
+  border colour, so the texture cache surrounds the decoded image with a one-texel ring of the default, after scale and
+  bias, on each constant axis. The surface block carries a per-axis mask of the slots with a ring, and the shader remaps
+  the coordinate into the padded image and clamps it to the ring. Inside the unit range the result matches an
+  unpadded image; outside it is the default, and the filter blends the edge texel with the default across the last
+  half texel. Lower mip levels average the ring into the edge texels, so a minified edge is an approximation.
+- If the image plus its ring exceeds the device's 2D texture limit, the texture is treated as undecodable and binds
+  the default with a fallback diagnostic. An unreadable image binds a 1x1 default with the same ring. UDIM sets,
+  volume density, and displacement never get a ring.
+- Vertex displacement applies the same rule on the CPU without a ring: a constant axis reads the raw `default`
+  outside the image, and the authored scale and bias apply once after filtering. When one axis is black and the other
+  constant, a sample outside both reads black, which matches the clamp-to-border sampler deciding first.
 - `default` is the value the node produces when the file cannot be read, which is exactly what UsdUVTexture calls
   `fallback`, so it is carried in the same wire field. Only the components the node authors are overwritten, so a
   `color3` default keeps the opaque alpha.

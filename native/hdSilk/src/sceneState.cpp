@@ -2186,8 +2186,8 @@ void AppendMaterialUpsert(
             throw std::invalid_argument(
                 "An hdSilk material texture needs a parameter and 1 to 4 components.");
         }
-        if (texture.wrapS > OPENUSD_SILK_WRAP_USE_METADATA ||
-            texture.wrapT > OPENUSD_SILK_WRAP_USE_METADATA ||
+        if (texture.wrapS > OPENUSD_SILK_WRAP_CONSTANT ||
+            texture.wrapT > OPENUSD_SILK_WRAP_CONSTANT ||
             texture.sourceColorSpace > OPENUSD_SILK_COLOR_SPACE_SRGB)
         {
             throw std::invalid_argument(

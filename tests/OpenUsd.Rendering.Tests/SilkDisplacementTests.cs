@@ -250,7 +250,7 @@ internal sealed class SilkDisplacementTests
     private static void ApplyBudgetedPage(
         SilkSceneState scene, SilkSceneGpuResources resources, ulong revision, params byte[][] commands)
     {
-        using var page = new OpenUsdSilkPage(28, revision, commands.SelectMany(command => command).ToArray(),
+        using var page = new OpenUsdSilkPage(29, revision, commands.SelectMany(command => command).ToArray(),
             checked((uint)commands.Length));
         using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
         using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(
@@ -352,15 +352,15 @@ internal sealed class SilkDisplacementTests
         // A one-dimensional ramp so the addressed texel is readable from the value.
         float[] texels = [0.25f, 1f];
         SilkDisplacementField repeat = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Repeat, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 1);
+            texels, 2, 1, SilkTextureWrap.Repeat, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 1);
         SilkDisplacementField clamp = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 2);
+            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 2);
         SilkDisplacementField black = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Black, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 3);
+            texels, 2, 1, SilkTextureWrap.Black, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 3);
         SilkDisplacementField metadata = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.UseMetadata, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 4);
+            texels, 2, 1, SilkTextureWrap.UseMetadata, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 4);
         SilkDisplacementField mirror = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Mirror, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 5);
+            texels, 2, 1, SilkTextureWrap.Mirror, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 5);
 
         // u = 1.25 addresses texel index 2, which is index 0 under repeat, index 1
         // under clamp, index 1 under mirror (the second period runs backwards),
@@ -390,9 +390,9 @@ internal sealed class SilkDisplacementTests
     {
         float[] texels = [0.25f, 1f];
         SilkDisplacementField black = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Black, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 1);
+            texels, 2, 1, SilkTextureWrap.Black, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 1);
         SilkDisplacementField clamp = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 2);
+            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 2);
 
         // u = 0 places the sample half a texel outside the first texel centre, so
         // a border sampler blends the border with texel 0 in equal parts.
@@ -409,6 +409,51 @@ internal sealed class SilkDisplacementTests
         await Assert.That(black.Sample(0f, 0.5f)).IsNotEqualTo(clamp.Sample(0f, 0.5f));
     }
 
+    [Test]
+    public async Task AConstantWrapBordersTheHeightFieldWithTheAuthoredDefault()
+    {
+        float[] texels = [0.25f, 1f];
+        SilkDisplacementField constant = SilkDisplacementField.Textured(
+            texels, 2, 1, SilkTextureWrap.Constant, SilkTextureWrap.Clamp, Identity, 2f, 0.5f, 0.75f, "st", 1);
+
+        // Fully outside the sample is the raw default, and the affine runs once
+        // on it afterwards: 0.5 + 2 * 0.75.
+        await Assert.That(constant.Sample(1.25f, 0.5f)).IsEqualTo(2f).Within(1e-6f);
+        await Assert.That(constant.Sample(-0.25f, 0.5f)).IsEqualTo(2f).Within(1e-6f);
+        // A coordinate too far out to reduce still lands on the default.
+        await Assert.That(constant.Sample(1e12f, 0.5f)).IsEqualTo(2f).Within(1e-6f);
+        // At u = 0 the filter blends the default with texel 0 in equal parts
+        // before the affine: 0.5 + 2 * ((0.75 + 0.25) / 2).
+        await Assert.That(constant.Sample(0f, 0.5f)).IsEqualTo(1.5f).Within(1e-6f);
+        // Non-vacuity: inside the image the default plays no part.
+        await Assert.That(constant.Sample(0.25f, 0.5f)).IsEqualTo(1f).Within(1e-6f);
+    }
+
+    [Test]
+    public async Task ABlackAxisWinsOverAConstantAxisOutsideBothRanges()
+    {
+        float[] texels = [0.25f, 1f, 0.5f, 0.75f];
+        SilkDisplacementField mixed = SilkDisplacementField.Textured(
+            texels, 2, 2, SilkTextureWrap.Constant, SilkTextureWrap.Black, Identity, 1f, 0f, 0.9f, "st", 1);
+
+        // Outside on both axes the black axis decides: a clamp-to-border sampler
+        // on t returns transparent black before the s ring is read.
+        await Assert.That(mixed.Sample(1.5f, 1.5f)).IsEqualTo(0f).Within(1e-6f);
+        // Outside only on s, the constant default applies.
+        await Assert.That(mixed.Sample(1.5f, 0.25f)).IsEqualTo(0.9f).Within(1e-6f);
+    }
+
+    [Test]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    public async Task ANonFiniteConstantBorderIsRejected(float border)
+    {
+        float[] texels = [0.25f, 1f];
+        await Assert.That(() => SilkDisplacementField.Textured(
+                texels, 2, 1, SilkTextureWrap.Constant, SilkTextureWrap.Clamp, Identity, 1f, 0f, border, "st", 1))
+            .Throws<ArgumentException>().WithParameterName("border");
+    }
+
     /// <summary>
     /// The material's single folded texture-coordinate affine transforms the
     /// authored coordinate before the height field is addressed, exactly as the
@@ -421,9 +466,9 @@ internal sealed class SilkDisplacementTests
         // Halve u and shift it by 0.5, so an authored u of 1.5 addresses 1.25.
         float[] affine = [0.5f, 0, 0, 1, 0.5f, 0];
         SilkDisplacementField transformed = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, affine, 1, 0, "st", 1);
+            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, affine, 1, 0, 0, "st", 1);
         SilkDisplacementField untransformed = SilkDisplacementField.Textured(
-            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, Identity, 1, 0, "st", 2);
+            texels, 2, 1, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, Identity, 1, 0, 0, "st", 2);
 
         await Assert.That(transformed.Sample(1.5f, 0.5f))
             .IsEqualTo(untransformed.Sample(1.25f, 0.5f))
@@ -1307,6 +1352,7 @@ internal sealed class SilkDisplacementTests
             Identity,
             2f,
             0.5f,
+            0f,
             "st",
             1);
 
@@ -1883,7 +1929,7 @@ internal sealed class SilkDisplacementTests
         int liveBuffers = device.LiveBufferCount;
         ulong geometryRevision = scene.GeometryRevision;
         byte[] changed = CreateMaterialUpsert(textureAsset: "replacement-height.png");
-        using var page = new OpenUsdSilkPage(28, 2, changed, 1);
+        using var page = new OpenUsdSilkPage(29, 2, changed, 1);
         device.FailAllocationAfter = 3;
         await Assert.That(() => renderer.ApplyPage(page)).Throws<InvalidOperationException>();
         await Assert.That(scene.Materials[MaterialPath]).IsSameReferenceAs(originalMaterial);
@@ -1995,6 +2041,7 @@ internal sealed class SilkDisplacementTests
             SilkTextureWrap.Clamp,
             Identity,
             1,
+            0,
             0,
             "st",
             42);

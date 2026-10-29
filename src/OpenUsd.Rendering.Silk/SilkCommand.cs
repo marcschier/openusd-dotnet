@@ -1853,15 +1853,13 @@ public enum SilkCompositeOperator : uint
 public enum SilkTextureWrap : uint
 {
     /// <summary>
-    /// UsdUVTexture's authored <c>black</c>, any wrap token this renderer does
-    /// not recognise, and MaterialX <c>constant</c> addressing.
+    /// UsdUVTexture's authored <c>black</c> and any wrap token this renderer does
+    /// not recognise.
     /// </summary>
     /// <remarks>
     /// The name records the authored intent, not what every stage does with it.
     /// The fragment and vertex-stage displacement samplers use a transparent-black
-    /// border for this mode. The wire carries no custom border colour, so
-    /// MaterialX <c>constant</c> uses transparent black; its <c>default</c>
-    /// remains the fallback for an unreadable image.
+    /// border for this mode.
     /// </remarks>
     Black = 0,
 
@@ -1886,7 +1884,21 @@ public enum SilkTextureWrap : uint
     /// absent is <c>black</c>. Unavailable or unsupported metadata also falls
     /// back to the black border and emits a texture-fallback diagnostic.
     /// </remarks>
-    UseMetadata = 4
+    UseMetadata = 4,
+
+    /// <summary>
+    /// MaterialX <c>constant</c> addressing: outside the unit range the texture
+    /// reads the entry's own fallback, which carries the node's <c>default</c>.
+    /// </summary>
+    /// <remarks>
+    /// The renderer pads each constant axis with a one-texel ring of the baked
+    /// fallback and remaps coordinates inside the unit range onto the original
+    /// texels, so a filtered sample near the edge blends into the border colour
+    /// and a sample outside reads it exactly. UDIM tiles are not padded and
+    /// clamp to edge. Before page ABI 29 this mode was published as
+    /// <see cref="Black"/>.
+    /// </remarks>
+    Constant = 5
 }
 
 /// <summary>UsdUVTexture sourceColorSpace.</summary>

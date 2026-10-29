@@ -91,7 +91,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 28);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 29);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -9181,7 +9181,7 @@ bool VerifyMaterialXImageSamplingProjection()
         uint32_t wrap;
     };
     const std::array<AddressCase, 4> addressCases{
-        AddressCase{"constant", OPENUSD_SILK_WRAP_BLACK},
+        AddressCase{"constant", OPENUSD_SILK_WRAP_CONSTANT},
         AddressCase{"clamp", OPENUSD_SILK_WRAP_CLAMP},
         AddressCase{"periodic", OPENUSD_SILK_WRAP_REPEAT},
         AddressCase{"mirror", OPENUSD_SILK_WRAP_MIRROR}};
@@ -9249,6 +9249,27 @@ bool VerifyMaterialXImageSamplingProjection()
                       << withDefault.textures[0].fallback[3] << ")";
         }
         std::cerr << "\n";
+        return false;
+    }
+
+    // Constant addressing reads its border from the fallback, so the entry must
+    // carry both the constant wrap and the authored `default` together.
+    std::map<TfToken, VtValue> bordered;
+    bordered[TfToken("default")] = VtValue(GfVec3f(0.75F, 0.5F, 0.25F));
+    bordered[TfToken("uaddressmode")] = VtValue(std::string("constant"));
+    bordered[TfToken("vaddressmode")] = VtValue(std::string("constant"));
+    HdSilkMaterialRecord withBorder = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeMaterialXImageNetwork(bordered, geomPropValue, primvarInputs));
+    if (withBorder.textures.size() != 1 ||
+        withBorder.textures[0].wrapS != OPENUSD_SILK_WRAP_CONSTANT ||
+        withBorder.textures[0].wrapT != OPENUSD_SILK_WRAP_CONSTANT ||
+        std::fabs(withBorder.textures[0].fallback[0] - 0.75F) > 1e-5F ||
+        std::fabs(withBorder.textures[0].fallback[1] - 0.5F) > 1e-5F ||
+        std::fabs(withBorder.textures[0].fallback[2] - 0.25F) > 1e-5F)
+    {
+        std::cerr << "A constant-addressed MaterialX image lost its border colour: textures="
+                  << withBorder.textures.size() << "\n";
         return false;
     }
 

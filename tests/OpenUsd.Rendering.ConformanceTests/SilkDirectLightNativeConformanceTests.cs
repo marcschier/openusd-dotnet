@@ -23,7 +23,7 @@ public sealed class SilkDirectLightNativeConformanceTests
     private const int Capacity = 128;
     private const int ExtraTag = 1001;
     private const byte ClearGreen = 32;
-    private const uint PageAbi = 28;
+    private const uint PageAbi = 29;
     private const uint SessionAbi = 6;
     private const int FrameBufferSize = 17344;
     private const string RequiredVariable = "OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED";
@@ -2016,7 +2016,7 @@ public sealed class SilkDirectLightNativeConformanceTests
         string message = failure?.Message ?? string.Empty;
         await Assert.That(message.Contains(RequiredVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(backend.ToString(), StringComparison.Ordinal)).IsTrue();
-        await Assert.That(message.Contains("page ABI 28/session ABI 6", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(message.Contains("page ABI 29/session ABI 6", StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(PluginVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains("staged", StringComparison.Ordinal)).IsTrue();
         await Assert.That(failure?.GetType().Name == "SkipTestException").IsFalse();

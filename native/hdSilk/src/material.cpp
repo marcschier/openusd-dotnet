@@ -563,15 +563,11 @@ bool _TryReadStringParameter(
 /// `black` for every MaterialX image, which selected a transparent-black border
 /// and stopped the tiled texture from repeating.
 ///
-/// `constant` is carried as OPENUSD_SILK_WRAP_BLACK, and that is an
-/// approximation rather than an exact transport. MaterialX returns the node's
-/// `default` value outside the unit range, but the wire carries no custom border
-/// colour, so the managed fragment sampler uses transparent black instead.
-/// `default` remains the fallback for an unreadable image. BLACK is still the
-/// right mode to publish: it records that the author did not ask for periodic or
-/// mirrored addressing. Preserving the authored border colour requires a new
-/// wire field and an ABI bump. Anything else is reported so the caller can
-/// refuse the entry rather than tile a texture the graph asked to clamp.
+/// `constant` is carried as OPENUSD_SILK_WRAP_CONSTANT. MaterialX returns the
+/// node's `default` outside the unit range, and the entry's fallback already
+/// carries that `default`, so the consumer reads its border colour from there.
+/// Anything else is reported so the caller can refuse the entry rather than tile
+/// a texture the graph asked to clamp.
 bool _TryReadMaterialXAddressMode(
     const std::map<TfToken, VtValue>& parameters,
     const TfToken& name,
@@ -602,7 +598,7 @@ bool _TryReadMaterialXAddressMode(
     }
     if (mode == _tokens->constant.GetString())
     {
-        *wrap = OPENUSD_SILK_WRAP_BLACK;
+        *wrap = OPENUSD_SILK_WRAP_CONSTANT;
         return true;
     }
     *unsupportedValue = mode;

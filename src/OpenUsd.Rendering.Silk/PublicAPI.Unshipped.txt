@@ -2185,6 +2185,7 @@ OpenUsd.Rendering.Silk.SilkTextureUsage.Sampled = 1 -> OpenUsd.Rendering.Silk.Si
 OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.Black = 0 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.Clamp = 1 -> OpenUsd.Rendering.Silk.SilkTextureWrap
+OpenUsd.Rendering.Silk.SilkTextureWrap.Constant = 5 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.Mirror = 3 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.Repeat = 2 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTextureWrap.UseMetadata = 4 -> OpenUsd.Rendering.Silk.SilkTextureWrap
@@ -2259,7 +2260,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 28 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 29 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint

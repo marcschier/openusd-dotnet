@@ -602,7 +602,8 @@ public sealed class SilkMaterialCommandTests
                 [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "texture.png", "st")]);
         await Assert.That(() => CopyMaterial(page)).Throws<InvalidDataException>();
         await Assert.That(() => SilkCommandParser.ValidatePageAbi(24)).Throws<InvalidDataException>();
-        SilkCommandParser.ValidatePageAbi(28);
+        await Assert.That(() => SilkCommandParser.ValidatePageAbi(28)).Throws<InvalidDataException>();
+        SilkCommandParser.ValidatePageAbi(29);
     }
 
     [Test]
@@ -658,7 +659,7 @@ public sealed class SilkMaterialCommandTests
         new SilkGpuTextureBudget(1024).ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil,
             (_, _) => throw new InvalidOperationException("No image is used."));
-        using var first = new OpenUsdSilkPage(28, 1,
+        using var first = new OpenUsdSilkPage(29, 1,
             [.. material(0.25f), .. CreateMeshUpsert("/Mesh", "/Material")], 2);
         renderer.ApplyPage(first);
         TextureGraphicsBuffer[] frames =
@@ -677,7 +678,7 @@ public sealed class SilkMaterialCommandTests
         original.ReadbackForTesting(before);
         ulong revision = renderer.Scene.Revision;
         int live = device.Buffers.Count(buffer => !buffer.Released);
-        using var update = new OpenUsdSilkPage(28, 2, material(0.75f), 1);
+        using var update = new OpenUsdSilkPage(29, 2, material(0.75f), 1);
         device.RefuseBufferSize = original.Size;
         await Assert.That(() => renderer.ApplyPage(update)).Throws<InvalidOperationException>();
         device.RefuseBufferSize = null;
@@ -1185,6 +1186,179 @@ public sealed class SilkMaterialCommandTests
         float udimMask = ReadSingle(constants, 132);
         await Assert.That((uint)udimMask & (uint)SilkShaderFeatures.BaseColorMap).IsEqualTo(0u);
         await Assert.That(ReadSingle(constants, 188)).IsEqualTo(1f);
+    }
+
+    [Test]
+    public async Task ConstantBorderMasksCarryEachSlotAxisAndTheCompositeOperand()
+    {
+        static TextureSpec spec(
+            SilkMaterialParameter parameter,
+            SilkTextureWrap wrapS,
+            SilkTextureWrap wrapT,
+            string asset,
+            SilkCompositeOperator composite = SilkCompositeOperator.None) =>
+            new(parameter, wrapS, wrapT, SilkColorSpace.Raw, parameter == SilkMaterialParameter.DiffuseColor ? 3 : 1,
+                [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [0.5f, 0.5f, 0.5f, 1f], asset, "st",
+                CompositeOperator: composite);
+        TextureSpec[] textures =
+        [
+            spec(SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Constant, SilkTextureWrap.Repeat, "base.png"),
+            spec(SilkMaterialParameter.Roughness, SilkTextureWrap.Repeat, SilkTextureWrap.Constant, "rough.png"),
+            spec(SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Constant, SilkTextureWrap.Constant,
+                "operand.png", SilkCompositeOperator.Multiply),
+            // A UDIM set is an atlas, so a ring around the whole atlas would not
+            // border any one tile; its constant wrap must not claim a mask bit.
+            spec(SilkMaterialParameter.Opacity, SilkTextureWrap.Constant, SilkTextureWrap.Constant,
+                "tiles.<UDIM>.png"),
+        ];
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Bordered", SilkSurfaceKind.MaterialXProjected, scalars: [], textures));
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        uint baseColor = (uint)SilkShaderFeatures.BaseColorMap;
+        uint roughness = (uint)SilkShaderFeatures.RoughnessMetallicMap;
+        uint composite = (uint)SilkShaderFeatures.Uv;
+        await Assert.That(ReadSingle(constants, 196)).IsEqualTo((float)(baseColor | composite));
+        await Assert.That(ReadSingle(constants, 200)).IsEqualTo((float)(roughness | composite));
+        await Assert.That(ReadSingle(constants, 204)).IsEqualTo(0f);
+
+        // A volume draw never samples these slots through the surface path, so
+        // its masks stay clear even when the material authors constant wraps.
+        SilkMaterialData volume = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Volume", SilkSurfaceKind.VolumeDensity, scalars: [], [textures[0]]));
+        byte[] volumeConstants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(volume, RenderHeadlight.Deterministic, volumeConstants);
+        await Assert.That(ReadSingle(volumeConstants, 196)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(volumeConstants, 200)).IsEqualTo(0f);
+    }
+
+    [Test]
+    [Arguments(SilkTextureWrap.Constant, SilkTextureWrap.Constant)]
+    [Arguments(SilkTextureWrap.Constant, SilkTextureWrap.Clamp)]
+    [Arguments(SilkTextureWrap.Repeat, SilkTextureWrap.Constant)]
+    public async Task ConstantWrapSurroundsTheImageWithARingOfTheAuthoredDefault(
+        SilkTextureWrap wrapS, SilkTextureWrap wrapT)
+    {
+        byte[] source = [10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255];
+        byte[] reference = UploadBorderedImage(SilkTextureWrap.Clamp, SilkTextureWrap.Clamp, source, out _, out _);
+        byte[] padded = UploadBorderedImage(wrapS, wrapT, source, out uint width, out uint height);
+        bool padS = wrapS == SilkTextureWrap.Constant;
+        bool padT = wrapT == SilkTextureWrap.Constant;
+        await Assert.That(width).IsEqualTo(padS ? 4u : 2u);
+        await Assert.That(height).IsEqualTo(padT ? 4u : 2u);
+        byte[] ring = [255, 0, 255, 255];
+        int inside = 0;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int sourceX = x - (padS ? 1 : 0);
+                int sourceY = y - (padT ? 1 : 0);
+                byte[] actual = padded.AsSpan(((y * (int)width) + x) * 4, 4).ToArray();
+                if (sourceX is >= 0 and < 2 && sourceY is >= 0 and < 2)
+                {
+                    inside++;
+                    await Assert.That(actual)
+                        .IsEquivalentTo(reference.AsSpan(((sourceY * 2) + sourceX) * 4, 4).ToArray());
+                }
+                else
+                {
+                    await Assert.That(actual).IsEquivalentTo(ring);
+                }
+            }
+        }
+        // Non-vacuity: every authored texel is present exactly once.
+        await Assert.That(inside).IsEqualTo(4);
+    }
+
+    [Test]
+    public async Task AFailedConstantBorderTextureStillCarriesItsRing()
+    {
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new FileNotFoundException("missing"));
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/Material", SilkSurfaceKind.PreviewSurface, [],
+            [new TextureSpec(SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Constant, SilkTextureWrap.Constant,
+                SilkColorSpace.Raw, 3, [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "missing.png", "st")]));
+        using var commands = new TextureCommandList();
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        // The fallback texel is surrounded by its own default, so a constant axis
+        // reads the default on both sides of the unit range.
+        SilkTextureDescriptor descriptor = device.CreatedTextures.Single();
+        await Assert.That(descriptor.Width).IsEqualTo(3u);
+        await Assert.That(descriptor.Height).IsEqualTo(3u);
+        byte[] pixels = commands.Uploads[0];
+        for (int pixel = 0; pixel < 9; pixel++)
+        {
+            await Assert.That(pixels.AsSpan(pixel * 4, 4).ToArray()).IsEquivalentTo(new byte[] { 255, 0, 255, 255 });
+        }
+    }
+
+    [Test]
+    public async Task AConstantBorderPastTheDeviceLimitFallsBackToTheDefault()
+    {
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 3 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => new SilkDecodedImage(2, 2, new byte[16]));
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/Material", SilkSurfaceKind.PreviewSurface, [],
+            [new TextureSpec(SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Constant, SilkTextureWrap.Constant,
+                SilkColorSpace.Raw, 3, [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "large.png", "st")]));
+        using var commands = new TextureCommandList();
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        // A 2x2 image would need 4x4 with its ring, past the limit of 3, so the
+        // texture reports a decode failure and binds the bordered default.
+        SilkTextureDescriptor descriptor = device.CreatedTextures.Single();
+        await Assert.That(descriptor.Width).IsEqualTo(3u);
+        await Assert.That(descriptor.Height).IsEqualTo(3u);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.TextureFallbackUsed);
+    }
+
+    [Test]
+    [Arguments(SilkTextureWrap.Constant, SilkSamplerAddressMode.ClampToEdge)]
+    [Arguments(SilkTextureWrap.Black, SilkSamplerAddressMode.ClampToBorder)]
+    public async Task ConstantWrapClampsInsideItsRingWhileBlackKeepsTheTransparentBorder(
+        SilkTextureWrap wrap, SilkSamplerAddressMode expected)
+    {
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => new SilkDecodedImage(1, 1, [1, 2, 3, 255]));
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/Material", SilkSurfaceKind.PreviewSurface, [],
+            [new TextureSpec(SilkMaterialParameter.DiffuseColor, wrap, wrap,
+                SilkColorSpace.Raw, 3, [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "image.png", "st")]));
+        using var commands = new TextureCommandList();
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        SilkSamplerDescriptor sampler = device.CreatedSamplers.Single();
+        await Assert.That(sampler.AddressU).IsEqualTo(expected);
+        await Assert.That(sampler.AddressV).IsEqualTo(expected);
+        // Black never grows the image: its border is the sampler's, not a ring.
+        await Assert.That(device.CreatedTextures.Single().Width)
+            .IsEqualTo(wrap == SilkTextureWrap.Constant ? 3u : 1u);
+    }
+
+    private static byte[] UploadBorderedImage(
+        SilkTextureWrap wrapS, SilkTextureWrap wrapT, byte[] source, out uint width, out uint height)
+    {
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => new SilkDecodedImage(2, 2, source.ToArray()));
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/Material", SilkSurfaceKind.PreviewSurface, [],
+            [new TextureSpec(SilkMaterialParameter.DiffuseColor, wrapS, wrapT,
+                SilkColorSpace.Raw, 3, [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "image.png", "st")]));
+        using var commands = new TextureCommandList();
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        SilkTextureDescriptor descriptor = device.CreatedTextures.Single();
+        width = descriptor.Width;
+        height = descriptor.Height;
+        return commands.Uploads[0];
     }
 
     [Test]
@@ -1864,13 +2038,13 @@ public sealed class SilkMaterialCommandTests
             using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil, (asset, _) =>
                 new SilkDecodedImage(1, 1, File.ReadAllText(asset) == "before"
                     ? [255, 0, 0, 255] : [0, 0, 255, 255]));
-            using var first = new OpenUsdSilkPage(28, 1,
+            using var first = new OpenUsdSilkPage(29, 1,
                 [.. material, .. CreateMeshUpsert("/Mesh", "/Material")], 2);
             renderer.ApplyPage(first);
             Texture previous = device.TextureOwners.Single(texture => texture.Format == SilkTextureFormat.Rgba8Unorm);
             ulong reserved = budget.Usage.ReservedBytes;
             await File.WriteAllTextAsync(path, "after-longer");
-            using var quiet = new OpenUsdSilkPage(28, 2, [], 0);
+            using var quiet = new OpenUsdSilkPage(29, 2, [], 0);
             using (IDisposable pressure = budget.Reserve(
                 new SilkTextureDescriptor(checked((uint)((budget.MaximumBytes - reserved) / 4)),
                     1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
@@ -1916,7 +2090,7 @@ public sealed class SilkMaterialCommandTests
             decodes++;
             throw new InvalidOperationException("Disabled material textures must not be decoded.");
         });
-        using var page = new OpenUsdSilkPage(28, 1,
+        using var page = new OpenUsdSilkPage(29, 1,
             [.. material, .. CreateMeshUpsert("/First", "/Material")], 2);
         renderer.ApplyPage(page, useSceneMaterials: false);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
@@ -1965,7 +2139,7 @@ public sealed class SilkMaterialCommandTests
                 image.OwnReservation(reservation);
                 return image;
             });
-        using var first = new OpenUsdSilkPage(28, 1,
+        using var first = new OpenUsdSilkPage(29, 1,
             [.. material("before.png"), .. CreateMeshUpsert("/First", "/Material"),
                 .. CreateMeshUpsert("/Removed", "/Material", 8)], 3);
         renderer.ApplyPage(first);
@@ -1983,7 +2157,7 @@ public sealed class SilkMaterialCommandTests
         ulong charged = budget.Usage.ReservedBytes;
         int priorDecodes = decodes;
         string nextAsset = luminanceOnly ? "before.png" : "after.png";
-        using var replacement = new OpenUsdSilkPage(28, 2,
+        using var replacement = new OpenUsdSilkPage(29, 2,
             [.. material(nextAsset, luminanceOnly), .. CreateMeshRemove("/Removed"),
                 .. CreateMeshUpsert("/Added", "/Material", 9)], 3);
         int originalOwners = device.TextureOwners.Count(texture => !texture.Released);

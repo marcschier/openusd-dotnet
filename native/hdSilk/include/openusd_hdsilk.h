@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 28u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 29u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 6u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 
@@ -637,9 +637,8 @@ extern "C" {
 /// OPENUSD_SILK_WRAP_BLACK. A MaterialX ND_image_* states them as uaddressmode,
 /// vaddressmode, and default, and an unauthored address mode resolves to
 /// OPENUSD_SILK_WRAP_REPEAT because MaterialX defaults both axes to periodic.
-/// MaterialX "constant" addressing is carried as OPENUSD_SILK_WRAP_BLACK, which
-/// is the wire's "neither periodic nor mirrored" mode. That is an approximation
-/// and is documented as one: see OPENUSD_SILK_WRAP_BLACK below. An address mode
+/// MaterialX "constant" addressing is carried as OPENUSD_SILK_WRAP_CONSTANT,
+/// whose border is this entry's fallback, the node's `default`. An address mode
 /// outside the four MaterialX names is rejected with a diagnostic and the input
 /// keeps its documented default.
 ///
@@ -1274,15 +1273,10 @@ extern "C" {
 
 /// Texture wrap modes.
 ///
-/// OPENUSD_SILK_WRAP_BLACK is published for UsdUVTexture's authored "black",
-/// unrecognized wrap tokens, and MaterialX "constant" addressing. The managed
-/// fragment sampler maps BLACK and useMetadata to a transparent-black border.
-/// The vertex-stage displacement sampler applies the same border behavior. The
-/// wire carries no custom border colour, so MaterialX "constant" uses transparent
-/// black rather than the node's `default`; `default` remains the fallback for an
-/// unreadable image. Preserving an arbitrary border colour requires a new field
-/// and an ABI bump. The two wrap values remain distinct because they record
-/// different authored intent.
+/// OPENUSD_SILK_WRAP_BLACK is published for UsdUVTexture's authored "black" and
+/// unrecognized wrap tokens. The managed fragment sampler maps BLACK and
+/// useMetadata to a transparent-black border. The vertex-stage displacement
+/// sampler applies the same border behavior.
 #define OPENUSD_SILK_WRAP_BLACK 0u
 #define OPENUSD_SILK_WRAP_CLAMP 1u
 #define OPENUSD_SILK_WRAP_REPEAT 2u
@@ -1299,6 +1293,15 @@ extern "C" {
 /// that does read metadata must be able to tell them apart, and a consumer that
 /// reports what it resolved must be able to say which one it resolved.
 #define OPENUSD_SILK_WRAP_USE_METADATA 4u
+
+/// MaterialX `constant` addressing (ABI v29). Outside the unit range the
+/// texture reads the entry's own `fallback`, which for a MaterialX image node is
+/// its authored `default`. Before v29 this was published as
+/// OPENUSD_SILK_WRAP_BLACK and rendered a transparent-black border. The fallback
+/// passes through the entry's channel selection and affine exactly as a texel
+/// would, and a filtered sample near the edge blends into it as a border-colour
+/// sampler does.
+#define OPENUSD_SILK_WRAP_CONSTANT 5u
 
 /// UsdUVTexture sourceColorSpace values.
 #define OPENUSD_SILK_COLOR_SPACE_AUTO 0u

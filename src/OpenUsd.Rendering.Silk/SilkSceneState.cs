@@ -6382,8 +6382,10 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             }
             image = texture.Asset.Contains("<UDIM>", StringComparison.Ordinal)
                 ? CreateUdimAtlas(texture, effectiveColorSpace, out dependencies)
-                : DecodeMaterialImage(texture.Asset, texture, effectiveColorSpace,
-                    HasRepeatedDecodedSource(material, texture));
+                : PadConstantBorder(
+                    DecodeMaterialImage(texture.Asset, texture, effectiveColorSpace,
+                        HasRepeatedDecodedSource(material, texture)),
+                    texture);
         }
         catch (FileNotFoundException exception)
         {
@@ -6440,7 +6442,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             $"Material '{materialPath}' used the authored fallback for {texture.Parameter} texture '{texture.Asset}'.");
         return CreateTextureEntry(
             key,
-            CreateFallbackImage(texture),
+            PadConstantBorder(CreateFallbackImage(texture), texture),
             _failedTextures,
             isUdim: false,
             dependencies: null,
@@ -7057,6 +7059,73 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
     }
 
+    /// <summary>
+    /// Surrounds a prepared material image with a one-texel ring of the authored
+    /// default on each constant-border axis, or returns it unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The ring holds the default after the same luminance, affine and channel
+    /// selection the image's texels received, so a sample outside the image
+    /// reads exactly what UsdUVTexture returns there. The original image is
+    /// disposed once the padded copy exists.
+    /// </remarks>
+    private SilkDecodedImage PadConstantBorder(SilkDecodedImage image, SilkMaterialTexture texture)
+    {
+        (bool padS, bool padT) = SilkSurfaceUniformWriter.GetConstantBorderAxes(texture);
+        if (!padS && !padT)
+        {
+            return image;
+        }
+        uint width = checked(image.Width + (padS ? 2u : 0u));
+        uint height = checked(image.Height + (padT ? 2u : 0u));
+        if (_device.Capabilities.MaxTextureDimension2D is > 0 and var limit &&
+            (width > limit || height > limit))
+        {
+            image.Dispose();
+            throw new InvalidDataException(
+                $"A constant border would grow the texture to {width}x{height}, past the device limit {limit}.");
+        }
+        int bytesPerPixel = checked((int)SilkTextureFormats.GetBytesPerPixel(image.Format));
+        int length = checked((int)(width * height * (uint)bytesPerPixel));
+        IDisposable? reservation = null;
+        try
+        {
+            reservation = _cpuTextureBudget?.Reserve((ulong)length);
+            byte[] pixels = new byte[length];
+            Span<byte> border = stackalloc byte[16];
+            WriteFallbackPixel(texture, image.Format, border[..bytesPerPixel]);
+            border = border[..bytesPerPixel];
+            for (int offset = 0; offset < length; offset += bytesPerPixel)
+            {
+                border.CopyTo(pixels.AsSpan(offset, bytesPerPixel));
+            }
+            int sourceStride = checked((int)image.Width * bytesPerPixel);
+            int destinationStride = checked((int)width * bytesPerPixel);
+            int columnOffset = padS ? bytesPerPixel : 0;
+            int rowOffset = padT ? 1 : 0;
+            for (int row = 0; row < image.Height; row++)
+            {
+                Buffer.BlockCopy(
+                    image.Pixels,
+                    row * sourceStride,
+                    pixels,
+                    ((row + rowOffset) * destinationStride) + columnOffset,
+                    sourceStride);
+            }
+            var padded = new SilkDecodedImage(width, height, pixels, image.Format);
+            padded.OwnReservation(reservation);
+            reservation = null;
+            image.Dispose();
+            return padded;
+        }
+        catch
+        {
+            reservation?.Dispose();
+            image.Dispose();
+            throw;
+        }
+    }
+
     private static void FlipRows(
         byte[] pixels,
         uint width,
@@ -7292,10 +7361,14 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// <see cref="SilkTextureWrap.Black"/> uses a transparent-black border.
     /// <see cref="SilkTextureWrap.UseMetadata"/> requires an image entry and is
     /// resolved by <see cref="GetSamplerAddressMode"/>.
+    /// <see cref="SilkTextureWrap.Constant"/> clamps to the edge of an image
+    /// that carries a one-texel ring of the authored default, so clamping lands
+    /// on the default rather than on the outermost authored texel.
     /// </remarks>
     private static SilkSamplerAddressMode GetAddressMode(SilkTextureWrap wrap) =>
         wrap switch
         {
+            SilkTextureWrap.Constant => SilkSamplerAddressMode.ClampToEdge,
             SilkTextureWrap.Repeat => SilkSamplerAddressMode.Repeat,
             SilkTextureWrap.Mirror => SilkSamplerAddressMode.MirrorRepeat,
             SilkTextureWrap.Clamp => SilkSamplerAddressMode.ClampToEdge,
@@ -8547,6 +8620,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 plan.UvTransform ?? IdentityUvTransform,
                 scale,
                 bias,
+                ResolveDisplacementBorder(texture, channel),
                 texture.UvPrimvar,
                 plan.Identity);
             RetainDisplacementImage(plan.Identity, resolved, bytes, reservation);
@@ -8741,6 +8815,16 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// <summary>
     /// Builds the constant displacement an unreadable height field resolves to.
     /// </summary>
+    /// <summary>
+    /// The raw value a constant-border axis samples outside the image: the
+    /// authored default in the selected channel, with the affine still to come.
+    /// </summary>
+    private static float ResolveDisplacementBorder(SilkMaterialTexture texture, int channel)
+    {
+        float value = channel < texture.Fallback.Count ? texture.Fallback[channel] : 0;
+        return float.IsFinite(value) ? value : 0;
+    }
+
     private static SilkDisplacementField? CreateDisplacementFallbackField(
         SilkMaterialTexture texture,
         ulong identity,
