@@ -218,7 +218,9 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         return (worldToView, camera.GetState(timeCode), SampleClipPlanes(camera.Prim, timeCode));
     }
 
-    /// <summary>Reads authored camera-space clippingPlanes; each keeps points where ax + by + cz + d is non-negative.</summary>
+    /// <summary>
+    /// Reads authored camera-space clippingPlanes; each keeps points where ax + by + cz + d is non-negative.
+    /// </summary>
     private Vector4[] SampleClipPlanes(UsdPrim prim, double timeCode)
     {
         if (!prim.GetAttribute("clippingPlanes").GetValueState(timeCode).HasAuthoredValueOpinion)
@@ -229,7 +231,8 @@ public sealed class RenderProductRequest : IUsdDetachedResult
         if (authored.Length > CameraState.MaxClipPlanes)
         {
             throw new NotSupportedException(
-                $"Camera '{CameraPath}' authors {authored.Length} clippingPlanes; at most {CameraState.MaxClipPlanes} are supported.");
+                $"Camera '{CameraPath}' authors {authored.Length} clippingPlanes; " +
+                $"at most {CameraState.MaxClipPlanes} are supported.");
         }
         var planes = new Vector4[authored.Length];
         for (int index = 0; index < planes.Length; index++)

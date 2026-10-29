@@ -687,7 +687,9 @@ public static partial class RenderDiskJob
                     bool exr = frame.HdrColorFormat == RenderHdrColorFormat.Exr;
                     json.WriteString("format", HdrColorFormatName(frame.HdrColorFormat));
                     json.WriteString("rowOrder", "top-down");
-                    json.WriteString("convention", "renderer-working-composited-before-exposure-and-display");
+                    json.WriteString("convention", productPlan is null
+                        ? "renderer-working-composited-before-exposure-and-display"
+                        : "renderer-working-composited-camera-exposed-before-display");
                     json.WriteString("alpha", "stored-framebuffer");
                     json.WriteBoolean("displaySelectionIncluded", false);
                     if (exr)

@@ -495,7 +495,8 @@ public sealed class RenderJobElementId
 }
 
 /// <summary>
-/// Top-down float32 x, y, z world-space unit shading normals of the front-most rendered surface, with/// (0, 0, 0) for the background.
+/// Top-down float32 x, y, z world-space unit shading normals of the front-most rendered surface,
+/// with (0, 0, 0) for the background.
 /// </summary>
 /// <remarks>
 /// A back face reports its normal flipped toward the camera. A surface whose interpolated normal

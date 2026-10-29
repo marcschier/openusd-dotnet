@@ -247,7 +247,7 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(Convert.ToHexString(sheetImage.Pixels.Span.Slice((4 * 32 + 20) * 4, 4)))
             .IsEqualTo("800000FF");
         string renders = Path.GetDirectoryName(Path.Combine(files.OutputRoot, job.OutputDirectory))!;
-        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        McpRenderSequenceResultDto exrJob = await service.RenderProductAsync(new RenderProductCaptureRequest
         {
             SessionId = session.SessionId,
             Generation = session.Generation,
@@ -255,8 +255,17 @@ public sealed partial class NativeMcpIntegrationTests
             SettingsPath = request.SettingsPath,
             ProductPath = request.ProductPath,
             HdrColorFormat = "exr"
-        }, default)).Throws<OpenUsdMcpFailureException>();
-        await Assert.That(Directory.GetDirectories(renders)).Count().IsEqualTo(1);
+        }, default);
+        using (JsonDocument exrManifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, exrJob.ManifestPath))))
+        {
+            JsonElement exrFrame = exrManifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(exrFrame.GetProperty("hdrColor").GetProperty("format").GetString())
+                .IsEqualTo("openexr-rgba16float");
+            await Assert.That(exrFrame.GetProperty("hdrColor").GetProperty("convention").GetString())
+                .IsEqualTo("renderer-working-composited-camera-exposed-before-display");
+        }
+        await Assert.That(Directory.GetDirectories(renders)).Count().IsEqualTo(2);
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
         await service.CloseSceneAsync(new SceneRevisionRequest
         {
@@ -448,7 +457,8 @@ public sealed partial class NativeMcpIntegrationTests
             .Replace("def Scope \"Looks\" {",
                 "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
                 "    token sourceType = \"raw\"\n}\n" +
-                "def RenderVar \"InstanceId\" {\n    token dataType = \"int\"\n    string sourceName = \"instanceId\"\n" +
+                "def RenderVar \"InstanceId\" {\n    token dataType = \"int\"\n" +
+                "    string sourceName = \"instanceId\"\n" +
                 "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
                 StringComparison.Ordinal)
             .Replace("    def Xform \"ProxyParent\" {",

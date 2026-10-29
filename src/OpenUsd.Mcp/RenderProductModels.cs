@@ -85,7 +85,8 @@ internal sealed record McpProductVariableDto(
     [property: Description("Requested RenderVar prim path.")] string Path,
     [property: Description("Exact requested source name, not a substituted beauty output.")] string SourceName,
     [property: Description("Exact requested data type.")] string DataType,
-    [property: Description("Returned plane name: hdrColor, deviceDepth, primId, instanceId, normal or elementId.")] string Plane);
+    [property: Description("Returned plane name: hdrColor, deviceDepth, primId, instanceId, normal or elementId.")]
+    string Plane);
 
 internal sealed record McpProductRasterDto(
     [property: Description("Original prepared full-raster width before crop or overscan, not sheet-cell width.")]
@@ -115,7 +116,7 @@ internal sealed record McpProductRasterDto(
 }
 
 internal sealed record McpProductCameraDto(
-    [property: Description("Sampled shutter open offset in USD time codes; accumulationSampleCount shows applied blur.")]
+    [property: Description("Sampled shutter open offset in USD time codes; accumulationSampleCount shows blur.")]
     double ShutterOpen,
     [property: Description("Original sampled shutter close offset in USD time codes.")]
     double ShutterClose,
@@ -140,7 +141,8 @@ internal sealed record McpProductCameraDto(
     [property: Description("Whether the product disables depth of field despite its sampled focus and aperture.")]
     bool DisableDepthOfField,
     [property: Description(
-        "Equal-weight camera samples accumulated across the active shutter or lens aperture; zero when neither motion blur nor depth of field was rendered.")]
+        "Equal-weight camera samples accumulated across the active shutter or lens aperture; " +
+        "zero when neither motion blur nor depth of field was rendered.")]
     int AccumulationSampleCount)
 {
     internal static McpProductCameraDto From(RenderPreparedFrame frame)

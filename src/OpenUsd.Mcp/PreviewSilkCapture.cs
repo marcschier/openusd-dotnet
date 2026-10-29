@@ -399,7 +399,8 @@ internal sealed partial class PreviewSilkFrameSource
 
     private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
     {
-        // A primId-, instanceId-, elementId- or normal-only product uses the color-and-depth path, whose depth plane is not an admitted output.
+        // A primId-, instanceId-, elementId- or normal-only product uses the color-and-depth path,
+        // whose depth plane is not an admitted output.
         bool depthOnlyCarrier = !plan.IncludeHdrColor && !plan.IncludeDeviceDepth;
         if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
             (!depthOnlyCarrier && plan.IncludeDeviceDepth != (result.Depth is not null)) ||

@@ -989,7 +989,8 @@ public sealed class RenderProductServiceTests
         await Assert.That(primId.IncludePrimId).IsTrue();
         await Assert.That(() => PreviewSilkFrameSource.RequirePrimIdDevice(primId, device))
             .Throws<NotSupportedException>()
-            .WithMessage("The MCP capture graphics device cannot run the pick pass needed for the primId identity plane.");
+            .WithMessage(
+                "The MCP capture graphics device cannot run the pick pass needed for the primId identity plane.");
         PreviewSilkFrameSource.RequirePrimIdDevice(plain, device);
     }
 

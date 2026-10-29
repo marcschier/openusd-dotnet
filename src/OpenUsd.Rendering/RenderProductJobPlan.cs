@@ -69,7 +69,8 @@ public sealed class RenderProductOutputBinding
 
 /// <summary>Admits one sampled raster product for the shared bounded split-plane disk-job engine.</summary>
 /// <remarks>
-/// The initial profile supports raw half4 color, float normalized depth, int prim identity, int instance index, int element index and normal3f world-space normal, one material-binding
+/// The initial profile supports raw half4 color, float normalized depth, int prim identity, int
+/// instance index, int element index and normal3f world-space normal, one material-binding
 /// purpose and standard scene purposes. The authored camera exposure
 /// multiplier scales the HDR color variable and adds its stops to the PNG companion's display
 /// exposure, so both outputs carry the same camera exposure. An open shutter with motion blur enabled
@@ -374,12 +375,15 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         }
         if (blur || lens)
         {
-            int expected = lens ? RenderProductRequest.DepthOfFieldSampleCount : RenderProductRequest.MotionBlurSampleCount;
+            int expected = lens
+                ? RenderProductRequest.DepthOfFieldSampleCount
+                : RenderProductRequest.MotionBlurSampleCount;
             if (frame.AccumulationSamples.Count != expected ||
                 (lens && frame.AccumulationSamples.Any(static sample => sample.LensOffset is null)))
             {
                 throw new NotSupportedException(
-                    "An active shutter or lens aperture needs stage-sampled accumulation samples from PrepareExecutionFrame.");
+                    "An active shutter or lens aperture needs stage-sampled accumulation samples " +
+                    "from PrepareExecutionFrame.");
             }
             if (includeDeviceDepth)
             {

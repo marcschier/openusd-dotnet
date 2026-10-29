@@ -99,7 +99,9 @@ public sealed class RenderCameraFrameSettings : IUsdDetachedResult
     public double ExposureFStop { get; }
     /// <summary>Gets the camera exposure responsivity.</summary>
     public double ExposureResponsivity { get; }
-    /// <summary>Gets the OpenUSD camera-model exposure multiplier; product jobs apply it to HDR and companion output.</summary>
+    /// <summary>
+    /// Gets the OpenUSD camera-model exposure multiplier; product jobs apply it to HDR and companion output.
+    /// </summary>
     public double LinearExposureScale { get; }
 
     internal static RenderCameraFrameSettings Read(UsdStage stage, UsdPrim camera, double timeCode)

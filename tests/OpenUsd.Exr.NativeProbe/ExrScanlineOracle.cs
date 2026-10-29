@@ -64,7 +64,10 @@ internal static class ExrScanlineOracle
         {
             ulong offset = BinaryPrimitives.ReadUInt64LittleEndian(file.AsSpan(position + y * 8, 8));
             Require(offset == (ulong)chunkPosition, "Contiguous, rewritten scanline offsets.");
-            Require(chunkPosition <= file.Length - 8 && (long)I32(file, chunkPosition) == (long)windows.DataOriginY + y, "Scanline coordinate.");
+            Require(
+                chunkPosition <= file.Length - 8 &&
+                (long)I32(file, chunkPosition) == (long)windows.DataOriginY + y,
+                "Scanline coordinate.");
             int payloadBytes = I32(file, chunkPosition + 4);
             Require(payloadBytes > 0 && payloadBytes <= rowBytes &&
                 payloadBytes <= file.Length - chunkPosition - 8, "Bounded scanline payload.");

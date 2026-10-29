@@ -93,7 +93,9 @@ public static partial class RenderDiskJob
         }
         return new RenderJobImage(width, height, rgba, Rgba8RowOrder.TopDown)
         {
-            Diagnostics = diagnostics.Count == 0 ? RenderDiagnosticsState.Empty : new RenderDiagnosticsState(diagnostics),
+            Diagnostics = diagnostics.Count == 0
+                ? RenderDiagnosticsState.Empty
+                : new RenderDiagnosticsState(diagnostics),
             HdrColor = averaged,
         };
     }

@@ -426,7 +426,10 @@ public sealed class RenderProductCameraNativeTests
     }
 
     [Test]
-    [Arguments("[(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)]", "at most 8")]
+    [Arguments(
+        "[(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), " +
+        "(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)]",
+        "at most 8")]
     [Arguments("[(0, 0, 0, 1)]", "nonzero normal")]
     [Arguments("[(1, 0, 0, inf)]", "finite plane")]
     public async Task UnrepresentableClippingPlanesAreRefused(string planes, string reason)

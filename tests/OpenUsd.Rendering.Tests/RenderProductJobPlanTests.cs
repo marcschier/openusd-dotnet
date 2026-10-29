@@ -323,6 +323,8 @@ public sealed class RenderProductJobPlanTests
                     await Assert.That(binding.GetProperty("convention").GetString()).IsEqualTo(depth
                         ? "normalized-device-depth-zero-to-one"
                         : "renderer-working-composited-camera-exposed-before-display");
+                    await Assert.That(plane.GetProperty("convention").GetString())
+                        .IsEqualTo(binding.GetProperty("convention").GetString());
                 }
             }
             await Assert.That(frame.GetProperty("productCamera").GetProperty("linearExposureScale").GetDouble())
@@ -548,8 +550,10 @@ public sealed class RenderProductJobPlanTests
                 RenderSettings.PresentationDefault);
             IReadOnlyList<StageRenderState> shutter = plan.AccumulationStates(0)!;
             double[] expectedTimes = [.. Enumerable.Range(0, 8).Select(static i => 3.75 + (0.5 * (i + 0.5) / 8))];
-            await Assert.That(shutter.Select(static state => state.Time.TimeCode).SequenceEqual(expectedTimes)).IsTrue();
-            await Assert.That(shutter.Zip(shutter.Skip(1)).All(static pair => pair.Second.Revision > pair.First.Revision))
+            await Assert.That(shutter.Select(static state => state.Time.TimeCode).SequenceEqual(expectedTimes))
+                .IsTrue();
+            await Assert.That(
+                shutter.Zip(shutter.Skip(1)).All(static pair => pair.Second.Revision > pair.First.Revision))
                 .IsTrue();
             var source = new ProductSource
             {
@@ -647,10 +651,12 @@ public sealed class RenderProductJobPlanTests
             await Assert.That(offset.Length()).IsLessThanOrEqualTo((float)radius * 1.0001f);
             await Assert.That(Vector2.Distance(Ndc(sample.Camera, new Vector3(0.3f, 0.2f, -10)), focusNdc))
                 .IsLessThan(1e-4f);
-            nearSpread = MathF.Max(nearSpread, Vector2.Distance(Ndc(sample.Camera, new Vector3(0.3f, 0.2f, -2)), nearNdc));
+            nearSpread = MathF.Max(
+                nearSpread, Vector2.Distance(Ndc(sample.Camera, new Vector3(0.3f, 0.2f, -2)), nearNdc));
         }
         await Assert.That(nearSpread).IsGreaterThan(1e-2f);
-        await Assert.That(frame.AccumulationSamples.Select(static sample => sample.LensOffset!.Value).Distinct().Count())
+        await Assert.That(
+                frame.AccumulationSamples.Select(static sample => sample.LensOffset!.Value).Distinct().Count())
             .IsEqualTo(RenderProductRequest.DepthOfFieldSampleCount);
 
         string root = Directory.CreateTempSubdirectory("product-lens-").FullName;
@@ -1191,7 +1197,8 @@ public sealed class RenderProductJobPlanTests
             await Assert.That(plane.GetProperty("rowOrder").GetString()).IsEqualTo("top-down");
             await Assert.That(plane.GetProperty("convention").GetString())
                 .IsEqualTo("world-space-unit-normal-float32x3");
-            await Assert.That(plane.GetProperty("background").EnumerateArray().Select(static value => value.GetDouble()).SequenceEqual([0d, 0d, 0d])).IsTrue();
+            await Assert.That(plane.GetProperty("background").EnumerateArray()
+                .Select(static value => value.GetDouble()).SequenceEqual([0d, 0d, 0d])).IsTrue();
             await Assert.That(plane.GetProperty("bytes").GetInt64()).IsEqualTo(48L);
             await Assert.That(plane.GetProperty("sha256").GetString()).IsEqualTo(Sha256(raw));
             JsonElement binding = frame.GetProperty("productOutputs")[2];
@@ -1202,7 +1209,8 @@ public sealed class RenderProductJobPlanTests
             await Assert.That(binding.GetProperty("bytes").GetInt64()).IsEqualTo(48L);
             await Assert.That(binding.GetProperty("convention").GetString())
                 .IsEqualTo("world-space-unit-normal-float32x3");
-            await Assert.That(binding.GetProperty("background").EnumerateArray().Select(static value => value.GetDouble()).SequenceEqual([0d, 0d, 0d])).IsTrue();
+            await Assert.That(binding.GetProperty("background").EnumerateArray()
+                .Select(static value => value.GetDouble()).SequenceEqual([0d, 0d, 0d])).IsTrue();
             await Assert.That(result.TotalBytes).IsEqualTo(
                 Directory.GetFiles(result.OutputDirectory).Sum(static file => new FileInfo(file).Length));
         }
