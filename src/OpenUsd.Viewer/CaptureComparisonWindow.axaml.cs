@@ -309,9 +309,9 @@ internal sealed partial class CaptureComparisonWindow : Window
                     await _loadPair(beforePath, afterPath, cancellation.Token), ComparisonMode.SelectedIndex);
             ViewerCapturePair pair = presentation.Images;
             cancellation.Token.ThrowIfCancellationRequested();
-            ViewerCaptureStateReceiptResult beforeState = await ViewerCaptureStateReceiptFile.ReadAsync(
+            ViewerCaptureStateReceiptResult beforeState = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
                 presentation.BeforePath, pair.Before, cancellation.Token);
-            ViewerCaptureStateReceiptResult afterState = await ViewerCaptureStateReceiptFile.ReadAsync(
+            ViewerCaptureStateReceiptResult afterState = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
                 presentation.AfterPath, pair.After, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             if (!presentationFile && _pendingReview is { } draft &&

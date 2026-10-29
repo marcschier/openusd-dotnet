@@ -23,6 +23,10 @@ internal sealed record ViewerCaptureStateReceipt(
     int Height,
     string PixelSha256)
 {
+    /// <summary>Marks a receipt derived from a render-job manifest, which does not name the backend.</summary>
+    internal const string UnrecordedBackend = "unrecorded";
+
+    internal bool RecordsBackend => !string.Equals(Backend, UnrecordedBackend, StringComparison.Ordinal);
     internal static ViewerCaptureStateReceipt From(
         StageRenderState state, RenderBackendIdentity? backend, ViewerCaptureImage image)
     {
@@ -54,7 +58,10 @@ internal sealed record ViewerCaptureStateReceipt(
         Add(differences, "camera", before.Camera, after.Camera);
         Add(differences, "display", before.Display, after.Display);
         Add(differences, "render settings", before.RenderSettings, after.RenderSettings);
-        Add(differences, "backend", before.Backend, after.Backend);
+        if (before.RecordsBackend && after.RecordsBackend)
+        {
+            Add(differences, "backend", before.Backend, after.Backend);
+        }
         if (before.Width != after.Width || before.Height != after.Height)
         {
             differences.Add("size");
@@ -70,18 +77,22 @@ internal sealed record ViewerCaptureStateReceipt(
         }
     }
 
-    internal static string DescribeCamera(CameraState camera)
+    internal static string DescribeCamera(CameraState camera) =>
+        DescribeCamera(camera.Mode, camera.View, camera.Projection, camera.ClipPlanes);
+
+    internal static string DescribeCamera(
+        CameraMode mode, Matrix4x4 view, Matrix4x4 projection, IReadOnlyList<Vector4> clipPlanes)
     {
         var text = new StringBuilder();
-        text.Append(camera.Mode.ToString());
+        text.Append(mode.ToString());
         text.Append(";view=");
-        AppendMatrix(text, camera.View);
+        AppendMatrix(text, view);
         text.Append(";projection=");
-        AppendMatrix(text, camera.Projection);
+        AppendMatrix(text, projection);
         text.Append(";clip=");
-        for (int index = 0; index < camera.ClipPlanes.Count; index++)
+        for (int index = 0; index < clipPlanes.Count; index++)
         {
-            Vector4 plane = camera.ClipPlanes[index];
+            Vector4 plane = clipPlanes[index];
             if (index > 0)
             {
                 text.Append('|');
@@ -94,7 +105,27 @@ internal sealed record ViewerCaptureStateReceipt(
     internal static string DescribeDisplay(SceneDisplayState display) =>
         $"purposes={display.Purposes};visibility={display.Visibility};drawMode={display.DrawMode}";
 
-    internal static string DescribeRenderSettings(RenderSettings settings)
+    internal static string DescribeRenderSettings(RenderSettings settings) =>
+        DescribeRenderSettings(settings, settings.DisplayTransform is { } transform
+            ? DescribeDisplayTransform(transform.ConfigPath, transform.SourceColorSpace, transform.Display,
+                transform.View, transform.Look, transform.LatticeSize, transform.ShaperMinimumLog2,
+                transform.ShaperMaximumLog2)
+            : "none");
+
+    internal static string DescribeDisplayTransform(
+        string configPath, string sourceColorSpace, string? display, string? view, string? look, int latticeSize,
+        float shaperMinimumLog2, float shaperMaximumLog2)
+    {
+        var text = new StringBuilder();
+        text.Append(CultureInfo.InvariantCulture, $"{configPath}|{sourceColorSpace}|{display}|");
+        text.Append(CultureInfo.InvariantCulture, $"{view}|{look}|{latticeSize}|");
+        AppendFloats(text, [shaperMinimumLog2, shaperMaximumLog2]);
+        return text.ToString();
+    }
+
+    /// <summary>Describes render settings whose display transform was already described.</summary>
+    /// <remarks>The display transform of <paramref name="settings"/> itself is ignored.</remarks>
+    internal static string DescribeRenderSettings(RenderSettings settings, string displayTransform)
     {
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture,
@@ -108,18 +139,7 @@ internal sealed record ViewerCaptureStateReceipt(
             $";complexity={settings.Complexity};output={settings.OutputTransform};exposure=");
         AppendFloats(text, [settings.Exposure]);
         text.Append(";ocio=");
-        if (settings.DisplayTransform is { } transform)
-        {
-            text.Append(CultureInfo.InvariantCulture,
-                $"{transform.ConfigPath}|{transform.SourceColorSpace}|{transform.Display}|");
-            text.Append(CultureInfo.InvariantCulture,
-                $"{transform.View}|{transform.Look}|{transform.LatticeSize}|");
-            AppendFloats(text, [transform.ShaperMinimumLog2, transform.ShaperMaximumLog2]);
-        }
-        else
-        {
-            text.Append("none");
-        }
+        text.Append(displayTransform);
         return text.ToString();
     }
 
@@ -167,9 +187,14 @@ internal sealed record ViewerCaptureStateReceiptResult(
         if (before.Receipt is { } first && after.Receipt is { } second)
         {
             IReadOnlyList<string> differences = ViewerCaptureStateReceipt.Differences(first, second);
-            return differences.Count == 0
+            if (differences.Count != 0)
+            {
+                return $"Recorded state differs in {string.Join(", ", differences)}.";
+            }
+            return first.RecordsBackend && second.RecordsBackend
                 ? "Recorded state matches: stage, time, camera, display, render settings and backend."
-                : $"Recorded state differs in {string.Join(", ", differences)}.";
+                : "Recorded state matches: stage, time, camera, display and render settings. " +
+                    "A render-job manifest does not record the backend.";
         }
         string? problem = Problem("A", before) ?? Problem("B", after);
         return $"{problem} Only pixels are compared.";
@@ -276,6 +301,20 @@ internal static class ViewerCaptureStateReceiptFile
                 File.Delete(temporary);
             }
         }
+    }
+
+    /// <summary>
+    /// Reads the receipt beside a capture, or the render-job manifest entry when no receipt was saved.
+    /// </summary>
+    internal static async Task<ViewerCaptureStateReceiptResult> ReadForComparisonAsync(
+        string capturePath, ViewerCaptureImage image, CancellationToken cancellationToken)
+    {
+        ViewerCaptureStateReceiptResult result =
+            await ReadAsync(capturePath, image, cancellationToken).ConfigureAwait(false);
+        return result.Status == ViewerCaptureStateReceiptStatus.Missing
+            ? await ViewerCaptureManifestReceipt.ReadAsync(capturePath, image, cancellationToken)
+                .ConfigureAwait(false)
+            : result;
     }
 
     /// <summary>
@@ -394,7 +433,7 @@ internal static class ViewerCaptureStateReceiptFile
         }
     }
 
-    private static string ValidateField(string? value, bool allowEmpty = false)
+    internal static string ValidateField(string? value, bool allowEmpty = false)
     {
         if (value is null || (!allowEmpty && value.Length == 0) || value.Length > MaximumFieldLength ||
             value.Contains('\0'))
@@ -405,7 +444,7 @@ internal static class ViewerCaptureStateReceiptFile
         return value;
     }
 
-    private static int ValidateDimension(int value)
+    internal static int ValidateDimension(int value)
     {
         if (value is <= 0 or > ViewerCaptureComparison.MaximumDimension)
         {

@@ -2093,6 +2093,17 @@ fields, a version other than 1, a non-finite time code, dimensions outside 1 to 
 checksum make it invalid. Saved comparisons keep the version 2 format and do not copy receipts into
 the manifest.
 
+Render-sequence and authored-product frames have no `.usdstate.json` sidecar. When a capture lacks
+one, Compare reads the `manifest.json` that the render job wrote into the same directory and builds
+the receipt from the frame entry whose `file` matches the capture's file name. That entry records
+the stage, time code, camera, display state, render settings with the display transform, the size
+and the SHA-256 checksum of the written PNG file. Compare accepts it only when the checksum matches
+the file on disk and the pixels decoded from that file equal the displayed image; otherwise the
+receipt is stale. A manifest with no matching frame counts as a missing receipt. A malformed,
+unreadable or oversized manifest (over 32 MiB) is invalid. The manifest does not record the render
+backend, so when either side of a pair has a manifest receipt, Compare leaves the backend out of the
+match report and of the differing fields.
+
 A receipt records what the Viewer requested; it does not authenticate it. Anyone who can write the
 capture directory can write a matching receipt, and the receipt does not identify the source or
 review revision or prove that the current scene still matches. Saved comparisons are likewise
