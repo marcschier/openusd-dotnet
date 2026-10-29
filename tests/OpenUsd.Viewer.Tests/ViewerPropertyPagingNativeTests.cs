@@ -75,6 +75,12 @@ public sealed partial class ViewerPropertyPagingNativeTests
             def Xform "Other"
             {
                 custom point3f[] points = [(0, 0, 0)]
+
+                def GeomSubset "Stray"
+                {
+                    uniform token elementType = "face"
+                    int[] indices = [0]
+                }
             }
             def Mesh "Grid"
             {
@@ -532,6 +538,14 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Orphan" });
             await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
                 AutomationProperties.GetAutomationId(button) == "edit.property:/Orphan.indices"), timeout);
+            TreeViewItem otherItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
+            otherItem.IsExpanded = true;
+            await WaitAsync(() => otherItem.Items.OfType<TreeViewItem>().Any(), timeout);
+            tree.SelectedItem = otherItem.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other/Stray" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Other/Stray.indices"), timeout);
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
             await WaitAsync(() => shaderQuery.IsEnabled &&

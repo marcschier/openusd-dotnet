@@ -369,8 +369,9 @@ orders, knots, forms, and ranges, `pointWeights`, and the `trimCurve:` attribute
 `elementType`, `indices`, and `familyName`. A custom `points` attribute on an `Xform` stays under
 **Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
 `primvars:normals`, stay under **Primvars**. Storm highlights a selected subset through its parent
-mesh. A subset defined directly under the stage root has no parent to highlight, so selecting it
-shows its properties and draws no highlight.
+mesh. A subset whose parent is not a gprim, such as one under the stage root or an `Xform`, has no
+geometry to highlight. Storm leaves such a subset out of the render, so selecting it or one of its
+ancestors shows the properties and draws no subset highlight.
 **Skinning and skeletons** groups attributes and relationships in the `skel:` namespace, such as
 `skel:skinningMethod` and the `skel:skeleton` relationship. Like the other namespace groups, it does
 not check that `SkelBindingAPI` is applied. Skinning primvars such as `primvars:skel:jointIndices`

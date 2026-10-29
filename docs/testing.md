@@ -2354,6 +2354,19 @@ baseline pixels untouched; and clearing the batch must reproduce the baseline fr
 byte, which is the end-to-end proof that overrides never author the stage. Version and struct-size
 guards on both entry points are asserted to return `OPENUSD_STATUS_INVALID_ARGUMENT`.
 
+## Storm geometry subset scene index probe
+
+`native/openusd_hydra/tests/geom_subset_scene_index_contract_probe.cpp` pins
+`OpenUsdGeomSubsetSceneIndex`. The pinned Hydra scene delegate adapter dirties a subset's parent
+rprim on every subset notice. A subset under the root or an `Xform` has no parent rprim, so that
+dirty fails a `TF_VERIFY`, and selecting the subset or its ancestor reproduces it.
+
+The probe drives the filter over an `HdRetainedSceneIndex`. A subset outside a gprim must lose its
+`geomSubset` type and keep its data source. A subset of a mesh or a basis curve must keep its type.
+Added notices must report the same types as `GetPrim`. Retyping the parent to a mesh re-adds the
+subtree, and the subset must then come back as a `geomSubset`. The Viewer property paging journey
+covers the same fixture end to end by selecting `/Other/Stray` under an `Xform`.
+
 ## Storm-to-hdSilk parity comparison
 
 `ParityImageComparer` in `OpenUsd.Rendering` is the renderer-neutral core of the parity

@@ -55,6 +55,10 @@ public sealed class ViewerCompletedJobWindowTests
                 CompletedRenderJobWindow gallery = owner.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
                 await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
                     () => !Required<ProgressBar>(gallery, "ResultsLoading").IsVisible);
+                // Window activation reaches the focus manager through dispatcher posts, so a
+                // contended host can observe the gallery before its opening focus lands.
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
+                    () => Required<Button>(gallery, "ResultsCloseButton").IsKeyboardFocusWithin);
                 await Assert.That(Required<Button>(gallery, "ResultsCloseButton").IsKeyboardFocusWithin).IsTrue();
                 Control expectedFocus = destination is "gallery" or "frame" ? action :
                     destination == "owner" ? moved : otherAction;
@@ -76,6 +80,7 @@ public sealed class ViewerCompletedJobWindowTests
                     await Assert.That(otherAction.Focus()).IsTrue();
                 }
                 await gallery.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => expectedFocus.IsKeyboardFocusWithin);
                 await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
                 await Assert.That(Required<ListBox>(gallery, "ResultsFrames").ItemCount).IsEqualTo(0);
                 await Assert.That(action.IsEnabled).IsTrue();
@@ -88,6 +93,7 @@ public sealed class ViewerCompletedJobWindowTests
                 await Assert.That(reopened.ActualThemeVariant)
                     .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
                 await reopened.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await ViewerCompletedJobPreviewJourney.WaitUntilAsync(() => action.IsKeyboardFocusWithin);
                 await Assert.That(action.IsKeyboardFocusWithin).IsTrue();
                 await Assert.That(publications).IsEqualTo(1);
             }
@@ -549,7 +555,9 @@ public sealed class ViewerCompletedJobWindowTests
             try
             {
                 await ViewerCompletedJobPreviewJourney.WaitUntilAsync(
-                    () => !Required<ProgressBar>(window, "ResultsLoading").IsVisible);
+                    () => !Required<ProgressBar>(window, "ResultsLoading").IsVisible,
+                    () => $"Window visible: {window.IsVisible}; status: " +
+                        $"'{Required<TextBlock>(window, "ResultsStatus").Text}'.");
                 window.UpdateLayout();
 
                 Button close = Required<Button>(window, "ResultsCloseButton");
