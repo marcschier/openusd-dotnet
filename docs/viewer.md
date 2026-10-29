@@ -374,6 +374,10 @@ stay under **Primvars**; a bare `skel:` name and names that differ in case stay 
 `model:applyDrawMode` and the `model:card*` texture attributes. It does not check that
 `GeomModelAPI` is applied either. Primvars such as `primvars:model:tint` stay under **Primvars**,
 and a bare `model:` name or a case variant stays under **Other properties**.
+**Instancing** appears for a `PointInstancer` and groups its schema attributes, such as
+`protoIndices`, `positions`, `orientations`, `scales`, `ids`, `invisibleIds` and the velocity
+attributes, plus `extent` and the `prototypes` relationship. On other prim types these names are not
+grouped as instancing, and lookalikes such as `positionsExtra` stay under **Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

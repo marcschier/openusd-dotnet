@@ -88,6 +88,13 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 rel skel:skeleton = </Other>
                 uniform token model:drawMode = "bounds"
             }
+            def PointInstancer "Scatter"
+            {
+                int[] protoIndices = [0]
+                point3f[] positions = [(0, 0, 0)]
+                custom float positionsExtra = 1
+                rel prototypes = </Other>
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -387,6 +394,20 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 PropertyButtons(main).Any(static button => AutomationProperties.GetAutomationId(button) ==
                     "edit.property:/Grid.model:drawMode"), timeout);
             await Assert.That(ValueText(main)).DoesNotContain("skel:skinningMethod");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Instancer;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Scatter" });
+            await WaitAsync(() => shaderQuery.IsEnabled && meshState.Text?.StartsWith(
+                "Properties 1-", StringComparison.Ordinal) == true &&
+                Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                    .Any(static row => row.Text == "prototypes: /Other"), timeout);
+            string[] instancerProperties = PropertyButtons(main)
+                .Select(static button => AutomationProperties.GetAutomationId(button)!).ToArray();
+            await Assert.That(instancerProperties).Contains("edit.property:/Scatter.protoIndices");
+            await Assert.That(instancerProperties).Contains("edit.property:/Scatter.positions");
+            await Assert.That(instancerProperties).DoesNotContain("edit.property:/Scatter.positionsExtra");
+            await Assert.That(instancerProperties).DoesNotContain("edit.property:/Scatter.visibility");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });

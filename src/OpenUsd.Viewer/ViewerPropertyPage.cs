@@ -29,6 +29,7 @@ internal enum ViewerPropertyGroup
     Mesh,
     Skinning,
     Model,
+    Instancer,
     Other
 }
 
@@ -70,7 +71,8 @@ internal sealed class ViewerPropertyPage
         bool isCamera = false,
         bool isLight = false,
         IReadOnlyList<string>? lightSchemaProperties = null,
-        bool isMesh = false)
+        bool isMesh = false,
+        bool isPointInstancer = false)
     {
         ArgumentNullException.ThrowIfNull(attributes);
         ArgumentNullException.ThrowIfNull(relationships);
@@ -88,14 +90,15 @@ internal sealed class ViewerPropertyPage
         int matches = 0;
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh))
+            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh,
+                    isPointInstancer))
             {
                 matches++;
             }
         }
         foreach (ViewerRelationshipSnapshot relationship in relationships)
         {
-            if (Matches(relationship, filter, search, group))
+            if (Matches(relationship, filter, search, group, isPointInstancer))
             {
                 matches++;
             }
@@ -108,7 +111,8 @@ internal sealed class ViewerPropertyPage
         var pageRelationships = new List<ViewerRelationshipSnapshot>();
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh) &&
+            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh,
+                    isPointInstancer) &&
                 seen++ >= start && pageAttributes.Count < PageSize)
             {
                 pageAttributes.Add(attribute);
@@ -116,7 +120,7 @@ internal sealed class ViewerPropertyPage
         }
         foreach (ViewerRelationshipSnapshot relationship in relationships)
         {
-            if (Matches(relationship, filter, search, group) &&
+            if (Matches(relationship, filter, search, group, isPointInstancer) &&
                 seen++ >= start && pageAttributes.Count + pageRelationships.Count < PageSize)
             {
                 pageRelationships.Add(relationship);
@@ -133,11 +137,12 @@ internal sealed class ViewerPropertyPage
     private static bool Matches(
         ViewerAttributeSnapshot attribute, ViewerPropertyFilter filter, string query,
         ViewerPropertyGroup group, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties,
-        bool isMesh) =>
+        bool isMesh, bool isPointInstancer) =>
         (group == ViewerPropertyGroup.All ||
          (group == ViewerPropertyGroup.ShaderInputs &&
              attribute.Name.StartsWith("inputs:", StringComparison.Ordinal)) ||
-         AttributeGroup(attribute.Name, isCamera, isLight, lightSchemaProperties, isMesh) == group) &&
+         AttributeGroup(attribute.Name, isCamera, isLight, lightSchemaProperties, isMesh, isPointInstancer) ==
+             group) &&
         Matches(attribute.Name, attribute.TypeName, query) && (filter switch
         {
             ViewerPropertyFilter.All => true,
@@ -151,13 +156,14 @@ internal sealed class ViewerPropertyPage
 
     private static bool Matches(
         ViewerRelationshipSnapshot relationship, ViewerPropertyFilter filter, string query,
-        ViewerPropertyGroup group) =>
+        ViewerPropertyGroup group, bool isPointInstancer) =>
         filter is ViewerPropertyFilter.All or ViewerPropertyFilter.Relationships &&
-        (group == ViewerPropertyGroup.All || RelationshipGroup(relationship.Name) == group) &&
+        (group == ViewerPropertyGroup.All || RelationshipGroup(relationship.Name, isPointInstancer) == group) &&
         Matches(relationship.Name, "relationship", query);
 
     private static ViewerPropertyGroup AttributeGroup(
-        string name, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties, bool isMesh)
+        string name, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties, bool isMesh,
+        bool isPointInstancer)
     {
         if (name == "xformOpOrder" || name.StartsWith("xformOp:", StringComparison.Ordinal))
         {
@@ -178,6 +184,12 @@ internal sealed class ViewerPropertyPage
             "creaseIndices" or "creaseLengths" or "creaseSharpnesses")
         {
             return ViewerPropertyGroup.Mesh;
+        }
+        if (isPointInstancer && name is "protoIndices" or "ids" or "positions" or "orientations" or
+            "orientationsf" or "scales" or "velocities" or "accelerations" or "angularVelocities" or
+            "invisibleIds" or "extent")
+        {
+            return ViewerPropertyGroup.Instancer;
         }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
@@ -218,8 +230,12 @@ internal sealed class ViewerPropertyPage
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
-    private static ViewerPropertyGroup RelationshipGroup(string name)
+    private static ViewerPropertyGroup RelationshipGroup(string name, bool isPointInstancer)
     {
+        if (isPointInstancer && name == "prototypes")
+        {
+            return ViewerPropertyGroup.Instancer;
+        }
         if (name == "material:binding" || name.StartsWith("material:binding:", StringComparison.Ordinal))
         {
             return ViewerPropertyGroup.MaterialBindings;

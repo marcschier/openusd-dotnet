@@ -1221,6 +1221,7 @@
               <ComboBoxItem Content="Mesh geometry (Mesh)" />
               <ComboBoxItem Content="Skinning (skel:)" />
               <ComboBoxItem Content="Model and draw mode (model:)" />
+              <ComboBoxItem Content="Instancing (PointInstancer)" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

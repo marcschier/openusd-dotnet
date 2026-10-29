@@ -201,6 +201,45 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task InstancerGroupRequiresAPointInstancerAndExactSchemaNames()
+    {
+        string[] names =
+        [
+            "protoIndices", "ids", "positions", "orientations", "orientationsf", "scales", "velocities",
+            "accelerations", "angularVelocities", "invisibleIds", "extent", "Positions", "positionsExtra",
+            "primvars:displayColor", "points"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "int[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+        [
+            new("prototypes", "/World/Protos/A"),
+            new("Prototypes", "/World/Protos/B"),
+            new("prototypesExtra", "/World/Protos/C")
+        ];
+
+        ViewerPropertyPage instancer = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Instancer, isPointInstancer: true);
+
+        await Assert.That(string.Join(",", instancer.Attributes.Select(static item => item.Name)))
+            .IsEqualTo(string.Join(",", names.Take(11)));
+        await Assert.That(instancer.Relationships.Single()).IsSameReferenceAs(relationships[0]);
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isPointInstancer: true);
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("Positions,positionsExtra,points");
+        await Assert.That(string.Join(",", other.Relationships.Select(static item => item.Name)))
+            .IsEqualTo("Prototypes,prototypesExtra");
+        ViewerPropertyPage notInstancer = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Instancer, isMesh: true);
+        await Assert.That(notInstancer.MatchCount).IsEqualTo(0);
+        ViewerPropertyPage notInstancerOther = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
+        await Assert.That(notInstancerOther.MatchCount).IsEqualTo(names.Length - 1 + relationships.Length);
+    }
+
+    [Test]
     public async Task SkinningGroupUsesTheSkelNamespaceAndLeavesSkinningPrimvarsUnderPrimvars()
     {
         string[] names =
