@@ -431,19 +431,19 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.TexturePreparation.cs",
-      "sha256": "c380c254abbfbda6c2f1b850edd499f18fcb521d5b669c50181106885d83540e"
+      "sha256": "eea1f918e5ee0a4d94a9e14a84281f00f0c945cd78cf0aec2ef1cb7a4c55cdac"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.Udim.cs",
-      "sha256": "a11e428625314deb309810a7f3e050a6041e185f8cb371a7fab7d111b94d20ca"
+      "sha256": "f51263f7823753b99396fd684df7d137cba7ff06f85f78f77a933fb97293f481"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "cc8c027a49e54eb2bcb91f4202a9b304da5c86349257ae86d5338a59aa1899c6"
+      "sha256": "ac3105311a6bab0ffab51630ce8db982c69d7ec6f46bf24c2d6000bc987bca7e"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
-      "sha256": "44ea0ccaebdaa2ec5fb10c4b3a4e4e29ca8eeff6e8073e81953c932f88c6435a"
+      "sha256": "7a73330b00fadd94a9b78f85342dd845aaee78897fe892cd1b79409d10d6d61a"
     },
     {
       "path": "src/OpenUsd.Viewer.App/app.manifest",
