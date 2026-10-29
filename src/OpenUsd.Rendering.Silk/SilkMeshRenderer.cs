@@ -305,7 +305,8 @@ public sealed partial class SilkMeshRenderer :
         SilkTextureResidencyOptions? textureResidencyOptions = null,
         SilkCpuTextureBudget? cpuTextureBudget = null,
         Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null,
-        SilkDisplayTransformLatticeCache? displayLattices = null)
+        SilkDisplayTransformLatticeCache? displayLattices = null,
+        Func<string, SilkImageDescription>? imageDescriber = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         if (textureResidencyOptions?.StreamMaterialTextures == true &&
@@ -329,7 +330,9 @@ public sealed partial class SilkMeshRenderer :
                 ? new SilkSceneGpuResources(device)
                 : new SilkSceneGpuResources(device, textureResidencyOptions)
             : new SilkSceneGpuResources(device, imageDecoder, udimResolver, textureResidencyOptions,
-                cpuTextureBudget: cpuTextureBudget, ownedImageDecoder: ownedImageDecoder);
+                    cpuTextureBudget: cpuTextureBudget,
+                    ownedImageDecoder: ownedImageDecoder,
+                    imageDescriber: imageDescriber);
 
         ISilkPickGraphicsPipeline? pickPipeline = null;
         SilkPickReadbackRing? pickReadbacks = null;

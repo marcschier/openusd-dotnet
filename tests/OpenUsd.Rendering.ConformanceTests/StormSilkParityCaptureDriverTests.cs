@@ -1994,6 +1994,34 @@ def Xform "World"
     }
 
     [Test]
+    public async Task UseMetadataPixelsMatchObservedPerAxisWrapsOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertObservedMetadataWrapsMatch(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("useMetadata observed wraps Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
+    public async Task UseMetadataPixelsMatchObservedPerAxisWrapsOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertObservedMetadataWrapsMatch(device);
+    }
+
+    [Test]
     public async Task MixedTextureSlotWrapModesRemainIndependentOnVulkan()
     {
         ParityImage image;
@@ -3273,6 +3301,73 @@ def Xform "World"
                 [1, 0, 1, 1],
                 "st"),
             textureCoordinates);
+
+    private static async Task AssertObservedMetadataWrapsMatch(ISilkGraphicsDevice device)
+    {
+        foreach (bool outsideU in new[] { true, false })
+        {
+            ParityImage image = CaptureSyntheticMetadataTextureWrap(device, outsideU);
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
+            await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+            await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+        }
+    }
+
+    private static ParityImage CaptureSyntheticMetadataTextureWrap(
+        ISilkGraphicsDevice device,
+        bool outsideU)
+    {
+        float[] coordinates = outsideU
+            ? [1.25f, 0.25f, 1.25f, 0.25f, 1.25f, 0.25f, 1.25f, 0.25f]
+            : [0.25f, 1.25f, 0.25f, 1.25f, 0.25f, 1.25f, 0.25f, 1.25f];
+        SilkTextureWrap referenceWrap = outsideU ? SilkTextureWrap.Repeat : SilkTextureWrap.Clamp;
+        byte[] reference = CreateTexturedMaterialCommand(
+            "/Reference",
+            "metadata-wrap",
+            SilkMaterialParameter.DiffuseColor,
+            referenceWrap,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st");
+        byte[] candidate = CreateTexturedMaterialCommand(
+            "/Metadata",
+            "metadata-wrap",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.UseMetadata,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st");
+        return CaptureSyntheticMaterialPair(
+            device,
+            reference,
+            candidate,
+            coordinates,
+            requireImagePlugins: false,
+            imageDecoder: static (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                [
+                    255, 0, 0, 255,
+                    0, 255, 0, 255,
+                    255, 255, 0, 255,
+                    0, 0, 255, 255,
+                ]),
+            imageDescriber: static _ => new SilkImageDescription(
+                2,
+                2,
+                SilkTextureFormat.Rgba8Unorm,
+                4,
+                SilkImageObservation.Queried |
+                    SilkImageObservation.AddressU |
+                    SilkImageObservation.AddressV,
+                AddressU: SilkImageAddressObservation.Repeat,
+                AddressV: SilkImageAddressObservation.ClampToEdge));
+    }
 
     private static ParityImage CaptureSyntheticMixedTextureWrapSelfConsistency(
         ISilkGraphicsDevice device)
@@ -4628,7 +4723,8 @@ def Xform "World"
         ReadOnlySpan<float> textureCoordinates = default,
         bool requireImagePlugins = true,
         Func<string, bool, SilkDecodedImage>? imageDecoder = null,
-        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
+        Func<string, SilkImageDescription>? imageDescriber = null)
     {
         if (requireImagePlugins)
         {
@@ -4655,7 +4751,8 @@ def Xform "World"
                     _ => throw new ArgumentOutOfRangeException(nameof(device))
                 },
                 imageDecoder,
-                udimResolver);
+                udimResolver,
+                imageDescriber: imageDescriber);
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
