@@ -128,6 +128,10 @@ public sealed partial class ViewerPropertyPagingNativeTests
                     ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 1, 0, 1) )
                 ]
             }
+            def Skeleton "RestlessRig"
+            {
+                uniform token[] joints = ["root"]
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"

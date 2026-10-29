@@ -742,7 +742,11 @@ boundary failure checks supplement actual D3D12 view and pixel comparisons, not 
 The Render menu's Draw Mode submenu exposes the usdview draw-mode ladder: Wireframe, Wireframe on
 surface, Smooth shaded, Flat shaded, Points, Geom only, Geom flat, Geom smooth, and Hidden
 surface wireframe. The statistics HUD displays stage AABB and OBB values from the world-bounds
-query capability at the stage start time.
+query capability at the stage start time. When OpenUSD reports an error while computing bounds,
+the HUD shows `AABB: unavailable` with the first 160 characters of that error. The stage still
+opens. A `Skeleton` with joints but no `restTransforms` is one stage that triggers this, because
+its extent plugin returns no extent. MCP `inspect_scene` uses the same analysis and still returns
+its prim and geometry counts for such a stage.
 
 The Render menu's Colour Management submenu is the whole colour-management control surface: one
 "Use OpenColorIO display transform" toggle, one "Choose OpenColorIO Config..." file chooser, and

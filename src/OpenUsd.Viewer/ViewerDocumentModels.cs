@@ -812,6 +812,8 @@ internal sealed record ViewerStageStatisticsSnapshot(
     UsdOrientedBounds3d OrientedWorldBounds,
     TimeSpan BoundsQueryDuration) : IUsdDetachedResult
 {
+    internal string? BoundsFailure { get; init; }
+
     internal static ViewerStageStatisticsSnapshot Empty { get; } = new(
         string.Empty,
         string.Empty,
@@ -1054,7 +1056,10 @@ internal static partial class ViewerStageSnapshotBuilder
             analysis.MaximumDepth,
             analysis.WorldBounds,
             analysis.OrientedWorldBounds,
-            analysis.BoundsQueryDuration);
+            analysis.BoundsQueryDuration)
+        {
+            BoundsFailure = analysis.BoundsFailure
+        };
     }
 
     private static ViewerLayerStackSnapshot BuildLayerStack(

@@ -21,7 +21,11 @@ internal readonly record struct StageStatisticsAnalysis(
     int MaximumDepth,
     UsdBounds3d WorldBounds,
     UsdOrientedBounds3d OrientedWorldBounds,
-    TimeSpan BoundsQueryDuration) : IUsdDetachedResult;
+    TimeSpan BoundsQueryDuration) : IUsdDetachedResult
+{
+    // Set when OpenUSD reported an error while computing stage bounds; the bounds are then empty.
+    internal string? BoundsFailure { get; init; }
+}
 
 internal readonly record struct StageStatisticsAnalysisLimits
 {
@@ -400,13 +404,26 @@ internal static class StageStatisticsAnalyzer
         double boundsTimeCode = RequireFiniteBoundsTimeCode(stage.StartTimeCode);
         Stopwatch boundsTimer = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
-        UsdBounds3d worldBounds = stage.GetWorldBounds(
-            boundsTimeCode,
-            UsdGeomPurposeMask.All);
-        cancellationToken.ThrowIfCancellationRequested();
-        UsdOrientedBounds3d orientedWorldBounds = stage.GetWorldOrientedBounds(
-            boundsTimeCode,
-            UsdGeomPurposeMask.All);
+        UsdBounds3d worldBounds = UsdBounds3d.Empty;
+        UsdOrientedBounds3d orientedWorldBounds = UsdOrientedBounds3d.Empty;
+        string? boundsFailure = null;
+        try
+        {
+            worldBounds = stage.GetWorldBounds(
+                boundsTimeCode,
+                UsdGeomPurposeMask.All);
+            cancellationToken.ThrowIfCancellationRequested();
+            orientedWorldBounds = stage.GetWorldOrientedBounds(
+                boundsTimeCode,
+                UsdGeomPurposeMask.All);
+        }
+        catch (OpenUsdNativeException exception)
+            when (exception.Status == OpenUsdNativeStatus.NativeError)
+        {
+            worldBounds = UsdBounds3d.Empty;
+            orientedWorldBounds = UsdOrientedBounds3d.Empty;
+            boundsFailure = exception.Message;
+        }
         boundsTimer.Stop();
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -424,7 +441,10 @@ internal static class StageStatisticsAnalyzer
             accumulator.PrimCount == 0 ? 0 : accumulator.MaximumDepth,
             worldBounds,
             orientedWorldBounds,
-            boundsTimer.Elapsed);
+            boundsTimer.Elapsed)
+        {
+            BoundsFailure = boundsFailure
+        };
     }
 
     private static string GetDefaultPrimPath(UsdStage stage)
