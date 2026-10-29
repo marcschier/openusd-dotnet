@@ -2124,9 +2124,11 @@ the stage, time code, camera, display state, render settings with the display tr
 and the SHA-256 checksum of the written PNG file. Compare accepts it only when the checksum matches
 the file on disk and the pixels decoded from that file equal the displayed image; otherwise the
 receipt is stale. A manifest with no matching frame counts as a missing receipt. A malformed,
-unreadable or oversized manifest (over 32 MiB) is invalid. The manifest does not record the render
-backend, so when either side of a pair has a manifest receipt, Compare leaves the backend out of the
-match report and of the differing fields.
+unreadable or oversized manifest (over 32 MiB) is invalid. Viewer render sequences, physics
+recordings and authored-product jobs record the backend in each frame entry, and Compare matches it
+the same way it matches a `.usdstate.json` backend. A frame entry without a `backend` field, from an
+older job or from a source that reports none, leaves the backend out of the match report and of the
+differing fields.
 
 A receipt records what the Viewer requested; it does not authenticate it. Anyone who can write the
 capture directory can write a matching receipt, and the receipt does not identify the source or

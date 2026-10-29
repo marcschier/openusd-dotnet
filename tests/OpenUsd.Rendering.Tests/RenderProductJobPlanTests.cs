@@ -598,6 +598,46 @@ public sealed class RenderProductJobPlanTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ShutterSamplesMustAgreeOnTheBackendTheManifestRecords(bool mismatch)
+    {
+        string root = Directory.CreateTempSubdirectory("product-shutter-backend-").FullName;
+        try
+        {
+            RenderProductRequest request = Request(disableOptics: false, colorOnly: true);
+            var plan = new RenderProductJobPlan(new StageIdentity("scene.usda"),
+                [ShutterFrame(request, 4, -0.25, 0.25)], RenderSettings.PresentationDefault);
+            var silk = new RenderBackendIdentity(RenderBackendKind.Vulkan, "hdSilk / Vulkan");
+            var other = new RenderBackendIdentity(RenderBackendKind.D3D12, "hdSilk / Direct3D 12");
+            string output = Path.Combine(root, "out");
+            var source = new ProductSource
+            {
+                IncludeDepth = false,
+                Pixels = static (_, count) => (new byte[count * 4], new byte[count * 8], Rgba8RowOrder.TopDown),
+                Backends = index => mismatch && index == 5 ? other : silk,
+            };
+            if (mismatch)
+            {
+                await Assert.That(() => RenderDiskJob.Execute(plan.CreateJob(output), source))
+                    .Throws<InvalidDataException>();
+                await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+                return;
+            }
+            RenderDiskJobResult result = RenderDiskJob.Execute(plan.CreateJob(output), source);
+            await Assert.That(result.Frames[0].Backend).IsEqualTo(silk);
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement backend = manifest.RootElement.GetProperty("frames")[0].GetProperty("backend");
+            await Assert.That(backend.GetProperty("kind").GetString()).IsEqualTo("Vulkan");
+            await Assert.That(backend.GetProperty("name").GetString()).IsEqualTo("hdSilk / Vulkan");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+    [Test]
     public async Task ActiveShutterRefusesDepthAndPublishesNothingForAnInvalidSample()
     {
         RenderProductRequest depth = Request(disableOptics: false);
@@ -1599,6 +1639,7 @@ public sealed class RenderProductJobPlanTests
         internal RenderJobInstanceId? InstanceIdPlane { get; init; }
         internal RenderJobNormal? NormalPlane { get; init; }
         internal RenderJobElementId? ElementIdPlane { get; init; }
+        internal Func<int, RenderBackendIdentity?>? Backends { get; init; }
         internal int Validations { get; private set; }
         internal int Calls { get; private set; }
         internal RenderProductJobPlan? Admitted { get; private set; }
@@ -1634,6 +1675,7 @@ public sealed class RenderProductJobPlanTests
                     InstanceId = InstanceIdPlane,
                     Normal = NormalPlane,
                     ElementId = ElementIdPlane,
+                    Backend = Backends?.Invoke(Calls - 1),
                 };
             }
             return new RenderJobImage(

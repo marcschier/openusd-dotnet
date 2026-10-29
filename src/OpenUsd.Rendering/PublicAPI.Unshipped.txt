@@ -2,6 +2,9 @@
 OpenUsd.Rendering.RenderJobImage.Simulation.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity?
 OpenUsd.Rendering.RenderJobImage.Simulation.init -> void
 OpenUsd.Rendering.RenderDiskFrameResult.Simulation.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity?
+OpenUsd.Rendering.RenderJobImage.Backend.get -> OpenUsd.Rendering.RenderBackendIdentity?
+OpenUsd.Rendering.RenderJobImage.Backend.init -> void
+OpenUsd.Rendering.RenderDiskFrameResult.Backend.get -> OpenUsd.Rendering.RenderBackendIdentity?
 OpenUsd.Rendering.RenderSimulationFrameIdentity
 OpenUsd.Rendering.RenderSimulationFrameIdentity.RenderSimulationFrameIdentity(System.Guid epoch, string! scenarioIdentity, ulong sourceRevision, ulong publicationRevision, ulong stepIndex, double simulationSeconds, double timeCode, double fixedStepSeconds, ulong bindingRevision, int bodyCount, int deformationCount, string? reviewIdentity = null) -> void
 OpenUsd.Rendering.RenderSimulationFrameIdentity.Epoch.get -> System.Guid

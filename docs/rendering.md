@@ -926,6 +926,10 @@ match the request. Filenames are generated from frame indexes, never scene-autho
 `manifest.json` records each frame's `format` (`png-rgba8`), `bytes` and `sha256`. It also retains
 camera matrices/clip planes, time, stage and renderer-state revision, display/purpose/draw settings,
 explicit colour/OCIO settings and bounded selection identity.
+When the frame source reports the backend that rendered a frame, the entry also records a `backend`
+object with its `kind` and `name`. The engine refuses an unknown kind or a name that is longer than 256
+characters or contains control characters, and every shutter sample of an accumulated frame must
+report the same backend. A source that reports no backend leaves the field out.
 The state revision is not mislabeled as an independently observed native stage revision.
 Diagnostics retain distinct severity/code/message records across frames. Only Information,
 Warning and Error severities are accepted; unknown numeric severities refuse the entire job

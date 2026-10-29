@@ -103,7 +103,8 @@ internal static class ViewerRenderSequenceRunner
         Func<ValueTask> restore,
         Action<ViewerRenderSequenceProgress> progress,
         CancellationToken cancellationToken,
-        Action<RenderProductJobPlan, CancellationToken>? validateProduct = null) =>
+        Action<RenderProductJobPlan, CancellationToken>? validateProduct = null,
+        RenderBackendIdentity? backend = null) =>
         Task.Factory.StartNew(
             () => RenderDiskJob.Execute(
                 request, new FrameSource(
@@ -111,7 +112,8 @@ internal static class ViewerRenderSequenceRunner
                     restore,
                     progress,
                     request.Frames.Count,
-                    validateProduct), cancellationToken),
+                    validateProduct,
+                    backend), cancellationToken),
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
@@ -121,7 +123,8 @@ internal static class ViewerRenderSequenceRunner
         Func<ValueTask> restore,
         Action<ViewerRenderSequenceProgress> progress,
         int totalFrames,
-        Action<RenderProductJobPlan, CancellationToken>? validateProduct) : IRenderProductFrameSource
+        Action<RenderProductJobPlan, CancellationToken>? validateProduct,
+        RenderBackendIdentity? backend) : IRenderProductFrameSource
     {
         private int _completed;
 
@@ -166,7 +169,8 @@ internal static class ViewerRenderSequenceRunner
                     PrimId = image.PrimId,
                     InstanceId = image.InstanceId,
                     Normal = image.Normal,
-                    ElementId = image.ElementId
+                    ElementId = image.ElementId,
+                    Backend = backend
                 };
             }, DispatcherPriority.Normal, cancellationToken).GetAwaiter().GetResult();
             return frame.GetAwaiter().GetResult();

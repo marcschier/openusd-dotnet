@@ -339,7 +339,8 @@ public static class PhysicsRenderRecording
                 DeviceDepth = image.DeviceDepth,
                 HdrColor = image.HdrColor,
                 Diagnostics = image.Diagnostics,
-                Simulation = identity
+                Simulation = identity,
+                Backend = image.Backend
             };
         }
 

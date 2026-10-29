@@ -10,6 +10,8 @@ namespace OpenUsd.Rendering;
 /// <summary>Executes a bounded RGBA sequence without retaining encoded images in memory.</summary>
 public static partial class RenderDiskJob
 {
+    private const int MaximumBackendNameLength = 256;
+
     /// <summary>Renders and encodes sequentially on the calling thread, then publishes a new directory.</summary>
     /// <remarks>
     /// The caller owns the frame source and must select its renderer thread. No source is disposed,
@@ -181,6 +183,13 @@ public static partial class RenderDiskJob
         {
             throw new InvalidDataException("The simulation publication does not match the requested frame time.");
         }
+        if (image.Backend is { } backend &&
+            (!Enum.IsDefined(backend.Kind) || backend.Name.Length > MaximumBackendNameLength ||
+             ContainsControl(backend.Name)))
+        {
+            throw new InvalidDataException(
+                "A reported render backend must have a known kind and a name of at most 256 printable characters.");
+        }
         if (includeDeviceDepth != (image.DeviceDepth is not null))
         {
             throw new NotSupportedException(
@@ -351,7 +360,7 @@ public static partial class RenderDiskJob
         }
         return new RenderDiskFrameResult(
             index, state, fileName, written, hash, depthName, depthBytes, depthHash,
-            hdrName, hdrBytes, hdrHash, hdrColorFormat, image.Simulation)
+            hdrName, hdrBytes, hdrHash, hdrColorFormat, image.Simulation, image.Backend)
         {
             PrimIdFileName = primIdName,
             PrimIdBytes = primIdBytes,
@@ -610,6 +619,10 @@ public static partial class RenderDiskJob
                 if (frame.Simulation is { } simulation)
                 {
                     WriteSimulationIdentity(json, simulation);
+                }
+                if (frame.Backend is { } backend)
+                {
+                    WriteBackendIdentity(json, backend);
                 }
                 if (productPlan is not null)
                 {

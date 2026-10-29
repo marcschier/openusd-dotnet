@@ -82,7 +82,8 @@ internal sealed class ViewerPhysicsSequenceFrameSource(
             {
                 Diagnostics = image.Diagnostics,
                 DeviceDepth = image.DeviceDepth,
-                HdrColor = image.HdrColor
+                HdrColor = image.HdrColor,
+                Backend = backend.Identity
             };
             return new PhysicsRenderCaptureResult(output, report.Revision, report.Applied, 0);
         }, DispatcherPriority.Normal, cancellationToken).GetAwaiter().GetResult();

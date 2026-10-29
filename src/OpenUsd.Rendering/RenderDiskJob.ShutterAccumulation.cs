@@ -28,6 +28,8 @@ public static partial class RenderDiskJob
         var display = new ushort[checked(pixels * 4)];
         float[]? hdr = includeHdrColor ? new float[checked(pixels * 4)] : null;
         var diagnostics = new List<RenderDiagnostic>();
+        RenderBackendIdentity? backend = null;
+        bool first = true;
         foreach (StageRenderState sample in samples)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -50,6 +52,15 @@ public static partial class RenderDiskJob
                     "The render source did not provide exactly the requested shutter-sample planes.");
             }
             ArgumentNullException.ThrowIfNull(image.Diagnostics);
+            if (first)
+            {
+                backend = image.Backend;
+                first = false;
+            }
+            else if (image.Backend != backend)
+            {
+                throw new InvalidDataException("Every shutter sample must report the same render backend.");
+            }
             foreach (RenderDiagnostic diagnostic in image.Diagnostics.Entries)
             {
                 if (!diagnostics.Contains(diagnostic))
@@ -97,6 +108,7 @@ public static partial class RenderDiskJob
                 ? RenderDiagnosticsState.Empty
                 : new RenderDiagnosticsState(diagnostics),
             HdrColor = averaged,
+            Backend = backend,
         };
     }
 

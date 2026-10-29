@@ -158,6 +158,71 @@ public sealed class RenderDiskJobTests
     }
 
     [Test]
+    public async Task ReportedBackendIsRecordedPerFrameAndAnUnreportedOneIsOmitted()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-backend-job-").FullName;
+        StageRenderState first = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        StageRenderState second = first.WithTime(new StageTime(1));
+        var storm = new RenderBackendIdentity(RenderBackendKind.Storm, "Storm / OpenGL");
+        var source = new CallbackSource(state => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Backend = state.Time.TimeCode == 0 ? storm : null
+        });
+        try
+        {
+            RenderDiskJobResult result = RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [first, second]), source);
+            await Assert.That(result.Frames[0].Backend).IsEqualTo(storm);
+            await Assert.That(result.Frames[1].Backend).IsNull();
+            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement frames = manifest.RootElement.GetProperty("frames");
+            JsonElement backend = frames[0].GetProperty("backend");
+            await Assert.That(backend.GetProperty("kind").GetString()).IsEqualTo("Storm");
+            await Assert.That(backend.GetProperty("name").GetString()).IsEqualTo("Storm / OpenGL");
+            await Assert.That(frames[1].TryGetProperty("backend", out _)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("kind")]
+    [Arguments("control")]
+    [Arguments("length")]
+    public async Task InvalidReportedBackendCannotPublishAJob(string defect)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-backend-invalid-").FullName;
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        RenderBackendIdentity backend = defect switch
+        {
+            "kind" => new((RenderBackendKind)99, "Unknown"),
+            "control" => new(RenderBackendKind.Storm, "Storm\nOpenGL"),
+            _ => new(RenderBackendKind.Storm, new string('x', 257)),
+        };
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Backend = backend
+        });
+        try
+        {
+            await Assert.That(() => RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source))
+                .Throws<InvalidDataException>().Because(defect);
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+    [Test]
     public async Task SimulationCapturePublishesExactProvenanceInTheSameAtomicJob()
     {
         string root = Directory.CreateTempSubdirectory("openusd-simulation-job-").FullName;

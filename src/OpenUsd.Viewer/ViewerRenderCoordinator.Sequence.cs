@@ -198,7 +198,8 @@ internal sealed partial class ViewerRenderCoordinator
                         new PhysicsRenderRecordingContext(physicsRequest!.ScenarioIdentity, serial),
                         physicsRequest.StepsPerFrame, token);
                 }
-                return await ViewerRenderSequenceRunner.ExecuteAsync(request, capture, restore, progress, token);
+                return await ViewerRenderSequenceRunner.ExecuteAsync(
+                    request, capture, restore, progress, token, backend: backend.Identity);
             }
             catch (Exception operationFailure)
             {

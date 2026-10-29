@@ -23,10 +23,13 @@ internal sealed record ViewerCaptureStateReceipt(
     int Height,
     string PixelSha256)
 {
-    /// <summary>Marks a receipt derived from a render-job manifest, which does not name the backend.</summary>
+    /// <summary>Marks a receipt from a render-job manifest whose frame does not name its backend.</summary>
     internal const string UnrecordedBackend = "unrecorded";
 
     internal bool RecordsBackend => !string.Equals(Backend, UnrecordedBackend, StringComparison.Ordinal);
+
+    internal static string DescribeBackend(RenderBackendIdentity backend) => $"{backend.Kind}:{backend.Name}";
+
     internal static ViewerCaptureStateReceipt From(
         StageRenderState state, RenderBackendIdentity? backend, ViewerCaptureImage image)
     {
@@ -38,7 +41,7 @@ internal sealed record ViewerCaptureStateReceipt(
             DescribeCamera(state.Camera),
             DescribeDisplay(state.Display),
             DescribeRenderSettings(state.RenderSettings),
-            backend is null ? "none" : $"{backend.Kind}:{backend.Name}",
+            backend is null ? "none" : DescribeBackend(backend),
             image.Width,
             image.Height,
             ViewerCaptureStateReceiptFile.HashPixels(image));
@@ -194,7 +197,7 @@ internal sealed record ViewerCaptureStateReceiptResult(
             return first.RecordsBackend && second.RecordsBackend
                 ? "Recorded state matches: stage, time, camera, display, render settings and backend."
                 : "Recorded state matches: stage, time, camera, display and render settings. " +
-                    "A render-job manifest does not record the backend.";
+                    "The render-job frame does not record its backend.";
         }
         string? problem = Problem("A", before) ?? Problem("B", after);
         return $"{problem} Only pixels are compared.";

@@ -181,11 +181,23 @@ internal static class ViewerCaptureManifestReceipt
             ViewerCaptureStateReceiptFile.ValidateField(ReadCamera(frame.GetProperty("camera"))),
             ViewerCaptureStateReceiptFile.ValidateField(ReadDisplay(frame.GetProperty("display"))),
             ViewerCaptureStateReceiptFile.ValidateField(ReadSettings(frame.GetProperty("settings"))),
-            ViewerCaptureStateReceipt.UnrecordedBackend,
+            ReadBackend(frame),
             ViewerCaptureStateReceiptFile.ValidateDimension(frame.GetProperty("width").GetInt32()),
             ViewerCaptureStateReceiptFile.ValidateDimension(frame.GetProperty("height").GetInt32()),
             new string('0', 64));
         return new ManifestFrame(receipt, hash);
+    }
+
+    private static string ReadBackend(JsonElement frame)
+    {
+        if (!frame.TryGetProperty("backend", out JsonElement backend))
+        {
+            return ViewerCaptureStateReceipt.UnrecordedBackend;
+        }
+        return ViewerCaptureStateReceiptFile.ValidateField(ViewerCaptureStateReceipt.DescribeBackend(
+            new RenderBackendIdentity(
+                ReadEnum<RenderBackendKind>(backend.GetProperty("kind")),
+                backend.GetProperty("name").GetString() ?? string.Empty)));
     }
 
     private static string ReadCamera(JsonElement camera)

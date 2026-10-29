@@ -308,6 +308,10 @@ public sealed class RenderJobImage
     public RenderJobElementId? ElementId { get; init; }
     /// <summary>Gets or initializes the exact simulation publication represented by all captured planes.</summary>
     public RenderSimulationFrameIdentity? Simulation { get; init; }
+    /// <summary>
+    /// Gets or initializes the backend that rendered this frame; the manifest records it when present.
+    /// </summary>
+    public RenderBackendIdentity? Backend { get; init; }
 }
 
 /// <summary>Top-down little-endian RGBA binary16 framebuffer color before exposure, display and selection.</summary>
@@ -565,7 +569,7 @@ public sealed class RenderDiskFrameResult
         string? depthFileName = null, long depthBytes = 0, string? depthSha256 = null,
         string? hdrColorFileName = null, long hdrColorBytes = 0, string? hdrColorSha256 = null,
         RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float,
-        RenderSimulationFrameIdentity? simulation = null)
+        RenderSimulationFrameIdentity? simulation = null, RenderBackendIdentity? backend = null)
     {
         Index = index;
         State = state;
@@ -580,6 +584,7 @@ public sealed class RenderDiskFrameResult
         HdrColorSha256 = hdrColorSha256;
         HdrColorFormat = hdrColorFileName is null ? null : hdrColorFormat;
         Simulation = simulation;
+        Backend = backend;
     }
 
     /// <summary>Gets the zero-based frame index.</summary>
@@ -638,6 +643,8 @@ public sealed class RenderDiskFrameResult
     public string? ElementIdSha256 { get; internal init; }
     /// <summary>Gets the exact simulation publication represented by this frame, when recorded.</summary>
     public RenderSimulationFrameIdentity? Simulation { get; }
+    /// <summary>Gets the backend that rendered this frame, or null when the source did not report one.</summary>
+    public RenderBackendIdentity? Backend { get; }
 }
 
 /// <summary>A completed, atomically published disk job.</summary>

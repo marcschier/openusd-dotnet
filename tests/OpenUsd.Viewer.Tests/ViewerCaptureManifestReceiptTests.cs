@@ -55,7 +55,7 @@ public sealed class ViewerCaptureManifestReceiptTests
 
         await Assert.That(ViewerCaptureStateReceiptResult.DescribePair(viewer, manifest)).IsEqualTo(
             "Recorded state matches: stage, time, camera, display and render settings. " +
-            "A render-job manifest does not record the backend.");
+            "The render-job frame does not record its backend.");
         await Assert.That(ViewerCaptureStateReceiptResult.DescribePair(first, manifest))
             .IsEqualTo("Recorded state differs in time, camera, display, render settings.");
     }
@@ -113,8 +113,65 @@ public sealed class ViewerCaptureManifestReceiptTests
         await Assert.That(result.Status).IsEqualTo(ViewerCaptureStateReceiptStatus.Invalid).Because(defect);
     }
 
-    private static RenderDiskJobResult Render(string root, StageRenderState[] states) =>
-        RenderDiskJob.Execute(new RenderDiskJobRequest(Path.Combine(root, "job"), states), new SeededSource());
+    [Test]
+    public async Task ManifestFramesThatRecordTheBackendCompareItAgainstViewerReceipts()
+    {
+        using var root = new TemporaryRoot();
+        StageRenderState[] states = CreateStates(root.Path);
+        var silk = new RenderBackendIdentity(RenderBackendKind.D3D12, "hdSilk / Direct3D 12");
+        RenderDiskJobResult job = Render(root.Path, states, silk);
+        string sequenceFrame = Path.Combine(job.OutputDirectory, job.Frames[1].FileName);
+        ViewerCaptureImage image = await ViewerCaptureComparison.LoadImageAsync(sequenceFrame, CancellationToken.None);
+        string same = Path.Combine(root.Path, "same.png");
+        string other = Path.Combine(root.Path, "other.png");
+        _ = await ViewerCaptureStateReceiptFile.SaveCaptureAsync(
+            same, Frame(image), states[1], silk, CancellationToken.None);
+        _ = await ViewerCaptureStateReceiptFile.SaveCaptureAsync(other, Frame(image), states[1],
+            new RenderBackendIdentity(RenderBackendKind.Storm, "Storm / OpenGL"), CancellationToken.None);
+
+        ViewerCaptureStateReceiptResult manifest = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
+            sequenceFrame, image, CancellationToken.None);
+        ViewerCaptureStateReceiptResult sameViewer = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
+            same, image, CancellationToken.None);
+        ViewerCaptureStateReceiptResult otherViewer = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
+            other, image, CancellationToken.None);
+
+        await Assert.That(manifest.Status).IsEqualTo(ViewerCaptureStateReceiptStatus.Verified);
+        await Assert.That(manifest.Receipt).IsEqualTo(ViewerCaptureStateReceipt.From(states[1], silk, image));
+        await Assert.That(ViewerCaptureStateReceiptResult.DescribePair(sameViewer, manifest)).IsEqualTo(
+            "Recorded state matches: stage, time, camera, display, render settings and backend.");
+        await Assert.That(ViewerCaptureStateReceiptResult.DescribePair(otherViewer, manifest))
+            .IsEqualTo("Recorded state differs in backend.");
+    }
+
+    [Test]
+    [Arguments("kind", "\"kind\": \"D3D12\"", "\"kind\": \"Direct3D\"")]
+    [Arguments("name", "\"name\": \"hdSilk / Direct3D 12\"", "\"name\": \" \"")]
+    [Arguments("type", "\"name\": \"hdSilk / Direct3D 12\"", "\"name\": 12")]
+    public async Task MalformedManifestBackendsAreInvalidRatherThanTrusted(
+        string defect, string original, string replacement)
+    {
+        using var root = new TemporaryRoot();
+        RenderDiskJobResult job = Render(root.Path, CreateStates(root.Path),
+            new RenderBackendIdentity(RenderBackendKind.D3D12, "hdSilk / Direct3D 12"));
+        string manifest = Path.Combine(job.OutputDirectory, ViewerCaptureManifestReceipt.ManifestName);
+        string text = await File.ReadAllTextAsync(manifest);
+        await Assert.That(text).Contains(original);
+        await File.WriteAllTextAsync(manifest, text.Replace(original, replacement, StringComparison.Ordinal),
+            new UTF8Encoding(false));
+        string path = Path.Combine(job.OutputDirectory, job.Frames[1].FileName);
+        ViewerCaptureImage image = await ViewerCaptureComparison.LoadImageAsync(path, CancellationToken.None);
+
+        ViewerCaptureStateReceiptResult result = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
+            path, image, CancellationToken.None);
+
+        await Assert.That(result.Status).IsEqualTo(ViewerCaptureStateReceiptStatus.Invalid).Because(defect);
+    }
+
+    private static RenderDiskJobResult Render(
+        string root, StageRenderState[] states, RenderBackendIdentity? backend = null) =>
+        RenderDiskJob.Execute(
+            new RenderDiskJobRequest(Path.Combine(root, "job"), states), new SeededSource(backend));
 
     private static StageRenderState[] CreateStates(string root)
     {
@@ -147,7 +204,7 @@ public sealed class ViewerCaptureManifestReceiptTests
     private static ViewerFrameCaptureResult Frame(ViewerCaptureImage image) =>
         new(image.Width, image.Height, image.Rgba, ViewerFrameRowOrder.TopDown);
 
-    private sealed class SeededSource : IRenderJobFrameSource
+    private sealed class SeededSource(RenderBackendIdentity? backend) : IRenderJobFrameSource
     {
         public RenderJobImage Render(StageRenderState state, CancellationToken cancellationToken)
         {
@@ -156,7 +213,10 @@ public sealed class ViewerCaptureManifestReceiptTests
             {
                 rgba[index] = (byte)((state.Time.TimeCode * 40) + index);
             }
-            return new RenderJobImage(state.Viewport.Width, state.Viewport.Height, rgba, Rgba8RowOrder.TopDown);
+            return new RenderJobImage(state.Viewport.Width, state.Viewport.Height, rgba, Rgba8RowOrder.TopDown)
+            {
+                Backend = backend
+            };
         }
     }
 

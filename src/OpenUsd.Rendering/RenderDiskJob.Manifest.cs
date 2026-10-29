@@ -25,6 +25,26 @@ public static partial class RenderDiskJob
         json.WriteEndObject();
     }
 
+    private static void WriteBackendIdentity(Utf8JsonWriter json, RenderBackendIdentity backend)
+    {
+        json.WriteStartObject("backend");
+        json.WriteString("kind", backend.Kind.ToString());
+        json.WriteString("name", backend.Name);
+        json.WriteEndObject();
+    }
+
+    private static bool ContainsControl(string value)
+    {
+        foreach (char character in value)
+        {
+            if (char.IsControl(character))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void WriteRequestedState(Utf8JsonWriter json, StageRenderState state)
     {
         json.WriteStartObject("camera");

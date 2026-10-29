@@ -901,7 +901,8 @@ These tools are unreleased source additions. The current source exposes 18 tools
 `render_sequence` uses the shared renderer-neutral disk-job engine, not an enlarged in-memory preview.
 It samples the camera at each requested time, renders sequentially on the existing owned capture
 thread, and writes generated `frame-000000.png` names and `manifest.json`. The manifest records exact
-requested time, camera, display/colour settings and encoded image hashes. A scene-authored output name
+requested time, camera, display/colour settings and encoded image hashes. The MCP capture path does
+not report its backend, so its frame entries carry no `backend` field. A scene-authored output name
 or RenderPass command is never filesystem or executable authority.
 
 The job admits 1-4096 frames, at most 4096 pixels per side and 64 MiB of RGBA/encoded data per frame.

@@ -151,7 +151,8 @@ internal sealed partial class ViewerRenderCoordinator
             }
             try
             {
-                return await ViewerRenderSequenceRunner.ExecuteAsync(job, capture, restore, report, token, validate);
+                return await ViewerRenderSequenceRunner.ExecuteAsync(
+                    job, capture, restore, report, token, validate, backend.Identity);
             }
             finally
             {
