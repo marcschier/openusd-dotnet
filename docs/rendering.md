@@ -3379,9 +3379,10 @@ The documented MaterialX subset is intentionally a projection into that same dat
 - Direct `ND_image_*` inputs can drive base colour and normal maps; `ND_normalmap` unwraps to its input image and uses
   the existing tangent-space normal-map shader path. `ND_geompropvalue_vector2`, `ND_texcoord_vector2`, and
   `UsdPrimvarReader_float2` are the coordinate nodes that terminate a texture-coordinate chain and select the UV
-  primvar, defaulting to `st` when the graph has no coordinate connection at all. A `ND_texcoord_vector2` whose `index`
-  is non-zero names a second UV set and is rejected with a diagnostic, because hdSilk carries one coordinate stream per
-  material and resolving it to `st` would sample the first set while the graph asked for another.
+  primvar, defaulting to `st` when the graph has no coordinate connection at all. `ND_texcoord_vector2` maps index
+  `0` to `st` and each positive index `N` to `stN`. hdSilk carries one named coordinate stream per material, so all
+  texture bindings on that material must resolve to the same primvar. A connected, negative, or non-integer index is
+  rejected because the material wire cannot represent a dynamic or invalid index.
 - Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, `ND_mix_*`, and `ND_constant_*` chains are folded
   on the CPU for supported scalar/vector inputs, using the MaterialX nodedef defaults: `mix` defaults to `0`, which
   selects `bg`. An input the author replaced with a connection is never folded from the value Hydra leaves behind that

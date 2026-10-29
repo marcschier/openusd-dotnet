@@ -9223,7 +9223,16 @@ bool VerifyMaterialXImageSamplingProjection()
         return false;
     }
 
-    // A texcoord node reading UV set zero is the documented default primvar.
+    // An unauthored or zero texcoord index names the primary UV primvar.
+    HdSilkMaterialRecord implicitSet = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeMaterialXImageNetwork(unauthored, TfToken("ND_texcoord_vector2"), {}));
+    if (implicitSet.textures.size() != 1 || implicitSet.textures[0].uvPrimvar != "st")
+    {
+        std::cerr << "An unauthored texcoord index did not resolve to st.\n";
+        return false;
+    }
+
     std::map<TfToken, VtValue> firstSet;
     firstSet[TfToken("index")] = VtValue(0);
     HdSilkMaterialRecord defaultSet = HdSilkMaterial::Resolve(
@@ -9236,22 +9245,72 @@ bool VerifyMaterialXImageSamplingProjection()
         return false;
     }
 
-    // A non-zero index names a second UV set. hdSilk carries one coordinate
-    // stream per material, so resolving it to `st` would sample the first set
-    // while the graph asked for another.
     std::map<TfToken, VtValue> secondSet;
     secondSet[TfToken("index")] = VtValue(1);
     HdSilkMaterialRecord otherSet = HdSilkMaterial::Resolve(
         materialPath,
         MakeMaterialXImageNetwork(
             unauthored, TfToken("ND_texcoord_vector2"), secondSet));
-    if (!otherSet.textures.empty())
+    if (otherSet.textures.size() != 1 || otherSet.textures[0].uvPrimvar != "st1")
     {
-        std::cerr << "A non-zero texcoord index was silently resolved to st: textures="
-                  << otherSet.textures.size() << " primvar='"
-                  << (otherSet.textures.empty() ? std::string()
-                                                : otherSet.textures[0].uvPrimvar)
-                  << "'\n";
+        std::cerr << "A texcoord index of one did not resolve to st1.\n";
+        return false;
+    }
+
+    std::map<TfToken, VtValue> thirdSet;
+    thirdSet[TfToken("index")] = VtValue(2);
+    HdSilkMaterialRecord thirdUvSet = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeMaterialXImageNetwork(
+            unauthored, TfToken("ND_texcoord_vector2"), thirdSet));
+    if (thirdUvSet.textures.size() != 1 || thirdUvSet.textures[0].uvPrimvar != "st2")
+    {
+        std::cerr << "A texcoord index of two did not resolve to st2.\n";
+        return false;
+    }
+
+    std::map<TfToken, VtValue> negativeSet;
+    negativeSet[TfToken("index")] = VtValue(-1);
+    HdSilkMaterialRecord negativeIndex = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeMaterialXImageNetwork(
+            unauthored, TfToken("ND_texcoord_vector2"), negativeSet));
+    if (!negativeIndex.textures.empty())
+    {
+        std::cerr << "A negative texcoord index was accepted.\n";
+        return false;
+    }
+
+    std::map<TfToken, VtValue> nonIntegerSet;
+    nonIntegerSet[TfToken("index")] = VtValue(1.0f);
+    HdSilkMaterialRecord nonIntegerIndex = HdSilkMaterial::Resolve(
+        materialPath,
+        MakeMaterialXImageNetwork(
+            unauthored, TfToken("ND_texcoord_vector2"), nonIntegerSet));
+    if (!nonIntegerIndex.textures.empty())
+    {
+        std::cerr << "A non-integer texcoord index was accepted.\n";
+        return false;
+    }
+
+    HdMaterialNetworkMap connectedIndexNetwork = MakeMaterialXImageNetwork(
+        unauthored, TfToken("ND_texcoord_vector2"), {});
+    HdMaterialNetwork& connectedIndex =
+        connectedIndexNetwork.map[HdMaterialTerminalTokens->surface];
+    HdMaterialNode indexSource;
+    indexSource.path = SdfPath("/World/Sampled/Index");
+    indexSource.identifier = TfToken("ND_constant_integer");
+    connectedIndex.nodes.push_back(indexSource);
+    connectedIndex.relationships.push_back(
+        {indexSource.path,
+         TfToken("out"),
+         SdfPath("/World/Sampled/Coordinate"),
+         TfToken("index")});
+    HdSilkMaterialRecord dynamicIndex =
+        HdSilkMaterial::Resolve(materialPath, connectedIndexNetwork);
+    if (!dynamicIndex.textures.empty())
+    {
+        std::cerr << "A connected texcoord index was accepted.\n";
         return false;
     }
 

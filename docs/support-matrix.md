@@ -594,12 +594,12 @@ analytic native fixtures rather than this unsuitable Storm reference.
   channels projects; a per-channel or connected colour-typed opacity is refused. There is **no generated OpenPBR
   shader path**: an OpenPBR material needing a lobe the projection omits renders without it and says so.
 - The MaterialX `place2d` / `UsdTransform2d` UV transform fold is gated by Vulkan and D3D12 pixel self-consistency and
-  divergence, not by Storm parity, and only one texture-coordinate stream per material is carried: **both** the UV
-  transform and the UV primvar are reconciled across a material's textures, so divergent per-image transforms,
-  divergent per-image primvars (a base colour on `uvSet0` beside a normal map on `uvSet1`),
-  non-constant transform inputs, transforms behind unsupported intermediate nodes, and chains that never reach a
-  coordinate node are rejected with diagnostics rather than rendered. **Multiple UV sets are not supported** by the
-  wire or by the checked shaders, and the expanded surface-model projection does not change that.
+  divergence, not by Storm parity. Each texture can select a named UV primvar, including `stN` from a positive
+  `ND_texcoord_vector2` index; all textures on one material must still resolve to the same primvar and UV transform.
+  Divergent per-image transforms, divergent per-image primvars (a base colour on `uvSet0` beside a normal map on
+  `uvSet1`), non-constant transform inputs, transforms behind unsupported intermediate nodes, and chains that never
+  reach a coordinate node are rejected with diagnostics rather than rendered. The expanded surface-model projection
+  does not change that.
 - Constant arithmetic over one image folds into that texture's scale and bias and is gated the same way. Two images
   joined by one constant `multiply`, `add`, `subtract` or `mix` are supported as a per-pixel composite and gated by
   pixels on both executable backends, but **one composite per material** only: a graph that composites a second
@@ -610,8 +610,7 @@ analytic native fixtures rather than this unsuitable Storm reference.
   default. `SilkTextureWrap.Black` and `SilkTextureWrap.UseMetadata` select transparent-black border sampling on
   D3D12, Vulkan, and Metal. D3D12 WARP and Vulkan SwiftShader pixel gates distinguish the border from clamp-to-edge;
   Metal runtime pixel evidence still requires a Metal-capable host. MaterialX `default` is not a configurable border
-  colour and remains the unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not
-  supported.
+  colour and remains the unreadable-file fallback.
 - Rect and disk lights apply ShapingAPI cone and focus, gated by Vulkan self-consistency pairs. Sphere-light
   shaping, cone softness, IES profiles and area-light texture inputs are not implemented. Dome textures have no gated
   Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome

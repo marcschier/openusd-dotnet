@@ -3661,6 +3661,33 @@ def Xform "World"
         await AssertSyntheticMaterialXAddressModes(device, "d3d12");
     }
 
+    [Test]
+    public async Task MaterialXTexcoordIndexSelectsSecondUvSetOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertMaterialXSecondUvSet(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("MaterialX second UV set Vulkan sampling", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task MaterialXTexcoordIndexSelectsSecondUvSetOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertMaterialXSecondUvSet(device, "d3d12");
+    }
+
     /// <summary>
     /// Pixel evidence that the wrap value hdSilk resolves from a MaterialX
     /// address mode reaches the sampler and selects a different texel.
@@ -3996,6 +4023,80 @@ def Xform "World"
                     255, 255, 0, 255,
                     0, 0, 255, 255,
                 ]));
+    }
+
+    private static async Task AssertMaterialXSecondUvSet(
+        ISilkGraphicsDevice device,
+        string backend)
+    {
+        float[] firstSet =
+        [
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+        ];
+        float[] secondSet =
+        [
+            0.75f, 0.25f,
+            0.75f, 0.25f,
+            0.75f, 0.25f,
+            0.75f, 0.25f,
+        ];
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 1.0f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialTextureSpec secondUvTexture = new(
+            "address-mode-quadrants",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st1",
+            SilkTextureChannel.Rgb);
+
+        ParityImage image = CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                [secondUvTexture],
+                texturedScalars),
+            firstSet,
+            requireImagePlugins: false,
+            imageDecoder: static (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                [
+                    255, 0, 0, 255,
+                    0, 255, 0, 255,
+                    255, 255, 0, 255,
+                    0, 0, 255, 255,
+                ]),
+            secondTextureCoordinates: secondSet);
+        (byte maxDelta, double meanDelta) = CompareTranslatedHalves(image);
+        string evidence = FormatSelfConsistencyMetrics(
+            $"materialx-second-uv-set-{backend}",
+            maxDelta,
+            meanDelta);
+        Console.WriteLine(evidence);
+        WriteEvidence($"materialx-second-uv-set-{backend}.txt", [evidence]);
+        await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
+        await Assert.That(maxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanDelta).IsLessThanOrEqualTo(0.500);
     }
 
     private static ParityImage CaptureSyntheticFoldedUvTransform(
@@ -4724,7 +4825,8 @@ def Xform "World"
         bool requireImagePlugins = true,
         Func<string, bool, SilkDecodedImage>? imageDecoder = null,
         Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
-        Func<string, SilkImageDescription>? imageDescriber = null)
+        Func<string, SilkImageDescription>? imageDescriber = null,
+        ReadOnlySpan<float> secondTextureCoordinates = default)
     {
         if (requireImagePlugins)
         {
@@ -4762,8 +4864,10 @@ def Xform "World"
                 IdentityMatrix()),
             leftMaterial,
             rightMaterial,
-            CreateTexturedMeshCommand(1, "/LeftMesh", "/Repeat", -0.5f, textureCoordinates),
-            CreateTexturedMeshCommand(2, "/RightMesh", "/Candidate", 0.5f, textureCoordinates));
+            CreateTexturedMeshCommand(
+                1, "/LeftMesh", "/Repeat", -0.5f, textureCoordinates, secondTextureCoordinates),
+            CreateTexturedMeshCommand(
+                2, "/RightMesh", "/Candidate", 0.5f, textureCoordinates, secondTextureCoordinates));
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
         _ = renderer.Render(color, depth, options);
         _ = renderer.Render(color, depth, options);
@@ -5573,7 +5677,8 @@ def Xform "World"
         string path,
         string materialPath,
         float x,
-        ReadOnlySpan<float> textureCoordinates = default)
+        ReadOnlySpan<float> textureCoordinates = default,
+        ReadOnlySpan<float> secondTextureCoordinates = default)
     {
         float[] defaultTextureCoordinates =
         [
@@ -5603,14 +5708,26 @@ def Xform "World"
             SilkAttributeInterpolation.Vertex,
             "st",
             resolvedTextureCoordinates);
-        Array.Resize(ref mesh, mesh.Length + materialBytes.Length + attributes.Length);
+        byte[] secondAttributes = secondTextureCoordinates.IsEmpty
+            ? []
+            : CreateAttribute(
+                SilkAttributeSemantic.TexCoord,
+                2,
+                SilkAttributeInterpolation.Vertex,
+                "st1",
+                secondTextureCoordinates);
+        Array.Resize(
+            ref mesh,
+            mesh.Length + materialBytes.Length + attributes.Length + secondAttributes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), (uint)mesh.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(mesh.AsSpan(208), ComputeStableHash(materialPath));
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(216), (uint)materialBytes.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(220), 1);
-        int materialOffset = mesh.Length - materialBytes.Length - attributes.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(220), secondAttributes.Length == 0 ? 1u : 2u);
+        int materialOffset =
+            mesh.Length - materialBytes.Length - attributes.Length - secondAttributes.Length;
         materialBytes.CopyTo(mesh.AsSpan(materialOffset));
         attributes.CopyTo(mesh.AsSpan(materialOffset + materialBytes.Length));
+        secondAttributes.CopyTo(mesh.AsSpan(materialOffset + materialBytes.Length + attributes.Length));
         return mesh;
     }
 

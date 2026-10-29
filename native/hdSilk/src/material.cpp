@@ -1332,17 +1332,15 @@ bool _IsCoordinateNode(const HdMaterialNode& node)
         node.identifier == _tokens->MtlxTexCoord2;
 }
 
-/// Accepts only the first texture-coordinate set of a MaterialX texcoord node.
+/// Resolves the MaterialX texcoord index to its conventional USD primvar name.
 ///
-/// `ND_texcoord_vector2` carries a uniform integer `index` naming which UV set
-/// to read, defaulting to zero. hdSilk publishes one coordinate stream per
-/// material and names it from the primvar the coordinate node states, and a
-/// texcoord node states no primvar name at all, so index 0 is the only value
-/// that resolves to the documented default primvar. A non-zero index used to
-/// fall through to that same default and silently sample the first UV set.
-bool _TryValidateTexCoordIndex(
+/// Index zero uses `st`; positive indices append their value (`st1`, `st2`, ...).
+/// The material wire carries one named coordinate stream, so the resulting
+/// primvar name is enough to select the requested set without expanding the wire.
+bool _TryResolveTexCoordIndex(
     const HdMaterialNetwork& network,
     const HdMaterialNode& node,
+    std::string* primvarName,
     std::string* reason)
 {
     if (_FindInputConnection(network, node.path, _tokens->index) != nullptr)
@@ -1351,25 +1349,23 @@ bool _TryValidateTexCoordIndex(
                   "selects a UV set per pixel";
         return false;
     }
+    int index = 0;
     const auto entry = node.parameters.find(_tokens->index);
-    if (entry == node.parameters.end())
+    if (entry != node.parameters.end())
     {
-        return true;
+        if (!entry->second.IsHolding<int>())
+        {
+            *reason = "its texture-coordinate node has an 'index' that is not an integer";
+            return false;
+        }
+        index = entry->second.UncheckedGet<int>();
+        if (index < 0)
+        {
+            *reason = "its texture-coordinate node has a negative 'index'";
+            return false;
+        }
     }
-    float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (_ReadFloats(entry->second, values) == 0)
-    {
-        *reason = "its texture-coordinate node has an 'index' this projection "
-                  "cannot read";
-        return false;
-    }
-    if (values[0] != 0.0f)
-    {
-        *reason = "its texture-coordinate node reads UV set " +
-            std::to_string(static_cast<int>(values[0])) +
-            ", and hdSilk carries one texture-coordinate stream per material";
-        return false;
-    }
+    *primvarName = index == 0 ? "st" : "st" + std::to_string(index);
     return true;
 }
 
@@ -1418,18 +1414,20 @@ _UvBinding _ResolveUvBinding(
         }
         if (_IsCoordinateNode(*node))
         {
-            if (node->identifier == _tokens->MtlxTexCoord2 &&
-                !_TryValidateTexCoordIndex(network, *node, &binding.unsupportedReason))
+            std::string name;
+            if (node->identifier == _tokens->MtlxTexCoord2)
             {
-                // A non-zero texcoord index names a second UV set. hdSilk carries
-                // one texture-coordinate stream per material and its name comes
-                // from the primvar the coordinate node states, so resolving a
-                // non-zero index to "st" would sample the first UV set while the
-                // graph asked for another.
-                binding.supported = false;
-                return binding;
+                if (!_TryResolveTexCoordIndex(
+                        network, *node, &name, &binding.unsupportedReason))
+                {
+                    binding.supported = false;
+                    return binding;
+                }
             }
-            const std::string name = _ReadPrimvarName(*node);
+            else
+            {
+                name = _ReadPrimvarName(*node);
+            }
             if (!name.empty())
             {
                 binding.primvar = name;

@@ -2006,7 +2006,13 @@ requires an image with no authored address mode to publish periodic on both axes
 `clamp`, `periodic`, and `mirror` to map to its own wire mode with the two axes read independently and with one axis
 authored as a `TfToken` and the other as a `std::string`, requires an address mode outside that enumeration to be
 rejected, requires the MaterialX `default` colour to become the entry fallback while the unauthored alpha stays
-opaque, and requires a `ND_texcoord_vector2` with `index = 1` to be rejected where `index = 0` resolves to `st`.
+opaque, and requires an unauthored or zero `ND_texcoord_vector2` index to resolve to `st`, positive indices to resolve
+to `stN`, and connected, negative, or non-integer indices to be rejected. The
+`MaterialXTexcoordIndexSelectsSecondUvSetOnVulkan` and
+`MaterialXTexcoordIndexSelectsSecondUvSetOnD3D12` pixel tests prove that a
+texture bound to `st1` samples that stream rather than `st`.
+`MissingNamedTextureCoordinatesUseZeroAndReportTheRequestedPrimvar` proves that
+an absent `st1` does not fall back to `st` and reports the requested primvar.
 
 `VerifyMaterialXConstantFoldProjection` pins the constant folds to the MaterialX nodedefs. It requires
 `ND_constant_color3` to fold from `value`, requires an unauthored `mix` factor to default to `0` and therefore select

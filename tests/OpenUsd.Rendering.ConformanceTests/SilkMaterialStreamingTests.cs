@@ -1589,6 +1589,32 @@ public sealed class SilkMaterialStreamingTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task MissingNamedTextureCoordinatesUseZeroAndReportTheRequestedPrimvar(
+        SilkGraphicsBackend backend)
+    {
+        using var expected = new Fixture(backend, streaming: true);
+        using var actual = new Fixture(backend, streaming: true);
+        using OpenUsdSilkPage expectedPage = Page(2, 1, zeroUvs: true);
+        using OpenUsdSilkPage missingNamedSetPage = Page(
+            2,
+            1,
+            zeroUvs: true,
+            materialUvPrimvar: "st1");
+        _ = expected.Render(expectedPage);
+        _ = actual.Render(missingNamedSetPage);
+        await Assert.That(actual.ColorBytes().SequenceEqual(expected.ColorBytes())).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(expected.DepthValues())).IsTrue();
+        bool reportsMissingSet = actual.Renderer.GpuResources.Diagnostics.Entries
+                .Where(static entry => entry.Code == SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable)
+                .Any(static entry => entry.Message.Contains(
+                    "no 'st1' texture coordinates",
+                    StringComparison.Ordinal));
+        await Assert.That(reportsMissingSet).IsTrue();
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task NormalMappedInstancesShareOneGpuGeometryAndKeepBothPlacements(SilkGraphicsBackend backend)
     {
         using var fixture = new Fixture(backend, streaming: true);
@@ -2021,7 +2047,7 @@ public sealed class SilkMaterialStreamingTests
         bool normalMap = false, bool omitUvs = false, bool zeroUvs = false, float uvScale = 1,
         bool sharedAssets = false, bool secondExtended = false, bool repeatFirstAsset = false,
         bool thirdExtended = false, float offsetY = 0, float offsetZ = 0, bool visibleMiddle = false,
-        float? uvScaleY = null)
+        float? uvScaleY = null, string materialUvPrimvar = "st", string meshUvPrimvar = "st")
     {
         List<byte[]> commands = [SilkMeshRendererConformance.CreateFrameCommand(
             32, 32, SilkMeshRendererConformance.Identity())];
@@ -2032,7 +2058,8 @@ public sealed class SilkMaterialStreamingTests
             {
                 commands.Add(Material(material, transparent, normalMap,
                     extended: (secondExtended && i == 1) || (thirdExtended && i == 2),
-                    assetName: sharedAssets || (repeatFirstAsset && i == 2) ? 'A' : null));
+                    assetName: sharedAssets || (repeatFirstAsset && i == 2) ? 'A' : null,
+                    uvPrimvar: materialUvPrimvar));
             }
             float left = -0.9f + (i * 0.3f);
             float right = left + 1.2f;
@@ -2042,7 +2069,7 @@ public sealed class SilkMaterialStreamingTests
                 [left, -0.7f, z, right, -0.7f, z, right, 0.7f, z, left, 0.7f, z],
                 [0, 1, 2, 0, 2, 3], visibleMiddle && i == 1 ? 0 : offset, offsetY, null, 1, null, null, null,
                 omitUvs ? [] :
-                    [("st", (uint)SilkAttributeSemantic.TexCoord, 2, zeroUvs ? new float[8] :
+                    [(meshUvPrimvar, (uint)SilkAttributeSemantic.TexCoord, 2, zeroUvs ? new float[8] :
                         [0, 0, uvScale, 0, uvScale, uvScaleY ?? 1, 0, uvScaleY ?? 1])]);
             commands.Add(VolumeCommandAuthoring.WithMaterialBinding(mesh, $"/{material}"));
         }
@@ -2056,7 +2083,8 @@ public sealed class SilkMaterialStreamingTests
         bool udim = false, float uvTranslate = 0, char? assetName = null,
         string pathSuffix = "", string? assetPath = null, bool vectorNormals = false,
         bool promotedNormals = false, SilkTextureWrap wrap = SilkTextureWrap.Repeat, bool normalScalarMaps = false,
-        bool flipNormalGreen = false, bool emissiveOnly = false, uint colorComponents = 3)
+        bool flipNormalGreen = false, bool emissiveOnly = false, uint colorComponents = 3,
+        string uvPrimvar = "st")
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2111,7 +2139,8 @@ public sealed class SilkMaterialStreamingTests
             writer.Write((uint)wrap);
             writer.Write((uint)SilkColorSpace.Raw);
             writer.Write((uint)asset.Length);
-            writer.Write(2u);
+            byte[] uvPrimvarBytes = Encoding.UTF8.GetBytes(uvPrimvar);
+            writer.Write((uint)uvPrimvarBytes.Length);
             writer.Write(scalar ? 1u : colorComponents);
             bool promotedNormal = promotedNormals && map is 1 or 2;
             float gain = (extended && (!vectorNormals || map == 0)) || promotedNormal ? 2 : 1;
@@ -2127,7 +2156,7 @@ public sealed class SilkMaterialStreamingTests
             writer.Write((uint)(map == 1 ? composite : SilkCompositeOperator.None));
             writer.Write(map == 1 && composite == SilkCompositeOperator.Mix ? 0.375f : 0f);
             writer.Write(asset);
-            writer.Write(Encoding.UTF8.GetBytes("st"));
+            writer.Write(uvPrimvarBytes);
         }
         writer.Write(0u);
         writer.Write(0u);

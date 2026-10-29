@@ -643,6 +643,7 @@ try
         'MaterialXPlace2dUvTransformSelectsAnotherTexelOnD3D12',
         'MaterialXImageArithmeticFoldsToTextureScaleBiasOnD3D12',
         'MaterialXPeriodicAddressModeTilesOnD3D12',
+        'MaterialXTexcoordIndexSelectsSecondUvSetOnD3D12',
         'MaterialXTwoImageCompositeShadesPerPixelOnD3D12',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
     $macosCglTestNames = @(
@@ -678,6 +679,7 @@ try
         'MaterialXPlace2dUvTransformSelectsAnotherTexelOnVulkan',
         'MaterialXImageArithmeticFoldsToTextureScaleBiasOnVulkan',
         'MaterialXPeriodicAddressModeTilesOnVulkan',
+        'MaterialXTexcoordIndexSelectsSecondUvSetOnVulkan',
         'MaterialXTwoImageCompositeShadesPerPixelOnVulkan',
         'TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan',
         'TextureWrapModesDivergeOutsideUnitUvRangeOnVulkan',
