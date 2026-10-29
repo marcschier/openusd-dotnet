@@ -439,7 +439,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "1728afe25241b07d041cbb529eb19ca0743ebd6154ad550a4a6e2628418b9028"
+      "sha256": "79dbbdc769b683716e1be9f4661d68d5876ebd7781c8853bd038a4223e9f08da"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
