@@ -446,7 +446,8 @@ public sealed class ViewerSourceContractTests
         await Assert.That(diagnostics).Contains("\"<source-tree>\"");
         await Assert.That(diagnostics).Contains("\"<user-profile>\"");
         await Assert.That(settings).Contains("MaximumFileBytes = 16 * 1024");
-        await Assert.That(settings).Contains("File.Move(temporaryPath, StorePath, overwrite: true)");
+        await Assert.That(settings).Contains("MoveIntoPlaceAsync(temporaryPath, StorePath, cancellationToken)");
+        await Assert.That(settings).Contains("File.Move(temporaryPath, destinationPath, overwrite: true)");
         await Assert.That(settings).DoesNotContain("JsonSerializer");
         await Assert.That(models).Contains("UsdGeomImageable.TryWrap(");
         await Assert.That(models).Contains("prim.IsPrototype()");

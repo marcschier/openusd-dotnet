@@ -184,6 +184,10 @@ public sealed partial class ViewerCameraPropertyNativeTests
                     .IsEqualTo("Review edit applied.");
                 await Assert.That(input.Text).IsEqualTo(edited);
                 await Assert.That(Required<TextBlock>(window, "PropertyTargetState").Text).Contains(edited);
+                // The applied state text reflows the body; settle that layout so bringing the input into
+                // view on focus uses its final position.
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
                 await Assert.That(input.Focus()).IsTrue();
                 window.KeyPress(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);
                 window.KeyRelease(Key.Home, RawInputModifiers.Control, PhysicalKey.Home, null);

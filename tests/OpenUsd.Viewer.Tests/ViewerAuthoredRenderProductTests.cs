@@ -125,6 +125,8 @@ public sealed class ViewerAuthoredRenderProductTests
                 else if (destination == "other")
                 {
                     other.Show();
+                    other.Activate();
+                    Dispatcher.UIThread.RunJobs();
                     await Assert.That(otherAction.Focus()).IsTrue();
                 }
                 release.TrySetResult();
@@ -243,6 +245,8 @@ public sealed class ViewerAuthoredRenderProductTests
                 if (destination == "other")
                 {
                     other.Show();
+                    other.Activate();
+                    Dispatcher.UIThread.RunJobs();
                     await Assert.That(otherAction.Focus()).IsTrue();
                 }
                 else if (destination == "close")
@@ -376,6 +380,8 @@ public sealed class ViewerAuthoredRenderProductTests
                 if (destination == "other")
                 {
                     other.Show();
+                    other.Activate();
+                    Dispatcher.UIThread.RunJobs();
                     await Assert.That(otherAction.Focus()).IsTrue();
                 }
                 else if (destination == "close")
