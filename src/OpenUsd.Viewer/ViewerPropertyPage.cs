@@ -27,6 +27,7 @@ internal enum ViewerPropertyGroup
     Imageable,
     Physics,
     Mesh,
+    Skinning,
     Other
 }
 
@@ -205,6 +206,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Imageable;
         }
+        if (HasNamespace(name, "skel:"))
+        {
+            return ViewerPropertyGroup.Skinning;
+        }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
@@ -221,6 +226,10 @@ internal sealed class ViewerPropertyPage
         if (name == "proxyPrim")
         {
             return ViewerPropertyGroup.Imageable;
+        }
+        if (HasNamespace(name, "skel:"))
+        {
+            return ViewerPropertyGroup.Skinning;
         }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }

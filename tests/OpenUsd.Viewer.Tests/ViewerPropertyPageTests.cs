@@ -14,7 +14,8 @@ public sealed class ViewerPropertyPageTests
         "XformOp:translate", "xformOpOrderExtra", "FocalLength", "shutter:custom",
         "inputsExtra:roughness", "Outputs:surface", "material:binding", "primvars:", "Primvars:displayColor",
         "primvarsExtra:st", "collection:", "Collection:lights:includeRoot", "Visibility", "purposeExtra",
-        "physics:", "Physics:mass", "physicsExtra:mass", "physxRigidBody:linearDamping"
+        "physics:", "Physics:mass", "physicsExtra:mass", "physxRigidBody:linearDamping",
+        "skel:", "Skel:joints", "skelExtra:joints"
     ];
     private static readonly string[] NamespacedApiNames =
     [
@@ -94,13 +95,14 @@ public sealed class ViewerPropertyPageTests
             new("primvars:displayColor", "/World"),
             new("collection:", "/World"),
             new("proxyPrimExtra", "/Proxy"),
-            new("physics:", "/Body")
+            new("physics:", "/Body"),
+            new("skel:", "/Skel")
         ];
         ViewerPropertyPage other = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isCamera: true);
         await Assert.That(other.Attributes).IsEquivalentTo(attributes);
         await Assert.That(other.Relationships).IsEquivalentTo(relationships);
-        await Assert.That(other.MatchCount).IsEqualTo(26);
+        await Assert.That(other.MatchCount).IsEqualTo(30);
         await Assert.That(() => ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: (ViewerPropertyGroup)999))
             .Throws<ArgumentOutOfRangeException>();
@@ -195,6 +197,39 @@ public sealed class ViewerPropertyPageTests
         ViewerPropertyPage nonMeshOther = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
         await Assert.That(nonMeshOther.Attributes.Count).IsEqualTo(expected.Length + 2);
+    }
+
+    [Test]
+    public async Task SkinningGroupUsesTheSkelNamespaceAndLeavesSkinningPrimvarsUnderPrimvars()
+    {
+        string[] names =
+        [
+            "skel:joints", "primvars:skel:jointIndices", "skel:blendShapes", "custom", "skel:skinningMethod"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+        [
+            new("skel:skeleton", "/Rig/Skel"),
+            new("link", "/World"),
+            new("skel:blendShapeTargets", "/Rig/Smile")
+        ];
+
+        ViewerPropertyPage skinning = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Skinning, isMesh: true);
+
+        await Assert.That(string.Join(",", skinning.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("skel:joints,skel:blendShapes,skel:skinningMethod");
+        await Assert.That(string.Join(",", skinning.Relationships.Select(static item => item.Name)))
+            .IsEqualTo("skel:skeleton,skel:blendShapeTargets");
+        ViewerPropertyPage primvars = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Primvars);
+        await Assert.That(primvars.Attributes.Single().Name).IsEqualTo("primvars:skel:jointIndices");
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
+        await Assert.That(other.Attributes.Single().Name).IsEqualTo("custom");
+        await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationships[1]);
     }
 
     [Test]

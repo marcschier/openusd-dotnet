@@ -1219,6 +1219,7 @@
               <ComboBoxItem Content="Visibility and purpose (Imageable)" />
               <ComboBoxItem Content="Physics (physics:)" />
               <ComboBoxItem Content="Mesh geometry (Mesh)" />
+              <ComboBoxItem Content="Skinning (skel:)" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

@@ -365,6 +365,11 @@ mesh topology and subdivision attributes, such as `faceVertexCounts`, `faceVerte
 `extent`, `doubleSided`, and `orientation` attributes. A custom `points` attribute on an `Xform`
 stays under **Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
 `primvars:normals`, stay under **Primvars**.
+**Skinning** groups attributes and relationships in the `skel:` namespace, such as
+`skel:skinningMethod` and the `skel:skeleton` relationship. Like the other namespace groups, it does
+not check that `SkelBindingAPI` is applied. Skinning primvars such as `primvars:skel:jointIndices`
+stay under **Primvars**; a bare `skel:` name and names that differ in case stay under
+**Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

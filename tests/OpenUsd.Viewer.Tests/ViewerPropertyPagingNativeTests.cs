@@ -83,6 +83,9 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 int[] faceVertexIndices = [0, 1, 2]
                 custom float pointsExtra = 1
                 color3f[] primvars:displayColor = [(0, 1, 0)]
+                uniform token skel:skinningMethod = "classicLinear"
+                int[] primvars:skel:jointIndices = [0, 0, 0]
+                rel skel:skeleton = </Other>
             }
             def Shader "Surface"
             {
@@ -370,6 +373,14 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.pointsExtra");
             await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.primvars:displayColor");
             await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.visibility");
+            await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.skel:skinningMethod");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Skinning;
+            await WaitAsync(() => meshState.Text == "Properties 1-2 of 2 matches" &&
+                Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                    .Any(static row => row.Text == "skel:skeleton: /Other"), timeout);
+            await Assert.That(ValueText(main)).Contains("skel:skinningMethod");
+            await Assert.That(ValueText(main)).DoesNotContain("primvars:skel:jointIndices");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
             await WaitAsync(() => shaderQuery.IsEnabled &&
