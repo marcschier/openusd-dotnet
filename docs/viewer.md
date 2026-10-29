@@ -2432,7 +2432,10 @@ An unknown or empty theme value falls back to System with an explicit diagnostic
 the rest of the profile. Explicit theme choices are saved atomically on selection and again on
 normal close; Reset Layout leaves the theme choice intact. Stage-specific
 camera and session state are not persisted. Malformed or oversized settings are ignored with an
-explicit Viewer diagnostic; I/O failures are shown in the status area. Unknown/removed selected tab
+explicit Viewer diagnostic; I/O failures are shown in the status area. If another process, such as
+a search indexer or virus scanner, briefly holds the settings file, the save retries for about
+630 ms before it reports the failure. The previous file stays intact and no temporary file is left
+behind. Unknown/removed selected tab
 IDs fall back to Properties and out-of-range saved dimensions are normalized independently, with
 a diagnostic, rather than discarding unrelated preferences. Non-finite dimensions use their clean
 defaults; numeric dimensions are clamped to the supported ranges. Restored window dimensions are
