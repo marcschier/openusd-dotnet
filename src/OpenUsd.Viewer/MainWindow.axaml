@@ -1218,6 +1218,7 @@
               <ComboBoxItem Content="Collections (collection:)" />
               <ComboBoxItem Content="Visibility and purpose (Imageable)" />
               <ComboBoxItem Content="Physics (physics:)" />
+              <ComboBoxItem Content="Mesh geometry (Mesh)" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

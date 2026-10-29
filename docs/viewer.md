@@ -359,6 +359,12 @@ or a prefix that differs in case, stays under **Other properties**.
 attributes and relationships in the `physics:` namespace, such as `physics:mass`. PhysX
 namespaces such as `physxRigidBody:` stay under **Other properties**, as do a bare `physics:`
 name and names that differ in case.
+**Mesh geometry** applies only when the selected prim is a `UsdGeomMesh`. It groups the exact
+mesh topology and subdivision attributes, such as `faceVertexCounts`, `faceVertexIndices`, and
+`creaseSharpnesses`, plus the inherited `points`, `velocities`, `accelerations`, `normals`,
+`extent`, `doubleSided`, and `orientation` attributes. A custom `points` attribute on an `Xform`
+stays under **Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
+`primvars:normals`, stay under **Primvars**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

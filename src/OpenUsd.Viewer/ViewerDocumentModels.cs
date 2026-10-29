@@ -618,7 +618,8 @@ internal sealed record ViewerPrimInspectorSnapshot(
     ViewerRelationshipSnapshot[] Relationships,
     ViewerUnsupportedFeature[] UnsupportedFeatures,
     UsdPrimPropertySnapshot? PropertySnapshot = null,
-    IReadOnlyList<string>? LightSchemaProperties = null) : IUsdDetachedResult;
+    IReadOnlyList<string>? LightSchemaProperties = null,
+    bool IsMesh = false) : IUsdDetachedResult;
 
 internal static class ViewerHierarchyExpansionPolicy
 {
@@ -966,7 +967,8 @@ internal static partial class ViewerStageSnapshotBuilder
             relationshipSnapshots,
             unsupported.ToArray(),
             properties,
-            Array.AsReadOnly(lightSchemaProperties));
+            Array.AsReadOnly(lightSchemaProperties),
+            UsdGeomMesh.TryWrap(prim, out _));
     }
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)

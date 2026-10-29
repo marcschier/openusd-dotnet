@@ -98,7 +98,7 @@ public sealed partial class MainWindow
             InspectorPropertyQuery.Text, _inspectorPropertyPageIndex,
             (ViewerPropertyFilter)InspectorPropertyFilter.SelectedIndex,
             (ViewerPropertyGroup)InspectorPropertyGroup.SelectedIndex,
-            inspector.IsCamera, inspector.IsLight, inspector.LightSchemaProperties);
+            inspector.IsCamera, inspector.IsLight, inspector.LightSchemaProperties, inspector.IsMesh);
         _inspectorPropertyPageIndex = _inspectorPropertyPage.PageIndex;
         return _inspectorPropertyPage;
     }

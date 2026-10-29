@@ -72,7 +72,18 @@ public sealed partial class ViewerPropertyPagingNativeTests
         source.Append("""
                 rel reviewTest:link = </Other>
             }
-            def Xform "Other" {}
+            def Xform "Other"
+            {
+                custom point3f[] points = [(0, 0, 0)]
+            }
+            def Mesh "Grid"
+            {
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                custom float pointsExtra = 1
+                color3f[] primvars:displayColor = [(0, 1, 0)]
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -343,6 +354,29 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(await session.Scheduler.InvokeAsync(
                 static stage => UsdGeomCamera.Wrap(stage.GetPrim("/Camera")).FocalLength, timeout)).IsEqualTo(50f);
             await ExerciseCameraOpticsAsync(main, session, shaderQuery, propertyGroup, timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Grid" });
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
+            shaderQuery.Text = string.Empty;
+            TextBlock meshState = Required<TextBlock>(main, "InspectorPropertyPageState");
+            await WaitAsync(() => shaderQuery.IsEnabled && meshState.Text?.StartsWith(
+                "Properties 1-", StringComparison.Ordinal) == true &&
+                PropertyButtons(main).Any(static button => AutomationProperties.GetAutomationId(button) ==
+                    "edit.property:/Grid.faceVertexIndices"), timeout);
+            string[] meshProperties = PropertyButtons(main)
+                .Select(static button => AutomationProperties.GetAutomationId(button)!).ToArray();
+            await Assert.That(meshProperties).Contains("edit.property:/Grid.points");
+            await Assert.That(meshProperties).Contains("edit.property:/Grid.faceVertexCounts");
+            await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.pointsExtra");
+            await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.primvars:displayColor");
+            await Assert.That(meshProperties).DoesNotContain("edit.property:/Grid.visibility");
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
+            await WaitAsync(() => shaderQuery.IsEnabled &&
+                meshState.Text == "No properties match the current filter.", timeout);
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Other;
+            await WaitAsync(() => PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Other.points"), timeout);
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Light" });
             await WaitAsync(() => shaderQuery.IsEnabled && !registry.IsVisible, timeout);

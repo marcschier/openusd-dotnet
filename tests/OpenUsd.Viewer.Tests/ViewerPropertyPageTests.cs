@@ -25,6 +25,14 @@ public sealed class ViewerPropertyPageTests
     [
         "physics:mass", "visibility", "custom", "purpose", "physics:rigidBodyEnabled"
     ];
+    private static readonly string[] MeshNames =
+    [
+        "points", "faceVertexCounts", "pointsExtra", "Points", "faceVertexIndices", "extent", "doubleSided",
+        "orientation", "normals", "velocities", "accelerations", "subdivisionScheme", "interpolateBoundary",
+        "faceVaryingLinearInterpolation", "triangleSubdivisionRule", "holeIndices", "cornerIndices",
+        "cornerSharpnesses", "creaseIndices", "creaseLengths", "creaseSharpnesses", "primvars:normals",
+        "visibility"
+    ];
 
     [Test]
     [Arguments(ViewerPropertyGroup.All, true,
@@ -157,6 +165,36 @@ public sealed class ViewerPropertyPageTests
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
         await Assert.That(other.Attributes.Single().Name).IsEqualTo("custom");
         await Assert.That(other.Relationships).IsEmpty();
+    }
+
+    [Test]
+    public async Task MeshGroupRequiresAMeshAndExactSchemaNames()
+    {
+        ViewerAttributeSnapshot[] attributes = MeshNames
+            .Select(static name => new ViewerAttributeSnapshot(name, "int[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships = [new("points", "/World/A")];
+
+        ViewerPropertyPage mesh = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Mesh, isMesh: true);
+
+        string[] expected = MeshNames
+            .Where(static name => name is not ("pointsExtra" or "Points" or "primvars:normals" or "visibility"))
+            .ToArray();
+        await Assert.That(string.Join(",", mesh.Attributes.Select(static item => item.Name)))
+            .IsEqualTo(string.Join(",", expected));
+        await Assert.That(mesh.Relationships).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isMesh: true);
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("pointsExtra,Points");
+        await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationships[0]);
+        ViewerPropertyPage nonMesh = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Mesh, isCamera: true, isLight: true);
+        await Assert.That(nonMesh.MatchCount).IsEqualTo(0);
+        ViewerPropertyPage nonMeshOther = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
+        await Assert.That(nonMeshOther.Attributes.Count).IsEqualTo(expected.Length + 2);
     }
 
     [Test]

@@ -26,6 +26,7 @@ internal enum ViewerPropertyGroup
     Collections,
     Imageable,
     Physics,
+    Mesh,
     Other
 }
 
@@ -66,7 +67,8 @@ internal sealed class ViewerPropertyPage
         ViewerPropertyGroup group = ViewerPropertyGroup.All,
         bool isCamera = false,
         bool isLight = false,
-        IReadOnlyList<string>? lightSchemaProperties = null)
+        IReadOnlyList<string>? lightSchemaProperties = null,
+        bool isMesh = false)
     {
         ArgumentNullException.ThrowIfNull(attributes);
         ArgumentNullException.ThrowIfNull(relationships);
@@ -84,7 +86,7 @@ internal sealed class ViewerPropertyPage
         int matches = 0;
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties))
+            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh))
             {
                 matches++;
             }
@@ -104,7 +106,7 @@ internal sealed class ViewerPropertyPage
         var pageRelationships = new List<ViewerRelationshipSnapshot>();
         foreach (ViewerAttributeSnapshot attribute in attributes)
         {
-            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties) &&
+            if (Matches(attribute, filter, search, group, isCamera, isLight, lightSchemaProperties, isMesh) &&
                 seen++ >= start && pageAttributes.Count < PageSize)
             {
                 pageAttributes.Add(attribute);
@@ -128,11 +130,12 @@ internal sealed class ViewerPropertyPage
 
     private static bool Matches(
         ViewerAttributeSnapshot attribute, ViewerPropertyFilter filter, string query,
-        ViewerPropertyGroup group, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties) =>
+        ViewerPropertyGroup group, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties,
+        bool isMesh) =>
         (group == ViewerPropertyGroup.All ||
          (group == ViewerPropertyGroup.ShaderInputs &&
              attribute.Name.StartsWith("inputs:", StringComparison.Ordinal)) ||
-         AttributeGroup(attribute.Name, isCamera, isLight, lightSchemaProperties) == group) &&
+         AttributeGroup(attribute.Name, isCamera, isLight, lightSchemaProperties, isMesh) == group) &&
         Matches(attribute.Name, attribute.TypeName, query) && (filter switch
         {
             ViewerPropertyFilter.All => true,
@@ -152,7 +155,7 @@ internal sealed class ViewerPropertyPage
         Matches(relationship.Name, "relationship", query);
 
     private static ViewerPropertyGroup AttributeGroup(
-        string name, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties)
+        string name, bool isCamera, bool isLight, IReadOnlyList<string>? lightSchemaProperties, bool isMesh)
     {
         if (name == "xformOpOrder" || name.StartsWith("xformOp:", StringComparison.Ordinal))
         {
@@ -165,6 +168,14 @@ internal sealed class ViewerPropertyPage
             "shutter:open" or "shutter:close" or "stereoRole")
         {
             return ViewerPropertyGroup.Camera;
+        }
+        if (isMesh && name is "points" or "velocities" or "accelerations" or "normals" or "extent" or
+            "doubleSided" or "orientation" or "faceVertexCounts" or "faceVertexIndices" or
+            "subdivisionScheme" or "interpolateBoundary" or "faceVaryingLinearInterpolation" or
+            "triangleSubdivisionRule" or "holeIndices" or "cornerIndices" or "cornerSharpnesses" or
+            "creaseIndices" or "creaseLengths" or "creaseSharpnesses")
+        {
+            return ViewerPropertyGroup.Mesh;
         }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
