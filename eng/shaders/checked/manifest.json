@@ -455,7 +455,7 @@
     },
     {
       "path": "src/OpenUsd.Viewer/MainWindow.axaml.cs",
-      "sha256": "c936438d880d1272c8b23bc66cf51afd109b44eca6c973497f1c9fff61cc3f06"
+      "sha256": "4ae39309b8e32b8593c43da7f8c41f336adca7db39395290c70db4842f56ce4c"
     },
     {
       "path": "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",
