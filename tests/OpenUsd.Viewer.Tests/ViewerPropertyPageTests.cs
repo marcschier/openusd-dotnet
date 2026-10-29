@@ -12,7 +12,13 @@ public sealed class ViewerPropertyPageTests
     private static readonly string[] UngroupedNames =
     [
         "XformOp:translate", "xformOpOrderExtra", "FocalLength", "shutter:custom",
-        "inputsExtra:roughness", "Outputs:surface", "material:binding"
+        "inputsExtra:roughness", "Outputs:surface", "material:binding", "primvars:", "Primvars:displayColor",
+        "primvarsExtra:st", "collection:", "Collection:lights:includeRoot"
+    ];
+    private static readonly string[] NamespacedApiNames =
+    [
+        "primvars:displayColor", "primvars:st:indices", "inputs:file", "collection:lights:expansionRule",
+        "collection:lights", "custom"
     ];
 
     [Test]
@@ -71,16 +77,48 @@ public sealed class ViewerPropertyPageTests
             new("material:bindingExtra", "/Looks/Main"),
             new("Material:binding", "/Looks/Main"),
             new("inputs:roughness", "/Graph.outputs:value"),
-            new("xformOp:translate", "/World")
+            new("xformOp:translate", "/World"),
+            new("primvars:displayColor", "/World"),
+            new("collection:", "/World")
         ];
         ViewerPropertyPage other = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isCamera: true);
         await Assert.That(other.Attributes).IsEquivalentTo(attributes);
         await Assert.That(other.Relationships).IsEquivalentTo(relationships);
-        await Assert.That(other.MatchCount).IsEqualTo(11);
+        await Assert.That(other.MatchCount).IsEqualTo(18);
         await Assert.That(() => ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: (ViewerPropertyGroup)999))
             .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task PrimvarAndCollectionGroupsUseTheirApiNamespacesAndPropertyKinds()
+    {
+        ViewerAttributeSnapshot[] attributes = NamespacedApiNames
+            .Select(static name => new ViewerAttributeSnapshot(name, "float", true, false, 0, "<none>", "7"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+        [
+            new("collection:lights:includes", "/World/Key"),
+            new("material:binding:collection:lights", "/Looks/Main"),
+            new("collection:lights:excludes", "/World/Fill")
+        ];
+
+        ViewerPropertyPage primvars = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Primvars);
+        ViewerPropertyPage collections = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Collections);
+
+        await Assert.That(string.Join(",", primvars.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("primvars:displayColor,primvars:st:indices");
+        await Assert.That(primvars.Relationships).IsEmpty();
+        await Assert.That(string.Join(",", collections.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("collection:lights:expansionRule,collection:lights");
+        await Assert.That(string.Join(",", collections.Relationships.Select(static item => item.Name)))
+            .IsEqualTo("collection:lights:includes,collection:lights:excludes");
+        ViewerPropertyPage bindings = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.MaterialBindings);
+        await Assert.That(bindings.Relationships.Single()).IsSameReferenceAs(relationships[1]);
     }
 
     [Test]

@@ -22,6 +22,8 @@ internal enum ViewerPropertyGroup
     ShaderInputs,
     ShaderOutputs,
     MaterialBindings,
+    Primvars,
+    Collections,
     Other
 }
 
@@ -178,11 +180,23 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.ShaderOutputs;
         }
-        return ViewerPropertyGroup.Other;
+        if (HasNamespace(name, "primvars:"))
+        {
+            return ViewerPropertyGroup.Primvars;
+        }
+        return HasNamespace(name, "collection:") ? ViewerPropertyGroup.Collections : ViewerPropertyGroup.Other;
     }
 
-    private static ViewerPropertyGroup RelationshipGroup(string name) =>
-        name == "material:binding" || name.StartsWith("material:binding:", StringComparison.Ordinal)
-            ? ViewerPropertyGroup.MaterialBindings
-            : ViewerPropertyGroup.Other;
+    private static ViewerPropertyGroup RelationshipGroup(string name)
+    {
+        if (name == "material:binding" || name.StartsWith("material:binding:", StringComparison.Ordinal))
+        {
+            return ViewerPropertyGroup.MaterialBindings;
+        }
+        return HasNamespace(name, "collection:") ? ViewerPropertyGroup.Collections : ViewerPropertyGroup.Other;
+    }
+
+    // A namespace prefix only groups a property that has a nonempty name after it.
+    private static bool HasNamespace(string name, string prefix) =>
+        name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.Ordinal);
 }

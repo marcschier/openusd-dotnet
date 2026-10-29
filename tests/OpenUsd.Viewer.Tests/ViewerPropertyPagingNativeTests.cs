@@ -46,7 +46,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
             )
             def Xform "World" (
                 prepend references = @reference.usda@</Source>
-                prepend apiSchemas = ["MaterialBindingAPI"]
+                prepend apiSchemas = ["MaterialBindingAPI", "CollectionAPI:lights"]
             )
             {
                 custom double details:reference
@@ -58,6 +58,8 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 double3 xformOp:translate = (1, 2, 3)
                 uniform token[] xformOpOrder = ["xformOp:translate"]
                 rel material:binding = </Looks/Material>
+                color3f[] primvars:displayColor = [(1, 0, 0)]
+                rel collection:lights:includes = </Other>
 
             """);
         for (int index = 0; index < 257; index++)
@@ -462,6 +464,15 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await WaitAsync(() => state.Text == "Properties 1-2 of 2 matches", timeout);
             await Assert.That(ValueText(main)).Contains("xformOp:translate");
             await Assert.That(ValueText(main)).Contains("xformOpOrder");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Primvars;
+            await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
+            await Assert.That(ValueText(main)).Contains("primvars:displayColor");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Collections;
+            await WaitAsync(() => state.Text?.StartsWith("Properties 1-", StringComparison.Ordinal) == true &&
+                Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()
+                    .Any(static row => row.Text == "collection:lights:includes: /Other"), timeout);
+            await Assert.That(ValueText(main)).DoesNotContain("primvars:displayColor");
+            await Assert.That(ValueText(main)).DoesNotContain("material:binding");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.MaterialBindings;
             await WaitAsync(() => state.Text == "Properties 1-1 of 1 matches", timeout);
             await Assert.That(Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>()

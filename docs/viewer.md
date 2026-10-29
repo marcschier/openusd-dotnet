@@ -348,6 +348,12 @@ These inputs remain available in the **Inputs** group as well. Inputs and output
 attribute namespaces
 (`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
 group only `material:binding` relationships and its nested namespace, not similarly named attributes.
+**Primvars** groups `primvars:` attributes, including their `:indices` companions; a relationship in
+that namespace stays under **Other properties**. **Collections** groups both attributes and
+relationships in the `collection:` namespace, such as `collection:lights:includes`. Like inputs and
+outputs, these two groups follow the namespace and do not check that `PrimvarsAPI` or
+`CollectionAPI` is applied. A bare `primvars:` or `collection:` name with nothing after the prefix,
+or a prefix that differs in case, stays under **Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing
