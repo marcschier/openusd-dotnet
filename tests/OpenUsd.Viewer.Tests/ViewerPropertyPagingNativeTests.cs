@@ -160,6 +160,17 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 uniform float2 ui:nodegraph:node:pos = (10, 20)
                 custom float uix:size = 3
             }
+            def Xform "Tagged" (
+                prepend apiSchemas = ["SemanticsLabelsAPI:class", "LODRootAPI", "AccessibilityAPI:default",
+                    "MotionAPI", "CoordSysAPI:worldSpace"]
+            )
+            {
+                token[] semantics:labels:class = ["chair"]
+                int lod:default:index = 1
+                string accessibility:default:label = "Chair"
+                float motion:blurScale = 0.5
+                rel coordSys:worldSpace:binding = </Orphan>
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -548,6 +559,31 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(PropertyButtons(main).Select(
                     static button => AutomationProperties.GetAutomationId(button)))
                 .DoesNotContain("edit.property:/Notes.uix:size");
+            foreach ((ViewerPropertyGroup group, string expected, string excluded) in new[]
+            {
+                (ViewerPropertyGroup.Semantics, "semantics:labels:class", "lod:default:index"),
+                (ViewerPropertyGroup.LevelOfDetail, "lod:default:index", "semantics:labels:class"),
+                (ViewerPropertyGroup.UserInterface, "accessibility:default:label", "lod:default:index"),
+                (ViewerPropertyGroup.Motion, "motion:blurScale", "lod:default:index"),
+                (ViewerPropertyGroup.CoordinateSystems, "coordSys:worldSpace:binding", "motion:blurScale")
+            })
+            {
+                propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
+                await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+                tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                    static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Tagged" });
+                propertyGroup.SelectedIndex = (int)group;
+                string expectedId = "edit.property:/Tagged." + expected;
+                await WaitAsync(() => PropertyButtons(main).Any(button =>
+                    AutomationProperties.GetAutomationId(button) == expectedId) ||
+                    (group == ViewerPropertyGroup.CoordinateSystems &&
+                    Required<StackPanel>(main, "ValueRows").Children.OfType<TextBlock>().Any(text =>
+                        text.Text?.StartsWith(expected + ": ", StringComparison.Ordinal) == true &&
+                        text.Text.Contains("/Orphan", StringComparison.Ordinal))), timeout);
+                await Assert.That(PropertyButtons(main).Select(
+                        static button => AutomationProperties.GetAutomationId(button)))
+                    .DoesNotContain("edit.property:/Tagged." + excluded);
+            }
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
             TreeViewItem grid = tree.Items.OfType<TreeViewItem>().Single(

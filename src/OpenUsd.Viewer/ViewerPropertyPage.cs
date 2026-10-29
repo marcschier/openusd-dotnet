@@ -36,6 +36,10 @@ internal enum ViewerPropertyGroup
     Render,
     ShaderIdentity,
     UserInterface,
+    Semantics,
+    LevelOfDetail,
+    Motion,
+    CoordinateSystems,
     Other
 }
 
@@ -263,9 +267,21 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.ShaderIdentity;
         }
-        if (HasNamespace(name, "ui:"))
+        if (HasNamespace(name, "ui:") || HasNamespace(name, "accessibility:"))
         {
             return ViewerPropertyGroup.UserInterface;
+        }
+        if (HasNamespace(name, "semantics:"))
+        {
+            return ViewerPropertyGroup.Semantics;
+        }
+        if (HasNamespace(name, "lod:"))
+        {
+            return ViewerPropertyGroup.LevelOfDetail;
+        }
+        if (HasNamespace(name, "motion:"))
+        {
+            return ViewerPropertyGroup.Motion;
         }
         if (HasNamespace(name, "primvars:"))
         {
@@ -323,6 +339,14 @@ internal sealed class ViewerPropertyPage
         if (HasNamespace(name, "model:"))
         {
             return ViewerPropertyGroup.Model;
+        }
+        if (HasNamespace(name, "lod:"))
+        {
+            return ViewerPropertyGroup.LevelOfDetail;
+        }
+        if (HasNamespace(name, "coordSys:"))
+        {
+            return ViewerPropertyGroup.CoordinateSystems;
         }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }

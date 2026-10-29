@@ -564,6 +564,74 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task SemanticLabelAndLevelOfDetailGroupsUseTheirNamespacesAndAccessibilityJoinsUserInterface()
+    {
+        string[] names =
+        [
+            "semantics:labels:class", "semantics:labels:wordnet", "lod:default:index", "lod:override:mode",
+            "lod:domain", "accessibility:default:label", "accessibility:alt:priority", "semantics:", "lod:",
+            "lods:index", "primvars:semantics:labels:class", "thresholds"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "raw"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+            [new ViewerRelationshipSnapshot("lod:heuristics", "/Heuristic"),
+            new ViewerRelationshipSnapshot("boundingVolume", "/Bounds")];
+
+        static string joined(ViewerPropertyPage page) => string.Join(",",
+            page.Attributes.Select(static item => item.Name).Concat(
+                page.Relationships.Select(static item => item.Name)));
+
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.Semantics)))
+            .IsEqualTo("semantics:labels:class,semantics:labels:wordnet");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.LevelOfDetail)))
+            .IsEqualTo("lod:default:index,lod:override:mode,lod:domain,lod:heuristics");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.UserInterface)))
+            .IsEqualTo("accessibility:default:label,accessibility:alt:priority");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.Other)))
+            .IsEqualTo("semantics:,lod:,lods:index,thresholds,boundingVolume");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.Primvars)))
+            .IsEqualTo("primvars:semantics:labels:class");
+    }
+
+    [Test]
+    public async Task MotionAndCoordinateSystemGroupsUseTheirNamespaces()
+    {
+        string[] names =
+        [
+            "motion:blurScale", "motion:velocityScale", "motion:nonlinearSampleCount", "motion:",
+            "motions:blurScale", "primvars:motion:blurScale", "velocities"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "float", true, false, 0, "<none>", "raw"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+            [new ViewerRelationshipSnapshot("coordSys:worldSpace:binding", "/World/Space"),
+            new ViewerRelationshipSnapshot("coordSys:", "/World/Space"),
+            new ViewerRelationshipSnapshot("coordSystem:binding", "/World/Space")];
+
+        static string joined(ViewerPropertyPage page) => string.Join(",",
+            page.Attributes.Select(static item => item.Name).Concat(
+                page.Relationships.Select(static item => item.Name)));
+
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.Motion)))
+            .IsEqualTo("motion:blurScale,motion:velocityScale,motion:nonlinearSampleCount");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.CoordinateSystems)))
+            .IsEqualTo("coordSys:worldSpace:binding");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.Other)))
+            .IsEqualTo("motion:,motions:blurScale,velocities,coordSys:,coordSystem:binding");
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

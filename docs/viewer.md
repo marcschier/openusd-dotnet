@@ -419,9 +419,23 @@ prim. A bare `info:` and lookalikes such as `infos:id` stay under **Other proper
 **User interface (ui:)** groups the UsdUI presentation properties in the `ui:` namespace:
 `ui:nodegraph:node:pos`, `ui:nodegraph:node:size` and the other NodeGraphNodeAPI hints,
 `ui:displayName` and `ui:displayGroup` from SceneGraphPrimAPI, and `ui:description` on a Backdrop.
-The group is name-based and applies to any prim. A bare `ui:` and lookalikes such as `uix:pos`
-stay under **Other properties**; `inputs:ui:hint` stays under **Inputs** and `primvars:ui:tag`
-under **Primvars**.
+It also holds the AccessibilityAPI properties `accessibility:<name>:label`, `description` and
+`priority`. The group is name-based and applies to any prim. A bare `ui:` and lookalikes such as
+`uix:pos` stay under **Other properties**; `inputs:ui:hint` stays under **Inputs** and
+`primvars:ui:tag` under **Primvars**.
+**Semantic labels** groups the UsdSemantics `semantics:labels:<taxonomy>` arrays, one per applied
+SemanticsLabelsAPI instance. **Level of detail (lod:)** groups the UsdLod root and override
+properties: `lod:default:index`, `lod:override:*`, `lod:domain` and the `lod:heuristics`
+relationship. Both groups are name-based. UsdLod has no managed typed-prim wrapper, so the
+heuristic prims' own `thresholds`, `blendThresholds`, `center` and `boundingVolume` stay under
+**Other properties**, as do a bare `semantics:` or `lod:`; `primvars:semantics:labels:class`
+stays under **Primvars**.
+**Motion (motion:)** groups the UsdGeom MotionAPI attributes `motion:blurScale`,
+`motion:velocityScale` and `motion:nonlinearSampleCount`. **Coordinate systems (coordSys:)**
+groups the UsdShade CoordSysAPI `coordSys:<name>:binding` relationships, one per named
+coordinate system. Both groups are name-based. A bare `motion:` or `coordSys:` and lookalikes such
+as `motions:blurScale` stay under **Other properties**, as does the point-based `velocities`
+attribute on prims outside the geometry groups.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

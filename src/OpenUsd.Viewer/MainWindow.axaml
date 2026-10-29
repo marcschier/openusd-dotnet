@@ -1228,6 +1228,10 @@
               <ComboBoxItem Content="Render settings and products" />
               <ComboBoxItem Content="Shader identity (info:)" />
               <ComboBoxItem Content="User interface (ui:)" />
+              <ComboBoxItem Content="Semantic labels" />
+              <ComboBoxItem Content="Level of detail (lod:)" />
+              <ComboBoxItem Content="Motion (motion:)" />
+              <ComboBoxItem Content="Coordinate systems (coordSys:)" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox
