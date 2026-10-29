@@ -72,7 +72,9 @@ internal enum ViewerGeometrySchema
     RenderPass,
     TetMesh,
     NurbsPatch,
-    GeomSubset
+    GeomSubset,
+    ParticleField,
+    LodHeuristic
 }
 
 internal sealed class ViewerPropertyPage
@@ -276,7 +278,8 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Semantics;
         }
-        if (HasNamespace(name, "lod:"))
+        if (HasNamespace(name, "lod:") || geometry == ViewerGeometrySchema.LodHeuristic &&
+            name is "thresholds" or "blendThresholds" or "center" or "extent" or "projectionMethod")
         {
             return ViewerPropertyGroup.LevelOfDetail;
         }
@@ -345,7 +348,7 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Model;
         }
-        if (HasNamespace(name, "lod:"))
+        if (HasNamespace(name, "lod:") || geometry == ViewerGeometrySchema.LodHeuristic && name == "boundingVolume")
         {
             return ViewerPropertyGroup.LevelOfDetail;
         }
@@ -390,6 +393,9 @@ internal sealed class ViewerPropertyPage
             ViewerGeometrySchema.OpenVdbAsset => IsFieldAssetBaseProperty(name) || name == "fieldClass",
             ViewerGeometrySchema.Field3DAsset => IsFieldAssetBaseProperty(name) || name == "fieldPurpose",
             ViewerGeometrySchema.FieldAsset => IsFieldAssetBaseProperty(name),
+            ViewerGeometrySchema.ParticleField => IsShapeBaseProperty(name) || name is "positions" or "positionsh" or
+                "orientations" or "orientationsh" or "scales" or "scalesh" or "opacities" or "opacitiesh" or
+                "projectionModeHint" or "sortingModeHint" || HasNamespace(name, "radiance:"),
             _ => false
         };
 

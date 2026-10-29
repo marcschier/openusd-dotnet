@@ -664,6 +664,35 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task ParticleFieldsJoinVolumeAndLodHeuristicsJoinLevelOfDetailOnlyOnTheirSchemas()
+    {
+        string[] names =
+        [
+            "positions", "orientationsh", "scales", "opacities", "radiance:sphericalHarmonicsDegree",
+            "sortingModeHint", "extent", "thresholds", "blendThresholds", "center", "projectionMethod", "radiance:"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "float[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships = [new("boundingVolume", "/World/Bounds")];
+
+        static string joined(ViewerPropertyPage page) =>
+            string.Join(",", page.Attributes.Select(static item => item.Name).Concat(
+                page.Relationships.Select(static item => item.Name)));
+
+        await Assert.That(joined(ViewerPropertyPage.Create(attributes, relationships, null, 0,
+                group: ViewerPropertyGroup.Volume, geometry: ViewerGeometrySchema.ParticleField)))
+            .IsEqualTo("positions,orientationsh,scales,opacities,radiance:sphericalHarmonicsDegree," +
+                "sortingModeHint,extent");
+        await Assert.That(joined(ViewerPropertyPage.Create(attributes, relationships, null, 0,
+                group: ViewerPropertyGroup.LevelOfDetail, geometry: ViewerGeometrySchema.LodHeuristic)))
+            .IsEqualTo("extent,thresholds,blendThresholds,center,projectionMethod,boundingVolume");
+        await Assert.That(joined(ViewerPropertyPage.Create(attributes, relationships, null, 0,
+                group: ViewerPropertyGroup.Other, geometry: ViewerGeometrySchema.None)))
+            .IsEqualTo(string.Join(",", names) + ",boundingVolume");
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

@@ -400,8 +400,12 @@ each schema defines: `ids` for points, `curveVertexCounts` for every curve type,
 **Volume and fields** groups the `field:` relationships of a `Volume` prim, such as
 `field:density`, and the attributes a field asset defines: `filePath`, `fieldName`, `fieldIndex`,
 `fieldDataType` and `vectorDataRoleHint`, plus `fieldClass` for `OpenVDBAsset` and `fieldPurpose` for
-`Field3DAsset`. Other prims keep these names under **Other properties**, as does a bare `field:`
-relationship.
+`Field3DAsset`. On a `ParticleField` or `ParticleField3DGaussianSplat` prim the group holds the
+particle arrays `positions`, `orientations`, `scales` and `opacities` with their half-precision
+`h` variants, the `radiance:` spherical-harmonics attributes, the splat `projectionModeHint` and
+`sortingModeHint`, and `extent`, `doubleSided` and `orientation`. The Viewer recognizes these
+prims by type name because the managed API has no ParticleField wrapper. Other prims keep these
+names under **Other properties**, as does a bare `field:` relationship or `radiance:` attribute.
 **Intrinsic shapes** groups the dimensions of a built-in shape: `radius` for `Sphere`, `size` for
 `Cube`, `radius`, `height` and `axis` for `Cylinder`, `Cone` and `Capsule`, and `width`, `length`
 and `axis` for `Plane`. The group also holds `extent`, `doubleSided` and `orientation` for those
@@ -429,10 +433,11 @@ It also holds the AccessibilityAPI properties `accessibility:<name>:label`, `des
 **Semantic labels** groups the UsdSemantics `semantics:labels:<taxonomy>` arrays, one per applied
 SemanticsLabelsAPI instance. **Level of detail (lod:)** groups the UsdLod root and override
 properties: `lod:default:index`, `lod:override:*`, `lod:domain` and the `lod:heuristics`
-relationship. Both groups are name-based. UsdLod has no managed typed-prim wrapper, so the
-heuristic prims' own `thresholds`, `blendThresholds`, `center` and `boundingVolume` stay under
-**Other properties**, as do a bare `semantics:` or `lod:`; `primvars:semantics:labels:class`
-stays under **Primvars**.
+relationship. On `LODDistanceHeuristic` and `LODScreenSizeHeuristic` prims, which the Viewer
+recognizes by type name, the group also holds `thresholds`, `blendThresholds`, `center`,
+`extent`, `projectionMethod` and the `boundingVolume` relationship. A bare `semantics:` or
+`lod:` stays under **Other properties**, and `primvars:semantics:labels:class` stays under
+**Primvars**.
 **Motion (motion:)** groups the UsdGeom MotionAPI attributes `motion:blurScale`,
 `motion:velocityScale` and `motion:nonlinearSampleCount`. **Coordinate systems (coordSys:)**
 groups the UsdShade CoordSysAPI `coordSys:<name>:binding` relationships, one per named
@@ -1206,7 +1211,7 @@ an opinion in the chosen target layer. In particular, a weaker root opinion can 
 true while the session target contains no prim at all. General conflict-safe document undo cannot
 use that reader as its before-state source.
 
-The Viewer recognises its own authored changes exactly, by the change-serial pair that brackets
+The Viewer recognizes its own authored changes exactly, by the change-serial pair that brackets
 them, and replaces the caller's conservative classification with what it actually authored. Editing
 a mass therefore pauses playback and rebuilds the world once the edit burst goes quiet, while
 editing simulation metadata - which is provenance, never an input - does not disturb a running

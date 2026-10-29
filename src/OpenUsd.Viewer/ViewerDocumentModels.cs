@@ -1003,7 +1003,12 @@ internal static partial class ViewerStageSnapshotBuilder
         UsdRenderProduct.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderProduct :
         UsdRenderVar.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderVar :
         UsdRenderPass.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderPass :
-        ViewerGeometrySchema.None;
+        prim.TypeName switch
+        {
+            "ParticleField" or "ParticleField3DGaussianSplat" => ViewerGeometrySchema.ParticleField,
+            "LODDistanceHeuristic" or "LODScreenSizeHeuristic" => ViewerGeometrySchema.LodHeuristic,
+            _ => ViewerGeometrySchema.None
+        };
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)
     {

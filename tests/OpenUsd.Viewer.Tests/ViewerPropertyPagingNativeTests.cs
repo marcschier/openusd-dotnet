@@ -180,6 +180,16 @@ public sealed partial class ViewerPropertyPagingNativeTests
             {
                 float backPlate:main:luma:gain = 2
             }
+            def ParticleField3DGaussianSplat "Splat"
+            {
+                point3f[] positions = [(0, 0, 0)]
+                float[] opacities = [0.5]
+                uniform int radiance:sphericalHarmonicsDegree = 0
+            }
+            def LODDistanceHeuristic "Distance"
+            {
+                uniform float[] thresholds = [10]
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -577,7 +587,9 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 (ViewerPropertyGroup.CoordinateSystems, "/Tagged", "coordSys:worldSpace:binding", "motion:blurScale"),
                 (ViewerPropertyGroup.ColorSpace, "/Tagged", "colorSpace:name", "motion:blurScale"),
                 (ViewerPropertyGroup.Physics, "/Hinge", "drive:angular:physics:stiffness", "physics:body0"),
-                (ViewerPropertyGroup.Camera, "/Plated", "backPlate:main:luma:gain", "visibility")
+                (ViewerPropertyGroup.Camera, "/Plated", "backPlate:main:luma:gain", "visibility"),
+                (ViewerPropertyGroup.Volume, "/Splat", "radiance:sphericalHarmonicsDegree", "thresholds"),
+                (ViewerPropertyGroup.LevelOfDetail, "/Distance", "thresholds", "opacities")
             })
             {
                 propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
