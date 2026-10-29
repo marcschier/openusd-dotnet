@@ -9,6 +9,8 @@
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/arch/hash.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/gf/vec3f.h"
+#include "pxr/usd/usdLux/blackbody.h"
 
 #include <algorithm>
 #include <atomic>
@@ -713,6 +715,10 @@ void ValidateDirectLight(const HdSilkLightRecord& light)
     validate(light.shapeY, "shape_y");
     validate(light.shapingConeAngle, "shaping:cone:angle");
     validate(light.shapingFocus, "shaping:focus");
+    if (light.colorTemperatureEnabled)
+    {
+        validate(light.colorTemperature, "colorTemperature");
+    }
     for (float component : light.color)
     {
         validate(component, "color");
@@ -830,6 +836,18 @@ void SelectDirectLights(
         if (outDirectLights->size() < OPENUSD_SILK_MAX_FRAME_LIGHTS)
         {
             outDirectLights->push_back(light);
+            if (light.colorTemperatureEnabled)
+            {
+                // The same luminance-normalized Catmull-Rom blackbody table
+                // Storm's area-light approximation uses, so the tint matches
+                // it exactly and never changes the light's luminance.
+                const GfVec3f tint = UsdLuxBlackbodyTemperatureAsRgb(light.colorTemperature);
+                HdSilkLightRecord& published = outDirectLights->back();
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    published.color[channel] *= tint[channel];
+                }
+            }
         }
     }
     if (directLightCount > OPENUSD_SILK_MAX_FRAME_LIGHTS)

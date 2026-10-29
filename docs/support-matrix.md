@@ -758,6 +758,7 @@ analytic native fixtures rather than this unsuitable Storm reference.
 | Storm shadow parity | Measured, ungated | Offscreen Storm shadows are not a reference |
 | Rect/disk/cylinder area lights | Implemented and self-consistency-gated | Storm renders authored references black |
 | Rect/disk `UsdLuxShapingAPI` | Cone and focus, self-consistency-gated | No cone softness, IES or sphere shaping |
+| Direct-light colour temperature | Storm's blackbody tint, native-page gated | `normalize` is not applied |
 | Light linking | Implemented, analytically gated | Per-draw light mask on D3D12 WARP and Vulkan SwiftShader |
 | Nested-instance linking | Implemented, analytically gated | Composed `parent * count + inner` masks |
 | Dome linking | Implemented, analytically gated | Per-draw dome mask, bounded at 8; unlinked pixels byte-identical |

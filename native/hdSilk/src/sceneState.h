@@ -416,6 +416,12 @@ struct HdSilkLightRecord
     // exponent. 180 degrees means unshaped, which every other light type keeps.
     float shapingConeAngle = 180.0f;
     float shapingFocus = 0.0f;
+    // UsdLux enableColorTemperature/colorTemperature in Kelvin. Storm tints every
+    // light it approximates, directional and area alike, by the luminance-
+    // normalized blackbody colour; hdSilk applies the same tint when it selects
+    // the direct lights, so the retained colour stays the authored one.
+    bool colorTemperatureEnabled = false;
+    float colorTemperature = 6500.0f;
     bool visible = true;
     bool ambientOnly = false;
     // The resolved dome texture:file, empty for every light that is not a

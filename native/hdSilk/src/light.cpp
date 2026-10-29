@@ -247,6 +247,15 @@ HdSilkLight::Sync(
     record.color[0] = color[0];
     record.color[1] = color[1];
     record.color[2] = color[2];
+    if (!record.ambientOnly)
+    {
+        record.colorTemperatureEnabled = _ReadBool(
+            sceneDelegate->GetLightParamValue(GetId(), HdLightTokens->enableColorTemperature),
+            false);
+        record.colorTemperature = _ReadFloat(
+            sceneDelegate->GetLightParamValue(GetId(), HdLightTokens->colorTemperature),
+            6500.0f);
+    }
     record.intensity = _ReadFloat(
         sceneDelegate->GetLightParamValue(GetId(), HdLightTokens->intensity),
         1.0f);

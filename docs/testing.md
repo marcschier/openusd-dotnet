@@ -1701,6 +1701,12 @@ the meshes, because the corrected disk emits only from its front face. `SilkLigh
 covers the page ABI 28 shaping table: round trip, defaults without the table, range and reserved-word
 refusal, unpublished slots and the 17344-byte GPU encoding.
 
+`NativeFrameTintsDirectLightsByColorTemperature` in `SilkDirectLightNativeConformanceTests` authors
+`enableColorTemperature` on each direct-light shape and reads the tinted colour back from both the
+parsed page and the bound GPU frame. The 10000 K and clamped 800 K cases sit on blackbody table
+knots, so the expected tint is the knot scaled to unit Rec.709 luminance; a disabled temperature
+must leave the authored colour unchanged.
+
 The default D3D12 cases continue to require WARP. Set
 `OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED=1` to additionally run
 `NativeHighLightLinkingSurvivesRemovalAndRestorationOnHardware` for 97/128 lights

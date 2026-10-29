@@ -181,6 +181,44 @@ public sealed class SilkDirectLightNativeConformanceTests
     }
 
     [Test]
+    [Arguments("distant", "temperature-cool")]
+    [Arguments("sphere", "temperature-warm-clamped")]
+    [Arguments("rect", "temperature-cool")]
+    [Arguments("disk", "temperature-warm-clamped")]
+    [Arguments("cylinder", "temperature-cool")]
+    [Arguments("rect", "temperature-disabled")]
+    public async Task NativeFrameTintsDirectLightsByColorTemperature(string shape, string control)
+    {
+        RunEvidence result = Exercise(
+            SilkGraphicsBackend.D3D12, Scenario.Controls, 1, control, shape);
+        CaptureEvidence capture = result.Captures["initial"];
+        ControlSpec expectedControl = Control(control);
+        Vector3 expected = expectedControl.Color * expectedControl.Tint!.Value;
+        await AssertRun(result);
+        await AssertPublished(capture, 1, [1]);
+        SilkFrameLight light = capture.Frame.Lights.Single();
+        await Assert.That(light.Type).IsEqualTo(Shape(shape).Type);
+        await AssertNear(light.Color, expected);
+        await Assert.That(light.Intensity).IsEqualTo(expectedControl.Intensity);
+        await Assert.That(capture.State.FrameLights[0]).IsEqualTo(light);
+
+        // The tint reaches the bound GPU frame, not only the parsed page.
+        Vector3 bound = new(
+            ReadSingle(capture.State.FrameBytes, 4320),
+            ReadSingle(capture.State.FrameBytes, 4324),
+            ReadSingle(capture.State.FrameBytes, 4328));
+        await AssertNear(bound, expected);
+        await AssertSteady(capture, result.Captures["steady"]);
+    }
+
+    private static async Task AssertNear(Vector3 actual, Vector3 expected)
+    {
+        await Assert.That(MathF.Abs(actual.X - expected.X)).IsLessThanOrEqualTo(1e-5f);
+        await Assert.That(MathF.Abs(actual.Y - expected.Y)).IsLessThanOrEqualTo(1e-5f);
+        await Assert.That(MathF.Abs(actual.Z - expected.Z)).IsLessThanOrEqualTo(1e-5f);
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task AuthoredDarkAndNoAuthoredLightsHaveDistinctFallbacks(SilkGraphicsBackend backend)
@@ -1213,6 +1251,7 @@ public sealed class SilkDirectLightNativeConformanceTests
             float inputs:diffuse = {control.Diffuse}
             float inputs:specular = {control.Specular}
             color3f inputs:color = ({control.Color.X},{control.Color.Y},{control.Color.Z})
+            {control.ExtraAttributes}
             bool inputs:shadow:enable = false
             matrix4d xformOp:transform = ((0,2,0,0),(-3,0,0,0),(0,0,4,0),(1,2,3,1))
             uniform token[] xformOpOrder = ["xformOp:transform"]
@@ -1247,8 +1286,25 @@ public sealed class SilkDirectLightNativeConformanceTests
         "exposure" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 2, 0.75f, 0.25f, 2),
         "near-zero" => new(Vector3.One, 1, -126, 1, 1, 1.17549435E-38f),
         "subnormal" => new(Vector3.One, 1, -149, 1, 1, float.Epsilon),
+        // Both temperatures land exactly on a UsdLux blackbody knot (u_seg 0),
+        // so the tint is that knot scaled to unit Rec.709 luminance. 800 K is
+        // below the table and clamps to its 1000 K end; 10000 K is its top end.
+        "temperature-cool" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 0, 0.75f, 0.25f, 0.5f,
+            "bool inputs:enableColorTemperature = true\nfloat inputs:colorTemperature = 10000",
+            BlackbodyKnot(new Vector3(0.609681f, 0.695588f, 1.0f))),
+        "temperature-warm-clamped" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 0, 0.75f, 0.25f, 0.5f,
+            "bool inputs:enableColorTemperature = true\nfloat inputs:colorTemperature = 800",
+            BlackbodyKnot(new Vector3(1.0f, 0.02749f, 0.0f))),
+        // An authored temperature without enableColorTemperature leaves the
+        // authored colour untouched, as it does in Storm.
+        "temperature-disabled" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 0, 0.75f, 0.25f, 0.5f,
+            "bool inputs:enableColorTemperature = false\nfloat inputs:colorTemperature = 2000",
+            Vector3.One),
         _ => throw new ArgumentOutOfRangeException(nameof(control), control, "Unknown meaningful control.")
     };
+
+    private static Vector3 BlackbodyKnot(Vector3 knot) =>
+        knot / Vector3.Dot(knot, new Vector3(0.2126f, 0.7152f, 0.0722f));
 
     private static bool IsEnabled(string? value) =>
         value == "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
@@ -1971,7 +2027,8 @@ public sealed class SilkDirectLightNativeConformanceTests
     private sealed record ShapeSpec(
         uint Type, string Schema, string Attributes, float ShapeX, float ShapeY, float Radius);
     private sealed record ControlSpec(
-        Vector3 Color, float Intensity, float Exposure, float Diffuse, float Specular, float Exposed);
+        Vector3 Color, float Intensity, float Exposure, float Diffuse, float Specular, float Exposed,
+        string ExtraAttributes = "", Vector3? Tint = null);
     private sealed record FrameEvidence(
         uint LightCount, uint RawLightCount, uint Flags, uint Reserved544, uint Reserved548,
         uint DomeCount, int WireSize, SilkFrameLight[] Lights);

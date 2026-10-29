@@ -3649,7 +3649,10 @@ transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Rect and di
 180 degrees, a surface outside the cone receives nothing, and inside it the contribution is scaled by
 the emitter-axis cosine raised to `shaping:focus`. Because Storm's default cone is 90 degrees, an
 unshaped rect or disk light emits only from its front face. Cone softness, IES profiles and sphere-light
-shaping are not applied. Shadow-enable is preserved as a
+shaping are not applied. Every direct light also honours `enableColorTemperature`: hdSilk multiplies
+the authored colour by `UsdLuxBlackbodyTemperatureAsRgb(colorTemperature)` when it selects the frame's
+direct lights, the same luminance-normalized tint Storm applies, so the retained record keeps the
+authored colour. `normalize` is not applied. Shadow-enable is preserved as a
 diagnostic bit only, and `UsdLuxLightAPI` light linking is applied per draw (see "hdSilk UsdLux light
 and shadow linking"). The measured `light-distant-shadow` parity scene confirms Storm's offscreen
 harness is byte-identical when the authored distant-light shadow is disabled
