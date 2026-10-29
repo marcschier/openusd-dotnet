@@ -33,6 +33,7 @@ internal enum ViewerPropertyGroup
     PointsAndCurves,
     Volume,
     Shape,
+    Render,
     Other
 }
 
@@ -57,7 +58,11 @@ internal enum ViewerGeometrySchema
     Plane,
     Skeleton,
     SkelAnimation,
-    BlendShape
+    BlendShape,
+    RenderSettings,
+    RenderProduct,
+    RenderVar,
+    RenderPass
 }
 
 internal sealed class ViewerPropertyPage
@@ -233,6 +238,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Skinning;
         }
+        if (IsRenderProperty(name, geometry))
+        {
+            return ViewerPropertyGroup.Render;
+        }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
@@ -281,6 +290,10 @@ internal sealed class ViewerPropertyPage
         if (geometry == ViewerGeometrySchema.Volume && HasNamespace(name, "field:"))
         {
             return ViewerPropertyGroup.Volume;
+        }
+        if (IsRenderRelationship(name, geometry))
+        {
+            return ViewerPropertyGroup.Render;
         }
         if (name == "material:binding" || name.StartsWith("material:binding:", StringComparison.Ordinal))
         {
@@ -346,6 +359,31 @@ internal sealed class ViewerPropertyPage
                 HasNamespace(name, "inbetweens:"),
             _ => false
         };
+
+    private static bool IsRenderProperty(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.RenderSettings => IsRenderSettingsBaseProperty(name) ||
+                name is "includedPurposes" or "materialBindingPurposes" or "renderingColorSpace",
+            ViewerGeometrySchema.RenderProduct => IsRenderSettingsBaseProperty(name) ||
+                name is "productType" or "productName",
+            ViewerGeometrySchema.RenderVar => name is "dataType" or "sourceName" or "sourceType",
+            ViewerGeometrySchema.RenderPass => name is "passType" or "command" or "fileName" or "denoise:enable",
+            _ => false
+        };
+
+    private static bool IsRenderRelationship(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.RenderSettings => name is "camera" or "products",
+            ViewerGeometrySchema.RenderProduct => name is "camera" or "orderedVars",
+            ViewerGeometrySchema.RenderPass => name is "renderSource" or "inputPasses",
+            _ => false
+        };
+
+    private static bool IsRenderSettingsBaseProperty(string name) =>
+        name is "resolution" or "pixelAspectRatio" or "aspectRatioConformPolicy" or "dataWindowNDC" or
+            "instantaneousShutter" or "disableMotionBlur" or "disableDepthOfField";
 
     private static bool IsShapeBaseProperty(string name) => name is "extent" or "doubleSided" or "orientation";
 

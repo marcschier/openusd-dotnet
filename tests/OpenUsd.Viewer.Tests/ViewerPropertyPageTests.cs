@@ -419,6 +419,51 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task RenderGroupHoldsTheSchemaPropertiesOfRenderSettingsProductVarAndPassPrims()
+    {
+        string[] names =
+        [
+            "resolution", "pixelAspectRatio", "aspectRatioConformPolicy", "dataWindowNDC", "instantaneousShutter",
+            "disableMotionBlur", "disableDepthOfField", "includedPurposes", "materialBindingPurposes",
+            "renderingColorSpace", "productType", "productName", "dataType", "sourceName", "sourceType",
+            "passType", "command", "fileName", "denoise:enable", "Resolution", "visibility"
+        ];
+        string[] relationshipNames = ["camera", "products", "orderedVars", "renderSource", "inputPasses", "Camera"];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "raw"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships = relationshipNames
+            .Select(static name => new ViewerRelationshipSnapshot(name, "/Render/Target"))
+            .ToArray();
+        const string settingsBase =
+            "resolution,pixelAspectRatio,aspectRatioConformPolicy,dataWindowNDC,instantaneousShutter," +
+            "disableMotionBlur,disableDepthOfField";
+
+        await Assert.That(groupNames(ViewerGeometrySchema.RenderSettings)).IsEqualTo(
+            settingsBase + ",includedPurposes,materialBindingPurposes,renderingColorSpace|camera,products");
+        await Assert.That(groupNames(ViewerGeometrySchema.RenderProduct))
+            .IsEqualTo(settingsBase + ",productType,productName|camera,orderedVars");
+        await Assert.That(groupNames(ViewerGeometrySchema.RenderVar)).IsEqualTo("dataType,sourceName,sourceType|");
+        await Assert.That(groupNames(ViewerGeometrySchema.RenderPass))
+            .IsEqualTo("passType,command,fileName,denoise:enable|renderSource,inputPasses");
+        await Assert.That(groupNames(ViewerGeometrySchema.Mesh)).IsEqualTo("|");
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other,
+            geometry: ViewerGeometrySchema.RenderVar);
+        await Assert.That(other.Attributes.Select(static item => item.Name)).Contains("resolution");
+        await Assert.That(other.Attributes.Select(static item => item.Name)).DoesNotContain("sourceName");
+        await Assert.That(other.Relationships.Select(static item => item.Name)).Contains("camera");
+
+        string groupNames(ViewerGeometrySchema geometry)
+        {
+            ViewerPropertyPage page = ViewerPropertyPage.Create(
+                attributes, relationships, null, 0, group: ViewerPropertyGroup.Render, geometry: geometry);
+            return string.Join(",", page.Attributes.Select(static item => item.Name)) + "|" +
+                string.Join(",", page.Relationships.Select(static item => item.Name));
+        }
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

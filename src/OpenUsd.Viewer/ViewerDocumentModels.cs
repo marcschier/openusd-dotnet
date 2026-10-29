@@ -3,6 +3,7 @@
 using System.Globalization;
 using OpenUsd.Geom;
 using OpenUsd.Interop;
+using OpenUsd.Render;
 using OpenUsd.Skel;
 using OpenUsd.Vol;
 
@@ -995,6 +996,10 @@ internal static partial class ViewerStageSnapshotBuilder
         UsdSkelSkeleton.TryWrap(prim, out _) ? ViewerGeometrySchema.Skeleton :
         UsdSkelAnimation.TryWrap(prim, out _) ? ViewerGeometrySchema.SkelAnimation :
         UsdSkelBlendShape.TryWrap(prim, out _) ? ViewerGeometrySchema.BlendShape :
+        UsdRenderSettings.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderSettings :
+        UsdRenderProduct.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderProduct :
+        UsdRenderVar.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderVar :
+        UsdRenderPass.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderPass :
         ViewerGeometrySchema.None;
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)

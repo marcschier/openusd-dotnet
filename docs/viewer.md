@@ -396,6 +396,14 @@ relationship.
 `Cube`, `radius`, `height` and `axis` for `Cylinder`, `Cone` and `Capsule`, and `width`, `length`
 and `axis` for `Plane`. The group also holds `extent`, `doubleSided` and `orientation` for those
 shapes. A mesh or any other prim keeps these names under **Other properties**.
+**Render settings and products** groups the UsdRender schema properties. `RenderSettings` and
+`RenderProduct` share `resolution`, `pixelAspectRatio`, `aspectRatioConformPolicy`,
+`dataWindowNDC`, `instantaneousShutter`, `disableMotionBlur`, `disableDepthOfField` and the
+`camera` relationship. `RenderSettings` adds `includedPurposes`, `materialBindingPurposes`,
+`renderingColorSpace` and `products`; `RenderProduct` adds `productType`, `productName` and
+`orderedVars`. `RenderVar` contributes `dataType`, `sourceName` and `sourceType`, and `RenderPass`
+contributes `passType`, `command`, `fileName`, `denoise:enable`, `renderSource` and `inputPasses`.
+On any other prim these names stay under **Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

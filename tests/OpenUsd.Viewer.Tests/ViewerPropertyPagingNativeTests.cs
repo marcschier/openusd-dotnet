@@ -132,6 +132,11 @@ public sealed partial class ViewerPropertyPagingNativeTests
             {
                 uniform token[] joints = ["root"]
             }
+            def RenderVar "Beauty"
+            {
+                uniform string sourceName = "color"
+                custom string sourceNameExtra = "alpha"
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -490,6 +495,15 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(PropertyButtons(main).Select(
                     static button => AutomationProperties.GetAutomationId(button)))
                 .DoesNotContain("edit.property:/Rig.jointsExtra");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Render;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Beauty" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Beauty.sourceName"), timeout);
+            await Assert.That(PropertyButtons(main).Select(
+                    static button => AutomationProperties.GetAutomationId(button)))
+                .DoesNotContain("edit.property:/Beauty.sourceNameExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
