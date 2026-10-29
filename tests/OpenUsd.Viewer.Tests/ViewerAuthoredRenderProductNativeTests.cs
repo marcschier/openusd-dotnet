@@ -112,6 +112,14 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
                 StringComparison.Ordinal);
         stage += """
 
+        def Camera "FarCamera" {
+            token projection = "orthographic"
+            float horizontalAperture = 40
+            float verticalAperture = 40
+            float2 clippingRange = (1, 11)
+            double3 xformOp:translate = (0, 0, 100)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
         def RenderProduct "UnsupportedProduct" {
             token productName = "unsupported.exr"
             rel orderedVars = </UnsupportedVar>
@@ -216,6 +224,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             string previewLog = await File.ReadAllTextAsync(configuredStatusFile);
             await Assert.That(previewLog).Contains("Could not preview results:");
             await Assert.That(previewLog).Contains("SHA256");
+            await ExerciseRasterOverridesAsync(product, outputParent, fullOutput);
 
             Required<TextBox>(product, "ProductSettingsPath").Text = "/SettingsPreview";
             await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
@@ -296,6 +305,53 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
                 textureBudgets.GpuStagingBudget!.Usage.ReservedBytes == 0);
             Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", null);
         }
+    }
+
+    private static async Task ExerciseRasterOverridesAsync(Window product, string outputParent, string authored)
+    {
+        TextBox window = Required<TextBox>(product, "ProductOverrideDataWindow");
+        TextBox camera = Required<TextBox>(product, "ProductOverrideCamera");
+        window.Text = "0 0 1";
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+        await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsFalse();
+        await Assert.That(Required<TextBlock>(product, "ProductStatus").Text).Contains("four NDC bounds");
+
+        window.Text = "0 0 1 1";
+        string uncropped = await RenderSelectedAsync(product, outputParent, start: "0", end: "0", step: "1");
+        using (JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(uncropped, "manifest.json"))))
+        {
+            JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(frame.GetProperty("width").GetInt32()).IsEqualTo(32);
+            await Assert.That(frame.GetProperty("height").GetInt32()).IsEqualTo(16);
+            await Assert.That(frame.GetProperty("productRaster").GetProperty("dataWindowMinX").GetInt32())
+                .IsEqualTo(0);
+        }
+        byte[] wide = await File.ReadAllBytesAsync(Path.Combine(uncropped, "frame-000000.hdr.rgba16f"));
+        byte[] crop = await File.ReadAllBytesAsync(Path.Combine(authored, "frame-000000.hdr.rgba16f"));
+        await Assert.That(wide.Length).IsEqualTo(32 * 16 * 8);
+        for (int row = 0; row < 16; row++)
+        {
+            await Assert.That(wide.AsSpan((row * 32 + 8) * 8, 16 * 8)
+                .SequenceEqual(crop.AsSpan(row * 16 * 8, 16 * 8))).IsTrue()
+                .Because("an uncropping data-window override must widen the same frustum, not resize it");
+        }
+
+        window.Text = string.Empty;
+        camera.Text = "/FarCamera";
+        string far = await RenderSelectedAsync(product, outputParent, start: "0", end: "0", step: "1");
+        byte[] empty = await File.ReadAllBytesAsync(Path.Combine(far, "frame-000000.hdr.rgba16f"));
+        await Assert.That(empty.Length).IsEqualTo(crop.Length);
+        await Assert.That(empty.SequenceEqual(crop)).IsFalse();
+        for (int offset = 8; offset < empty.Length; offset += 8)
+        {
+            await Assert.That(empty.AsSpan(offset, 8).SequenceEqual(empty.AsSpan(0, 8))).IsTrue()
+                .Because("the override camera sees the cubes beyond its far clipping plane");
+        }
+
+        camera.Text = string.Empty;
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+        await Assert.That(Required<TextBlock>(product, "ProductDetails").Text).Contains("overrides none");
     }
 
     private static async Task<string> RenderSelectedAsync(

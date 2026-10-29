@@ -53,6 +53,17 @@ owned. Failed resource cleanup retains that lease for retry. Native Storm has no
 binding. The same managed adapter is wired for Metal, but native macOS capture execution remains
 unverified; this is not a Metal support claim.
 
+The dialog's raster overrides replace authored values for one job without editing the stage. They use
+the `RenderProductOverrides` model behind the MCP `render_product` tool. The dialog accepts an absolute
+camera prim path, a width and height supplied together (1-8192 each), a finite positive pixel aspect,
+one of the five `aspectRatioConformPolicy` tokens, and an NDC data window given as four numbers with
+each minimum below its maximum. Blank fields keep the authored value. An invalid field disables **Render
+product** and names the field instead of reporting a frame-range error, so no job or output folder is
+created. The EXR pixel-aspect limit applies to the override aspect when one is given. Conformance tests
+prove on Direct3D 12 (WARP) and Vulkan that a camera, resolution, pixel-aspect and conform override
+renders the same pixels as authoring those values, and the Viewer journey proves that widening the data
+window keeps the authored crop's pixels in place rather than rescaling the frustum.
+
 After a successful job, **View results** opens the read-only
 [completed-job contact sheet](#previewing-completed-render-jobs) using its PNG display companions.
 It does not interpret the raw HDR/depth planes or rerun the product.

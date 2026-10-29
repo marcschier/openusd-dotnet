@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
 
@@ -16,7 +17,8 @@ internal sealed record ViewerAuthoredRenderProductRequest(
     string OutputParent,
     string? SettingsPath,
     string ProductPath,
-    RenderHdrColorFormat HdrColorFormat);
+    RenderHdrColorFormat HdrColorFormat,
+    RenderProductOverrides? Overrides = null);
 
 internal sealed record ViewerAuthoredRenderProductProgress(
     string Phase,
@@ -147,13 +149,12 @@ internal static class ViewerAuthoredRenderProductSelection
             product.CameraPath,
             new ViewportDimensions(product.Width, product.Height),
             variables.Length == 0 ? "no variables" : variables,
-            GetExrUnsupportedReason(product),
+            GetExrUnsupportedReason(product.PixelAspectRatio),
             unsupported);
     }
 
-    private static string? GetExrUnsupportedReason(UsdRenderProductSpecification product) =>
-        !double.IsFinite(product.PixelAspectRatio) || product.PixelAspectRatio < 1d / 65536 ||
-        product.PixelAspectRatio > 65536
+    internal static string? GetExrUnsupportedReason(double pixelAspectRatio) =>
+        !double.IsFinite(pixelAspectRatio) || pixelAspectRatio < 1d / 65536 || pixelAspectRatio > 65536
             ? "EXR output stores pixel aspect only within 1/65536..65536"
             : null;
 
@@ -171,4 +172,139 @@ internal static class ViewerAuthoredRenderProductSelection
             return exception.Message;
         }
     }
+}
+
+internal static class ViewerAuthoredRenderProductOverrides
+{
+    internal const int MaximumRasterSide = 8192;
+
+    internal static IReadOnlyList<string> ConformPolicies { get; } =
+    [
+        "expandAperture",
+        "cropAperture",
+        "adjustApertureWidth",
+        "adjustApertureHeight",
+        "adjustPixelAspectRatio"
+    ];
+
+    internal static RenderProductOverrides Parse(
+        string? cameraPath,
+        string? width,
+        string? height,
+        string? pixelAspectRatio,
+        string? conformPolicy,
+        string? dataWindowNdc)
+    {
+        string? camera = Normalize(cameraPath);
+        if (camera is not null)
+        {
+            try
+            {
+                UsdPath.ValidateAbsolutePrimPath(camera, nameof(cameraPath));
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ArgumentException("The override camera must be an absolute prim path.", exception);
+            }
+        }
+        string? widthText = Normalize(width);
+        string? heightText = Normalize(height);
+        ViewportDimensions? resolution = null;
+        if (widthText is not null || heightText is not null)
+        {
+            if (!TryParseSide(widthText, out int parsedWidth) || !TryParseSide(heightText, out int parsedHeight))
+            {
+                throw new ArgumentException(
+                    $"Override width and height must be supplied together, each 1-{MaximumRasterSide} pixels.");
+            }
+            resolution = new ViewportDimensions(parsedWidth, parsedHeight);
+        }
+        double? aspect = null;
+        if (Normalize(pixelAspectRatio) is { } aspectText)
+        {
+            if (!double.TryParse(aspectText, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ||
+                !double.IsFinite(value) || value <= 0)
+            {
+                throw new ArgumentException("The override pixel aspect must be a finite positive number.");
+            }
+            aspect = value;
+        }
+        string? policy = Normalize(conformPolicy);
+        if (policy is not null && !ConformPolicies.Contains(policy, StringComparer.Ordinal))
+        {
+            throw new ArgumentException("Choose a standard OpenUSD aspect-ratio conform policy.");
+        }
+        UsdVec4f? window = null;
+        if (Normalize(dataWindowNdc) is { } windowText)
+        {
+            window = ParseDataWindow(windowText);
+        }
+        return camera is null && resolution is null && aspect is null && policy is null && window is null
+            ? RenderProductOverrides.None
+            : new RenderProductOverrides(camera, resolution, aspect, policy, window);
+    }
+
+    internal static string Describe(RenderProductOverrides overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        var parts = new List<string>(5);
+        if (overrides.CameraPath is { } camera)
+        {
+            parts.Add($"camera {camera}");
+        }
+        if (overrides.Resolution is { } size)
+        {
+            parts.Add(FormattableString.Invariant($"raster {size.Width} x {size.Height}"));
+        }
+        if (overrides.PixelAspectRatio is { } aspect)
+        {
+            parts.Add(FormattableString.Invariant($"pixel aspect {aspect}"));
+        }
+        if (overrides.AspectRatioConformPolicy is { } policy)
+        {
+            parts.Add($"conform {policy}");
+        }
+        if (overrides.DataWindowNdc is { } window)
+        {
+            parts.Add(FormattableString.Invariant(
+                $"data window ({window.X}, {window.Y}, {window.Z}, {window.W})"));
+        }
+        return parts.Count == 0 ? "none (authored values)" : string.Join("; ", parts);
+    }
+
+    private static UsdVec4f ParseDataWindow(string text)
+    {
+        string[] values = text.Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        var bounds = new float[4];
+        if (values.Length != 4)
+        {
+            throw new ArgumentException(
+                "The override data window needs four NDC bounds: minX minY maxX maxY.");
+        }
+        for (int index = 0; index < 4; index++)
+        {
+            if (!float.TryParse(values[index], NumberStyles.Float, CultureInfo.InvariantCulture, out bounds[index]) ||
+                !float.IsFinite(bounds[index]))
+            {
+                throw new ArgumentException(
+                    "The override data window needs four finite NDC bounds: minX minY maxX maxY.");
+            }
+        }
+        if (bounds[0] >= bounds[2] || bounds[1] >= bounds[3])
+        {
+            throw new ArgumentException("The override data window minimum must be below its maximum on both axes.");
+        }
+        return new UsdVec4f(bounds[0], bounds[1], bounds[2], bounds[3]);
+    }
+
+    private static bool TryParseSide(string? text, out int value)
+    {
+        value = 0;
+        return text is not null &&
+            int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value) &&
+            value is >= 1 and <= MaximumRasterSide;
+    }
+
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

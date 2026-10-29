@@ -21,12 +21,12 @@
                   AutomationProperties.Name="Authored render product details"
                   HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12"
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12"
             MinHeight="{Binding Viewport.Height, ElementName=ProductBodyScroll}">
         <StackPanel Grid.Row="0" Spacing="4">
           <TextBlock Text="Authored USD RenderProduct" FontWeight="SemiBold" />
           <TextBlock x:Name="ProductRenderer" TextWrapping="Wrap" Classes="viewer-secondary" />
-          <TextBlock Text="The product camera, raster, purposes and variables come from UsdRender, not the current viewport camera or size. PNG is a display companion; raw half color and normalized device depth remain separate product planes."
+          <TextBlock Text="The product camera, raster, purposes and variables come from UsdRender, not the current viewport camera or size. Raster overrides apply to this job only and never edit the stage. PNG is a display companion; raw half color and normalized device depth remain separate product planes."
                      TextWrapping="Wrap" Classes="viewer-caption" />
         </StackPanel>
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4">
@@ -43,7 +43,40 @@
           <TextBlock x:Name="ProductDetails" TextWrapping="Wrap" Classes="viewer-secondary"
                      AutomationProperties.Name="Authored render product details" />
         </StackPanel>
-        <Grid x:Name="ProductRangeControls" Grid.Row="3" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto"
+        <Grid x:Name="ProductOverrideControls" Grid.Row="3" ColumnDefinitions="*,*,*"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+          <TextBlock Grid.ColumnSpan="3" Text="Raster overrides (blank = authored product value)" />
+          <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="Camera prim" />
+          <TextBlock Grid.Row="1" Grid.Column="2" Text="Conform policy" />
+          <TextBox x:Name="ProductOverrideCamera" Grid.Row="2" Grid.ColumnSpan="2" MaxLength="1024"
+                   AutomationProperties.Name="Product override camera path" />
+          <ComboBox x:Name="ProductOverrideConform" Grid.Row="2" Grid.Column="2" SelectedIndex="0"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Product override aspect-ratio conform policy">
+            <ComboBoxItem Content="Authored" />
+            <ComboBoxItem Content="expandAperture" />
+            <ComboBoxItem Content="cropAperture" />
+            <ComboBoxItem Content="adjustApertureWidth" />
+            <ComboBoxItem Content="adjustApertureHeight" />
+            <ComboBoxItem Content="adjustPixelAspectRatio" />
+          </ComboBox>
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="Width" />
+          <TextBlock Grid.Row="3" Grid.Column="1" Text="Height" />
+          <TextBlock Grid.Row="3" Grid.Column="2" Text="Pixel aspect" />
+          <TextBox x:Name="ProductOverrideWidth" Grid.Row="4" Grid.Column="0" MaxLength="16"
+                   AutomationProperties.Name="Product override raster width" />
+          <TextBox x:Name="ProductOverrideHeight" Grid.Row="4" Grid.Column="1" MaxLength="16"
+                   AutomationProperties.Name="Product override raster height" />
+          <TextBox x:Name="ProductOverridePixelAspect" Grid.Row="4" Grid.Column="2" MaxLength="64"
+                   AutomationProperties.Name="Product override pixel aspect" />
+          <StackPanel Grid.Row="5" Grid.ColumnSpan="3" Spacing="4">
+            <TextBlock Text="Data window NDC (minX minY maxX maxY)" />
+            <TextBox x:Name="ProductOverrideDataWindow" MaxLength="256"
+                     AutomationProperties.Name="Product override data window"
+                     ToolTip.Tip="Bottom-left and top-right NDC bounds. Values outside 0..1 overscan; values inside crop." />
+          </StackPanel>
+        </Grid>
+        <Grid x:Name="ProductRangeControls" Grid.Row="4" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto"
               ColumnSpacing="8" RowSpacing="4">
           <TextBlock Grid.Column="0" Text="Start time code" />
           <TextBlock Grid.Column="1" Text="End time code (inclusive)" />
@@ -57,7 +90,7 @@
           <TextBlock x:Name="ProductFrameCount" Grid.Row="2" Grid.ColumnSpan="3"
                      AutomationProperties.Name="Product frame count" Classes="viewer-secondary" />
         </Grid>
-        <StackPanel x:Name="ProductOutputControls" Grid.Row="4" Spacing="4">
+        <StackPanel x:Name="ProductOutputControls" Grid.Row="5" Spacing="4">
           <TextBlock Text="HDR color encoding" />
           <ComboBox x:Name="ProductHdrFormat" SelectedIndex="0" MinWidth="220"
                     AutomationProperties.Name="Product HDR color output format"
@@ -68,14 +101,14 @@
           <TextBlock x:Name="ProductOutputScope" TextWrapping="Wrap" Classes="viewer-secondary"
                      AutomationProperties.Name="Product output files per frame" />
         </StackPanel>
-        <Grid Grid.Row="5" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+        <Grid Grid.Row="6" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4">
           <TextBlock Text="Output folder (a generated product subfolder will be created)" Grid.ColumnSpan="2" />
           <TextBox x:Name="ProductOutputFolder" Grid.Row="1" MaxLength="32767"
                    AutomationProperties.Name="Product output parent folder" />
           <Button x:Name="ProductBrowseButton" Grid.Row="1" Grid.Column="1" Content="Browse..."
                   AutomationProperties.Name="Choose product output folder" />
         </Grid>
-        <StackPanel Grid.Row="6" Spacing="6">
+        <StackPanel Grid.Row="7" Spacing="6">
           <ProgressBar x:Name="ProductProgress" Minimum="0" Maximum="1" Value="0"
                        AutomationProperties.Name="Authored RenderProduct progress" Height="4" />
           <TextBlock x:Name="ProductStatus" TextWrapping="Wrap"

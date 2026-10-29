@@ -633,6 +633,59 @@ public sealed class ViewerAuthoredRenderProductTests
     }
 
     [Test]
+    public async Task BlankOverrideFieldsPreserveEveryAuthoredValue()
+    {
+        RenderProductOverrides overrides = ViewerAuthoredRenderProductOverrides.Parse(" ", null, "", "\t", null, "");
+        await Assert.That(overrides).IsSameReferenceAs(RenderProductOverrides.None);
+        await Assert.That(ViewerAuthoredRenderProductOverrides.Describe(overrides)).IsEqualTo("none (authored values)");
+    }
+
+    [Test]
+    public async Task OverrideFieldsParseInvariantValuesIntoTheSharedOverrideModel()
+    {
+        RenderProductOverrides overrides = ViewerAuthoredRenderProductOverrides.Parse(
+            " /World/Camera ", "640", "360", "1.5", "cropAperture", "-0.1, 0 1.1\t0.75");
+        await Assert.That(overrides.CameraPath).IsEqualTo("/World/Camera");
+        await Assert.That(overrides.Resolution).IsEqualTo(new ViewportDimensions(640, 360));
+        await Assert.That(overrides.PixelAspectRatio).IsEqualTo(1.5);
+        await Assert.That(overrides.AspectRatioConformPolicy).IsEqualTo("cropAperture");
+        await Assert.That(overrides.DataWindowNdc).IsEqualTo(new UsdVec4f(-0.1f, 0f, 1.1f, 0.75f));
+        await Assert.That(ViewerAuthoredRenderProductOverrides.Describe(overrides)).IsEqualTo(
+            "camera /World/Camera; raster 640 x 360; pixel aspect 1.5; conform cropAperture; " +
+            "data window (-0.1, 0, 1.1, 0.75)");
+    }
+
+    [Test]
+    [Arguments("Camera", null, null, null, null, null, "absolute prim path")]
+    [Arguments(null, "640", null, null, null, null, "supplied together")]
+    [Arguments(null, "0", "360", null, null, null, "supplied together")]
+    [Arguments(null, "8193", "360", null, null, null, "supplied together")]
+    [Arguments(null, "1e3", "360", null, null, null, "supplied together")]
+    [Arguments(null, null, null, "0", null, null, "finite positive")]
+    [Arguments(null, null, null, "NaN", null, null, "finite positive")]
+    [Arguments(null, null, null, "1,5", null, null, "finite positive")]
+    [Arguments(null, null, null, null, "fitAperture", null, "conform policy")]
+    [Arguments(null, null, null, null, null, "0 0 1", "four NDC bounds")]
+    [Arguments(null, null, null, null, null, "0 0 1 x", "four finite NDC bounds")]
+    [Arguments(null, null, null, null, null, "0.5 0 0.5 1", "below its maximum")]
+    public async Task InvalidOverrideFieldsAreRefusedBeforeAJobIsPrepared(
+        string? camera, string? width, string? height, string? aspect, string? policy, string? window,
+        string expected)
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
+            ViewerAuthoredRenderProductOverrides.Parse(camera, width, height, aspect, policy, window));
+        await Assert.That(exception.Message).Contains(expected);
+    }
+
+    [Test]
+    public async Task OverridePixelAspectUsesTheExrStorageBounds()
+    {
+        await Assert.That(ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(1d / 65536)).IsNull();
+        await Assert.That(ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(65536)).IsNull();
+        await Assert.That(ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(65537)).Contains("65536");
+    }
+
+    [Test]
     public async Task RangeBoundsRejectInvalidInputsBeforePublication()
     {
         await Assert.That(() => new ViewerRenderSequenceRange(0, 4097, 1))

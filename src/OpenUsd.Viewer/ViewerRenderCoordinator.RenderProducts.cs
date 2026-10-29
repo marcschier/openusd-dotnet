@@ -76,6 +76,7 @@ internal sealed partial class ViewerRenderCoordinator
                 original.RenderSettings,
                 request.SettingsPath,
                 request.ProductPath,
+                request.Overrides,
                 expectedStageRevision: serial,
                 cancellationToken: token);
             if (backend.GetRenderProductUnsupportedReason(original, plan, request.HdrColorFormat) is { } unsupported)

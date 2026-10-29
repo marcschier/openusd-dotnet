@@ -75,6 +75,12 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         ProductStep.TextChanged += (_, _) => ValidateRequest();
         ProductOutputFolder.TextChanged += (_, _) => ValidateRequest();
         ProductHdrFormat.SelectionChanged += (_, _) => ValidateRequest();
+        ProductOverrideCamera.TextChanged += (_, _) => ValidateRequest();
+        ProductOverrideWidth.TextChanged += (_, _) => ValidateRequest();
+        ProductOverrideHeight.TextChanged += (_, _) => ValidateRequest();
+        ProductOverridePixelAspect.TextChanged += (_, _) => ValidateRequest();
+        ProductOverrideConform.SelectionChanged += (_, _) => ValidateRequest();
+        ProductOverrideDataWindow.TextChanged += (_, _) => ValidateRequest();
         ProductRefreshButton.Click += async (_, _) =>
         {
             await StartRefreshProductsAsync();
@@ -264,8 +270,19 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
             ProductOutputFolder.Text ?? string.Empty,
             ReadSettingsPath(),
             product.Path,
-            ReadHdrFormat());
+            ReadHdrFormat(),
+            ReadOverrides());
     }
+
+    private RenderProductOverrides ReadOverrides() => ViewerAuthoredRenderProductOverrides.Parse(
+        ProductOverrideCamera.Text,
+        ProductOverrideWidth.Text,
+        ProductOverrideHeight.Text,
+        ProductOverridePixelAspect.Text,
+        ProductOverrideConform.SelectedIndex > 0
+            ? ViewerAuthoredRenderProductOverrides.ConformPolicies[ProductOverrideConform.SelectedIndex - 1]
+            : null,
+        ProductOverrideDataWindow.Text);
 
     private static ViewerAuthoredRenderProductItem? FirstProduct(
         IReadOnlyList<ViewerAuthoredRenderProductItem> products,
@@ -317,6 +334,16 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         {
             ViewerRenderSequenceRange range = ReadRange();
             ProductFrameCount.Text = $"{range.Times.Count} frame(s)";
+            RenderProductOverrides? overrides = null;
+            string? overrideError = null;
+            try
+            {
+                overrides = ReadOverrides();
+            }
+            catch (ArgumentException exception)
+            {
+                overrideError = exception.Message;
+            }
             ProductOutputScope.Text = "PNG display companion + authored raw planes; " +
                 (ReadHdrFormat() == RenderHdrColorFormat.Exr
                     ? "HDR color encoded as EXR when the product has a color variable"
@@ -341,17 +368,27 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
             {
                 status = "Choose one authored render product.";
             }
-            else
+            else if (overrides is null)
             {
                 ProductDetails.Text =
                     $"Camera {item.CameraPath}; raster {item.Dimensions.Width} x {item.Dimensions.Height}; " +
                     $"variables {item.VariableSummary}.";
+                status = overrideError!;
+            }
+            else
+            {
+                ProductDetails.Text =
+                    $"Camera {item.CameraPath}; raster {item.Dimensions.Width} x {item.Dimensions.Height}; " +
+                    $"variables {item.VariableSummary}; overrides " +
+                    $"{ViewerAuthoredRenderProductOverrides.Describe(overrides)}.";
                 if (item.UnsupportedReason is { } unsupported)
                 {
                     status = unsupported;
                 }
                 else if (ReadHdrFormat() == RenderHdrColorFormat.Exr &&
-                    item.ExrUnsupportedReason is { } exrUnsupported)
+                    (overrides.PixelAspectRatio is { } aspect
+                        ? ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(aspect)
+                        : item.ExrUnsupportedReason) is { } exrUnsupported)
                 {
                     status = exrUnsupported;
                 }
@@ -471,6 +508,7 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         ProductRefreshButton.IsEnabled = ready;
         ProductSelector.IsEnabled = ready;
         ProductRangeControls.IsEnabled = ready;
+        ProductOverrideControls.IsEnabled = ready;
         ProductOutputControls.IsEnabled = ready;
         ProductOutputFolder.IsEnabled = ready;
         ProductBrowseButton.IsEnabled = ready;

@@ -909,6 +909,44 @@ def Xform "World"
     }
 
     [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task RenderProductOverridesMatchAuthoredRasterOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("D3D12 product capture requires Windows.");
+            return;
+        }
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            await RenderProductRasterConformance.OverriddenRasterMatchesAuthoredRaster(device, ResolvePluginPath());
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("render-product override D3D12", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
+    public async Task RenderProductOverridesMatchAuthoredRasterOnVulkan()
+    {
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await RenderProductRasterConformance.OverriddenRasterMatchesAuthoredRaster(device, ResolvePluginPath());
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("render-product override Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
     public async Task SilkComplexityMediumChangesPointPage()
     {
         MeshPageStats lowStats;
