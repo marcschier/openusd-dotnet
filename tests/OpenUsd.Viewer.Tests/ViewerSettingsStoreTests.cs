@@ -380,6 +380,11 @@ public sealed class ViewerSettingsStoreTests
     [Test]
     public async Task SaveFailsWithoutTemporaryFilesWhenTheSettingsFileStaysLocked()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("Only Windows sharing modes block replacing a file another reader holds open.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
         string root = CreateTestRoot();
         try
         {
