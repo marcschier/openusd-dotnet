@@ -15,7 +15,8 @@ public sealed class ViewerPropertyPageTests
         "inputsExtra:roughness", "Outputs:surface", "material:binding", "primvars:", "Primvars:displayColor",
         "primvarsExtra:st", "collection:", "Collection:lights:includeRoot", "Visibility", "purposeExtra",
         "physics:", "Physics:mass", "physicsExtra:mass", "physxRigidBody:linearDamping",
-        "skel:", "Skel:joints", "skelExtra:joints"
+        "skel:", "Skel:joints", "skelExtra:joints",
+        "model:", "modelExtra:drawMode"
     ];
     private static readonly string[] NamespacedApiNames =
     [
@@ -102,7 +103,7 @@ public sealed class ViewerPropertyPageTests
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other, isCamera: true);
         await Assert.That(other.Attributes).IsEquivalentTo(attributes);
         await Assert.That(other.Relationships).IsEquivalentTo(relationships);
-        await Assert.That(other.MatchCount).IsEqualTo(30);
+        await Assert.That(other.MatchCount).IsEqualTo(32);
         await Assert.That(() => ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: (ViewerPropertyGroup)999))
             .Throws<ArgumentOutOfRangeException>();
@@ -229,6 +230,39 @@ public sealed class ViewerPropertyPageTests
         ViewerPropertyPage other = ViewerPropertyPage.Create(
             attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
         await Assert.That(other.Attributes.Single().Name).IsEqualTo("custom");
+        await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationships[1]);
+    }
+
+    [Test]
+    public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
+    {
+        string[] names =
+        [
+            "model:drawMode", "primvars:model:tint", "model:cardGeometry", "custom", "model:drawModeColor",
+            "Model:drawMode"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "token", true, false, 0, "<none>", "cards"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships =
+        [
+            new("model:customTarget", "/Cards"),
+            new("link", "/World")
+        ];
+
+        ViewerPropertyPage model = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Model, isMesh: true);
+
+        await Assert.That(string.Join(",", model.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("model:drawMode,model:cardGeometry,model:drawModeColor");
+        await Assert.That(model.Relationships.Single()).IsSameReferenceAs(relationships[0]);
+        ViewerPropertyPage primvars = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Primvars);
+        await Assert.That(primvars.Attributes.Single().Name).IsEqualTo("primvars:model:tint");
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other);
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("custom,Model:drawMode");
         await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationships[1]);
     }
 

@@ -28,6 +28,7 @@ internal enum ViewerPropertyGroup
     Physics,
     Mesh,
     Skinning,
+    Model,
     Other
 }
 
@@ -210,6 +211,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Skinning;
         }
+        if (HasNamespace(name, "model:"))
+        {
+            return ViewerPropertyGroup.Model;
+        }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
@@ -230,6 +235,10 @@ internal sealed class ViewerPropertyPage
         if (HasNamespace(name, "skel:"))
         {
             return ViewerPropertyGroup.Skinning;
+        }
+        if (HasNamespace(name, "model:"))
+        {
+            return ViewerPropertyGroup.Model;
         }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }

@@ -370,6 +370,10 @@ stays under **Other properties**, as do lookalikes such as `pointsExtra`. Mesh p
 not check that `SkelBindingAPI` is applied. Skinning primvars such as `primvars:skel:jointIndices`
 stay under **Primvars**; a bare `skel:` name and names that differ in case stay under
 **Other properties**.
+**Model and draw mode** groups properties in the `model:` namespace, such as `model:drawMode`,
+`model:applyDrawMode` and the `model:card*` texture attributes. It does not check that
+`GeomModelAPI` is applied either. Primvars such as `primvars:model:tint` stay under **Primvars**,
+and a bare `model:` name or a case variant stays under **Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

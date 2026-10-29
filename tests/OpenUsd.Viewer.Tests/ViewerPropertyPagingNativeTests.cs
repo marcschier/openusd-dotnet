@@ -86,6 +86,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 uniform token skel:skinningMethod = "classicLinear"
                 int[] primvars:skel:jointIndices = [0, 0, 0]
                 rel skel:skeleton = </Other>
+                uniform token model:drawMode = "bounds"
             }
             def Shader "Surface"
             {
@@ -380,6 +381,12 @@ public sealed partial class ViewerPropertyPagingNativeTests
                     .Any(static row => row.Text == "skel:skeleton: /Other"), timeout);
             await Assert.That(ValueText(main)).Contains("skel:skinningMethod");
             await Assert.That(ValueText(main)).DoesNotContain("primvars:skel:jointIndices");
+            await Assert.That(ValueText(main)).DoesNotContain("model:drawMode");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Model;
+            await WaitAsync(() => meshState.Text == "Properties 1-1 of 1 matches" &&
+                PropertyButtons(main).Any(static button => AutomationProperties.GetAutomationId(button) ==
+                    "edit.property:/Grid.model:drawMode"), timeout);
+            await Assert.That(ValueText(main)).DoesNotContain("skel:skinningMethod");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
